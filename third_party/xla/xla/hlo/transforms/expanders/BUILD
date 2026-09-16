@@ -289,6 +289,7 @@ cc_library(
     deps = [
         ":op_expander_pass",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",

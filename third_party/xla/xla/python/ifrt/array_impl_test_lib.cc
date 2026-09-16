@@ -697,12 +697,12 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsSingleDevice) {
   copy_specs.push_back({
       /*array=*/arrays[0],
       /*buffers=*/
-      {{{0}, {out0.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+      {{out0.data(), dtype, shape, /*byte_strides=*/std::nullopt}},
   });
   copy_specs.push_back({
       /*array=*/arrays[1],
       /*buffers=*/
-      {{{0}, {out1.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+      {{out1.data(), dtype, shape, /*byte_strides=*/std::nullopt}},
   });
 
   ASSERT_OK_AND_ASSIGN(
@@ -735,9 +735,12 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsMultiDevice) {
       client->addressable_devices().subspan(0, 2);
   ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                        client->MakeDeviceList(devices));
-  ShardingRef sharding =
-      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
-                                   shard_shape, /*is_fully_replicated=*/false);
+  std::vector<Shape> shard_shapes = {shard_shape, shard_shape};
+  std::vector<IndexDomain> index_domains = {
+      IndexDomain(Index({0, 0}), shard_shape),
+      IndexDomain(Index({1, 0}), shard_shape)};
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), shape, shard_shapes, index_domains);
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> make_specs;
   make_specs.push_back({
@@ -765,12 +768,8 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsMultiDevice) {
   copy_specs.push_back({
       /*array=*/arrays[0],
       /*buffers=*/
-      {{{0},
-        {out_shard0.data(), dtype, shard_shape,
-         /*byte_strides=*/std::nullopt}},
-       {{1},
-        {out_shard1.data(), dtype, shard_shape,
-         /*byte_strides=*/std::nullopt}}},
+      {{out_shard0.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt},
+       {out_shard1.data(), dtype, shard_shape, /*byte_strides=*/std::nullopt}},
   });
 
   ASSERT_OK_AND_ASSIGN(
@@ -826,7 +825,7 @@ TEST(ArrayImplTest, CopyArraysToHostBufferShardsReplicated) {
   copy_specs.push_back({
       /*array=*/arrays[0],
       /*buffers=*/
-      {{{0, 1}, {out.data(), dtype, shape, /*byte_strides=*/std::nullopt}}},
+      {{out.data(), dtype, shape, /*byte_strides=*/std::nullopt}},
   });
 
   ASSERT_OK_AND_ASSIGN(

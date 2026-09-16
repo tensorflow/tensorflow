@@ -50,3 +50,8 @@ export IP_ADDR=$(powershell -command "(Get-NetIPAddress -AddressFamily IPv4 -Int
 netsh interface portproxy add v4tov4 listenaddress=$IP_ADDR listenport=80 connectaddress=169.254.169.254 connectport=80
 # A local firewall rule for the container is added in
 # ci/official/utilities/setup_docker.sh.
+
+# Mount host directories for Bazel output_user_root, temporary files, and relocated SDK
+# headers to prevent write churn and wcifs.sys race conditions on immutable base image layers (b/556761966).
+rm -rf /c/sdk && mkdir -p /c/x /c/TMP /c/TEMP /c/sdk
+TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v C:/x:C:/x -v C:/TMP:C:/TMP -v C:/TEMP:C:/TEMP -v C:/sdk:C:/sdk"

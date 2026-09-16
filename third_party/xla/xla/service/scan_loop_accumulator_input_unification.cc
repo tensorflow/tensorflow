@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -78,39 +79,35 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
 
   // Finding the accumulator instructions
   std::vector<HloInstruction*> possible_acc;
-  for (int64_t param_idx = 0;
-       param_idx < while_instr->while_init()->operand_count(); ++param_idx) {
-    for (HloInstruction* gte : body_param->users()) {
-      if (!Match(gte, match::GetTupleElement().WithTupleIndex(param_idx))) {
-        continue;
-      }
-      if (gte->operand(0) != body_param) {
-        continue;
-      }
+  for (HloInstruction* gte : body_param->users()) {
+    if (gte->opcode() != HloOpcode::kGetTupleElement) {
+      continue;
+    }
+    int64_t param_idx = gte->tuple_index();
+    // HloVerifier ensures that param_idx >= 0.
+    CHECK_GE(param_idx, 0);
 
-      // The accumulator should only be used exactly once as the operand of
-      // dynamic-update-slice.
-      if (gte->user_count() > 1 || gte->user_count() == 0) {
-        continue;
-      }
-      HloInstruction* gte_user = gte->users().at(0);
-      if (MatchShapeCoveringDynamicIndexInstruction(
-              gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
-              .has_value()) {
-        // The accumulator should be written at the same index
-        if (computation->root_instruction()->mutable_operand(param_idx) ==
-            gte_user) {
-          possible_acc.push_back(gte);
-          VLOG(3) << "accumulator index: " << param_idx << " = " << gte->name();
-        }
+    // The accumulator should only be used exactly once as the operand of
+    // dynamic-update-slice.
+    if (gte->user_count() != 1) {
+      continue;
+    }
+    HloInstruction* gte_user = gte->users().at(0);
+    if (MatchShapeCoveringDynamicIndexInstruction(
+            gte_user, gte, HloOpcode::kDynamicUpdateSlice, config)
+            .has_value()) {
+      // The accumulator should be written at the same index
+      if (computation->root_instruction()->operand(param_idx) == gte_user) {
+        possible_acc.push_back(gte);
+        VLOG(3) << "accumulator index: " << param_idx << " = " << gte->name();
       }
     }
   }
 
-  // If operand is actually an operand of the instr, returns the index of the
-  // operand, otherwise returns -1.
-  auto operand_index = [](HloInstruction* instr,
-                          HloInstruction* operand) -> int64_t {
+  // Version of HloInstruction::operand_index that returns -1 if the operand is
+  // not found instead of crashing.
+  auto find_operand_index = [](const HloInstruction* instr,
+                               const HloInstruction* operand) -> int64_t {
     for (int64_t i = 0; i < instr->operand_count(); ++i) {
       if (operand == instr->operand(i)) {
         return i;
@@ -119,19 +116,14 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     return -1;
   };
 
-  // Returns the first GTE instruction in the parent computation of the tuple
-  // with the form of get-tuple-element(tuple), index=idx
+  // Returns the first GTE instruction in the users of the tuple with the form
+  // of get-tuple-element(tuple), index=idx
   auto find_gte_instr = [](HloInstruction* tuple,
                            int64_t idx) -> HloInstruction* {
-    for (HloInstruction* instr : tuple->parent()->MakeInstructionPostOrder()) {
-      HloInstruction* operand;
-      if (Match(instr, match::GetTupleElement()
-                           .WithOperand(0, match::Op(&operand))
-                           .WithTupleIndex(idx))) {
-        if (operand != tuple) {
-          continue;
-        }
-        return instr;
+    for (HloInstruction* user : tuple->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == idx) {
+        return user;
       }
     }
     return nullptr;
@@ -154,8 +146,8 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     if (acc_gte_outer_body == nullptr) {
       continue;
     }
-    int64_t idx =
-        operand_index(outer_while_body->root_instruction(), acc_gte_outer_body);
+    int64_t idx = find_operand_index(outer_while_body->root_instruction(),
+                                     acc_gte_outer_body);
     VLOG(3) << "Accumulator output of the scan in the outer body = "
             << acc_gte_outer_body->name() << ", index = " << idx;
     if (idx == -1) {
@@ -174,18 +166,24 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
 
     // Find the corresponding gte in the body of the inner loop
     int64_t input_idx_inner =
-        operand_index(while_instr->while_init(), input_gte_outer);
+        find_operand_index(while_instr->while_init(), input_gte_outer);
+    if (input_idx_inner == -1) {
+      continue;
+    }
 
     HloInstruction* input_gte_inner =
         find_gte_instr(computation->parameter_instruction(0), input_idx_inner);
-
+    // An unused loop input is technically valid, skip it.
+    if (input_gte_inner == nullptr) {
+      continue;
+    }
     if (!LoopIndexIsReadOnly(dataflow_analysis, while_instr, input_idx_inner)) {
       continue;
     }
     VLOG(3) << "Input parameter scan body = " << input_gte_inner->name()
             << ", index = " << input_gte_inner->tuple_index();
 
-    // Input must have to users, one is the dynamic-slice and the other is the
+    // Input must have two users, one is the dynamic-slice and the other is the
     // root of the loop body.
     if (input_gte_inner->user_count() != 2) {
       continue;

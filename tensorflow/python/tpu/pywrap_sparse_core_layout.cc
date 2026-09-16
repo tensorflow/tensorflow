@@ -42,30 +42,30 @@ class PySparseCoreLayoutStacker {
                  sparse_cores_per_partition) {}
 
   void SetActivationMemoryBytesLimit(int64_t activation_mem_bytes_limit) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     stacker_.SetActivationMemoryBytesLimit(activation_mem_bytes_limit);
   }
 
   void SetVariableShardBytesLimit(int64_t variable_shard_bytes_limit) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     stacker_.SetVariableShardBytesLimit(variable_shard_bytes_limit);
   }
 
   void SetStackingEnabled(bool stacking_enabled) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     stacker_.SetStackingEnabled(stacking_enabled);
   }
 
   absl::Status AddTable(const std::string& table_name, int64_t table_height,
                         int64_t table_width, const std::string& group,
                         int64_t output_samples, int64_t num_features) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return stacker_.AddTable(table_name, table_height, table_width, group,
                              output_samples, num_features);
   }
 
   absl::StatusOr<SparseCoreTableLayouts> GetLayouts() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return stacker_.GetLayouts();
   }
 

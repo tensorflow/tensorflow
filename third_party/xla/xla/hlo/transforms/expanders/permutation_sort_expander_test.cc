@@ -40,7 +40,7 @@ TEST_F(PermutationSortExpanderTest, ReplacePermutationSortWithScatter) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -83,7 +83,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfWrongComparisonDirection) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -117,7 +117,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfComparingWrongParameters) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -153,7 +153,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortIfNonIntegral) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = f32[] parameter(2)
       p.1.rhs = f32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     ENTRY sort_computation {
@@ -181,7 +181,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortWrongDimensions) {
       p.0.rhs = f32[] parameter(1)
       p.1.lhs = s32[] parameter(2)
       p.1.rhs = s32[] parameter(3)
-      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT, order=TOTAL
     }
 
     lt_s32 {
@@ -216,7 +216,7 @@ TEST_F(PermutationSortExpanderTest,
       k_rhs = f32[] parameter(1)
       v_lhs = s64[] parameter(2)
       v_rhs = s64[] parameter(3)
-      ROOT lt = pred[] compare(k_lhs, k_rhs), direction=LT, type=TOTALORDER
+      ROOT lt = pred[] compare(k_lhs, k_rhs), direction=LT, order=TOTAL
     }
 
     lt_s64 {

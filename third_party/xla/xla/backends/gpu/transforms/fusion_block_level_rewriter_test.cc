@@ -41,6 +41,7 @@ License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -458,6 +459,47 @@ ENTRY entry {
                                &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(FusionBlockLevelRewriterTestBase,
+       RewritesSameShapeMultiOutputFusionWithoutGeneralBlockLevelRewriter) {
+  const absl::string_view hlo_text = R"hlo(
+f {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  add = f32[10,10] add(p0, p1)
+  sub = f32[10,10] subtract(p0, p1)
+  ROOT multi_output = (f32[10,10], f32[10,10]) tuple(add, sub)
+}
+
+ENTRY entry {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  ROOT fusion = (f32[10,10], f32[10,10]) fusion(p0, p1), kind=kLoop, calls=f
+})hlo";
+  DebugOptions debug_options =
+      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
+      false);
+  debug_options.set_xla_gpu_experimental_enable_tiling_propagation(true);
+  debug_options.set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(
+      true);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
 }  // namespace

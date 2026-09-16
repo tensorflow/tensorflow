@@ -606,6 +606,18 @@ absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
   return absl::OkStatus();
 }
 
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateHost(
+    absl::AnyInvocable<void()> callback,
+    absl::Span<const Command* const> dependencies) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kCreate));
+
+  ABSL_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                   CreateHostNode(ToGraphNodeDependencies(dependencies),
+                                  std::move(callback)));
+
+  return AppendCommand(GpuCommand{handle});
+}
+
 absl::Status GpuCommandBuffer::Finalize() {
   ABSL_RETURN_IF_ERROR(CheckNotFinalized());
   ABSL_RETURN_IF_ERROR(PrepareFinalization());

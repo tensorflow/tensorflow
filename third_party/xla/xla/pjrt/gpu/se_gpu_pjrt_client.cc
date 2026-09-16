@@ -235,10 +235,10 @@ CreateSEGpuTopology(absl::string_view platform_name,
 }
 
 static se::StreamExecutor* GetFirstExecutor(
-    const std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>& devices) {
-  for (const auto& d : devices) {
-    if (auto* local_device_state = d.get()->local_device_state()) {
-      return local_device_state->executor();
+    absl::Span<const std::unique_ptr<LocalDeviceState>> local_device_states) {
+  for (const auto& state : local_device_states) {
+    if (state != nullptr) {
+      return state->executor();
     }
   }
   return nullptr;
@@ -249,15 +249,16 @@ namespace {
 // Derives the platform version string (e.g. "cuda 12080") from the runtime
 // device description, independent of compile-time macros.
 static std::string GpuPlatformVersionFromDevices(
-    absl::Span<const std::unique_ptr<PjRtStreamExecutorDevice>> devices) {
-  for (const std::unique_ptr<PjRtStreamExecutorDevice>& device : devices) {
-    auto* se_device = device.get();
-    LocalDeviceState* local_device_state = se_device->local_device_state();
-    if (local_device_state == nullptr) {
+    const StreamExecutorGpuRawClient* raw_client,
+    absl::Span<const std::unique_ptr<CommonPjRtDevice>> devices) {
+  for (const std::unique_ptr<CommonPjRtDevice>& device : devices) {
+    auto local_device_state =
+        raw_client->GetLocalDeviceState(device->local_device_id());
+    if (!local_device_state.ok()) {
       continue;
     }
     const se::DeviceDescription& desc =
-        local_device_state->executor()->GetDeviceDescription();
+        local_device_state.value()->executor()->GetDeviceDescription();
     const se::SemanticVersion v = desc.runtime_version();
     const se::GpuComputeCapability& cc = desc.gpu_compute_capability();
     if (cc.rocm_compute_capability() != nullptr) {
@@ -305,13 +306,6 @@ void StreamExecutorGpuRawClient::UpdateCompileOptionsTopology(
 // Anonymous namespace for se_gpu_pjrt_client.cc internal cross-host transfer
 // helpers.
 namespace {
-
-// Get the local device state for a given PjRtDevice.
-absl::StatusOr<LocalDeviceState*> GetLocalDeviceState(PjRtDevice* device) {
-  PjRtStreamExecutorDevice* pjrt_se_device =
-      absl::down_cast<PjRtStreamExecutorDevice*>(device);
-  return pjrt_se_device->GetLocalDeviceState();
-}
 
 // Creates a communicator for a cross-host transfer; used by the original
 // cross-host transfers API.
@@ -627,31 +621,29 @@ StreamExecutorGpuRawClient::CrossHostTransferBuffers(
 
     // Get the local_device_state and use it to schedule transfers. Fail
     // transfers early if we cannot get the local_device_state.
-    absl::StatusOr<LocalDeviceState*> local_device_state =
-        absl::down_cast<PjRtStreamExecutorDevice*>(device)
-            ->GetLocalDeviceState();
-    if (!local_device_state.ok()) {
-      SetEventAsError(transfer_event, local_device_state.status());
+    auto local_device_state_or = GetLocalDeviceState(device->local_device_id());
+    if (!local_device_state_or.ok()) {
+      SetEventAsError(transfer_event, local_device_state_or.status());
       continue;
     }
+    LocalDeviceState* local_device_state = *local_device_state_or;
 
     // Launch ScheduleTransfersOnLocalDevice on either the async dispatch thread
     // of the calling thread.
-    if ((*local_device_state)->async_dispatch_thread()) {
-      (*local_device_state)
-          ->async_dispatch_thread()
-          ->Schedule(tsl::WithCurrentContext(
+    if (local_device_state->async_dispatch_thread()) {
+      local_device_state->async_dispatch_thread()->Schedule(
+          tsl::WithCurrentContext(
               [this, local_device_state, device_id, transfer_dependencies,
                curr_transfer_specs = std::move(curr_transfer_specs),
                transfer_event = std::move(transfer_event)]() mutable {
-                ScheduleTransfersOnLocalDevice(*local_device_state, device_id,
+                ScheduleTransfersOnLocalDevice(local_device_state, device_id,
                                                std::move(transfer_event),
                                                std::move(transfer_dependencies),
                                                std::move(curr_transfer_specs));
               }));
     } else {
       ScheduleTransfersOnLocalDevice(
-          *local_device_state, device_id, std::move(transfer_event),
+          local_device_state, device_id, std::move(transfer_event),
           transfer_dependencies, std::move(curr_transfer_specs));
     }
   }
@@ -1554,7 +1546,7 @@ CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
 }
 
 struct PjRtDevicesAndTopology {
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   GpuTopologyProto topology;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
 };
@@ -1569,7 +1561,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
     std::optional<int> partition_index = std::nullopt,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states_vec;
   local_device_states_vec.reserve(local_device_states.size());
   LocalTopologyProto local_topology;
@@ -1748,14 +1740,35 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
 
         local_device_states_vec.push_back(std::move(it->second));
       }
-      auto device = std::make_unique<StreamExecutorGpuDevice>(
-          device_proto.global_device_id(), local_device, device_proto.name(),
-          device_proto.vendor(), device_proto.compute_capability(),
-          device_proto.core_count(), device_proto.device_memory_bytes_limit(),
+      if (local_device != nullptr) {
+        CHECK_EQ(local_device->local_device_id().value(),
+                 device_proto.local_device_ordinal());
+      }
+      auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
+          device_proto.global_device_id(), device_proto.local_device_ordinal(),
+          node.process_id(), curr_process_index_in_partition,
+          device_proto.partition_index(), device_proto.name());
+      StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
+          *description, device_proto.vendor(),
+          device_proto.compute_capability(), device_proto.core_count(),
+          device_proto.device_memory_bytes_limit(),
           device_proto.shared_memory_per_block_optin(),
-          device_proto.local_device_ordinal(), node.process_id(),
-          curr_process_index_in_partition, device_proto.partition_index(),
-          device_proto.numa_node(), device_proto.fabric_uuid());
+          device_proto.partition_index(), device_proto.fabric_uuid());
+      description->SetPlatformName(platform_name);
+      bool is_addressable = local_device != nullptr;
+      auto device = std::make_unique<CommonPjRtDevice>(
+          std::move(description),
+          LocalDeviceId(device_proto.local_device_ordinal()),
+          is_addressable ? LocalChipId(device_proto.local_device_ordinal())
+                         : LocalChipId(-1),
+          is_addressable);
+      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes =
+          device->description().Attributes();
+      if (device_proto.numa_node() != tsl::port::kNUMANoAffinity) {
+        attributes["numa_node"] =
+            static_cast<int64_t>(device_proto.numa_node());
+      }
+      device->SetAttributes(std::move(attributes));
       devices.push_back(std::move(device));
     }
   }
@@ -1792,96 +1805,6 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
                                 std::move(local_device_states_vec)};
 }
 
-StreamExecutorGpuDevice::StreamExecutorGpuDevice(
-    int id, LocalDeviceState* local_device_state, std::string device_kind,
-    std::string device_vendor, std::string compute_capability, int core_count,
-    int64_t device_memory_bytes_limit, int64_t shared_memory_per_block_optin,
-    int local_device_id, int process_index, int process_index_in_partition,
-    int partition_index, int numa_node, std::string fabric_uuid)
-    : PjRtStreamExecutorDevice(id, local_device_state, local_device_id,
-                               process_index, process_index_in_partition,
-                               partition_index, std::move(device_kind)) {
-  VLOG(1) << absl::StreamFormat(
-      "Constructed StreamExecutor GPU device: compute_capability=%s "
-      "core_count=%d device_memory_bytes_limit=%d shmem_per_block=%d "
-      "local_device_id=%d process_index=%d "
-      "process_index_in_partition=%d partition_index=%d numa_node=%d "
-      "fabric_uuid=%s",
-      compute_capability, core_count, device_memory_bytes_limit,
-      shared_memory_per_block_optin, local_device_id, process_index,
-      process_index_in_partition, partition_index, numa_node, fabric_uuid);
-
-  StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
-      description(), device_vendor, compute_capability, core_count,
-      device_memory_bytes_limit,
-      static_cast<int64_t>(shared_memory_per_block_optin), partition_index,
-      fabric_uuid);
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes =
-      description().Attributes();
-  if (numa_node != tsl::port::kNUMANoAffinity) {
-    attributes["numa_node"] = static_cast<int64_t>(numa_node);
-  }
-  SetAttributes(std::move(attributes));
-}
-
-absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
-    const {
-  if (!IsAddressable()) {
-    return FailedPrecondition(
-        "GetAllocatorStats() is allowed only for addressable devices");
-  }
-
-  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
-  if (!allocator_adapter) {
-    return Unimplemented(
-        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
-        "allocator");
-  }
-
-  ABSL_ASSIGN_OR_RETURN(auto allocator,
-                   allocator_adapter->GetAllocator(local_device_id().value()));
-
-  auto stats = allocator->GetStats();
-  if (!stats.has_value()) {
-    return Unimplemented(
-        "GetAllocatorStats() is not supported by this allocator");
-  }
-  return *stats;
-}
-
-absl::Status StreamExecutorGpuDevice::ClearMemoryStats() {
-  if (!IsAddressable()) {
-    return absl::FailedPreconditionError(
-        "ClearMemoryStats() is allowed only for addressable devices");
-  }
-
-  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
-      absl::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
-  if (!allocator_adapter) {
-    return absl::UnimplementedError(
-        "ClearMemoryStats() is only implemented with MultiDeviceAdapter "
-        "allocator");
-  }
-
-  ABSL_ASSIGN_OR_RETURN(auto allocator,
-                   allocator_adapter->GetAllocator(local_device_id().value()));
-
-  // Call the ClearStats() method on the underlying tsl::Allocator
-  // (BFCAllocator)
-  if (allocator->ClearStats()) {
-    return absl::OkStatus();
-  }
-
-  return absl::UnavailableError(
-      "ClearStats not supported by the underlying allocator");
-}
-
-absl::StatusOr<PjRtMemorySpace*> StreamExecutorGpuDevice::default_memory_space()
-    const {
-  return memory_space_by_kind_id(StreamExecutorGpuHbmMemorySpace::kKindId);
-}
-
 const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
   uint32_t kind_id = tsl::Fingerprint32(StreamExecutorGpuHbmMemorySpace::kKind);
   return static_cast<int>(kind_id);
@@ -1889,17 +1812,22 @@ const int StreamExecutorGpuHbmMemorySpace::kKindId = []() {
 
 std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
     std::string platform_name,
-    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-    int process_index, std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
+    std::vector<std::unique_ptr<CommonPjRtDevice>> devices, int process_index,
+    std::unique_ptr<StreamExecutorGpuRawClient> raw_client,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     std::shared_ptr<xla::StreamExecutorGpuTopologyDescription> topology,
     std::optional<int> num_processes) {
-  std::string platform_version = GpuPlatformVersionFromDevices(devices);
+  std::string platform_version =
+      GpuPlatformVersionFromDevices(raw_client.get(), devices);
   PjRtPluginAttributes attrs;
   attrs.pjrt_c_api_major_version = 0;
   attrs.pjrt_c_api_minor_version = 0;
   attrs.attributes["serialize_with_sdy"] = true;
   attrs.attributes["supports_cross_host_transfers"] = PjRtValueType(true);
+  attrs.attributes["allows_recursion"] = false;
+  attrs.attributes["allows_execute_recursion"] = true;
+  attrs.attributes["use_stream_based_compaction"] = true;
+  attrs.attributes["dump_on_deserialize"] = true;
   auto result = std::make_unique<PjRtStreamExecutorClient>(
       tsl::Fingerprint64(platform_name), platform_name, platform_version,
       process_index, std::move(topology), std::move(raw_client),
@@ -2096,16 +2024,16 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
 
   ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
                    GpuTopology::FromProto(devices_and_topology.topology));
-  auto se_gpu_topology =
-      CreateSEGpuTopology(pjrt_platform_name, std::move(gpu_topology),
-                          GetFirstExecutor(devices_and_topology.devices));
+  se::StreamExecutor* first_executor =
+      GetFirstExecutor(devices_and_topology.local_device_states);
+  auto se_gpu_topology = CreateSEGpuTopology(
+      pjrt_platform_name, std::move(gpu_topology), first_executor);
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
       tsl::Fingerprint64(pjrt_platform_name),
       std::move(devices_and_topology.local_device_states), std::move(allocator),
       xla_client, std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers,
-      /*async_work_runner=*/nullptr,
-      GetFirstExecutor(devices_and_topology.devices), kv_store,
+      /*async_work_runner=*/nullptr, first_executor, kv_store,
       preallocate_device_memory, options.abort_collectives_on_failure,
       std::move(gpu_run_options), std::move(memory_registration));
   VLOG(1) << absl::StreamFormat(
@@ -2156,16 +2084,16 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
   ABSL_ASSIGN_OR_RETURN(auto gpu_topology,
                    absl::StatusOr<std::shared_ptr<const GpuTopology>>(
                        GpuTopology::FromProto(devices_and_topology.topology)));
-  auto se_gpu_topology =
-      CreateSEGpuTopology(platform_name, std::move(gpu_topology),
-                          GetFirstExecutor(devices_and_topology.devices));
+  se::StreamExecutor* first_executor =
+      GetFirstExecutor(devices_and_topology.local_device_states);
+  auto se_gpu_topology = CreateSEGpuTopology(
+      platform_name, std::move(gpu_topology), first_executor);
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
       tsl::Fingerprint64(platform_name),
       std::move(devices_and_topology.local_device_states), std::move(allocator),
       local_client, std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,
-      /*async_work_runner=*/nullptr,
-      GetFirstExecutor(devices_and_topology.devices), kv_store,
+      /*async_work_runner=*/nullptr, first_executor, kv_store,
       /*cache_fabric_handles=*/false,
       /*abort_collectives_on_failure=*/false, std::move(gpu_run_options));
   VLOG(1) << absl::StreamFormat(

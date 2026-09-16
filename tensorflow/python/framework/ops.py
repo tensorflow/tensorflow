@@ -696,6 +696,7 @@ class _EagerTensorBase(
   def __tf_tensor__(
       self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
       ) -> tensor_lib.Tensor:
+    tensor = super().__tf_tensor__(dtype, name)
     if not context.executing_eagerly():
       graph = get_default_graph()
       if not graph.building_function:
@@ -705,7 +706,7 @@ class _EagerTensorBase(
                 "building a function.",
                 name=name))
       return graph.capture(self, name=name)
-    return super().__tf_tensor__(dtype, name)
+    return tensor
 
   def _capture_as_const(self, name) -> Optional[tensor_lib.Tensor]:
     """Capture the EagerTensor to a graph constant tensor."""

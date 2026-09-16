@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/directory_store.h"
@@ -306,7 +307,7 @@ absl::Status InsertTuningResultsToCache(
                        &status_mu, &insert_status]() {
       absl::Status s = autotuner_cache->Insert(instr, cached_config);
       if (!s.ok()) {
-        absl::MutexLock lock(&status_mu);
+        absl::MutexLock lock(status_mu);
         insert_status.Update(s);
       }
       counter.DecrementCount();

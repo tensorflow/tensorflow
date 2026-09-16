@@ -1004,23 +1004,18 @@ CreateArgumentsOnDevice(PjRtClient& client,
         }
       }
     } else {
+      FakeArgumentsOptions options;
+      options.engine = engine;
+      options.pseudo_random = kUseRandomInputs;
       if (flatten_arguments) {
-        ABSL_ASSIGN_OR_RETURN(
-            LiteralVec tupled_argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
-        ABSL_ASSIGN_OR_RETURN(
-            argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
       }
       if (kUseSharedInputs) {
         break;
@@ -1271,7 +1266,7 @@ absl::Status DumpOutput(
   results.resize(write_tasks.size());
   {
     tsl::Env* env = tsl::Env::Default();
-    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner::DumpOutput", 16);
+    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner_DumpOutput", 16);
     for (int i = 0; i < write_tasks.size(); ++i) {
       thread_pool.Schedule(
           [&write_tasks, &results, i]() { results[i] = write_tasks[i](); });

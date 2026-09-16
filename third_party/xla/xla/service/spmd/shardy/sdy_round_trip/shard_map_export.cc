@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -59,14 +63,44 @@ using ::mlir::func::FuncOp;
 namespace stablehlo = ::mlir::stablehlo;
 namespace sdy = ::mlir::sdy;
 
+// Returns `shardings` with `manualAxes` stripped from each element, i.e. the
+// local view of tensors that are sharded over those axes.
+//
+// A `NamedSharding` may not mention the same axis twice, so an op whose result
+// is a local tensor carries the manual axes in its `xla.sdy.manual_axes`
+// attribute and the remaining axes in its dimension shardings.
+sdy::TensorShardingPerValueAttr localizeShardings(
+    sdy::TensorShardingPerValueAttr shardings,
+    mlir::ArrayRef<mlir::StringAttr> manualAxes, mlir::MLIRContext* context) {
+  llvm::SmallVector<sdy::TensorShardingAttr> localShardings;
+  localShardings.reserve(shardings.size());
+  for (sdy::TensorShardingAttr sharding : shardings.getShardings()) {
+    localShardings.push_back(sdy::eraseManualAxes(sharding, manualAxes));
+  }
+  return sdy::TensorShardingPerValueAttr::get(context, localShardings);
+}
+
 class SdyRoundTripShardMapExportPass
     : public mlir::PassWrapper<SdyRoundTripShardMapExportPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripShardMapExportPass)
 
-  SdyRoundTripShardMapExportPass(bool enableHloShardingV3)
-      : enableHloShardingV3(enableHloShardingV3) {}
+  SdyRoundTripShardMapExportPass() = default;
+  explicit SdyRoundTripShardMapExportPass(bool enableHloShardingV3) {
+    this->enableHloShardingV3 = enableHloShardingV3;
+  }
+  SdyRoundTripShardMapExportPass(const SdyRoundTripShardMapExportPass& other)
+      : mlir::PassWrapper<SdyRoundTripShardMapExportPass,
+                          mlir::OperationPass<ModuleOp>>(other) {
+    this->enableHloShardingV3 = other.enableHloShardingV3.getValue();
+  }
+
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -90,28 +124,73 @@ class SdyRoundTripShardMapExportPass
       rewriter.setInsertionPoint(manualComputation);
       mlir::ValueRange operands = manualComputation->getOperands();
       if (!operands.empty()) {
+        llvm::SmallVector<mlir::Value> globalOperands(operands.begin(),
+                                                      operands.end());
+        sdy::TensorShardingPerValueAttr inShardings =
+            manualComputation.getInShardings();
+        if (enableHloShardingV3) {
+          inShardings = sdy::inlineMesh(symbolTable, inShardings);
+          // `GlobalToLocalShape`'s result is the *local* tensor, so it can only
+          // carry the local in shardings. Materialize the reshard that
+          // `ManualComputationOp` performs implicitly on its operands as an
+          // explicit `@Sharding` custom call. This keeps the exported module
+          // sharding consistent - every op's sharding describes its own result
+          // - and lets the import side read the global in shardings straight
+          // off the operand instead of inferring them.
+          for (auto [globalOperand, inSharding] :
+               llvm::zip_equal(globalOperands, inShardings.getShardings())) {
+            auto shardingOp = stablehlo::CustomCallOp::create(
+                rewriter, loc, globalOperand.getType(), globalOperand);
+            shardingOp.setCallTargetName(kShardingCustomCallTargetName);
+            shardingOp->setAttr(mlir::sdy::kShardingAttr,
+                                sdy::TensorShardingPerValueAttr::get(
+                                    moduleOp.getContext(), inSharding));
+            globalOperand = shardingOp.getResult(0);
+          }
+        }
         auto globalToLocalShape = stablehlo::CustomCallOp::create(
-            rewriter, loc, manualCompBodyArgTypes, operands);
+            rewriter, loc, manualCompBodyArgTypes, globalOperands);
         globalToLocalShape.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         // We mark `xla.sdy.GlobalToLocalShape` as side-effecting to avoid
         // CSE deduping it with another taking the same operands, as it would
         // ignore the frontend attributes that could be different.
         globalToLocalShape.setHasSideEffect(true);
-        sdy::TensorShardingPerValueAttr inShardings =
-            manualComputation.getInShardings();
         if (enableHloShardingV3) {
-          inShardings = sdy::inlineMesh(symbolTable, inShardings);
+          globalToLocalShape->setAttr(
+              mlir::sdy::kShardingAttr,
+              localizeShardings(inShardings, manualComputation.getManualAxes(),
+                                moduleOp.getContext()));
+          globalToLocalShape->setAttr(kManualAxes,
+                                      manualComputation.getManualAxesAttr());
+        } else {
+          setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
+          setFrontendAttribute(globalToLocalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
-        setFrontendAttribute(globalToLocalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         operands = globalToLocalShape->getResults();
+      }
+
+      sdy::TensorShardingPerValueAttr outShardings =
+          manualComputation.getOutShardings();
+      if (enableHloShardingV3) {
+        outShardings = sdy::inlineMesh(symbolTable, outShardings);
       }
 
       auto callOp =
           CallOp::create(rewriter, loc, localResultTypes, funcName, operands);
       setFrontendAttribute(callOp, kXlaInlineableAttr,
                            rewriter.getStringAttr("xla_late"));
+      if (enableHloShardingV3 && !outShardings.getShardings().empty()) {
+        // The call op produces the local tensors, so it carries the local view
+        // of the out shardings together with the manual axes. This is also the
+        // only carrier of the manual axes when the manual computation has no
+        // operands, i.e. when there is no `xla.sdy.GlobalToLocalShape`.
+        callOp->setAttr(
+            mlir::sdy::kShardingAttr,
+            localizeShardings(outShardings, manualComputation.getManualAxes(),
+                              moduleOp.getContext()));
+        callOp->setAttr(kManualAxes, manualComputation.getManualAxesAttr());
+      }
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {
@@ -122,14 +201,13 @@ class SdyRoundTripShardMapExportPass
         // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
         // CSE removing it if it has no users.
         localToGlobalShape.setHasSideEffect(true);
-        sdy::TensorShardingPerValueAttr outShardings =
-            manualComputation.getOutShardings();
         if (enableHloShardingV3) {
-          outShardings = sdy::inlineMesh(symbolTable, outShardings);
+          localToGlobalShape->setAttr(mlir::sdy::kShardingAttr, outShardings);
+        } else {
+          setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
+          setFrontendAttribute(localToGlobalShape, kManualAxes,
+                               manualComputation.getManualAxesAttr());
         }
-        setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
-        setFrontendAttribute(localToGlobalShape, kManualAxes,
-                             manualComputation.getManualAxesAttr());
         results = localToGlobalShape->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
@@ -147,15 +225,16 @@ class SdyRoundTripShardMapExportPass
            "1. A separate function for the body of the `ManualComputationOp`."
            "2. A `CallOp` calling the function in #1, marked as not inlinable."
            "3. A pair of `CustomCallOp`s that change the shape of the "
-           "   arguments/results. They save the in/out shardings and manual "
-           "   axes as frontend attrs.";
+           "   arguments/results."
+           " Under HloShardingV3 the shardings and manual axes are attached as "
+           "native attributes, and each operand is additionally wrapped in a "
+           "`@Sharding` custom call holding the global in sharding so that "
+           "every op's sharding describes its own result. Otherwise they are "
+           "saved as frontend attrs on the pair of `CustomCallOp`s.";
   }
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<stablehlo::StablehloDialect>();
   }
-
- private:
-  bool enableHloShardingV3 = false;
 };
 
 }  // namespace

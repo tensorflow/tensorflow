@@ -435,10 +435,10 @@ ENTRY e {
   p1 = f32[32,7] parameter(1)
   d = f32[6,7] dot(p0, p1),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
-  p2 = s8[3,14] parameter(2)
-  c1 = f32[3,14] convert(p2)
-  b1 = f32[6,7] bitcast(c1)
-  ROOT a = f32[6,7] add(d, b1)
+  p2 = f32[2,3] parameter(2)
+  b1 = f32[6] bitcast(p2)
+  br = f32[6,7] broadcast(b1), dimensions={0}
+  ROOT a = f32[6,7] add(d, br)
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -456,14 +456,14 @@ ENTRY e {
   d = f32[6,7] dot(p0, p1),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
   b1 = f32[3,14] bitcast(d)
-  p2 = s8[3,14] parameter(2)
-  c1 = f32[3,14] convert(p2)
-  ROOT a = f32[3,14] add(b1, c1)
+  p2 = f32[3,14] parameter(2)
+  ROOT a = f32[3,14] add(b1, p2)
 })"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Bitcast(m::Fusion(m::Parameter(), m::Parameter(),
-                                              m::Bitcast(m::Parameter())))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::Fusion(m::Bitcast(m::Parameter()),
+                                      m::Parameter(), m::Parameter()))));
 }
 
 TEST_P(GemmFusionTestV2, BitcastIsHoistedAboveConstants) {
@@ -1932,8 +1932,8 @@ TEST_P(GemmFusionTestVersioned, Int4ConvertPlusNegateIsRewritten) {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_P(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
-  const std::string kInt4Dot = R"(
+TEST_P(GemmFusionTestVersioned, Int4WithMinorBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
     ENTRY main {
       lhs = s4[8,1024,16]{2,1,0} parameter(0)
       lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs)
@@ -1943,6 +1943,119 @@ TEST_P(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
         lhs_contracting_dims={1},
         rhs_batch_dims={0},
         rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestVersioned,
+       Int4WithMinorBatchDimAndOperandTransposeIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[1024,8,16]{2,1,0} parameter(0)
+      lhs_tr = s4[8,1024,16]{2,1,0} transpose(lhs), dimensions={1,0,2}
+      lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs_tr)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[16,8,1024]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,8,1024]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorNonContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[16,1024,8]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,1024,8]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestVersioned, Int4WithMinorReshapedBatchDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[1024,64,4,2]{3,2,1,0} parameter(0)
+      lhs_bc = s4[1024,64,8]{2,1,0} bitcast(lhs)
+      lhs_converted = bf16[1024,64,8]{2,1,0} convert(lhs_bc)
+      rhs = bf16[8,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[8,1024,16]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_P(GemmFusionTestV2,
+       Int4WithMinorReshapedBatchAndNonContractingDimIsRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[8192,64]{0,1} parameter(0)
+      lhs_converted = bf16[8192,64]{0,1} convert(lhs)
+      lhs_reshaped = bf16[8,64,1024]{2,1,0} reshape(lhs_converted)
+      rhs = bf16[8,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[8,1024,16]{2,1,0} dot(lhs_reshaped, rhs),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
+}
+
+TEST_P(GemmFusionTestV2,
+       Int4WithUntileableMinorNonContractingDimIsNotRewritten) {
+  constexpr absl::string_view kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[128,64,192]{0,1,2} parameter(0)
+      lhs_converted = bf16[128,64,192]{0,1,2} convert(lhs)
+      lhs_transposed = bf16[128,192,64]{2,1,0} transpose(lhs_converted), dimensions={0,2,1}
+      lhs_bitcast = bf16[24576,64]{1,0} bitcast(lhs_transposed)
+      rhs = bf16[256,64]{1,0} parameter(1)
+      ROOT dot = bf16[24576,256]{1,0} dot(lhs_bitcast, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
     }
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -2015,7 +2128,7 @@ ENTRY main {
   RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
 }
 
-TEST_P(GemmFusionTest, TransposeFusesInConcatGemm) {
+TEST_P(GemmFusionTestVersioned, TransposeFusesInConcatGemm) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 HloModule module
@@ -2347,17 +2460,17 @@ ENTRY e {
 }
 
 TEST_P(GemmFusionProfitabilityTest,
-       DisallowTransposeSplittingRhsNoncontracting) {
+       DisallowTransposeSplittingUncoalescedRhsNoncontracting) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY e {
   p0 = s8[512,4096]{1,0} parameter(0)
   cvt_lhs = bf16[512,4096]{1,0} convert(p0)
-  p1 = bf16[16,4096,256]{2,1,0} parameter(1)
-  t1 = bf16[4096,16,256]{2,1,0} transpose(p1), dimensions={1,0,2}
-  b1 = bf16[4096,4096]{1,0} bitcast(t1)
-  ROOT dot = bf16[512,4096]{1,0} dot(cvt_lhs, b1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p1 = bf16[16,4096,3]{2,1,0} parameter(1)
+  t1 = bf16[4096,16,3]{2,1,0} transpose(p1), dimensions={1,0,2}
+  b1 = bf16[4096,48]{1,0} bitcast(t1)
+  ROOT dot = bf16[512,48]{1,0} dot(cvt_lhs, b1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )"));
   ASSERT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));

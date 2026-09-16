@@ -178,15 +178,18 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
 
   const DebugOptions& debug_options =
       fusion->GetModule()->config().debug_options();
-  const bool can_emit_same_shape_multi_output_fusion =
-      IsSameShapeMultiOutputFusion(*fusion,
+
+  // Same-shape multi-output fusions require the new tiling propagation
+  // infrastructure.
+  if (IsSameShapeMultiOutputFusion(*fusion,
                                    Shape::Equal().IgnoreElementType()) &&
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion() &&
-      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+      debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
+    return true;
+  }
 
   if (fusion->IsMultiOutputFusion() &&
-      !can_emit_same_shape_multi_output_fusion &&
       !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
     return false;
   }

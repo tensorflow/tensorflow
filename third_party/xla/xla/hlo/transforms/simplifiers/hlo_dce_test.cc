@@ -878,6 +878,70 @@ TEST_F(HloDceTest, MultiOutputFusionPreserveUnusedSideEffectingOutput) {
                              .WithShapeEqualTo(&expected_shape)));
 }
 
+TEST_F(HloDceTest, MultiOutputFusionPruneOutputsOriginalValueSingleOutput) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp, origin={({"orig_add"}, {"orig_neg"})}
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    ROOT root = f32[32,32]{1,0} add(gte.1, gte.1)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_FALSE(fusion->shape().IsTuple());
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(), "{\"orig_neg\"}");
+}
+
+TEST_F(HloDceTest, MultiOutputFusionPruneOutputsOriginalValueMultipleOutputs) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    sub = f32[32,32]{1,0} subtract(p0, p1)
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, sub, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp, origin={({"orig_add"}, {"orig_sub"}, {"orig_neg"})}
+    gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0
+    gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
+    ROOT root = f32[32,32]{1,0} add(gte.0, gte.2)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_TRUE(fusion->shape().IsTuple());
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(),
+            "({\"orig_add\"}, {\"orig_neg\"})");
+}
+
 TEST_F(HloDceTest, UnusedCalledParameter) {
   constexpr absl::string_view kHlo = R"(
 HloModule main

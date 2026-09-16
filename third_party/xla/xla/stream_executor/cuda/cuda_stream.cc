@@ -41,6 +41,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -92,7 +93,7 @@ absl::StatusOr<CUstream> CreateStream(StreamExecutor* executor, int priority) {
         cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
   }
 
-  VLOG(2) << "successfully created stream " << stream << " for executor "
+  VLOG(2) << "Successfully created stream " << stream << " for executor "
           << executor << " on thread";
   return stream;
 }
@@ -115,7 +116,7 @@ absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
   ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream)));
 
-  VLOG(2) << "successfully enqueued async memcpy d2h of " << size
+  VLOG(2) << "Successfully enqueued async memcpy D2H of " << size
           << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
           << host_dst << " on stream " << stream;
   return absl::OkStatus();
@@ -128,7 +129,7 @@ absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
   ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream)));
 
-  VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
+  VLOG(2) << "Successfully enqueued async memcpy H2D of " << size << " bytes"
           << " from " << host_src << " to " << absl::bit_cast<void*>(gpu_dst)
           << " on stream " << stream;
   return absl::OkStatus();
@@ -178,7 +179,7 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
     }
   }
 
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes"
+  VLOG(2) << "Successfully enqueued async memcpy D2H of " << size << " bytes"
           << " from " << absl::bit_cast<void*>(gpu_src) << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return absl::OkStatus();
@@ -221,12 +222,16 @@ CudaStream::CaptureHandle::BeginCapture(CudaStream* stream, CUgraph graph,
   if (is_capturing) {
     return absl::FailedPreconditionError("Capture stream is already capturing");
   }
+  auto* executor = static_cast<CudaExecutor*>(stream->parent());
+  executor->EnterStreamCapture();
+  absl::Cleanup exit_capture_on_error = [&] { executor->ExitStreamCapture(); };
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuStreamBeginCaptureToGraph(capture_stream->stream_handle_, graph,
                                   /*dependencies=*/dependencies,
                                   /*dependencyData=*/dependency_data,
                                   /*numDependencies=*/num_dependencies, mode),
       "Failed to begin stream capture to graph"));
+  std::move(exit_capture_on_error).Cancel();
   return CudaStream::CaptureHandle(capture_stream, graph);
 }
 
@@ -239,6 +244,7 @@ CudaStream::CaptureHandle::CaptureHandle(CaptureHandle&& other)
 absl::Status CudaStream::CaptureHandle::EndCapture() {
   if (stream_ != nullptr && graph_ != nullptr) {
     absl::Cleanup cleanup = [this] {
+      static_cast<CudaExecutor*>(stream_->parent())->ExitStreamCapture();
       stream_ = nullptr;
       graph_ = nullptr;
     };
@@ -328,15 +334,15 @@ void DestroyStream(StreamExecutor* executor, CUstream stream) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUresult res = cuStreamQuery(stream);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "stream not idle on destroy: " << cuda::ToStatus(res);
+    LOG(ERROR) << "Stream not idle on destroy: " << cuda::ToStatus(res);
   }
 
   auto status = cuda::ToStatus(cuStreamDestroy(stream));
   if (!status.ok()) {
-    LOG(ERROR) << "failed to destroy CUDA stream for executor " << executor
+    LOG(ERROR) << "Failed to destroy CUDA stream for executor " << executor
                << ": " << status;
   } else {
-    VLOG(2) << "successfully destroyed stream " << stream << " for executor "
+    VLOG(2) << "Successfully destroyed stream " << stream << " for executor "
             << executor;
   }
 }
@@ -533,7 +539,7 @@ absl::Status LaunchCudaKernel(
   std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   if (VLOG_IS_ON(2)) {
-    std::string msg = absl::StrCat("launching kernel: ", kernel_name);
+    std::string msg = absl::StrCat("Launching kernel: ", kernel_name);
     if (cluster_dims.has_value()) {
       absl::StrAppend(&msg, "; cdx: ", cluster_dims->x,
                       " cdy: ", cluster_dims->y, " cdz: ", cluster_dims->z);

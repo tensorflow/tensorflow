@@ -327,7 +327,7 @@ bool IsMemoryBoundKernel(const HloInstruction& hlo) {
     case HloOpcode::kCall:
       return false;
     case HloOpcode::kFusion:
-      return !IsConvFusion(hlo) &&
+      return !IsCudnnFusion(hlo) &&
              !hlo_query::ContainsInstrWithOpcode(
                  hlo.fused_instructions_computation(),
                  {HloOpcode::kDot, HloOpcode::kConvolution});

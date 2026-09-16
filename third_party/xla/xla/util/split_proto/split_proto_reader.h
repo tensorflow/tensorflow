@@ -16,19 +16,17 @@ limitations under the License.
 #ifndef XLA_UTIL_SPLIT_PROTO_SPLIT_PROTO_READER_H_
 #define XLA_UTIL_SPLIT_PROTO_SPLIT_PROTO_READER_H_
 
-#include <memory>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/message.h"
+#include "riegeli/base/any.h"
 #include "riegeli/bytes/reader.h"
-#include "xla/service/gpu/gpu_executable.pb.h"
 
 namespace xla {
 
 // Reads a split proto into writing it into a the regular `proto` messages.
 // See proto_splitter.proto for more details on the split proto format.
-absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
+absl::Status ReadSplitProto(riegeli::Any<riegeli::Reader*> reader,
                             google::protobuf::Message& proto);
 
 // Return true if the data being read by the reader is a split proto.

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
-#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"

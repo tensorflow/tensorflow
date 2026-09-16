@@ -2614,10 +2614,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteDone(
   auto it = GetInstructionToHostExecuteAsyncEvents().find(host_execute);
   TF_RET_CHECK(it != GetInstructionToHostExecuteAsyncEvents().end())
       << "could not find async events for host execute operation";
+
+  absl::InlinedVector<ShapedSlice, 4> result_slices;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(host_execute->shape())) {
+    ABSL_ASSIGN_OR_RETURN(auto slice,
+                     ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                         host_execute, indexed.index));
+    result_slices.push_back({slice, indexed.shape});
+  }
+
   return ThunkSequence::Of<HostExecuteDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           async_done, ir_emitter_context_->GetNextThunkId()),
-      it->second);
+      it->second, std::move(result_slices));
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitAsyncStart(

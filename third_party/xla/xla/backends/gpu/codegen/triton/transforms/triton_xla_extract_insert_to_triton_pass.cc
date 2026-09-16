@@ -86,9 +86,7 @@ bool HasBroadcastConsumer(Operation* op) {
 }
 
 PointerType GetTensorPtrType(Type type) {
-  return PointerType::get(
-      xtile::StorageType(type),
-      static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
+  return PointerType::get(xtile::StorageType(type));
 }
 
 // Canonicalizes tile strides. Currently this converts zero strides to 1.

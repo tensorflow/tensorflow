@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -692,18 +693,27 @@ CodegenDecision IsTritonSupportedScaledDot(
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
-  // Unscaled 16-bit operands (BF16) do not use dequantization block scales.
-  // In HLO, they carry dummy/placeholder scale constants (e.g. BF16 1.0), so
-  // we skip the scale type check when the operand type is BF16.
-  if (lhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+  // tt.dot_scaled only dequantizes some operand types; a scale on any other
+  // operand type is dropped, so it has to be all ones to be emittable.
+  if (xtile::IsTritonDotScaledOperandType(lhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, lhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported LHS scale type: ", PrimitiveType_Name(lhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(2))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("LHS scale is ignored for operand type ",
+                     PrimitiveType_Name(lhs_type), " but is not all ones."));
   }
-  if (rhs_type != BF16 &&
-      !absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
-    return CodegenDecision::Forbid(absl::StrCat(
-        "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+  if (xtile::IsTritonDotScaledOperandType(rhs_type)) {
+    if (!absl::c_linear_search(supported_scale_types, rhs_scale_type)) {
+      return CodegenDecision::Forbid(absl::StrCat(
+          "Unsupported RHS scale type: ", PrimitiveType_Name(rhs_scale_type)));
+    }
+  } else if (!xtile::IsAllOnesScale(*dot.operand(3))) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("RHS scale is ignored for operand type ",
+                     PrimitiveType_Name(rhs_type), " but is not all ones."));
   }
   return CodegenDecision::Allow();
 }
@@ -879,16 +889,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      if (instr.shape().element_type() == S4) {
-        return CodegenDecision::Forbid("S4 is not supported.");
-      }
-      return instr.GetModule()
-                     ->config()
-                     .debug_options()
-                     .xla_gpu_experimental_enable_tiling_propagation()
-                 ? CodegenDecision::Allow()
-                 : CodegenDecision::Forbid(absl::StrCat(
-                       HloOpcodeString(instr.opcode()), " is not supported"));
+      return CodegenDecision(instr.shape().element_type() != S4,
+                             "S4 is not supported.");
     default:
       // Not all instructions have a special handling.
       break;

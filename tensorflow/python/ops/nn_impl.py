@@ -478,16 +478,26 @@ def swish(features, beta=1.0):
       # de-duped with the forward pass) and we can free the sigmoid(features)
       # expression immediately after use during the forward pass.
       with ops.control_dependencies([dy]):
-        sigmoid_features = math_ops.sigmoid(beta * features)
+        logits = beta * features
+        if features.dtype == dtypes.float64:
+          # Evaluate the smaller sigmoid tail directly. For large positive
+          # logits, `1 - sigmoid(logits)` rounds to zero and erases finite
+          # higher-order derivatives.
+          use_complement = logits >= 0
+          sigmoid_tail = math_ops.sigmoid(
+              array_ops.where_v2(use_complement, -logits, logits)
+          )
+          sigmoid_features = array_ops.where_v2(
+              use_complement, 1.0 - sigmoid_tail, sigmoid_tail
+          )
+          sigmoid_grad = sigmoid_tail * (1.0 - sigmoid_tail)
+        else:
+          sigmoid_features = math_ops.sigmoid(logits)
+          sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
 
-      activation_grad = sigmoid_features * (
-          1.0 + (beta * features) * (1.0 - sigmoid_features)
-      )
+      activation_grad = sigmoid_features + logits * sigmoid_grad
       beta_grad = math_ops.reduce_sum(
-          dy
-          * math_ops.square(features)
-          * sigmoid_features
-          * (1.0 - sigmoid_features)
+          dy * math_ops.square(features) * sigmoid_grad
       )
       return (dy * activation_grad, beta_grad)
 

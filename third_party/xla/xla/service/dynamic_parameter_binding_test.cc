@@ -19,13 +19,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -43,14 +42,13 @@ ENTRY main {
   ROOT root = (f32[], f32[10]) tuple(%a, %b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
-  TF_EXPECT_OK(
-      binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {}},
-                   DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+  EXPECT_OK(binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {}},
+                         DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
     std::optional<DynamicParameterBinding::DynamicSizeParameter> param =
@@ -61,7 +59,7 @@ ENTRY main {
     EXPECT_TRUE(param);
     EXPECT_EQ(param->parameter_num, 0);
     EXPECT_EQ(param->parameter_index, ShapeIndex({}));
-    TF_EXPECT_OK(binding.Verify(*module->entry_computation()));
+    EXPECT_OK(binding.Verify(*module->entry_computation()));
   };
   test(binding);
 }
@@ -79,14 +77,13 @@ ENTRY main {
   ROOT root = (f32[], f32[10]) tuple(%gte1, %gte2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
-  TF_EXPECT_OK(
-      binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
-                   DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
+  EXPECT_OK(binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
+                         DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
     std::optional<DynamicParameterBinding::DynamicSizeParameter> param =
@@ -98,7 +95,7 @@ ENTRY main {
     EXPECT_TRUE(param);
     EXPECT_EQ(param->parameter_num, 0);
     EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
-    TF_EXPECT_OK(binding.Verify(*module->entry_computation()));
+    EXPECT_OK(binding.Verify(*module->entry_computation()));
   };
   test(binding);
 }
@@ -116,18 +113,16 @@ ENTRY main {
   ROOT root = (f32[], f32[10, 10]) tuple(%gte1, %gte2)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
-  TF_EXPECT_OK(
-      binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
-                   DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
+  EXPECT_OK(binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
+                         DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
-  TF_EXPECT_OK(
-      binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
-                   DynamicParameterBinding::DynamicDimension{0, {1}, 1}));
+  EXPECT_OK(binding.Bind(DynamicParameterBinding::DynamicSizeParameter{0, {0}},
+                         DynamicParameterBinding::DynamicDimension{0, {1}, 1}));
 
   auto test = [&](const DynamicParameterBinding& binding) {
     std::optional<DynamicParameterBinding::DynamicSizeParameter> param =
@@ -149,7 +144,7 @@ ENTRY main {
     EXPECT_TRUE(param2);
     EXPECT_EQ(param2->parameter_num, 0);
     EXPECT_EQ(param2->parameter_index, ShapeIndex({0}));
-    TF_EXPECT_OK(binding.Verify(*module->entry_computation()));
+    EXPECT_OK(binding.Verify(*module->entry_computation()));
   };
 
   test(binding);

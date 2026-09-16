@@ -494,7 +494,7 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
 }
 
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, int64_t rank, mlir::MLIRContext* context) {
   CHECK(!hloSharding.IsTuple());
 
   // Replicated HloShardingV1/V2 are treated as placeholder shardings, allowing
@@ -520,6 +520,15 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   }
 
   mlir::sdy::MeshAttr meshAttr = toSdyMeshAttr(namedSharding.mesh(), context);
+
+  if (namedSharding.IsManual()) {
+    // Every axis is manual, so there is nothing left to shard the tensor over
+    // and HLO omits the dimension shardings entirely, see
+    // `NamedSharding::Manual`. `TensorShardingAttr` has no such shorthand, so
+    // spell out one empty dimension sharding per dimension.
+    return mlir::sdy::TensorShardingAttr::getFullyClosed(context, rank,
+                                                         meshAttr);
+  }
 
   SmallVector<mlir::sdy::DimensionShardingAttr> dimShardings;
   for (const auto& dimSharding : namedSharding.dim_shardings()) {
@@ -562,18 +571,29 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
-    const HloSharding& hloSharding, mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, mlir::TypeRange types,
+    mlir::MLIRContext* context) {
+  llvm::ArrayRef<HloSharding> leafShardings = hloSharding;
   if (hloSharding.IsTuple()) {
-    SmallVector<TensorShardingAttr> sdyShardings;
-    for (const HloSharding& elementSharding : hloSharding.tuple_elements()) {
-      sdyShardings.push_back(
-          convertToSdyShardingAttr(elementSharding, context));
-    }
-    return TensorShardingPerValueAttr::get(context, sdyShardings);
+    leafShardings = hloSharding.tuple_elements();
   }
 
-  return TensorShardingPerValueAttr::get(
-      context, convertToSdyShardingAttr(hloSharding, context));
+  // An op can carry a sharding without having any values, e.g. a custom call
+  // whose only result is an empty tuple. Such a sharding is maximal, so its
+  // rank is irrelevant, but we still need to keep it.
+  if (types.empty()) {
+    return TensorShardingPerValueAttr::get(
+        context,
+        convertToSdyShardingAttr(leafShardings.front(), /*rank=*/0, context));
+  }
+
+  SmallVector<TensorShardingAttr> sdyShardings;
+  sdyShardings.reserve(types.size());
+  for (auto [leafSharding, type] : llvm::zip_equal(leafShardings, types)) {
+    sdyShardings.push_back(convertToSdyShardingAttr(
+        leafSharding, mlir::sdy::getTensorRank(type), context));
+  }
+  return TensorShardingPerValueAttr::get(context, sdyShardings);
 }
 
 bool isManualComputation(CallOp callOp) {

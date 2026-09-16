@@ -1,0 +1,35 @@
+--- a/test/LLVMIR/insert-dbg-intrinsic.mlir
++++ b/test/LLVMIR/insert-dbg-intrinsic.mlir
+@@ -19,7 +19,7 @@
+     // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %y_ptr :
+     // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %out_ptr :
+     // CHECK: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %n_elements :
+-    %constant_i32 = llvm.mlir.constant(3 : index) : i32
++    %constant_i32 = llvm.mlir.constant(3 : i32) : i32
+ 
+     // CHECK: %pid = rocdl.workgroup.id.x
+     // CHECK-NEXT: llvm.intr.dbg.value #di_local_variable{{([0-9]*)?}} = %pid :
+@@ -59,7 +59,7 @@
+                                 %arg1: !llvm.array<4 x i8>,
+                                 %arg2: !llvm.ptr<1> {tt.pointee_type = i16},
+                                 %arg3: i32) attributes {noinline = false} {
+-    %constant_i32 = llvm.mlir.constant(3 : index) : i32
++    %constant_i32 = llvm.mlir.constant(3 : i32) : i32
+     %pid = rocdl.workgroup.id.x : i32
+     %block_start = llvm.mul %pid, %constant_i32 : i32
+     %offsets = llvm.add %block_start, %constant_i32 : i32
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -382,7 +382,9 @@
+           "unsupported rounding mode for f32->bf16 conversion: " +
+           stringifyRoundingMode(rounding) + "\n");
+     }
+-    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, bf16_ty, {v})
++    Value pzo = LLVM::createConstantI1(loc, rewriter, false);
++    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, bf16_ty,
++                                           {v, pzo})
+         .getResult(0);
+   }
+ 
+

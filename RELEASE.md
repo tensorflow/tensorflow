@@ -24,6 +24,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
     * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+*   `tf.experimental.fold`: Adds support for folding/reconstructing image
+    tensors from extracted spatial patches as an inverse operation to
+    `tf.image.extract_patches`.
 
 ### Bug Fixes and Other Changes
 
@@ -46,6 +49,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         previously failed with a lookup error because the `SoftsignGrad`
         backward op had no registered Python gradient.
 
+*   `tf.math.reciprocal`
+
+    *   Constrains the XLA registration of `Reciprocal` and `Inv` to the types
+        that have a device kernel, so `jit_compile=True` no longer silently
+        accepts the integer inputs that eager execution and autoclustering
+        reject. Fixes
+        [#126414](https://github.com/tensorflow/tensorflow/issues/126414).
+
 
 *   `tf.experimental.numpy`
 
@@ -55,6 +66,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         arithmetic; combining integer inputs with floating-point tolerances
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   `tf.nn.elu`
+
+    *   Fixes the second derivative computed by automatic differentiation for
+        small negative inputs. There `elu(x)` rounds to `0.0`, which made the
+        backward pass of the gradient take the positive branch and return `0`
+        instead of a value close to `1`. Fixes
+        [#124830](https://github.com/tensorflow/tensorflow/issues/124830).
 
 *   oneDNN (MKL) convolution and transpose kernels
 

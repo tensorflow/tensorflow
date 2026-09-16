@@ -159,7 +159,7 @@ class NodeViewInternal {
   const std::string& GetName() const { return node()->name(); }
 
   // Returns the op of the node.
-  const string& GetOp() const { return node()->op(); }
+  const std::string& GetOp() const { return node()->op(); }
 
   // Returns the device set for the node.
   const string& GetDevice() const { return node()->device(); }

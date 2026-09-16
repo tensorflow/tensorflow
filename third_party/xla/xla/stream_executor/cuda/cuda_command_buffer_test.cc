@@ -71,8 +71,8 @@ static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   Platform* platform = CudaPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
   dnn::DnnSupport& dnn_support = *executor->AsDnn();
 
   if (dnn_support.GetVersion().value_or(dnn::VersionInfo{0, 0, 0}) <
@@ -130,9 +130,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     workspace = executor->Allocate(graph.Graph().get_workspace_size());
     operands.push_back(workspace);
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
-                          executor->CreateCommandBuffer(primary));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+  ASSERT_OK_AND_ASSIGN(
       auto* dnn_command,
       cmd_buffer->CreateDnnGraphCommand(
           graph, *stream, absl::Span<DeviceAddressBase>(operands), {}));
@@ -253,10 +253,10 @@ TEST(CudaCommandBufferTest, TraceDisallowsForbiddenOpsOnCaptureStream) {
     GTEST_SKIP() << "Command buffer tracing is not supported";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
-                          executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CommandBuffer> cmd_buffer,
       TraceCommandBufferFactory::Create(
           executor,
@@ -302,6 +302,35 @@ TEST(CudaCommandBufferTest, LaunchClusterKernelWithClusterDimsSucceeds) {
   ASSERT_OK(cmd_buffer->Finalize());
   ASSERT_OK(cmd_buffer->Submit(stream.get()));
   ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+TEST(CudaCommandBufferTest, LaunchHostCallback) {
+  Platform* platform = CudaPlatform();
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastVolta()) {
+    GTEST_SKIP() << "Requires at least a Volta GPU.";
+  }
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                       executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                       executor->CreateCommandBuffer(primary));
+
+  int counter = 0;
+  ASSERT_OK_AND_ASSIGN(const CommandBuffer::Command* cmd,
+                       cmd_buffer->CreateHost([&]() { counter++; }, {}));
+  ASSERT_NE(cmd, nullptr);
+
+  ASSERT_OK(cmd_buffer->Finalize());
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 1);
+
+  ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+  EXPECT_EQ(counter, 2);
 }
 
 TEST(CudaCommandBufferTest, MemcpyH2D2H) {

@@ -214,17 +214,11 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
 
   // Represents the specification of copying an array to host buffer shards.
   //
-  // `buffers` is a list of pairs of addressable shard indices and a destination
-  // mutable host buffer.
-  //
-  // For replicated or partially-replicated arrays, multiple shard indices that
-  // hold the same shard data can be passed in `ShardIndices`. The runtime
-  // implementation can choose which shard index (or combination of shard
-  // indices) to copy the data to the host buffer from.
+  // `buffers` is a list of destination host buffers that have one-to-one
+  // correspondence to the unique index domains in
+  // `Sharding::UniqueIndexDomains()`.
   struct CopyArraysToHostBufferShardsSpec {
-    using ShardIndices = absl::InlinedVector<int64_t, 1>;
-    using Buffers =
-        absl::InlinedVector<std::pair<ShardIndices, MutableHostBuffer>, 1>;
+    using Buffers = absl::InlinedVector<MutableHostBuffer, 1>;
     ArrayRef array;
     Buffers buffers;
   };

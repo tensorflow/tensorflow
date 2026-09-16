@@ -26,9 +26,16 @@ package(
 )
 
 # Visibility allowlist for packages that are permitted to register custom-call
-# thunk-folding handlers.
+# thunk-folding handlers. Handlers that live in the XLA codebase can be added
+# right here; internal ones should be added to the included package group in
+# //third_party/tensorflow/compiler/xla/package_groups.bzl, which is the
+# canonical place in XLA for package_groups that are different between Google
+# and OSS.
 package_group(
     name = "handler_allowlist",
+    includes = [
+        "//xla:native_custom_call_handler_allowlist",
+    ],
     packages = [
         # Demonstrator / test-only handler.
         "//xla/backends/gpu/libraries/native_custom_call_thunks/...",

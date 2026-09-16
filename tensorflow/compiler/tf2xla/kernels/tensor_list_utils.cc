@@ -549,6 +549,21 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, b->GetShape(list));
   const xla::Shape& buffer_shape =
       xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
+
+  if (buffer_shape.dimensions(0) == 0) {
+    // The list is statically empty, so this read can only appear in code
+    // that never executes at runtime, such as the body of a while loop
+    // with a zero trip count, which XLA still compiles. The slice below
+    // would fail compile-time shape inference, so return zeros of the
+    // element shape instead, mirroring how ExecuteTensorListSetItem
+    // ignores writes that cannot fit the list.
+    *result = xla::Broadcast(
+        xla::ConstantLiteral(
+            b, xla::LiteralUtil::Zero(buffer_shape.element_type())),
+        buffer_shape.dimensions().subspan(1));
+    return absl::OkStatus();
+  }
+
   std::vector<xla::XlaOp> start_indices(buffer_shape.dimensions().size(),
                                         xla::ConstantR0<int32_t>(b, 0));
   start_indices[0] = index;

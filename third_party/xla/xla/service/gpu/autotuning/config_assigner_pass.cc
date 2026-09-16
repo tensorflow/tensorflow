@@ -290,6 +290,7 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_use_new_autotune_cache_format();
   options.compile_all_supported_configs =
       debug_options.xla_compile_all_supported_configs();
+  options.force_config = debug_options.xla_force_config();
 
   return options;
 }
@@ -313,6 +314,7 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     options.allow_reg_spills_fn = [](const HloInstruction&,
                                      autotuner::Backend) { return false; };
   }
+  options.candidate_configs_file = debug_options.xla_candidate_configs_file();
   return options;
 }
 
@@ -517,9 +519,8 @@ absl::StatusOr<bool> ConfigAssignerPass::RunImpl(
     ABSL_RETURN_IF_ERROR(
         config_assigner_->AssignConfigs(module, should_assign_config_to_));
   }
-  VLOG(1) << "Config assigner cache stats: hits="
-          << config_assigner_->GetCacheStats().hits
-          << ", misses=" << config_assigner_->GetCacheStats().misses;
+  VLOG(1) << "Config assigner cache stats: "
+          << config_assigner_->GetCacheStats().ToString();
   return true;
 }
 
