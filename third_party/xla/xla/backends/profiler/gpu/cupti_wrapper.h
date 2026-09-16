@@ -86,6 +86,10 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
 
   CUptiResult ActivityUsePerThreadBuffer() override;
 
+  CUptiResult ActivitySetZeroedOutBufferV2() override;
+
+  CUptiResult ActivitySetZeroedOutBuffer() override;
+
   CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
 
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
@@ -296,6 +300,10 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
   CUptiResult ActivityUsePerThreadBufferV2() override;
 
   CUptiResult ActivityUsePerThreadBuffer() override;
+
+  CUptiResult ActivitySetZeroedOutBufferV2() override;
+
+  CUptiResult ActivitySetZeroedOutBuffer() override;
 
   CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
 

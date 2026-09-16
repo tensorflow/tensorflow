@@ -84,6 +84,8 @@ class MockCupti : public xla::profiler::CuptiInterface {
               (CUpti_SubscriberHandle subscriber), (override));
   MOCK_METHOD(CUptiResult, ActivityUsePerThreadBufferV2, (), (override));
   MOCK_METHOD(CUptiResult, ActivityUsePerThreadBuffer, (), (override));
+  MOCK_METHOD(CUptiResult, ActivitySetZeroedOutBufferV2, (), (override));
+  MOCK_METHOD(CUptiResult, ActivitySetZeroedOutBuffer, (), (override));
   MOCK_METHOD(CUptiResult, SetActivityFlushPeriod, (uint32_t period_ms),
               (override));
   MOCK_METHOD(CUptiResult, GetDeviceId, (CUcontext context, uint32_t* deviceId),
