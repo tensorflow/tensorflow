@@ -124,8 +124,8 @@ void Pack1Impl(const uint8_t* HWY_RESTRICT in, size_t count,
   }
 }
 
-void Unpack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
-                 uint8_t* HWY_RESTRICT out) {
+void Unpack4UnsignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                         uint8_t* HWY_RESTRICT out) {
   const hn::ScalableTag<uint8_t> d8;
   const size_t lanes = hn::Lanes(d8);
   const auto mask_4 = hn::Set(d8, 0x0F);
@@ -151,8 +151,36 @@ void Unpack4Impl(const uint8_t* HWY_RESTRICT in, size_t count,
   }
 }
 
-void Unpack2Impl(const uint8_t* HWY_RESTRICT in, size_t count,
-                 uint8_t* HWY_RESTRICT out) {
+void Unpack4SignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                       uint8_t* HWY_RESTRICT out) {
+  const hn::ScalableTag<uint8_t> d8;
+  const hn::ScalableTag<int8_t> d_i8;
+  const size_t lanes = hn::Lanes(d8);
+  const size_t vector_stride = 2 * lanes;
+  const size_t vector_outputs = (count / vector_stride) * vector_stride;
+
+  for (size_t i = 0; i < vector_outputs; i += vector_stride) {
+    auto packed = hn::LoadU(d8, in + i / 2);
+    auto packed_i8 = hn::BitCast(d_i8, packed);
+    auto low = hn::BitCast(d8, hn::ShiftRight<4>(hn::ShiftLeft<4>(packed_i8)));
+    auto high = hn::BitCast(d8, hn::ShiftRight<4>(packed_i8));
+    hn::StoreInterleaved2(low, high, d8, out + i);
+  }
+
+  const size_t aligned_outputs = count / 2;
+  for (size_t i = vector_outputs / 2; i < aligned_outputs; ++i) {
+    const uint8_t byte = in[i];
+    out[2 * i] = static_cast<uint8_t>(static_cast<int8_t>(byte << 4) >> 4);
+    out[2 * i + 1] = static_cast<uint8_t>(static_cast<int8_t>(byte) >> 4);
+  }
+  if (count % 2 != 0) {
+    out[2 * aligned_outputs] = static_cast<uint8_t>(
+        static_cast<int8_t>(in[aligned_outputs] << 4) >> 4);
+  }
+}
+
+void Unpack2UnsignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                         uint8_t* HWY_RESTRICT out) {
   const hn::ScalableTag<uint8_t> d8;
   const size_t lanes = hn::Lanes(d8);
   const auto mask_2 = hn::Set(d8, 0x03);
@@ -185,30 +213,95 @@ void Unpack2Impl(const uint8_t* HWY_RESTRICT in, size_t count,
   }
 }
 
-void Unpack1Impl(const uint8_t* HWY_RESTRICT in, size_t count,
-                 uint8_t* HWY_RESTRICT out) {
+void Unpack2SignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                       uint8_t* HWY_RESTRICT out) {
+  const hn::ScalableTag<uint8_t> d8;
+  const hn::ScalableTag<int8_t> d_i8;
+  const size_t lanes = hn::Lanes(d8);
+  const size_t vector_stride = 4 * lanes;
+  const size_t vector_outputs = (count / vector_stride) * vector_stride;
+
+  for (size_t i = 0; i < vector_outputs; i += vector_stride) {
+    auto packed = hn::LoadU(d8, in + i / 4);
+    auto packed_i8 = hn::BitCast(d_i8, packed);
+    auto b0 = hn::BitCast(d8, hn::ShiftRight<6>(hn::ShiftLeft<6>(packed_i8)));
+    auto b1 = hn::BitCast(d8, hn::ShiftRight<6>(hn::ShiftLeft<4>(packed_i8)));
+    auto b2 = hn::BitCast(d8, hn::ShiftRight<6>(hn::ShiftLeft<2>(packed_i8)));
+    auto b3 = hn::BitCast(d8, hn::ShiftRight<6>(packed_i8));
+    hn::StoreInterleaved4(b0, b1, b2, b3, d8, out + i);
+  }
+
+  const size_t aligned_outputs = count / 4;
+  for (size_t i = vector_outputs / 4; i < aligned_outputs; ++i) {
+    const uint8_t byte = in[i];
+    out[4 * i] = static_cast<uint8_t>(static_cast<int8_t>(byte << 6) >> 6);
+    out[4 * i + 1] = static_cast<uint8_t>(static_cast<int8_t>(byte << 4) >> 6);
+    out[4 * i + 2] = static_cast<uint8_t>(static_cast<int8_t>(byte << 2) >> 6);
+    out[4 * i + 3] = static_cast<uint8_t>(static_cast<int8_t>(byte) >> 6);
+  }
+  if (const size_t remainder = count % 4; remainder != 0) {
+    const uint8_t byte = in[aligned_outputs];
+    for (size_t j = 0; j < remainder; ++j) {
+      out[4 * aligned_outputs + j] =
+          static_cast<uint8_t>(static_cast<int8_t>(byte << (6 - 2 * j)) >> 6);
+    }
+  }
+}
+
+void Unpack1UnsignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                         uint8_t* HWY_RESTRICT out) {
   const hn::ScalableTag<uint8_t> d8;
   const size_t lanes = hn::Lanes(d8);
-  const auto one = hn::Set(d8, 0x01);
+  const auto val = hn::Set(d8, 0x01);
   const size_t vector_outputs = lanes >= 8 ? (count / lanes) * lanes : 0;
 
   for (size_t i = 0; i < vector_outputs; i += lanes) {
     auto m = hn::LoadMaskBits(d8, in + i / 8);
-    auto v = hn::IfThenElseZero(m, one);
+    auto v = hn::IfThenElseZero(m, val);
     hn::StoreU(v, d8, out + i);
   }
 
+  constexpr uint8_t fill = 0x01;
   const size_t aligned_outputs = count / 8;
   for (size_t i = vector_outputs / 8; i < aligned_outputs; ++i) {
     const uint8_t byte = in[i];
     for (int j = 0; j < 8; ++j) {
-      out[8 * i + j] = (byte >> j) & 1;
+      out[8 * i + j] = ((byte >> j) & 1) ? fill : 0;
     }
   }
   if (const size_t remainder = count % 8; remainder != 0) {
     const uint8_t byte = in[aligned_outputs];
     for (size_t j = 0; j < remainder; ++j) {
-      out[8 * aligned_outputs + j] = (byte >> j) & 1;
+      out[8 * aligned_outputs + j] = ((byte >> j) & 1) ? fill : 0;
+    }
+  }
+}
+
+void Unpack1SignedImpl(const uint8_t* HWY_RESTRICT in, size_t count,
+                       uint8_t* HWY_RESTRICT out) {
+  const hn::ScalableTag<uint8_t> d8;
+  const size_t lanes = hn::Lanes(d8);
+  const auto val = hn::Set(d8, 0xFF);
+  const size_t vector_outputs = lanes >= 8 ? (count / lanes) * lanes : 0;
+
+  for (size_t i = 0; i < vector_outputs; i += lanes) {
+    auto m = hn::LoadMaskBits(d8, in + i / 8);
+    auto v = hn::IfThenElseZero(m, val);
+    hn::StoreU(v, d8, out + i);
+  }
+
+  constexpr uint8_t fill = 0xFF;
+  const size_t aligned_outputs = count / 8;
+  for (size_t i = vector_outputs / 8; i < aligned_outputs; ++i) {
+    const uint8_t byte = in[i];
+    for (int j = 0; j < 8; ++j) {
+      out[8 * i + j] = ((byte >> j) & 1) ? fill : 0;
+    }
+  }
+  if (const size_t remainder = count % 8; remainder != 0) {
+    const uint8_t byte = in[aligned_outputs];
+    for (size_t j = 0; j < remainder; ++j) {
+      out[8 * aligned_outputs + j] = ((byte >> j) & 1) ? fill : 0;
     }
   }
 }
@@ -223,9 +316,12 @@ namespace xla {
 HWY_EXPORT(Pack4Impl);
 HWY_EXPORT(Pack2Impl);
 HWY_EXPORT(Pack1Impl);
-HWY_EXPORT(Unpack4Impl);
-HWY_EXPORT(Unpack2Impl);
-HWY_EXPORT(Unpack1Impl);
+HWY_EXPORT(Unpack4UnsignedImpl);
+HWY_EXPORT(Unpack4SignedImpl);
+HWY_EXPORT(Unpack2UnsignedImpl);
+HWY_EXPORT(Unpack2SignedImpl);
+HWY_EXPORT(Unpack1UnsignedImpl);
+HWY_EXPORT(Unpack1SignedImpl);
 
 template <>
 void PackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output) {
@@ -280,52 +376,109 @@ void PackIntNHwy(int bits_per_element, absl::Span<const char> input,
 }
 
 template <>
-void UnpackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output) {
+void UnpackIntNHwy<4, false>(absl::Span<const char> input,
+                             absl::Span<char> output) {
   constexpr size_t kElementsPerByte = 2;
   const size_t required_input_size =
       tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_DYNAMIC_DISPATCH(Unpack4Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack4UnsignedImpl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
 
 template <>
-void UnpackIntNHwy<2>(absl::Span<const char> input, absl::Span<char> output) {
+void UnpackIntNHwy<4, true>(absl::Span<const char> input,
+                            absl::Span<char> output) {
+  constexpr size_t kElementsPerByte = 2;
+  const size_t required_input_size =
+      tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
+  CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
+  HWY_DYNAMIC_DISPATCH(Unpack4SignedImpl)(
+      reinterpret_cast<const uint8_t*>(input.data()), output.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
+}
+
+template <>
+void UnpackIntNHwy<2, false>(absl::Span<const char> input,
+                             absl::Span<char> output) {
   constexpr size_t kElementsPerByte = 4;
   const size_t required_input_size =
       tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_DYNAMIC_DISPATCH(Unpack2Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack2UnsignedImpl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
 
 template <>
-void UnpackIntNHwy<1>(absl::Span<const char> input, absl::Span<char> output) {
+void UnpackIntNHwy<2, true>(absl::Span<const char> input,
+                            absl::Span<char> output) {
+  constexpr size_t kElementsPerByte = 4;
+  const size_t required_input_size =
+      tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
+  CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
+  HWY_DYNAMIC_DISPATCH(Unpack2SignedImpl)(
+      reinterpret_cast<const uint8_t*>(input.data()), output.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
+}
+
+template <>
+void UnpackIntNHwy<1, false>(absl::Span<const char> input,
+                             absl::Span<char> output) {
   constexpr size_t kElementsPerByte = 8;
   const size_t required_input_size =
       tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
   CHECK_GE(input.size(), required_input_size)
       << "Input span too small for unpacked elements: " << input.size() << " < "
       << required_input_size;
-  HWY_DYNAMIC_DISPATCH(Unpack1Impl)(
+  HWY_DYNAMIC_DISPATCH(Unpack1UnsignedImpl)(
+      reinterpret_cast<const uint8_t*>(input.data()), output.size(),
+      reinterpret_cast<uint8_t*>(output.data()));
+}
+
+template <>
+void UnpackIntNHwy<1, true>(absl::Span<const char> input,
+                            absl::Span<char> output) {
+  constexpr size_t kElementsPerByte = 8;
+  const size_t required_input_size =
+      tsl::MathUtil::CeilOfRatio(output.size(), kElementsPerByte);
+  CHECK_GE(input.size(), required_input_size)
+      << "Input span too small for unpacked elements: " << input.size() << " < "
+      << required_input_size;
+  HWY_DYNAMIC_DISPATCH(Unpack1SignedImpl)(
       reinterpret_cast<const uint8_t*>(input.data()), output.size(),
       reinterpret_cast<uint8_t*>(output.data()));
 }
 
 void UnpackIntNHwy(int bits_per_element, absl::Span<const char> input,
-                   absl::Span<char> output) {
+                   absl::Span<char> output, bool is_signed) {
   if (bits_per_element == 1) {
-    UnpackIntNHwy<1>(input, output);
+    if (is_signed) {
+      UnpackIntNHwy<1, true>(input, output);
+    } else {
+      UnpackIntNHwy<1, false>(input, output);
+    }
   } else if (bits_per_element == 2) {
-    UnpackIntNHwy<2>(input, output);
+    if (is_signed) {
+      UnpackIntNHwy<2, true>(input, output);
+    } else {
+      UnpackIntNHwy<2, false>(input, output);
+    }
   } else if (bits_per_element == 4) {
-    UnpackIntNHwy<4>(input, output);
+    if (is_signed) {
+      UnpackIntNHwy<4, true>(input, output);
+    } else {
+      UnpackIntNHwy<4, false>(input, output);
+    }
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
