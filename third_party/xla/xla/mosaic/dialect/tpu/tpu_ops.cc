@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1756,10 +1757,25 @@ LogicalResult ConvOp::verify() {
 }
 
 LogicalResult MaskCastOp::verify() {
-  auto input_ty = getInput().getType();
-  auto output_ty = getResult().getType();
-  return success(input_ty.getShape().take_front(2) ==
-                 output_ty.getShape().take_front(2));
+  const VectorType input_ty = getInput().getType();
+  const VectorType output_ty = getResult().getType();
+  const int64_t input_rank = input_ty.getRank();
+  const int64_t output_rank = output_ty.getRank();
+  const int64_t min_rank = std::min(input_rank, output_rank);
+  const int64_t max_rank = std::max(input_rank, output_rank);
+  CHECK_GE(max_rank, 1);
+  // Unfortunately, if input and output ranks are equal, we don't have enough
+  // information to determine whether the last dimension is a subelement
+  // dimension (packed mask) or a target shape dimension (unpacked mask).
+  if (min_rank < max_rank - 1) {
+    return emitOpError("Input and output ranks must differ by at most 1");
+  }
+  if (input_ty.getShape().take_front(max_rank - 1) !=
+      output_ty.getShape().take_front(max_rank - 1)) {
+    return emitOpError(
+        "Input and output shapes must match on leading dimensions");
+  }
+  return success();
 }
 
 LogicalResult ScanOp::verify() {
