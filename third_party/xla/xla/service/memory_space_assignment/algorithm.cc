@@ -121,6 +121,13 @@ bool IsTrivialPosition(HloPosition position) {
   return IsTrivialInstruction(position.instruction);
 }
 
+bool IsTrivialPositionOrAsyncStartSource(HloPosition position) {
+  if (position.instruction->opcode() == HloOpcode::kAsyncStart) {
+    return !position.index.empty() && position.index.front() == 0;
+  }
+  return IsTrivialPosition(position);
+}
+
 // All trivial uses that are non root do not require a separate allocation.
 // - They are are no ops, freely movable and we can even discard them and add
 //   them back later.
@@ -134,8 +141,19 @@ bool IsUseTrivialNonRoot(HloUse use) {
          use.instruction != use.instruction->parent()->root_instruction();
 }
 
+bool IsPositionAsyncAndMirroredOnly(HloPosition position) {
+  if (position.instruction->parent()->IsAsyncComputation()) {
+    return true;
+  }
+  if (position.instruction->opcode() == HloOpcode::kAsyncStart &&
+      !position.index.empty() && position.index.front() == 0) {
+    return true;
+  }
+  return false;
+}
+
 HloPosition GetNonTrivialSourcePosition(HloPosition position) {
-  while (IsTrivialPosition(position)) {
+  while (IsTrivialPositionOrAsyncStartSource(position)) {
     if (position.instruction->opcode() == HloOpcode::kGetTupleElement) {
       int64_t tuple_index = position.instruction->tuple_index();
       position.instruction = position.instruction->mutable_operand(0);
@@ -149,6 +167,18 @@ HloPosition GetNonTrivialSourcePosition(HloPosition position) {
       position.instruction = position.instruction->mutable_operand(tuple_index);
     } else if (position.instruction->opcode() == HloOpcode::kBitcast) {
       position.instruction = position.instruction->mutable_operand(0);
+    } else if (position.instruction->opcode() == HloOpcode::kAsyncStart) {
+      if (position.index.empty() || position.index.front() != 0) {
+        return position;
+      }
+      position.index.pop_front();
+      if (position.index.empty()) {
+        position.instruction = position.instruction->mutable_operand(0);
+      } else {
+        position.instruction =
+            position.instruction->mutable_operand(position.index.front());
+        position.index.pop_front();
+      }
     }
   }
   return position;
@@ -4081,7 +4111,9 @@ absl::StatusOr<Decision> MsaAlgorithm::BlockPrefetchBuffer(
       CHECK(!position_to_live_range.contains(position));
       continue;
     }
-    if (position_to_live_range.contains(position)) {
+    if (IsPositionAsyncAndMirroredOnly(position)) {
+      non_trivial_positions_for_mirrored_allocations.push_back(position);
+    } else if (position_to_live_range.contains(position)) {
       non_trivial_positions_for_real_allocations.push_back(position);
     } else {
       non_trivial_positions_for_mirrored_allocations.push_back(position);
@@ -4673,7 +4705,9 @@ absl::Status MsaAlgorithm::PinScalarBufferInAlternateMemory(
       continue;
     }
 
-    if (outer_positions_to_live_range.contains(position)) {
+    if (IsPositionAsyncAndMirroredOnly(position)) {
+      non_trivial_positions_for_mirrored_allocations.push_back(position);
+    } else if (outer_positions_to_live_range.contains(position)) {
       non_trivial_positions_for_real_allocations.push_back(position);
     } else {
       non_trivial_positions_for_mirrored_allocations.push_back(position);
@@ -5785,12 +5819,11 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
   absl::flat_hash_map<const AllocationValue*, int64_t>
       definition_time_for_allocation_value;
 
-  // These are allocation values inside a conditional that have already been
-  // processed. They may get an allocation in the alternate memory that mirrors
-  // a real allocation outside the conditional, that is live throughout the
-  // conditional.
-  absl::flat_hash_set<AllocationValue*>
-      already_processed_allocation_values_inside_a_conditional;
+  // These are allocation values inside a called computation (conditional or
+  // async computation) that have already been processed. They may get an
+  // allocation in the alternate memory that mirrors a real allocation outside
+  // the called computation, that is live throughout the called computation.
+  absl::flat_hash_set<AllocationValue*> already_processed_mirrored_values;
 
   absl::flat_hash_set<int64_t> default_req_buffer_ids;
   if (has_async_pipelined_while_loops_) {
@@ -5948,12 +5981,12 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       if (options_.allocation_request_modifier_testing_fn) {
         options_.allocation_request_modifier_testing_fn(request);
       }
-      bool is_processed_allocation_value_live_throughout_a_conditional =
-          already_processed_allocation_values_inside_a_conditional.contains(
-              &allocation_value);
+      bool is_processed_mirrored_value =
+          already_processed_mirrored_values.contains(&allocation_value) ||
+          already_processed_mirrored_values.contains(
+              &allocation_value_to_update);
       // Skip trivial uses that are not the root instruction.
-      if (!IsUseTrivialNonRoot(use.hlo_use) &&
-          !is_processed_allocation_value_live_throughout_a_conditional) {
+      if (!IsUseTrivialNonRoot(use.hlo_use) && !is_processed_mirrored_value) {
         UpdateRequestWithAlternateMemoryColoringRequirements(request);
         UpdateRequestWithDefaultMemoryColoringRequirements(request);
         AllocationResult allocate_segment_result = AllocateSegment(request);
@@ -6040,11 +6073,10 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
             }
           }
         }
-        if (allocate_segment_result == AllocationResult::kSuccess &&
-            ShouldBeMirrored(allocation_value_to_update, use, previous_use)) {
-          CreateMirroredAllocations(
-              allocation_value_to_update, use, previous_use, allocation_values,
-              already_processed_allocation_values_inside_a_conditional);
+        if (allocate_segment_result == AllocationResult::kSuccess) {
+          CreateMirroredAllocations(allocation_value_to_update, use,
+                                    previous_use, allocation_values,
+                                    already_processed_mirrored_values);
         }
         if (request.require_copy_allocation) {
           auto it = std::find_if(
@@ -6303,7 +6335,8 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
       (GetInstructionCallContext(hlo_use.instruction->opcode()) ==
-       CallContext::kControlFlow);
+       CallContext::kControlFlow) &&
+      !hlo_use.instruction->IsAsynchronous();
   if (is_sequential_call) {
     for (const HloComputation* called_computation :
          hlo_use.instruction->called_computations()) {
@@ -6771,7 +6804,15 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::ShouldBeMirrored(
+bool MsaAlgorithm::IsAsyncComputationCaller(const HloInstruction* instruction) {
+  return instruction != nullptr && instruction->IsAsynchronous() &&
+         (HloDataflowAnalysis::IsAsynchronousOperationStart(
+              instruction->opcode()) ||
+          instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+         !instruction->called_computations().empty();
+}
+
+bool MsaAlgorithm::ShouldBeMirroredByNestedConditionals(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
@@ -6812,7 +6853,55 @@ bool MsaAlgorithm::ShouldBeMirrored(
   return last_allocation_covers_conditional_live_range;
 }
 
-void MsaAlgorithm::CreateMirroredAllocations(
+bool MsaAlgorithm::ShouldBeMirroredByNestedAsyncComputations(
+    const AllocationValue& allocation_value,
+    const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use) const {
+  const AllocationSequence* allocation_sequence =
+      allocation_value.allocation_sequence();
+  if (allocation_sequence->empty() ||
+      allocation_sequence->back()->memory_space() != MemorySpace::kAlternate) {
+    return false;
+  }
+  const Allocation* previous_allocation = allocation_sequence->back().get();
+
+  // Case 1: Current use is an asynchronous start or update operation.
+  if (IsAsyncComputationCaller(current_use.hlo_use.instruction) &&
+      absl::c_linear_search(previous_allocation->uses(), current_use.hlo_use)) {
+    const HloInstruction* async_inst = current_use.hlo_use.instruction;
+    int64_t async_start_time = GetCorrectedUseTime(current_use.hlo_use);
+    int64_t async_end_time =
+        hlo_live_range_.instruction_schedule().at(async_inst);
+    if (previous_allocation->earliest_available_time() <= async_start_time &&
+        async_end_time <= previous_allocation->end_time()) {
+      return true;
+    }
+  }
+
+  // Case 2: Previous use is an asynchronous start or update operation and
+  // current use is its corresponding asynchronous done operation.
+  if (previous_use != nullptr &&
+      IsAsyncComputationCaller(previous_use->hlo_use.instruction) &&
+      HloDataflowAnalysis::IsAsynchronousOperationDone(
+          current_use.hlo_use.instruction->opcode()) &&
+      absl::c_linear_search(previous_allocation->uses(),
+                            previous_use->hlo_use)) {
+    const HloInstruction* async_inst = previous_use->hlo_use.instruction;
+    int64_t async_start_time = GetCorrectedUseTime(previous_use->hlo_use);
+    int64_t async_end_time =
+        hlo_live_range_.instruction_schedule().at(async_inst);
+    int64_t current_use_time = GetCorrectedUseTime(current_use.hlo_use);
+    if (previous_allocation->start_time() <= async_start_time &&
+        async_end_time <= current_use_time &&
+        current_use_time <= previous_allocation->end_time()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void MsaAlgorithm::CreateMirroredAllocationsForNestedConditionals(
     AllocationValue& allocation_value, const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use,
     absl::Span<AllocationValue> allocation_values,
@@ -6911,6 +7000,97 @@ void MsaAlgorithm::CreateMirroredAllocations(
     MaybeCreateOrAddToAliasedOffset(
         *allocation_val.mutable_allocation_sequence()->back(),
         /*aliased_offset=*/nullptr);
+  }
+}
+
+bool MsaAlgorithm::IsPositionInAsyncComputationBuffer(
+    const HloPosition& position, const HloInstruction* async_instruction,
+    const HloBuffer* outer_buffer) const {
+  bool is_inside_async = position.instruction->parent() ==
+                         async_instruction->async_wrapped_computation();
+  bool is_async_start_output = position.instruction == async_instruction;
+  if (!is_inside_async && !is_async_start_output) {
+    return false;
+  }
+  return &alias_analysis_.GetUniqueBufferAt(position.instruction,
+                                            position.index) == outer_buffer;
+}
+
+void MsaAlgorithm::AddMirroredAllocation(AllocationValue& allocation_value,
+                                         const Allocation& outer_allocation) {
+  int64_t position_time = hlo_live_range_.instruction_schedule().at(
+      allocation_value.position().instruction);
+  int64_t last_use_time = position_time;
+  for (const AllocationValue::Use& use : allocation_value.uses()) {
+    last_use_time = std::max(
+        last_use_time,
+        hlo_live_range_.instruction_schedule().at(use.hlo_use.instruction));
+  }
+  allocation_value.mutable_allocation_sequence()->push_back(
+      std::make_unique<MirroredAllocation>(allocation_value.position(),
+                                           outer_allocation, position_time,
+                                           last_use_time));
+  for (const AllocationValue::Use& use : allocation_value.uses()) {
+    allocation_value.mutable_allocation_sequence()->back()->AddUse(use.hlo_use);
+  }
+  MaybeCreateOrAddToAliasedOffset(
+      *allocation_value.mutable_allocation_sequence()->back(),
+      /*aliased_offset=*/nullptr);
+}
+
+void MsaAlgorithm::CreateMirroredAllocationsForNestedAsyncComputations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>& already_processed_mirrored_values) {
+  const Allocation* previous_allocation =
+      allocation_value.allocation_sequence()->back().get();
+  const HloInstruction* async_instruction =
+      IsAsyncComputationCaller(current_use.hlo_use.instruction)
+          ? current_use.hlo_use.instruction
+          : previous_use->hlo_use.instruction;
+  const HloBuffer* buffer_in_alt_mem = &alias_analysis_.GetUniqueBufferAt(
+      allocation_value.value()->defining_instruction(),
+      allocation_value.value()->defining_position().index);
+
+  for (AllocationValue& allocation_val : allocation_values) {
+    if (already_processed_mirrored_values.contains(&allocation_val) ||
+        !IsPositionInAsyncComputationBuffer(
+            allocation_val.position(), async_instruction, buffer_in_alt_mem)) {
+      continue;
+    }
+    int64_t position_time = hlo_live_range_.instruction_schedule().at(
+        allocation_val.position().instruction);
+    int64_t last_use_time = position_time;
+    for (const AllocationValue::Use& use : allocation_val.uses()) {
+      last_use_time = std::max(
+          last_use_time,
+          hlo_live_range_.instruction_schedule().at(use.hlo_use.instruction));
+    }
+    if (last_use_time > previous_allocation->end_time()) {
+      continue;
+    }
+    already_processed_mirrored_values.insert(&allocation_val);
+    AddMirroredAllocation(allocation_val, *previous_allocation);
+  }
+}
+
+void MsaAlgorithm::CreateMirroredAllocations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>& already_processed_mirrored_values) {
+  if (ShouldBeMirroredByNestedConditionals(allocation_value, current_use,
+                                           previous_use)) {
+    CreateMirroredAllocationsForNestedConditionals(
+        allocation_value, current_use, previous_use, allocation_values,
+        already_processed_mirrored_values);
+  }
+  if (ShouldBeMirroredByNestedAsyncComputations(allocation_value, current_use,
+                                                previous_use)) {
+    CreateMirroredAllocationsForNestedAsyncComputations(
+        allocation_value, current_use, previous_use, allocation_values,
+        already_processed_mirrored_values);
   }
 }
 
@@ -7759,16 +7939,22 @@ int64_t MsaAlgorithm::GetCorrectedUseTime(
     // uses within the while loop body.
     return schedule.at(while_body->parameter_instruction(0));
   }
-  if (instruction->opcode() == HloOpcode::kConditional) {
+  if (instruction->opcode() == HloOpcode::kConditional ||
+      IsAsyncComputationCaller(instruction)) {
     // The corrected use time is the earliest parameter of the called
     // computations.
     int64_t use_time = std::numeric_limits<int64_t>::max();
     for (const HloComputation* called_computation :
          instruction->called_computations()) {
+      if (called_computation->num_parameters() == 0) {
+        continue;
+      }
       use_time = std::min(
           use_time, schedule.at(called_computation->parameter_instruction(0)));
     }
-    return use_time;
+    if (use_time != std::numeric_limits<int64_t>::max()) {
+      return use_time;
+    }
   }
   // Otherwise, just return the time of the use instruction.
   return hlo_live_range_.instruction_schedule().at(instruction);

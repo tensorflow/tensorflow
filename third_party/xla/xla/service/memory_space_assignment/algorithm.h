@@ -1086,22 +1086,57 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                                           const Allocation& aliased_allocation,
                                           AliasedOffset* offset);
 
+  // Returns true if the instruction is an asynchronous operation (kAsyncStart
+  // or kAsyncUpdate) with called computations that can mirror outer
+  // allocations.
+  static bool IsAsyncComputationCaller(const HloInstruction* instruction);
+
+  // Creates a MirroredAllocation in alternate memory for `allocation_value`
+  // mirroring `outer_allocation`, populates its uses, and synchronizes its
+  // aliased offset.
+  void AddMirroredAllocation(AllocationValue& allocation_value,
+                             const Allocation& outer_allocation);
+
+  // Returns true if `position` belongs to `async_instruction` (either inside
+  // its wrapped computation or as its output) and shares `outer_buffer`.
+  bool IsPositionInAsyncComputationBuffer(
+      const HloPosition& position, const HloInstruction* async_instruction,
+      const HloBuffer* outer_buffer) const;
+
   // Returns true if an `allocation_value` satisfies a set of conditions
-  // indicating that nested allocation values should reuse the alternate memory
-  // allocated for `allocation_value` between `previous_use` and `current_use`,
-  // by deploying a MirroredAllocation.
-  bool ShouldBeMirrored(
+  // indicating that nested allocation values inside a conditional should reuse
+  // the alternate memory allocated for `allocation_value` between
+  // `previous_use` and `current_use`, by deploying a MirroredAllocation.
+  bool ShouldBeMirroredByNestedConditionals(
       const AllocationValue& allocation_value,
       const AllocationValue::Use& current_use,
-      // We check if the previous use is a conditional operand.
       const AllocationValue::Use* previous_use) const;
 
-  // If `allocation_value` ShouldBeMirrored, create all necessary
-  // MirroredAllocations.
+  // Returns true if an `allocation_value` satisfies a set of conditions
+  // indicating that nested allocation values inside an async computation should
+  // reuse the alternate memory allocated for `allocation_value` between
+  // `previous_use` and `current_use`, by deploying a MirroredAllocation.
+  bool ShouldBeMirroredByNestedAsyncComputations(
+      const AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      const AllocationValue::Use* previous_use) const;
+
+  // If `allocation_value` should be mirrored by nested conditionals or async
+  // computations, create all necessary MirroredAllocations.
   void CreateMirroredAllocations(
       AllocationValue& allocation_value,
       const AllocationValue::Use& current_use,
       // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      // A set of allocation values for which we've already created a mirrored
+      // allocation of `allocation_value`.
+      absl::flat_hash_set<AllocationValue*>& already_processed_mirrored_values);
+
+  // Does the work of CreateMirroredAllocations for nested conditionals.
+  void CreateMirroredAllocationsForNestedConditionals(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
       const AllocationValue::Use* previous_use,
       absl::Span<AllocationValue> allocation_values,
       // A set of allocation values inside the conditional, that may get a
@@ -1110,6 +1145,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       // this set to avoid re-processing these allocation values.
       absl::flat_hash_set<AllocationValue*>&
           already_processed_allocation_values_inside_a_conditional);
+
+  // Does the work of CreateMirroredAllocations for nested async computations.
+  void CreateMirroredAllocationsForNestedAsyncComputations(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      absl::flat_hash_set<AllocationValue*>& already_processed_mirrored_values);
 
   // Returns true, if the previous use is a conditional operand in the alternate
   // memory, and, an eviction is required before the conditional. We check if
