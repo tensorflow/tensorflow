@@ -3392,4 +3392,15 @@ REGISTER_OP("IsotonicRegression")
       return absl::OkStatus();
     });
 
+REGISTER_OP("FusedLinearCrossEntropy")
+    .Input("x: T")
+    .Input("w: T")
+    .Input("labels: int32")
+    .Output("loss: T")
+    .Attr("T: {float, double, bfloat16}")
+    .SetShapeFn([](tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Vector(c->Dim(c->input(0), 0)));
+      return ::tensorflow::OkStatus();
+    });
+
 }  // namespace tensorflow
