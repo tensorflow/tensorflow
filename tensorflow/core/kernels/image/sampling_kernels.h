@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cmath>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
