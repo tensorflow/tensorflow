@@ -144,6 +144,54 @@ class CumulativeLogsumexpTest(test.TestCase):
               msg=f'Expected +inf outputs for all-inf input, got {result}',
           )
 
+  def testNaNPropagation(self):
+    # Regression test for GitHub issue 111383. The LogSumExp reducer took the
+    # min and max of the accumulator and the next element using Eigen's
+    # default NaN mode, which reduces to `(b < a) ? b : a`. Every comparison
+    # against NaN is false, so a NaN operand was discarded in favor of the
+    # other one. An all-NaN input therefore returned -inf, and worse, a NaN
+    # following a finite element was replaced by the running maximum, so
+    # [1, NaN] returned [1, 1 + log(2)] instead of propagating NaN.
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor([np.nan, np.nan], dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x_tf))
+          self.assertAllEqual(
+              [True, True],
+              np.isnan(result),
+              msg=f'Expected all NaN for all-NaN input, got {result}',
+          )
+
+          # A NaN must also poison every later element of the scan, not only
+          # the position it appears at.
+          x_tf = ops.convert_to_tensor([1.0, np.nan, 2.0], dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x_tf))
+          self.assertAllEqual(
+              [False, True, True],
+              np.isnan(result),
+              msg=f'Expected NaN from index 1 onward, got {result}',
+          )
+          # The prefix before the NaN is unaffected.
+          self.assertAllClose(1.0, result[0])
+
+  def testNaNPropagationReverse(self):
+    # The reverse scan walks the axis in the other direction, so the NaN must
+    # poison the elements at lower indices instead.
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor([1.0, np.nan, 2.0], dtype=dtype)
+          result = self.evaluate(
+              math_ops.cumulative_logsumexp(x_tf, reverse=True)
+          )
+          self.assertAllEqual(
+              [True, True, False],
+              np.isnan(result),
+              msg=f'Expected NaN up to index 1, got {result}',
+          )
+          self.assertAllClose(2.0, result[2])
+
 
 if __name__ == '__main__':
   test.main()
