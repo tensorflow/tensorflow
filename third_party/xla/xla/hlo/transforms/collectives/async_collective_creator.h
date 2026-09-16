@@ -45,6 +45,7 @@ class AsyncCollectiveCreator : public HloModulePass {
     HloPredicate convert_all_reduce = HloPredicateFalse;
     HloPredicate convert_all_gather = HloPredicateFalse;
     HloPredicate convert_collective_broadcast = HloPredicateFalse;
+    HloPredicate convert_collective_reduce = HloPredicateFalse;
     HloPredicate convert_collective_permute = HloPredicateFalse;
     HloPredicate convert_all_to_all = HloPredicateFalse;
     HloPredicate convert_reduce_scatter = HloPredicateFalse;

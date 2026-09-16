@@ -2715,13 +2715,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!window) {
         window.emplace();
       }
+      if (operands.empty()) {
+        TokenError("reduce-window expects at least one input and init operand");
+        return nullptr;
+      }
       if (operands.size() % 2) {
         TokenError(StrCat("expects an even number of operands, but has ",
                           operands.size(), " operands"));
-        return nullptr;
-      }
-      if (operands.empty()) {
-        TokenError("reduce-window expects at least one input and init operand");
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
