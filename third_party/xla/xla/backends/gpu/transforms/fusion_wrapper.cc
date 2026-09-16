@@ -31,6 +31,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kAsinh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
+    case HloOpcode::kAtan:
     case HloOpcode::kAtan2:
     case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:

@@ -557,6 +557,7 @@ IndexingMap MlirKernelEmitter::GetDefaultThreadIdIndexingMap(
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device,
                                  int max_unroll_factor) {
+  pm.addNestedPass<FuncOp>(createSimplifyAtan2Pass());
   pm.addNestedPass<FuncOp>(createLowerXlaSharedPass());
   emitters::LowerXlaToScfPassOptions lower_xla_to_scf_options;
   lower_xla_to_scf_options.warp_size = device.threads_per_warp();
