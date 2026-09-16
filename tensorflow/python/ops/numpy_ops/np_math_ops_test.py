@@ -597,6 +597,14 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test([[1, 2, 3], [4, 5, 6]], [2, 0, 2], 5, check_dtype=False)
     run_test([[1, 2, 3], [4, 5, 6]], 0, [5, 3, 1], check_dtype=False)
 
+  def testClipBothBoundsNone(self):
+    # NumPy (>= 2.0) returns the input unchanged when both bounds are None.
+    a = np_array_ops.array([1, -2, 3])
+    self.match(
+        np_math_ops.clip(a, None, None),
+        np.clip(np.array([1, -2, 3]), None, None),
+        check_dtype=False)
+
   def testPtp(self):
 
     def run_test(arr, *args, **kwargs):

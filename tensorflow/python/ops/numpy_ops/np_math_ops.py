@@ -232,7 +232,8 @@ def minimum(x1, x2):
 @np_utils.np_doc('clip')
 def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
   if a_min is None and a_max is None:
-    raise ValueError('Not more than one of `a_min` and `a_max` may be `None`.')
+    # NumPy (>= 2.0) returns the input unchanged when both bounds are None.
+    return np_array_ops.asarray(a)
   if a_min is None:
     return minimum(a, a_max)
   elif a_max is None:
