@@ -4316,8 +4316,7 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
       tpu_topology_extension_(pjrt::FindExtension<PJRT_TpuTopology_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_TpuTopology)),
       c_topology_(c_topology),
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_topology, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_topology, c_api)),
       platform_name_(::pjrt::PlatformName(c_api, c_topology)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {
