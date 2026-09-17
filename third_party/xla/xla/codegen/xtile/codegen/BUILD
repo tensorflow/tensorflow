@@ -47,6 +47,7 @@ cc_library(
         "//xla/codegen:ir_emission_utils",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/tiling/experimental:reshape_analysis",
         "//xla/codegen/tiling/experimental:scheduling",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
