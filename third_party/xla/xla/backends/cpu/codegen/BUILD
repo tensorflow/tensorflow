@@ -474,6 +474,7 @@ cc_library(
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
         ":symbol_name_util",
+        ":target_machine_features",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:alignment",
