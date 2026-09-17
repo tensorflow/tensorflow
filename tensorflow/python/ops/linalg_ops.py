@@ -353,17 +353,33 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
       matrix_shape = matrix.get_shape()[-2:]
       if matrix_shape.is_fully_defined():
         if matrix_shape[-2] >= matrix_shape[-1]:
-          return _overdetermined(matrix, rhs, l2_regularizer)
+          solution = _overdetermined(matrix, rhs, l2_regularizer)
         else:
-          return _underdetermined(matrix, rhs, l2_regularizer)
+          solution = _underdetermined(matrix, rhs, l2_regularizer)
       else:
         # We have to defer determining the shape to runtime and use
         # conditional execution of the appropriate graph.
         matrix_shape = array_ops.shape(matrix)[-2:]
-        return cond.cond(
+        solution = cond.cond(
             matrix_shape[-2] >= matrix_shape[-1],
             lambda: _overdetermined(matrix, rhs, l2_regularizer),
             lambda: _underdetermined(matrix, rhs, l2_regularizer))
+      # The composite implementation is built on a Cholesky factorization of
+      # the Gramian, which does not exist for singular matrices; the
+      # factorization then fails and its output is filled with NaN. The QR
+      # based kernel does handle those systems, so fall back to it when the
+      # factorization failed. Inputs that already contain NaN also produce NaN
+      # here, and the fallback returns NaN for them as well, so there is no
+      # need to inspect the inputs.
+      # `is_nan` is not defined for complex types, so reduce to the real
+      # magnitude first in that case.
+      failed_values = math_ops.abs(solution) if solution.dtype.is_complex else solution
+      factorization_failed = math_ops.reduce_any(math_ops.is_nan(failed_values))
+      return cond.cond(
+          factorization_failed,
+          lambda: gen_linalg_ops.matrix_solve_ls(
+              matrix, rhs, l2_regularizer, fast=False),
+          lambda: solution)
 
   matrix = ops.convert_to_tensor(matrix, name='matrix')
   if matrix.dtype == dtypes.complex128 and l2_regularizer != 0:
