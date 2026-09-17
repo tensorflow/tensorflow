@@ -806,7 +806,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsOutputFloatCheckThunkWhenFlagEnabled) {
       auto buffer_assignment,
       BufferAssigner::Run(
           &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
-          buffer_size, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          buffer_size, &alias_info, [](HloValue::Color) { return 1; },
           std::move(opts)));
 
   BufferAllocation alloc(0, 1024, 0);
@@ -875,7 +875,7 @@ TEST_F(ThunkBufferDebugPassTest,
       auto buffer_assignment,
       BufferAssigner::Run(
           &hlo_module, std::make_unique<DependencyHloOrdering>(&hlo_module),
-          buffer_size, &alias_info, [](LogicalBuffer::Color) { return 1; },
+          buffer_size, &alias_info, [](HloValue::Color) { return 1; },
           std::move(opts)));
 
   BufferAllocation alloc(0, 1024, 0);
