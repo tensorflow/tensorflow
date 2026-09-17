@@ -153,7 +153,9 @@ def parse_args():
       """)
   parser.add_argument(
       "--toco_compatible",
-      type=bool,
+      nargs="?",
+      const=True,
+      type="bool",
       default=False,
       help="""\
       If true, only use ops compatible with Tensorflow
