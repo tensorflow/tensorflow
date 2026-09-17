@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform.h"
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
