@@ -698,14 +698,11 @@ ENTRY main {
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* module = module_and_executable.first;
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
   EXPECT_EQ(CountCopies(*module), 5);
   // All-gather-done is scheduled as late as possible to overlap with
   // computation, which requires an extra copy to resolve the live range
   // conflict with param_1.
-  const HloInstruction* while_op =
-      root->operand(0)->operand(0)->operand(0)->operand(0);
+  const HloInstruction* while_op = FindInstruction(module, HloOpcode::kWhile);
   const HloInstruction* operand_1 =
       while_op->while_body()->root_instruction()->operand(1);
   EXPECT_EQ(operand_1->opcode(), HloOpcode::kCopy);
@@ -1943,18 +1940,11 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_MULTI]]), index=0
     // CHECK-DAG: [[GTE_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NON]]), index=0
 
-    // XLA packs an intermediate tuple
-    // CHECK-DAG: [[INTER_TUPLE:%[^ ]+]] = (s32[1]{0:S(1)}, s32[1]{0}) tuple([[GTE_MULTI]], [[GTE_NON]])
-
-    // XLA unpacks the intermediate tuple to perform the isolation copies
-    // CHECK-DAG: [[GTE_OUT_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[INTER_TUPLE]]), index=0
-    // CHECK-DAG: [[GTE_OUT_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[INTER_TUPLE]]), index=1
-
     // The S1 -> S0 isolation copies
-    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_OUT_MULTI]])
+    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_MULTI]])
 
     // The final ROOT is pure S0
-    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_OUT_NON]])
+    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_NON]])
     )";
 
   EXPECT_THAT(RunFileCheck(
