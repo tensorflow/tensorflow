@@ -75,6 +75,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
+  TF_LITE_ENSURE(context, input->dims->data[1] > 0);
+  TF_LITE_ENSURE(context, input->dims->data[2] > 0);
 
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
   // ResizeBilinear creates a float tensor even when the input is made of
