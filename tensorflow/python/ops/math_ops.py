@@ -5654,7 +5654,16 @@ def reciprocal_no_nan(x, name=None):
   with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
     x = ops.convert_to_tensor(x, name="x")
     one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
-    return gen_math_ops.div_no_nan(one, x, name=scope)
+    res = gen_math_ops.div_no_nan(one, x, name=scope)
+    if x.dtype.is_complex:
+      has_inf = gen_math_ops.logical_or(
+          gen_math_ops.is_inf(real(x)),
+          gen_math_ops.is_inf(imag(x)),
+      )
+      res = array_ops.where_v2(
+          has_inf, constant_op.constant(0, dtype=x.dtype.base_dtype), res
+      )
+    return res
 
 
 @tf_export("math.xdivy")
