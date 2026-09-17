@@ -578,6 +578,13 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "chromiumos",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("@platforms//os:chromiumos", ":google"),
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
