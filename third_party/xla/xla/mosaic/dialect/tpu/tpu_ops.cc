@@ -1126,6 +1126,27 @@ void VectorStoreOp::build(OpBuilder& builder, OperationState& state,
         /*strides=*/builder.getDenseI32ArrayAttr({}), mask, add);
 }
 
+LogicalResult CompressStoreVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType value_ty = getValueToStore().getType();
+  if (value_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and valueToStore element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  VectorType mask_ty = getMask().getType();
+  if (value_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected valueToStore dimension 0 to match mask dimension 0: ")
+           << value_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
+  }
+  return success();
+}
+
 template <typename Op>
 LogicalResult verifyLoadOp(Op op) {
   MemRefType ref_ty = op.getBase().getType();

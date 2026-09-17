@@ -294,6 +294,45 @@ def TPU_VectorStoreOp :TPU_Op<"vector_store", [DefaultMemWrite, AttrSizedOperand
   ];
 }
 
+def TPU_CompressStoreVregOp : TPU_Op<"compress_store_vreg", [DefaultMemWrite]> {
+  let summary = "Performs a masked, compressed store of a single vreg.";
+  let description = [{
+    `tpu.compress_store_vreg` performs a masked, compressed store of a single
+    vreg to memory starting at the address given by `base[indices]`. It is the
+    physical (vreg-level) counterpart of `tpu.vector_compress_store`.
+
+    Masked-out lanes are skipped when writing to memory: elements from the
+    enabled lanes are stored contiguously to sequential locations in memory
+    starting at `base[indices]`.
+
+    For example, storing [A, B, C, D] with mask [true, false, true, false]
+    writes A to `base[indices]` and C to `base[indices] + 1`.
+
+    valueToStore: The vreg to store. For packed (sub-32-bit) types, the vreg is
+                  2-D with shape `(lane_count, packing)`, and a lane stores all
+                  of its `packing` subelements together.
+    base        : Memref to store to.
+    indices     : Scalar indices into `base`, identifying the position of the
+                  first stored element. The length must be the same as the
+                  rank of `base`.
+    mask        : 1-D lane mask.
+    add         : If true, the enabled elements are added to the values already
+                  in memory instead of overwriting them.
+  }];
+  let arguments = (ins
+    TPU_Vreg:$valueToStore,
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfRankAndType<[1], [I1]>:$mask,
+    DefaultValuedAttr<BoolAttr, "false">:$add
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
 // tpu.vector_load loads a vector from memory into a register.
 //
 //  base   : Memref to load from.
