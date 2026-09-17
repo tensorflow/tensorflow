@@ -139,6 +139,7 @@ tf_kernel_library(
         "strided_slice_op_inst_6.cc",
         "strided_slice_op_inst_7.cc",
         "strided_slice_op_inst_8.cc",
+        "fused_linear_cross_entropy_op.cc"
     ],
     hdrs = [
         "slice_op.h",
@@ -167,12 +168,13 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "@com_google_absl//absl/base:prefetch",
         "@eigen_archive//:eigen3",
+        "//tensorflow/core/framework:op_kernel_hdr"
     ],
 )
 
 tf_kernel_library(
-    name = "clustering_ops",
-    prefix = "clustering_ops",
+    name = "fused_linear_cross_entropy_op",
+    prefix = "fused_linear_cross_entropy_op",
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -181,6 +183,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/framework:op_kernel_hdr",
     ],
 )
 
