@@ -1861,7 +1861,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
   if (copy->operand(0)->opcode() == HloOpcode::kReshape &&
       copy->operand(0)->user_count() == 1 &&
-      ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape())) {
+      (options_.is_layout_sensitive()
+           ? options_.ReshapeIsBitcast(copy->operand(0)->shape(), copy->shape())
+           : ShapeUtil::ReshapeIsBitcast(copy->operand(0)->shape(),
+                                         copy->shape()))) {
     return ReplaceWithNewInstruction(
         copy,
         copy->operand(0)->CloneWithNewOperands(

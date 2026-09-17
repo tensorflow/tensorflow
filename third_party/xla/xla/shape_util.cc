@@ -2351,8 +2351,18 @@ ShapeUtil::ByteStrides(const Shape& shape) {
     int64_t dim_size = dim < shape_dim_size ? LayoutUtil::MaxSplitSize(
                                                   shape, minor_to_major[dim])
                                             : 1;
-    num_of_elements *=
-        RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
+    int64_t tile_dim = tile_dimensions[tile_dim_size - dim - 1];
+    if (tile_dim == Tile::kCombineDimension) {
+      int64_t default_packing = std::max<int64_t>(
+          1, 32 / primitive_util::BitWidth(shape.element_type()));
+      tile_dim =
+          (shape.layout().tiles().size() > 1 &&
+           dim < shape.layout().tiles(1).dimensions().size())
+              ? shape.layout().tiles(1).dimension(
+                    shape.layout().tiles(1).dimensions().size() - 1 - dim)
+              : default_packing;
+    }
+    num_of_elements *= RoundUpTo(dim_size, tile_dim);
   }
   for (; dim < shape_dim_size; dim++) {
     int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);
