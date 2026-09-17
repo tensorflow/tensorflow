@@ -14,7 +14,6 @@
 # ==============================================================================
 
 # Tests of TensorFlow NN kernels written using the Python API.
-load("//tensorflow/python/framework/kernels:build_defs.bzl", "tf_py_test")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
@@ -948,13 +947,11 @@ py_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "fused_linear_cross_entropy_op_test",
-    size = "small",
     srcs = ["fused_linear_cross_entropy_op_test.py"],
     deps = [
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:fused_linear_cross_entropy_op",
-        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/ops:nn_ops",
     ],
 )
