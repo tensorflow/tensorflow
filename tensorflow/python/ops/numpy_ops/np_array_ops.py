@@ -1638,7 +1638,7 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
   # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
   # where exponent == 0 preserves both forward values and exact derivatives.
   safe_x = array_ops.where_v2(
-      math_ops.equal(exponents, 0), array_ops.ones_like(x), x
+      math_ops.equal(exponents, 0), constant_op.constant(1, dtype=x.dtype), x
   )
   return math_ops.pow(safe_x, exponents)
 
