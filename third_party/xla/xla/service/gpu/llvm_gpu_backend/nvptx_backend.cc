@@ -27,11 +27,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
@@ -49,7 +47,6 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
-#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -149,26 +146,28 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> NVPTXGetTargetMachine(
+std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options) {
-  ABSL_ASSIGN_OR_RETURN(int llvm_max_ptx_version,
-                   GetMaxPtxVersionSupportedByLlvm(target_triple));
-
   absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
       stream_executor::GetAsmCompilerVersion(
           debug_options.xla_gpu_cuda_data_dir());
 
-  int highest_supported_ptx_version = llvm_max_ptx_version;
-  if (runtime_cuda_version.ok()) {
-    auto ptx_version =
-        nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-            *runtime_cuda_version, compute_capability.major);
-    int runtime_max_ptx_version =
-        ptx_version.major_version() * 10 + ptx_version.minor_version();
-    highest_supported_ptx_version =
-        std::min(runtime_max_ptx_version, llvm_max_ptx_version);
-  }
+  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
+      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
+
+  auto highest_supported_cuda_version = [&] {
+    if (runtime_cuda_version.ok()) {
+      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
+    }
+
+    return kCompileTimeCudaVersion;
+  }();
+
+  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+      highest_supported_cuda_version, compute_capability.major);
+  int highest_supported_ptx_version =
+      ptx_version.major_version() * 10 + ptx_version.minor_version();
 
   VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
   std::string feature_str =
@@ -194,45 +193,6 @@ void NVPTXBackendInit() {
 }
 
 }  // namespace
-
-absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
-    const llvm::Triple& target_triple) {
-  std::string error;
-  const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(target_triple, error);
-  if (target == nullptr) {
-    return Internal("Failed to look up LLVM target for triple %s: %s",
-                    target_triple.str(), error);
-  }
-
-  std::unique_ptr<const llvm::MCSubtargetInfo> subtarget_info{
-      target->createMCSubtargetInfo(target_triple, "", "")};
-  if (subtarget_info == nullptr) {
-    return Internal("Failed to get LLVM subtarget info for triple %s",
-                    target_triple.str());
-  }
-
-  int max_ptx_version = 0;
-  for (const llvm::SubtargetFeatureKV& feature :
-       subtarget_info->getAllProcessorFeatures()) {
-    absl::string_view version_string = feature.key();
-    if (!absl::ConsumePrefix(&version_string, "ptx")) {
-      continue;
-    }
-
-    int ptx_version;
-    if (!absl::SimpleAtoi(version_string, &ptx_version)) {
-      return Internal("Failed to parse LLVM PTX feature: %s", version_string);
-    }
-    max_ptx_version = std::max(max_ptx_version, ptx_version);
-  }
-
-  if (max_ptx_version == 0) {
-    return Internal("LLVM target %s does not define any PTX features",
-                    target_triple.str());
-  }
-  return max_ptx_version;
-}
 
 std::vector<std::string> GetNVPTXBackendOptions(
     const DebugOptions& debug_options) {
@@ -381,9 +341,8 @@ absl::StatusOr<std::string> CompileToPtx(
 
     llvm::Triple default_target_triple("nvptx64-unknown-unknown");
     // Construct LLVM TargetMachine for NVPTX.
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
-                     NVPTXGetTargetMachine(default_target_triple,
-                                           *compute_capability, debug_options));
+    std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
+        default_target_triple, *compute_capability, debug_options);
 
     // Apply target machine configuration from call-back if available.
     if (configure_target) {
