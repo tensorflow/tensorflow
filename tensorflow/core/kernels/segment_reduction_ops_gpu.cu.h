@@ -1055,6 +1055,19 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
     // only a couple of small flags come back over the (synchronous) D2H
     // transfer in the common, valid-input case.
     if (nouter > 0) {
+      // The bounds-check kernel below packs each violation's position into
+      // an int32 (matching SparseSegmentGradV2Functor's existing
+      // `nouter`/`ninner` handling above, which notes that neither is
+      // expected to be huge), so reject inputs where a position wouldn't
+      // fit rather than silently truncating it.
+      OP_REQUIRES(
+          context,
+          static_cast<int64_t>(nouter) <=
+              std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Indices vector of length ", nouter,
+              " is too large to fit in int32.")));
+
       se::Stream* stream = context->op_device_context()->stream();
       OP_REQUIRES(context, stream != nullptr,
                   absl::InternalError("No GPU stream available."));
