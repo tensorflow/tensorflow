@@ -942,6 +942,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "requires-gpu-sm90",
     ],
     deps = [
@@ -1279,8 +1280,8 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     tags = ["cuda-only"],
@@ -1721,8 +1722,8 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     tags = ["cuda-only"],
@@ -2407,6 +2408,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
     ],
     deps = [
         ":compilation_provider_test_lib",
@@ -2420,6 +2422,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "notsan",
         "requires-gpu-sm90",
     ],
