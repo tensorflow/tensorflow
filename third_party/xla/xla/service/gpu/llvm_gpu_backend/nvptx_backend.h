@@ -24,11 +24,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu::nvptx {
+
+// Returns the maximum PTX ISA version advertised by LLVM's NVPTX target,
+// encoded as major * 10 + minor. Returns an error if the target or its MC
+// subtarget information is not registered.
+absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
+    const llvm::Triple& target_triple);
 
 // Resolves the compute capability that XLA actually compiles for given the
 // compute capability of the target device. If the device's compute capability

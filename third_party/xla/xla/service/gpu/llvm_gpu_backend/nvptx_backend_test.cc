@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -27,6 +29,17 @@ namespace xla {
 namespace gpu {
 namespace {
 namespace se = ::stream_executor;
+
+TEST(UtilsTest, LlvmSupportsMinimumPtxVersionForSm107a) {
+  LLVMInitializeNVPTXTargetInfo();
+  LLVMInitializeNVPTXTargetMC();
+
+  auto max_ptx_version = nvptx::GetMaxPtxVersionSupportedByLlvm(
+      llvm::Triple("nvptx64-unknown-unknown"));
+
+  ASSERT_TRUE(max_ptx_version.ok()) << max_ptx_version.status();
+  EXPECT_GE(*max_ptx_version, 94);
+}
 
 TEST(UtilsTest, TestGetSmName) {
   using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
