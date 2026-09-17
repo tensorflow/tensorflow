@@ -583,5 +583,56 @@ ENTRY main {
   *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
 }
 
+TEST_F(HloExtractorTest, ExtractModuleInheritScheduleEntryPostOrder) {
+  constexpr absl::string_view hlo = R"(
+HloModule scheduled_module, is_scheduled=true
+
+called_comp {
+  c0 = f32[10] parameter(0)
+  c1 = f32[10] parameter(1)
+  neg1 = f32[10] negate(c1)
+  neg0 = f32[10] negate(c0)
+  ROOT sum = f32[10] add(neg0, neg1)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  op_b = f32[10] negate(p1)
+  op_a = f32[10] negate(p0)
+  ROOT call = f32[10] call(op_a, op_b), to_apply=called_comp
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* call_inst = FindInstruction(module.get(), HloOpcode::kCall);
+  ASSERT_NE(call_inst, nullptr);
+
+  auto extracted = ExtractModule(
+      call_inst, /*height=*/0, /*extract_selector=*/nullptr,
+      /*replace_type_selector=*/nullptr, /*cross_computation=*/false,
+      /*inline_calls_and_fusions=*/false, /*run_verifier=*/true,
+      /*inherit_module_config=*/true, /*inherit_schedule=*/true);
+  ASSERT_NE(extracted, nullptr);
+  ASSERT_TRUE(extracted->has_schedule());
+
+  // The entry computation schedule should be in canonical post-order
+  // (parameter(0) before parameter(1)), not the caller's schedule order where
+  // op_b preceded op_a.
+  HloComputation* entry = extracted->entry_computation();
+  const auto& entry_seq = extracted->schedule().sequence(entry).instructions();
+  ASSERT_EQ(entry_seq.size(), 3);
+  EXPECT_EQ(entry_seq[0], entry->parameter_instruction(0));
+  EXPECT_EQ(entry_seq[1], entry->parameter_instruction(1));
+  EXPECT_EQ(entry_seq[2], entry->root_instruction());
+
+  // The called computation schedule should preserve neg1 before neg0.
+  HloComputation* extracted_called = entry->root_instruction()->to_apply();
+  const auto& called_seq =
+      extracted->schedule().sequence(extracted_called).instructions();
+  ASSERT_EQ(called_seq.size(), 5);
+  EXPECT_EQ(called_seq[2]->name(), "neg1");
+  EXPECT_EQ(called_seq[3]->name(), "neg0");
+}
+
 }  // namespace
 }  // namespace xla

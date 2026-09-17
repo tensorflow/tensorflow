@@ -194,6 +194,9 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       // Schedule any called computations.
       for (const HloComputation* old_computation :
            old_module_->computations()) {
+        if (old_computation == root_instruction_->parent()) {
+          continue;
+        }
         if (old_schedule.is_computation_scheduled(old_computation)) {
           if (HloComputation* new_computation =
                   clone_context_.FindComputation(old_computation);
