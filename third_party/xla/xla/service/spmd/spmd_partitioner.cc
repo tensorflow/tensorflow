@@ -5841,9 +5841,6 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
-  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
-    local_reduce->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
-  }
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
