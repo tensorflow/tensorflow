@@ -1101,12 +1101,17 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getDefiningOp();
     }
     case HloOpcode::kCollectiveBroadcast: {
-      auto collective_broadcast = Cast<HloChannelInstruction>(instruction);
+      auto collective_broadcast =
+          Cast<HloCollectiveBroadcastInstruction>(instruction);
       attributes.push_back(ConvertReplicaGroups(collective_broadcast,
                                                 &symbol_table_, func_builder));
       if (collective_broadcast->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             collective_broadcast->channel_id().value(), builder_));
+      }
+      if (collective_broadcast->has_dynamic_root()) {
+        attributes.push_back(builder_->getNamedAttr("has_dynamic_root",
+                                                    builder_->getUnitAttr()));
       }
       return mlir::stablehlo::CollectiveBroadcastOp::create(
                  *func_builder, loc, result_type, operands, attributes)
