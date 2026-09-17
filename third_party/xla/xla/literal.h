@@ -634,10 +634,13 @@ class LiteralBase {
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
+        static_assert(sizeof(NativeT) == 1);
+        const uint8_t* raw_bytes =
+            reinterpret_cast<const uint8_t*>(elements.data());
         if constexpr (primitive_type == PRED) {
           if (!pack_pred_) {
-            for (NativeT element : elements) {
-              WriteElement(element);
+            for (size_t i = 0; i < elements.size(); ++i) {
+              WriteElement(raw_bytes[i]);
             }
             return;
           }
@@ -650,8 +653,7 @@ class LiteralBase {
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte = 0;
           for (int b = 0; b < elements_per_byte; ++b) {
-            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
-                              elements[i * elements_per_byte + b]) &
+            uint8_t src = raw_bytes[i * elements_per_byte + b] &
                           LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
@@ -661,8 +663,7 @@ class LiteralBase {
         if (rest != 0) {
           uint8_t byte = 0;
           for (int64_t b = 0; b < rest; ++b) {
-            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
-                              elements[bytes * elements_per_byte + b]) &
+            uint8_t src = raw_bytes[bytes * elements_per_byte + b] &
                           LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
@@ -757,8 +758,9 @@ class LiteralBase {
       if constexpr (bits_per_element < 8) {
         if constexpr (primitive_type == PRED) {
           if (!pack_pred_) {
-            for (NativeT& element : elements) {
-              if (!ReadElement(element)) {
+            uint8_t* raw_bytes = reinterpret_cast<uint8_t*>(elements.data());
+            for (size_t i = 0; i < elements.size(); ++i) {
+              if (!ReadElement(raw_bytes[i])) {
                 return false;
               }
             }
