@@ -28,6 +28,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 namespace xla {
+
+class CallGraph;
+
 namespace host_offload_utils {
 
 struct InstructionAndShapeIndex {
@@ -58,16 +61,23 @@ bool operator==(const InstructionAndShapeIndex& lhs,
 // If an instruction's user is a call, we descend into the call first.
 // Eventually, a later invocation of this function while walking the graph will
 // return the call itself as a successor of the ROOT instruction of the
-// computation.
+// computation. The call sites of the root's computation are read from
+// call_graph, the graph of the instruction's module: a graph built before a
+// walk stays valid as long as no computation and no instruction with called
+// computations is added, removed or reordered.
 absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index);
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    const CallGraph& call_graph);
 
 // If an instruction's operand is a call, return the call now. A follow up call
 // of this function on that call returns the ROOT. Eventually, once the given
 // instruction is a parameter, the returned predecessor will be the appropriate
-// operand of the call (not the call itself, since we already returned it).
+// operand of the call (not the call itself, since we already returned it). The
+// call sites of the parameter's computation are read from call_graph, under
+// the same condition as for GetSuccessors.
 std::vector<InstructionAndShapeIndex> GetPredecessors(
     const InstructionAndShapeIndex& instruction_and_shape_index,
+    const CallGraph& call_graph,
     std::optional<int64_t> operand_index = std::nullopt);
 
 // Returns true if the instruction is allowed to be in the
