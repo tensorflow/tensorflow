@@ -652,6 +652,43 @@ ENTRY main {
       LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
+TEST_F(HostOffloadLegalizeTest, MoveCopyDownWithSort) {
+  const std::string& hlo_string = R"(
+HloModule test_module
+
+compare {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  p3 = f32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[16,256]{0,1} parameter(0)
+  p1 = f32[16,256]{0,1} parameter(1)
+  offload = f32[16,256]{0,1} custom-call(p0), custom_call_target="MoveToHost"
+  cp = f32[16,256]{1,0} copy(offload)
+  sort = (f32[16,256]{1,0}, f32[16,256]{0,1}) sort(cp, p1), dimensions={0}, to_apply=compare
+  gte0 = f32[16,256]{1,0} get-tuple-element(sort), index=0
+  gte1 = f32[16,256]{0,1} get-tuple-element(sort), index=1
+  load = f32[16,256]{1,0} custom-call(gte0), custom_call_target="MoveToDevice"
+  ROOT root = (f32[16,256]{1,0}, f32[16,256]{0,1}) tuple(load, gte1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  HloInstruction* offload = FindInstruction(module.get(), "offload");
+  ASSERT_NE(offload, nullptr);
+  EXPECT_EQ(sort->operand(0), offload);
+  EXPECT_EQ(FindInstruction(module.get(), "cp"), nullptr);
+}
+
 }  // namespace
 
 }  // namespace xla
