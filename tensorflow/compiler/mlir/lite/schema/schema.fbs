@@ -88,8 +88,42 @@ table BlockwiseQuantization {
   // index to the zero point tensor. If zero_points is -1, the zero point is
   // assumed to be 0, following the convention of optional tensors in tflite.
   zero_points: int;
-  // The block size of the tensor.
+
+  // Superseded by block_shape, which is the general form. Only expresses
+  // blocking along the last dimension: block_size = n is equivalent to
+  // block_shape = [1, ..., 1, n]. Retained so that models written before
+  // block_shape existed remain readable.
   block_size: int;
+
+  // Note: This field is not supported yet.
+  // The N-D block shape, one entry per dimension of the quantized tensor.
+  // block_shape[d] is the extent of a single block along dimension d, so the
+  // element at index i is dequantized with the parameters at block coordinate
+  // floor(i / block_shape), and the scale and zero point tensors have shape
+  // ceil(tensor_shape / block_shape).
+  //
+  // Along each axis d there are ceil(tensor_shape[d] / block_shape[d])
+  // distinct parameters. The two extremes are:
+  //   * block_shape[d] == tensor_shape[d]: a single block spans the axis, so
+  //     one parameter is shared across all of d.
+  //   * block_shape[d] == 1: the finest granularity, a distinct parameter for
+  //     every index along d.
+  //
+  // block_shape always has one entry per dimension of the tensor, so every
+  // existing granularity is expressible. For a tensor of shape S:
+  //   * per-tensor: block_shape[d] = S[d] for every d.
+  //   * per-channel with quantized_dimension = c: block_shape[c] = 1, and
+  //     block_shape[d] = S[d] for every other d.
+  //   * MultiAxisQuantization with quantized_dimensions = C and block_size 0:
+  //     block_shape[c] = 1 for every c in C, and block_shape[d] = S[d] for
+  //     every other d.
+  //
+  // A scale or zero point tensor may also have extent 1 on an axis where
+  // ceil(tensor_shape / block_shape) is greater than 1, in which case it
+  // broadcasts to the number of blocks on that axis.
+  //
+  // If block_shape is non-empty, block_size is ignored.
+  block_shape:[int];
 }
 
 table MultiAxisQuantization {
