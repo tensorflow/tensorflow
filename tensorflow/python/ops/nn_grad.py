@@ -95,14 +95,31 @@ def _Conv2DBackpropFilterGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("FusedLinearCrossEntropy")
 def _FusedLinearCrossEntropyGrad(op, grad_loss):
-  x = op.inputs[0]
-  w = op.inputs[1]
+  """Gradients for FusedLinearCrossEntropy."""
+  features = op.inputs[0]
+  weights = op.inputs[1]
   labels = op.inputs[2]
-  
-  # Return gradients with respect to x, w, and labels (None for labels since integer)
-  # Basic stub gradient mapping for autograd engine registration
-  return None, None, None
 
+  # Recompute soft-max probabilities: p = softmax(XW + b)
+  logits = math_ops.matmul(features, weights)
+  if len(op.inputs) > 3:
+    biases = op.inputs[3]
+    logits = nn_ops.bias_add(logits, biases)
+
+  probs = nn_ops.softmax(logits)
+
+  # Compute dL/dlogits = (probs - labels) * grad_loss
+  grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
+
+  # Gradients w.r.t features, weights, and biases
+  grad_features = math_ops.matmul(grad_logits, weights, transpose_b=True)
+  grad_weights = math_ops.matmul(features, grad_logits, transpose_a=True)
+
+  grad_biases = None
+  if len(op.inputs) > 3:
+    grad_biases = math_ops.reduce_sum(grad_logits, axis=0)
+
+  return grad_features, grad_weights, None, grad_biases
 
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputGrad(op: ops.Operation, grad):
