@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -31,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/base/optimization.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -1298,6 +1300,48 @@ static void* benchmarks = []() {
   }
   return nullptr;
 }();
+
+template <typename T, int bs, bool kWideStride = false>
+void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
+  constexpr int64_t kRowBytes = bs * sizeof(T);
+  constexpr int64_t kLda = kWideStride ? kRowBytes + 64 : kRowBytes;
+  constexpr int64_t kLdb = kRowBytes;
+  ABSL_CACHELINE_ALIGNED std::array<char, bs * kLda> src = {};
+  ABSL_CACHELINE_ALIGNED std::array<char, bs * kLdb> dst = {};
+  for (auto _ : state) {
+    tsl::testing::DoNotOptimize(src);
+    TransposeMicroKernel<T, bs>::Apply(src.data(), kLda, dst.data(), kLdb);
+    tsl::testing::DoNotOptimize(dst);
+  }
+  state.SetBytesProcessed(state.iterations() * bs * bs * sizeof(T));
+}
+
+// 256-bit (32-byte) rows:
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 32);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 16);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, absl::uint128, 2);
+
+// 128-bit (16-byte) rows, tight stride (lda <= 64):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2);
+
+// 128-bit (16-byte) rows, wide stride (lda > 64):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16, /*kWideStride=*/true);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8, /*kWideStride=*/true);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4, /*kWideStride=*/true);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2, /*kWideStride=*/true);
+
+// Sub-128-bit (8B, 4B, 2B) rows:
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 2);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 2);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 2);
 
 TEST(TransposeTest, F64ToEf57MemcpyRejection) {
   TransposePlan::Options options;
