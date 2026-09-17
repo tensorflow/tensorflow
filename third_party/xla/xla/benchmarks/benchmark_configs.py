@@ -21,6 +21,11 @@ import immutabledict
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
+from xla.benchmarks.dma_microbenchmarks import chip_to_chip_dma_benchmark
+from xla.benchmarks.dma_microbenchmarks import chiplet_to_chiplet_dma_benchmark
+from xla.benchmarks.dma_microbenchmarks import host_dma_benchmark
+from xla.benchmarks.dma_microbenchmarks import local_dma_benchmark
+from xla.benchmarks.dma_microbenchmarks import memory_base
 from xla.benchmarks.jax_microbenchmarks import matmul_lib
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
 from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib
@@ -169,10 +174,39 @@ def get_jax_matmul_configs(
   return configs
 
 
+_DMA_SUITES: tuple[tuple[str, type[memory_base.MemoryBenchmarks]], ...] = (
+    ("local_dma", local_dma_benchmark.LocalDmaBenchmarks),
+    ("host_dma", host_dma_benchmark.HostDmaBenchmarks),
+    ("chip_to_chip_dma", chip_to_chip_dma_benchmark.ChipToChipBenchmarks),
+    (
+        "chiplet_to_chiplet_dma",
+        chiplet_to_chiplet_dma_benchmark.ChipletToChipletBenchmarks,
+    ),
+)
+
+
+def get_dma_configs(
+    chip_version: pltpu.ChipVersion | None = None,
+) -> list[memory_base.DmaBenchmarkConfig]:
+  """Generates configs for all DMA microbenchmarks."""
+  del chip_version  # Unused.
+  configs = []
+  for suite, test_class in _DMA_SUITES:
+    for name in sorted(dir(test_class)):
+      if name.startswith("test_"):
+        configs.append(
+            memory_base.DmaBenchmarkConfig(
+                suite=suite, test_class=test_class, test_name=name
+            )
+        )
+  return configs
+
+
 BENCHMARK_FACTORIES: Mapping[
     str, Callable[[pltpu.ChipVersion | None], list[Any]]
 ] = immutabledict.immutabledict({
     "dense_matmul": get_dense_matmul_configs,
     "subchannel_matmul": get_subchannel_matmul_configs,
     "jax_matmul": get_jax_matmul_configs,
+    "dma": get_dma_configs,
 })
