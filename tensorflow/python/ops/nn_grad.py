@@ -1138,22 +1138,24 @@ def _MeanAggregator(inputs, segments):
   value computed from the values that belong to the same segment.
 
   Args:
-   inputs: A 2-tensor. Aggregation is done over dimension 1.
-   segments: A 2-tensor, same shape as `input`.
+   inputs: A tensor of rank at least one.
+   segments: A tensor of segment IDs, same shape as `inputs`.
 
   Returns:
     The result, same shape and type as `inputs`.
   """
-  result = []
-  for inputs_i, segments_i in zip(
-      array_ops.split(inputs, inputs.shape[0]),
-      array_ops.split(segments, segments.shape[0])):
-    # Note that we do not use tf.math.segment_mean, as it has no TPU support.
-    means_i = math_ops.unsorted_segment_mean(
-        inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
-    result.append(
-        array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
-  return array_ops_stack.stack(result, axis=0)
+  shape = array_ops.shape(inputs)
+  num_rows = math_ops.reduce_prod(shape[:-1])
+  row_size = shape[-1]
+  # Segment IDs restart at zero in each row. Offset them before flattening so
+  # that values from different rows are never averaged together.
+  offsets = array_ops.expand_dims(math_ops.range(num_rows) * row_size, -1)
+  segment_ids = array_ops.reshape(segments, [num_rows, row_size]) + offsets
+  segment_ids = array_ops.reshape(segment_ids, [-1])
+  # Note that we do not use tf.math.segment_mean, as it has no TPU support.
+  means = math_ops.unsorted_segment_mean(
+      array_ops.reshape(inputs, [-1]), segment_ids, array_ops.size(inputs))
+  return array_ops.reshape(array_ops.gather(means, segment_ids), shape)
 
 
 # We have to register the gradients for these ops so that tensorflow will know
