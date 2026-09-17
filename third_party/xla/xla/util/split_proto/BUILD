@@ -62,6 +62,7 @@ cc_library(
     visibility = internal_visibility([
         "//learning/brain/research/pjrt:__subpackages__",
         "//xla:__subpackages__",
+        "//xla:friends",
     ]),
     deps = [
         ":split_proto_cc",

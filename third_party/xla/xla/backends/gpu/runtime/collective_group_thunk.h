@@ -41,6 +41,9 @@ class CollectiveGroupThunk : public Thunk {
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
+  ThunkSequence& thunks() { return executor_.thunks(); }
+  const ThunkSequence& thunks() const { return executor_.thunks(); }
+
   BufferUses buffer_uses() const override { return {}; }
 
   absl::Status WalkNested(Walker pre_order, Walker post_order) override;

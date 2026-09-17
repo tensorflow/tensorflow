@@ -19,6 +19,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,10 +46,10 @@ package_group(
 cc_library(
     name = "native_custom_call_emitter_context",
     hdrs = ["native_custom_call_emitter_context.h"],
-    visibility = [
+    visibility = internal_visibility([
         ":handler_allowlist",
         "//xla/service/gpu:__pkg__",
-    ],
+    ]),
     deps = [
         "//xla:shape_util",
         "//xla:xla_proto_cc",
@@ -83,7 +84,7 @@ cc_library(
     name = "native_custom_call_handler_registration",
     srcs = ["native_custom_call_handler_registration.cc"],
     hdrs = ["native_custom_call_handler_registration.h"],
-    visibility = [":handler_allowlist"],
+    visibility = internal_visibility([":handler_allowlist"]),
     deps = [
         ":native_custom_call_handler_registry",
         "@com_google_absl//absl/log:check",
