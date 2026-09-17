@@ -153,8 +153,6 @@ def parse_args():
       """)
   parser.add_argument(
       "--toco_compatible",
-      nargs="?",
-      const=True,
       type="bool",
       default=False,
       help="""\
