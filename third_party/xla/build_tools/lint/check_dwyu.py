@@ -37,7 +37,26 @@ _RULE_START = re.compile(r"^(\w+)\s*\(", re.MULTILINE)
 _NAME_ATTR = re.compile(r'name\s*=\s*"([^"]+)"')
 _STRING_LITERAL = re.compile(r'"([^"]+)"')
 
-DEFAULT_ALLOWED_RULES = ("cc_library", "xla_test", "xla_cc_test", "tsl_cc_test")
+DEFAULT_ALLOWED_RULES = (
+    "cc_library",
+    "cuda_library",
+    "embeddable_cuda_library",
+    "onednn_cc_library",
+    "onednn_graph_cc_library",
+    "rocm_library",
+    "sycl_library",
+    "cc_binary",
+    "xla_cc_binary",
+    "cc_test",
+    "exhaustive_xla_test",
+    "ifrt_proxy_cc_test",
+    "onednn_cc_test",
+    "onednn_graph_cc_test",
+    "strict_cc_test",
+    "tsl_cc_test",
+    "xla_cc_test",
+    "xla_test",
+)
 
 
 def package_label(package: str) -> str:
@@ -96,11 +115,17 @@ def _find_rule_end(lines: list[str], start: int) -> int:
 
 
 def _extract_string_list(block: str, attr: str) -> list[str]:
-  """Extract string literals from a list-valued attribute in a rule block."""
-  pattern = re.compile(rf"{attr}\s*=\s*\[([^\]]*)\]", re.DOTALL)
+  """Extract string literals from an attribute in a rule block."""
+  pattern = re.compile(
+      rf"^\s*{attr}\s*=\s*(.*?)(?=^\s*[a-zA-Z_]\w*\s*=|^\s*\Z|\Z)",
+      re.MULTILINE | re.DOTALL,
+  )
   m = pattern.search(block)
   if not m:
-    return []
+    pattern_fallback = re.compile(rf"{attr}\s*=\s*\[([^\]]*)\]", re.DOTALL)
+    m = pattern_fallback.search(block)
+    if not m:
+      return []
   return _STRING_LITERAL.findall(m.group(1))
 
 
@@ -123,18 +148,13 @@ def extract_targets(
     m = _RULE_START.match(line.strip())
     if not m or m.group(1) not in allowed_rules:
       continue
-    # Find the target name.
-    name = None
-    for j in range(i, min(i + 5, len(lines))):
-      nm = _NAME_ATTR.search(lines[j])
-      if nm:
-        name = nm.group(1)
-        break
-    if name is None:
-      continue
-    # Extract the full rule block to find srcs/hdrs.
+    # Extract the full rule block to find target name and srcs/hdrs.
     end = _find_rule_end(lines, i)
     block = "\n".join(lines[i : end + 1])
+    nm = _NAME_ATTR.search(block)
+    if not nm:
+      continue
+    name = nm.group(1)
     source_files = set()
     source_files.update(_extract_string_list(block, "srcs"))
     source_files.update(_extract_string_list(block, "hdrs"))
@@ -217,6 +237,7 @@ def _group_changed_files_by_package(
 
 
 def main(argv: Sequence[str]):
+  logging.basicConfig(level=logging.INFO, format="%(message)s")
   parser = argparse.ArgumentParser(
       description="Find modified Bazel targets for DWYU checking."
   )

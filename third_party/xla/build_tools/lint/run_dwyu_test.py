@@ -228,6 +228,27 @@ cc_library(
         " @tsl//tsl/profiler:api\n",
     )
 
+  def test_conditional_deps_macro_resolves_wrapped_dependency(self):
+    self.write_file(
+        ".bant-macros",
+        "if_cuda_is_configured = _arg_0\nif_static = _arg_0\n",
+    )
+    self.write_file(
+        "xla/consumer/BUILD",
+        """\
+cc_library(
+    name = "consumer",
+    srcs = ["consumer.cc"],
+    deps = if_cuda_is_configured(["//xla/platform:errors"]),
+)
+""",
+    )
+    result = self.check_targets("//xla/consumer:consumer")
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    self.assertEqual(result.stdout, "")
+    self.assertIn("Checked DWYU on 1 targets.", result.stderr)
+
 
 if __name__ == "__main__":
   unittest.main()
+
