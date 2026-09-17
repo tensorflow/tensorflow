@@ -329,7 +329,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_expression",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@xla//xla:literal_util",
         "@xla//xla:shape_util",

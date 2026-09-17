@@ -310,7 +310,7 @@ TEST(LegalizeTFTest, SuccessfullyCompilesModulesWithReturnValues) {
               ComputationProtoContains("opcode:.*constant"));
 }
 
-TEST(LegalizeTFTest, SkipsTensorListSetItemIfDimensionsTooLarge) {
+TEST(LegalizeTFTest, RejectsTensorListSetItemIfDimensionsTooLarge) {
   static constexpr char kTensorListSetItemDimensionTooLarge[] = R"(
     module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
       func.func @main() -> tensor<!tf_type.variant<tensor<64x1xbf16>>> {
@@ -334,15 +334,9 @@ TEST(LegalizeTFTest, SkipsTensorListSetItemIfDimensionsTooLarge) {
       kTensorListSetItemDimensionTooLarge,
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
 
-  // Ensure that it compile
-  ASSERT_TRUE(compilation_result.ok());
-  // Assert that the tensor list operation is lowered to something.
-  ASSERT_THAT(compilation_result,
-              Not(ComputationProtoContains("%.*= \"tf.TensorListSetItem")));
-  // Assert that the tensor list operation is lowered to something that doesn't
-  // get stuck on a broken dynamic update slice.
-  ASSERT_THAT(compilation_result,
-              Not(ComputationProtoContains("%.*=.*DynamicUpdateSlice")));
+  // Compilation should now fail because writing to a 0-element TensorList
+  // is no longer silently ignored — it returns an InvalidArgument error.
+  ASSERT_FALSE(compilation_result.ok());
 }
 
 TEST(LegalizeTFTest, LegalizesFunctionWithBoundedDynamicArg) {

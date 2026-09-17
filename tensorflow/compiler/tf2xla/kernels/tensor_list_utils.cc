@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/log/log.h"
+
 #include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -507,17 +507,21 @@ absl::Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
     for (int i = 0; i < list_part_shape->dimensions().size(); ++i) {
       auto list_part_dim_size = list_part_shape->dimensions(i);
       auto update_dim_size = update_shape->dimensions(i);
-      // If the update is larger than the list part, the DynamicUpdateSlice will
-      // fail so just ignore this operation and return list as is.
+      // If the update is larger than the list part, the DynamicUpdateSlice
+      // will fail. This indicates the TensorList was allocated with too few
+      // elements for the writes being performed (e.g., size=0 with
+      // dynamic_size=True under XLA). Return an error instead of silently
+      // dropping the write, which would produce wrong results.
       if (update_dim_size > list_part_dim_size) {
-        LOG_FIRST_N(WARNING, 1)
-            << "Warning: TensorListSetItem: ignoring set item because the "
-               "update dim ["
-            << update_dim_size << "] is larger than the list dim ["
-            << list_part_dim_size << "] at dimension " << i << ".";
-
-        *result = list;
-        return absl::OkStatus();
+        return errors::InvalidArgument(
+            "TensorListSetItem: update dimension size (", update_dim_size,
+            ") is larger than the TensorList buffer dimension size (",
+            list_part_dim_size, ") at dimension ", i,
+            ". This can happen when using a TensorArray with dynamic_size=True "
+            "and size=0 inside tf.function(jit_compile=True). XLA requires a "
+            "fixed maximum size. Set 'size' to the maximum number of elements "
+            "you expect, or set 'maximum_iterations' on the enclosing "
+            "while_loop.");
       }
     }
   }
@@ -551,17 +555,16 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
       xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
 
   if (buffer_shape.dimensions(0) == 0) {
-    // The list is statically empty, so this read can only appear in code
-    // that never executes at runtime, such as the body of a while loop
-    // with a zero trip count, which XLA still compiles. The slice below
-    // would fail compile-time shape inference, so return zeros of the
-    // element shape instead, mirroring how ExecuteTensorListSetItem
-    // ignores writes that cannot fit the list.
-    *result = xla::Broadcast(
-        xla::ConstantLiteral(
-            b, xla::LiteralUtil::Zero(buffer_shape.element_type())),
-        buffer_shape.dimensions().subspan(1));
-    return absl::OkStatus();
+    // The list has 0 statically allocated elements. Rather than silently
+    // returning zeros (which produces wrong results), fail compilation so
+    // the user gets a clear message about the unsupported configuration.
+    return errors::InvalidArgument(
+        "TensorListGetItem: reading from a TensorList with 0 elements. "
+        "This can happen when using a TensorArray with dynamic_size=True "
+        "and size=0 inside tf.function(jit_compile=True). XLA requires a "
+        "fixed maximum size. Set 'size' to the maximum number of elements "
+        "you expect, or set 'maximum_iterations' on the enclosing "
+        "while_loop.");
   }
 
   std::vector<xla::XlaOp> start_indices(buffer_shape.dimensions().size(),
