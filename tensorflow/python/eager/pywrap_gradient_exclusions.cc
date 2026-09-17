@@ -919,6 +919,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Zeta"},
       {"_EagerConst"},
       {"VarHandleOp"},
+      {"FusedLinearCrossEntropy"}
   }};
   static const auto &m = *OpGradientInfoInit(a);
 
