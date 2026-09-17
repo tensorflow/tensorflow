@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::memory_space_assignment {
@@ -276,6 +277,23 @@ ENTRY entry {
   ASSERT_OK(pinned.Process(split_fn, *hlo_live_range, *alias_analysis));
 
   EXPECT_EQ(cp_done->operand(0), cp_start);
+}
+
+TEST_F(AllocationTest, MirroredAllocationDelegatesChunkToOriginalAllocation) {
+  HloComputation::Builder builder("entry");
+  HloInstruction* p0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {2, 3}), "p0"));
+  PinnedAllocation original_allocation(
+      HloPosition{p0, {}}, MemorySpace::kAlternate,
+      HeapSimulator::Chunk::FromOffsetSize(-1, 64),
+      /*start_time=*/0, /*end_time=*/5);
+  MirroredAllocation mirrored_allocation(original_allocation, /*time=*/2);
+  original_allocation.set_offset(128);
+
+  const Allocation& alloc = mirrored_allocation;
+  ASSERT_TRUE(alloc.maybe_chunk().has_value());
+  EXPECT_EQ(alloc.maybe_chunk()->offset, 128);
+  EXPECT_EQ(alloc.chunk().offset, 128);
 }
 
 }  // namespace
