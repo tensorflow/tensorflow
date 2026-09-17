@@ -1096,12 +1096,27 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       // We check if the previous use is a conditional operand.
       const AllocationValue::Use* previous_use) const;
 
+  // Does the work of ShouldBeMirrored for nested conditionals.
+  bool ShouldBeMirroredByNestedConditionals(
+      const AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
+      const AllocationValue::Use* previous_use) const;
+
   // If `allocation_value` ShouldBeMirrored, create all necessary
   // MirroredAllocations.
   void CreateMirroredAllocations(
       AllocationValue& allocation_value,
       const AllocationValue::Use& current_use,
       // We check if the previous use is a conditional operand.
+      const AllocationValue::Use* previous_use,
+      absl::Span<AllocationValue> allocation_values,
+      absl::flat_hash_set<AllocationValue*>&
+          already_processed_allocation_values_inside_a_conditional);
+
+  // Does the work of CreateMirroredAllocations for nested conditionals.
+  void CreateMirroredAllocationsForNestedConditionals(
+      AllocationValue& allocation_value,
+      const AllocationValue::Use& current_use,
       const AllocationValue::Use* previous_use,
       absl::Span<AllocationValue> allocation_values,
       // A set of allocation values inside the conditional, that may get a
