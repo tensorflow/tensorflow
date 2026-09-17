@@ -17,6 +17,7 @@
 import functools
 import math
 import sys
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -876,7 +877,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
 
     np.random.seed(0)
     num_classes = 5
@@ -933,7 +934,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
 
     np.random.seed(0)
     num_classes = 5
@@ -2090,6 +2091,93 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
     y, segments = nn_ops.isotonic_regression(x)
     self.assertEqual(y.dtype, expected_dtype_out)
     self.assertEqual(segments.dtype, dtypes.int32)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BatchNormalizationTest(test_lib.TestCase):
+
+  def testNegativeEpsilonRaises(self):
+    """ValueError is raised when variance_epsilon < 0 (scalar)."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    with self.assertRaisesRegex(
+        ValueError, "variance_epsilon must be non-negative"):
+      nn_impl.batch_normalization(
+          x, mean, variance, offset=None, scale=None,
+          variance_epsilon=-1e-5)
+
+  def testZeroEpsilonWarns(self):
+    """Warning is emitted when variance_epsilon == 0.0."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    with warnings.catch_warnings(record=True) as w:
+      warnings.simplefilter("always")
+      out = nn_impl.batch_normalization(
+          x, mean, variance, offset=None, scale=None,
+          variance_epsilon=0.0)
+      self.evaluate(out)
+      self.assertGreater(len(w), 0)
+      self.assertIn("0.0", str(w[0].message))
+
+  def testPositiveEpsilonSucceeds(self):
+    """Graph construction succeeds with positive variance_epsilon."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    out = nn_impl.batch_normalization(
+        x, mean, variance, offset=None, scale=None,
+        variance_epsilon=1e-5)
+    self.evaluate(out)
+
+  def testTensorEpsilonSucceeds(self):
+    """Graph construction succeeds with tf.Tensor variance_epsilon."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    epsilon = constant_op.constant(1e-5)
+    out = nn_impl.batch_normalization(
+        x, mean, variance, offset=None, scale=None,
+        variance_epsilon=epsilon)
+    self.evaluate(out)
+
+  def testVariableEpsilonSucceeds(self):
+    """Graph construction succeeds with tf.Variable variance_epsilon."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    epsilon = variables.Variable(1e-5, dtype=dtypes.float32)
+    self.evaluate(epsilon.initializer)
+    out = nn_impl.batch_normalization(
+        x, mean, variance, offset=None, scale=None,
+        variance_epsilon=epsilon)
+    self.evaluate(out)
+
+  def testTensorNegativeEpsilonFailsRuntime(self):
+    """Runtime assertion fails when tf.Tensor epsilon is negative."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    epsilon = constant_op.constant(-1e-5)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "variance_epsilon must be non-negative"):
+      out = nn_impl.batch_normalization(
+          x, mean, variance, offset=None, scale=None,
+          variance_epsilon=epsilon)
+      self.evaluate(out)
+
+  def testTensorZeroEpsilonSucceeds(self):
+    """Graph execution succeeds with tf.Tensor epsilon == 0.0."""
+    x = array_ops.ones([2, 3])
+    mean = array_ops.zeros([3])
+    variance = array_ops.ones([3])
+    epsilon = constant_op.constant(0.0)
+    out = nn_impl.batch_normalization(
+        x, mean, variance, offset=None, scale=None,
+        variance_epsilon=epsilon)
+    self.evaluate(out)
 
 
 if __name__ == "__main__":
