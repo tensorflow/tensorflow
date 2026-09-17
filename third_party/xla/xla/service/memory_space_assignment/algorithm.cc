@@ -6771,7 +6771,7 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::ShouldBeMirrored(
+bool MsaAlgorithm::ShouldBeMirroredByNestedConditionals(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
@@ -6812,7 +6812,15 @@ bool MsaAlgorithm::ShouldBeMirrored(
   return last_allocation_covers_conditional_live_range;
 }
 
-void MsaAlgorithm::CreateMirroredAllocations(
+bool MsaAlgorithm::ShouldBeMirrored(
+    const AllocationValue& allocation_value,
+    const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use) const {
+  return ShouldBeMirroredByNestedConditionals(allocation_value, current_use,
+                                              previous_use);
+}
+
+void MsaAlgorithm::CreateMirroredAllocationsForNestedConditionals(
     AllocationValue& allocation_value, const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use,
     absl::Span<AllocationValue> allocation_values,
@@ -6912,6 +6920,17 @@ void MsaAlgorithm::CreateMirroredAllocations(
         *allocation_val.mutable_allocation_sequence()->back(),
         /*aliased_offset=*/nullptr);
   }
+}
+
+void MsaAlgorithm::CreateMirroredAllocations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>&
+        already_processed_allocation_values_inside_a_conditional) {
+  CreateMirroredAllocationsForNestedConditionals(
+      allocation_value, current_use, previous_use, allocation_values,
+      already_processed_allocation_values_inside_a_conditional);
 }
 
 bool MsaAlgorithm::IsEvictionRequiredForPreviousUseAtConditional(
