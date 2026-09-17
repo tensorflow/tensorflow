@@ -1618,6 +1618,26 @@ ENTRY %main.3 (Arg_0.1: f32[10,11,12,13]) -> f32[10,11,12,13] {
 // -----
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
+// CHECK:           %[[SLICE_1:.*]] = stablehlo.slice %[[VAL_0]] [0:10, 3:11, 0:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x8x12x13xf32>
+// CHECK:           %[[SLICE_2:.*]] = stablehlo.slice %[[VAL_0]] [0:10, 0:3, 0:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x3x12x13xf32>
+// CHECK:           %[[CONCAT_1:.*]] = stablehlo.concatenate %[[SLICE_1]], %[[SLICE_2]], dim = 1 : (tensor<10x8x12x13xf32>, tensor<10x3x12x13xf32>) -> tensor<10x11x12x13xf32>
+// CHECK:           %[[SLICE_3:.*]] = stablehlo.slice %[[CONCAT_1]] [0:10, 0:11, 10:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x11x2x13xf32>
+// CHECK:           %[[SLICE_4:.*]] = stablehlo.slice %[[CONCAT_1]] [0:10, 0:11, 0:10, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x11x10x13xf32>
+// CHECK:           %[[CONCAT_2:.*]] = stablehlo.concatenate %[[SLICE_3]], %[[SLICE_4]], dim = 2 : (tensor<10x11x2x13xf32>, tensor<10x11x10x13xf32>) -> tensor<10x11x12x13xf32>
+// CHECK:           return %[[CONCAT_2]] : tensor<10x11x12x13xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[10,11,12,13]{3,2,1,0})->f32[10,11,12,13]{3,2,1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[10,11,12,13]) -> f32[10,11,12,13] {
+  %Arg_0.1 = f32[10,11,12,13] parameter(0)
+  ROOT %shuffle.2 = f32[10,11,12,13] shuffle(%Arg_0.1), dimensions={1,2}, mode=rotate, shifts={3,-2}
+}
+
+// -----
+
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<2x3x5xf32> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>

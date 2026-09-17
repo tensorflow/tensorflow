@@ -632,6 +632,23 @@ cc_library(
 )
 
 cc_library(
+    name = "shuffle_expander",
+    srcs = ["shuffle_expander.cc"],
+    hdrs = ["shuffle_expander.h"],
+    deps = [
+        ":op_expander_pass",
+        "//xla:shape_util",
+        "//xla:shuffle",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "stochastic_convert_decomposer",
     srcs = ["stochastic_convert_decomposer.cc"],
     hdrs = ["stochastic_convert_decomposer.h"],
@@ -692,6 +709,19 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "shuffle_expander_test",
+    srcs = ["shuffle_expander_test.cc"],
+    deps = [
+        ":shuffle_expander",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

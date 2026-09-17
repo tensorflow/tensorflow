@@ -207,6 +207,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReverse:
+    case HloOpcode::kShuffle:
     case HloOpcode::kSlice:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -423,6 +424,7 @@ bool SupportSpatialPartitioning(
              computation_map.find(instruction->parent()) !=
                  computation_map.end();
     case HloOpcode::kReverse:
+    case HloOpcode::kShuffle:
       return is_spmd;
     case HloOpcode::kCustomCall:
       if (!is_spmd) {

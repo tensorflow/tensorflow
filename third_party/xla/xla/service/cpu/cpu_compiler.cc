@@ -131,6 +131,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
 #include "xla/hlo/transforms/expanders/rng_expander.h"
+#include "xla/hlo/transforms/expanders/shuffle_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
@@ -696,6 +697,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
+  pipeline.AddPass<ShuffleExpander>();
   pipeline.AddPass<ResultCaster>();
 
   auto library_supports_dot =

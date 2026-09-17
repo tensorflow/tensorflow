@@ -11165,6 +11165,25 @@ ENTRY %entry {
               op::Sharding("{{devices=[4]0,1,2,3},{devices=[4]0,1,2,3}}"));
 }
 
+TEST_F(ShardingPropagationTest, ShuffleRotateForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %shuffle_rotate {
+  %param0 = f32[8,12]{1,0} parameter(0), sharding={devices=[1,4]0,1,2,3}
+  %shuffle = f32[8,12]{1,0} shuffle(%param0), dimensions={1}, mode=rotate, shifts={2}
+  ROOT %copy = f32[8,12]{1,0} copy(%shuffle)
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::ignore,
+                       ShardingPropagation(/*is_spmd=*/true,
+                                           /*propagate_metadata=*/true)
+                           .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "shuffle");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,4]0,1,2,3}"));
+}
+
 TEST_F(ShardingPropagationTest, PropagateToParametersNotEnabled1) {
   const char* const hlo_string = R"(
 HloModule module

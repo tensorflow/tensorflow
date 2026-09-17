@@ -756,6 +756,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleScan(HloInstruction* hlo) override;
   absl::Status HandleScatter(HloInstruction* hlo) override;
   absl::Status HandleSelectAndScatter(HloInstruction* hlo) override;
+  absl::Status HandleShuffle(HloInstruction* hlo) override;
   absl::Status HandleSlice(HloInstruction* hlo) override;
   absl::Status HandleSort(HloInstruction* hlo) override;
   absl::Status HandleTranspose(HloInstruction* hlo) override;

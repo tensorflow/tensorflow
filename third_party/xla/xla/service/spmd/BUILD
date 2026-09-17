@@ -58,6 +58,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:types",
@@ -471,6 +472,9 @@ xla_cc_test(
     deps = [
         ":spmd_partitioner",
         "//xla:array",
+        "//xla:shape_util",
+        "//xla:shuffle",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
