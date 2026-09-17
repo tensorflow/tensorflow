@@ -126,6 +126,7 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
           {xla::F8E4M3B11FNUZ, DT_FLOAT8_E4M3B11FNUZ},
           {xla::F8E5M2FNUZ, DT_FLOAT8_E5M2FNUZ},
           {xla::F4E2M1FN, DT_FLOAT4_E2M1FN},
+          {xla::F8E8M0FNU, DT_UINT8},
           {xla::BF16, DT_BFLOAT16},
           {xla::F16, DT_HALF},
           {xla::F32, DT_FLOAT},
