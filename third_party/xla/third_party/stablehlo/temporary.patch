@@ -3293,4 +3293,30 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compat
 +    return %0 : tensor<4xf32>
 +  }
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
+@@ -907,19 +907,14 @@
+   func.func public @main() -> tensor<?xi32> {
+     // CHECK: %[[SHAPE:.*]] = stablehlo.constant dense<4> : tensor<1xi64>
+     // CHECK-NEXT: %[[CALL_RESULT:.*]] = call @callee()
+-    // CHECK-SAME: {arg_attrs = [], no_inline, probe.marker = "keep",
+-    // CHECK-SAME: res_attrs = [{probe.result = "keep"}]}
++    // CHECK-SAME: <arg_attrs = [], res_attrs = [{probe.result = "keep"}], no_inline>
++    // CHECK-SAME: {probe.marker = "keep"}
+     // CHECK-SAME: : () -> tensor<1xi64>
+     // CHECK-NEXT: %[[RESULT:.*]] = stablehlo.dynamic_iota %[[SHAPE]], dim = 0
+     // CHECK-SAME: -> tensor<4xi32>
+     // CHECK: return %[[RESULT]] : tensor<4xi32>
+     %0 = stablehlo.constant dense<4> : tensor<i64>
+-    %1 = call @callee(%0) {
+-      arg_attrs = [{probe.argument = "drop"}],
+-      no_inline,
+-      probe.marker = "keep",
+-      res_attrs = [{probe.result = "keep"}]
+-    } : (tensor<i64>) -> tensor<1xi64>
++    %1 = call @callee(%0) <arg_attrs = [{probe.argument = "drop"}], no_inline, res_attrs = [{probe.result = "keep"}]> {probe.marker = "keep"} : (tensor<i64>) -> tensor<1xi64>
+     %2 = stablehlo.dynamic_iota %1, dim = 0 : (tensor<1xi64>) -> tensor<?xi32>
+     return %2 : tensor<?xi32>
+   }
 

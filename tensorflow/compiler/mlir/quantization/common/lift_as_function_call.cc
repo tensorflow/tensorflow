@@ -285,10 +285,10 @@ LogicalResult SetAttributeMap(MLIRContext& context,
       continue;
     }
 
-    if (std::find_if(
-            attr_to_op_map.begin(), attr_to_op_map.end(), [&](auto attr_op) {
-              return std::get<0>(attr_op).getName() == attribute.getName();
-            }) == attr_to_op_map.end()) {
+    if (std::find_if(attr_to_op_map.begin(), attr_to_op_map.end(),
+                     [&](auto attr_op) {
+                       return attr_op.first.getName() == attribute.getName();
+                     }) == attr_to_op_map.end()) {
       emitError(UnknownLoc::get(&context),
                 "Could not find attribute: " + attribute.getName().str());
       return failure();

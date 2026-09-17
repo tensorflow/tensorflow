@@ -70,10 +70,10 @@ fusion {
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 // NEW-VECTOR-LLVM-NOT:     llvm.alloca
-// NEW-VECTOR-LLVM-COUNT-8: llvm.load %{{.*}} {alignment = 4 : i64} : !llvm.ptr -> vector<8xf32>
+// NEW-VECTOR-LLVM-COUNT-8: llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<8xf32>
 // NEW-VECTOR-LLVM-COUNT-8: llvm.call @xla.fptrunc.v8f32.to.v8bf16
 // NEW-VECTOR-LLVM:         llvm.shufflevector
-// NEW-VECTOR-LLVM-COUNT-8: llvm.store %{{.*}}, %{{.*}} {alignment = 2 : i64} : vector<8xbf16>, !llvm.ptr
+// NEW-VECTOR-LLVM-COUNT-8: llvm.store %{{.*}}, %{{.*}} <alignment = 2> : vector<8xbf16>, !llvm.ptr
 
 ENTRY %main {
   %input = f32[1,56,56,256]{3,2,1,0} parameter(0)
