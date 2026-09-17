@@ -1820,6 +1820,8 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/ops:map_fn",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
