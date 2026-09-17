@@ -15,8 +15,7 @@
 """Fused linear cross entropy operation."""
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import gen_nn_ops
 
 
 def fused_linear_cross_entropy(
@@ -47,13 +46,19 @@ def fused_linear_cross_entropy(
     weights = ops.convert_to_tensor(weights, name="weights")
     labels = ops.convert_to_tensor(labels, name="labels")
 
-    # Fallback Python-level graph fusion for testing initial API behavior
-    # Calculates matmul and loss within a unified execution block
-    logits = math_ops.matmul(features, weights)
     if biases is not None:
       biases = ops.convert_to_tensor(biases, name="biases")
-      logits = nn_ops.bias_add(logits, biases)
+      return gen_nn_ops.fused_linear_cross_entropy(
+          features=features,
+          weights=weights,
+          labels=labels,
+          biases=biases,
+          name=name,
+      )
 
-    return nn_ops.softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits
+    return gen_nn_ops.fused_linear_cross_entropy(
+        features=features,
+        weights=weights,
+        labels=labels,
+        name=name,
     )
