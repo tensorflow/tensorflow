@@ -173,8 +173,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "fused_linear_cross_entropy_op",
-    prefix = "fused_linear_cross_entropy_op",
+    name = "clustering_ops",
+    prefix = "clustering_ops",
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
