@@ -1329,7 +1329,6 @@ xla_cc_test(
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
@@ -1421,7 +1420,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
