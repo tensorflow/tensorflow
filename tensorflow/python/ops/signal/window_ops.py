@@ -79,15 +79,21 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
                          dtype=dtypes.float32)
     # Convert everything into given dtype which can be float16.
     arg = math_ops.cast(arg, dtype=dtype)
-    # I0 (modified Bessel function of the first kind) is an even function,
-    # i.e., I0(-x) = I0(x). Take abs(beta) so that negative beta values
-    # produce the same (correct) result as positive ones.
-    beta = math_ops.abs(math_ops.cast(beta, dtype=dtype))
     one = math_ops.cast(1.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)
-    num = beta * math_ops.sqrt(nn_ops.relu(
+    shape = math_ops.sqrt(nn_ops.relu(
         one - math_ops.square(arg / halflen_float)))
-    window = math_ops.exp(num - beta) * (
+    # `bessel_i0e` is an even function, i.e. i0e(-x) = i0e(x), so `beta` is
+    # passed to it with its original sign.  Applying `abs` to `beta` before
+    # calling `bessel_i0e` would introduce a cusp at beta == 0 (the second
+    # derivative of `abs` vanishes at the origin), which makes the second
+    # derivative of the window with respect to `beta` evaluate to zero.  The
+    # exponential factor still uses `abs(beta)`, so that negative `beta`
+    # values produce the same result as positive ones.
+    beta = math_ops.cast(beta, dtype=dtype)
+    beta_abs = math_ops.abs(beta)
+    num = beta * shape
+    window = math_ops.exp(beta_abs * shape - beta_abs) * (
         special_math_ops.bessel_i0e(num) / special_math_ops.bessel_i0e(beta))
   return window
 
