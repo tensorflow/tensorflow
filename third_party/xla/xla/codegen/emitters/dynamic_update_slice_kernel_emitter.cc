@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
@@ -270,8 +271,48 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
     work_dims.insert(work_dims.end(), workgroup_ids.begin(),
                      workgroup_ids.end());
 
-    auto loop_results = emitters::EmitXlaLoopOp(
-        nested_b, mlir::ValueRange(work_dims), outputs, indexing, body_builder);
+    llvm::SmallVector<mlir::Value> current_outputs(outputs.begin(),
+                                                   outputs.end());
+    for (int i = 0; i < dus_ops_.size(); ++i) {
+      if (!IsRootInPlace(i)) {
+        const auto& root = fusion_spec_.fusion_roots()[i];
+        const auto* dus_instr = &dus_ops_[i].instruction();
+        IndexingMap copy_indexing = GetDefaultWorkItemIndexingMap(
+            work_dimensions_, root.shape(), &mlir_context_);
+        copy_indexing.Simplify();
+        copy_indexing.RemoveUnusedSymbols();
+
+        auto copy_body_builder = [&](mlir::ImplicitLocOpBuilder& copy_b,
+                                     mlir::ValueRange symbol_values,
+                                     mlir::ValueRange input_indices,
+                                     mlir::ValueRange output_tensors)
+            -> llvm::SmallVector<mlir::Value> {
+          llvm::SmallVector<mlir::Value> operand_indices(input_indices.begin(),
+                                                         input_indices.end());
+          if (dus_instr->shape() != root.shape()) {
+            operand_indices = ApplyIndexing(
+                GetBitcastMap(root.shape(), dus_instr->shape(), &mlir_context_),
+                operand_indices, {}, copy_b);
+          }
+          auto base_val = ProvideParameter(
+              root_computation, dus_instr, /*operand_index=*/0, operand_indices,
+              call_targets, entry_function, copy_b);
+          auto inserted_tensor = copy_b.create<mlir::tensor::InsertOp>(
+              base_val[0], output_tensors.front(), input_indices);
+          return {inserted_tensor};
+        };
+
+        auto copy_results =
+            emitters::EmitXlaLoopOp(nested_b, mlir::ValueRange(work_dims),
+                                    mlir::ValueRange{current_outputs[i]},
+                                    copy_indexing, copy_body_builder);
+        current_outputs[i] = copy_results.front();
+      }
+    }
+
+    auto loop_results =
+        emitters::EmitXlaLoopOp(nested_b, mlir::ValueRange(work_dims),
+                                current_outputs, indexing, body_builder);
     auto terminator = nested_b.create<mlir::scf::InParallelOp>();
     nested_b.setInsertionPointToStart(terminator.getBody());
     for (auto [result, output] : llvm::zip(loop_results, outputs)) {
@@ -300,6 +341,32 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
                                        std::nullopt, forall_builder)
           .getResults());
   return absl::OkStatus();
+}
+
+bool DynamicUpdateSliceKernelEmitter::IsRootInPlace(int root_index) const {
+  if (buffer_assignment_ == nullptr) {
+    return true;
+  }
+  ShapeIndex root_shape_index = {};
+  if (fusion_.IsMultiOutputFusion()) {
+    root_shape_index = {root_index};
+  }
+  auto output_buffer =
+      buffer_assignment_->GetUniqueSlice(&fusion_, root_shape_index);
+  if (!output_buffer.ok()) {
+    return false;
+  }
+  HloInstructionAdaptor operand = dus_ops_[root_index].GetOperand(0);
+  while (fusion_spec_.fusion().ContainsInstruction(operand) &&
+         operand.opcode() == HloOpcode::kBitcast) {
+    operand = operand.GetOperand(0);
+  }
+  auto lhs_buffer =
+      buffer_assignment_->GetUniqueSlice(&operand.instruction(), {});
+  if (!lhs_buffer.ok()) {
+    return false;
+  }
+  return *lhs_buffer == *output_buffer;
 }
 
 std::vector<emitters::EpilogueSpecification>
