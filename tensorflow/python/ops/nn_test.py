@@ -876,7 +876,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -1.0 * np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
@@ -933,7 +933,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
+      return -1.0 * np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
     np.random.seed(0)
     num_classes = 5
