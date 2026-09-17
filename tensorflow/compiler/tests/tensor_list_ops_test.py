@@ -331,8 +331,12 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       )
 
     with self.session():
+      # Either bridge may compile this. The classic tf2xla kernel raises
+      # UnimplementedError; the MLIR pass reports the same message through
+      # emitOpError, which surfaces as InvalidArgumentError. The message is
+      # what pins this to the rejection under test.
       with self.assertRaisesRegex(
-          errors.UnimplementedError,
+          (errors.UnimplementedError, errors.InvalidArgumentError),
           "TensorLists that grow on an out-of-bounds write",
       ):
         self.evaluate(grows())
@@ -383,8 +387,12 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       return out.stack()
 
     with self.session():
+      # Either bridge may compile this. The classic tf2xla kernel raises
+      # UnimplementedError; the MLIR pass reports the same message through
+      # emitOpError, which surfaces as InvalidArgumentError. The message is
+      # what pins this to the rejection under test.
       with self.assertRaisesRegex(
-          errors.UnimplementedError,
+          (errors.UnimplementedError, errors.InvalidArgumentError),
           "TensorLists that grow on an out-of-bounds write",
       ):
         self.evaluate(f())
