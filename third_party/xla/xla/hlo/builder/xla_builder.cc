@@ -3126,6 +3126,28 @@ absl::StatusOr<XlaOp> XlaBuilder::RevInternal(
   return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
 }
 
+XlaOp XlaBuilder::Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                          const ShuffleMode& mode) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    ABSL_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferShuffleShape(
+                                      *operand_shape, dimensions, mode));
+    return ShuffleInternal(shape, operand, dimensions, mode);
+  });
+}
+
+absl::StatusOr<XlaOp> XlaBuilder::ShuffleInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+    const ShuffleMode& mode) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64_t dim : dimensions) {
+    instr.add_dimensions(dim);
+  }
+  *instr.mutable_shuffle_mode() = mode;
+  return AddInstruction(std::move(instr), HloOpcode::kShuffle, {operand});
+}
+
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
                        XlaComputationId comparator, int64_t dimension,
                        bool is_stable) {
@@ -6670,6 +6692,11 @@ XlaOp Transpose(const XlaOp operand, absl::Span<const int64_t> permutation) {
 
 XlaOp Rev(const XlaOp operand, absl::Span<const int64_t> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
+}
+
+XlaOp Shuffle(const XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode) {
+  return operand.builder()->Shuffle(operand, dimensions, mode);
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
