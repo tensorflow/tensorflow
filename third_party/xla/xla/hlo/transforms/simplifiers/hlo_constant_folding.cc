@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -447,6 +447,84 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
   return changed;
 }
 
+// TODO(enver): Share CloneComputation with other passes, such as
+// FlattenCallGraph, by moving to HloModule or HloComputation.
+HloComputation* CloneComputation(HloModule* module,
+                                 HloComputation* computation) {
+  if (!module->has_schedule() ||
+      !module->schedule().is_computation_scheduled(computation)) {
+    return module->AddEmbeddedComputation(computation->Clone());
+  }
+  auto [clone, clone_sequence] = computation->CloneWithSchedule();
+  HloComputation* clone_ptr = module->AddEmbeddedComputation(std::move(clone));
+  module->schedule().set_sequence(clone_ptr, clone_sequence);
+  return clone_ptr;
+}
+
+using SpecializationKey = HloConstantFolding::SpecializationKey;
+
+absl::StatusOr<bool> SpecializeCalls(
+    HloModule* module, HloComputation* computation,
+    absl::flat_hash_map<SpecializationKey, HloComputation*>&
+        specialization_cache,
+    std::vector<HloComputation*>& computation_versions) {
+  auto caller_instructions = computation->caller_instructions();
+  if (caller_instructions.empty()) {
+    return false;
+  }
+  if (!absl::c_all_of(caller_instructions, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCall;
+      })) {
+    return false;
+  }
+
+  if (caller_instructions.size() > 1) {
+    // Sort the caller instructions by their unique id to make the compilation
+    // deterministic.
+    absl::c_sort(caller_instructions,
+                 [](const HloInstruction* a, const HloInstruction* b) {
+                   return a->unique_id() < b->unique_id();
+                 });
+  }
+
+  bool changed = false;
+  bool original_computation_used = false;
+  for (HloInstruction* caller : caller_instructions) {
+    std::vector<std::optional<LiteralSlice>> arguments;
+    arguments.reserve(caller->operand_count());
+    for (const HloInstruction* operand : caller->operands()) {
+      if (operand->opcode() == HloOpcode::kConstant) {
+        arguments.push_back(LiteralSlice(operand->literal()));
+      } else {
+        arguments.push_back(std::nullopt);
+      }
+    }
+    SpecializationKey key{computation, std::move(arguments)};
+    auto it = specialization_cache.find(key);
+    HloComputation* target_comp = nullptr;
+    if (it != specialization_cache.end()) {
+      target_comp = it->second;
+    } else {
+      if (!original_computation_used) {
+        // The first argument combination for this computation uses the original
+        // computation.
+        target_comp = computation;
+        original_computation_used = true;
+      } else {
+        target_comp = CloneComputation(module, computation);
+        computation_versions.push_back(target_comp);
+      }
+      specialization_cache.emplace(key, target_comp);
+    }
+
+    if (caller->to_apply() != target_comp) {
+      caller->set_to_apply(target_comp);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
@@ -606,11 +684,13 @@ absl::StatusOr<bool> HloConstantFolding::RunOnComputation(
 absl::StatusOr<bool> HloConstantFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  specialization_cache_.clear();
   // Limit the constant folding to 0 iterations to skip folding loops in the
   // default case. This retains the behavior from before while loop support in
   // HloEvaluator and may be revised.
   auto evaluator = std::make_unique<HloEvaluator>(
-      /*max_loop_iterations=*/options_.level == Level::kAggressive ? -1 : 0);
+      /*max_loop_iterations=*/options_.level == Level::kAggressive ? -1 : 0,
+      /*cache_call_computation_evals=*/true);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
@@ -624,12 +704,36 @@ absl::StatusOr<bool> HloConstantFolding::RunImpl(
 
   // Visit computations in reverse post-order, so that we can propagate constant
   // arguments from callers to callees.
+  absl::flat_hash_set<const HloComputation*> live_computations;
   for (auto it = computations.rbegin(); it != computations.rend(); ++it) {
     HloComputation* computation = *it;
-    ABSL_ASSIGN_OR_RETURN(bool computation_changed,
-                     RunOnComputation(computation, evaluator.get(),
-                                      is_foldable_computation));
-    changed |= computation_changed;
+    // If all callers were folded, skip instruction folding entirely.
+    if (!computation->IsEntryComputation()) {
+      bool has_live_caller =
+          absl::c_any_of(computation->caller_instructions(),
+                         [&](const HloInstruction* caller) {
+                           return live_computations.contains(caller->parent());
+                         });
+      if (!has_live_caller) {
+        continue;
+      }
+    }
+    std::vector<HloComputation*> computation_versions;
+    computation_versions.push_back(computation);
+    ABSL_ASSIGN_OR_RETURN(bool did_specialize,
+                     SpecializeCalls(module, computation, specialization_cache_,
+                                     computation_versions));
+    changed |= did_specialize;
+
+    for (HloComputation* computation_version : computation_versions) {
+      // Mark both the original and specialized clones as live so callees whose
+      // caller was folded away in another version are still visited as live.
+      live_computations.insert(computation_version);
+      ABSL_ASSIGN_OR_RETURN(bool version_changed,
+                       RunOnComputation(computation_version, evaluator.get(),
+                                        is_foldable_computation));
+      changed |= version_changed;
+    }
   }
   return changed;
 }
