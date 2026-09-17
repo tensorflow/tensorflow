@@ -225,5 +225,36 @@ TEST_F(DefuserTest, NestedFusionInstructions) {
   EXPECT_THAT(computation->root_instruction(), op::Negate(op::Add()));
 }
 
+TEST_F(DefuserTest, DefuseScopedByExecutionThread) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder entry_b(TestName());
+  auto p0 =
+      entry_b.AddInstruction(HloInstruction::CreateParameter(0, shape_, "p0"));
+  auto p1 =
+      entry_b.AddInstruction(HloInstruction::CreateParameter(1, shape_, "p1"));
+  auto add = entry_b.AddInstruction(
+      HloInstruction::CreateBinary(shape_, HloOpcode::kAdd, p0, p1));
+  auto entry_comp = m->AddEntryComputation(entry_b.Build());
+  entry_comp->CreateFusionInstruction({add}, HloInstruction::FusionKind::kLoop);
+
+  HloComputation::Builder sub_b("scoped_comp");
+  auto sp0 =
+      sub_b.AddInstruction(HloInstruction::CreateParameter(0, shape_, "sp0"));
+  auto neg = sub_b.AddInstruction(
+      HloInstruction::CreateUnary(shape_, HloOpcode::kNegate, sp0));
+  auto sub_comp = m->AddEmbeddedComputation(sub_b.Build());
+  sub_comp->SetExecutionThread("custom_thread");
+  auto sub_fusion = sub_comp->CreateFusionInstruction(
+      {neg}, HloInstruction::FusionKind::kLoop);
+  sub_fusion->fused_instructions_computation()->SetExecutionThread(
+      "custom_thread");
+
+  EXPECT_EQ(2, FusionCount(m.get()));
+  EXPECT_TRUE(defuser_.Run(m.get(), {"custom_thread"}).value());
+  EXPECT_EQ(1, FusionCount(m.get()));
+  EXPECT_THAT(entry_comp->root_instruction(), op::Fusion());
+  EXPECT_THAT(sub_comp->root_instruction(), op::Negate());
+}
+
 }  // namespace
 }  // namespace xla
