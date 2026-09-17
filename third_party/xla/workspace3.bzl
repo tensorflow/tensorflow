@@ -72,6 +72,7 @@ def workspace():
 
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    # TODO: update to newer commit
     tf_http_archive(
         name = "rules_ml_toolchain",
         sha256 = "302ded361f154c20c507b547eed313f01d4ece57abc6be66f0f77b10c1076429",
