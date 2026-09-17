@@ -4870,7 +4870,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
     ],
 )
