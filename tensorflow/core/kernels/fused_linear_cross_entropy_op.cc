@@ -26,32 +26,52 @@ class FusedLinearCrossEntropyOp : public OpKernel {
   explicit FusedLinearCrossEntropyOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& x = context->input(0);
-    const Tensor& w = context->input(1);
-    const Tensor& labels = context->input(2);
+  void Compute(OpKernelContext* ctx) override {
+  const Tensor& features = ctx->input(0);
+  const Tensor& weights = ctx->input(1);
+  const Tensor& labels = ctx->input(2);
 
-    // Validate input dimensions
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsMatrix(x.shape()),
-        errors::InvalidArgument("x must be a 2D matrix, got shape ",
-                                x.shape().DebugString()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsMatrix(w.shape()),
-        errors::InvalidArgument("w must be a 2D matrix, got shape ",
-                                w.shape().DebugString()));
+  const int64_t batch_size = features.dim_size(0);
+  const int64_t hidden_dim = features.dim_size(1);
+  const int64_t num_classes = weights.dim_size(1);
 
-    Tensor* loss_tensor = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(0, TensorShape({x.dim_size(0)}), &loss_tensor));
+  Tensor* loss_output = nullptr;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({batch_size}), &loss_output));
 
-    // Execution logic for fused linear transform + cross entropy computation
+  auto features_flat = features.matrix<float>();
+  auto weights_flat = weights.matrix<float>();
+  auto labels_flat = labels.matrix<float>();
+  auto loss_flat = loss_output->flat<float>();
+
+  // Fused MatMul + Softmax Cross Entropy without saving intermediate logits tensor
+  for (int64_t i = 0; i < batch_size; ++i) {
+    float max_logit = -std::numeric_limits<float>::infinity();
+    std::vector<float> logits(num_classes, 0.0f);
+
+    for (int64_t j = 0; j < num_classes; ++j) {
+      float logit = 0.0f;
+      for (int64_t k = 0; k < hidden_dim; ++k) {
+        logit += features_flat(i, k) * weights_flat(k, j);
+      }
+      if (ctx->num_inputs() > 3) {
+        const Tensor& biases = ctx->input(3);
+        logit += biases.flat<float>()(j);
+      }
+      logits[j] = logit;
+      if (logit > max_logit) max_logit = logit;
+    }
+
+    float sum_exp = 0.0f;
+    for (int64_t j = 0; j < num_classes; ++j) {
+      sum_exp += std::exp(logits[j] - max_logit);
+    }
+
+    float log_sum_exp = max_logit + std::log(sum_exp);
+    float sample_loss = 0.0f;
+
+    for (int64_t j = 0; j < num_classes; ++j) {
+      sample_loss -= labels_flat(i, j) * (logits[j] - log_sum_exp);
+    }
+    loss_flat(i) = sample_loss;
   }
-};
-
-REGISTER_KERNEL_BUILDER(
-    Name("FusedLinearCrossEntropy").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    FusedLinearCrossEntropyOp<float>);
-
-}  // namespace tensorflow
+}
