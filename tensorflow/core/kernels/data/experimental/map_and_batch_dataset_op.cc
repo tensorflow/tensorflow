@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -525,9 +526,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ =
-            ctx->StartThread(kTFDataMapAndBatch,
-                             std::bind(&Iterator::RunnerThread, this, new_ctx));
+        runner_thread_.reset(Env::Default()->StartThread(
+            /*thread_options=*/{}, kTFDataMapAndBatch,
+            std::bind(&Iterator::RunnerThread, this, new_ctx)));
       }
     }
 
