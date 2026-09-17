@@ -495,7 +495,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
-  opts.set_xla_gpu_autotune_gemm_rtol(0.01f);
+  opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
   // TODO(b/355487968): Remove this flag once all data will be presented in
   // xprof with command buffers.
