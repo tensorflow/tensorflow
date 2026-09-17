@@ -628,3 +628,21 @@ func.func @main(%arg0: tensor<*xi32>)  -> () {
   %push = "tf.TensorListPushBack"(%tl, %elem) : (tensor<!tf_type.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf_type.variant<tensor<f32>>>
   func.return
 }
+
+// -----
+
+// Tests that the pass reports an error on a set item that is allowed to grow
+// the list, which a tf.TensorArray with dynamic_size=True emits. The buffer has
+// a static shape and cannot grow, so decomposing it would silently drop the
+// write.
+
+func.func @main() -> () {
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  %num = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %index = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %tl = "tf.TensorListReserve"(%elem_shape, %num) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<f32>>>
+  %elem = "tf._SomeOp"() : () -> tensor<f32>
+  // expected-error @+1 {{TensorLists that grow on an out-of-bounds write are not supported by XLA}}
+  %set = "tf.TensorListSetItem"(%tl, %index, %elem) {resize_if_index_out_of_bounds = true} : (tensor<!tf_type.variant<tensor<f32>>>, tensor<i32>, tensor<f32>) -> tensor<!tf_type.variant<tensor<f32>>>
+  func.return
+}
