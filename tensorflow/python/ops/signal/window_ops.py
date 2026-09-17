@@ -93,7 +93,11 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     beta = math_ops.cast(beta, dtype=dtype)
     beta_abs = math_ops.abs(beta)
     num = beta * shape
-    window = math_ops.exp(beta_abs * shape - beta_abs) * (
+    # `beta_abs` is factored out so that the subtraction is performed first.
+    # Evaluating `beta_abs * shape - beta_abs` instead loses precision to
+    # catastrophic cancellation when `beta_abs` is large and `shape` is close
+    # to one, which happens near the center of the window.
+    window = math_ops.exp(beta_abs * (shape - one)) * (
         special_math_ops.bessel_i0e(num) / special_math_ops.bessel_i0e(beta))
   return window
 
