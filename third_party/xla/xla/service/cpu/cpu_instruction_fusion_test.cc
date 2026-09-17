@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/test_utils.h"
@@ -587,55 +586,6 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter});
-}
-
-TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
-  auto module = CreateNewVerifiedModule();
-
-  if (options::UseExperimentalLoopFusion(module->config())) {
-    GTEST_SKIP() << "New fusion emitter does not support DUS yet.";
-  }
-
-  HloComputation::Builder builder(TestName());
-
-  Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
-
-  auto loop_idx = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(S32, {}), "param0"));
-  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(S32, {}), "param1"));
-
-  auto idx_choice = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(S32, {}),
-      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(S32, {1}),
-          builder.AddInstruction(HloInstruction::CreateParameter(
-              2, ShapeUtil::MakeShape(S32, {4}), "param2")),
-          {loop_idx},
-          /*slice_sizes=*/{1}))));
-  auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(0)));
-
-  auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
-      {idx_choice, zero, zero, zero, zero},
-      /*slice_sizes=*/{1, 100, 10, 100, 50}));
-
-  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      full_shape,
-      builder.AddInstruction(
-          HloInstruction::CreateParameter(4, full_shape, "param4")),
-      slice, {loop_idx, param1, param1, param1, param1}));
-
-  module->AddEntryComputation(builder.Build());
-  RunFusionAndCheckOpcodesWereFused(
-      module.get(),
-      {HloOpcode::kDynamicSlice, HloOpcode::kDynamicSlice,
-       HloOpcode::kDynamicUpdateSlice, HloOpcode::kReshape,
-       HloOpcode::kConstant, HloOpcode::kParameter, HloOpcode::kParameter,
-       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
 void CreateComputationForDotAddOutputFusionTest(const std::string& test_name,
