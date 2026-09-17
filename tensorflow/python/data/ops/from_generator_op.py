@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import flat_map_op
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -328,7 +329,13 @@ def _from_generator(generator, output_types, output_shapes, args,
   # into a flat_map here enables multiple repetitions and/or nested
   # versions of the returned dataset to be created, because it forces
   # the generation of a new ID for each version.
-  return id_dataset.flat_map(flat_map_fn, name=name)
+  # Trace this internal function even in debug mode, so the flat_map graph
+  # retains the generator's init/next/finalize function graphs and their Python
+  # callbacks. Eager execution would only retain the transient dataset's variant
+  # tensor, allowing those callbacks to be garbage collected during iteration.
+  # The user-provided generator still executes in Python.
+  return flat_map_op._FlatMapDataset(  # pylint: disable=protected-access
+      id_dataset, flat_map_fn, name=name, _debug_mode=False)
 
 
 class _GeneratorDataset(dataset_ops.DatasetSource):
