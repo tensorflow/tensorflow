@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -653,28 +654,27 @@ class TensorListSetItemOp : public XlaOpKernel {
     // A tf.TensorArray built with dynamic_size=True lowers to TensorListSetItem
     // with this attribute set, and the non-XLA kernel grows the list when the
     // index is past the end. XLA needs static shapes, so the buffer that
-    // TensorListReserve allocated cannot grow.
+    // TensorListReserve allocated cannot grow, and a write past the end is
+    // dropped in one of two ways depending on the shapes. When the element does
+    // not fit at all, as for a list reserved with size 0,
+    // ExecuteTensorListSetItem takes its early return and hands back the list
+    // unchanged with an OK status. When the element does fit but the index is
+    // past the end, the DynamicUpdateSlice it lowers to clamps its start
+    // indices rather than failing, so the element overwrites an earlier one.
+    // Either way the program returns a truncated result.
     //
-    // Without this check the write is silently dropped, in one of two ways
-    // depending on the shapes. When the element does not fit at all, as for a
-    // list reserved with size 0, ExecuteTensorListSetItem takes its early
-    // return, logs a warning and hands back the list unchanged with an OK
-    // status. When the element does fit but the index is past the end, the
-    // DynamicUpdateSlice it lowers to clamps its start indices rather than
-    // failing, so the element overwrites an earlier one. Either way the
-    // program returns a truncated result with no error at all.
-    //
-    // The older TensorArray lowering already rejects the same thing, see
-    // TensorArrayOp in tensor_array_ops.cc.
+    // This is only a warning rather than a compile error, because the attribute
+    // is set by every dynamic_size TensorArray, including the many that never
+    // actually write past the end and compile correctly today.
     bool resize_if_index_out_of_bounds;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("resize_if_index_out_of_bounds",
                                      &resize_if_index_out_of_bounds));
-    OP_REQUIRES(ctx, !resize_if_index_out_of_bounds,
-                errors::Unimplemented(
-                    "TensorLists that grow on an out-of-bounds write are not "
-                    "supported by XLA. This is typically a tf.TensorArray "
-                    "created with dynamic_size=True; give it a static size "
-                    "large enough to hold every write instead."));
+    if (resize_if_index_out_of_bounds) {
+      LOG(WARNING) << "TensorLists that grow on an out-of-bounds write are not "
+                      "supported by XLA. This is typically a tf.TensorArray "
+                      "created with dynamic_size=True; give it a static size "
+                      "large enough to hold every write instead.";
+    }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

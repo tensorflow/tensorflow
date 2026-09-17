@@ -302,14 +302,17 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       self.assertAllEqual(z.shape.as_list(), [None])
       self.assertAllEqual(z, [0.0, 0.0])
 
-  def testSetItemResizeIsRejected(self):
+  def testSetItemResizeWarnsAndTruncates(self):
     # Regression test for GitHub issue 127528. A TensorListSetItem that is
-    # allowed to grow the list cannot be compiled, because the buffer that
-    # TensorListReserve allocated has a static shape. It must be rejected at
-    # compile time rather than silently dropping the write, which the lowering
-    # does either by returning the list unchanged when the element does not
-    # fit, or by letting DynamicUpdateSlice clamp an out-of-range index so the
-    # element overwrites an earlier one.
+    # allowed to grow the list cannot grow it under XLA, because the buffer
+    # that TensorListReserve allocated has a static shape. The write is
+    # dropped, either by returning the list unchanged when the element does
+    # not fit, or by letting DynamicUpdateSlice clamp an out-of-range index so
+    # the element overwrites an earlier one.
+    #
+    # The lowering logs a warning rather than failing, because the attribute is
+    # set by every dynamic_size TensorArray including the many that never write
+    # past the end, so compilation still has to succeed here.
     with self.session(), self.test_scope():
       tensor_list = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=1
@@ -320,19 +323,15 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
           item=constant_op.constant(1.0),
           resize_if_index_out_of_bounds=True,
       )
-      # The classic lowering raises UnimplementedError from the kernel, and
-      # the MLIR bridge reports the same message through emitOpError, which
-      # surfaces as InvalidArgumentError. The message is what pins this to
-      # the rejection under test.
-      with self.assertRaisesRegex(
-          (errors.UnimplementedError, errors.InvalidArgumentError),
-          "TensorLists that grow on an out-of-bounds write",
-      ):
-        self.evaluate(set_item)
+      stacked = list_ops.tensor_list_stack(
+          set_item, element_dtype=dtypes.float32
+      )
+      self.assertAllEqual(self.evaluate(stacked), [1.0])
 
   def testSetItemWithoutResizeStillCompiles(self):
-    # The rejection above keys off the attribute rather than the index, so an
-    # ordinary fixed-size write must still compile and run.
+    # Counterpart to the test above: the warning is keyed off the attribute,
+    # so this pins that an ordinary fixed-size write compiles to the same
+    # result and that the attribute alone changes nothing but the logging.
     with self.session(), self.test_scope():
       tensor_list = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=1
