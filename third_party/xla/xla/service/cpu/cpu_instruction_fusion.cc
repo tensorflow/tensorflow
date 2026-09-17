@@ -444,22 +444,14 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // better job with pure data movement loops.
   auto is_minor_dim_concatenate = [](const HloInstruction* hlo) {
     // For vectors it's always beneficial to fuse concatenations.
-    if (hlo->shape().dimensions().size() <= 1) {
-      return false;
-    }
+    if (hlo->shape().dimensions().size() <= 1) return false;
 
-    // Minor dimension concatenations with sufficient contiguous bytes benefit
-    // from pure data movement (memcpy / SIMD loads and stores) when unfused.
-    // Fusing them leads to branches in the innermost loop. However, small
-    // concatenations (e.g. few rows or tiny total bytes) are dominated by
-    // kernel launch and thunk dispatch overhead, so we keep them fused.
+    // For small concatenated dimensions we don't loose any performance by
+    // fusing the concatenation as we don't have opportunities for vectorization
+    // anyway.
     int64_t concat_dim = hlo->concatenate_dimension();
-    int64_t concat_dim_bytes =
-        hlo->shape().dimensions(concat_dim) *
-        ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
-    int64_t total_bytes = ShapeUtil::ByteSizeOfElements(hlo->shape());
     return concat_dim == LayoutUtil::Minor(hlo->shape().layout(), 0) &&
-           concat_dim_bytes >= 64 && total_bytes >= 2048;
+           hlo->shape().dimensions(concat_dim) >= 128;
   };
 
   if ((producer->opcode() == HloOpcode::kConcatenate &&
