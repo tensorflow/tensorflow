@@ -19744,6 +19744,70 @@ ENTRY %Entry (k_base: bf16[4,384,128], o_base: bf16[4,384,128], update_slice: bf
       HloPosition{root_tuple, {2, 1}}, *alias_analysis));
 }
 
+// Test subclass of MsaAlgorithm that simulates an empty candidate list from
+// FindChunkCandidates.
+class EmptyChunkCandidatesMsaAlgorithm : public MsaAlgorithm {
+ public:
+  using MsaAlgorithm::FindBestChunkCandidates;
+  using MsaAlgorithm::MsaAlgorithm;
+
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset) const override {
+    return {};
+  }
+};
+
+// Tests that FindBestChunkCandidates handles empty chunk candidates safely
+// without dereferencing past-the-end iterators (preventing ASAN container
+// overflows).
+TEST_F(MemorySpaceAssignmentTest, FindBestChunkCandidatesEmptyChunkCandidates) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0});
+  ASSERT_OK(module->set_schedule(schedule));
+
+  AllocationSequence allocations;
+  Options options = DefaultMemorySpaceOptions();
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                       HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                         module->entry_computation()));
+
+  EmptyChunkCandidatesMsaAlgorithm algorithm(module.get(), &allocations,
+                                             options, *alias_analysis,
+                                             &alias_info_, *hlo_live_range);
+
+  AllocationRequest request;
+  request.end_time = 10;
+  AliasedOffset preferred_offset{/*offset=*/16};
+
+  GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval buffer_interval;
+  buffer_interval.buffer = nullptr;
+  buffer_interval.size = 16;
+  buffer_interval.start = 0;
+  buffer_interval.end = 10;
+  buffer_interval.need_allocation = true;
+
+  using SlicedBufferInterval =
+      GlobalDecreasingSizeBestFitHeap<HloValue>::SlicedBufferInterval;
+  auto sliced_interval =
+      SlicedBufferInterval::CreateMutableInterval(buffer_interval);
+
+  // Without the bounds check in FindBestChunkCandidates, an empty
+  // chunk_candidates vector results in absl::c_min_element dereferencing an
+  // end() iterator, triggering an AddressSanitizer container-overflow/crash.
+  std::vector<Chunk> result = algorithm.FindBestChunkCandidates(
+      request, &preferred_offset, &sliced_interval);
+  EXPECT_THAT(result, ::testing::IsEmpty());
+}
+
 }  // namespace
 
 }  // namespace memory_space_assignment

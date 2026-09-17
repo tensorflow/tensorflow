@@ -10865,6 +10865,9 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
           alternate_mem_interval->UpdateEndTime(use);
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
+          if (chunk_candidates.empty()) {
+            return false;
+          }
           int64_t max_chunk_end =
               absl::c_max_element(chunk_candidates, [](const Chunk& c1,
                                                        const Chunk& c2) {
@@ -10898,6 +10901,12 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
   alternate_mem_interval->UpdateEndTime(end_time);
   std::vector<Chunk> chunk_candidates =
       FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+  // Ensure that chunk candidates exist before querying min/max elements to
+  // prevent undefined behavior or segmentation faults when chunk_candidates is
+  // empty.
+  if (chunk_candidates.empty()) {
+    return {};
+  }
   int64_t candidates_start =
       absl::c_min_element(chunk_candidates, [](const Chunk& c1,
                                                const Chunk& c2) {
