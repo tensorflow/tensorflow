@@ -655,11 +655,14 @@ class TensorListSetItemOp : public XlaOpKernel {
     // index is past the end. XLA needs static shapes, so the buffer that
     // TensorListReserve allocated cannot grow.
     //
-    // Without this check the write is silently dropped:
-    // ExecuteTensorListSetItem lowers to a DynamicUpdateSlice, which clamps
-    // its start indices rather than failing, so the element lands back inside
-    // the existing buffer and the program returns a truncated result with no
-    // error at all.
+    // Without this check the write is silently dropped, in one of two ways
+    // depending on the shapes. When the element does not fit at all, as for a
+    // list reserved with size 0, ExecuteTensorListSetItem takes its early
+    // return, logs a warning and hands back the list unchanged with an OK
+    // status. When the element does fit but the index is past the end, the
+    // DynamicUpdateSlice it lowers to clamps its start indices rather than
+    // failing, so the element overwrites an earlier one. Either way the
+    // program returns a truncated result with no error at all.
     //
     // The older TensorArray lowering already rejects the same thing, see
     // TensorArrayOp in tensor_array_ops.cc.
