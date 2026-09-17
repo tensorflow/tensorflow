@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # Tests of TensorFlow NN kernels written using the Python API.
-
+load("//tensorflow/python/framework/kernels:build_defs.bzl", "tf_py_test")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
