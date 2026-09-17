@@ -308,16 +308,17 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
     # Regression test for GitHub issue 127528. A TensorListSetItem that is
     # allowed to grow the list cannot be compiled, because the buffer that
     # TensorListReserve allocated has a static shape. It must be rejected at
-    # compile time rather than silently dropping the write: the lowering ends
-    # in a DynamicUpdateSlice, which clamps its start indices instead of
-    # failing, so an out-of-bounds element lands back inside the buffer.
+    # compile time rather than silently dropping the write, which the lowering
+    # does either by returning the list unchanged when the element does not
+    # fit, or by letting DynamicUpdateSlice clamp an out-of-range index so the
+    # element overwrites an earlier one.
     @def_function.function(jit_compile=True)
     def grows():
-      l = list_ops.tensor_list_reserve(
+      tensor_list = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=1
       )
-      l = list_ops.tensor_list_set_item(
-          input_handle=l,
+      tensor_list = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
           index=0,
           item=constant_op.constant(1.0),
           resize_if_index_out_of_bounds=True,
@@ -325,7 +326,9 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       # Stack inside the compiled function so that no TensorList crosses the
       # XLA/TF boundary, which would raise a different error and stop this
       # test from covering the rejection above.
-      return list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      return list_ops.tensor_list_stack(
+          tensor_list, element_dtype=dtypes.float32
+      )
 
     with self.session():
       with self.assertRaisesRegex(
@@ -339,16 +342,18 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
     # ordinary fixed-size write must still compile and run.
     @def_function.function(jit_compile=True)
     def fixed():
-      l = list_ops.tensor_list_reserve(
+      tensor_list = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=1
       )
-      l = list_ops.tensor_list_set_item(
-          input_handle=l,
+      tensor_list = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
           index=0,
           item=constant_op.constant(1.0),
           resize_if_index_out_of_bounds=False,
       )
-      return list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      return list_ops.tensor_list_stack(
+          tensor_list, element_dtype=dtypes.float32
+      )
 
     with self.session():
       self.assertAllEqual(self.evaluate(fixed()), [1.0])
