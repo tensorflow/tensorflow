@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_proto.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
-PYBIND11_MODULE(_pywrap_debug_events_writer, m, pybind11::mod_gil_not_used()) {
+PYBIND11_MODULE(_pywrap_debug_events_writer, m) {
   namespace py = pybind11;
   using namespace tensorflow;         // NOLINT(build/namespaces)
   using namespace tensorflow::tfdbg;  // NOLINT(build/namespaces)

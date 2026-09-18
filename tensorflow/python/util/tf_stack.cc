@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
@@ -69,19 +70,130 @@ using StringSet = absl::flat_hash_set<std::string>;
 // Python wrapper for a SourceMap.
 class PyBindSourceMap {
  public:
-  PyBindSourceMap() : source_map_(std::make_shared<SourceMap>()) {}
+  struct State {
+    SourceMap source_map;
+#ifdef Py_GIL_DISABLED
+    mutable absl::Mutex mu;
+#endif  // Py_GIL_DISABLED
+  };
 
-  // Shares ownership with whoever captures traces in the scope of this map.
-  std::shared_ptr<SourceMap> source_map_;
+  PyBindSourceMap() : state_(std::make_shared<State>()) {}
+
+  void UpdateTo(const py::tuple& source_map) {
+    // Convert Python-owned data before acquiring the native mutex.
+    SourceMap updated;
+    for (const auto& item : source_map) {
+      const auto& tuple_item = py::cast<py::tuple>(item);
+
+      const auto& key = py::cast<py::tuple>(tuple_item[0]);
+      std::string&& k_filename = py::cast<std::string>(key[0]);
+      int k_lineno = py::cast<int>(key[1]);
+
+      const auto& value = py::cast<py::tuple>(tuple_item[1]);
+      std::string&& v_filename = py::cast<std::string>(value[0]);
+      int v_lineno = py::cast<int>(value[1]);
+      const auto& function_name_val = value[2];
+      std::string&& v_function_name =
+          function_name_val.is_none()
+              ? ""
+              : py::cast<std::string>(function_name_val);
+
+      updated.emplace(
+          SourceLoc{k_filename, k_lineno},
+          StackFrame({v_filename, v_lineno, v_function_name}));
+    }
+
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&state_->mu);
+#endif  // Py_GIL_DISABLED
+    state_->source_map = std::move(updated);
+  }
+
+  std::shared_ptr<State> GetState() const { return state_; }
+
+ private:
+  // Stack traces share this state so updates remain visible until the trace is
+  // materialized, matching the existing lazy stack-trace behavior.
+  std::shared_ptr<State> state_;
 };
 
 // Python wrapper for a FileSet.
 class PyBindFileSet {
  public:
-  PyBindFileSet() : file_set_(std::make_shared<StringSet>()) {}
+  struct State {
+    StringSet file_set;
+#ifdef Py_GIL_DISABLED
+    mutable absl::Mutex mu;
+#endif  // Py_GIL_DISABLED
+  };
 
-  // Shares ownership with whoever captures traces in the scope of this set.
-  std::shared_ptr<StringSet> file_set_;
+  PyBindFileSet() : state_(std::make_shared<State>()) {}
+
+  void UpdateTo(const py::set& file_set) {
+    // Convert Python-owned data before acquiring the native mutex.
+    StringSet updated;
+    for (const auto& item : file_set) {
+      updated.insert(py::cast<std::string>(item));
+    }
+
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&state_->mu);
+#endif  // Py_GIL_DISABLED
+    state_->file_set = std::move(updated);
+  }
+
+  std::shared_ptr<State> GetState() const { return state_; }
+
+ private:
+  // Stack traces share this state so updates remain visible until the trace is
+  // materialized, matching the existing lazy stack-trace behavior.
+  std::shared_ptr<State> state_;
+};
+
+class PyBindGraphDebugInfoBuilder {
+ public:
+  absl::Status AppendGraphDebugInfo(std::string fn_name,
+                                    py::bytes debug_info) {
+    // Convert Python-owned data before acquiring the native mutex.
+    std::string debug_info_str = debug_info;
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&mu_);
+#endif  // Py_GIL_DISABLED
+    return builder_.AppendGraphDebugInfoStr(fn_name, debug_info_str);
+  }
+
+  void AccumulateStackTrace(std::string function, std::string op,
+                            const AbstractStackTrace& trace) {
+    std::string key = absl::StrCat(op, "@", function);
+    auto frozen = std::make_shared<FrozenStackTrace>(trace.ToFrames());
+
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&mu_);
+#endif  // Py_GIL_DISABLED
+    builder_.AccumulateStackTrace(frozen, key);
+  }
+
+  py::bytes Build() const {
+    std::string serialized;
+#ifdef Py_GIL_DISABLED
+    {
+      absl::MutexLock lock(&mu_);
+      serialized = builder_.ToGraphDebugInfoStr();
+    }
+#else
+    serialized = builder_.ToGraphDebugInfoStr();
+#endif  // Py_GIL_DISABLED
+
+    // Construct the Python object after releasing the native mutex.
+    return py::bytes(serialized);
+  }
+
+ private:
+#ifdef Py_GIL_DISABLED
+  mutable absl::Mutex mu_;
+#endif  // Py_GIL_DISABLED
+
+  GraphDebugInfoBuilder builder_;
 };
 
 // Simple caching wrapper around a captured stack trace.
@@ -89,9 +201,10 @@ class PyBindFileSet {
 // When required, stacks are computed and cached as a `FrozenStackTrace`.
 class StackTraceWrapper : public AbstractStackTrace {
  public:
-  StackTraceWrapper(const std::shared_ptr<StackTrace>& captured,
-                    const std::shared_ptr<SourceMap>& source_map,
-                    const std::shared_ptr<StringSet>& filter, int stacklevel)
+  StackTraceWrapper(
+      const std::shared_ptr<StackTrace>& captured,
+      const std::shared_ptr<PyBindSourceMap::State>& source_map,
+      const std::shared_ptr<PyBindFileSet::State>& filter, int stacklevel)
       : captured_(captured),
         source_map_(source_map),
         filter_(filter),
@@ -109,8 +222,8 @@ class StackTraceWrapper : public AbstractStackTrace {
   StackTraceWrapper& operator=(StackTraceWrapper&& rhs) = default;
 
   static std::unique_ptr<StackTraceWrapper> ExtractStack(
-      const std::shared_ptr<SourceMap>& source_map,
-      const std::shared_ptr<StringSet>& filter, int stacklevel) {
+      const std::shared_ptr<PyBindSourceMap::State>& source_map,
+      const std::shared_ptr<PyBindFileSet::State>& filter, int stacklevel) {
     return std::make_unique<StackTraceWrapper>(StackTrace::Capture(-1),
                                                source_map, filter, stacklevel);
   }
@@ -121,18 +234,10 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
   std::vector<StackFrame> ToUncachedFrames() const override {
-    std::vector<StackFrame> frames = captured_->ToStackFrames(
-        *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
-        /*reverse_traversal=*/false, /*limit=*/-1);
-
-    // Drop last stack frames.
-    int newsize = frames.size() - stacklevel_;
-    if (newsize < 0) {
-      newsize = 0;
-    }
-    frames.resize(newsize);
-
-    return frames;
+    SourceMap source_map;
+    StringSet filter;
+    SnapshotTransforms(&source_map, &filter);
+    return ToUncachedFrames(source_map, filter);
   }
 
   std::vector<StackFrame> GetUserFrames(int limit) const override {
@@ -151,18 +256,56 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
  private:
+  void SnapshotTransforms(SourceMap* source_map, StringSet* filter) const {
+#ifdef Py_GIL_DISABLED
+    {
+      absl::MutexLock lock(&source_map_->mu);
+      *source_map = source_map_->source_map;
+    }
+    {
+      absl::MutexLock lock(&filter_->mu);
+      *filter = filter_->file_set;
+    }
+#else
+    *source_map = source_map_->source_map;
+    *filter = filter_->file_set;
+#endif  // Py_GIL_DISABLED
+  }
+
+  std::vector<StackFrame> ToUncachedFrames(
+      const SourceMap& source_map, const StringSet& filter) const {
+    std::vector<StackFrame> frames = captured_->ToStackFrames(
+        source_map, [&](const char* f) { return filter.contains(f); },
+        /*reverse_traversal=*/false, /*limit=*/-1);
+
+    // Drop last stack frames.
+    int newsize = frames.size() - stacklevel_;
+    if (newsize < 0) {
+      newsize = 0;
+    }
+    frames.resize(newsize);
+
+    return frames;
+  }
+
   void ComputeFrozen() const {
     tsl::mutex_lock lock(mu_);
     if (cache_ != nullptr) {
       return;
     }
 
-    std::vector<StackFrame> frames = ToUncachedFrames();
+    // Copy the transform state while holding its native mutexes, then release
+    // them before stack processing, which may access Python objects.
+    SourceMap source_map;
+    StringSet filter;
+    SnapshotTransforms(&source_map, &filter);
+
+    std::vector<StackFrame> frames = ToUncachedFrames(source_map, filter);
 
     std::vector<StackFrame> user_frames = captured_->ToStackFrames(
-        *source_map_,
+        source_map,
         [&](const char* file_name) {
-          return StackTraceFiltering(file_name) ||
+          return filter.contains(file_name) ||
                  IsInternalFrameForFilename(file_name);
         },
         /*reverse_traversal=*/true,
@@ -173,80 +316,37 @@ class StackTraceWrapper : public AbstractStackTrace {
     cache_ = std::make_unique<FrozenStackTrace>(frames, user_frames);
   }
 
-  bool StackTraceFiltering(const char* file_name) const {
-    return filter_->contains(file_name);
-  }
-
   mutable mutex mu_;
   mutable std::unique_ptr<FrozenStackTrace> cache_;
   std::shared_ptr<const StackTrace> captured_;
-  std::shared_ptr<SourceMap> source_map_;
-  std::shared_ptr<StringSet> filter_;
+  std::shared_ptr<PyBindSourceMap::State> source_map_;
+  std::shared_ptr<PyBindFileSet::State> filter_;
   int stacklevel_;
 };
 
 }  // namespace
 
-PYBIND11_MODULE(_tf_stack, m) {
+PYBIND11_MODULE(
+    _tf_stack, m, pybind11::mod_gil_not_used()) {
   pybind11::google::ImportStatusModule();
 
   py::class_<PyBindSourceMap>(m, "PyBindSourceMap")
       .def(py::init())
-      .def("update_to",
-           [](const PyBindSourceMap& self, const py::tuple& source_map) {
-             self.source_map_->clear();
-             for (const auto& item : source_map) {
-               const auto& tuple_item = py::cast<py::tuple>(item);
-
-               const auto& key = py::cast<py::tuple>(tuple_item[0]);
-               std::string&& k_filename = py::cast<std::string>(key[0]);
-               int k_lineno = py::cast<int>(key[1]);
-
-               const auto& value = py::cast<py::tuple>(tuple_item[1]);
-               std::string&& v_filename = py::cast<std::string>(value[0]);
-               int v_lineno = py::cast<int>(value[1]);
-               const auto& function_name_val = value[2];
-               std::string&& v_function_name =
-                   function_name_val.is_none()
-                       ? ""
-                       : py::cast<std::string>(function_name_val);
-
-               self.source_map_->emplace(
-                   SourceLoc{k_filename, k_lineno},
-                   StackFrame({v_filename, v_lineno, v_function_name}));
-             }
-           });
+      .def("update_to", &PyBindSourceMap::UpdateTo);
 
   py::class_<PyBindFileSet>(m, "PyBindFileSet")
       .def(py::init())
-      .def("update_to", [](const PyBindFileSet& self, const py::set& file_set) {
-        self.file_set_->clear();
-        for (const auto& item : file_set) {
-          self.file_set_->insert(py::cast<std::string>(item));
-        }
-      });
+      .def("update_to", &PyBindFileSet::UpdateTo);
 
-  py::class_<GraphDebugInfoBuilder>(m, "GraphDebugInfoBuilder")
+  py::class_<PyBindGraphDebugInfoBuilder>(m, "GraphDebugInfoBuilder")
       .def(py::init())
-      .def(
-          "AppendGraphDebugInfo",
-          [](GraphDebugInfoBuilder& self, std::string fn_name,
-             py::bytes debug_info_str) {
-            return self.AppendGraphDebugInfoStr(fn_name, debug_info_str);
-          },
-          py::arg("prefix"), py::arg("debug_info"))
-      .def(
-          "AccumulateStackTrace",
-          [](GraphDebugInfoBuilder& self, std::string function, std::string op,
-             const AbstractStackTrace& trace) {
-            std::string key = absl::StrCat(op, "@", function);
-            self.AccumulateStackTrace(
-                std::make_shared<FrozenStackTrace>(trace.ToFrames()), key);
-          },
-          py::arg("function"), py::arg("op"), py::arg("trace"))
-      .def("Build", [](GraphDebugInfoBuilder& self) -> py::bytes {
-        return py::bytes(self.ToGraphDebugInfoStr());
-      });
+      .def("AppendGraphDebugInfo",
+           &PyBindGraphDebugInfoBuilder::AppendGraphDebugInfo,
+           py::arg("prefix"), py::arg("debug_info"))
+      .def("AccumulateStackTrace",
+           &PyBindGraphDebugInfoBuilder::AccumulateStackTrace,
+           py::arg("function"), py::arg("op"), py::arg("trace"))
+      .def("Build", &PyBindGraphDebugInfoBuilder::Build);
 
   py::class_<StackFrame>(m, "StackFrame")
       .def_property_readonly(
@@ -356,8 +456,8 @@ PYBIND11_MODULE(_tf_stack, m) {
       "extract_stack",
       [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set,
          int stacklevel) -> std::shared_ptr<AbstractStackTrace> {
-        return StackTraceWrapper::ExtractStack(source_map.source_map_,
-                                               file_set.file_set_, stacklevel);
+        return StackTraceWrapper::ExtractStack(
+            source_map.GetState(), file_set.GetState(), stacklevel);
       },
       py::arg("source_map"), py::arg("file_set"), py::arg("stacklevel") = 1,
       py::return_value_policy::take_ownership);

@@ -25,6 +25,7 @@ int64_t test_counter_value(std::string name, std::string label) {
 
 }  // anonymous namespace
 
-PYBIND11_MODULE(_test_metrics_util, m) {
+PYBIND11_MODULE(
+    _test_metrics_util, m, pybind11::mod_gil_not_used()) {
   m.def("test_counter_value", &test_counter_value);
 };

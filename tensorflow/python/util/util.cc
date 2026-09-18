@@ -66,16 +66,30 @@ std::unordered_map<std::string, PyObject*>* RegisteredPyObjectMap() {
   return m;
 }
 
+mutex* RegisteredPyObjectMapMutex() {
+  static auto* mu = new mutex();
+  return mu;
+}
+
 PyObject* GetRegisteredPyObject(const std::string& name) {
-  const auto* m = RegisteredPyObjectMap();
-  auto it = m->find(name);
-  if (it == m->end()) {
+  PyObject* value = nullptr;
+  {
+    mutex_lock l(*RegisteredPyObjectMapMutex());
+    const auto* m = RegisteredPyObjectMap();
+    auto it = m->find(name);
+    if (it != m->end()) {
+      // Registered values retain a permanent strong reference in the map.
+      value = it->second;
+    }
+  }
+
+  if (value == nullptr) {
     PyErr_SetString(PyExc_TypeError, absl::StrCat("No object with name ", name,
                                                   " has been registered.")
                                          .c_str());
     return nullptr;
   }
-  return it->second;
+  return value;
 }
 
 PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
@@ -95,14 +109,22 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
   }
 
   auto* m = RegisteredPyObjectMap();
-  if (m->find(key) != m->end()) {
+
+  // Hold a strong reference before publishing the value in the registry.
+  Py_INCREF(value);
+
+  bool inserted = false;
+  {
+    mutex_lock l(*RegisteredPyObjectMapMutex());
+    inserted = m->emplace(key, value).second;
+  }
+
+  if (!inserted) {
+    Py_DECREF(value);
     PyErr_SetString(PyExc_TypeError,
                     absl::StrCat("Value already registered for ", key).c_str());
     return nullptr;
   }
-
-  Py_INCREF(value);
-  m->emplace(key, value);
 
   Py_RETURN_NONE;
 }
@@ -514,6 +536,18 @@ class DictValueIterator : public ValueIterator {
     Safe_PyObjectPtr result;
     Safe_PyObjectPtr key(PyIter_Next(iter_.get()));
     if (key) {
+#ifdef Py_GIL_DISABLED
+      // PyDict_GetItemRef returns a strong reference and is safe when another
+      // thread may mutate the dictionary concurrently.
+      PyObject* elem = nullptr;
+      int lookup_result = PyDict_GetItemRef(dict_, key.get(), &elem);
+      if (lookup_result == 1) {
+        result.reset(elem);
+      } else if (lookup_result == 0) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "Dictionary was modified during iteration over it");
+      }
+#else
       // PyDict_GetItem returns a borrowed reference.
       PyObject* elem = PyDict_GetItem(dict_, key.get());
       if (elem) {
@@ -523,6 +557,7 @@ class DictValueIterator : public ValueIterator {
         PyErr_SetString(PyExc_RuntimeError,
                         "Dictionary was modified during iteration over it");
       }
+#endif
     }
     return result;
   }
@@ -577,6 +612,20 @@ class SequenceValueIterator : public ValueIterator {
   Safe_PyObjectPtr next() override {
     Safe_PyObjectPtr result;
     if (seq_) {
+#ifdef Py_GIL_DISABLED
+      Py_ssize_t current_size = PySequence_Size(seq_.get());
+      if (current_size < 0) {
+        return result;
+      }
+      if (index_ < current_size) {
+        // PySequence_GetItem returns a strong reference.
+        PyObject* elem = PySequence_GetItem(seq_.get(), index_);
+        ++index_;
+        if (elem) {
+          result.reset(elem);
+        }
+      }
+#else
       Py_ssize_t current_size = PySequence_Fast_GET_SIZE(seq_.get());
       if (index_ < current_size) {
         // PySequence_Fast_GET_ITEM returns a borrowed reference.
@@ -587,6 +636,7 @@ class SequenceValueIterator : public ValueIterator {
           result.reset(elem);
         }
       }
+#endif
     }
 
     return result;
@@ -952,15 +1002,31 @@ bool AssertSameStructureHelper(
     }
 
     if (PyDict_Check(o1) && PyDict_Check(o2)) {
-      if (PyDict_Size(o1) != PyDict_Size(o2)) {
+      PyObject* dict1 = o1;
+      PyObject* dict2 = o2;
+
+#ifdef Py_GIL_DISABLED
+      // PyDict_Next exposes borrowed references and requires external
+      // synchronization if the dictionary can be modified concurrently.
+      // Iterate over private snapshots instead.
+      Safe_PyObjectPtr dict1_snapshot = make_safe(PyDict_Copy(o1));
+      Safe_PyObjectPtr dict2_snapshot = make_safe(PyDict_Copy(o2));
+      if (!dict1_snapshot || !dict2_snapshot) {
+        return false;
+      }
+      dict1 = dict1_snapshot.get();
+      dict2 = dict2_snapshot.get();
+#endif
+
+      if (PyDict_Size(dict1) != PyDict_Size(dict2)) {
         SetDifferentKeysError(o1, o2, error_msg, is_type_error);
         return true;
       }
 
       PyObject* key;
       Py_ssize_t pos = 0;
-      while (PyDict_Next(o1, &pos, &key, nullptr)) {
-        if (PyDict_GetItem(o2, key) == nullptr) {
+      while (PyDict_Next(dict1, &pos, &key, nullptr)) {
+        if (PyDict_GetItem(dict2, key) == nullptr) {
           SetDifferentKeysError(o1, o2, error_msg, is_type_error);
           return true;
         }
@@ -1198,14 +1264,36 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
   }
 
   Safe_PyObjectPtr seq = make_safe(PySequence_Fast(fields.get(), ""));
+  if (!seq) {
+    return nullptr;
+  }
+
+#ifdef Py_GIL_DISABLED
+  const Py_ssize_t s = PySequence_Size(seq.get());
+  if (s < 0) {
+    return nullptr;
+  }
+
+  for (Py_ssize_t i = 0; i < s; ++i) {
+    // PySequence_GetItem returns a strong reference.
+    Safe_PyObjectPtr elem = make_safe(PySequence_GetItem(seq.get(), i));
+    if (!elem) {
+      return nullptr;
+    }
+    if (!IsString(elem.get())) {
+      Py_RETURN_FALSE;
+    }
+  }
+#else
   const Py_ssize_t s = PySequence_Fast_GET_SIZE(seq.get());
   for (Py_ssize_t i = 0; i < s; ++i) {
-    // PySequence_Fast_GET_ITEM returns borrowed ref
+    // PySequence_Fast_GET_ITEM returns borrowed ref.
     PyObject* elem = PySequence_Fast_GET_ITEM(seq.get(), i);
     if (!IsString(elem)) {
       Py_RETURN_FALSE;
     }
   }
+#endif
 
   Py_RETURN_TRUE;
 }
