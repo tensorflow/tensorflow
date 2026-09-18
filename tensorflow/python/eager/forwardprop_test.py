@@ -408,6 +408,31 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(24., acc.jvp(x))
     self.assertAllClose(24. * 3., acc.jvp(y))
 
+  def testShapeMismatchRaisesError(self):
+    primals = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    tangents = constant_op.constant([0.1, 0.2, 0.3])
+    with self.assertRaisesRegex(
+        ValueError, r"primals and tangents must have the same shape, "
+        r"got \(2, 3\) vs \(3,\)"):
+      forwardprop.ForwardAccumulator(primals, tangents)
+
+    # Non-tensor inputs are converted before validation, so they report the
+    # same shape error instead of an AttributeError from `.shape`.
+    with self.assertRaisesRegex(
+        ValueError, r"primals and tangents must have the same shape, "
+        r"got \(2, 3\) vs \(3,\)"):
+      forwardprop.ForwardAccumulator(
+          np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+          np.array([0.1, 0.2, 0.3]))
+
+  def testNonTensorInputs(self):
+    # Python scalars/lists and NumPy inputs are converted rather than raising
+    # AttributeError while validating shapes or registering the watch.
+    forwardprop.ForwardAccumulator(1.0, 2.0)
+    forwardprop.ForwardAccumulator([1.0, 2.0], [0.1, 0.2])
+    forwardprop.ForwardAccumulator(np.array([1.0, 2.0]), np.array([0.1, 0.2]))
+    forwardprop.ForwardAccumulator(np.float64(1.0), np.float64(2.0))
+
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testReenter(self):
     x = constant_op.constant(-2.)
