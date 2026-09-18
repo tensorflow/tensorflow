@@ -5801,13 +5801,6 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
                                  broadcast_dimensions, direction, order);
 }
 
-XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
-              absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type) {
-  return Compare(lhs, rhs, broadcast_dimensions, direction,
-                 Comparison::DefaultOrdering(compare_type));
-}
-
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
   return Compare(lhs, rhs, {}, direction);
 }
