@@ -1051,6 +1051,7 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_ops",
         ":external_cpu_backend_context",
         ":framework",
         ":interpreter_test_util",

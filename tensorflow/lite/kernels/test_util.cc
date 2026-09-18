@@ -499,7 +499,9 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     tflite::Subgraph& primary_subgraph = interpreter_->primary_subgraph();
     auto memory_planner = new SimplePlanner(
         &primary_subgraph.context_,
-        std::unique_ptr<GraphInfo>(primary_subgraph.CreateGraphInfo()));
+        std::unique_ptr<GraphInfo>(primary_subgraph.CreateGraphInfo()),
+        primary_subgraph.ShouldPreserveAllTensors(),
+        primary_subgraph.ShouldEnableSimplePlannerReclamation());
     primary_subgraph.memory_planner_.reset(memory_planner);
     memory_planner->PlanAllocations();
   }

@@ -1215,6 +1215,51 @@ bool Subgraph::OpMightHaveSideEffect(
   return false;
 }
 
+bool Subgraph::ShouldEnableSimplePlannerReclamation() const {
+  if (ShouldPreserveAllTensors()) {
+    return false;
+  }
+  // Secondary subgraphs (e.g. for control flow or body subgraphs) do not use
+  // intermediate tensor reclamation to prevent cross-subgraph lifetime issues.
+  if (subgraph_index_ > 0) {
+    return false;
+  }
+  // Models configured for dynamic large-tensor optimization or dynamic tensors
+  // decline reclamation and fall back cleanly to eager SimplePlanner.
+  if (options_ && options_->GetDynamicAllocationForLargeTensors() > 0) {
+    return false;
+  }
+  if (next_execution_plan_index_to_prepare_ > 0 && has_dynamic_tensors_) {
+    return false;
+  }
+  // Delegated subgraphs decline reclamation to protect delegate tensor
+  // lifecycles.
+  if (!delegates_applied_.empty()) {
+    return false;
+  }
+  // Control-flow ops or delegated nodes fall back cleanly to eager
+  // SimplePlanner.
+  for (int node_index : execution_plan_) {
+    if (node_index >= 0 &&
+        node_index < static_cast<int>(nodes_and_registration_.size())) {
+      const auto& node_and_reg = nodes_and_registration_[node_index];
+      if (node_and_reg.first.delegate != nullptr) {
+        return false;
+      }
+      int builtin_code = node_and_reg.second.builtin_code;
+      if (builtin_code == kTfLiteBuiltinIf ||
+          builtin_code == kTfLiteBuiltinWhile ||
+          builtin_code == kTfLiteBuiltinCallOnce ||
+          builtin_code == kTfLiteBuiltinStablehloWhile ||
+          builtin_code == kTfLiteBuiltinStablehloCase ||
+          builtin_code == kTfLiteBuiltinStablehloComposite) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
                                          const int* const dims_data,
                                          const int rank) {
@@ -1600,13 +1645,17 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 
   if (!memory_planner_) {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
-    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
+    memory_planner_.reset(new SimplePlanner(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        ShouldEnableSimplePlannerReclamation()));
 #else
     memory_planner_ = std::make_unique<ArenaPlanner>(
         &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
         kDefaultTensorAlignment, subgraph_index_, allocator_);
 #endif
     memory_planner_->PlanAllocations();
+  } else {
+    memory_planner_->SetReclamationMode(ShouldEnableSimplePlannerReclamation());
   }
 
   // Execute arena allocations.
@@ -1684,6 +1733,20 @@ TfLiteStatus Subgraph::InvokeImpl() {
       tflite::OnTfLiteSubgraphInvoke(name_.c_str(), subgraph_index_);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
 
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->BeginInvocation());
+  }
+  bool invocation_completed_successfully = false;
+  struct InvocationCleanup {
+    Subgraph* subgraph;
+    bool* success_flag;
+    ~InvocationCleanup() {
+      if (subgraph && subgraph->memory_planner_) {
+        subgraph->memory_planner_->EndInvocation(*success_flag);
+      }
+    }
+  } invocation_cleanup{this, &invocation_completed_successfully};
+
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
   // be reused, unless either ResizeInputTensor() or AllocateTensors() has been
@@ -1699,6 +1762,10 @@ TfLiteStatus Subgraph::InvokeImpl() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
+
+    if (memory_planner_) {
+      TF_LITE_ENSURE_STATUS(memory_planner_->BeforeNode(execution_plan_index));
+    }
 
     const char* op_name = nullptr;
     if (profiler_) op_name = GetTFLiteOpName(registration);
@@ -1803,10 +1870,15 @@ TfLiteStatus Subgraph::InvokeImpl() {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteOpInvokeEnd(trace_op);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
+
+    if (memory_planner_) {
+      TF_LITE_ENSURE_STATUS(memory_planner_->AfterNode(execution_plan_index));
+    }
   }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::OnTfLiteSubgraphInvokeEnd(trace_subgraph);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
+  invocation_completed_successfully = (status == kTfLiteOk);
   return status;
 }
 
