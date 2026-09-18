@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
 namespace tensorflow {
-
+// Test comment!!
 const int SUPPORTED_DEVICES_NUM = 2;
 static const char* const SUPPORTED_DEVICES[SUPPORTED_DEVICES_NUM] = {
     DEVICE_GPU_XLA_JIT, DEVICE_CPU_XLA_JIT};
