@@ -166,6 +166,7 @@ class ExponentialOpTest(test.TestCase):
       expm = self.evaluate([expm1, expm2])
       self.assertAllEqual(expm[0], expm[1])
 
+  @test_util.run_v2_only
   def testSecondDerivativeNestedForwardAccumulator(self):
     # Regression test for Issue #127224.
     def target(t):
