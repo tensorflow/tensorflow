@@ -117,7 +117,9 @@ pytype_strict_library(
 py_test(
     name = "run_dwyu_test",
     srcs = ["run_dwyu_test.py"],
+    data = ["//:.bant-macros"],  # copybara:comment_replace data = ["//third_party/xla:.bant-macros"],
     deps = [
+        ":check_dwyu",
         ":run_dwyu",
     ],
 )
