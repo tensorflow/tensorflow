@@ -187,15 +187,30 @@ class ExponentialOpTest(test.TestCase):
       x = constant_op.constant(0.7, dtype=dtype)
       expected = 2.0 * np.exp(0.7) * np.cos(1.0)
 
+      if dtype == ops.dtypes.float64:
+        atol_1st = 1e-12
+        rtol_1st = 1e-12
+        atol_2nd = 1e-12
+        rtol_2nd = 1e-12
+        atol_hess = 1e-12
+        rtol_hess = 1e-12
+      else:
+        atol_1st = 1e-3
+        rtol_1st = 1e-3
+        atol_2nd = 0.25
+        rtol_2nd = 1e-1
+        atol_hess = 1e-4
+        rtol_hess = 1e-4
+
       # 1st order forward-mode JVP
       actual_1st = forward_ad(target)(x)
       self.assertAllClose(
-          expected, self.evaluate(actual_1st), rtol=1e-3, atol=1e-3)
+          expected, self.evaluate(actual_1st), rtol=rtol_1st, atol=atol_1st)
 
       # 2nd order nested forward-mode JVP
       actual_2nd = forward_ad(forward_ad(target))(x)
       self.assertAllClose(
-          expected, self.evaluate(actual_2nd), rtol=1e-1, atol=0.25)
+          expected, self.evaluate(actual_2nd), rtol=rtol_2nd, atol=atol_2nd)
 
       # 2nd order reverse-mode Hessian
       with backprop.GradientTape() as t2:
@@ -205,7 +220,8 @@ class ExponentialOpTest(test.TestCase):
           y = target(x)
         g1 = t1.gradient(y, x)
       g2 = t2.gradient(g1, x)
-      self.assertAllClose(expected, self.evaluate(g2), rtol=1e-4, atol=1e-4)
+      self.assertAllClose(
+          expected, self.evaluate(g2), rtol=rtol_hess, atol=atol_hess)
 
 
 class MatrixExponentialBenchmark(test.Benchmark):

@@ -143,7 +143,7 @@ def _matrix_exp_pade3(matrix):
   matrix_2 = math_ops.matmul(matrix, matrix)
   tmp = c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = c[2] * matrix_2 + c[0] * ident
+  matrix_v = c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
@@ -159,7 +159,7 @@ def _matrix_exp_pade5(matrix):
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   tmp = c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = c[4] * matrix_4 + c[2] * matrix_2 + c[0] * ident
+  matrix_v = c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
@@ -176,7 +176,7 @@ def _matrix_exp_pade7(matrix):
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   tmp = c[7] * matrix_6 + c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 + c[0] * ident
+  matrix_v = c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
@@ -201,7 +201,7 @@ def _matrix_exp_pade9(matrix):
   matrix_u = math_ops.matmul(matrix, tmp)
   matrix_v = (
       c[8] * matrix_8 + c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 +
-      c[0] * ident)
+      ident)
   return matrix_u, matrix_v
 
 
@@ -228,7 +228,7 @@ def _matrix_exp_pade13(matrix):
   tmp_v = c[12] * matrix_6 + c[10] * matrix_4 + c[8] * matrix_2
   matrix_v = (
       math_ops.matmul(matrix_6, tmp_v) + c[6] * matrix_6 + c[4] * matrix_4 +
-      c[2] * matrix_2 + c[0] * ident)
+      c[2] * matrix_2 + ident)
   return matrix_u, matrix_v
 
 
