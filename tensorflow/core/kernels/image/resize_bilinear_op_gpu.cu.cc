@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <type_traits>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -296,7 +297,7 @@ __global__ void LegacyResizeBilinearKernel(
     const int x = idx % out_width;
     idx /= out_width;
     const int y = idx % out_height;
-    const int b = idx / out_height;
+    const int64_t b = idx / out_height;
 
     const float in_y = y * height_scale;
     const int top_y_index = floorf(in_y);
