@@ -1009,8 +1009,23 @@ struct acosh : base<T, Eigen::internal::scalar_acosh_op<T>> {};
 template <typename T>
 struct atanh : base<T, Eigen::internal::scalar_atanh_op<T>> {};
 
+// lgamma(x) ~= -log(x) for tiny positive x.  Eigen/libm can mis-handle
+// positive subnormals, so scale them into the normal range first using
+// lgamma(x) = lgamma(x * 2^24) + 24*log(2) before delegating.
 template <typename T>
-struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
+struct lgamma_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
+    using Eigen::numext::lgamma;
+    if (TF_PREDICT_FALSE(std::is_floating_point<T>::value && a > T(0) &&
+                         a < std::numeric_limits<T>::min())) {
+      return lgamma(a * T(16777216.0)) + T(16.635532333438687);
+    }
+    return lgamma(a);
+  }
+};
+
+template <typename T>
+struct lgamma : base<T, lgamma_op<T>> {};
 
 template <typename T>
 struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
