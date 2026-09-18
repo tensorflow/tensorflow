@@ -371,10 +371,14 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
       # factorization failed. Inputs that already contain NaN also produce NaN
       # here, and the fallback returns NaN for them as well, so there is no
       # need to inspect the inputs.
-      # `is_nan` is not defined for complex types, so reduce to the real
-      # magnitude first in that case.
-      failed_values = math_ops.abs(solution) if solution.dtype.is_complex else solution
-      factorization_failed = math_ops.reduce_any(math_ops.is_nan(failed_values))
+      # `is_nan` is not defined for complex types, so check the real and
+      # imaginary parts separately in that case.
+      if solution.dtype.is_complex:
+        factorization_failed = math_ops.reduce_any(math_ops.logical_or(
+            math_ops.is_nan(math_ops.real(solution)),
+            math_ops.is_nan(math_ops.imag(solution))))
+      else:
+        factorization_failed = math_ops.reduce_any(math_ops.is_nan(solution))
       return cond.cond(
           factorization_failed,
           lambda: gen_linalg_ops.matrix_solve_ls(

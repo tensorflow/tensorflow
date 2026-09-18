@@ -170,7 +170,6 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       self.assertEqual(tf_ans.shape, (2, 2))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
-  @test_util.run_in_graph_and_eager_modes
   def testSingularMatrix(self):
     # The composite implementation is based on a Cholesky factorization of the
     # Gramian, which does not exist when the matrix is singular. It used to
@@ -189,6 +188,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
           rtol=1e-4,
           atol=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
     matrix = np.array([1., 0., 0., 0., 1., 0., 0., 0., 1.] * 3).reshape(3, 3, 3)  # pylint: disable=too-many-function-args
