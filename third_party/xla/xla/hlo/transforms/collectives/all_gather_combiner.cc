@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -117,7 +117,7 @@ absl::Status CombineAllGathers(
   combined->set_metadata(MergeMetadata(to_combine));
   combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
   if (post_combine != nullptr) {
-    RETURN_IF_ERROR(post_combine(to_combine, combined));
+    ABSL_RETURN_IF_ERROR(post_combine(to_combine, combined));
   }
 
   // We have to propagate the sharding manually because Domain instructions are
@@ -137,7 +137,7 @@ absl::Status CombineAllGathers(
                                        replacement->shape()),
           replacement));
     }
-    RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], replacement));
+    ABSL_RETURN_IF_ERROR(computation.ReplaceInstruction(to_combine[i], replacement));
   }
 
   return absl::OkStatus();
@@ -235,7 +235,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
               << computation->ToString();
       continue;
     }
-    ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+    ABSL_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
       return combine_key(instruction, *domain_map, combine_by_dim_,
@@ -246,7 +246,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
       return CombineAllGathers(to_combine, combine_by_dim_, post_combine);
     };
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool computation_changed,
         CombineInstructionsByKey<GroupKey>(computation, key_fn, combine_fn,
                                            combine_threshold_in_bytes_,
@@ -260,7 +260,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
 absl::StatusOr<bool> AllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(bool changed,
+  ABSL_ASSIGN_OR_RETURN(bool changed,
                    RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }

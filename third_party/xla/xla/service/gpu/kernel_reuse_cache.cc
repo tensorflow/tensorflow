@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/random/random.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -46,7 +46,8 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/sorted_range.h"
 
 namespace xla::gpu {
 namespace {
@@ -64,16 +65,16 @@ absl::Status SetFileContent(absl::string_view path, absl::string_view content) {
         absl::StrCat("Unable to create tempfile name for :", path));
   }
   bool has_atomic_move;
-  RETURN_IF_ERROR(env->HasAtomicMove(tmppath, &has_atomic_move));
+  ABSL_RETURN_IF_ERROR(env->HasAtomicMove(tmppath, &has_atomic_move));
   if (!has_atomic_move) {
     return absl::InternalError(
         absl::StrCat("Atomic move is not supported for :", path));
   }
 
   std::unique_ptr<tsl::WritableFile> file;
-  RETURN_IF_ERROR(env->NewWritableFile(tmppath, &file));
-  RETURN_IF_ERROR(file->Append(content));
-  RETURN_IF_ERROR(file->Close());
+  ABSL_RETURN_IF_ERROR(env->NewWritableFile(tmppath, &file));
+  ABSL_RETURN_IF_ERROR(file->Append(content));
+  ABSL_RETURN_IF_ERROR(file->Close());
 
   return env->RenameFile(tmppath, std::string(path));
 }
@@ -88,15 +89,17 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
     return absl::OkStatus();
   }
   absl::MutexLock lock(m_);
-  for (const auto& [name, entry] : proto.entries()) {
+  for (const auto& [name, entry] : tsl::KeySortedRange(proto.entries())) {
     std::optional<se::ClusterDim> cluster_dim;
     if (entry.has_cluster_dim()) {
       cluster_dim =
           se::ClusterDim{entry.cluster_dim().x(), entry.cluster_dim().y(),
                          entry.cluster_dim().z()};
     }
-    std::vector<uint8_t> binary(entry.binary().data(),
-                                entry.binary().data() + entry.binary().size());
+    std::shared_ptr<const std::vector<uint8_t>> binary =
+        std::make_shared<const std::vector<uint8_t>>(
+            entry.binary().data(),
+            entry.binary().data() + entry.binary().size());
     TF_RET_CHECK(
         cache_
             .insert(
@@ -116,7 +119,7 @@ CompilationCacheProto KernelReuseCache::Export() const {
   absl::MutexLock lock(m_);
   CompilationCacheProto proto;
   proto.set_compatibility_version(kCacheCompatibilityVersion);
-  for (const auto& [fingerprint, future] : cache_) {
+  for (const auto& [fingerprint, future] : tsl::KeySortedRange(cache_)) {
     const absl::StatusOr<Entry>& cache_entry = future.Await();
     if (!cache_entry.ok()) {
       // If a generator failed, the Future will hold an error.
@@ -147,9 +150,11 @@ CompilationCacheProto KernelReuseCache::Export() const {
       *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
     }
     proto_entry.set_shmem_bytes(cache_entry->shmem_bytes);
-    proto_entry.set_binary(absl::string_view(
-        reinterpret_cast<const char*>(cache_entry->binary.data()),
-        cache_entry->binary.size()));
+    if (cache_entry->binary != nullptr) {
+      proto_entry.set_binary(absl::string_view(
+          reinterpret_cast<const char*>(cache_entry->binary->data()),
+          cache_entry->binary->size()));
+    }
   }
   return proto;
 }
@@ -158,7 +163,7 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
                                    const CompilationCacheProto& current_cache) {
   CompilationCacheProto disk_cache;
   if (do_append) {
-    RETURN_IF_ERROR(tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path),
+    ABSL_RETURN_IF_ERROR(tsl::ReadBinaryProto(tsl::Env::Default(), std::string(path),
                                          &disk_cache));
     if (disk_cache.compatibility_version() != kCacheCompatibilityVersion) {
       LOG(WARNING) << "Provided CompilationCacheProto contains no longer "
@@ -168,12 +173,13 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
   }
 
   absl::flat_hash_set<std::string> kernel_fingerprints;
-  for (const auto& [_, entry] : disk_cache.entries()) {
+  for (const auto& [_, entry] : tsl::KeySortedRange(disk_cache.entries())) {
     kernel_fingerprints.insert(entry.fingerprint());
   }
 
   int stored_kernel_count = 0;
-  for (const auto& [name, entry] : current_cache.entries()) {
+  for (const auto& [name, entry] :
+       tsl::KeySortedRange(current_cache.entries())) {
     if (kernel_fingerprints.contains(entry.fingerprint())) {
       continue;
     }
@@ -183,7 +189,7 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
 
   disk_cache.set_compatibility_version(kCacheCompatibilityVersion);
   if (stored_kernel_count) {
-    RETURN_IF_ERROR(gpu::SetFileContent(path, disk_cache.SerializeAsString()));
+    ABSL_RETURN_IF_ERROR(gpu::SetFileContent(path, disk_cache.SerializeAsString()));
     VLOG(2) << "Stored " << stored_kernel_count
             << " kernels in the cache file.";
   }

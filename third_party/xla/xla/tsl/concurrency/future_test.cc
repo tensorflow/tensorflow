@@ -25,10 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -69,6 +69,28 @@ TEST(FutureTest, StatusConstructedFuture) {
   Future<> future = Future<>(absl::OkStatus());
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Await(), absl::OkStatus());
+}
+
+TEST(FutureTest, FutureBoolCopyAndMoveDoesNotConvertViaOperatorBool) {
+  auto [promise, future] = MakePromise<bool>();
+  EXPECT_FALSE(future.IsReady());
+
+  // Copying a non-const Future<bool> lvalue must copy the future (sharing the
+  // pending async value), not invoke operator bool() via Future(U&&).
+  Future<bool> copied_from_non_const = future;
+  EXPECT_FALSE(copied_from_non_const.IsReady());
+
+  // Moving a const Future<bool> rvalue (e.g. when moving a lambda that captured
+  // Future<bool> by value) must copy the future, not invoke operator bool().
+  const Future<bool> const_future = future;
+  Future<bool> moved_from_const = std::move(const_future);
+  EXPECT_FALSE(moved_from_const.IsReady());
+
+  promise.Set(false);
+  EXPECT_TRUE(copied_from_non_const.IsReady());
+  EXPECT_THAT(copied_from_non_const.Await(), IsOkAndHolds(false));
+  EXPECT_TRUE(moved_from_const.IsReady());
+  EXPECT_THAT(moved_from_const.Await(), IsOkAndHolds(false));
 }
 
 TEST(FutureTest, ValueConstructedFuture) {
@@ -190,7 +212,7 @@ TEST(FutureTest, ValueImplicitConversion) {
 
 TEST(FutureTest, StatusMacro) {
   auto f = [&](absl::StatusOr<int> value) -> tsl::Future<int> {
-    ASSIGN_OR_RETURN(const int x, value);
+    ABSL_ASSIGN_OR_RETURN(const int x, value);
     return x;
   };
 
@@ -1753,6 +1775,36 @@ TEST(FutureTest, DetachStatefulOnThreadPoolExecutor) {
 
   EXPECT_EQ(JoinFutures(mapped).Await(), absl::OkStatus());
   EXPECT_EQ(counter, 100);
+}
+
+TEST(PromiseOnceTest, SetMultipleTimes) {
+  auto [promise, future] = MakePromiseOnce();
+
+  EXPECT_TRUE(promise.Set(absl::OkStatus()));
+  EXPECT_FALSE(promise.Set());
+  EXPECT_FALSE(promise.Set(absl::InternalError("error")));
+
+  EXPECT_OK(future.Await());
+  EXPECT_OK(promise.future().Await());
+}
+
+TEST(PromiseOnceTest, MoveOnly) {
+  auto [promise, future] = MakePromiseOnce<std::unique_ptr<int32_t>>();
+
+  EXPECT_TRUE(promise.Set(std::make_unique<int32_t>(42)));
+  EXPECT_FALSE(promise.Set(std::make_unique<int32_t>(43)));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(Pointee(42)));
+}
+
+TEST(PromiseOnceTest, Copyable) {
+  auto [promise, future] = MakePromiseOnce<int32_t>();
+
+  EXPECT_TRUE(promise.Set(42));
+  EXPECT_FALSE(promise.Set(43));
+
+  EXPECT_THAT(future.Await(), IsOkAndHolds(42));
+  EXPECT_THAT(promise.future().Await(), IsOkAndHolds(42));
 }
 
 //===----------------------------------------------------------------------===//

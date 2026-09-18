@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -124,7 +124,7 @@ absl::StatusOr<ThunkProto> HostSendThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
   HostSendThunkProto& host_send_thunk_proto = *proto.mutable_host_send_thunk();
   *host_send_thunk_proto.mutable_shape() = shape_.ToProto();
-  ASSIGN_OR_RETURN(*host_send_thunk_proto.mutable_buffer(), buffer_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*host_send_thunk_proto.mutable_buffer(), buffer_.ToProto());
   host_send_thunk_proto.set_channel_id(channel_id_);
   host_send_thunk_proto.mutable_frontend_attrs()->insert(
       frontend_attrs_.begin(), frontend_attrs_.end());
@@ -145,8 +145,8 @@ absl::StatusOr<std::unique_ptr<HostSendThunk>> HostSendThunk::FromProto(
     ThunkInfo thunk_info, const HostSendThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
     HostSendRecvAsyncEventsMap& async_events_map) {
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice buffer,
       BufferAllocation::Slice::FromProto(proto.buffer(), allocations));
   std::optional<GlobalDeviceId> device_constraint;
@@ -168,7 +168,7 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Send buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
 
-  ASSIGN_OR_RETURN(bool skip,
+  ABSL_ASSIGN_OR_RETURN(bool skip,
                    ShouldSkip("sending buffer", params, device_constraint_));
   if (skip) {
     return absl::OkStatus();
@@ -180,7 +180,7 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Use device_to_host stream if it is available.
   se::Stream* stream = params.device_to_host_stream;
   if (stream) {
-    RETURN_IF_ERROR(stream->WaitFor(params.stream));
+    ABSL_RETURN_IF_ERROR(stream->WaitFor(params.stream));
   } else {
     stream = params.stream;
   }
@@ -190,7 +190,7 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Send buffer to a handler registered with the executable.
   if (auto* send = params.send_device_memory_function) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         AsyncValueRef<std::unique_ptr<se::Event>> done,
         (*send)(channel_id_, stream, shape_, src, frontend_attrs_));
     return events_->Emplace(stream->parent(), channel_id_, std::move(done));
@@ -263,7 +263,7 @@ absl::StatusOr<std::unique_ptr<HostSendDoneThunk>> HostSendDoneThunk::FromProto(
 absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for send completion: channel_id=" << channel_id_;
 
-  ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion", params,
+  ABSL_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion", params,
                                          device_constraint_));
   if (skip) {
     return absl::OkStatus();
@@ -273,7 +273,7 @@ absl::Status HostSendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
       [&] { return TraceMeEncode("SendDone", {{"channel_id", channel_id_}}); });
 
   se::StreamExecutor* executor = params.stream->parent();
-  ASSIGN_OR_RETURN(auto done_event, events_->Extract(executor, channel_id_));
+  ABSL_ASSIGN_OR_RETURN(auto done_event, events_->Extract(executor, channel_id_));
 
   // Wait until send handler will record an event on the stream.
   BlockUntilReady(done_event.GetAsyncValue());
@@ -318,7 +318,7 @@ absl::StatusOr<ThunkProto> HostRecvThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
   HostRecvThunkProto& host_recv_thunk_proto = *proto.mutable_host_recv_thunk();
   *host_recv_thunk_proto.mutable_shape() = shape_.ToProto();
-  ASSIGN_OR_RETURN(*host_recv_thunk_proto.mutable_buffer(), buffer_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(*host_recv_thunk_proto.mutable_buffer(), buffer_.ToProto());
   host_recv_thunk_proto.set_channel_id(channel_id_);
   host_recv_thunk_proto.mutable_frontend_attrs()->insert(
       frontend_attrs_.begin(), frontend_attrs_.end());
@@ -339,8 +339,8 @@ absl::StatusOr<std::unique_ptr<HostRecvThunk>> HostRecvThunk::FromProto(
     ThunkInfo thunk_info, const HostRecvThunkProto& proto,
     absl::Span<const BufferAllocation> allocations,
     HostSendRecvAsyncEventsMap& async_events_map) {
-  ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(
       BufferAllocation::Slice buffer,
       BufferAllocation::Slice::FromProto(proto.buffer(), allocations));
   std::optional<GlobalDeviceId> device_constraint;
@@ -362,7 +362,7 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Recv buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
 
-  ASSIGN_OR_RETURN(bool skip,
+  ABSL_ASSIGN_OR_RETURN(bool skip,
                    ShouldSkip("receiving buffer", params, device_constraint_));
   if (skip) {
     return absl::OkStatus();
@@ -374,7 +374,7 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Use host_to_device stream if it is available.
   se::Stream* stream = params.host_to_device_stream;
   if (stream) {
-    RETURN_IF_ERROR(stream->WaitFor(params.stream));
+    ABSL_RETURN_IF_ERROR(stream->WaitFor(params.stream));
   } else {
     stream = params.stream;
   }
@@ -384,7 +384,7 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = params.recv_device_memory_function) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         AsyncValueRef<std::unique_ptr<se::Event>> done,
         (*recv)(channel_id_, stream, shape_, &dst, frontend_attrs_));
     return events_->Emplace(stream->parent(), channel_id_, std::move(done));
@@ -457,7 +457,7 @@ absl::StatusOr<std::unique_ptr<HostRecvDoneThunk>> HostRecvDoneThunk::FromProto(
 absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for recv completion: channel_id=" << channel_id_;
 
-  ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion", params,
+  ABSL_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion", params,
                                          device_constraint_));
   if (skip) {
     return absl::OkStatus();
@@ -467,7 +467,7 @@ absl::Status HostRecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
       [&] { return TraceMeEncode("RecvDone", {{"channel_id", channel_id_}}); });
 
   se::StreamExecutor* executor = params.stream->parent();
-  ASSIGN_OR_RETURN(auto done_event, events_->Extract(executor, channel_id_));
+  ABSL_ASSIGN_OR_RETURN(auto done_event, events_->Extract(executor, channel_id_));
 
   // Wait until send handler will record an event on the stream.
   BlockUntilReady(done_event.GetAsyncValue());

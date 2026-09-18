@@ -46,14 +46,14 @@ TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloString, /*replica_count=*/2));
 
   const HloInstruction* ags = FindInstruction(module.get(), "agf32-start");
   EXPECT_THAT(ags->has_backend_config(), IsFalse());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          ags->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       ags->backend_config<GpuBackendConfig>());
   const auto& collective_backend_config =
       gpu_config.collective_backend_config();
   EXPECT_THAT(collective_backend_config.is_sync(), IsFalse());
@@ -71,8 +71,8 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseOpQueue) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_TRUE(add->has_backend_config());
@@ -93,8 +93,8 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_FALSE(add->has_backend_config());
@@ -128,22 +128,22 @@ TEST_F(BackendConfigsTest, ParseAllReduceIsAsync) {
       ROOT done = (u32[], u32[], u32[]) tuple(done1, done2, done3)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
   auto start1 =
       m->entry_computation()->root_instruction()->operand(0)->operand(0);
   auto start2 =
       m->entry_computation()->root_instruction()->operand(1)->operand(0);
   auto start3 =
       m->entry_computation()->root_instruction()->operand(2)->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
-                          start1->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       start1->backend_config<GpuBackendConfig>());
   EXPECT_FALSE(backend_config.collective_backend_config().is_sync());
-  TF_ASSERT_OK_AND_ASSIGN(backend_config,
-                          start2->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(backend_config,
+                       start2->backend_config<GpuBackendConfig>());
   EXPECT_TRUE(backend_config.collective_backend_config().is_sync());
-  TF_ASSERT_OK_AND_ASSIGN(backend_config,
-                          start3->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(backend_config,
+                       start3->backend_config<GpuBackendConfig>());
   EXPECT_FALSE(backend_config.collective_backend_config().is_sync());
 }
 

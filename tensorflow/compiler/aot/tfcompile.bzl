@@ -70,6 +70,8 @@ def _tfcompile_model_library_rule_impl(ctx):
     ]
 
     additional_xla_flags = ctx.attr.xla_flags
+    if "msan" in ctx.features:
+        additional_xla_flags += " --xla_backend_extra_options=xla_cpu_enable_msan=true"
 
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
@@ -80,7 +82,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_enable_fast_min_max=true " +
                       "--xla_cpu_experimental_ynn_fusion_type= " +
                       additional_xla_flags + " " +
-                      "$${XLA_FLAGS:-}' "),
+                      "$${XLA_FLAGS:-} "),
         "CUDA_VISIBLE_DEVICES": "",
     }
 
@@ -375,7 +377,9 @@ def _tf_library(
     sed_replace = (
         "-e \"s|{{TFCOMPILE_HEADER}}|$(location " + header_file + ")|g\" " +
         "-e \"s|{{TFCOMPILE_CPP_CLASS}}|" + cpp_class + "|g\" " +
-        "-e \"s|{{TFCOMPILE_NAME}}|" + no_ns_name + "|g\" "
+        "-e \"s|{{TFCOMPILE_NAME}}|" + no_ns_name + "|g\" " +
+        "-e \"s!bazel-out/[^/]*/bin/!!g\" " +
+        "-e \"s!bazel-out/[^/]*/genfiles/!!g\" "
     )
 
     if gen_test:

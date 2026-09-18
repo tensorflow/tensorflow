@@ -20,14 +20,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -62,10 +63,10 @@ void ClearSideEffects(HloInstruction* instr) {
 absl::Status RecursivelyClearComputeTypeFrontendAttribute(
     HloComputation* computation) {
   for (HloInstruction* instruction : computation->instructions()) {
-    RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
+    ABSL_RETURN_IF_ERROR(ClearComputeTypeFrontendAttribute(instruction));
     for (HloComputation* called_computation :
          instruction->called_computations()) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           RecursivelyClearComputeTypeFrontendAttribute(called_computation));
     }
   }
@@ -85,7 +86,7 @@ FindAndWrapOffloadedComputations(
   // only materialize it on TC. This simplifies the dependency chain.
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->IsConstant() && should_offload(instr)) {
-      RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+      ABSL_RETURN_IF_ERROR(clear_backend_config_device_type(instr));
     }
   }
 
@@ -132,8 +133,8 @@ FindAndWrapOffloadedComputations(
         }
         offloaded_call_instr = absl::down_cast<HloCallInstruction*>(call_instr);
         CHECK_NE(offloaded_call_instr, nullptr);
-        RETURN_IF_ERROR(clear_backend_config_device_type(offloaded_call_instr));
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(clear_backend_config_device_type(offloaded_call_instr));
+        ABSL_RETURN_IF_ERROR(
             ClearComputeTypeFrontendAttribute(offloaded_call_instr));
         ClearSideEffects(instr);
         offloaded_instr = instr;
@@ -209,13 +210,13 @@ FindAndWrapOffloadedComputations(
       if (instr->IsDead() && (instr->IsCustomCall("Sharding") ||
                               (instr->HasControlDependencies() &&
                                !instr->HasSuccessorControlDependencies()))) {
-        RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
-        RETURN_IF_ERROR(computation.RemoveInstruction(instr));
+        ABSL_RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
+        ABSL_RETURN_IF_ERROR(computation.RemoveInstruction(instr));
       }
     }
 
     // DCE any offloaded instructions that have no remaining un-wrapped uses.
-    RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
+    ABSL_RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
 
     VLOG(6) << "After offloading computation after DCE:";
     XLA_VLOG_LINES(6, computation.parent()->ToString());

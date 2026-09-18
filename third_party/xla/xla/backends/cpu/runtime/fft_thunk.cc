@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "ducc/google/fft.h"
 #include "Eigen/ThreadPool"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/buffer_use.h"
@@ -168,9 +168,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> FftThunk::Execute(
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(input_shape_.layout()));
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape_.layout()));
 
-  ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
                    params.buffer_allocations->GetDeviceAddress(input_buffer_));
-  ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
                    params.buffer_allocations->GetDeviceAddress(output_buffer_));
 
   const int fft_rank = fft_length_.size();

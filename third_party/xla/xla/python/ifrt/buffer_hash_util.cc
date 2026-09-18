@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {

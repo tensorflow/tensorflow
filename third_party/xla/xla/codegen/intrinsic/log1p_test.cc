@@ -76,6 +76,14 @@ std::vector<T> GetTestValues() {
           std::numeric_limits<float>::quiet_NaN()};
 }
 
+std::vector<double> GetF64TestValues() {
+  std::vector<double> test_values = GetTestValues<double>();
+  test_values.insert(
+      test_values.end(),
+      {-0.4141892, -0.35, -0.29289321881345248, 0.41421356237309505});
+  return test_values;
+}
+
 TEST(Log1pTest, F32) {
   Type type = Type::S(F32);
   JitRunner runner = CreateJitRunnerWithLog1p(type);
@@ -97,7 +105,7 @@ TEST(Log1pTest, F64) {
   JitRunner runner = CreateJitRunnerWithLog1p(type);
   auto fn = runner.GetScalarFn<double(double)>(Log1p::Name(type));
 
-  for (double x_val : GetTestValues<double>()) {
+  for (double x_val : GetF64TestValues()) {
     double expected = std::log1p(x_val);
     double result = fn(x_val);
     if (std::isnan(expected)) {

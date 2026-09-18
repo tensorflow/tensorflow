@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 

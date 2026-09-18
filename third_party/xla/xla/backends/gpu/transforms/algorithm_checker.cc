@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/algorithm_util.h"
@@ -55,7 +55,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
       const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
-      RETURN_IF_ERROR(computation->Accept(this));
+      ABSL_RETURN_IF_ERROR(computation->Accept(this));
     }
     return absl::OkStatus();
   }
@@ -101,7 +101,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
 absl::StatusOr<bool> AlgorithmChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)
+  ABSL_RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)
                       .RunOnModule(module, execution_threads));
   // No change was made.
   return false;

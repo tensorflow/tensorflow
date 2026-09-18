@@ -39,8 +39,7 @@ ENTRY Conv {
     dim_labels=bf01_io01->bf01
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* entry_computation = module->entry_computation();
 

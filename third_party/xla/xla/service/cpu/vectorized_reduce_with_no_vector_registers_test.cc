@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -89,20 +88,19 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(text));
   cpu::CpuCompiler cpu_compiler;
 
   // Check that the GetTargetVectorRegisterByteSize is itself working.
-  TF_ASSERT_OK_AND_ASSIGN(
-      unsigned vector_register_byte_size_for_x86_64,
-      GetTargetVectorRegisterByteSize(kTargetTripleForHost));
+  ASSERT_OK_AND_ASSIGN(unsigned vector_register_byte_size_for_x86_64,
+                       GetTargetVectorRegisterByteSize(kTargetTripleForHost));
   ASSERT_EQ(vector_register_byte_size_for_x86_64, 16);
 
   std::string triple = "i686-none-android";
 
-  TF_ASSERT_OK_AND_ASSIGN(unsigned vector_register_byte_size,
-                          GetTargetVectorRegisterByteSize(triple));
+  ASSERT_OK_AND_ASSIGN(unsigned vector_register_byte_size,
+                       GetTargetVectorRegisterByteSize(triple));
 
   // This test is supposed to check whether the XLA CPU vectorized reduction
   // codegen works correctly for architectures that do not have vector
@@ -117,7 +115,7 @@ ENTRY main {
       /*entry_point_name=*/"main",
       cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_compilation_result,
       cpu_compiler.CompileAheadOfTime(std::move(hlo_module),
                                       aot_compilation_options));

@@ -100,6 +100,20 @@ def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
   ];
 }
 
+def DropVectorUnitDimsPass : Pass<"xtile-cpu-drop-vector-unit-dims"> {
+  let summary = "Drop unit dimensions from vector operations.";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def UnrollVectorsPass : Pass<"xtile-cpu-unroll-vectors"> {
+  let summary = "Unroll multi-dimensional vectors to 1D vectors.";
+  let dependentDialects = [
+    "::mlir::affine::AffineDialect",
+    "::mlir::arith::ArithDialect",
+    "::mlir::vector::VectorDialect",
+  ];
+}
+
 
 def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"> {
   let summary = "Unpacks sub-byte vector writes.";
@@ -138,3 +152,22 @@ def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
     "::mlir::LLVM::LLVMDialect",
   ];
 }
+
+def HoistAllocaPass : Pass<"xtile-cpu-hoist-alloca", "mlir::func::FuncOp"> {
+  let summary = "Hoist memref.alloca ops to the entry block of the function.";
+  let dependentDialects = [
+    "::mlir::memref::MemRefDialect"
+  ];
+}
+
+def VectorizeXTilePass : Pass<"xtile-cpu-vectorize-xtile", "mlir::ModuleOp"> {
+  let summary = "Vectorize arith and math ops on tensors";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::vector::VectorDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::XlaDialect",
+  ];
+}
+

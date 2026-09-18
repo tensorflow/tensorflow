@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -183,7 +183,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
   std::vector<std::string> children_path;
-  RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetChildren(logdir, &children_path));
   if (children_path.empty()) {
     return absl::NotFoundError(
         absl::StrCat("Could not find file under: ", logdir));
@@ -193,7 +193,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     if (absl::StrContains(child_path, kXPlanePb)) {
       std::string xspace_path = ProfilerJoinPath(logdir, child_path);
       tensorflow::profiler::XSpace xspace;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           ReadBinaryProto(tsl::Env::Default(), xspace_path, &xspace));
       xspaces.push_back(xspace);
     }

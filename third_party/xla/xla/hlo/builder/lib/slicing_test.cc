@@ -34,7 +34,7 @@ namespace xla {
 namespace {
 
 using SlicingTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 xla::Array2D<float> BValsRight() {
   return {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}};

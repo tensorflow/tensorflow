@@ -206,6 +206,7 @@ cc_library(
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
+        "//waymo/ml/deploy:__subpackages__",
     ],
     deps = [
         ":chunk_proto_cc",

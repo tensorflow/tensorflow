@@ -36,9 +36,9 @@ def workspace():
     # https://github.com/bazelbuild/bazel-skylib/releases
     tf_http_archive(
         name = "bazel_skylib",
-        sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+        sha256 = "3b5b49006181f5f8ff626ef8ddceaa95e9bb8ad294f7b5d7b11ea9f7ddaf8c59",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.9.0/bazel-skylib-1.9.0.tar.gz",
         ),
     )
 
@@ -67,14 +67,23 @@ def workspace():
         ),
     )
 
+    tf_http_archive(
+        name = "rules_cc",
+        sha256 = "69e05df29f0010ba248ef8dafc1f084c8fd2f5c553da634422d8167f5c4b277b",
+        strip_prefix = "rules_cc-0.2.20",
+        urls = tf_mirror_urls(
+            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.20/rules_cc-0.2.20.tar.gz",
+        ),
+    )
+
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "0b42f693a60c6050d87db1e0a0eaeb84ab3f54191fce094d86334faedc807da0",
-        strip_prefix = "rules_ml_toolchain-398d613aea7a4c294da49b79a6d6f3f8732bd84c",
+        sha256 = "3b05687842427041c65d1bc2f4aeda3a3079557120f5be8c34690087a88c5de5",
+        strip_prefix = "rules_ml_toolchain-2eddbc595cc0bbe650c2640204f66b14f015f1a8",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/398d613aea7a4c294da49b79a6d6f3f8732bd84c.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/2eddbc595cc0bbe650c2640204f66b14f015f1a8.tar.gz",
         ),
     )
 

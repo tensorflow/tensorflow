@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -108,7 +108,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
     if (!pack || !dynamic_cast<const PackableKernelArgs*>(packed)) {
       return launch(*packed);
     }
-    ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
+    ABSL_ASSIGN_OR_RETURN(auto repacked, pack(*this, *packed));
     return launch(*repacked);
   }
 
@@ -121,7 +121,7 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
           "memory arguments array");
     }
 
-    ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    ABSL_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
     return launch(*packed);
   }
 

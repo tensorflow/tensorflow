@@ -207,6 +207,8 @@ def Vifrt_ControlV1 : Vifrt_TypeDef<"VifrtControlV1", "control_v1", "0.1.0", "cu
 
 def Vifrt_TokenV1 : Vifrt_TypeDef<"VifrtTokenV1", "token_v1", "0.3.0", "current">;
 
+def Vifrt_StringV1 : Vifrt_TypeDef<"VifrtStringV1", "string_v1", "0.5.0", "current">;
+
 // Equivalent of `mlir::FunctionType`, but with stronger type checking.
 def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "current"> {
   let parameters = (ins

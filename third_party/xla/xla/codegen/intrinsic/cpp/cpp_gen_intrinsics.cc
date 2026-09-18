@@ -67,7 +67,9 @@ llvm::Function* GetCppGenFunction(llvm::Module* module,
 
   if (!func->isDeclaration()) {
     func->setLinkage(llvm::Function::InternalLinkage);
-    func->addFnAttr(llvm::Attribute::AlwaysInline);
+    if (!func->hasFnAttribute(llvm::Attribute::NoInline)) {
+      func->addFnAttr(llvm::Attribute::AlwaysInline);
+    }
   }
   return func;
 }
@@ -145,7 +147,9 @@ void CppGenIntrinsicLibrary::LinkIntoModule(llvm::Module& dst_module) const {
     llvm::Function* linked_func = dst_module.getFunction(func);
     if (linked_func && !linked_func->isDeclaration()) {
       linked_func->setLinkage(llvm::Function::InternalLinkage);
-      linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
+      if (!linked_func->hasFnAttribute(llvm::Attribute::NoInline)) {
+        linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
+      }
     }
   }
 }

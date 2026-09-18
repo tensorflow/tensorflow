@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/status_macros.h"
@@ -52,7 +52,7 @@ absl::StatusOr<bool> ConcatForwarding(HloInstruction* concat) {
   if (changed) {
     auto new_concat = parent->AddInstruction(HloInstruction::CreateConcatenate(
         concat->shape(), new_operands, concat->concatenate_dimension()));
-    RETURN_IF_ERROR(parent->ReplaceInstruction(concat, new_concat));
+    ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(concat, new_concat));
   }
   return changed;
 }
@@ -87,7 +87,7 @@ absl::StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
     if (size_so_far == slice->slice_starts(0) &&
         operand->shape().dimensions(0) == slice_size) {
       // Found an operand that can be forwarded.
-      RETURN_IF_ERROR(slice->ReplaceAllUsesWith(operand));
+      ABSL_RETURN_IF_ERROR(slice->ReplaceAllUsesWith(operand));
       return true;
     }
     size_so_far += operand->shape().dimensions(concat_dim);
@@ -118,7 +118,7 @@ absl::StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
     return false;
   }
 
-  RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(broadcast->mutable_operand(0)));
+  ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(broadcast->mutable_operand(0)));
 
   return true;
 }
@@ -136,7 +136,7 @@ absl::StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
   if (!Shape::Equal()(reshape->shape(), reshape_2->operand(0)->shape())) {
     return false;
   }
-  RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(reshape_2->mutable_operand(0)));
+  ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(reshape_2->mutable_operand(0)));
 
   return true;
 }
@@ -148,7 +148,7 @@ absl::StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
   }
   auto operand = convert->mutable_operand(0);
   if (Shape::Equal()(convert->shape(), operand->shape())) {
-    RETURN_IF_ERROR(convert->ReplaceAllUsesWith(operand));
+    ABSL_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(operand));
     return true;
   }
   return false;
@@ -161,7 +161,7 @@ absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
   }
   auto operand = reshape->mutable_operand(0);
   if (Shape::Equal()(reshape->shape(), operand->shape())) {
-    RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(operand));
+    ABSL_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(operand));
     return true;
   }
   return false;
@@ -178,39 +178,39 @@ absl::StatusOr<bool> DynamicDimensionSimplifier::RunImpl(
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, ConcatForwarding(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, ConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, SliceConcatForwarding(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, SliceConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, ReshapeBroadcastForwarding(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, ReshapeBroadcastForwarding(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, ReshapeReshapeForwarding(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, ReshapeReshapeForwarding(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, IdentityConvertRemoving(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, IdentityConvertRemoving(inst));
       changed |= local_changed;
     }
   }
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
-      ASSIGN_OR_RETURN(bool local_changed, IdentityReshapeRemoving(inst));
+      ABSL_ASSIGN_OR_RETURN(bool local_changed, IdentityReshapeRemoving(inst));
       changed |= local_changed;
     }
   }

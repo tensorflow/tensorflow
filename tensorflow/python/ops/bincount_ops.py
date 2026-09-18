@@ -14,10 +14,13 @@
 # ==============================================================================
 """bincount ops."""
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -161,6 +164,29 @@ def bincount(arr,
     if axis not in [0, -1]:
       raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
                        " -1 are currently supported.")
+
+    if minlength is not None and maxlength is not None:
+      # `maxlength` is applied after `minlength` below, so a `maxlength`
+      # smaller than `minlength` silently wins and the documented "length at
+      # least minlength" guarantee is broken. The two bounds cannot both be
+      # satisfied, so reject them instead. Values that are not known
+      # statically are left to the bounds below, since they cannot be
+      # compared here.
+      min_value = tensor_util.constant_value(minlength)
+      max_value = tensor_util.constant_value(maxlength)
+      if (
+          min_value is not None
+          and max_value is not None
+          and np.ndim(min_value) == 0
+          and np.ndim(max_value) == 0
+          and max_value < min_value
+      ):
+        # Non-scalar bounds are skipped here; they are rejected by the op
+        # itself.
+        raise ValueError(
+            "Argument `maxlength` must be at least `minlength`, received "
+            f"minlength={min_value} and maxlength={max_value}."
+        )
 
     array_is_nonempty = array_ops.size(arr) > 0
     output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (

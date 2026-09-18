@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -58,7 +59,7 @@ StandaloneTaskIterator::StandaloneTaskIterator(
     : dataset_(std::move(dataset)),
       iterator_(std::move(iterator)),
       metrics_collector_(std::make_unique<IteratorMetricsCollector>(
-          "DEVICE_CPU", *Env::Default())) {}
+          DEVICE_CPU, *Env::Default())) {}
 
 StandaloneTaskIterator::~StandaloneTaskIterator() = default;
 

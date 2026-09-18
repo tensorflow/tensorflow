@@ -36,6 +36,4 @@ gpu_device_info {
   }
 }
 platform_name: "ROCM"
-dnn_version_info {
-}
 device_description_str: "GFX1250"

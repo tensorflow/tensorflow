@@ -21,11 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/sharding_param.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -65,7 +65,7 @@ void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<T> dims) {
 void PopulateDevices(llvm::ArrayRef<int> permutation,
                      llvm::ArrayRef<int> axis_sizes,
                      llvm::ArrayRef<int> cum_sizes,
-                     llvm::SmallVectorImpl<int>& out_devices, int base = 0) {
+                     absl::InlinedVector<int, 4>& out_devices, int base = 0) {
   const int expanding_dim = permutation.back();
   const int expanding_dim_size = axis_sizes[expanding_dim];
   const int expanding_cum_dim_size = cum_sizes[expanding_dim];
@@ -164,8 +164,8 @@ mlir::LogicalResult ShardingParam::MinorToMajor::verify(
 }
 
 void ShardingParam::MinorToMajor::ToDeviceList(
-    llvm::SmallVectorImpl<int>& out_devices) const {
-  llvm::SmallVector<int, 4> cum_sizes;
+    absl::InlinedVector<int, 4>& out_devices) const {
+  absl::InlinedVector<int, 4> cum_sizes;
   int cum_size = 1;
   cum_sizes.reserve(axis_sizes.size());
   for (auto size : axis_sizes) {
@@ -229,7 +229,7 @@ void ShardingParam::PrintV2(mlir::AsmPrinter& ods_printer,
 }
 
 absl::Status ShardingParam::verify() const {
-  RETURN_IF_ERROR(minor_to_major().verify());
+  ABSL_RETURN_IF_ERROR(minor_to_major().verify());
   const int axis_size = minor_to_major().axis_sizes.size();
   absl::flat_hash_set<int> unreduced_set;
   for (const int unreduced : unreduced_axes()) {

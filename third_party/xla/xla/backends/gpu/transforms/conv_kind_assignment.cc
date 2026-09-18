@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/conv_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -101,9 +102,9 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
     return absl::OkStatus();
   };
 
-  RETURN_IF_ERROR(valid_shape(conv->shape()));
-  RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
+  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
   return absl::OkStatus();
 }
 
@@ -501,7 +502,33 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
 absl::StatusOr<HloInstruction*> AssignConvKind(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  ABSL_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+
+  PrimitiveType element_type = conv->shape().element_type();
+  // cuDNN graph API does not support f64 convolutions.
+  if (element_type == F64) {
+    return nullptr;
+  }
+  // cuDNN graph API does not support disabling TF32 for f32 convolutions.
+  if (element_type == F32) {
+    bool is_highest_precision = !absl::c_all_of(
+        conv->precision_config().operand_precision(),
+        [](int precision) { return precision <= PrecisionConfig::HIGH; });
+    if (is_highest_precision) {
+      return nullptr;
+    }
+  }
+
+  // cuDNN graph API does not have engine execution plans for INT8 convolutions
+  // on pre-Ampere GPUs.
+  if ((primitive_util::Is8BitIntegralType(element_type) ||
+       primitive_util::Is8BitIntegralType(
+           conv->operand(0)->shape().element_type())) &&
+      cc.cuda_compute_capability() != nullptr &&
+      !cc.cuda_compute_capability()->IsAtLeastAmpere()) {
+    return nullptr;
+  }
+
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     conv = CreateGpuConv(CONVOLUTION_KIND_DGRAD, conv, conv->mutable_operand(0),
                          *m);
@@ -518,6 +545,8 @@ absl::StatusOr<HloInstruction*> AssignConvKind(
       conv = CreateGpuConv(CONVOLUTION_KIND_FPROP, conv,
                            conv->mutable_operand(0), conv->mutable_operand(1));
     }
+  } else {
+    return nullptr;
   }
   return conv;
 }
@@ -527,15 +556,17 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
                                       const se::GpuComputeCapability& cc,
                                       const se::dnn::VersionInfo& dnn_version) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
-  ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * conv_with_kind,
                    AssignConvKind(conv, cc, dnn_version));
-  if (conv == nullptr) {
+  if (conv_with_kind == nullptr || conv_with_kind == conv ||
+      Cast<HloConvolutionInstruction>(conv_with_kind)->convolution_kind() ==
+          CONVOLUTION_KIND_UNSET) {
     return false;
   }
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << conv_with_kind->ToString();
-  RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
+  ABSL_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(conv, conv_with_kind));
   return true;
 }
 
@@ -555,7 +586,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, cc, dnn_version));
     changed |= result;
   }
   return changed;
@@ -570,7 +601,7 @@ absl::StatusOr<bool> ConvKindAssignment::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool result,
         RunOnComputation(computation, compute_capability_, dnn_version_));
     changed |= result;

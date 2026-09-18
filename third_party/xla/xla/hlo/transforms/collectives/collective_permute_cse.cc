@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -68,7 +68,7 @@ static absl::Status RemoveControlDependencies(
     }
   }
   for (HloInstruction* pred : preds_to_remove) {
-    RETURN_IF_ERROR(pred->RemoveControlDependencyTo(large));
+    ABSL_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(large));
   }
   return absl::OkStatus();
 }
@@ -152,7 +152,7 @@ absl::StatusOr<bool> CollectivePermuteCSE::RunImpl(
             reachability = HloReachabilityMap::Build(computation);
           }
           CHECK(reachability != nullptr);
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               RemoveControlDependencies(small, large, reachability.get()));
 
           HloInstruction* replacement = large;
@@ -184,10 +184,10 @@ absl::StatusOr<bool> CollectivePermuteCSE::RunImpl(
           // small was before large, slice(large) will be computed where large
           // is, replacing the outputs that used small. We might affect memory
           // size if large is delayed. Replacement handles dependencies.
-          RETURN_IF_ERROR(small->ReplaceAllUsesWith(replacement));
+          ABSL_RETURN_IF_ERROR(small->ReplaceAllUsesWith(replacement));
           reachability->Replace(small, replacement);
           if (small->user_count() == 0) {
-            RETURN_IF_ERROR(computation->RemoveInstruction(small));
+            ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(small));
           }
           if (small == a) {
             permutes[i] = nullptr;

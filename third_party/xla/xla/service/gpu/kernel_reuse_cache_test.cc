@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -22,9 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -47,8 +48,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
   EXPECT_FALSE(future.IsReady());
   promise.Set(KernelReuseCache::Entry{kernel_name});
 
-  TF_ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result,
-                          future.Await());
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
   EXPECT_THAT(result, testing::NotNull());
   EXPECT_EQ(result->kernel_name, kernel_name);
   EXPECT_FALSE(cache.IsEmpty());
@@ -69,7 +69,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
                 compatibility_version: 3
               )pb"));
 
-  TF_EXPECT_OK(cache.Load(proto));
+  EXPECT_OK(cache.Load(proto));
   EXPECT_FALSE(cache.IsEmpty());
 
   {
@@ -77,8 +77,7 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
       return absl::UnimplementedError("Should be cached");
     });
     EXPECT_TRUE(was_cached);
-    TF_ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result,
-                            future.Await());
+    ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
     EXPECT_THAT(result, testing::NotNull());
     EXPECT_EQ(result->kernel_name, kernel_name);
   }
@@ -91,28 +90,34 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {5, 6}};
+        KernelReuseCache::Entry entry;
+        entry.kernel_name = kernel_name;
+        entry.binary = std::make_shared<const std::vector<uint8_t>>(
+            std::vector<uint8_t>{5, 6});
+        return entry;
       });
       return cache.Export();
     }("k1");
-    TF_EXPECT_OK(
+    EXPECT_OK(
         UpdateDiskKernelCache(cache_file_path, /*do_append=*/false, proto));
   }
   {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {7, 8}};
+        KernelReuseCache::Entry entry;
+        entry.kernel_name = kernel_name;
+        entry.binary = std::make_shared<const std::vector<uint8_t>>(
+            std::vector<uint8_t>{7, 8});
+        return entry;
       });
       return cache.Export();
     }("k2");
-    TF_EXPECT_OK(
+    EXPECT_OK(
         UpdateDiskKernelCache(cache_file_path, /*do_append=*/true, proto));
   }
   std::string serialized;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), cache_file_path, &serialized));
   CompilationCacheProto proto;
   EXPECT_TRUE(proto.ParseFromString(serialized));

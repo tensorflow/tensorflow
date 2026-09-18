@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for inplace_ops."""
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -22,7 +23,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.platform import test as test_lib
-
 
 BASIC_TYPES = [
     dtypes.float32,
@@ -46,8 +46,9 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         x = inplace_ops.inplace_update(x, [3], array_ops.ones([1, 3], dtype))
         y[3, :] = 1
         self.assertAllClose(x, y)
-        x = inplace_ops.inplace_update(x, [-1],
-                                       array_ops.ones([1, 3], dtype) * 2)
+        x = inplace_ops.inplace_update(
+            x, [-1], array_ops.ones([1, 3], dtype) * 2
+        )
         y[-1, :] = 2
         self.assertAllClose(x, y)
         x = inplace_ops.inplace_update(x, 5, array_ops.ones([3], dtype) * 7)
@@ -59,12 +60,14 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       x = array_ops.ones([7, 3], dtypes.bool)
       y = np.ones([7, 3], dtypes.bool.as_numpy_dtype)
       self.assertAllClose(x, y)
-      x = inplace_ops.inplace_update(x, [3], array_ops.ones([1, 3],
-                                                            dtypes.bool))
+      x = inplace_ops.inplace_update(
+          x, [3], array_ops.ones([1, 3], dtypes.bool)
+      )
       y[3, :] = True
       self.assertAllClose(x, y)
-      x = inplace_ops.inplace_update(x, [-1],
-                                     array_ops.zeros([1, 3], dtypes.bool))
+      x = inplace_ops.inplace_update(
+          x, [-1], array_ops.zeros([1, 3], dtypes.bool)
+      )
       y[-1, :] = False
       self.assertAllClose(x, y)
       x = inplace_ops.inplace_update(x, 5, array_ops.zeros([3], dtypes.bool))
@@ -159,20 +162,28 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(vy, vz)
 
   def testError(self):
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "must be a vector"):
-      _ = self.evaluate(inplace_ops.inplace_update([[1.]], [[0]], [[10]]))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "x and v shape doesn't match"):
-      _ = self.evaluate(inplace_ops.inplace_update([[1.]], [0], [10]))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "i and x shape doesn't match"):
-      _ = self.evaluate(inplace_ops.inplace_update([[1.]], [0, 1], [[10]]))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "must be a vector"
+    ):
+      _ = self.evaluate(inplace_ops.inplace_update([[1.0]], [[0]], [[10]]))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "x and v shape doesn't match"
+    ):
+      _ = self.evaluate(inplace_ops.inplace_update([[1.0]], [0], [10]))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "i and x shape doesn't match"
+    ):
+      _ = self.evaluate(inplace_ops.inplace_update([[1.0]], [0, 1], [[10]]))
 
   def testEmpty(self):
     for dtype in [
-        dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool,
-        dtypes.uint8, dtypes.bfloat16
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.bool,
+        dtypes.uint8,
+        dtypes.bfloat16,
     ]:
       with test_util.use_gpu():
         test_shapes = [(), (1,), (2, 3), (0, 2), (2, 3, 5), (2, 0, 5)]
@@ -185,11 +196,13 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
           self.assertEqual(val.dtype, dtype.as_numpy_dtype)
           self.assertAllEqual(val, np.zeros(shape, dtype.as_numpy_dtype))
           val = self.evaluate(
-              inplace_ops.empty_like(array_ops.zeros(shape, dtype)))
+              inplace_ops.empty_like(array_ops.zeros(shape, dtype))
+          )
           self.assertEqual(val.shape, shape)
           self.assertEqual(val.dtype, dtype.as_numpy_dtype)
-          val = self.evaluate(inplace_ops.empty_like(
-              array_ops.zeros(shape, dtype), init=True))
+          val = self.evaluate(
+              inplace_ops.empty_like(array_ops.zeros(shape, dtype), init=True)
+          )
           self.assertEqual(val.shape, shape)
           self.assertEqual(val.dtype, dtype.as_numpy_dtype)
           self.assertAllEqual(val, np.zeros(shape, dtype.as_numpy_dtype))

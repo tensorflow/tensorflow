@@ -1229,10 +1229,44 @@ bool CopyRemover::TryElideCopy(
     // Splice source buffer values list right after 'prev_dest'.
     SpliceAfter(copy_node.src->next, Prev(*copy_node.dest));
   } else {
-    VLOG(2) << copy->name()
-            << " copies value in middle of source buffer to value in middle "
-               "of destination buffer";
-    return false;
+    // Check whether src and dest are already in the same list, i.e. the copy
+    // connects two values that already share a buffer, but non-adjacently
+    // (values defined in other conditional branches may be ordered between
+    // them). Removing such a copy does not merge buffers; it only transfers
+    // the uses of dest to src. This is safe if those uses are live-range
+    // before every value defined between src and dest.
+    bool same_list = false;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.src; n = n->next) {
+      if (n == copy_node.dest) {
+        same_list = true;
+        break;
+      }
+    }
+    if (!same_list) {
+      VLOG(2) << copy->name()
+              << " copies value in middle of source buffer to value in middle "
+                 "of destination buffer";
+      return false;
+    }
+    ValueNode merged(copy_node.src->value);
+    merged.uses = copy_node.dest->uses;
+    for (ValueNode* n = copy_node.src->next; n != copy_node.dest; n = n->next) {
+      if (!LiveRangeBefore(merged, *n)) {
+        VLOG(2) << copy->name()
+                << " connects values in the same buffer, but the uses of its "
+                   "destination are not live-range before the intervening "
+                   "value "
+                << n->value->ToShortString();
+        return false;
+      }
+    }
+    VLOG(2) << "TryElideCopy - copy (" << copy->name()
+            << ") connects two values in the same buffer; transferring uses.";
+    RemoveCopyValue(copy_node.dest, copy_node.src);
+    XLA_VLOG_LINES(4, ToString());
+    DCHECK_OK(Verify());
+    VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
+    return true;
   }
 
   RemoveCopyValue(copy_node.dest);
@@ -1245,19 +1279,25 @@ bool CopyRemover::TryElideCopy(
 
 // Delete the given ValueNode associated with a elided kCopy
 // instruction. This should be called after splicing the value lists of the
-// source and destination buffers together.
-void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node) {
+// source and destination buffers together. 'operand_node' is the node whose
+// value the elided copy read; it receives the uses of 'copy_value_node'. If
+// nullptr, the node preceding 'copy_value_node' in its list is used.
+void CopyRemover::RemoveCopyValue(ValueNode* copy_value_node,
+                                  ValueNode* operand_node) {
   CHECK_EQ(copy_value_node->value->defining_instruction()->opcode(),
            HloOpcode::kCopy);
-  ValueNode* operand_node = copy_value_node->prev;
+  if (operand_node == nullptr) {
+    operand_node = copy_value_node->prev;
+  }
   CHECK(operand_node != copy_value_node);
 
   VLOG(2) << "Removing copy " << operand_node->value->ToShortString() << " => "
           << copy_value_node->value->ToShortString();
 
-  // Splice out the copy value node.
-  operand_node->next = copy_value_node->next;
-  copy_value_node->next->prev = operand_node;
+  // Splice out the copy value node. The operand node is not necessarily
+  // adjacent to the copy value node in the list.
+  copy_value_node->prev->next = copy_value_node->next;
+  copy_value_node->next->prev = copy_value_node->prev;
 
   // Patch up uses. Remove use of copy from operand_node uses.
   auto it =

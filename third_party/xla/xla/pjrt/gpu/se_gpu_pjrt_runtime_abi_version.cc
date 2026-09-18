@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/se/stream_executor_pjrt_abi_version.h"
@@ -41,9 +41,9 @@ absl::Status StreamExecutorGpuPjRtRuntimeAbiVersion::IsCompatibleWith(
   // `abi_version` can be a PjRt wrapper instance, therefore we need to
   // serialize to proto that we can parse to a
   // `StreamExecutorPjRtExecutableAbiVersion`.
-  ASSIGN_OR_RETURN(PjRtExecutableAbiVersionProto abi_version_proto,
+  ABSL_ASSIGN_OR_RETURN(PjRtExecutableAbiVersionProto abi_version_proto,
                    abi_version.ToProto());
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<StreamExecutorPjRtExecutableAbiVersion>
           se_executable_abi_version,
       StreamExecutorPjRtExecutableAbiVersion::FromProto(abi_version_proto));
@@ -70,7 +70,7 @@ StreamExecutorGpuPjRtRuntimeAbiVersion::FromProto(
         "PjRtRuntimeAbiVersionProto.");
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<stream_executor::RuntimeAbiVersion> runtime_abi_version,
       runtime_abi_version_resolver.GetRuntimeAbiVersion(
           se_runtime_abi_version_proto));
@@ -83,7 +83,7 @@ absl::StatusOr<PjRtRuntimeAbiVersionProto>
 StreamExecutorGpuPjRtRuntimeAbiVersion::ToProto() const {
   PjRtRuntimeAbiVersionProto proto;
   proto.set_platform(platform_id());
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       stream_executor::RuntimeAbiVersionProto se_runtime_abi_version_proto,
       runtime_abi_version_->ToProto());
   proto.set_version(se_runtime_abi_version_proto.SerializeAsString());

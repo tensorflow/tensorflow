@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_checksum.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_float_check.h"
@@ -73,17 +73,17 @@ absl::StatusOr<bool> ThunkBufferDebugPass::Run(
 
   switch (mode_) {
     case Mode::kChecksum:
-      RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
+      ABSL_RETURN_IF_ERROR(RunChecksumPassInternal(thunk_sequence, debug_options,
                                               hlo_module, module_output_slices_,
                                               allocator));
       break;
     case Mode::kFloatChecker:
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           RunFloatCheckPassInternal(thunk_sequence, debug_options, hlo_module,
                                     module_output_slices_, allocator));
       break;
     case Mode::kBufferSaver:
-      RETURN_IF_ERROR(RunDebugSaverInserter(
+      ABSL_RETURN_IF_ERROR(RunDebugSaverInserter(
           thunk_sequence, debug_options, *hlo_module, module_output_slices_));
       break;
   }
@@ -99,11 +99,11 @@ absl::StatusOr<std::vector<ShapedSlice>> GetOutputShapedBuffers(
   }
   const HloInstruction* root =
       hlo_module->entry_computation()->root_instruction();
-  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       root->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsArray()) {
-          ASSIGN_OR_RETURN(auto slice,
+          ABSL_ASSIGN_OR_RETURN(auto slice,
                            buffer_assignment->GetUniqueSlice(root, index));
           buffers_to_check.push_back(ShapedSlice{slice, subshape});
         }

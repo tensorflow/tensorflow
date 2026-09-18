@@ -56,8 +56,10 @@ inline constexpr absl::string_view kDisablePlatformDependentMath =
     "xla_cpu_disable_platform_dependent_math";
 inline constexpr absl::string_view kDisableTiledEmitter =
     "xla_cpu_disable_tiled_emitter";
+inline constexpr absl::string_view kXlaCpuEnableMsan = "xla_cpu_enable_msan";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
+bool IsMsanEnabled(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
 bool DisableLoopUnrolling(const HloModuleConfig& config);

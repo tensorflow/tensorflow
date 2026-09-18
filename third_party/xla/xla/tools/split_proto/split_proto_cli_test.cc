@@ -35,10 +35,10 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tools/split_proto/split_proto_cli.pb.h"
 #include "xla/tools/split_proto/split_proto_cli_lib.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/util/split_proto/human_readable_aot_executable.pb.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_proto_reader.h"
@@ -190,13 +190,12 @@ TEST(SplitProtoCliTest, PackInvalidProtoType) {
 }
 
 TEST(SplitProtoCliTest, PackAotSpecialized) {
-  auto initial_proto =
-      ParseTextProtoOrDie<DeserializedSplitExecutableAndOptions>(R"pb(
-        executable_and_options {
-          compile_options { executable_build_options { device_ordinal: 2 } }
-        }
-        gpu_executable { asm_text: "some_asm_text" binary: "some_binary" }
-      )pb");
+  auto initial_proto = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    executable_and_options {
+      compile_options { executable_build_options { device_ordinal: 2 } }
+    }
+    gpu_executable { asm_text: "some_asm_text" binary: "some_binary" }
+  )pb");
 
   std::string text_input;
   ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(initial_proto, &text_input));
@@ -252,8 +251,8 @@ TEST(SplitProtoCliTest, UnpackAotSpecialized) {
       riegeli::Maker<riegeli::StringReader>(packed_split_outer_proto),
       riegeli::Maker<riegeli::StringWriter>(&text_output), unpack_opts));
 
-  DeserializedSplitExecutableAndOptions final_proto =
-      ParseTextProtoOrDie<DeserializedSplitExecutableAndOptions>(text_output);
+  HumanReadableAotExecutable final_proto =
+      ParseTextProtoOrDie<HumanReadableAotExecutable>(text_output);
   EXPECT_THAT(final_proto.gpu_executable(),
               Partially(EqualsProto(initial_inner_proto)));
   EXPECT_THAT(final_proto.executable_and_options().compile_options(),
@@ -301,8 +300,8 @@ TEST(SplitProtoCliTest, PackAndUnpackAotBinaryRoundTrip) {
       riegeli::Maker<riegeli::StringReader>(repacked_split_outer_proto),
       riegeli::Maker<riegeli::StringWriter>(&text_output), unpack_opts));
 
-  DeserializedSplitExecutableAndOptions final_proto =
-      ParseTextProtoOrDie<DeserializedSplitExecutableAndOptions>(text_output);
+  HumanReadableAotExecutable final_proto =
+      ParseTextProtoOrDie<HumanReadableAotExecutable>(text_output);
   EXPECT_THAT(final_proto.gpu_executable(),
               Partially(EqualsProto(initial_inner_proto)));
   EXPECT_THAT(final_proto.executable_and_options().compile_options(),

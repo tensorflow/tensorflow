@@ -26,18 +26,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
@@ -82,7 +80,7 @@ absl::StatusOr<bool> RunScheduler(
           &alias_info, shape_size_bytes);
   auto scheduler_core =
       std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
-  ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
+  ABSL_ASSIGN_OR_RETURN(bool value, LatencyHidingScheduler(scheduling_context,
                                                       std::move(scheduler_core))
                                    .Run(module));
 
@@ -119,7 +117,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
@@ -192,8 +190,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -235,8 +233,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -288,8 +286,8 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   ASSERT_TRUE(
       tsl::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));

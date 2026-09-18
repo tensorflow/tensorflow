@@ -20,10 +20,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -84,7 +84,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     // Everything is as expected. Replace this dynamic-slice with the async
     // equivalent.
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
-    ASSIGN_OR_RETURN(HloInstruction * async_done,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * async_done,
                      dynamic_slice->parent()->CreateAsyncInstructions(
                          dynamic_slice, {context_shape}));
     VLOG(1) << "DynamicSlice \"" << dynamic_slice->ToString()
@@ -141,7 +141,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     // Everything is as expected. Replace this dynamic-update-slice with the
     // async equivalent.
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
-    ASSIGN_OR_RETURN(HloInstruction * async_done,
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * async_done,
                      dynamic_update_slice->parent()->CreateAsyncInstructions(
                          dynamic_update_slice, {context_shape}));
     VLOG(1) << "DynamicUpdateSlice \"" << dynamic_update_slice->ToString()
@@ -178,7 +178,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
     // Everything is as expected. Replace this copy with the async equivalent.
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * async_done,
         copy->parent()->CreateAsyncInstructions(copy, {context_shape}));
     VLOG(1)
@@ -203,7 +203,7 @@ absl::StatusOr<bool> HostMemoryTransferAsyncifier::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HostMemoryTransferAsyncifierVisitor visitor(kHostMemorySpaceColor);
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   }
   return visitor.Changed();
 }

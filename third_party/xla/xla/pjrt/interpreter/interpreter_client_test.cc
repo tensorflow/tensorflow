@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/pjrt/interpreter/interpreter_client.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -157,6 +163,77 @@ TEST(InterpreterClientTest, EvaluateWithHloOutputCallbackSucceeds) {
       executable->Execute({{argument.get()}}, options));
 
   EXPECT_TRUE(callback_called);
+}
+
+TEST(InterpreterClientTest, ConcurrentExecuteAndDelete) {
+  InterpreterClient client;
+  const Shape shape = ShapeUtil::MakeShape(S32, {4});
+  XlaBuilder builder("concurrent_test");
+  Add(Parameter(&builder, 0, shape, "parameter0"),
+      ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1}));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client.CompileAndLoad(computation, CompileOptions()));
+
+  std::atomic<bool> start_flag{false};
+  std::atomic<bool> stop_flag{false};
+
+  // Thread executing in a loop.
+  std::thread exec_thread([&]() {
+    while (!start_flag.load(std::memory_order_acquire)) {
+    }
+    while (!stop_flag.load(std::memory_order_relaxed)) {
+      auto arg_status = client.BufferFromHostLiteral(
+          LiteralUtil::CreateR1(absl::Span<const int32_t>{1, 2, 3, 4}),
+          client.memory_spaces().front());
+      if (!arg_status.ok()) {
+        break;
+      }
+      auto result =
+          executable->Execute({{arg_status.value().get()}}, ExecuteOptions());
+      if (!result.ok()) {
+        // Once deleted, Execute should fail gracefully with an error.
+        EXPECT_THAT(result.status().message(), ::testing::HasSubstr("deleted"));
+        break;
+      }
+    }
+  });
+
+  // Thread querying properties.
+  std::thread query_thread([&]() {
+    while (!start_flag.load(std::memory_order_acquire)) {
+    }
+    while (!stop_flag.load(std::memory_order_relaxed)) {
+      (void)executable->name();
+      (void)executable->num_replicas();
+      (void)executable->num_partitions();
+      (void)executable->IsDeleted();
+      (void)executable->GetHloModules();
+      (void)executable->GetCompileOptions();
+    }
+  });
+
+  start_flag.store(true, std::memory_order_release);
+  absl::SleepFor(absl::Milliseconds(20));
+
+  executable->Delete();
+  EXPECT_TRUE(executable->IsDeleted());
+
+  stop_flag.store(true, std::memory_order_relaxed);
+  exec_thread.join();
+  query_thread.join();
+
+  // Any subsequent execution should fail gracefully.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> argument,
+      client.BufferFromHostLiteral(
+          LiteralUtil::CreateR1(absl::Span<const int32_t>{1, 2, 3, 4}),
+          client.memory_spaces().front()));
+  auto post_delete_result =
+      executable->Execute({{argument.get()}}, ExecuteOptions());
+  EXPECT_FALSE(post_delete_result.ok());
+  EXPECT_THAT(post_delete_result.status().message(),
+              ::testing::HasSubstr("deleted"));
 }
 
 }  // namespace

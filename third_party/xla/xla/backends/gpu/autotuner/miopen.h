@@ -56,7 +56,7 @@ class MIOpenBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   std::string version() const override {
-    return target_config().dnn_version_info.ToString();
+    return target_config().device_description.dnn_version().ToString();
   }
 
  private:

@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -217,14 +217,14 @@ absl::StatusOr<TmaDescriptor> TmaDescriptor::Create(
         absl::StrFormat("unsupported element size: %d", element_byte_width));
   }
 
-  RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
+  ABSL_RETURN_IF_ERROR(ValidateRank(global_dims, global_strides, box_dims,
                                element_strides, interleave));
-  RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(ValidateGlobalDims(global_dims));
+  ABSL_RETURN_IF_ERROR(
       ValidateGlobalStrides(global_dims, global_strides, interleave));
-  RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
-  RETURN_IF_ERROR(ValidateElementStrides(element_strides));
-  RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
+  ABSL_RETURN_IF_ERROR(ValidateBoxDims(box_dims, element_byte_width, interleave));
+  ABSL_RETURN_IF_ERROR(ValidateElementStrides(element_strides));
+  ABSL_RETURN_IF_ERROR(ValidateInterleaveAndSwizzleCombos(
       interleave, swizzle, box_dims, element_byte_width));
 
   return TmaDescriptor(global_dims, global_strides, box_dims, element_strides,
@@ -453,7 +453,7 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
     const TmaMetadataProto& proto) {
   TmaMetadata metadata;
   for (const auto& [arg_index, tma_info] : proto.arg_index_to_tma_info()) {
-    ASSIGN_OR_RETURN(TmaDescriptor descriptor,
+    ABSL_ASSIGN_OR_RETURN(TmaDescriptor descriptor,
                      TmaDescriptor::FromProto(tma_info));
     metadata.arg_index_to_tma_info.insert({arg_index, std::move(descriptor)});
   }
@@ -523,7 +523,7 @@ absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
 
   // Attempt to construct a TmaDescriptor with the default values. If this
   // fails, then TMA is not compatible.
-  ASSIGN_OR_RETURN(auto tma_desc,
+  ABSL_ASSIGN_OR_RETURN(auto tma_desc,
                    TmaDescriptor::Create(
                        normalized_global_shape, global_strides, box_dims,
                        element_strides, element_byte_size, default_interleave,

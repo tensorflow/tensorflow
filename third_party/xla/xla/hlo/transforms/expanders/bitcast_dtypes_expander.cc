@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -66,11 +66,11 @@ absl::StatusOr<HloInstruction*> Downcast(HloInstruction* input,
 
   HloInstruction* scalar_output_bit_width =
       MakeScalarLike(logical_input, output_bit_width);
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * iota_m,
       MakeBinaryHlo(HloOpcode::kMultiply, scalar_output_bit_width, iota));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * shifted,
       MakeBinaryHlo(HloOpcode::kShiftRightLogical, logical_input, iota_m));
 
@@ -78,7 +78,7 @@ absl::StatusOr<HloInstruction*> Downcast(HloInstruction* input,
   HloInstruction* scalar_mask =
       MakeScalarLike(logical_input, output_bit_width_mask);
 
-  ASSIGN_OR_RETURN(HloInstruction * masked,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * masked,
                    MakeBinaryHlo(HloOpcode::kAnd, shifted, scalar_mask));
 
   return MakeConvertToHlo(masked, output_logical_type);
@@ -113,7 +113,7 @@ absl::StatusOr<HloInstruction*> Upcast(HloInstruction* input,
   int64_t factor = output_bit_width / input_bit_width;
 
   // Reshape input to collapse the last two dimensions.
-  ASSIGN_OR_RETURN(HloInstruction * collapsed_input,
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * collapsed_input,
                    CollapseLastDimension(input));
   const Shape& collapsed_shape = collapsed_input->shape();
   int64_t collapsed_rank = collapsed_shape.dimensions().size();
@@ -131,7 +131,7 @@ absl::StatusOr<HloInstruction*> Upcast(HloInstruction* input,
   for (int dim_index = 0; dim_index < factor; ++dim_index) {
     start_indices.back() = dim_index;
     limit_indices.back() += 1;
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * slice,
         MakeSliceHlo(collapsed_input, start_indices, limit_indices, strides));
     HloInstruction* logical_slice =
@@ -146,10 +146,10 @@ absl::StatusOr<HloInstruction*> Upcast(HloInstruction* input,
 
     HloInstruction* scalar_shift =
         MakeScalarLike(converted_slice, dim_index * input_bit_width);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         HloInstruction * shifted_slice,
         MakeBinaryHlo(HloOpcode::kShiftLeft, converted_slice, scalar_shift));
-    ASSIGN_OR_RETURN(acc, MakeBinaryHlo(HloOpcode::kOr, acc, shifted_slice));
+    ABSL_ASSIGN_OR_RETURN(acc, MakeBinaryHlo(HloOpcode::kOr, acc, shifted_slice));
   }
   return input->shape().dimensions().size() > 1
              ? acc
@@ -174,7 +174,7 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
     return instruction;
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       HloInstruction * dtype_cast,
       input_bit_width > output_bit_width
           ? Downcast(input, output_shape, input_bit_width, output_bit_width)

@@ -84,6 +84,27 @@ class DeterminantOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float32))
 
+  def testSingularMatrix(self):
+    for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+      for matrix_values in (
+          [[1.0, 2.0], [2.0, 4.0]],
+          [[0.0, 1.0, 2.0], [0.0, 3.0, 4.0], [0.0, 5.0, 6.0]],
+          [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+          [
+              [[1.0, 2.0], [2.0, 4.0]],
+              [[0.0, 0.0], [0.0, 0.0]],
+          ],
+      ):
+        matrix = np.array(matrix_values, dtype=dtype)
+        with test_util.use_gpu():
+          det = self.evaluate(linalg_ops.matrix_determinant(matrix))
+          sign, log_det = self.evaluate(
+              gen_linalg_ops.log_matrix_determinant(matrix)
+          )
+          self.assertAllClose(det, np.zeros_like(det))
+          self.assertAllClose(sign, np.zeros_like(sign))
+          self.assertTrue(np.all(np.isneginf(log_det.real)))
+
   def testBasicDouble(self):
     # 2x2 matrices
     self._compareDeterminant(np.array([[2., 3.], [3., 4.]]).astype(np.float64))

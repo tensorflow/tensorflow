@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/device_utils.h"
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

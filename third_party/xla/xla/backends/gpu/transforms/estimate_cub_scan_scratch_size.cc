@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
@@ -51,12 +51,12 @@ static absl::StatusOr<int64_t> InvokeInstantiateHandlerAndGetScratchSize(
   ffi::ExecutionState state;
   ffi::InvokeContext context{};
   context.state_context = {&state, nullptr, nullptr};
-  RETURN_IF_ERROR(ffi::Invoke(ffi::GetXlaFfiApi(),
+  ABSL_RETURN_IF_ERROR(ffi::Invoke(ffi::GetXlaFfiApi(),
                               registration.bundle.instantiate, call_frame,
                               context, XLA_FFI_ExecutionStage_INSTANTIATE));
 
   // Read the scratch size from the execution state.
-  ASSIGN_OR_RETURN(int64_t* scratch_size_ptr, state.Get<int64_t>());
+  ABSL_ASSIGN_OR_RETURN(int64_t* scratch_size_ptr, state.Get<int64_t>());
   return *scratch_size_ptr;
 }
 
@@ -64,10 +64,10 @@ absl::Status EstimateCubScanScratchSize::RunOnScanInstruction(
     HloCustomCallInstruction* custom_call) {
   CHECK_EQ(custom_call->custom_call_target(),
            kCubDeviceScanUnassignedScratchSizeTarget);
-  ASSIGN_OR_RETURN(CubScanOptions options,
+  ABSL_ASSIGN_OR_RETURN(CubScanOptions options,
                    custom_call->backend_config<CubScanOptions>());
 
-  ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
+  ABSL_ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
                    ffi::FindHandler(kCubDeviceScanUnassignedScratchSizeTarget,
                                     platform_name_));
 
@@ -83,7 +83,7 @@ absl::Status EstimateCubScanScratchSize::RunOnScanInstruction(
   ffi::CallFrameBuilder builder(0, 0);
   builder.AddAttributes(attrs.Build());
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       int64_t scratch_size,
       InvokeInstantiateHandlerAndGetScratchSize(handler, builder.Build()));
 
@@ -104,7 +104,7 @@ absl::Status EstimateCubScanScratchSize::RunOnScanInstruction(
       static_cast<int32_t>(options.kind()),
       options.is_reverse() ? "true" : "false");
   new_custom_call->set_raw_backend_config_string(backend_config);
-  RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
       custom_call, new_custom_call));
   return absl::OkStatus();
 }
@@ -122,7 +122,7 @@ absl::StatusOr<bool> EstimateCubScanScratchSize::RunOnComputation(
   }
   bool changed = false;
   for (auto* call : custom_calls) {
-    RETURN_IF_ERROR(RunOnScanInstruction(call));
+    ABSL_RETURN_IF_ERROR(RunOnScanInstruction(call));
     changed = true;
   }
   return changed;
@@ -136,7 +136,7 @@ absl::StatusOr<bool> EstimateCubScanScratchSize::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
   XLA_VLOG_LINES(3, "EstimateCubScanScratchSize::RunImpl(), after:\n" +

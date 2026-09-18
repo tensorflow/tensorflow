@@ -137,6 +137,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleCollectivePermute(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  absl::Status HandleCollectiveReduce(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   absl::Status HandleCollectivePermuteStart(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }

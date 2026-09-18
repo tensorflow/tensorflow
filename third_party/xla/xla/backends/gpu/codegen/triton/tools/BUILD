@@ -26,8 +26,8 @@ package(
 )
 
 xla_cc_binary(
-    name = "hlo_to_xtileir",
-    srcs = ["hlo_to_xtileir.cc"],
+    name = "fusion_to_triton",
+    srcs = ["fusion_to_triton.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
@@ -40,16 +40,16 @@ xla_cc_binary(
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
         "//xla/backends/gpu/target_config",
+        "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/tools:hlo_module_loader",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -108,6 +108,13 @@ REGISTER_OP("BatchFunction")
     // If true, the queue implementation will re-split tasks into subtasks with
     // priority aware batch scheduler.
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
+    // A list of batch timeouts in microseconds, corresponding
+    // to the criticality levels in decreasing order.
+    // e.g. [1000, 2000, 5000, 10000] will map per-criticality timeouts of
+    // 1000us to C+, 2000us to C, 5000us to S+, and 10000us to S.
+    // If non-empty, one timeout must be specified for each of four
+    // criticalities.
+    .Attr("per_criticality_batch_timeout_micros: list(int) = []")
     // If true, the priority aware batch scheduler will lazily filter out and
     // cancel tasks that have been cancelled or have exceeded their deadline
     // before batch formation.

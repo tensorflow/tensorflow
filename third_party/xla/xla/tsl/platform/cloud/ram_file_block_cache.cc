@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/env.h"
 
 namespace tsl {
@@ -198,8 +198,8 @@ absl::Status RamFileBlockCache::Read(const std::string& filename, size_t offset,
     // LRU iterator for the key and block.
     std::shared_ptr<Block> block = Lookup(key);
     DCHECK(block) << "No block for key " << key.first << "@" << key.second;
-    RETURN_IF_ERROR(MaybeFetch(key, block));
-    RETURN_IF_ERROR(UpdateLRU(key, block));
+    ABSL_RETURN_IF_ERROR(MaybeFetch(key, block));
+    ABSL_RETURN_IF_ERROR(UpdateLRU(key, block));
     // Copy the relevant portion of the block into the result buffer.
     const auto& data = block->data;
     if (offset >= pos + data.size()) {

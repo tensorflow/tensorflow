@@ -15,25 +15,21 @@ limitations under the License.
 
 #include "xla/hlo/transforms/host_offload_legalize.h"
 
-#include <cstdint>
-#include <string>
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/service/memory_annotations.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -41,35 +37,16 @@ namespace {
 class HostOffloadLegalizeTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    ABSL_RETURN_IF_ERROR(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-    HostOffloadLegalize host_offload_legalize;
-    return host_offload_legalize.Run(module);
-  }
-
-  void TestShapeHasMemorySpace(const Shape& shape, int64_t memory_space) {
-    ASSERT_TRUE(shape.has_layout());
-    EXPECT_EQ(shape.layout().memory_space(), memory_space);
-  }
-
-  bool HaveRemainingOffloadAnnotations(const HloModule* module) {
-    for (const HloComputation* computation : module->computations()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
-        if (instruction->IsCustomCall(
-                {memory_annotations::kMoveToHostCustomCallTarget,
-                 memory_annotations::kMoveToDeviceCustomCallTarget})) {
-          return true;
-        }
-      }
-    }
-    return false;
+    return RunHloPass(HostOffloadLegalize(), module);
   }
 };
 
 TEST_F(HostOffloadLegalizeTest, TestWithAsyncCall) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_update, entry_computation_layout={(f32[20,3,256,133]{2,3,1,0:T(8,128)S(5)})->(f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)})}
 
 %async_computation {
@@ -87,19 +64,18 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* custom_call =
       FindInstruction(module.get(), "custom-call.7832");
   ASSERT_NE(custom_call, nullptr);
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
-  XLA_VLOG_LINES(1, module->ToString());
 }
 
 TEST_F(HostOffloadLegalizeTest, TestWithAsyncCallNoMove) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_update, entry_computation_layout={(f32[20,3,256,133]{2,3,1,0:T(8,128)S(5)})->(f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)})}
 
 %async_computation {
@@ -117,14 +93,13 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(HostOffloadLegalizeTest, NoCopyWithOptBarrierMoreElaborate) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
 
 ENTRY main.24 {
@@ -157,14 +132,13 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
   ASSERT_NE(custom_call, nullptr);
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
@@ -172,7 +146,7 @@ ENTRY main.24 {
 }
 
 TEST_F(HostOffloadLegalizeTest, XposeCopyOnParameterStreaming) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1},f32[16,256]{0,1:T(8,128)S(5)})->f32[16,256]{1,0}}
 
 ENTRY main.24 {
@@ -204,14 +178,13 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
   ASSERT_NE(custom_call, nullptr);
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
@@ -219,6 +192,7 @@ ENTRY main.24 {
 
   custom_call = FindInstruction(module.get(), "custom-call.19");
   ASSERT_NE(custom_call, nullptr);
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(),
             LayoutUtil::MakeLayout({0, 1}, {Tile{{8, 128}}}));
@@ -227,7 +201,7 @@ ENTRY main.24 {
 }
 
 TEST_F(HostOffloadLegalizeTest, DUSSameLayoutForOperandAndUpdate_1) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[16,512,532]{1,2,0})->bf16[1,16,512,532]{2,3,1,0}}
 
 ENTRY main.24 {
@@ -248,11 +222,9 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* dus =
       FindInstruction(module.get(), "dynamic-update-slice.6830");
@@ -265,6 +237,7 @@ ENTRY main.24 {
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_TRUE(custom_call->IsCustomCall(
       memory_annotations::kMoveToDeviceCustomCallTarget));
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(),
             LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -273,7 +246,7 @@ ENTRY main.24 {
 }
 
 TEST_F(HostOffloadLegalizeTest, DUSSameLayoutForOperandAndUpdate_2) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[16,512,532]{1,2,0})->bf16[1,16,512,532]{2,3,1,0}}
 
 ENTRY main.24 {
@@ -294,11 +267,9 @@ ENTRY main.24 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
 
   HloInstruction* dus =
       FindInstruction(module.get(), "dynamic-update-slice.6830");
@@ -311,6 +282,7 @@ ENTRY main.24 {
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_TRUE(custom_call->IsCustomCall(
       memory_annotations::kMoveToDeviceCustomCallTarget));
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(),
             LayoutUtil::MakeLayout({3, 2, 1, 0}));
@@ -319,7 +291,7 @@ ENTRY main.24 {
 }
 
 TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleConsumers) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule llm_while
 
 producing_while_condition {
@@ -345,7 +317,8 @@ producing_while_body {
   constant_96 = s32[] constant(96)
 
   /* Create dummy data used in DUS */
-  slice_data_0 = f32[1,8,6,2048,2048]  constant({...})
+  cs_dummy = f32[] constant(0)
+  slice_data_0 = f32[1,8,6,2048,2048] broadcast(cs_dummy), dimensions={}
 
   /* Build DUS index */
   compare_result.0 = pred[] compare(current_iteration_index.0, constant_0.0), direction=LT
@@ -412,10 +385,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
@@ -423,14 +395,11 @@ ENTRY main {
       FindInstruction(module.get(), "consuming_while");
   ASSERT_NE(copy, nullptr);
   ASSERT_NE(consuming_while, nullptr);
-  EXPECT_NE(copy, nullptr);
-  EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy->parent(), consuming_while->while_body());
-  XLA_VLOG_LINES(1, module->ToString());
 }
 
 TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleCopies) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule llm_while
 
 producing_while_condition {
@@ -456,7 +425,8 @@ producing_while_body {
   constant_96 = s32[] constant(96)
 
   /* Create dummy data used in DUS */
-  slice_data_0 = f32[1,8,6,2048,2048]  constant({...})
+  cs_dummy = f32[] constant(0)
+  slice_data_0 = f32[1,8,6,2048,2048] broadcast(cs_dummy), dimensions={}
 
   /* Build DUS index */
   compare_result.0 = pred[] compare(current_iteration_index.0, constant_0.0), direction=LT
@@ -524,10 +494,9 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
   HloInstruction* copy_0 = FindInstruction(module.get(), "cp.2");
@@ -537,16 +506,12 @@ ENTRY main {
   ASSERT_NE(copy_0, nullptr);
   ASSERT_NE(copy_1, nullptr);
   ASSERT_NE(consuming_while, nullptr);
-  EXPECT_NE(copy_0, nullptr);
-  EXPECT_NE(copy_1, nullptr);
-  EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy_0->parent(), module->entry_computation());
   EXPECT_EQ(copy_1->operand(0), copy_0);
-  XLA_VLOG_LINES(1, module->ToString());
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[1,1,16384,4,256]{4,3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)}}
 
 ENTRY main {
@@ -558,17 +523,17 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(
       custom_call->shape().layout(),
       LayoutUtil::MakeLayout({3, 2, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(
       custom_call->users()[0]->shape().layout(),
@@ -576,7 +541,7 @@ ENTRY main {
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast_2) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[1,16384,4,256]{3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)}}
 
 ENTRY main {
@@ -588,17 +553,17 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(
       custom_call->shape().layout(),
       LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
+  ASSERT_FALSE(custom_call->users().empty());
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(
       custom_call->users()[0]->shape().layout(),
@@ -606,7 +571,7 @@ ENTRY main {
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyUp) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[4,4,128,8]{2,0,1,3:T(8,128)(2,1)})->bf16[4,4,128,8]{2,3,1,0:T(8,128)(2,1)S(5)}}
 
 ENTRY main {
@@ -616,29 +581,27 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   ASSERT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
   // Check that the custom call and copy have swapped places.
   HloInstruction* custom_call = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_TRUE(custom_call->IsRoot());
   EXPECT_TRUE(custom_call->IsCustomCall(
       memory_annotations::kMoveToHostCustomCallTarget));
   const HloInstruction* copy = custom_call->operand(0);
   ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
   const HloInstruction* param = copy->operand(0);
-  EXPECT_EQ(copy->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(param->opcode(), HloOpcode::kParameter);
 }
 
 // Check that HostOffloadLegalize doesn't crash when the base operand of the
 // dynamic-update-slice is a parameter.
 TEST_F(HostOffloadLegalizeTest, NoCrashBaseIsStreamed) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[8,512,64]{1,2,0:T(8,128)S(5)}, f32[1,512,64]{1,2,0:T(8,128)}, s32[]{:T(128)})->f32[8,512,64]{1,2,0:T(8,128)S(5)}}
 
 ENTRY main {
@@ -651,16 +614,15 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   ASSERT_FALSE(changed);
 }
 
 TEST_F(HostOffloadLegalizeTest, MoveCopyOverTransposingBitcast) {
-  const std::string& hlo_string = R"(
+  absl::string_view hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[1,1,16384,8,256]{4,3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,1,16384,8,256]{4,3,2,1,0:T(8,128)(2,1)}}
 
 ENTRY main {
@@ -672,22 +634,59 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
 
   EXPECT_TRUE(changed);
-  XLA_VLOG_LINES(1, module->ToString());
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(
       custom_call->shape().layout(),
       LayoutUtil::MakeLayout({4, 2, 3, 1, 0}, {Tile{{4, 128}}, Tile{{2, 1}}}));
+  ASSERT_FALSE(custom_call->users().empty());
   HloInstruction* copy = custom_call->users()[0];
   EXPECT_EQ(copy->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(
       copy->shape().layout(),
       LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {Tile{{8, 128}}, Tile{{2, 1}}}));
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyDownWithSort) {
+  const std::string& hlo_string = R"(
+HloModule test_module
+
+compare {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = f32[] parameter(2)
+  p3 = f32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[16,256]{0,1} parameter(0)
+  p1 = f32[16,256]{0,1} parameter(1)
+  offload = f32[16,256]{0,1} custom-call(p0), custom_call_target="MoveToHost"
+  cp = f32[16,256]{1,0} copy(offload)
+  sort = (f32[16,256]{1,0}, f32[16,256]{0,1}) sort(cp, p1), dimensions={0}, to_apply=compare
+  gte0 = f32[16,256]{1,0} get-tuple-element(sort), index=0
+  gte1 = f32[16,256]{0,1} get-tuple-element(sort), index=1
+  load = f32[16,256]{1,0} custom-call(gte0), custom_call_target="MoveToDevice"
+  ROOT root = (f32[16,256]{1,0}, f32[16,256]{0,1}) tuple(load, gte1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  HloInstruction* offload = FindInstruction(module.get(), "offload");
+  ASSERT_NE(offload, nullptr);
+  EXPECT_EQ(sort->operand(0), offload);
+  EXPECT_EQ(FindInstruction(module.get(), "cp"), nullptr);
 }
 
 }  // namespace

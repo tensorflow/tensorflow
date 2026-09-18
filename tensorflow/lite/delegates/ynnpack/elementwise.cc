@@ -33,8 +33,8 @@ namespace ynnpack {
 // ==============================================================================
 
 TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
-                                const TfLiteNode* node,
-                                TfLiteContext* context) {
+                                const TfLiteNode* node, TfLiteContext* context,
+                                const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -64,7 +64,7 @@ TfLiteStatus IsUnaryOpSupported(const TfLiteRegistration* registration,
 
   if (op == ynn_unary_convert) {
     // Reject constant inputs to allow TFLite caching optimization.
-    TF_LITE_ENSURE_MSG(context, input.allocation_type != kTfLiteMmapRo,
+    TF_LITE_ENSURE_MSG(context, !IsConstant(input, options.static_shape),
                        "Constant input for convert is not supported");
     // YNNPACK convert to integer uses rounding, but TFLite Cast expects
     // truncation. Reject all float-to-integer conversions.

@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -31,11 +35,14 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu::experimental {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
+using ::testing::HasSubstr;
 
 MATCHER_P(MatchString, tiling_space_string, "") {
   return ExplainMatchResult(
@@ -182,14 +189,12 @@ TEST_F(TilingSpaceTest, SingleOutputScanDim) {
                        TilingSpace::Create(*fusion_adaptor, &mlir_context_));
   EXPECT_THAT(*tiling_space, MatchString(R"(
     Dimensions:
-      0 type: parallel size: 150 dim ID:0
-        hlo: %get-tuple-element = f32[150]{0} get-tuple-element(%scan), index=0
+      0 type: sequential size: 150 dim ID:0
+        hlo: %scan = (f32[150]{0}, f32[]) scan(%p0.1, %p1.1), dimensions={0}, num_carries=1, is_associative=false, to_apply=%add
     Root tiles:
       0 root tile:
            offsets [tid_0 * ts_0] sizes [ts_0]
            strides [1] upper bounds [150]
-    Constraints:
-      -v0 + 150 in [0, 0]
   )"));
 }
 
@@ -324,6 +329,118 @@ TEST_F(TilingSpaceTest, TwoOutputsParallelDims) {
   )"));
 }
 
+TEST_F(TilingSpaceTest, TwoOutputsEqualShapesParallelDims) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      add = f32[10,8] add(p0, p1)
+      mul = f32[10,8] multiply(p2, p3)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
+        kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  EXPECT_THAT(
+      TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+      StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("multiple roots")));
+}
+
+class TilingSpaceSameShapeMultiOutputTest : public TilingSpaceTest {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TilingSpaceTest::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_experimental_enable_same_shape_multi_output_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TilingSpaceSameShapeMultiOutputTest,
+       TwoOutputsEqualShapesDuplicateRoots) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(p0, p0)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0), kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 10 dim ID:0
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+        1 type: parallel size: 8 dim ID:1
+          hlo: %p0 = f32[10,8]{1,0} parameter(0)
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+  )"));
+}
+
+TEST_F(TilingSpaceSameShapeMultiOutputTest, TwoOutputsEqualShapesParallelDims) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    f {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      add = f32[10,8] add(p0, p1)
+      mul = f32[10,8] multiply(p2, p3)
+      ROOT t = (f32[10,8], f32[10,8]) tuple(add, mul)
+    }
+
+    ENTRY e {
+      p0 = f32[10,8] parameter(0)
+      p1 = f32[10,8] parameter(1)
+      p2 = f32[10,8] parameter(2)
+      p3 = f32[10,8] parameter(3)
+      ROOT fusion = (f32[10,8], f32[10,8]) fusion(p0, p1, p2, p3),
+        kind=kLoop, calls=f
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  EXPECT_THAT(*tiling_space, MatchString(R"(
+    Dimensions:
+        0 type: parallel size: 10 dim ID:0
+          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
+        1 type: parallel size: 8 dim ID:1
+          hlo: %add = f32[10,8]{1,0} add(%p0, %p1)
+    Root tiles:
+      0 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+      1 root tile:
+           offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [10, 8]
+  )"));
+}
+
 class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
  public:
   void SetUp() override {
@@ -382,5 +499,118 @@ TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
       tiling_space_->SimplifyExpression(expr),
       ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
 }
+
+TEST_F(TilingSpaceTest, ClonePerformsDeepCopies) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      src = s32[2,2,258] parameter(0)
+      of1 = s32[] parameter(1)
+      of2 = s32[] parameter(2)
+      of3 = s32[] parameter(3)
+      ROOT ds = s32[1,2,32] dynamic-slice(s32[2,2,258] src,
+        s32[] of1, s32[] of2, s32[] of3),
+        dynamic_slice_sizes={1, 2, 32}
+    }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+  EXPECT_EQ(cloned_space->num_parallel_dimensions(),
+            original_space->num_parallel_dimensions());
+  EXPECT_EQ(cloned_space->num_rt_vars(), original_space->num_rt_vars());
+  EXPECT_EQ(cloned_space->mlir_context(), original_space->mlir_context());
+  EXPECT_EQ(cloned_space->IsSymbolic(), original_space->IsSymbolic());
+
+  // Dimensions deep copied.
+  auto orig_dims = original_space->dimensions();
+  auto cloned_dims = cloned_space->dimensions();
+  ASSERT_EQ(orig_dims.size(), cloned_dims.size());
+  for (size_t i = 0; i < orig_dims.size(); ++i) {
+    EXPECT_EQ(orig_dims[i].id, cloned_dims[i].id);
+    EXPECT_EQ(orig_dims[i].dimension_size, cloned_dims[i].dimension_size);
+    EXPECT_EQ(orig_dims[i].type, cloned_dims[i].type);
+    EXPECT_EQ(orig_dims[i].hlo, cloned_dims[i].hlo);
+    EXPECT_EQ(orig_dims[i].dim_position, cloned_dims[i].dim_position);
+
+    const auto& cloned_dim_ref = cloned_space->GetDimensionInfo(
+        *cloned_dims[i].hlo, cloned_dims[i].dim_position);
+    const auto& orig_dim_ref = original_space->GetDimensionInfo(
+        *orig_dims[i].hlo, orig_dims[i].dim_position);
+
+    EXPECT_NE(&cloned_dim_ref, &orig_dim_ref);
+  }
+
+  // RTVars deep copied.
+  ASSERT_EQ(cloned_space->num_rt_vars(), 3);
+  for (int64_t operand_id = 1; operand_id <= 3; ++operand_id) {
+    auto orig_rt = original_space->GetRTVarInfo(*root, operand_id);
+    auto cloned_rt = cloned_space->GetRTVarInfo(*root, operand_id);
+    ASSERT_TRUE(orig_rt.has_value());
+    ASSERT_TRUE(cloned_rt.has_value());
+    EXPECT_EQ((*orig_rt)->id, (*cloned_rt)->id);
+    EXPECT_EQ((*orig_rt)->bounds, (*cloned_rt)->bounds);
+    EXPECT_EQ((*orig_rt)->hlo, (*cloned_rt)->hlo);
+    EXPECT_NE(*orig_rt, *cloned_rt);
+  }
+
+  // Root tiles reference cloned space, not original space.
+  ASSERT_EQ(cloned_space->tiled_roots().size(),
+            original_space->tiled_roots().size());
+  for (size_t i = 0; i < cloned_space->tiled_roots().size(); ++i) {
+    EXPECT_EQ(&cloned_space->tiled_roots()[i].tiling_space(),
+              cloned_space.get());
+    EXPECT_NE(&cloned_space->tiled_roots()[i].tiling_space(),
+              original_space.get());
+  }
+}
+
+TEST_F(TilingSpaceTest, CloneAssignsIndependentTileSizes) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  std::unique_ptr<TilingSpace> cloned_space = original_space->Clone();
+  ASSERT_NE(cloned_space, nullptr);
+
+  EXPECT_TRUE(original_space->IsSymbolic());
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+
+  // Assign tile sizes to cloned_space.
+  EXPECT_OK(cloned_space->AssignTileSizes({16, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_TRUE(original_space->IsSymbolic());
+
+  auto cloned_dims = cloned_space->dimensions();
+  EXPECT_EQ(cloned_dims[0].tile_size, 16);
+  EXPECT_EQ(cloned_dims[1].tile_size, 2);
+
+  auto orig_dims = original_space->dimensions();
+  EXPECT_FALSE(orig_dims[0].tile_size.has_value());
+  EXPECT_FALSE(orig_dims[1].tile_size.has_value());
+
+  // Assign different tile sizes to original_space.
+  EXPECT_OK(original_space->AssignTileSizes({32, 4}));
+  EXPECT_FALSE(original_space->IsSymbolic());
+  EXPECT_EQ(original_space->dimensions()[0].tile_size, 32);
+  EXPECT_EQ(original_space->dimensions()[1].tile_size, 4);
+
+  // Cloned space remains unaffected.
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 16);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental

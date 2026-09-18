@@ -19,6 +19,10 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/tsl:tsl.bzl",
+    "internal_visibility",
+)
+load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
@@ -32,10 +36,21 @@ package(
 tf_proto_library(
     name = "split_proto",
     srcs = ["split_proto.proto"],
-    visibility = [
+    visibility = internal_visibility([
         # This proto is an implementation detail of the split proto format,
-        # it shouldn't be used outside of this package, and the split_proto_cli.
+        # it should onlt be used packages implementing the split proto format for their payloads.
+        "//learning/brain/research/pjrt:__subpackages__",
         "//xla/tools/split_proto:__subpackages__",
+    ]),
+)
+
+tf_proto_library(
+    name = "human_readable_aot_executable_proto",
+    srcs = ["human_readable_aot_executable.proto"],
+    deps = [
+        "//xla/pjrt/proto:compile_options_proto",
+        "//xla/service/cpu:executable_proto",
+        "//xla/service/gpu:gpu_executable_proto",
     ],
 )
 
@@ -44,9 +59,12 @@ cc_library(
     srcs = ["split_proto_reader.cc"],
     hdrs = ["split_proto_reader.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//xla:__subpackages__",
+    ]),
     deps = [
         ":split_proto_cc",
-        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -55,6 +73,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/records:record_position",
         "@riegeli//riegeli/records:record_reader",
@@ -130,9 +149,9 @@ cc_library(
         "//xla/service:hlo_proto_util",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
@@ -161,16 +180,52 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "split_proto_write_record",
-    hdrs = ["split_proto_write_record.h"],
+    name = "proto_field_size_utils",
+    srcs = ["proto_field_size_utils.cc"],
+    hdrs = ["proto_field_size_utils.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     visibility = [
         "//visibility:private",
     ],
     deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "proto_field_size_utils_test",
+    srcs = ["proto_field_size_utils_test.cc"],
+    deps = [
+        ":proto_field_size_utils",
+        "//xla:xla_proto_cc",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "split_proto_write_record",
+    srcs = ["split_proto_write_record.cc"],
+    hdrs = ["split_proto_write_record.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//visibility:private",
+    ]),
+    deps = [
+        ":proto_field_size_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_protobuf//:protobuf_lite",
         "@riegeli//riegeli/messages:serialize_message",
         "@riegeli//riegeli/records:record_writer",
     ],
@@ -182,7 +237,10 @@ xla_cc_test(
     deps = [
         ":split_proto_write_record",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/util/proto:parse_text_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/records:record_writer",
@@ -193,9 +251,10 @@ cc_library(
     name = "split_proto_riegeli_options",
     hdrs = ["split_proto_riegeli_options.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
+    visibility = internal_visibility([
+        "//learning/brain/research/pjrt:__subpackages__",
         "//visibility:private",
-    ],
+    ]),
     deps = ["@riegeli//riegeli/records:record_writer"],
 )
 

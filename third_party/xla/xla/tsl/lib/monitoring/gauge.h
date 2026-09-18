@@ -79,10 +79,10 @@ class Gauge {
   friend class absl::NoDestructor<Gauge<ValueType, NumLabels>>;
 
   Gauge() {
-    static_assert(std::is_same_v<ValueType, int64> ||
+    static_assert(std::is_same_v<ValueType, int64_t> ||
                       std::is_same_v<ValueType, std::string> ||
                       std::is_same_v<ValueType, bool> ||
-                      std::is_same_v<ValueType, std::function<int64()>> ||
+                      std::is_same_v<ValueType, std::function<int64_t()>> ||
                       std::is_same_v<ValueType, std::function<std::string()>> ||
                       std::is_same_v<ValueType, std::function<bool()>> ||
                       std::is_same_v<ValueType, std::function<double()>> ||

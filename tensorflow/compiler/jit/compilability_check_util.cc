@@ -354,6 +354,7 @@ bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
 bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
   // b/135640736: MatrixInverse performance issues.
+  // MatrixDeterminant and LogMatrixDeterminant use the same QR path as Inverse.
   // b/111271662: MatrixSolve performance issues.
   // https://github.com/tensorflow/tensorflow/pull/31012:
   //    ResizeNearestNeighbor, ResizeBilinear, and ResizeBilinearGrad sometimes
@@ -364,6 +365,8 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
+         node.type_string() == "MatrixDeterminant" ||
+         node.type_string() == "LogMatrixDeterminant" ||
          node.type_string() == "MatrixSolve" ||
          node.type_string() == "ResizeBilinearGrad" ||
          node.type_string() == "NonMaxSuppressionV3" ||

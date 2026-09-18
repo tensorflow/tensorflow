@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -94,14 +94,14 @@ absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt;
   if (gpu_topology_proto.has_gpu_target_config()) {
-    ASSIGN_OR_RETURN(gpu_target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu_target_config,
                      gpu::GpuTargetConfig::FromProto(
                          gpu_topology_proto.gpu_target_config()));
   }
   std::optional<cpu::TargetMachineOptions> host_target_machine_options =
       std::nullopt;
   if (gpu_topology_proto.has_host_target_machine_options()) {
-    ASSIGN_OR_RETURN(host_target_machine_options,
+    ABSL_ASSIGN_OR_RETURN(host_target_machine_options,
                      cpu::TargetMachineOptions::FromProto(
                          gpu_topology_proto.host_target_machine_options()));
   }
@@ -140,12 +140,12 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
     absl::string_view platform_version, int32_t num_partitions,
     int32_t num_hosts_per_partition, int32_t num_devices_per_host) {
   // TODO(b/470487616): Don't use string matching to get the GpuTargetConfig.
-  ASSIGN_OR_RETURN(auto spec_name, GetGpuModel(platform_version));
-  ASSIGN_OR_RETURN(auto gpu_target_config_proto,
+  ABSL_ASSIGN_OR_RETURN(auto spec_name, GetGpuModel(platform_version));
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config_proto,
                    gpu::GetGpuTargetConfig(spec_name));
-  ASSIGN_OR_RETURN(auto gpu_target_config,
+  ABSL_ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
-  ASSIGN_OR_RETURN(auto host_target_machine_options,
+  ABSL_ASSIGN_OR_RETURN(auto host_target_machine_options,
                    GetHostTargetMachineOptions(platform_version));
   return GpuTopology(platform_version, num_partitions, num_hosts_per_partition,
                      num_devices_per_host, std::move(gpu_target_config),

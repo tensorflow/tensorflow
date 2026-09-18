@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
@@ -66,6 +67,7 @@ HloPassPipeline FusionPipeline(
   // Rewrite convs into conv fusions.
   if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
       debug_options.xla_gpu_experimental_enable_conv_fusion()) {
+    fusion.AddPass<ConvCanonicalizer>();
     fusion.AddPass<ConvFusionRewriter>(gpu_device_info);
   }
 

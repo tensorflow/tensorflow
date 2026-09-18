@@ -44,13 +44,10 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -280,6 +277,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kAtan2: {
       return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
     }
+    case TargetDeviceFunctionID::kAtan: {
+      return {"__nv_atan", "__ocml_atan", "_Z16__spirv_ocl_atan"};
+    }
     case TargetDeviceFunctionID::kAsin: {
       return {"__nv_asin", "__ocml_asin", "_Z16__spirv_ocl_asin"};
     }
@@ -344,6 +344,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
       return {"__nv_rint", "__ocml_rint", "_Z16__spirv_ocl_rint"};
     }
   }
+  LOG(FATAL) << "Invalid TargetDeviceFunctionID: " << static_cast<int>(func_id);
 }
 }  // namespace
 
@@ -351,6 +352,7 @@ bool HasF16Implementation(TargetDeviceFunctionID func_id,
                           llvm::Triple target_triple) {
   return target_triple.isAMDGPU() &&
          (func_id == TargetDeviceFunctionID::kAtan2 ||
+          func_id == TargetDeviceFunctionID::kAtan ||
           func_id == TargetDeviceFunctionID::kCbrt ||
           func_id == TargetDeviceFunctionID::kCos ||
           func_id == TargetDeviceFunctionID::kExp ||

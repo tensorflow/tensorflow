@@ -95,6 +95,7 @@ tf_cc_test(
     deps = [
         ":cache_dataset_ops",
         ":iterator_ops",
+        ":range_dataset_op",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -119,6 +120,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -814,6 +817,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/log",
@@ -914,6 +918,7 @@ tf_kernel_library(
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/base",
@@ -970,6 +975,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/log:check",
@@ -1048,6 +1054,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/log",

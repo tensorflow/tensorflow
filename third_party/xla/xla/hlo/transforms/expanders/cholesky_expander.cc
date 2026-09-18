@@ -24,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -66,7 +66,7 @@ namespace xla {
 absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
   const int ndims = a_shape.dimensions().size();
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   std::vector<int64_t> error_dims(a_shape.dimensions().begin(),
@@ -125,7 +125,7 @@ absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
     return std::vector<XlaOp>{body_a, body_l, seen_error};
   };
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto cholesky_while,
       ForEachIndex(
           n, S32, body_fn,
@@ -139,7 +139,7 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64_t block_size,
                                       PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    ABSL_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int ndims = a_shape.dimensions().size();
     if (ndims < 2) {
       return InvalidArgument(
@@ -201,7 +201,7 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64_t block_size,
           factorized_error = IsNan(factorized);
         }
       } else {
-        ASSIGN_OR_RETURN(auto tile_output, CholeskyUnblocked(x, precision));
+        ABSL_ASSIGN_OR_RETURN(auto tile_output, CholeskyUnblocked(x, precision));
         std::tie(factorized, factorized_error) = tile_output;
       }
       seen_error = Or(seen_error, factorized_error);
@@ -258,8 +258,8 @@ absl::StatusOr<HloInstruction*> CholeskyExpander::ExpandInstruction(
                             /*precision=*/PrecisionConfig::HIGHEST);
     MaybeTransposeInMinorDims(l, !options.lower());
 
-    ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-    ASSIGN_OR_RETURN(computation,
+    ABSL_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
+    ABSL_ASSIGN_OR_RETURN(computation,
                      XlaComputationToHloComputation(xla_computation, module));
   }
 

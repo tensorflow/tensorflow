@@ -117,10 +117,12 @@ class Allocation {
   MemorySpace memory_space() const { return memory_space_; }
   // Returns the associated chunk that may be a nullopt if the allocation is
   // in the default memory space.
-  std::optional<HeapSimulator::Chunk> maybe_chunk() const { return chunk_; }
+  virtual std::optional<HeapSimulator::Chunk> maybe_chunk() const {
+    return chunk_;
+  }
   // Returns the associated chunk. The caller should ensure that the chunk is
   // defined (the allocation should be in the alternate memory space).
-  HeapSimulator::Chunk chunk() const;
+  virtual HeapSimulator::Chunk chunk() const;
   HeapSimulator::Chunk* mutable_chunk() { return &*chunk_; }
   void set_offset(int64_t offset);
   // Returns true if the allocation is in the alternate memory space.
@@ -315,6 +317,10 @@ class ReservedAllocation final : public Allocation {
 //   must be null.
 // * If are `async_mem_op_start` and `async_mem_op_done` are non-null,
 //   `sync_mem_op` must be null.
+// * `source_operand_index` is the index of the operand in `sync_mem_op`
+//   (and consequently in the created `async_mem_op_start`) that represents the
+//   buffer being copied. This operand will be replaced with the actual
+//   producing instruction of the buffer (say, after tuples and GTEs are added).
 class CopyAllocation final : public Allocation {
  public:
   CopyAllocation(
@@ -325,7 +331,8 @@ class CopyAllocation final : public Allocation {
       std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
       HloInstruction* sync_mem_op = nullptr,
       HloInstruction* async_mem_op_start = nullptr,
-      HloInstruction* async_mem_op_done = nullptr);
+      HloInstruction* async_mem_op_done = nullptr,
+      int64_t source_operand_index = 0);
 
   // Overridden methods
   //
@@ -379,6 +386,9 @@ class CopyAllocation final : public Allocation {
   HloInstruction* copy_done_ = nullptr;
   // The sync data movement instruction that this copy is associated with.
   HloInstruction* sync_mem_op_ = nullptr;
+  // The index of the operand in the async start instruction that should be
+  // replaced with the producing instruction.
+  int64_t source_operand_index_ = 0;
 };
 
 // This class represents an allocation resulting from a collection of
@@ -621,8 +631,10 @@ class MirroredAllocation final : public Allocation {
   bool operator==(const MirroredAllocation& other) const;
   const Allocation& original_allocation() const { return original_allocation_; }
 
-  HeapSimulator::Chunk chunk() const { return original_allocation_.chunk(); }
-  std::optional<HeapSimulator::Chunk> maybe_chunk() const {
+  HeapSimulator::Chunk chunk() const final {
+    return original_allocation_.chunk();
+  }
+  std::optional<HeapSimulator::Chunk> maybe_chunk() const final {
     return original_allocation_.maybe_chunk();
   }
 

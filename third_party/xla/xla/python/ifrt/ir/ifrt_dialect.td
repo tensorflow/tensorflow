@@ -239,4 +239,11 @@ def Ifrt_TokenType : TypeDef<Ifrt_Dialect, "IfrtToken"> {
   }];
 }
 
+def Ifrt_StringType : TypeDef<Ifrt_Dialect, "IfrtString"> {
+  let mnemonic = "string";
+  let summary = [{
+    Represents a string element type.
+  }];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_DIALECT_TD_

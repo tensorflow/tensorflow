@@ -325,8 +325,8 @@ ATTR_TEST_REGISTER_OP(Tensor, tensor);
 typedef void* (*MyCreateFuncWithAttr)(TF_OpKernelConstruction*);
 class TestKernelAttr : public ::testing::Test {
  public:
-  TestKernelAttr() {}
-  ~TestKernelAttr() override {}
+  TestKernelAttr() = default;
+  ~TestKernelAttr() override = default;
 
   std::unique_ptr<OpKernel> GetFakeKernelWithAttr(const char* op_name,
                                                   AttrValue v,

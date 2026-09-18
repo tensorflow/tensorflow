@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -477,9 +478,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ =
-            ctx->StartThread(kTFDataParallelBatch,
-                             std::bind(&Iterator::RunnerThread, this, new_ctx));
+        runner_thread_.reset(Env::Default()->StartThread(
+            /*thread_options=*/{}, kTFDataParallelBatch,
+            std::bind(&Iterator::RunnerThread, this, new_ctx)));
       }
     }
 

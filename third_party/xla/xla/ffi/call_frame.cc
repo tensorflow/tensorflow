@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -229,7 +229,7 @@ CallFrame::CallFrame(std::unique_ptr<Arguments> arguments,
       attributes_(std::move(attributes)) {}
 
 XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_InvokeContext* ctx,
                                    XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
@@ -591,7 +591,7 @@ absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
     absl::Span<const se::DeviceAddressBase> args,
     absl::Span<const se::DeviceAddressBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
-  RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  ABSL_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
 }
 

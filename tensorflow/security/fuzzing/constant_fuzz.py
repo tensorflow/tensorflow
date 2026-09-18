@@ -16,7 +16,7 @@
 import atheris
 with atheris.instrument_imports():
   import sys
-  import tensorflow as tf
+  import tensorflow as tf  # pyrefly: ignore[missing-source-for-stubs]
 
 
 def TestOneInput(data):

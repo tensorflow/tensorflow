@@ -164,6 +164,21 @@ class GpuCommandBuffer : public CommandBuffer {
                                const DeviceAddressBase& src,
                                uint64_t size) override;
 
+  absl::StatusOr<const Command*> CreateMemcpyD2H(
+      void* dst, const DeviceAddressBase& src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyD2H(const Command* command, void* dst,
+                               const DeviceAddressBase& src,
+                               uint64_t size) override;
+
+  absl::StatusOr<const Command*> CreateMemcpyH2D(
+      DeviceAddressBase* dst, const void* src, uint64_t size,
+      absl::Span<const Command* const> dependencies) override;
+
+  absl::Status UpdateMemcpyH2D(const Command* command, DeviceAddressBase* dst,
+                               const void* src, uint64_t size) override;
+
   absl::StatusOr<const Command*> CreateMemset(
       DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
       absl::Span<const Command* const> dependencies) override;
@@ -202,6 +217,10 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status UpdateWhile(const Command* command, DeviceAddress<bool> pred,
                            UpdateCommands update_cond,
                            UpdateCommands update_body) override;
+
+  absl::StatusOr<const Command*> CreateHost(
+      absl::AnyInvocable<void()> callback,
+      absl::Span<const Command* const> dependencies) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
@@ -348,6 +367,24 @@ class GpuCommandBuffer : public CommandBuffer {
                                            DeviceAddressBase source,
                                            uint64_t size) = 0;
 
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2HNode(
+      absl::Span<const GraphNodeHandle> dependencies, void* destination,
+      DeviceAddressBase source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyD2HNode(GraphNodeHandle node_handle,
+                                           void* destination,
+                                           DeviceAddressBase source,
+                                           uint64_t size) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyH2DNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      DeviceAddressBase destination, const void* source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyH2DNode(GraphNodeHandle node_handle,
+                                           DeviceAddressBase destination,
+                                           const void* source,
+                                           uint64_t size) = 0;
+
   virtual absl::Status PopulateDnnGraphNode(
       dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands) = 0;
 
@@ -389,6 +426,10 @@ class GpuCommandBuffer : public CommandBuffer {
       GraphNodeHandle node_handle, const ThreadDim& threads,
       const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
       const Kernel& kernel, const KernelArgsPackedArrayBase& args) = 0;
+
+  virtual absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) = 0;
 
   //===--------------------------------------------------------------------===//
 

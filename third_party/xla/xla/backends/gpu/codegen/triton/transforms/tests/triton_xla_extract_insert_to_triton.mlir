@@ -21,6 +21,10 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
 
 // RUN: xla-opt %s -split-input-file \
+// RUN: -triton-xla-extract-insert-to-triton="allow_tma=1 num_stages=1" \
+// RUN: | FileCheck %s --check-prefix=CHECK-TMA-1STAGE
+
+// RUN: xla-opt %s -split-input-file \
 // RUN: -triton-xla-extract-insert-to-triton="allow_tdm=1" \
 // RUN: | FileCheck %s --check-prefix=CHECK-TDM
 
@@ -437,9 +441,50 @@ module {
 // CHECK-TDM-SAME:       <bf16>, <16x16xbf16>
 // CHECK-TDM:         tt.descriptor_store %[[DESC1]]
 
+// =============================================================================
+// Tests for TMA condition: (num_stages > 1 && HasBroadcast && (tile_bytes % 128 != 0))
+// =============================================================================
+
+// Case 1: Broadcast + Unaligned tile (64B) + Pipelined (num_stages=3) -> SKIPS TMA
+// Case 3: Broadcast + Unaligned tile (64B) + Unpipelined (num_stages=1) -> USES TMA
+func.func @broadcast_unaligned_tile_pipelining_tma_test(
+          %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
+  %cst = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
+  %extracted_tile = triton_xla.extract from %arg0 as
+      memref<16xf32, #xtile.layout<[0]>> [0] [16] [1] : tensor<16xf32>
+  %0 = tt.expand_dims %extracted_tile {axis = 1 : i32}
+      : tensor<16xf32> -> tensor<16x1xf32>
+  %1 = tt.broadcast %0 : tensor<16x1xf32> -> tensor<16x64xf32>
+  %extracted_tile_0 = triton_xla.extract from %arg1 as
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      : tensor<64x64xf32>
+  %2 = tt.dot %1, %extracted_tile_0, %cst, inputPrecision = tf32
+      : tensor<16x64xf32> * tensor<64x64xf32> -> tensor<16x64xf32>
+  triton_xla.insert %2 into %arg2 as
+      memref<16x64xf32, #xtile.layout<[1, 0]>> [0, 0] [16, 64] [1, 1]
+      : tensor<16x64xf32>
+  return
+}
+
+// Case 1 (num_stages=3): Skips TMA for unaligned broadcast operand (%arg0), but keeps TMA for %arg1.
+// CHECK-TMA-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TMA-NOT:         tt.descriptor_load %arg0
+// CHECK-TMA:             tt.descriptor_load %arg1
+
+// Case 3 (num_stages=1): Uses TMA for unaligned broadcast operand (%arg0) when unpipelined.
+// CHECK-TMA-1STAGE-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg0
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg1
+
+// CHECK-TDM-LABEL: tt.func @broadcast_unaligned_tile_pipelining_tma_test
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_load
+// CHECK-TDM:         tt.descriptor_store
+
 // -----
 
-func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
+// Case 2: Broadcast + Aligned tile (256B) + Pipelined (num_stages=3) -> USES TMA
+func.func @broadcast_aligned_tile_pipelined_uses_tma(
           %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
   %cst = arith.constant dense<0.000000e+00> : tensor<64x64xf32>
   %extracted_tile = triton_xla.extract from %arg0 as
@@ -458,14 +503,13 @@ func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
   return
 }
 
-// CHECK-TMA-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
-// CHECK-TMA-NOT:         tt.descriptor_load %arg0
-// CHECK-TMA:             tt.descriptor_load %arg1
+// CHECK-TMA-LABEL: tt.func @broadcast_aligned_tile_pipelined_uses_tma
+// CHECK-TMA:         tt.descriptor_load %arg0
+// CHECK-TMA:         tt.descriptor_load %arg1
 
-// CHECK-TDM-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
-// CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         tt.descriptor_store
+// CHECK-TMA-1STAGE-LABEL: tt.func @broadcast_aligned_tile_pipelined_uses_tma
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg0
+// CHECK-TMA-1STAGE:         tt.descriptor_load %arg1
 
 // -----
 

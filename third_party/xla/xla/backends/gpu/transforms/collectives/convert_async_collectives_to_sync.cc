@@ -18,22 +18,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 GpuConvertAsyncCollectivesToSync::GpuConvertAsyncCollectivesToSync()
     : ConvertAsyncCollectivesToSync(/*is_nop=*/
@@ -47,43 +49,57 @@ absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     HloComputation* computation,
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
     const {
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> replaced_ops;
   for (auto& [async_start, async_done] : async_pairs) {
     // Tag the async start with is_sync = true.
-    ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+    ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      async_start->backend_config<GpuBackendConfig>());
     gpu_config.mutable_collective_backend_config()->set_is_sync(true);
-    RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
-    replaced_ops[async_start] = nullptr;
-    replaced_ops[async_done] = async_start;
+    ABSL_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
   }
-
-  // Update schedule.
-  HloModule* module = computation->parent();
-  const HloInstructionSequence& sequence =
-      module->schedule().sequence(computation);
-  std::vector<HloInstruction*> new_sequence;
-  new_sequence.reserve(sequence.size());
-  for (HloInstruction* instr : sequence.instructions()) {
-    auto it = replaced_ops.find(instr);
-    // If its not a start or done, add it to new schedule.
-    if (it == replaced_ops.end()) {
-      new_sequence.push_back(instr);
-      continue;
-    }
-
-    // If its a start op, do not add it to the schedule yet.
-    if (it->second == nullptr) {
-      continue;
-    }
-
-    // Its a done op. First add the start and then the done.
-    new_sequence.push_back(it->second);
-    new_sequence.push_back(instr);
-  }
-  module->schedule().set_sequence(computation, new_sequence);
-  return absl::OkStatus();
+  return ReplaceAsyncInstructionsWithSync(computation, async_pairs);
 }
 
-}  // namespace gpu
-}  // namespace xla
+absl::StatusOr<bool> GpuConvertAsyncCollectivesToSync::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+
+  // The pre-scheduling annotator marks collectives that must execute
+  // synchronously. After scheduling, restore their canonical synchronous form
+  // independently of the overlap analysis below.
+  if (module->has_schedule()) {
+    for (HloComputation* computation :
+         module->MakeNonfusionComputations(execution_threads)) {
+      if (!module->schedule().is_computation_scheduled(computation)) {
+        continue;
+      }
+
+      std::vector<std::pair<HloInstruction*, HloInstruction*>> async_pairs;
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (!hlo_query::IsAsyncCollectiveStartOp(instruction) ||
+            !IsGPUSyncCollective(*instruction)) {
+          continue;
+        }
+        if (instruction->user_count() != 1 ||
+            !hlo_query::IsAsyncCollectiveDoneOp(instruction->users()[0])) {
+          continue;
+        }
+        HloInstruction* async_done = instruction->users()[0];
+        async_pairs.push_back({instruction, async_done});
+      }
+
+      if (!async_pairs.empty()) {
+        ABSL_RETURN_IF_ERROR(
+            ReplaceAsyncInstructionsWithSync(computation, async_pairs));
+        changed = true;
+      }
+    }
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      bool converted_unoverlapped,
+      ConvertAsyncCollectivesToSync::RunImpl(module, execution_threads));
+  return changed || converted_unoverlapped;
+}
+
+}  // namespace xla::gpu

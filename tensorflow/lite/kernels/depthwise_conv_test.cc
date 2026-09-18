@@ -259,6 +259,30 @@ TEST(DepthwiseConvolutionPrepareSecurityTest,
   EXPECT_EQ(stride_model.AllocateTensors(), kTfLiteError);
 }
 
+TEST(DepthwiseConvolutionPrepareSecurityTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, kFilterWidth, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(DepthwiseConvolutionPrepareSecurityTest,
+     RejectsDepthMultiplierOutsideInt16Range) {
+  constexpr int kTooLarge = std::numeric_limits<int16_t>::max() + 1;
+  PrepareOnlyDepthwiseConvolutionOpModel m(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(),
+      {TensorType_FLOAT32, {1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, kTooLarge}}, {TensorType_FLOAT32, {}},
+      Padding_VALID);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
   DepthwiseConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},

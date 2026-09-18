@@ -513,13 +513,17 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
       /*memory_allocator=*/nullptr);
 
   initialize_params.buffer_allocations = &buffer_allocations;
+  initialize_params.persistent_alloc_indices.emplace();
 
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
 
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(), nullptr, nullptr, nullptr,
-      nullptr, {});
+      nullptr, {},
+      /*execution_scoped_state=*/nullptr,
+      /*persistent_alloc_indices=*/
+      initialize_params.persistent_alloc_indices);
 
   const bool use_command_buffer = GetParam();
 

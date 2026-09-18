@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
+import concurrent.futures
 import re
+import threading
 import time
 import unittest
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -208,6 +211,48 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     for arr_shape in [(1, 1, 1), (1, 2, 2), (2, 2, 1)]:
       with self.subTest(arr_shape=arr_shape):
         self.CheckVersusNumpy(ndims_mask, arr_shape)
+
+  def testFullyDefinedShapeDoesNotReadShapeAtRuntime(self):
+    with context.eager_mode():
+      tensor_value = np.arange(24).reshape((2, 3, 4))
+      tensor = constant_op.constant(tensor_value)
+      mask = constant_op.constant(tensor_value % 2 == 0)
+      with mock.patch.object(
+          array_ops,
+          "shape",
+          side_effect=AssertionError("unexpected runtime Shape op"),
+      ):
+        result = array_ops.boolean_mask(tensor, mask)
+
+      self.assertAllEqual(tensor_value[tensor_value % 2 == 0], result)
+
+  @test_util.run_gpu_only
+  def testConcurrentEagerBooleanMaskOnGpu(self):
+    thread_count = 8
+    barrier = threading.Barrier(thread_count)
+    input_shape = (64, 64, 64, 4)
+    tensor_value = np.arange(np.prod(input_shape), dtype=np.float32).reshape(
+        input_shape
+    )
+    expected = tensor_value[tensor_value >= tensor_value.size // 2]
+
+    def apply_mask(_):
+      with context.eager_mode(), test_util.force_gpu():
+        tensor = constant_op.constant(tensor_value)
+        barrier.wait(timeout=60)
+        for _ in range(5):
+          result = array_ops.boolean_mask(
+              tensor, tensor >= tensor_value.size // 2
+          )
+        return result.numpy()
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=thread_count
+    ) as executor:
+      results = list(executor.map(apply_mask, range(thread_count)))
+
+    for result in results:
+      self.assertAllEqual(expected, result)
 
   def testEmptyInput2D(self):
     mask = np.array([True, False])
@@ -545,6 +590,45 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     x = np.ndarray(shape=[0, 1, 1])
     v = array_ops.reverse_v2(x, axis=[1])
     self.assertAllEqual(self.evaluate(v), v)
+
+  def testReverseScalarOutOfRangeAxis(self):
+    # Regression test for GitHub issue 110038: a scalar has no valid axis, so
+    # any axis must be rejected. The kernel returned the input unchanged
+    # instead, which disagreed with the error shape inference raises for the
+    # same call in graph mode.
+    for axis in ([0], [1, 2, 3], [-1]):
+      with self.subTest(axis=axis):
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(
+              array_ops.reverse_v2(constant_op.constant(4.0), axis=axis)
+          )
+
+  def testReverseScalarEmptyAxisIsValid(self):
+    # An empty axis list reverses nothing and stays valid for any input.
+    x = constant_op.constant(4.0)
+    self.assertAllEqual(4.0, self.evaluate(array_ops.reverse_v2(x, axis=[])))
+
+  def testReverseEmptyTensorOutOfRangeAxis(self):
+    # The same validation gap applied to empty tensors, whose axes can be out
+    # of range even though there is nothing to reverse.
+    for shape, axis in (([0], [5]), ([0, 3], [7]), ([0, 3], [-4])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError), "out of valid range"
+        ):
+          self.evaluate(array_ops.reverse_v2(x, axis=axis))
+
+  def testReverseEmptyTensorValidAxis(self):
+    # In-range axes on empty tensors keep working.
+    for shape, axis in (([0], [0]), ([0, 3], [1]), ([0, 3], [-1])):
+      with self.subTest(shape=shape, axis=axis):
+        x = array_ops.zeros(shape, dtype=dtypes.float32)
+        self.assertAllEqual(
+            np.zeros(shape), self.evaluate(array_ops.reverse_v2(x, axis=axis))
+        )
 
 
 class MeshgridTest(test_util.TensorFlowTestCase):
@@ -1605,6 +1689,24 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     check_output_dtype("float64")
     check_output_dtype(np.float64)
 
+  def testXlaJitCompileWithStaticMaxlen(self):
+    if not context.executing_eagerly() or not test_util.is_xla_enabled():
+      return
+
+    @def_function.function(jit_compile=True)
+    def fn(lengths):
+      return array_ops.sequence_mask(lengths, maxlen=5)
+
+    res = fn(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(
+        res,
+        [
+            [True, False, False, False, False],
+            [True, True, True, False, False],
+            [True, True, False, False, False],
+        ],
+    )
+
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
@@ -1749,6 +1851,26 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
                                     "dims cannot contain a dim of zero"):
           indices = constant_op.constant([2, 5, 7], dtype=dtype)
           dims = constant_op.constant([3, 0], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant(-14, dtype=dtype)
+          dims = constant_op.constant([10], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
+  def testUnravelIndexMixedNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "index is out of bound as with dims"
+        ):
+          indices = constant_op.constant([0, 5, -1, 7], dtype=dtype)
+          dims = constant_op.constant([3, 4], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
   def testUnravelIndexIntegerOverflow(self):
@@ -2462,6 +2584,25 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v_np = np.repeat(array, repeats, axis)
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
+
+  def testHighRankStringTensorToNumpyDoesNotSegfault(self):
+    # Regression test for #124973. Converting a rank > NPY_MAXDIMS tensor
+    # to numpy hit the unguarded slow path in TF_TensorToPyArray and
+    # segfaulted. The reporter reached it via tf.repeat's error formatter
+    # interpolating a string tensor; here we hit the same guard directly
+    # by reshaping a scalar string constant to rank 100 and calling
+    # .numpy() on it. String dtype forces the slow path -- numeric dtypes
+    # take the aliased fast path, which is already guarded upstream in
+    # ArrayFromMemory.
+    if not context.executing_eagerly():
+      self.skipTest("Bug is in the eager .numpy() conversion path.")
+    # Rank 100: above numpy's NPY_MAXDIMS ceiling (32 pre-2.0, 64 post-2.0)
+    # and below TF's own TensorShape cap of 254.
+    x = array_ops.reshape(constant_op.constant("s"), [1] * 100)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "NumPy arrays can have at most"
+    ):
+      x.numpy()
 
 
 class RepeatBenchmark(test_lib.Benchmark):

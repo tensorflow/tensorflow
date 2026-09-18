@@ -30,12 +30,16 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
 namespace odml {
 
 DenseIntElementsAttr DenseI64AttrToI32Attr(
     const DenseIntElementsAttr& dense_attr, PatternRewriter& builder) {
+  if (!dense_attr.getElementType().isInteger(64)) {
+    return dense_attr;
+  }
   std::vector<int32_t> ret(dense_attr.getNumElements());
   auto range = dense_attr.getValues<int64_t>();
   std::transform(range.begin(), range.end(), ret.begin(),
@@ -46,6 +50,9 @@ DenseIntElementsAttr DenseI64AttrToI32Attr(
 
 bool DenseI64AttrToI32Vector(const DenseIntElementsAttr& dense_attr,
                              std::vector<int32_t>* out_vec) {
+  if (!dense_attr.getElementType().isInteger(64)) {
+    return false;
+  }
   std::vector<int32_t> ret(dense_attr.getNumElements());
   auto range = dense_attr.getValues<int64_t>();
   std::transform(range.begin(), range.end(), ret.begin(),
@@ -77,8 +84,12 @@ std::optional<bool> GetBoolFromCompositeAttr(
 }
 
 ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {
-  auto composite_result_shape =
-      mlir::cast<ShapedType>(old_op->getResults().front().getType()).getShape();
+  auto shaped_type =
+      mlir::dyn_cast<ShapedType>(old_op->getResults().front().getType());
+  if (!shaped_type || !shaped_type.hasRank() || shaped_type.getRank() != 4) {
+    return shaped_type;
+  }
+  auto composite_result_shape = shaped_type.getShape();
   std::array<int64_t, 4> output_shape;
   // NHWC <- NCHW
   output_shape[0] = composite_result_shape[0];
@@ -89,6 +100,43 @@ ShapedType GetNhwcReturnTypeFromNchw(Operation* old_op) {
   auto input_type = mlir::cast<ShapedType>(old_op->getOperand(0).getType());
 
   return RankedTensorType::get(output_shape, input_type.getElementType());
+}
+
+mlir::Attribute GetMirrorPadMode(const DictionaryAttr& composite_attrs,
+                                 Builder& builder) {
+  StringAttr mode_attr;
+  if (!EnsureAttribute(composite_attrs, "mode", &mode_attr)) {
+    return ::mlir::TFL::MirrorPaddingTypeAttr::get(
+        builder.getContext(), ::mlir::TFL::MirrorPaddingType::REFLECT);
+  }
+  auto mode_str = mode_attr.getValue();
+  ::mlir::TFL::MirrorPaddingType mode;
+  if (mode_str == "REFLECT") {
+    mode = ::mlir::TFL::MirrorPaddingType::REFLECT;
+  } else if (mode_str == "SYMMETRIC") {
+    mode = ::mlir::TFL::MirrorPaddingType::SYMMETRIC;
+  } else {
+    mode = ::mlir::TFL::MirrorPaddingType::REFLECT;
+  }
+  return ::mlir::TFL::MirrorPaddingTypeAttr::get(builder.getContext(), mode);
+}
+
+DenseIntElementsAttr BuildPaddingsAttr(const DictionaryAttr& composite_attrs,
+                                       Builder& builder) {
+  std::vector<int32_t> padding_vec;
+  if (!GetI32VectorFromDenseI64CompositeAttr(composite_attrs, "paddings",
+                                             &padding_vec) ||
+      padding_vec.size() != 4) {
+    padding_vec = {0, 0, 0, 0};
+  }
+  int32_t left = padding_vec[0];
+  int32_t right = padding_vec[1];
+  int32_t top = padding_vec[2];
+  int32_t bottom = padding_vec[3];
+
+  std::vector<int32_t> paddings = {0, 0, top, bottom, left, right, 0, 0};
+  auto tensor_type = RankedTensorType::get({4, 2}, builder.getI32Type());
+  return DenseIntElementsAttr::get(tensor_type, paddings);
 }
 }  // namespace odml
 }  // namespace mlir

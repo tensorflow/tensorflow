@@ -47,7 +47,8 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                 std::unique_ptr<HloModule> hlo_module,
                                 absl::string_view pattern,
                                 bool match_optimized_ir,
-                                bool run_optimization_passes = true);
+                                bool run_optimization_passes = true,
+                                bool match_ir_from_hlo_passes = false);
 
 absl::Status CompileAheadOfTimeAndVerifyIr(
     LLVMCompiler* compiler, const AotCompilationOptions& aot_options,

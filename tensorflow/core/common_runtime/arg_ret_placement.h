@@ -98,7 +98,7 @@ absl::Status WeakSetAllocAttrsForRets(
     std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for args (inputs to functions, "_Arg" ops)
-// for a single device funtion based on dtype. Raises an error if an int32 arg
+// for a single device function based on dtype. Raises an error if an int32 arg
 // does not have expected full_type information. If an error raised about bad
 // full time information causes a breakage, changing
 // `SingleDeviceSetAllocAttrsForArgs` to `WeakSingleDeviceSetAllocAttrsForArgs`

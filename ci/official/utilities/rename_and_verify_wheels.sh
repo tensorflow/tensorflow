@@ -125,7 +125,39 @@ else
   # When using the Linux-like path, venv creation quietly fails, which is
   # why it's converted here.
   venv_dir=$(cygpath -m $venv_dir)
-  "/c/python${TFCI_PYTHON_VERSION}/python.exe" -m venv "$venv_dir"
+  py_exe="/c/python${TFCI_PYTHON_VERSION}/python.exe"
+  if [[ ! -f "$py_exe" ]]; then
+    py_exe=$(which "python${TFCI_PYTHON_VERSION}" 2>/dev/null || which "python${TFCI_PYTHON_VERSION}.exe" 2>/dev/null || echo "")
+  fi
+  if [[ -z "$py_exe" ]] || [[ ! -f "$py_exe" ]]; then
+    if [[ "$TFCI_PYTHON_VERSION" == "3.14" ]]; then
+      echo "Python 3.14 not found. Attempting to install..."
+      PYTHON_URL="https://www.python.org/ftp/python/3.14.6/python-3.14.6-amd64.exe"
+      if curl -f -L -o python_installer.exe "$PYTHON_URL"; then
+        echo "Running installer..."
+        INSTALLER_WIN_PATH=$(cygpath -w "$PWD/python_installer.exe")
+        cmd /c "$INSTALLER_WIN_PATH /quiet InstallAllUsers=1 PrependPath=1 TargetDir=C:\python314"
+        sleep 30
+        py_exe="/c/python314/python.exe"
+        if [[ ! -f "$py_exe" ]]; then
+          py_exe="/c/python3.14/python.exe"
+        fi
+        if [[ -f "$py_exe" ]]; then
+          echo "Python installed successfully at $py_exe"
+        else
+          echo "Error: Python installation skipped or failed to target expected directories."
+          exit 1
+        fi
+      else
+        echo "Error: Failed to download Python installer."
+        exit 1
+      fi
+    else
+      echo "Error: Could not find python${TFCI_PYTHON_VERSION} executable."
+      exit 1
+    fi
+  fi
+  "$py_exe" -m venv "$venv_dir"
   python="$venv_dir/Scripts/python.exe"
 fi
 

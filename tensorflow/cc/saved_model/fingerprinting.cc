@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting_x_platform_utils.h"
+#include "tensorflow/cc/saved_model/singleprint.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
@@ -237,12 +238,11 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
   // At this point we have neither saved_model.pb nor saved_model.cpb.
   return CreateReducedFingerprintDef();  // Only sets the UUID.
 #else  // The following runs on Windows and Mac.
-  absl::StatusOr<FingerprintDef> fingerprint_def =
-      CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
-  if (!fingerprint_def.ok()) {
-    return CreateReducedFingerprintDef();
+  std::string pb_file = absl::StrCat(prefix, ".pb");
+  if (Env::Default()->FileExists(pb_file).ok()) {
+    return CreateFingerprintDefPb(export_dir, pb_file);
   }
-  return fingerprint_def;
+  return CreateReducedFingerprintDef();
 #endif
 }
 
@@ -260,24 +260,8 @@ absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   return fingerprint_proto;
 }
 
-std::string Singleprint(uint64_t graph_def_program_hash,
-                        uint64_t signature_def_hash,
-                        uint64_t saved_object_graph_hash,
-                        uint64_t checkpoint_hash) {
-  return std::to_string(graph_def_program_hash) + "/" +
-         std::to_string(signature_def_hash) + "/" +
-         std::to_string(saved_object_graph_hash) + "/" +
-         std::to_string(checkpoint_hash);
-}
-
-std::string Singleprint(const FingerprintDef& fingerprint) {
-  return Singleprint(
-      fingerprint.graph_def_program_hash(), fingerprint.signature_def_hash(),
-      fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
-}
-
 absl::StatusOr<std::string> Singleprint(absl::string_view export_dir) {
-  TF_ASSIGN_OR_RETURN(const FingerprintDef fingerprint_def,
+  TF_ASSIGN_OR_RETURN(FingerprintDef fingerprint_def,
                       ReadSavedModelFingerprint(export_dir));
   return Singleprint(fingerprint_def);
 }

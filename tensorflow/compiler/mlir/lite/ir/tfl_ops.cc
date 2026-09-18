@@ -32,13 +32,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
-#include "absl/synchronization/mutex.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -86,6 +84,7 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
@@ -259,7 +258,9 @@ bool HasDenseResourceOperand(mlir::Operation* op) {
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
   if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
-    return false;
+    if (!llvm::isa<TransposeOp, ReshapeOp>(inst)) {
+      return false;
+    }
   }
 
   auto get_size = [&](TypeRange types) {
@@ -2808,20 +2809,8 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   } else if (auto dense_resource_elements =
                  mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
                      operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      auto key = dense_resource_elements.getRawHandle().getKey();
-      if (getInput().hasOneUse()) {
-        return DenseResourceElementsAttr::get(result_type, key,
-                                              std::move(*blob));
-      }
-      auto new_blob = mlir::HeapAsmResourceBlob::allocate(
-          blob->getData().size(), /*align=*/64, true);
-      memcpy(const_cast<char*>(new_blob.getData().data()),
-             blob->getData().data(), blob->getData().size());
-      return DenseResourceElementsAttr::get(result_type, key,
-                                            std::move(new_blob));
-    }
+    return DenseResourceElementsAttr::get(
+        result_type, dense_resource_elements.getRawHandle());
   }
 
   return nullptr;
@@ -2950,6 +2939,37 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
       output_ty = RankedTensorType::getChecked(input.getLoc(), output_ty_shape,
                                                new_element_type);
       return success();
+    }
+  }
+  if (quant::UniformQuantizedSubChannelType sub_channel_quant =
+          dyn_cast_or_null<quant::UniformQuantizedSubChannelType>(element_ty)) {
+    if (!sub_channel_quant.getQuantizedDimensions().empty()) {
+      int32_t input_quant_dim = sub_channel_quant.getQuantizedDimensions()[0];
+      auto input_shape = mlir::cast<ShapedType>(input.getType()).getShape();
+      absl::StatusOr<int32_t> new_quant_dim = GetQuantDimensionAfterReshape(
+          input_shape, output_ty_shape, input_quant_dim);
+      if (!new_quant_dim.ok()) return failure();
+      if (*new_quant_dim != input_quant_dim) {
+        llvm::SmallVector<int32_t> new_quant_dims(
+            sub_channel_quant.getQuantizedDimensions().begin(),
+            sub_channel_quant.getQuantizedDimensions().end());
+        new_quant_dims[0] = *new_quant_dim;
+        quant::UniformQuantizedSubChannelType new_element_type =
+            mlir::quant::UniformQuantizedSubChannelType::getChecked(
+                [&]() { return mlir::emitError(input.getLoc()); },
+                sub_channel_quant.getFlags(),
+                sub_channel_quant.getStorageType(),
+                sub_channel_quant.getExpressedType(),
+                sub_channel_quant.getScales(),
+                sub_channel_quant.getZeroPoints(), new_quant_dims,
+                sub_channel_quant.getBlockSizes(),
+                sub_channel_quant.getStorageTypeMin(),
+                sub_channel_quant.getStorageTypeMax());
+
+        output_ty = RankedTensorType::getChecked(
+            input.getLoc(), output_ty_shape, new_element_type);
+        return success();
+      }
     }
   }
   output_ty = tensorflow::GetTypeFromTFTensorShape(output_ty_shape, element_ty);
@@ -3992,8 +4012,10 @@ OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
 
   auto operands = adaptor.getOperands();
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/f16/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsF16ShapedType(result_type) &&
+      !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
@@ -5143,7 +5165,6 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
     }
   }
 }
-
 }  // namespace
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -5186,6 +5207,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     output_shape.push_back(input_shape[perms[i]]);
   }
 
+  const int bit_width = input_tensor.getElementType().getIntOrFloatBitWidth();
+
   if (auto dense_elements =
           mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
     // If the input tensor values are splat, then it has exactly one value.
@@ -5196,10 +5219,9 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
     }
 
     // MLIR implementation pads elements < 8 bits to 8 bits and pads non byte
-    // aligned to the nearest byte. So this is allowed.
+    // aligned to the nearest byte.
     const char* raw_input = dense_elements.getRawData().data();
-    const int element_byte_size =
-        dense_elements.getElementType().getIntOrFloatBitWidth() / 8;
+    const int element_byte_size = std::max(1, bit_width / 8);
 
     // Hold current ND index in input tensor when computing
     // permutation.
@@ -5224,43 +5246,8 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
         RankedTensorType::get(output_shape, input_tensor.getElementType());
     return DenseElementsAttr::getFromRawBuffer(result_type, raw_output_arr);
 
-  } else if (auto dense_resource_elements =
-                 mlir::dyn_cast_or_null<DenseResourceElementsAttr>(
-                     operands[0])) {
-    if (AsmResourceBlob* blob =
-            dense_resource_elements.getRawHandle().getBlob()) {
-      const int element_byte_size =
-          input_tensor.getElementType().getIntOrFloatBitWidth() / 8;
-
-      // Hold current ND index in input tensor when computing
-      // permutation.
-      llvm::SmallVector<uint64_t> current_input_index(input_type.getRank());
-
-      // Allocate raw data and retrieve address of the first char in its raw
-      // buffer.
-      auto result_type =
-          RankedTensorType::get(output_shape, input_tensor.getElementType());
-      auto raw_output_blob =
-          mlir::HeapAsmResourceBlob::allocate(GetSizeInBytes(result_type),
-                                              /*align=*/64,
-                                              /*dataIsMutable=*/true);
-      ArrayRef<char> data = raw_output_blob.getDataAs<char>();
-      llvm::MutableArrayRef<char> raw_output_arr = mlir::MutableArrayRef<char>(
-          const_cast<char*>(data.data()), data.size());
-      char* raw_output = (char*)raw_output_arr.data();
-      const char* raw_input = blob->getData().data();
-      if (raw_input != nullptr) {
-        static absl::Mutex compute_permutation_mutex(absl::kConstInit);
-        absl::MutexLock lock(compute_permutation_mutex);
-        // Compute the result and write to `raw_output`.
-        ComputePermutation(perms, output_shape, raw_input, element_byte_size,
-                           /*current_axis=*/0, raw_output, current_input_index,
-                           input_type);
-        return DenseResourceElementsAttr::get(result_type,
-                                              "tfl_transpose_op_fold_result",
-                                              std::move(raw_output_blob));
-      }
-    }
+  } else if (mlir::isa<DenseResourceElementsAttr>(operands[0])) {
+    return nullptr;
   }
 
   return nullptr;
@@ -6206,7 +6193,16 @@ OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult DynamicUpdateSliceOp::fold(FoldAdaptor) {
-  // Check if update replaces the whole tensor, meaning operand and update has
+  // Do not fold if operand 0 is from graph input and return value is to graph
+  // output.
+  if (llvm::isa<mlir::BlockArgument>(getOperand()) &&
+      llvm::any_of(getResult().getUsers(), [](Operation* user) {
+        return llvm::isa<mlir::func::ReturnOp>(user);
+      })) {
+    return {};
+  }
+
+  // Checkg if update replaces the whole tensor, meaning operand and update has
   // the same shape and all start indices are zero.
   DenseIntElementsAttr indices_attr;
   if (matchPattern(getStartIndices(), m_Constant(&indices_attr)) &&

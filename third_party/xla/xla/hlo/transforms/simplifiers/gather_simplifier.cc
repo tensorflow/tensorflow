@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
@@ -57,7 +57,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   }
 
   // Make the start_indices a two-dimensional tensor.
-  ASSIGN_OR_RETURN(start_indices, TransformStartIndices(
+  ABSL_ASSIGN_OR_RETURN(start_indices, TransformStartIndices(
                                       start_indices, dims.index_vector_dim()));
 
   // Permute the slice sizes according to start_index_map and compute the new
@@ -85,7 +85,7 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
         dims.collapsed_slice_dims().size());
     absl::c_transform(dims.collapsed_slice_dims(), collapsed_slice_dims.begin(),
                       [](int64_t dim) { return dim + 1; });
-    ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, collapsed_slice_dims));
+    ABSL_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, collapsed_slice_dims));
   }
 
   // Expand the start index dimensions.
@@ -97,10 +97,10 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     }
   }
   if (start_indices_dims.size() > 1) {
-    ASSIGN_OR_RETURN(result,
+    ABSL_ASSIGN_OR_RETURN(result,
                      ExpandFirstDimIntoNDims(result, start_indices_dims));
   } else if (start_indices_dims.empty()) {
-    ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
+    ABSL_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
   }
 
   // Move the offset dims to the final locations.

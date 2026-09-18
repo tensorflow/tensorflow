@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides build configuration for TensorFlow."""
 
 load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
@@ -47,6 +62,9 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
+    _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
+    _tf_cuda_tests_tags = "tf_cuda_tests_tags",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -100,7 +118,10 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
+
+tf_cuda_base_tests_tags = _tf_cuda_base_tests_tags
+tf_cuda_tests_tags = _tf_cuda_tests_tags
+tf_cuda_2gpu_tests_tags = _tf_cuda_2gpu_tests_tags
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -1723,7 +1744,7 @@ def tf_gpu_cc_test(
             "//conditions:default": 0,
         }),
         suffix = "_gpu",
-        tags = tags + tf_gpu_tests_tags(),
+        tags = tags + tf_cuda_tests_tags(),
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
@@ -1731,7 +1752,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + two_gpu_tags
+        cleaned_tags = tags + tf_cuda_2gpu_tests_tags()
         if "requires-gpu-nvidia" in cleaned_tags:
             cleaned_tags.remove("requires-gpu-nvidia")
         tf_cc_test(
@@ -2850,9 +2871,9 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_tags = test_tags + tf_gpu_tests_tags()
+            test_tags = test_tags + tf_cuda_tests_tags()
         if config == "2gpu":
-            test_tags = test_tags + two_gpu_tags
+            test_tags = test_tags + tf_cuda_2gpu_tests_tags()
             if "requires-gpu-nvidia" in test_tags:
                 test_tags.remove("requires-gpu-nvidia")
 
@@ -3405,7 +3426,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@clog//:__subpackages__",
         "@com_github_cares_cares//:__subpackages__",
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
+        "@grpc//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_googleapis//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",

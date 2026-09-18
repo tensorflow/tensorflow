@@ -43,6 +43,8 @@ limitations under the License.
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PassManager.h"
@@ -471,6 +473,16 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
+  // Must stay last: middle-end passes behave differently on instructions that
+  // already carry `contract`.
+  //
+  // TODO(b/560320144): `AllowFPOpFusion = Fast` is deliberately still set in
+  // service/cpu/cpu_aot_loader.cc:53, tools/hlo_opt/cpu_opt.cc:217,
+  // backends/cpu/testlib/kernel_runner.cc:132 and
+  // service/cpu/ir_emitter_test.cc:258. Drop those once the upstream change
+  // has landed.
+  llvm_ir::SetAllowContractOnFpArithmetic(module);
+
   return llvm::Error::success();
 }
 
@@ -484,8 +496,7 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
   codegen_passes.add(new llvm::RuntimeLibraryInfoWrapper(
-      module.getTargetTriple(), target_machine->Options.ExceptionModel,
-      target_machine->Options.FloatABIType, target_machine->Options.EABIVersion,
+      target_machine->Options.ExceptionModel,
       target_machine->Options.MCOptions.ABIName,
       target_machine->Options.VecLib));
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);

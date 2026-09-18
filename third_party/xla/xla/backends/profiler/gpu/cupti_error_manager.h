@@ -61,6 +61,11 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
                                     size_t valid_buffer_size_bytes,
                                     CUpti_Activity** record) override;
 
+  CUptiResult ActivityGetNextRecordV2(CUpti_SubscriberHandle subscriber,
+                                      uint8_t* buffer,
+                                      size_t valid_buffer_size_bytes,
+                                      CUpti_Activity** record) override;
+
   // Reports the number of dropped activity records.
   CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
                                            uint32_t stream_id,
@@ -105,6 +110,9 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
 
   // Returns CUPTI timestamp.
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
+
+  CUptiResult GetTimestampV2(CUpti_SubscriberHandle subscriber,
+                             uint64_t* timestamp) override;
 
   // Explicitly destroys and cleans up all resources associated with CUPTI in
   // the current process.

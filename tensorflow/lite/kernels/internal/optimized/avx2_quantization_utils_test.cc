@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/optimized/avx2_quantization_utils.h"
 
+#include <cstdint>
+#include <vector>
+
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/common.h"
 
 #ifdef __AVX2__

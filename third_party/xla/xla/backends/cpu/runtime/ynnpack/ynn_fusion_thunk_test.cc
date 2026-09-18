@@ -22,10 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -52,7 +52,7 @@ namespace {
 static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
     absl::Span<const YnnFusionThunk::Argument> arguments,
     absl::Span<const YnnFusionThunk::Result> results) {
-  ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+  ABSL_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
                    CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
                      return ynn_create_subgraph(
                          /*external_value_ids=*/3,
@@ -92,7 +92,7 @@ static absl::StatusOr<YnnSubgraph> BuildBinaryAddSubgraph(
 static absl::StatusOr<YnnSubgraph> BuildIotaSubgraph(
     absl::Span<const YnnFusionThunk::Argument> arguments,
     absl::Span<const YnnFusionThunk::Result> results) {
-  ASSIGN_OR_RETURN(YnnSubgraph subgraph,
+  ABSL_ASSIGN_OR_RETURN(YnnSubgraph subgraph,
                    CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
                      return ynn_create_subgraph(
                          /*external_value_ids=*/1,

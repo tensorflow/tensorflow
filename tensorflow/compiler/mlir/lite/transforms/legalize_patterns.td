@@ -70,6 +70,9 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def CreateStridedSliceIndexToInt32 : NativeCodeCall<
+  "CreateStridedSliceIndexToInt32($0, $_loc, $_builder)">;
+
 def CreateInt32ConstOrCast : NativeCodeCall<
   "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
 
@@ -562,10 +565,10 @@ def LegalizeConv2DBackpropInput : Pat<
      /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
-  : CPred<"llvm::cast<DenseElementsAttr>($_self).getType().getRank() == 0">;
+  : CPred<"llvm::isa<DenseElementsAttr>($_self) && llvm::cast<DenseElementsAttr>($_self).getType().getRank() == 0">;
 
 def HasValueZero
-  : CPred<"llvm::cast<DenseElementsAttr>($_self)."
+  : CPred<"llvm::isa<DenseElementsAttr>($_self) && llvm::cast<DenseElementsAttr>($_self)."
           "getSplatValue<::mlir::IntegerAttr>().getInt() == 0">;
 
 // TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
@@ -608,8 +611,10 @@ def LegalizeStridedSlice : Pat<
     $input, $begin, $end, $strides, $begin_mask, $end_mask,
     $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input,
-    (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
-    (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
+    (CreateStridedSliceIndexToInt32 $begin),
+    (CreateStridedSliceIndexToInt32 $end),
+    (CreateStridedSliceIndexToInt32 $strides),
+    (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
     (convertIntAttrTo32Bit $shrink_axis_mask),

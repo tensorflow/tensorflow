@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/float8.h"
 #endif
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -50,50 +51,53 @@ namespace {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-void copyCast(const float* in, int32_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int32_t>::min());
-  const float max_int_float = std::nextafterf(
-      static_cast<float>(std::numeric_limits<int32_t>::max()), 0);
-
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return a <= max_int_float ? static_cast<int32_t>(std::max(a, min_int_float))
-                              : std::numeric_limits<int32_t>::max();
-  });
+constexpr int32_t SignExtendInt4(uint8_t nibble) {
+  const int32_t value = nibble & 0x0f;
+  return value < 8 ? value : value - 16;
 }
 
-void copyCast(const float* in, int16_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<int16_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<int16_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
+template <typename ToT, typename FloatT>
+ToT SaturatingCastFloatingToInteger(FloatT value) {
+  static_assert(std::is_floating_point_v<FloatT>);
+  static_assert(std::is_integral_v<ToT>);
+  static_assert(!std::is_same_v<ToT, bool>);
+
+  // Preserve CAST's existing NaN behavior while sharing the checked
+  // floating-point-to-integer conversion with other kernels.
+  return SafeCast<ToT>(value, std::numeric_limits<ToT>::max());
 }
 
-void copyCast(const float* in, uint8_t* out, int num_elements) {
-  const float min_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::min());
-  const float max_int_float =
-      static_cast<float>(std::numeric_limits<uint8_t>::max());
-  std::transform(in, in + num_elements, out, [=](float a) {
-    return static_cast<uint8_t>(
-        std::max(std::min(a, max_int_float), min_int_float));
-  });
+template <typename ToT, typename FromT>
+ToT CastValue(FromT value) {
+  if constexpr (std::is_floating_point_v<FromT> && std::is_integral_v<ToT> &&
+                !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(value);
+  } else if constexpr (std::is_same_v<FromT, Eigen::bfloat16> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::bfloat16_impl::bfloat16_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, Eigen::half> &&
+                       std::is_integral_v<ToT> && !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(
+        Eigen::half_impl::half_to_float(value));
+  } else if constexpr (std::is_same_v<FromT, half> && std::is_integral_v<ToT> &&
+                       !std::is_same_v<ToT, bool>) {
+    return SaturatingCastFloatingToInteger<ToT>(static_cast<float>(value));
+  } else {
+    return static_cast<ToT>(value);
+  }
 }
 
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out,
-                 [](FromT a) { return static_cast<ToT>(a); });
+                 [](FromT a) { return CastValue<ToT>(a); });
 }
 
 template <typename ToT>
 void copyCast(const std::complex<float>* in, ToT* out, int num_elements) {
   std::transform(in, in + num_elements, out, [](std::complex<float> a) {
-    return static_cast<ToT>(std::real(a));
+    return CastValue<ToT>(std::real(a));
   });
 }
 
@@ -106,9 +110,8 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 
 template <typename ToT>
 void copyCast(const half* in, ToT* out, int num_elements) {
-  std::transform(in, in + num_elements, out, [](half a) {
-    return static_cast<ToT>(fp16_ieee_to_fp32_value(a));
-  });
+  std::transform(in, in + num_elements, out,
+                 [](half a) { return CastValue<ToT>(a); });
 }
 
 template <>
@@ -281,15 +284,17 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
   }
 #endif
 
-  for (; i < (num_elements + 1) / 2; ++i) {
-    int8_t byte = in_data[i];
-    // Shift left first so that sign is properly extended when shifted right
-    int32_t lower = static_cast<int8_t>(byte << 4) >> 4;
-    int32_t higher = byte >> 4;
-    out_data[2 * i] = (float)lower;
-    if (2 * i + 1 < num_elements) {
-      out_data[2 * i + 1] = (float)higher;
-    }
+  const int complete_bytes = num_elements / 2;
+  for (; i < complete_bytes; ++i) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    const int output_index = 2 * i;
+    out_data[output_index] = static_cast<float>(SignExtendInt4(byte & 0x0f));
+    out_data[output_index + 1] = static_cast<float>(SignExtendInt4(byte >> 4));
+  }
+  if (num_elements % 2 != 0) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[complete_bytes]);
+    out_data[num_elements - 1] =
+        static_cast<float>(SignExtendInt4(byte & 0x0f));
   }
   return kTfLiteOk;
 }
@@ -298,12 +303,16 @@ TfLiteStatus castUInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
                               TfLiteTensor* out, int num_elements) {
   const int8_t* in_data = (const int8_t*)in->data.data;
   float* out_data = (float*)out->data.data;
-  for (int i = 0; i < (num_elements + 1) / 2; ++i) {
-    uint8_t byte = static_cast<uint8_t>(in_data[i]);
-    out_data[2 * i] = static_cast<float>(byte & 0x0F);
-    if (2 * i + 1 < num_elements) {
-      out_data[2 * i + 1] = static_cast<float>(byte >> 4);
-    }
+  const int complete_bytes = num_elements / 2;
+  for (int i = 0; i < complete_bytes; ++i) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    const int output_index = 2 * i;
+    out_data[output_index] = static_cast<float>(byte & 0x0f);
+    out_data[output_index + 1] = static_cast<float>(byte >> 4);
+  }
+  if (num_elements % 2 != 0) {
+    const uint8_t byte = static_cast<uint8_t>(in_data[complete_bytes]);
+    out_data[num_elements - 1] = static_cast<float>(byte & 0x0f);
   }
   return kTfLiteOk;
 }

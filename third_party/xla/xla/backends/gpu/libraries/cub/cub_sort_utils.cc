@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -50,7 +50,7 @@ absl::Status CreateCubSortCustomCall(HloCustomCallInstruction* custom_call,
                       descending ? "true" : "false", batch_size);
   new_custom_call->set_raw_backend_config_string(backend_config);
   new_custom_call->SetupDerivedInstruction(custom_call);
-  RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
       custom_call, new_custom_call));
   return absl::OkStatus();
 }

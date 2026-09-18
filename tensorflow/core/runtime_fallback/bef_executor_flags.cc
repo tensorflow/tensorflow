@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/bef_executor_flags.h"
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 
@@ -37,7 +38,7 @@ ABSL_FLAG(tfrt::HostAllocatorTypeWrapper, host_allocator_type,
 
 namespace tfrt {
 
-const char kDefaultInputFilename[] = "-";
+ABSL_CONST_INIT const char kDefaultInputFilename[] = "-";
 
 // AbslParseFlag/AbslUnparseFlag need to be in tfrt namespace for ADL to work.
 

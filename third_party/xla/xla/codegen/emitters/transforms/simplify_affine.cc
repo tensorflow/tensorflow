@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <limits>
-#include <memory>
 #include <utility>
 #include <vector>
 

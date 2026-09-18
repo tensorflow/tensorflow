@@ -878,6 +878,70 @@ TEST_F(HloDceTest, MultiOutputFusionPreserveUnusedSideEffectingOutput) {
                              .WithShapeEqualTo(&expected_shape)));
 }
 
+TEST_F(HloDceTest, MultiOutputFusionPruneOutputsOriginalValueSingleOutput) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp, origin={({"orig_add"}, {"orig_neg"})}
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    ROOT root = f32[32,32]{1,0} add(gte.1, gte.1)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_FALSE(fusion->shape().IsTuple());
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(), "{\"orig_neg\"}");
+}
+
+TEST_F(HloDceTest, MultiOutputFusionPruneOutputsOriginalValueMultipleOutputs) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_comp {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    sub = f32[32,32]{1,0} subtract(p0, p1)
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(add, sub, neg)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_comp, origin={({"orig_add"}, {"orig_sub"}, {"orig_neg"})}
+    gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0
+    gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
+    ROOT root = f32[32,32]{1,0} add(gte.0, gte.2)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_TRUE(fusion->shape().IsTuple());
+  EXPECT_EQ(fusion->shape().tuple_shapes().size(), 2);
+  ASSERT_NE(fusion->original_value(), nullptr);
+  EXPECT_EQ(fusion->original_value()->ToString(),
+            "({\"orig_add\"}, {\"orig_neg\"})");
+}
+
 TEST_F(HloDceTest, UnusedCalledParameter) {
   constexpr absl::string_view kHlo = R"(
 HloModule main
@@ -1125,6 +1189,42 @@ ENTRY main.6 {
   EXPECT_TRUE(
       ShapeUtil::Equal(module->entry_computation()->root_instruction()->shape(),
                        expected_shape));
+}
+
+TEST_F(HloDceTest, DceWithDisabledWhileLoopDceAttr) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module_dce_disabled
+
+while_cond {
+  state = (s32[], f32[100], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(10)
+  ROOT cond = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[100], f32[100]) parameter(0)
+  i = s32[] get-tuple-element(state), index=0
+  acc = f32[100] get-tuple-element(state), index=1
+  dead = f32[100] get-tuple-element(state), index=2
+  one = s32[] constant(1)
+  next_i = s32[] add(i, one)
+  ROOT next_state = (s32[], f32[100], f32[100]) tuple(next_i, acc, dead)
+}
+
+ENTRY main {
+  base = f32[100] parameter(0)
+  input = f32[100] parameter(1)
+  i_0 = s32[] constant(0)
+  init = (s32[], f32[100], f32[100]) tuple(i_0, base, input)
+  ROOT loop = (s32[], f32[100], f32[100]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_dce="true"}
+}
+)hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

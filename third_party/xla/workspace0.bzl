@@ -20,8 +20,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
-load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
+load("@grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def _tf_bind():
@@ -36,21 +36,21 @@ def _tf_bind():
     # Needed by Protobuf
     native.bind(
         name = "grpc_cpp_plugin",
-        actual = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
+        actual = "@grpc//src/compiler:grpc_cpp_plugin",
     )
     native.bind(
         name = "grpc_python_plugin",
-        actual = "@com_github_grpc_grpc//src/compiler:grpc_python_plugin",
+        actual = "@grpc//src/compiler:grpc_python_plugin",
     )
 
     native.bind(
         name = "grpc_lib",
-        actual = "@com_github_grpc_grpc//:grpc++",
+        actual = "@grpc//:grpc++",
     )
 
     native.bind(
         name = "grpc_lib_unsecure",
-        actual = "@com_github_grpc_grpc//:grpc++_unsecure",
+        actual = "@grpc//:grpc++_unsecure",
     )
 
     # Needed by Protobuf

@@ -64,6 +64,7 @@ defvar CustomHloConverterOps = [
   StableHLO_BroadcastInDimOp,
   StableHLO_CaseOp,
   StableHLO_CollectiveBroadcastOp,
+  StableHLO_CollectiveReduceOp,
   StableHLO_CompareOp,
   StableHLO_CompositeOp,
   StableHLO_ConstantOp,

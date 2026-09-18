@@ -68,9 +68,9 @@ absl::StatusOr<std::string> RawDeflate(absl::string_view input) {
   auto opts = tsl::io::ZlibCompressionOptions::RAW();
   tsl::io::ZlibOutputBuffer deflate_file(&f, opts.input_buffer_size,
                                          opts.output_buffer_size, opts);
-  RETURN_IF_ERROR(deflate_file.Init());
-  RETURN_IF_ERROR(deflate_file.Append(input));
-  RETURN_IF_ERROR(deflate_file.Close());
+  ABSL_RETURN_IF_ERROR(deflate_file.Init());
+  ABSL_RETURN_IF_ERROR(deflate_file.Append(input));
+  ABSL_RETURN_IF_ERROR(deflate_file.Close());
 
   return compressed;
 }
@@ -126,7 +126,7 @@ absl::Status ZipWriter::AppendData(absl::string_view data) {
   if (current_offset_ + data.size() > UINT32_MAX) {
     return absl::ResourceExhaustedError("ZIP archive size exceeds 4GB limit.");
   }
-  RETURN_IF_ERROR(file_->Append(data));
+  ABSL_RETURN_IF_ERROR(file_->Append(data));
   current_offset_ += data.size();
   return absl::OkStatus();
 }
@@ -165,25 +165,25 @@ absl::Status ZipWriter::AddFile(std::string name, absl::string_view content) {
   uint32_t crc =
       crc32(0, reinterpret_cast<const Bytef*>(content.data()), content.size());
 
-  ASSIGN_OR_RETURN(std::string compressed, RawDeflate(content));
+  ABSL_ASSIGN_OR_RETURN(std::string compressed, RawDeflate(content));
   if (compressed.size() > 0xFFFFFFFF) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Compressed data too large: ", compressed.size(), " bytes (max 4GB)"));
   }
 
-  RETURN_IF_ERROR(Append32(0x04034b50));  // Local file header signature
-  RETURN_IF_ERROR(Append16(20));          // Version needed to extract (2.0)
-  RETURN_IF_ERROR(Append16(0));           // General purpose bit flag
-  RETURN_IF_ERROR(Append16(8));           // Compression method (8 = DEFLATE)
-  RETURN_IF_ERROR(Append16(0));           // Last mod file time
-  RETURN_IF_ERROR(Append16(0));           // Last mod file date
-  RETURN_IF_ERROR(Append32(crc));
-  RETURN_IF_ERROR(Append32(compressed.size()));
-  RETURN_IF_ERROR(Append32(content.size()));
-  RETURN_IF_ERROR(Append16(name.size()));
-  RETURN_IF_ERROR(Append16(0));  // Extra field length
-  RETURN_IF_ERROR(AppendData(name));
-  RETURN_IF_ERROR(AppendData(compressed));
+  ABSL_RETURN_IF_ERROR(Append32(0x04034b50));  // Local file header signature
+  ABSL_RETURN_IF_ERROR(Append16(20));          // Version needed to extract (2.0)
+  ABSL_RETURN_IF_ERROR(Append16(0));           // General purpose bit flag
+  ABSL_RETURN_IF_ERROR(Append16(8));           // Compression method (8 = DEFLATE)
+  ABSL_RETURN_IF_ERROR(Append16(0));           // Last mod file time
+  ABSL_RETURN_IF_ERROR(Append16(0));           // Last mod file date
+  ABSL_RETURN_IF_ERROR(Append32(crc));
+  ABSL_RETURN_IF_ERROR(Append32(compressed.size()));
+  ABSL_RETURN_IF_ERROR(Append32(content.size()));
+  ABSL_RETURN_IF_ERROR(Append16(name.size()));
+  ABSL_RETURN_IF_ERROR(Append16(0));  // Extra field length
+  ABSL_RETURN_IF_ERROR(AppendData(name));
+  ABSL_RETURN_IF_ERROR(AppendData(compressed));
 
   files_.push_back({std::move(name), offset, crc,
                     static_cast<uint32_t>(compressed.size()),
@@ -198,39 +198,39 @@ absl::Status ZipWriter::FinishInternal() {
 
   uint32_t cd_offset = static_cast<uint32_t>(current_offset_);
   for (const auto& file : files_) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         Append32(0x02014b50));      // Central directory header signature
-    RETURN_IF_ERROR(Append16(20));  // Version made by
-    RETURN_IF_ERROR(Append16(20));  // Version needed to extract
-    RETURN_IF_ERROR(Append16(0));   // General purpose bit flag
-    RETURN_IF_ERROR(Append16(8));   // Compression method (DEFLATE)
-    RETURN_IF_ERROR(Append16(0));   // Last mod file time
-    RETURN_IF_ERROR(Append16(0));   // Last mod file date
-    RETURN_IF_ERROR(Append32(file.crc));
-    RETURN_IF_ERROR(Append32(file.compressed_size));
-    RETURN_IF_ERROR(Append32(file.uncompressed_size));
-    RETURN_IF_ERROR(Append16(file.name.size()));
-    RETURN_IF_ERROR(Append16(0));  // Extra field length
-    RETURN_IF_ERROR(Append16(0));  // File comment length
-    RETURN_IF_ERROR(Append16(0));  // Disk number start
-    RETURN_IF_ERROR(Append16(0));  // Internal file attributes
-    RETURN_IF_ERROR(Append32(0));  // External file attributes
-    RETURN_IF_ERROR(Append32(file.offset));
-    RETURN_IF_ERROR(AppendData(file.name));
+    ABSL_RETURN_IF_ERROR(Append16(20));  // Version made by
+    ABSL_RETURN_IF_ERROR(Append16(20));  // Version needed to extract
+    ABSL_RETURN_IF_ERROR(Append16(0));   // General purpose bit flag
+    ABSL_RETURN_IF_ERROR(Append16(8));   // Compression method (DEFLATE)
+    ABSL_RETURN_IF_ERROR(Append16(0));   // Last mod file time
+    ABSL_RETURN_IF_ERROR(Append16(0));   // Last mod file date
+    ABSL_RETURN_IF_ERROR(Append32(file.crc));
+    ABSL_RETURN_IF_ERROR(Append32(file.compressed_size));
+    ABSL_RETURN_IF_ERROR(Append32(file.uncompressed_size));
+    ABSL_RETURN_IF_ERROR(Append16(file.name.size()));
+    ABSL_RETURN_IF_ERROR(Append16(0));  // Extra field length
+    ABSL_RETURN_IF_ERROR(Append16(0));  // File comment length
+    ABSL_RETURN_IF_ERROR(Append16(0));  // Disk number start
+    ABSL_RETURN_IF_ERROR(Append16(0));  // Internal file attributes
+    ABSL_RETURN_IF_ERROR(Append32(0));  // External file attributes
+    ABSL_RETURN_IF_ERROR(Append32(file.offset));
+    ABSL_RETURN_IF_ERROR(AppendData(file.name));
   }
   if (current_offset_ - cd_offset > UINT32_MAX) {
     return absl::ResourceExhaustedError("Central directory size exceeds 4GB.");
   }
   uint32_t cd_size = static_cast<uint32_t>(current_offset_ - cd_offset);
 
-  RETURN_IF_ERROR(Append32(0x06054b50));  // End of central directory signature
-  RETURN_IF_ERROR(Append16(0));           // Number of this disk
-  RETURN_IF_ERROR(Append16(0));           // Disk where central directory starts
-  RETURN_IF_ERROR(Append16(files_.size()));  // Number of records on this disk
-  RETURN_IF_ERROR(Append16(files_.size()));  // Total number of records
-  RETURN_IF_ERROR(Append32(cd_size));
-  RETURN_IF_ERROR(Append32(cd_offset));
-  RETURN_IF_ERROR(Append16(0));  // Comment length
+  ABSL_RETURN_IF_ERROR(Append32(0x06054b50));  // End of central directory signature
+  ABSL_RETURN_IF_ERROR(Append16(0));           // Number of this disk
+  ABSL_RETURN_IF_ERROR(Append16(0));           // Disk where central directory starts
+  ABSL_RETURN_IF_ERROR(Append16(files_.size()));  // Number of records on this disk
+  ABSL_RETURN_IF_ERROR(Append16(files_.size()));  // Total number of records
+  ABSL_RETURN_IF_ERROR(Append32(cd_size));
+  ABSL_RETURN_IF_ERROR(Append32(cd_offset));
+  ABSL_RETURN_IF_ERROR(Append16(0));  // Comment length
 
   return file_->Close();
 }

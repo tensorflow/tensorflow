@@ -247,7 +247,7 @@ def validate_shards(
               tensor=None,
               dtype=None,
               device=shard_tensor.device,
-              name=None,
+              name=None,  # pyrefly: ignore[bad-argument-type]
               shape=None,
               slice_spec=slice_spec,
               checkpoint_key=checkpoint_key,

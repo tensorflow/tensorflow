@@ -92,11 +92,13 @@ bool SetAllowMultipleSubscribersIfSupported(Params* params) {
   return false;
 }
 
-// Older CUPTI headers do not define CUPTI_ACTIVITY_ATTR_THREAD_ID_TYPE. Use the
-// CUDA 13.2 enum value so this file can compile with those headers; weak V2
-// symbol checks still decide runtime availability.
-constexpr auto kCuptiActivityAttrThreadIdType =
+// Keep optional V2 paths buildable with older CUPTI headers; weak symbol checks
+// still decide runtime availability.
+constexpr CUpti_ActivityAttribute kCuptiActivityAttrPerThreadActivityBuffer =
+    static_cast<CUpti_ActivityAttribute>(9);
+constexpr CUpti_ActivityAttribute kCuptiActivityAttrThreadIdType =
     static_cast<CUpti_ActivityAttribute>(21);
+constexpr int kCuptiErrorMultipleSubscribersNotSupported = 39;
 
 }  // namespace
 
@@ -111,9 +113,14 @@ extern "C" {
 [[gnu::weak]] CUptiResult cuptiActivityDisable_v2(
     CUpti_SubscriberHandle subscriber, CUpti_ActivityKind kind,
     CuptiActivityConfigAbi* cfg);
+[[gnu::weak]] CUptiResult cuptiActivityGetNextRecord_v2(
+    CUpti_SubscriberHandle subscriber, uint8_t* buffer,
+    size_t valid_buffer_size_bytes, CUpti_Activity** record);
 [[gnu::weak]] CUptiResult cuptiActivitySetAttribute_v2(
     CUpti_SubscriberHandle subscriber, CUpti_ActivityAttribute attr,
     size_t* valueSize, void* value);
+[[gnu::weak]] CUptiResult cuptiGetTimestamp_v2(
+    CUpti_SubscriberHandle subscriber, uint64_t* timestamp);
 [[gnu::weak]] CUptiResult cuptiSubscribe_v2(CUpti_SubscriberHandle* subscriber,
                                             CUpti_CallbackFunc callback,
                                             void* userdata,
@@ -136,6 +143,16 @@ CUptiResult CuptiWrapper::ActivityGetNextRecord(uint8_t* buffer,
                                                 size_t valid_buffer_size_bytes,
                                                 CUpti_Activity** record) {
   return cuptiActivityGetNextRecord(buffer, valid_buffer_size_bytes, record);
+}
+
+CUptiResult CuptiWrapper::ActivityGetNextRecordV2(
+    CUpti_SubscriberHandle subscriber, uint8_t* buffer,
+    size_t valid_buffer_size_bytes, CUpti_Activity** record) {
+  if (cuptiActivityGetNextRecord_v2 == nullptr) {
+    return CUPTI_ERROR_NOT_SUPPORTED;
+  }
+  return cuptiActivityGetNextRecord_v2(subscriber, buffer,
+                                       valid_buffer_size_bytes, record);
 }
 
 CUptiResult CuptiWrapper::ActivityGetNumDroppedRecords(CUcontext context,
@@ -212,8 +229,8 @@ CUptiResult CuptiWrapper::ActivityUsePerThreadBufferV2() {
   uint8_t use_per_thread = 1;
   size_t size = sizeof(use_per_thread);
   return ActivitySetAttributeV2(
-      /*subscriber=*/nullptr, CUPTI_ACTIVITY_ATTR_PER_THREAD_ACTIVITY_BUFFER,
-      &size, &use_per_thread);
+      /*subscriber=*/nullptr, kCuptiActivityAttrPerThreadActivityBuffer, &size,
+      &use_per_thread);
 }
 
 CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
@@ -246,6 +263,14 @@ CUptiResult CuptiWrapper::GetTimestamp(uint64_t* timestamp) {
   return cuptiGetTimestamp(timestamp);
 }
 
+CUptiResult CuptiWrapper::GetTimestampV2(CUpti_SubscriberHandle subscriber,
+                                         uint64_t* timestamp) {
+  if (cuptiGetTimestamp_v2 == nullptr) {
+    return CUPTI_ERROR_NOT_SUPPORTED;
+  }
+  return cuptiGetTimestamp_v2(subscriber, timestamp);
+}
+
 CUptiResult CuptiWrapper::Finalize() { return cuptiFinalize(); }
 
 CUptiResult CuptiWrapper::EnableCallback(uint32_t enable,
@@ -270,7 +295,9 @@ CUptiResult CuptiWrapper::Subscribe(CUpti_SubscriberHandle* subscriber,
 CUptiResult CuptiWrapper::SubscribeV2(CUpti_SubscriberHandle* subscriber,
                                       CUpti_CallbackFunc callback,
                                       void* userdata) {
-  if (cuptiSubscribe_v2 == nullptr) {
+  // Check both required V2 setup entry points before creating a subscriber.
+  // The tracer handles errors reported after subscription.
+  if (cuptiSubscribe_v2 == nullptr || cuptiGetTimestamp_v2 == nullptr) {
     return CUPTI_ERROR_NOT_SUPPORTED;
   }
   CuptiSubscriberParamsAbi params = {};
@@ -281,7 +308,7 @@ CUptiResult CuptiWrapper::SubscribeV2(CUpti_SubscriberHandle* subscriber,
   }
   CUptiResult result =
       cuptiSubscribe_v2(subscriber, callback, userdata, &params);
-  if (result == CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED) {
+  if (static_cast<int>(result) == kCuptiErrorMultipleSubscribersNotSupported) {
     return CUPTI_ERROR_NOT_SUPPORTED;
   }
   return result;

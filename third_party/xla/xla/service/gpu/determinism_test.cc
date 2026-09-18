@@ -121,7 +121,7 @@ class DeterminismTest : public HloPjRtGpuTestBase {
 
     // If timer creation is forbidden we inject a mock GPU executor that
     // prevents timer creation.
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         stream_executor::Platform * default_platform,
         se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
     stream_executor::MockStreamExecutor executor;
@@ -150,9 +150,9 @@ class DeterminismTest : public HloPjRtGpuTestBase {
       return stream_executor()->AsBlas();
     });
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(hlo_string));
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto optimized_module,
         compiler()->RunHloPasses(std::move(module), &executor, nullptr));
     absl::StatusOr<bool> filecheck_result =

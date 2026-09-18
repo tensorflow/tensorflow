@@ -446,6 +446,10 @@ class DirectSession : public Session {
   // pool according to other specifications of RunOptions and ConfigProto.
   bool run_in_caller_thread_ = false;
 
+  struct RunScope;
+
+  std::atomic<int> active_runs_{0};
+
   DirectSession(const DirectSession&) = delete;
   void operator=(const DirectSession&) = delete;
 

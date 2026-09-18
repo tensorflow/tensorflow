@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/custom_call_program.pb.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
@@ -119,7 +119,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_program->input_specs.front().dtype,
             DType(DType::kF32));
   EXPECT_EQ(deserialized_program->input_specs.front().shape, shape0);
-  const auto* deserialized_sharding0 = llvm::dyn_cast<ConcreteEvenSharding>(
+  const auto* deserialized_sharding0 = dyn_cast<ConcreteEvenSharding>(
       deserialized_program->input_specs.front().sharding.get());
   ASSERT_NE(deserialized_sharding0, nullptr);
   EXPECT_EQ(*deserialized_sharding0->devices(), *sharding0->devices());
@@ -130,7 +130,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_program->output_specs.front().dtype,
             DType(DType::kF32));
   EXPECT_EQ(deserialized_program->output_specs.front().shape, shape1);
-  const auto* deserialized_sharding1 = llvm::dyn_cast<ConcreteEvenSharding>(
+  const auto* deserialized_sharding1 = dyn_cast<ConcreteEvenSharding>(
       deserialized_program->output_specs.front().sharding.get());
   ASSERT_NE(deserialized_sharding1, nullptr);
   EXPECT_EQ(*deserialized_sharding1->devices(), *sharding1->devices());

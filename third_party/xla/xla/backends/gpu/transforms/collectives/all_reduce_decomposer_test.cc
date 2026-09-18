@@ -19,7 +19,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_cse.h"
@@ -61,6 +62,34 @@ ENTRY main {
     // CHECK: f32[2,16]{1,0} all-gather
     // CHECK: f32[16]{0} reduce
   )"));
+}
+
+TEST_F(AllReduceDecomposerTest, GroupedAllReduceIsDecomposed) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  input = f32[16] parameter(0)
+  ROOT all-reduce = f32[16] all-reduce(input), replica_groups={{0,1}},
+    to_apply=add, frontend_attributes={collective_group_key="g0"}
+}
+)"));
+
+  AllReduceDecomposer decomposer;
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get(), {}));
+  EXPECT_TRUE(changed);
+
+  EXPECT_TRUE(FindInstructions(module.get(), HloOpcode::kAllReduce).empty());
+  HloInstruction* all_gather =
+      FindInstruction(module.get(), HloOpcode::kAllGather);
+  ASSERT_NE(all_gather, nullptr);
+  EXPECT_EQ(all_gather->get_frontend_attribute("collective_group_key"), "g0");
 }
 
 TEST_F(AllReduceDecomposerTest, LargeAllReduceIsNotDecomposed) {

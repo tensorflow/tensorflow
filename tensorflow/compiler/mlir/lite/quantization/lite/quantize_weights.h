@@ -50,7 +50,7 @@ using BuiltinOperatorSet = absl::flat_hash_set<tflite::BuiltinOperator>;
 // Map from custom op code to custom op quantization information.
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 
-// Applies dynamic range quantization for the given model wehre the input_model
+// Applies dynamic range quantization for the given model where the input_model
 // type is flatbuffer but is converted to MLIR during quantization process and
 // then converted back to flatbuffer for return. Note that this is part of
 // reaching feature parity with the old quantizer for dynamic range

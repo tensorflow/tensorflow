@@ -24,8 +24,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
-#include "xla/service/computation_placer.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
+#include "xla/service/device_assignment.h"
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
@@ -41,6 +41,7 @@ namespace stream_executor {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 
 class DeviceAddressVmmAllocatorTest : public ::testing::Test {
  protected:
@@ -73,18 +74,66 @@ class DeviceAddressVmmAllocatorTest : public ::testing::Test {
     }
   }
 
+  // Asserts whether a pending mapping in memory_space survives reclaim.
+  void RunReclaimPressureOnPendingMapping(int64_t memory_space,
+                                          bool expect_mapping_survives) {
+    SCOPED_TRACE(memory_space);
+    ASSERT_OK_AND_ASSIGN(auto probe, gpu::CudaDeviceAddressVmmAllocator::Create(
+                                         executor_, stream_.get()));
+    const uint64_t granularity = probe->GetAllocationGranularity(executor_);
+    ASSERT_GT(granularity, 0);
+    probe.reset();
+
+    ASSERT_OK_AND_ASSIGN(auto allocator,
+                         gpu::CudaDeviceAddressVmmAllocator::Create(
+                             executor_, stream_.get(),
+                             /*pa_budget=*/2 * granularity,
+                             /*reclaim_exempt_memory_space=*/1));
+
+    const int ordinal = executor_->device_ordinal();
+    ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                               executor_, granularity));
+    ASSERT_OK_AND_ASSIGN(
+        auto address,
+        allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                            memory_space, reservation.get(),
+                            /*reservation_offset=*/0, granularity));
+    auto* raw_allocation = allocator->GetRawAllocation(ordinal, address.cref());
+    ASSERT_NE(raw_allocation, nullptr);
+    ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+
+    // Fits the PA budget only if the pending physical memory is reclaimed.
+    auto pressure =
+        allocator->Allocate(ordinal, 2 * granularity,
+                            /*retry_on_failure=*/true, /*memory_space=*/0);
+    if (expect_mapping_survives) {
+      EXPECT_THAT(pressure, StatusIs(absl::StatusCode::kResourceExhausted));
+      ASSERT_OK_AND_ASSIGN(
+          auto reused,
+          allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                              memory_space, reservation.get(),
+                              /*reservation_offset=*/0, granularity));
+      EXPECT_EQ(allocator->GetRawAllocation(ordinal, reused.cref()),
+                raw_allocation);
+      ASSERT_THAT(allocator->Deallocate(ordinal, reused.Release()), IsOk());
+    } else {
+      EXPECT_THAT(pressure, IsOk());
+    }
+    ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+  }
+
   Platform* platform_ = nullptr;
   StreamExecutor* executor_ = nullptr;
   std::unique_ptr<Stream> stream_;
 };
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateAndDeallocate) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Allocate memory.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -101,12 +150,12 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateAndDeallocate) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateZeroSize) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Allocate zero-size memory.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 0,
                           /*retry_on_failure=*/true,
@@ -117,18 +166,18 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateZeroSize) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllocateMultiple) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Allocate multiple memory regions.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr1,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr2,
       allocator->Allocate(executor_->device_ordinal(), 2048,
                           /*retry_on_failure=*/true,
@@ -143,12 +192,12 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllocateMultiple) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Allocate memory.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -157,7 +206,7 @@ TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
   ASSERT_NE(scoped_address->opaque(), nullptr);
 
   // Create a stream for memory operations.
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
   // Write data to the allocated memory.
   constexpr uint64_t kTestValue = 0xDEADBEEFCAFEBABE;
@@ -176,35 +225,34 @@ TEST_F(DeviceAddressVmmAllocatorTest, MemoryReadWrite) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, GetStream) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Get the stream - should return the same stream that was provided at
   // construction.
-  TF_ASSERT_OK_AND_ASSIGN(Stream * stream,
-                          allocator->GetStream(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(Stream * stream,
+                       allocator->GetStream(executor_->device_ordinal()));
   EXPECT_EQ(stream, stream_.get());
 
   // Getting the stream again should return the same pointer.
-  TF_ASSERT_OK_AND_ASSIGN(Stream * stream2,
-                          allocator->GetStream(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(Stream * stream2,
+                       allocator->GetStream(executor_->device_ordinal()));
   EXPECT_EQ(stream, stream2);
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, GetStreamExecutor) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      StreamExecutor * se,
-      allocator->GetStreamExecutor(executor_->device_ordinal()));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * se, allocator->GetStreamExecutor(
+                                                executor_->device_ordinal()));
   EXPECT_EQ(se, executor_);
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, AllowsAsynchronousDeallocation) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -214,12 +262,12 @@ TEST_F(DeviceAddressVmmAllocatorTest, AllowsAsynchronousDeallocation) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, ExplicitDeallocate) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   // Allocate memory.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto scoped_address,
       allocator->Allocate(executor_->device_ordinal(), 1024,
                           /*retry_on_failure=*/true,
@@ -883,6 +931,101 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest, ReclaimNeverEvictsExemptPendingMappings) {
+  // The helper creates the allocator with reclaim_exempt_memory_space = 1.
+  RunReclaimPressureOnPendingMapping(/*memory_space=*/2,
+                                     /*expect_mapping_survives=*/false);
+  RunReclaimPressureOnPendingMapping(/*memory_space=*/1,
+                                     /*expect_mapping_survives=*/true);
+}
+
+// A request never reuses a pending record from another memory space because
+// the record keeps its reclaim tag and reuse across spaces would mistag it.
+TEST_F(DeviceAddressVmmAllocatorTest, ReuseNeverCrossesMemorySpaces) {
+  ASSERT_OK_AND_ASSIGN(
+      auto allocator,
+      gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
+  const int ordinal = executor_->device_ordinal();
+  ASSERT_OK_AND_ASSIGN(
+      auto first, allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
+                                      /*memory_space=*/0));
+  void* first_va = first.cref().opaque();
+  ASSERT_THAT(allocator->Deallocate(ordinal, first.Release()), IsOk());
+
+  ASSERT_OK_AND_ASSIGN(auto second,
+                       allocator->Allocate(ordinal, 1024,
+                                           /*retry_on_failure=*/true,
+                                           /*memory_space=*/1));
+  EXPECT_NE(second.cref().opaque(), first_va);
+  void* second_va = second.cref().opaque();
+  ASSERT_THAT(allocator->Deallocate(ordinal, second.Release()), IsOk());
+
+  // As a control a request in the same space does reuse the pending record.
+  ASSERT_OK_AND_ASSIGN(
+      auto third, allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
+                                      /*memory_space=*/1));
+  EXPECT_EQ(third.cref().opaque(), second_va);
+  ASSERT_THAT(allocator->Deallocate(ordinal, third.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
+// A mapped request never reuses a stale mapped record from another memory
+// space because the record would keep the wrong reclaim tag.
+TEST_F(DeviceAddressVmmAllocatorTest, MappedReuseNeverCrossesMemorySpaces) {
+  ASSERT_OK_AND_ASSIGN(auto probe, gpu::CudaDeviceAddressVmmAllocator::Create(
+                                       executor_, stream_.get()));
+  const uint64_t granularity = probe->GetAllocationGranularity(executor_);
+  ASSERT_GT(granularity, 0);
+  probe.reset();
+
+  ASSERT_OK_AND_ASSIGN(auto allocator,
+                       gpu::CudaDeviceAddressVmmAllocator::Create(
+                           executor_, stream_.get(),
+                           /*pa_budget=*/2 * granularity,
+                           /*reclaim_exempt_memory_space=*/0));
+  const int ordinal = executor_->device_ordinal();
+  ASSERT_OK_AND_ASSIGN(auto reservation, gpu::CudaMemoryReservation::Create(
+                                             executor_, granularity));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto first,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          /*memory_space=*/0, reservation.get(),
+                          /*reservation_offset=*/0, granularity));
+  auto* first_raw = allocator->GetRawAllocation(ordinal, first.cref());
+  ASSERT_NE(first_raw, nullptr);
+  ASSERT_THAT(allocator->Deallocate(ordinal, first.Release()), IsOk());
+
+  // As a control a request in the same space does reuse the stale mapping.
+  // The equality holds only while the record stays alive through reuse.
+  ASSERT_OK_AND_ASSIGN(
+      auto second,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          /*memory_space=*/0, reservation.get(),
+                          /*reservation_offset=*/0, granularity));
+  EXPECT_EQ(allocator->GetRawAllocation(ordinal, second.cref()), first_raw);
+  ASSERT_THAT(allocator->Deallocate(ordinal, second.Release()), IsOk());
+
+  // The request in another space must not resurrect the stale record. If it
+  // did, the record would keep the exempt space 0 tag and the reclaim below
+  // could not free it.
+  ASSERT_OK_AND_ASSIGN(
+      auto third,
+      allocator->Allocate(ordinal, granularity, /*retry_on_failure=*/true,
+                          /*memory_space=*/1, reservation.get(),
+                          /*reservation_offset=*/0, granularity));
+  ASSERT_THAT(allocator->Deallocate(ordinal, third.Release()), IsOk());
+
+  // Fits the two granularity budget only if the pending mapping is reclaimed,
+  // which requires its tag to be the space of the third request.
+  ASSERT_OK_AND_ASSIGN(
+      auto pressure,
+      allocator->Allocate(ordinal, 2 * granularity,
+                          /*retry_on_failure=*/true, /*memory_space=*/2));
+  ASSERT_THAT(allocator->Deallocate(ordinal, pressure.Release()), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+}
+
 // A request with a different size at the same reservation offset does not
 // match the stale mapping: it must be rejected as a partial overlap instead
 // of remapping underneath the pending teardown, and the stale mapping must
@@ -935,7 +1078,7 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -948,9 +1091,10 @@ TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
 // --- Timeline / sequence-number design tests ---
 //
 // These tests exercise the cuStreamWriteValue64-based deferred deallocation
-// mechanism. Each pending Deallocate() call records an increasing seqno and
-// enqueues a GPU timeline write; the CPU checks the pinned counter to decide
-// when memory is safe to free.
+// mechanism. Consecutive pending Deallocate() and UnMap() calls share a batch
+// sequence number. The allocator enqueues one trailing GPU timeline write when
+// the batch is flushed, and the CPU checks the pinned counter to decide when
+// the batch is safe to complete.
 
 // Verifies that TryReusePendingDeallocation returns the same virtual address
 // when a new allocation of the same rounded size is requested immediately
@@ -958,34 +1102,34 @@ TEST_F(DeviceAddressVmmAllocatorTest, DeallocateNull) {
 // all prior GPU work finishes before any new work submitted after Allocate.
 TEST_F(DeviceAddressVmmAllocatorTest,
        PendingDeallocationReusesSameVirtualAddress) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
   constexpr uint64_t kSize = 1024;
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr1,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
   void* const va = addr1->opaque();
 
-  // Deallocate: timeline write is enqueued but VA is not freed yet.
+  // Deallocate opens a trailing batch, but the VA is not freed yet. Reusing the
+  // pending entry below cancels it before a timeline write is needed.
   DeviceAddressBase raw = addr1.cref();
   addr1.Release();
   ASSERT_THAT(allocator->Deallocate(ordinal, raw), IsOk());
 
   // Allocate the same size — TryReusePendingDeallocation should match the
   // pending entry and return the identical virtual address.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr2,
       allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
   EXPECT_EQ(addr2->opaque(), va);
 
-  // Sync to drain all pending GPU timeline writes before the allocator
-  // is destroyed.
+  // Drain any unrelated GPU work before the allocator is destroyed.
   ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
 }
 
@@ -994,13 +1138,13 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 // AFTER the memcpy, so the physical memory is not freed until the GPU finishes.
 TEST_F(DeviceAddressVmmAllocatorTest,
        DeferredDeallocationSafeWhileGpuWritesData) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
   const int ordinal = executor_->device_ordinal();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr,
       allocator->Allocate(ordinal, sizeof(uint64_t), /*retry_on_failure=*/true,
                           static_cast<int64_t>(MemorySpace::kCollective)));
@@ -1010,22 +1154,21 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   DeviceAddressBase dev_addr = addr.cref();
   ASSERT_THAT(stream_->Memcpy(&dev_addr, &kPattern, sizeof(kPattern)), IsOk());
 
-  // Deallocate while the memcpy is still queued. The seqno timeline write is
-  // appended to the stream AFTER the memcpy, so the VA cannot be reused until
-  // the GPU advances past it.
+  // Deallocate while the memcpy is still queued. Synchronization below flushes
+  // the batch marker after the memcpy, so teardown cannot run early.
   ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
 
-  // Sync: both the memcpy and the timeline write execute in order.
+  // Flush and wait: both the memcpy and the batch timeline write execute in
+  // order.
   // No crash here means the physical memory was not freed prematurely.
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
-// Allocates and deallocates N buffers, recording a distinct seqno for each.
-// After a single stream sync all seqnos have been written by the GPU, so
-// re-allocating the same size should succeed by reusing the pending entries.
+// Allocates and deallocates N buffers in one batch. One allocator sync flushes
+// the trailing marker and completes every entry sharing the batch sequence.
 TEST_F(DeviceAddressVmmAllocatorTest,
-       MultipleSeqnosAllCompleteAfterStreamSync) {
-  TF_ASSERT_OK_AND_ASSIGN(
+       BatchedDeallocationsCompleteAfterAllocatorSync) {
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1033,39 +1176,45 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   constexpr int kCount = 8;
   constexpr uint64_t kSize = 1024;
 
-  // Allocate kCount buffers and immediately queue their deallocation.
-  // Each Deallocate increments next_seqno and enqueues a timeline write.
+  std::vector<ScopedDeviceAddress<uint8_t>> addresses;
+  addresses.reserve(kCount);
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
-    ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
+    addresses.push_back(std::move(addr));
   }
 
-  // Sync the stream: all kCount timeline writes (seqnos 1..kCount) complete.
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  // Queue every distinct buffer before another allocation can reuse it. These
+  // deallocations share one sequence number and one trailing timeline write.
+  for (auto& address : addresses) {
+    ASSERT_THAT(allocator->Deallocate(ordinal, address.Release()), IsOk());
+  }
 
-  // Each new Allocate call finds a matching pending entry via
-  // TryReusePendingDeallocation (or via ProcessCompletedPendingDeallocations
-  // once the pending queue is exhausted).
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
+
+  // Every allocation succeeds after the completed batch releases its physical
+  // allocations.
+  addresses.clear();
   for (int i = 0; i < kCount; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
     EXPECT_FALSE(addr.is_null());
+    addresses.push_back(std::move(addr));
   }
 
-  ASSERT_THAT(stream_->BlockHostUntilDone(), IsOk());
+  addresses.clear();
+  ASSERT_THAT(allocator->SynchronizePendingOperations(ordinal), IsOk());
 }
 
-// Verifies that the destructor correctly spin-waits on the pinned timeline
-// counter until all pending GPU timeline writes complete, then frees the
-// physical memory without crashing.
+// Verifies that destruction synchronizes through the executor and directly
+// retires pending state without accessing the allocator stream.
 TEST_F(DeviceAddressVmmAllocatorTest,
-       DestructorWithPendingDeallocationsDoesNotCrash) {
-  TF_ASSERT_OK_AND_ASSIGN(
+       DestructorWithDestroyedStreamAndPendingDeallocationsDoesNotCrash) {
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1073,21 +1222,21 @@ TEST_F(DeviceAddressVmmAllocatorTest,
 
   // Queue several deallocations without syncing the stream first.
   for (int i = 0; i < 4; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(ordinal, 1024, /*retry_on_failure=*/true,
                             static_cast<int64_t>(MemorySpace::kCollective)));
     ASSERT_THAT(allocator->Deallocate(ordinal, addr.Release()), IsOk());
   }
 
-  // Destroy without an explicit stream sync. The destructor must spin on the
-  // pinned_timeline until the GPU writes all pending seqnos, then free
-  // each virtual address safely.
+  // The stream may be destroyed before the allocator. Destruction must not try
+  // to enqueue the trailing batch marker through this now-dangling pointer.
+  stream_.reset();
   allocator.reset();  // Must not crash or leak.
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, UnknownDeviceOrdinalReturnsError) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
 
@@ -1156,12 +1305,12 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocateOnBothDevices) {
   for (int i = 0; i < 2; ++i) {
     configs.push_back({executors_[i], streams_[i].get()});
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(platform_, configs));
 
   for (int i = 0; i < 2; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr,
         allocator->Allocate(executors_[i]->device_ordinal(), 1024,
                             /*retry_on_failure=*/true,
@@ -1171,12 +1320,12 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocateOnBothDevices) {
     EXPECT_NE(
         allocator->GetRawAllocation(executors_[i]->device_ordinal(), *addr),
         nullptr);
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         StreamExecutor * se,
         allocator->GetStreamExecutor(executors_[i]->device_ordinal()));
     EXPECT_EQ(se, executors_[i]);
-    TF_ASSERT_OK_AND_ASSIGN(
-        Stream * stream, allocator->GetStream(executors_[i]->device_ordinal()));
+    ASSERT_OK_AND_ASSIGN(Stream * stream,
+                         allocator->GetStream(executors_[i]->device_ordinal()));
     EXPECT_EQ(stream, streams_[i].get());
   }
 }
@@ -1186,12 +1335,12 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocationOnOneDeviceDoesNotAffectOther) {
   for (int i = 0; i < 2; ++i) {
     configs.push_back({executors_[i], streams_[i].get()});
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(platform_, configs));
 
   // Allocate on device 0.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr0,
       allocator->Allocate(executors_[0]->device_ordinal(), 4096,
                           /*retry_on_failure=*/true,
@@ -1206,7 +1355,7 @@ TEST_F(MultiDeviceVmmAllocatorTest, AllocationOnOneDeviceDoesNotAffectOther) {
 }
 
 TEST_F(DeviceAddressVmmAllocatorTest, MultiDeviceTagIsolatesReuse) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto allocator,
       gpu::CudaDeviceAddressVmmAllocator::Create(executor_, stream_.get()));
   const int ordinal = executor_->device_ordinal();
@@ -1221,14 +1370,14 @@ TEST_F(DeviceAddressVmmAllocatorTest, MultiDeviceTagIsolatesReuse) {
   {
     DeviceAddressVmmAllocator::DeviceAssignmentScope scope(
         &multi_device_assignment);
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr1,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             /*memory_space=*/0));
     multi_device_ptr = addr1->opaque();
     ASSERT_THAT(allocator->Deallocate(ordinal, addr1.Release()), IsOk());
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto addr2,
         allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                             /*memory_space=*/0));
@@ -1237,7 +1386,7 @@ TEST_F(DeviceAddressVmmAllocatorTest, MultiDeviceTagIsolatesReuse) {
   }
 
   // Outside scope: single-device alloc must not reuse multi-device entry.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto addr3, allocator->Allocate(ordinal, kSize, /*retry_on_failure=*/true,
                                       /*memory_space=*/0));
   EXPECT_NE(addr3->opaque(), multi_device_ptr);

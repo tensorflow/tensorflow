@@ -60,7 +60,7 @@ int SimpleDynamicBuffer::WriteToBuffer(char** buffer) {
   // Set num of string
   //
   // NOTE: The string buffer is accessed here as if it's native endian (instead
-  // of small endian, as documented in the header). This will protentially break
+  // of small endian, as documented in the header). This will potentially break
   // when TFLite is ported to big endian platforms.
   // TODO(b/165919229): This code will need changing if/when we port to a
   // big-endian platform.

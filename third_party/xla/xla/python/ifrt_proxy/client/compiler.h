@@ -23,13 +23,13 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
@@ -41,7 +41,7 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
-class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
+class Compiler final : public RTTIExtends<Compiler, xla::ifrt::Compiler> {
  public:
   using xla::ifrt::Compiler::Compile;
 

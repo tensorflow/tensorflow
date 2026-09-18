@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -109,7 +109,7 @@ ParseIndexMemorySpacePairs(absl::string_view str) {
                           &memory_space)) {
       return InvalidArgument("Failed to parse integers in pair: %s", pair);
     }
-    ASSIGN_OR_RETURN(MemorySpaceColor color, AsMemorySpaceColor(memory_space));
+    ABSL_ASSIGN_OR_RETURN(MemorySpaceColor color, AsMemorySpaceColor(memory_space));
     result.emplace_back(index, color);
   }
 
@@ -197,8 +197,8 @@ bool HasMosaicInstruction(const HloValue& input_alias,
   return predicate(*ABSL_DIE_IF_NULL(input_alias.instruction()));
 }
 
-bool HasMosaicWithMultimemInstruction(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
+bool HasMosaicWithSymmetricParameter(const HloValue& input_alias) {
+  return HasMosaicInstruction(input_alias, IsMosaicWithSymmetricParameter);
 }
 
 // Returns the memory space requested for the given custom call use, or
@@ -216,7 +216,7 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
     return MemorySpaceColor::kDefault;
   }
 
-  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
   for (auto [index, memory_space] : pairs) {
     if (index == use.operand_number) {
       return memory_space;
@@ -263,7 +263,7 @@ static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
     return MemorySpaceColor::kDefault;
   }
 
-  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  ABSL_ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
   const ShapeIndex& idx = value.defining_index();
   for (auto [index, memory_space] : pairs) {
     if (instr->shape().IsTuple() ? (idx.size() == 1 && idx[0] == index)
@@ -298,7 +298,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
 
     // Check if this value is a custom call result with a requested memory
     // space.
-    ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
+    ABSL_ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
                      GetCustomCallResultMemorySpace(*value));
     if (result_ms != MemorySpaceColor::kDefault) {
       candidates.push_back(static_cast<BufferValue::Color>(result_ms));
@@ -307,7 +307,7 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     // Check if any use of this alias is a custom call operand with a
     // requested memory space.
     for (const HloUse& use : value->GetUses()) {
-      ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
+      ABSL_ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
                        GetCustomCallOperandMemorySpace(use));
       if (operand_ms != MemorySpaceColor::kDefault) {
         candidates.push_back(static_cast<BufferValue::Color>(operand_ms));
@@ -315,17 +315,17 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     }
 
     // Collective/Mosaic Candidates
-    // TODO(479768130): Mark only buffers used with multimem instructions
-    // instead of marking all buffers.
+    // TODO(479768130): Mark only buffers which requires symmetric memory.
     // TODO(508106498): We need to start to respect replica groups once
     // mosaic will support them.
-    const bool is_mosaic_with_multimem =
-        HasMosaicWithMultimemInstruction(*value);
+    const bool is_mosaic_with_symmetric_parameter =
+        HasMosaicWithSymmetricParameter(*value);
 
-    if (is_mosaic_with_multimem) {
+    if (is_mosaic_with_symmetric_parameter) {
       VLOG(1) << "Assigning color kCollective to value of instruction "
               << value->instruction()->ToShortString()
-              << " is_mosaic_with_multimem " << is_mosaic_with_multimem;
+              << " is_mosaic_with_symmetric_parameter "
+              << is_mosaic_with_symmetric_parameter;
       // This is a temporary solution until a separate BFC
       // allocator will be added for the symmetric memory space.
       candidates.push_back(
@@ -371,7 +371,7 @@ absl::Status AssignColors(const DebugOptions& option,
                           HloAliasAnalysis* alias_analysis) {
   HloDataflowAnalysis& dataflow_analysis = alias_analysis->dataflow_analysis();
   for (const HloBuffer& buffer : alias_analysis->buffers()) {
-    ASSIGN_OR_RETURN(BufferValue::Color color,
+    ABSL_ASSIGN_OR_RETURN(BufferValue::Color color,
                      DetermineBufferColor(buffer, option));
     // Apply buffer color to all values in the buffer.
     for (const HloValue* const_value : buffer.values()) {

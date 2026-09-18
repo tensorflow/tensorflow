@@ -78,6 +78,8 @@ def TiledBufferInterface : OpInterface<"TiledBufferInterface",
 
 // Define your custom entry operation
 def EntryFuncOp : XTile_Op<"entry_func", [
+    SymbolName,
+    SymbolVisibility,
     Symbol,
     IsolatedFromAbove,
     AutomaticAllocationScope,
@@ -95,12 +97,12 @@ def EntryFuncOp : XTile_Op<"entry_func", [
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
-                       OptionalAttr<XTile_TilingInfoAttr>:$tile_info,
                        OptionalAttr<DictArrayAttr>:$res_attrs,
                        // The number of arguments that are opaque to tiling
                        // infrastructure and hence do not correspond to a memref
                        // argument.
-                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args
+                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args,
+                       OptionalAttr<StrAttr>:$sym_visibility
   );
 
   // The entry function has no return values.

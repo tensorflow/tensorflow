@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -195,7 +195,7 @@ absl::Status LoopbackCommunicator::LaunchAllGather(
     se::DeviceAddressBase dst(
         static_cast<char*>(recv_buffer.opaque()) + i * chunk_bytes,
         chunk_bytes);
-    RETURN_IF_ERROR(Memcpy(executor, dst, send_buffer, chunk_bytes));
+    ABSL_RETURN_IF_ERROR(Memcpy(executor, dst, send_buffer, chunk_bytes));
   }
   return absl::OkStatus();
 }
@@ -207,7 +207,7 @@ absl::Status LoopbackCommunicator::LaunchAllToAll(
     PrimitiveType dtype, size_t count, const Executor& executor) {
   size_t size = ByteSize(dtype, count);
   for (size_t i = 0; i < send_buffers.size(); ++i) {
-    RETURN_IF_ERROR(Memcpy(executor, recv_buffers[i], send_buffers[i], size));
+    ABSL_RETURN_IF_ERROR(Memcpy(executor, recv_buffers[i], send_buffers[i], size));
   }
   return absl::OkStatus();
 }

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/service/control_dep_rewriter.h"
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -40,11 +40,10 @@ ENTRY entry {
   ROOT root = tuple(exp, cos)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   // Run the ControlDepRewriter pass.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ControlDepRewriter{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, ControlDepRewriter{}.Run(module.get()));
   ASSERT_TRUE(changed);
 
   // Verify that the correct control dependencies were added.

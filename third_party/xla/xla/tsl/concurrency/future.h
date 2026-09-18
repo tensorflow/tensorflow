@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
+#include "absl/status/status_builder.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/context.h"
 
 namespace tsl {
 
@@ -630,6 +633,9 @@ using map_result_t = typename MapResult<R>::T;  // NOLINT
 template <typename T>
 class PromiseMaker;
 
+template <typename T>
+class PromiseOnceMaker;
+
 }  // namespace internal
 
 // Future<T> is a simple future that is returned by  APIs that enqueue
@@ -665,14 +671,16 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   // Constructs an immediately available future with the given value.
   template <
       int&... ExplicitParameterBarrier, typename U,
-      std::enable_if_t<std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
+      std::enable_if_t<!std::is_same_v<absl::remove_cvref_t<U>, Future<T>> &&
+                       std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
   Future(U&& value)  // NOLINT
       : Base(std::forward<U>(value)) {}
 
   // Constructs and immediately available future from the given value.
   template <
       int&... ExplicitParameterBarrier, typename U,
-      std::enable_if_t<std::is_constructible_v<T, U> &&
+      std::enable_if_t<!std::is_same_v<absl::remove_cvref_t<U>, Future<T>> &&
+                       std::is_constructible_v<T, U> &&
                        !std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
   explicit Future(U&& value) : Base(std::forward<U>(value)) {}
 
@@ -1108,10 +1116,10 @@ template <typename T, int&... ExplicitParameterBarrier, typename F,
               typename tsl::Future<T>::value_type, R>>* = nullptr>
 [[nodiscard]] Future<T> MakeFutureOn(Executor& executor, F&& f) {
   auto [promise, future] = MakePromise<T>();
-  executor.Execute(
-      [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
-        promise.Set(std::move(f)());
-      });
+  executor.Execute([promise = std::move(promise),
+                    f = WithCurrentContext(std::forward<F>(f))]() mutable {
+    promise.Set(std::move(f)());
+  });
   return std::move(future);
 }
 
@@ -1125,6 +1133,102 @@ template <int&... ExplicitParameterBarrier, typename F,
           typename R = std::invoke_result_t<F>>
 [[nodiscard]] auto MakeFutureOn(Executor& executor, F&& f) {
   return MakeFutureOn<internal::map_result_t<R>>(executor, std::forward<F>(f));
+}
+
+// Wrapper over `tsl::Promise<T>` that takes the value from the first `Set` call
+// and ignores all subsequent calls.
+template <typename T = void>
+class [[nodiscard]] PromiseOnce {
+ public:
+  PromiseOnce() = default;
+
+  explicit operator bool() const { return rep_ != nullptr; }
+
+  // Returns true if this promise is the unique reference to the promise. See
+  // `Promise<T>::IsUniqueReference()` for more details.
+  bool IsUniqueReference() {
+    return rep_ != nullptr && rep_->promise.IsUniqueReference();
+  }
+
+  // Fulfills the promise with a given value upon the first call. All subsequent
+  // calls are ignored. Returns true if the promise was fulfilled by this call.
+  template <typename U>
+  bool Set(U&& value) {
+    bool set = false;
+    if (rep_ != nullptr) {
+      absl::call_once(rep_->once, [&]() {
+        rep_->promise.Set(std::forward<U>(value));
+        set = true;
+      });
+    }
+    return set;
+  }
+
+  // Fulfills the promise with an OK status upon the first call. All subsequent
+  // calls are ignored. Returns true if the promise was fulfilled by this call.
+  template <typename = std::enable_if<std::is_void_v<T>>>
+  bool Set() {
+    return Set(absl::OkStatus());
+  }
+
+  // Returns a future associated with the promise.
+  [[nodiscard]] Future<T> future(
+      FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    return rep_->promise.future(std::move(on_block_start),
+                                std::move(on_block_end));
+  }
+
+ private:
+  friend class internal::PromiseOnceMaker<T>;
+
+  struct Rep {
+    explicit Rep(tsl::Promise<T> promise) : promise(std::move(promise)) {}
+
+    ~Rep() {
+      absl::call_once(once, [&]() {
+        if (!promise.IsUniqueReference()) {
+          promise.Set(
+              absl::InternalError("PromiseOnce destroyed without being set"));
+        }
+      });
+    }
+
+    absl::once_flag once;
+    Promise<T> promise;
+  };
+
+  explicit PromiseOnce(std::shared_ptr<Rep> rep) : rep_(std::move(rep)) {}
+
+  absl_nullable std::shared_ptr<Rep> rep_;
+};
+
+namespace internal {
+
+// Helper class to access private PromiseOnce constructor.
+template <typename T>
+class PromiseOnceMaker {
+ public:
+  static std::pair<PromiseOnce<T>, Future<T>> Make(
+      FutureHelpers::OnBlockStart on_block_start,
+      FutureHelpers::OnBlockEnd on_block_end) {
+    auto [promise, future] =
+        tsl::MakePromise<T>(std::move(on_block_start), std::move(on_block_end));
+    return {
+        PromiseOnce<T>(
+            std::make_shared<typename PromiseOnce<T>::Rep>(std::move(promise))),
+        std::move(future),
+    };
+  }
+};
+
+}  // namespace internal
+
+// Constructs a pair of connected `PromiseOnce<T>` and `tsl::Future<T>`. Setting
+// the returned promise will fulfill the connected future.
+template <typename T = void>
+std::pair<PromiseOnce<T>, tsl::Future<T>> MakePromiseOnce() {
+  return ::tsl::internal::PromiseOnceMaker<T>::Make(nullptr, nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1248,7 +1352,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 
     // Extend the lifetime of the underlying async value storage by copying
     // the reference to it, to avoid use-after-free inside the `f` functor.
-    executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+    executor.Execute([&value, ref = ptr.CopyRef(),
+                      f = WithCurrentContext(std::move(f)),
                       promise = std::move(promise)]() mutable {
       SetPromise<R, U>(std::move(promise), std::move(f))(value);
     });
@@ -1313,13 +1418,15 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     // value storage by copying the reference to it, to avoid use-after-free
     // inside the `f` functor.
     if constexpr (is_move_only) {
-      executor.Execute([value = std::move(value), f = std::move(f),
+      executor.Execute([value = std::move(value),
+                        f = WithCurrentContext(std::move(f)),
                         promise = std::move(promise)]() mutable {
         SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
                                           std::move(f))(std::move(value));
       });
     } else {
-      executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+      executor.Execute([&value, ref = ptr.CopyRef(),
+                        f = WithCurrentContext(std::move(f)),
                         promise = std::move(promise)]() mutable {
         SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
                                           std::move(f))(value);
@@ -1477,7 +1584,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     // Pass `status` by value because it's cheap to copy, instead of extending
     // the lifetime of the underlying async value storage.
     executor.Execute(absl::bind_front(
-        SetPromise<R, U>(std::move(promise), std::move(f)), status));
+        SetPromise<R, U>(std::move(promise), WithCurrentContext(std::move(f))),
+        status));
   });
 
   return std::move(future);
@@ -1719,7 +1827,7 @@ class JoinStatic
 
   template <std::size_t... Is, typename... Futures>
   static void OnReady(std::shared_ptr<JoinStatic> self,
-                      std::index_sequence<Is...>, Futures... futures) {
+                      std::index_sequence<Is...>, Futures&&... futures) {
     (std::forward<Futures>(futures).OnReady([self](auto value) {
       self->OnReady(std::integral_constant<size_t, Is>{}, std::move(value));
     }),

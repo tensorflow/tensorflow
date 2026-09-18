@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
@@ -85,7 +85,7 @@ class CpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                        GetExecutable(std::move(module)));
       return static_cast<cpu::CpuExecutable*>(executable.get())
           ->ir_module_string();
@@ -212,9 +212,6 @@ class CpuOptProvider : public CompiledOptProvider {
   llvm::TargetOptions CompilerTargetOptions(
       const HloModuleConfig& module_config) {
     llvm::TargetOptions target_options;
-    // Always allow FMA fusion. This increases precision instead of decreasing
-    // it.
-    target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
     return target_options;
   }
 };

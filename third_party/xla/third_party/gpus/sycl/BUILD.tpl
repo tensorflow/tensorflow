@@ -47,6 +47,8 @@ cc_library(
         ".",
         "level_zero/include",
     ],
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
@@ -70,6 +72,8 @@ cc_library(
         ".",
         "sycl/include",
     ],
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkopts = ["-Wl,-Bstatic,-lsvml,-lirng,-limf,-lirc,-lirc_s,-Bdynamic"],
     linkstatic = 1,
     visibility = ["//visibility:public"],

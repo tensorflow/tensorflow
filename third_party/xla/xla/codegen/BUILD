@@ -44,8 +44,8 @@ cc_library(
     deps = [
         ":kernel_definition",
         ":kernel_source",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -95,7 +95,7 @@ cc_library(
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
     ],
 )
 
@@ -141,12 +141,12 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -223,9 +223,12 @@ xla_cc_test(
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )
 

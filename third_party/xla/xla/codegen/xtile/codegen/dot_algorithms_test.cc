@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -65,14 +65,14 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotDefaultToBF16) {
       ROOT dot = f32[32,32] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   auto* dot_instr = xla::Cast<HloDotInstruction>(
       module->entry_computation()->root_instruction());
 
   // Set the flag in debug options.
   DebugOptions debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   module->mutable_config().set_debug_options(debug_options);
 
   // Setup operands.
@@ -85,8 +85,8 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotDefaultToBF16) {
   operands.accumulator = b_.create<mlir::stablehlo::ConstantOp>(
       mlir::DenseElementsAttr::get(type, 0.0f));
 
-  TF_ASSERT_OK_AND_ASSIGN(mlir::Value result,
-                          EmitSingleTileDot(b_, *dot_instr, operands));
+  ASSERT_OK_AND_ASSIGN(mlir::Value result,
+                       EmitSingleTileDot(b_, *dot_instr, operands));
 
   // The result should be an addition.
   auto add_op = mlir::dyn_cast<mlir::arith::AddFOp>(result.getDefiningOp());
@@ -118,14 +118,14 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotHighestPrecision) {
         operand_precision={highest,highest}
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   auto* dot_instr = xla::Cast<HloDotInstruction>(
       module->entry_computation()->root_instruction());
 
   // Set the flag in debug options.
   DebugOptions debug_options = module->config().debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   module->mutable_config().set_debug_options(debug_options);
 
   // Setup operands.
@@ -138,8 +138,8 @@ TEST_F(DotAlgorithmsTest, EmitSingleTileDotHighestPrecision) {
   operands.accumulator = b_.create<mlir::stablehlo::ConstantOp>(
       mlir::DenseElementsAttr::get(type, 0.0f));
 
-  TF_ASSERT_OK_AND_ASSIGN(mlir::Value result,
-                          EmitSingleTileDot(b_, *dot_instr, operands));
+  ASSERT_OK_AND_ASSIGN(mlir::Value result,
+                       EmitSingleTileDot(b_, *dot_instr, operands));
 
   // The result should be an addition.
   auto add_op = mlir::dyn_cast<mlir::arith::AddFOp>(result.getDefiningOp());

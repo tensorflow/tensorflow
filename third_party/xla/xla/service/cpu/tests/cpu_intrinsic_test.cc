@@ -26,8 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"
@@ -151,7 +150,7 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
                       R"(
                       CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f32
                       CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
-                      CHECK: fmul <2 x double> {{.*}}splat (double f0x3FF71547652B82FE)
+                      CHECK: fmul contract <2 x double> {{.*}}splat (double f0x3FF71547652B82FE)
                       CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f32
                       CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
     )"},
@@ -160,7 +159,7 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
                       R"(
                       CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
                       CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
-                      CHECK: fmul <4 x double> {{.*}}splat (double f0x3FF71547652B82FE)
+                      CHECK: fmul contract <4 x double> {{.*}}splat (double f0x3FF71547652B82FE)
                       CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
                       CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
     )"},
@@ -178,32 +177,32 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
 
     IntrinsicTestSpec{
         HloOpcode::kRsqrt, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fmul <8 x float>{{.*}}splat (float -5.000000e-01)"},
+        R"(CHECK: fmul contract <8 x float>{{.*}}splat (float -5.000000e-01)"},
 
     IntrinsicTestSpec{
         HloOpcode::kRsqrt, F32, true, kTriple_x86_64, "+avx512f",
-        R"(CHECK: fmul <16 x float>{{.*}} splat (float -5.000000e-01)"},
+        R"(CHECK: fmul contract <16 x float>{{.*}} splat (float -5.000000e-01)"},
 
     // F16 tanh is implemented via upcast to F32; should have the same
     // vectorized IR.
     IntrinsicTestSpec{
         HloOpcode::kTanh, F16, true, kTriple_x86_64, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
+        R"(CHECK: fcmp {{(fast |contract )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_x86_64, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
+        R"(CHECK: fcmp {{(fast |contract )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
+        R"(CHECK: fcmp {{(fast |contract )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
+        R"(CHECK: fcmp {{(fast |contract )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
     IntrinsicTestSpec{

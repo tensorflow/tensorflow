@@ -19,12 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -49,17 +49,15 @@ TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* data_param = FindInstruction(module.get(), "data_param");
   ASSERT_NE(data_param, nullptr);
   HloInstruction* offload_custom_call =
       FindInstruction(module.get(), "offload_custom_call");
   ASSERT_NE(offload_custom_call, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<InstructionAndShapeIndex> succ,
-      GetSuccessors(InstructionAndShapeIndex(data_param, {})));
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
+                       GetSuccessors(InstructionAndShapeIndex(data_param, {})));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(offload_custom_call, {})};
   EXPECT_EQ(succ, expected_succ);
@@ -90,8 +88,7 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* call = FindInstruction(module.get(), "call");
   ASSERT_NE(call, nullptr);
   HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
@@ -99,8 +96,8 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   ASSERT_NE(tuple, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
-                          GetSuccessors(InstructionAndShapeIndex(call, {0})));
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ,
+                       GetSuccessors(InstructionAndShapeIndex(call, {0})));
   std::vector<InstructionAndShapeIndex> expected_succ = {
       InstructionAndShapeIndex(gte_0, {})};
   EXPECT_EQ(succ, expected_succ);
@@ -138,8 +135,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
       ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -154,8 +150,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToHostNotWithDynamicUpdateSliceTest) {
       ROOT result = f32[1,2048,2048] copy(custom_call)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_FALSE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -172,8 +167,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceTest) {
       ROOT custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
@@ -187,8 +181,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceNotWithDynamicSliceTest) {
       ROOT custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_FALSE(IsMoveToDeviceWithDynamicSlice(instr));
@@ -210,8 +203,7 @@ TEST_F(HostOffloadUtilsTest,
       ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
@@ -229,8 +221,7 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceThroughReshapeTest) {
       ROOT custom_call = f32[2048,2048] custom-call(reshape), custom_call_target="MoveToDevice"
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* instr = FindInstruction(module.get(), "custom_call");
   ASSERT_NE(instr, nullptr);
   EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
@@ -247,8 +238,7 @@ TEST_F(HostOffloadUtilsTest, SendGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* send = FindInstruction(module.get(), "send");
   ASSERT_NE(send, nullptr);
   HloInstruction* data_param = FindInstruction(module.get(), "data_param");
@@ -274,8 +264,7 @@ TEST_F(HostOffloadUtilsTest, IsValidDuringPureMemoryOffloadTest) {
       ROOT result = f32[2048] get-tuple-element(recv-done), index=0
     }
   )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(
       IsValidDuringPureMemoryOffload(FindInstruction(module.get(), "send")));
   EXPECT_TRUE(IsValidDuringPureMemoryOffload(
@@ -305,8 +294,7 @@ TEST_F(HostOffloadUtilsTest, ConditionalGetPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* conditional = FindInstruction(module.get(), "conditional");
   ASSERT_NE(conditional, nullptr);
   HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
@@ -347,8 +335,8 @@ TEST_F(HostOffloadUtilsTest, ConditionalReusedComputationPredecessorsTest) {
     }
   )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* s_param = FindInstruction(module.get(), "s_param");
   ASSERT_NE(s_param, nullptr);
   HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
@@ -395,8 +383,7 @@ ENTRY main {
   ROOT loop = (s32[], f32[10,8]) while(init), body=body, condition=cond
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* loop = FindInstruction(module.get(), "loop");
   ASSERT_NE(loop, nullptr);
   EXPECT_TRUE(CollectDynamicVariableTupleIndices(loop).empty());
@@ -438,13 +425,65 @@ ENTRY main {
   ROOT loop = (s32[], f32[10,8], f32[10,8]) while(init), body=body, condition=cond
 }
 )hlo";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* loop = FindInstruction(module.get(), "loop");
   ASSERT_NE(loop, nullptr);
   absl::flat_hash_set<int64_t> got = CollectDynamicVariableTupleIndices(loop);
   absl::flat_hash_set<int64_t> expected = {0};
   EXPECT_EQ(got, expected);
+}
+
+TEST_F(HostOffloadUtilsTest, SortTupleSuccessorsAndPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    compare {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f32[] parameter(3)
+      ROOT cmp = pred[] compare(p0, p1), direction=LT
+    }
+    ENTRY main {
+      main_p0 = f32[10] parameter(0)
+      main_p1 = f32[10] parameter(1)
+      sort = (f32[10], f32[10]) sort(main_p0, main_p1), dimensions={0}, to_apply=compare
+      gte0 = f32[10] get-tuple-element(sort), index=0
+      ROOT gte1 = f32[10] get-tuple-element(sort), index=1
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* main_p0 = FindInstruction(module.get(), "main_p0");
+  ASSERT_NE(main_p0, nullptr);
+  HloInstruction* main_p1 = FindInstruction(module.get(), "main_p1");
+  ASSERT_NE(main_p1, nullptr);
+  HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte0");
+  ASSERT_NE(gte0, nullptr);
+  HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+  ASSERT_NE(gte1, nullptr);
+
+  // Successor of main_p0 (operand 0 of sort) is sort with shape_index {0}.
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_p0,
+                       GetSuccessors(InstructionAndShapeIndex(main_p0, {})));
+  std::vector<InstructionAndShapeIndex> expected_succ_p0 = {
+      InstructionAndShapeIndex(sort, {0})};
+  EXPECT_EQ(succ_p0, expected_succ_p0);
+
+  // Successor of {sort, {0}} is gte0 with shape_index {}, not gte1.
+  ASSERT_OK_AND_ASSIGN(std::vector<InstructionAndShapeIndex> succ_sort0,
+                       GetSuccessors(InstructionAndShapeIndex(sort, {0})));
+  std::vector<InstructionAndShapeIndex> expected_succ_sort0 = {
+      InstructionAndShapeIndex(gte0, {})};
+  EXPECT_EQ(succ_sort0, expected_succ_sort0);
+
+  // Predecessor of {sort, {1}} is main_p1 with shape_index {}.
+  std::vector<InstructionAndShapeIndex> pred_sort1 =
+      GetPredecessors(InstructionAndShapeIndex(sort, {1}));
+  std::vector<InstructionAndShapeIndex> expected_pred_sort1 = {
+      InstructionAndShapeIndex(main_p1, {})};
+  EXPECT_EQ(pred_sort1, expected_pred_sort1);
 }
 
 }  // namespace

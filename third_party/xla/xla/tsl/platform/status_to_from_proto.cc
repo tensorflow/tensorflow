@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/source_location.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
@@ -43,7 +45,6 @@ tensorflow::StatusProto StatusToProto(const absl::Status& s) {
   return status_proto;
 }
 
-#if defined(PLATFORM_GOOGLE)
 absl::Status StatusFromProto(const tensorflow::StatusProto& proto,
                              absl::SourceLocation loc) {
   if (proto.code() == tensorflow::error::OK) {
@@ -56,17 +57,5 @@ absl::Status StatusFromProto(const tensorflow::StatusProto& proto,
   }
   return s;
 }
-#else
-Status StatusFromProto(const tensorflow::StatusProto& proto) {
-  if (proto.code() == tensorflow::error::OK) {
-    return OkStatus();
-  }
-  Status s(static_cast<absl::StatusCode>(proto.code()), proto.message());
-  for (const auto& [key, payload] : proto.payload()) {
-    s.SetPayload(key, absl::Cord(payload));
-  }
-  return s;
-}
-#endif
 
 }  // namespace tsl

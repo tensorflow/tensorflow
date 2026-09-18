@@ -240,7 +240,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.mixed_priority_batching_policy,
             options.enable_priority_aware_batch_scheduler,
             options.enable_priority_aware_batch_scheduler_resplit,
-            options.enable_batching_task_lazy_cancellation),
+            options.enable_batching_task_lazy_cancellation,
+            options.per_criticality_batch_timeout_micros),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -545,6 +546,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
     .Attr("enable_batching_task_lazy_cancellation: bool = false")
     .Attr("num_warmup_batch_threads: int = 0")
+    .Attr("per_criticality_batch_timeout_micros: list(int) = []")
     // An opaque function handle, which is an int64_t, for passing the batch
     // function.
     .Attr("opaque_function_handle: int")

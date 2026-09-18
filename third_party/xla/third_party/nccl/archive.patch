@@ -2,29 +2,30 @@ diff --git a/src/device/common.cu b/src/device/common.cu.cc
 similarity index 100%
 rename from src/device/common.cu
 rename to src/device/common.cu.cc
-diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
-similarity index 100%
-rename from src/device/onerank.cu
-rename to src/device/onerank.cu.cc
 diff --git a/src/device/common.h b/src/device/common.h
+index 1c1f5d6f..700c27a7 100644
 --- a/src/device/common.h
 +++ b/src/device/common.h
-@@ -24,7 +24,7 @@
- #endif
-
- typedef void(*ncclDevFuncPtr_t)();
+@@ -26,9 +26,9 @@
+ typedef void (*ncclDevFuncPtr_t)();
+ #if defined(NCCL_OS_WINDOWS)
+ /* MSVC C2133: extern array of unknown size needs a complete type; use pointer instead. */
+-extern __device__ ncclDevFuncPtr_t const* ncclDevFuncTable;
++extern __device__ ncclDevFuncPtr_t* ncclDevFuncTable;
+ #else
 -extern __device__ ncclDevFuncPtr_t const ncclDevFuncTable[];
 +extern __device__ ncclDevFuncPtr_t ncclDevFuncTable[];
-
+ #endif
+ 
  struct ncclShmemGroup {
-   ncclConnInfo *recvConns[NCCL_MAX_ARITY];
 diff --git a/src/device/generate.py b/src/device/generate.py
+index 88ddcef9..73b88d2b 100755
 --- a/src/device/generate.py
 +++ b/src/device/generate.py
-@@ -209,8 +209,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
-
+@@ -207,8 +207,8 @@ kernel_funcs = sorted(set(best_kernel(*fn) for fn in primary_funcs))
+ 
  ################################################################################
-
+ 
 -# Generate <gensrc>/device_table.cu
 -with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
 +# Generate <gensrc>/device_table.cu.cc
@@ -32,16 +33,19 @@ diff --git a/src/device/generate.py b/src/device/generate.py
    out = f.write
    out('#include "common.h"\n')
    out("\n")
-@@ -225,7 +225,7 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
-       out("#endif\n")
-   out("\n")
-
--  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTable[] = {\n");
-+  out("__device__ ncclDevFuncPtr_t ncclDevFuncTable[] = {\n");
+@@ -227,9 +227,9 @@ with open(os.path.join(gensrc, "device_table.cu"), "w") as f:
+   # an internal array + pointer alias.  On Linux/GCC the array is named directly
+   # to avoid an extra device-memory indirection on every kernel dispatch.
+   out("#if defined(NCCL_OS_WINDOWS)\n")
+-  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTableData[] = {\n")
++  out("__device__ ncclDevFuncPtr_t ncclDevFuncTableData[] = {\n")
+   out("#else\n")
+-  out("__device__ ncclDevFuncPtr_t const ncclDevFuncTable[] = {\n")
++  out("__device__ ncclDevFuncPtr_t ncclDevFuncTable[] = {\n")
+   out("#endif\n")
    index = 0
    for fn in primary_funcs:
-     sym = paste("_", "ncclDevFunc", *fn)
-@@ -283,8 +283,16 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -292,8 +292,16 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
      cudart, _ = required_cuda(*kfn)
      sym = paste("_", "ncclDevKernel", *kfn)
      if cudart != 0: out("#if CUDART_VERSION >= %d\n" % cudart)
@@ -60,9 +64,9 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -298,15 +306,23 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -307,15 +315,23 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
    out("\n")
-
+ 
    # Maps primary id to kernel function pointer.
 -  out("extern void* const ncclDevKernelForFunc[] = {\n")
    index = 0
@@ -87,16 +91,16 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      index += 1
    out("nullptr};\n")
    out("\n")
-@@ -325,7 +341,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
+@@ -334,7 +350,7 @@ with open(os.path.join(gensrc, "host_table.cc"), "w") as f:
  # "coll" is reflected in the name: formally that no two funcs having different
  # coll's map to the same filename.
  def impl_filename(coll, redop, ty, algo, proto):
 -  return "%s.cu" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
 +  return "%s.cu.cc" % paste("_", coll_camel_to_lower[coll], redop and redop.lower(), ty)
-
+ 
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -357,7 +373,7 @@ if os.environ.get("NCCL_USE_CMAKE", "0") != "1":
+@@ -366,7 +382,7 @@ if os.environ.get("NCCL_USE_CMAKE", "0") != "1":
    with open(os.path.join(gensrc, "rules.mk"), "w") as f:
      out = f.write
      impl_names = sorted(name_to_funcs.keys())
@@ -105,66 +109,71 @@ diff --git a/src/device/generate.py b/src/device/generate.py
      out("LIB_OBJS_GEN = $(patsubst %,$(OBJDIR)/genobj/%.o,{names})\n"
          .format(names=" ".join(names)))
      out("\n")
-
+diff --git a/src/device/onerank.cu b/src/device/onerank.cu.cc
+similarity index 100%
+rename from src/device/onerank.cu
+rename to src/device/onerank.cu.cc
+diff --git a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
+index 25b6a922..315b04d4 100644
+--- a/src/device/symmetric/data_ops.cuh
++++ b/src/device/symmetric/data_ops.cuh
+@@ -41,7 +41,7 @@ static __device__ __forceinline__ T loadMem(GMemTag, T* p) {
+     for (int i = 0; i < sizeof(T) / 4; i++) u32[i] = __ldcs((uint32_t*)p + i);
+     break;
+   case 8:
+-    for (int i = 0; i < sizeof(T) / 8; i++) u64[i] = __ldcs((uint64_t*)p + i);
++    for (int i = 0; i < sizeof(T) / 8; i++) u64[i] = __ldcs((unsigned long long*)p + i);
+     break;
+   case 16:
+     for (int i = 0; i < sizeof(T) / 16; i++) u32v4[i] = __ldcs((uint4*)p + i);
+@@ -89,7 +89,7 @@ static __device__ __forceinline__ void storeMem(GMemTag, T* p, T val) {
+     for (int i = 0; i < sizeof(T) / 4; i++) __stcs((uint32_t*)p + i, u32[i]);
+     break;
+   case 8:
+-    for (int i = 0; i < sizeof(T) / 8; i++) __stcs((uint64_t*)p + i, u64[i]);
++    for (int i = 0; i < sizeof(T) / 8; i++) __stcs((unsigned long long*)p + i, u64[i]);
+     break;
+   case 16:
+     for (int i = 0; i < sizeof(T) / 16; i++) __stcs((uint4*)p + i, u32v4[i]);
 diff --git a/src/include/nccl_common.h b/src/include/nccl_common.h
+index 70b669a5..2667e055 100644
 --- a/src/include/nccl_common.h
 +++ b/src/include/nccl_common.h
-@@ -9,7 +9,9 @@
- #define NCCL_DEBUG_H_
-
- // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in libnccl.so.
+@@ -11,7 +11,9 @@
+ #ifdef NCCL_OS_LINUX
+   // Workaround for libstdc++ trying to force public visibility of std:: symbols.  We don't want to do that in
+   // libnccl.so.
 +#if defined(__GLIBCXX__)
  #include <bits/c++config.h>
 +#endif
  #undef _GLIBCXX_VISIBILITY
  #define _GLIBCXX_VISIBILITY(V)
-
+ #endif
 diff --git a/src/include/nccl_device/gin/proxy/gin_proxy.h b/src/include/nccl_device/gin/proxy/gin_proxy.h
+index 8a6d7dd2..78bd809e 100644
 --- a/src/include/nccl_device/gin/proxy/gin_proxy.h
 +++ b/src/include/nccl_device/gin/proxy/gin_proxy.h
-@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
--// 4x16 byte store with the write-through cache hint
-+// 16x4 byte store with the write-through cache hint
- #pragma unroll
--    for (uint8_t i = 0; i < 4; i++) {
--      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
+@@ -85,8 +85,8 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+     // ncclGinProxyGfd_t is declared __attribute__((packed, aligned(16))) in
+     // gin_proxy_device_host_common.h; static_asserts there enforce the contract.
+     NVCC_PRAGMA_UNROLL_AUTO
+-    for (uint8_t i = 0; i < sizeof(ncclGinProxyGfd_t) / sizeof(uint4); i++) {
+-      __stwt((uint4*)&q[gfdIdx] + i, ((uint4*)gfd)[i]);
 +    for (uint8_t i = 0; i < 16; i++) {
-+      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
++      __stwt((__half2*)&q[gfdIdx] + i, ((__half2*)gfd)[i]);
      }
-   }
- }
-diff --git a/src/include/nccl_device/utility.h b/src/include/nccl_device/utility.h
---- a/src/include/nccl_device/utility.h
-+++ b/src/include/nccl_device/utility.h
-@@ -17,7 +17,7 @@
-             #define NCCL_CHECK_CUDACC 0
-         #endif
-     #else
--        #if __CUDACC__
-+        #ifdef __CUDACC__
-             #define NCCL_CHECK_CUDACC 1
-         #else
-             #define NCCL_CHECK_CUDACC 0
-        #endif
-
-diff --git a/src/device/symmetric/data_ops.cuh b/src/device/symmetric/data_ops.cuh
---- a/src/device/symmetric/data_ops.cuh
-+++ b/src/device/symmetric/data_ops.cuh
-@@ -26,7 +26,7 @@
-   case 1: for (int i=0; i < sizeof(T)/1; i++) u8[i] = __ldcs((uint8_t*)p + i); break;
-   case 2: for (int i=0; i < sizeof(T)/2; i++) u16[i] = __ldcs((uint16_t*)p + i); break;
-   case 4: for (int i=0; i < sizeof(T)/4; i++) u32[i] = __ldcs((uint32_t*)p + i); break;
--  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((uint64_t*)p + i); break;
-+  case 8: for (int i=0; i < sizeof(T)/8; i++) u64[i] = __ldcs((unsigned long long*)p + i); break;
-   case 16: for (int i=0; i < sizeof(T)/16; i++) u32v4[i] = __ldcs((uint4*)p + i); break;
-   default: __builtin_unreachable();
-   }
-@@ -62,7 +62,7 @@
-   case 1: for (int i=0; i < sizeof(T)/1; i++) __stcs((uint8_t*)p + i, u8[i]); break;
-   case 2: for (int i=0; i < sizeof(T)/2; i++) __stcs((uint16_t*)p + i, u16[i]); break;
-   case 4: for (int i=0; i < sizeof(T)/4; i++) __stcs((uint32_t*)p + i, u32[i]); break;
--  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((uint64_t*)p + i, u64[i]); break;
-+  case 8: for (int i=0; i < sizeof(T)/8; i++) __stcs((unsigned long long*)p + i, u64[i]); break;
-   case 16: for (int i=0; i < sizeof(T)/16; i++) __stcs((uint4*)p + i, u32v4[i]); break;
-   default: __builtin_unreachable();
-   }
+     if (isGet) {
+       // Atomic max with rolling logic.
+diff --git a/src/include/nccl_device/gin/gpi/gin_gpi.h b/src/include/nccl_device/gin/gpi/gin_gpi.h
+index c004b4cb..7357c4c0 100644
+--- a/src/include/nccl_device/gin/gpi/gin_gpi.h
++++ b/src/include/nccl_device/gin/gpi/gin_gpi.h
+@@ -212,7 +212,7 @@ __device__ static inline void gpi_gpu_channel_post_gfd_thread(gpi_gpu_channel_t*
+     // Manual PTX for MMIO 128-bit store (b128 needs CUDA 12.3+ / PTX 8.3)
+     uint64_t val_lo = segment[0].raw;
+     uint64_t val_hi = segment[1].raw;
+-#if CUDART_VERSION >= 12030
++#if CUDART_VERSION >= 12030 && !defined(__clang__)
+     asm volatile(R"YYY(
+       .reg .b128 _v%=;
+       mov.b128 _v%=, {%1, %2};

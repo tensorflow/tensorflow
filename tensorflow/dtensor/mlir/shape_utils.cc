@@ -73,7 +73,8 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
         return absl::InternalError("global_shape does not have static rank");
       return *global_shape;
     }
-    return ExtractGlobalOutputShape(cast<mlir::OpResult>(input_value.get()));
+    return ExtractGlobalOutputShape(
+        mlir::cast<mlir::OpResult>(input_value.get()));
   }
 
   // If we reach this point, we're working with a function argument.

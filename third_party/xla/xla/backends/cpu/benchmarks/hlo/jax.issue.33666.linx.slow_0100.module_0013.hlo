@@ -1,0 +1,347 @@
+HloModule jit_run, entry_computation_layout={(f32[])->f32[]}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+FileNames
+1 "/pscratch/sd/c/carag/LINX/scripts/inkernel_mwe_short.py"
+
+FunctionNames
+1 "run.<locals>.body"
+2 "run.<locals>.body.<locals>.<genexpr>"
+3 "<module>"
+4 "run"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=13 end_line=13 column=25 end_column=33}
+2 {file_name_id=1 function_name_id=1 line=13 end_line=13 column=21 end_column=33}
+3 {file_name_id=1 function_name_id=1 line=13 end_line=13 column=12 end_column=34}
+4 {file_name_id=1 function_name_id=1 line=14 end_line=14 column=21 end_column=69}
+5 {file_name_id=1 function_name_id=2 line=14 end_line=14 column=43 end_column=48}
+6 {file_name_id=1 function_name_id=2 line=14 end_line=14 column=25 end_column=49}
+7 {file_name_id=1 function_name_id=1 line=14 end_line=14 column=15 end_column=69}
+8 {file_name_id=1 function_name_id=3 line=18 end_line=18 column=22 end_column=43}
+9 {file_name_id=1 function_name_id=4 line=15 end_line=15 column=11 end_column=60}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=1}
+3 {file_location_id=3 parent_frame_id=1}
+4 {file_location_id=4 parent_frame_id=1}
+5 {file_location_id=5 parent_frame_id=5}
+6 {file_location_id=6 parent_frame_id=5}
+7 {file_location_id=7 parent_frame_id=1}
+8 {file_location_id=8 parent_frame_id=1}
+9 {file_location_id=9 parent_frame_id=9}
+10 {file_location_id=9 parent_frame_id=10}
+11 {file_location_id=9 parent_frame_id=11}
+
+
+%floor_divide.1 (Arg_0.6: u32[], Arg_1.6: s32[]) -> u32[] {
+  %Arg_0.6 = u32[] parameter(0)
+  %Arg_1.6 = s32[] parameter(1)
+  %convert_element_type.2 = u32[] convert(%Arg_1.6), metadata={op_name="convert_element_type"}
+  ROOT %div.1 = u32[] divide(%Arg_0.6, %convert_element_type.2), metadata={op_name="div"}
+}
+
+%closed_call_4.2 (Arg_0.7: f32[200], Arg_1.7: f32[], Arg_2.3: u32[], Arg_3.2: u32[]) -> (u32[], u32[]) {
+  %Arg_1.7 = f32[] parameter(1)
+  %ne.2 = pred[] compare(%Arg_1.7, %Arg_1.7), direction=NE, metadata={op_name="ne"}
+  %constant.19 = f32[] constant(nan)
+  %constant.20 = f32[] constant(0)
+  %eq.2 = pred[] compare(%Arg_1.7, %constant.20), direction=EQ, metadata={op_name="eq"}
+  %select_n.6 = f32[] select(%eq.2, %constant.20, %Arg_1.7), metadata={op_name="select_n"}
+  %select_n.7 = f32[] select(%ne.2, %constant.19, %select_n.6), metadata={op_name="select_n"}
+  %Arg_0.7 = f32[200]{0} parameter(0)
+  %Arg_2.3 = u32[] parameter(2)
+  %Arg_3.2 = u32[] parameter(3)
+  %sub.1 = u32[] subtract(%Arg_3.2, %Arg_2.3), metadata={op_name="sub"}
+  %constant.21 = s32[] constant(2)
+  %jit_floor_divide_.1 = u32[] call(%sub.1, %constant.21), to_apply=%floor_divide.1, metadata={op_name="jit(floor_divide)"}
+  %add.3 = u32[] add(%Arg_2.3, %jit_floor_divide_.1), metadata={op_name="add"}
+  %dynamic_slice.1 = f32[1]{0} dynamic-slice(%Arg_0.7, %add.3), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.2 = f32[] reshape(%dynamic_slice.1), metadata={op_name="squeeze"}
+  %ne.3 = pred[] compare(%squeeze.2, %squeeze.2), direction=NE, metadata={op_name="ne"}
+  %eq.3 = pred[] compare(%squeeze.2, %constant.20), direction=EQ, metadata={op_name="eq"}
+  %select_n.8 = f32[] select(%eq.3, %constant.20, %squeeze.2), metadata={op_name="select_n"}
+  %select_n.9 = f32[] select(%ne.3, %constant.19, %select_n.8), metadata={op_name="select_n"}
+  %lt_to.1 = pred[] compare(%select_n.7, %select_n.9), direction=LT, type=TOTALORDER, metadata={op_name="lt_to"}
+  %select_n.10 = u32[] select(%lt_to.1, %Arg_2.3, %add.3), metadata={op_name="select_n"}
+  %select_n.11 = u32[] select(%lt_to.1, %add.3, %Arg_3.2), metadata={op_name="select_n"}
+  ROOT %tuple.1 = (u32[], u32[]) tuple(%select_n.10, %select_n.11)
+}
+
+%region_1.3 (arg_tuple.2: (s32[], u32[], u32[], f32[200], f32[])) -> (s32[], u32[], u32[], f32[200], f32[]) {
+  %arg_tuple.2 = (s32[], u32[], u32[], f32[200]{0}, f32[]) parameter(0)
+  %get-tuple-element.9 = s32[] get-tuple-element(%arg_tuple.2), index=0
+  %constant.22 = s32[] constant(1)
+  %add.5 = s32[] add(%get-tuple-element.9, %constant.22), metadata={op_name="while/body/add"}
+  %get-tuple-element.12 = f32[200]{0} get-tuple-element(%arg_tuple.2), index=3
+  %get-tuple-element.13 = f32[] get-tuple-element(%arg_tuple.2), index=4
+  %get-tuple-element.10 = u32[] get-tuple-element(%arg_tuple.2), index=1
+  %get-tuple-element.11 = u32[] get-tuple-element(%arg_tuple.2), index=2
+  %closed_call.4 = (u32[], u32[]) call(%get-tuple-element.12, %get-tuple-element.13, %get-tuple-element.10, %get-tuple-element.11), to_apply=%closed_call_4.2, metadata={op_name="while/body/closed_call"}
+  %closed_call.5 = u32[] get-tuple-element(%closed_call.4), index=0, metadata={op_name="while/body/closed_call"}
+  %closed_call.6 = u32[] get-tuple-element(%closed_call.4), index=1, metadata={op_name="while/body/closed_call"}
+  ROOT %tuple.3 = (s32[], u32[], u32[], f32[200]{0}, f32[]) tuple(%add.5, %closed_call.5, %closed_call.6, %get-tuple-element.12, %get-tuple-element.13)
+}
+
+%region_2.4 (arg_tuple.4: (s32[], u32[], u32[], f32[200], f32[])) -> pred[] {
+  %arg_tuple.4 = (s32[], u32[], u32[], f32[200]{0}, f32[]) parameter(0)
+  %get-tuple-element.20 = u32[] get-tuple-element(%arg_tuple.4), index=1
+  %get-tuple-element.21 = u32[] get-tuple-element(%arg_tuple.4), index=2
+  %get-tuple-element.22 = f32[200]{0} get-tuple-element(%arg_tuple.4), index=3
+  %get-tuple-element.23 = f32[] get-tuple-element(%arg_tuple.4), index=4
+  %get-tuple-element.19 = s32[] get-tuple-element(%arg_tuple.4), index=0
+  %constant.24 = s32[] constant(8)
+  ROOT %lt.1 = pred[] compare(%get-tuple-element.19, %constant.24), direction=LT, metadata={op_name="while/cond/lt"}
+}
+
+%_searchsorted_scan_impl.5 (Arg_0.8: f32[200], Arg_1.8: f32[]) -> s32[] {
+  %constant.27 = s32[] constant(0)
+  %constant.25 = u32[] constant(0)
+  %constant.26 = u32[] constant(200)
+  %Arg_0.8 = f32[200]{0} parameter(0)
+  %Arg_1.8 = f32[] parameter(1)
+  %while.5 = (s32[], u32[], u32[], f32[200]{0}, f32[]) tuple(%constant.27, %constant.25, %constant.26, %Arg_0.8, %Arg_1.8), metadata={op_name="while"}
+  %while.6 = (s32[], u32[], u32[], f32[200]{0}, f32[]) while(%while.5), condition=%region_2.4, body=%region_1.3, metadata={op_name="while"}
+  %while.7 = s32[] get-tuple-element(%while.6), index=0, metadata={op_name="while"}
+  %while.8 = u32[] get-tuple-element(%while.6), index=1, metadata={op_name="while"}
+  %while.9 = u32[] get-tuple-element(%while.6), index=2, metadata={op_name="while"}
+  ROOT %convert_element_type.4 = s32[] convert(%while.9), metadata={op_name="convert_element_type"}
+}
+
+%searchsorted.6 (Arg_0.9: f32[200], Arg_1.9: f32[]) -> s32[] {
+  %Arg_0.9 = f32[200]{0} parameter(0)
+  %Arg_1.9 = f32[] parameter(1)
+  ROOT %jit__searchsorted_scan_impl_.1 = s32[] call(%Arg_0.9, %Arg_1.9), to_apply=%_searchsorted_scan_impl.5, metadata={op_name="jit(_searchsorted_scan_impl)"}
+}
+
+%clip.7 (Arg_0.11: s32[], Arg_1.11: s32[], Arg_2.5: s32[]) -> s32[] {
+  %Arg_2.5 = s32[] parameter(2)
+  %Arg_1.11 = s32[] parameter(1)
+  %Arg_0.11 = s32[] parameter(0)
+  %max.1 = s32[] maximum(%Arg_1.11, %Arg_0.11), metadata={op_name="max"}
+  ROOT %min.1 = s32[] minimum(%Arg_2.5, %max.1), metadata={op_name="min"}
+}
+
+%_where.8 (Arg_0.13: pred[], Arg_1.13: s32[], Arg_2.7: f32[]) -> f32[] {
+  %Arg_0.13 = pred[] parameter(0)
+  %Arg_1.13 = s32[] parameter(1)
+  %convert_element_type.6 = f32[] convert(%Arg_1.13), metadata={op_name="convert_element_type"}
+  %Arg_2.7 = f32[] parameter(2)
+  ROOT %select_n.20 = f32[] select(%Arg_0.13, %convert_element_type.6, %Arg_2.7), metadata={op_name="select_n"}
+}
+
+%_where_20.9 (Arg_0.15: pred[], Arg_1.15: f32[], Arg_2.9: f32[]) -> f32[] {
+  %Arg_0.15 = pred[] parameter(0)
+  %Arg_1.15 = f32[] parameter(1)
+  %Arg_2.9 = f32[] parameter(2)
+  ROOT %select_n.22 = f32[] select(%Arg_0.15, %Arg_1.15, %Arg_2.9), metadata={op_name="select_n"}
+}
+
+%_interp.10 (Arg_0.16: f32[], Arg_1.16: f32[200], Arg_2.10: f32[200]) -> f32[] {
+  %Arg_0.16 = f32[] parameter(0)
+  %Arg_1.16 = f32[200]{0} parameter(1)
+  %slice.8 = f32[1]{0} slice(%Arg_1.16), slice={[199:200]}, metadata={op_name="slice"}
+  %squeeze.24 = f32[] reshape(%slice.8), metadata={op_name="squeeze"}
+  %gt.1 = pred[] compare(%Arg_0.16, %squeeze.24), direction=GT, metadata={op_name="gt"}
+  %Arg_2.10 = f32[200]{0} parameter(2)
+  %slice.7 = f32[1]{0} slice(%Arg_2.10), slice={[199:200]}, metadata={op_name="slice"}
+  %squeeze.23 = f32[] reshape(%slice.7), metadata={op_name="squeeze"}
+  %slice.6 = f32[1]{0} slice(%Arg_1.16), slice={[0:1]}, metadata={op_name="slice"}
+  %squeeze.22 = f32[] reshape(%slice.6), metadata={op_name="squeeze"}
+  %lt.17 = pred[] compare(%Arg_0.16, %squeeze.22), direction=LT, metadata={op_name="lt"}
+  %slice.5 = f32[1]{0} slice(%Arg_2.10), slice={[0:1]}, metadata={op_name="slice"}
+  %squeeze.21 = f32[] reshape(%slice.5), metadata={op_name="squeeze"}
+  %jit_searchsorted_.1 = s32[] call(%Arg_1.16, %Arg_0.16), to_apply=%searchsorted.6, metadata={op_name="jit(searchsorted)"}
+  %constant.32 = s32[] constant(1)
+  %constant.31 = s32[] constant(199)
+  %jit_clip_.1 = s32[] call(%jit_searchsorted_.1, %constant.32, %constant.31), to_apply=%clip.7, metadata={op_name="jit(clip)"}
+  %constant.30 = s32[] constant(0)
+  %lt.12 = pred[] compare(%jit_clip_.1, %constant.30), direction=LT, metadata={op_name="lt"}
+  %constant.29 = s32[] constant(200)
+  %add.16 = s32[] add(%jit_clip_.1, %constant.29), metadata={op_name="add"}
+  %select_n.25 = s32[] select(%lt.12, %add.16, %jit_clip_.1), metadata={op_name="select_n"}
+  %dynamic_slice.11 = f32[1]{0} dynamic-slice(%Arg_1.16, %select_n.25), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.16 = f32[] reshape(%dynamic_slice.11), metadata={op_name="squeeze"}
+  %sub.12 = s32[] subtract(%jit_clip_.1, %constant.32), metadata={op_name="sub"}
+  %lt.13 = pred[] compare(%sub.12, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.17 = s32[] add(%sub.12, %constant.29), metadata={op_name="add"}
+  %select_n.26 = s32[] select(%lt.13, %add.17, %sub.12), metadata={op_name="select_n"}
+  %dynamic_slice.12 = f32[1]{0} dynamic-slice(%Arg_1.16, %select_n.26), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.17 = f32[] reshape(%dynamic_slice.12), metadata={op_name="squeeze"}
+  %sub.13 = f32[] subtract(%squeeze.16, %squeeze.17), metadata={op_name="sub"}
+  %abs.1 = f32[] abs(%sub.13), metadata={op_name="abs"}
+  %constant.28 = f32[] constant(1.42108547e-14)
+  %le.1 = pred[] compare(%abs.1, %constant.28), direction=LE, metadata={op_name="le"}
+  %sub.16 = s32[] subtract(%jit_clip_.1, %constant.32), metadata={op_name="sub"}
+  %lt.15 = pred[] compare(%sub.16, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.19 = s32[] add(%sub.16, %constant.29), metadata={op_name="add"}
+  %select_n.28 = s32[] select(%lt.15, %add.19, %sub.16), metadata={op_name="select_n"}
+  %dynamic_slice.14 = f32[1]{0} dynamic-slice(%Arg_2.10, %select_n.28), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.19 = f32[] reshape(%dynamic_slice.14), metadata={op_name="squeeze"}
+  %sub.17 = s32[] subtract(%jit_clip_.1, %constant.32), metadata={op_name="sub"}
+  %lt.16 = pred[] compare(%sub.17, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.20 = s32[] add(%sub.17, %constant.29), metadata={op_name="add"}
+  %select_n.29 = s32[] select(%lt.16, %add.20, %sub.17), metadata={op_name="select_n"}
+  %dynamic_slice.15 = f32[1]{0} dynamic-slice(%Arg_2.10, %select_n.29), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.20 = f32[] reshape(%dynamic_slice.15), metadata={op_name="squeeze"}
+  %sub.14 = s32[] subtract(%jit_clip_.1, %constant.32), metadata={op_name="sub"}
+  %lt.14 = pred[] compare(%sub.14, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.18 = s32[] add(%sub.14, %constant.29), metadata={op_name="add"}
+  %select_n.27 = s32[] select(%lt.14, %add.18, %sub.14), metadata={op_name="select_n"}
+  %dynamic_slice.13 = f32[1]{0} dynamic-slice(%Arg_1.16, %select_n.27), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.18 = f32[] reshape(%dynamic_slice.13), metadata={op_name="squeeze"}
+  %sub.15 = f32[] subtract(%Arg_0.16, %squeeze.18), metadata={op_name="sub"}
+  %jit__where_.4 = f32[] call(%le.1, %constant.32, %sub.13), to_apply=%_where.8, metadata={op_name="jit(_where)"}
+  %div.3 = f32[] divide(%sub.15, %jit__where_.4), metadata={op_name="div"}
+  %lt.10 = pred[] compare(%jit_clip_.1, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.14 = s32[] add(%jit_clip_.1, %constant.29), metadata={op_name="add"}
+  %select_n.23 = s32[] select(%lt.10, %add.14, %jit_clip_.1), metadata={op_name="select_n"}
+  %dynamic_slice.9 = f32[1]{0} dynamic-slice(%Arg_2.10, %select_n.23), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.14 = f32[] reshape(%dynamic_slice.9), metadata={op_name="squeeze"}
+  %sub.10 = s32[] subtract(%jit_clip_.1, %constant.32), metadata={op_name="sub"}
+  %lt.11 = pred[] compare(%sub.10, %constant.30), direction=LT, metadata={op_name="lt"}
+  %add.15 = s32[] add(%sub.10, %constant.29), metadata={op_name="add"}
+  %select_n.24 = s32[] select(%lt.11, %add.15, %sub.10), metadata={op_name="select_n"}
+  %dynamic_slice.10 = f32[1]{0} dynamic-slice(%Arg_2.10, %select_n.24), dynamic_slice_sizes={1}, metadata={op_name="dynamic_slice"}
+  %squeeze.15 = f32[] reshape(%dynamic_slice.10), metadata={op_name="squeeze"}
+  %sub.11 = f32[] subtract(%squeeze.14, %squeeze.15), metadata={op_name="sub"}
+  %mul.1 = f32[] multiply(%div.3, %sub.11), metadata={op_name="mul"}
+  %add.21 = f32[] add(%squeeze.20, %mul.1), metadata={op_name="add"}
+  %jit__where_.5 = f32[] call(%le.1, %squeeze.19, %add.21), to_apply=%_where_20.9, metadata={op_name="jit(_where)"}
+  %jit__where_.6 = f32[] call(%lt.17, %squeeze.21, %jit__where_.5), to_apply=%_where_20.9, metadata={op_name="jit(_where)"}
+  ROOT %jit__where_.7 = f32[] call(%gt.1, %squeeze.23, %jit__where_.6), to_apply=%_where_20.9, metadata={op_name="jit(_where)"}
+}
+
+%closed_call.11 (Arg_0.17: f32[], Arg_1.17: f32[20,200], Arg_2.11: f32[200], Arg_3.3: s32[], Arg_4.1: f32[]) -> (s32[], f32[]) {
+  %Arg_3.3 = s32[] parameter(3)
+  %constant.34 = s32[] constant(1)
+  %add.42 = s32[] add(%Arg_3.3, %constant.34), metadata={op_name="add"}
+  %Arg_4.1 = f32[] parameter(4)
+  %Arg_0.17 = f32[] parameter(0)
+  %convert_element_type.7 = f32[] convert(%Arg_3.3), metadata={op_name="convert_element_type" stack_frame_id=1}
+  %constant.33 = f32[] constant(0.01)
+  %closed_call.7 = f32[] multiply(%convert_element_type.7, %constant.33), metadata={op_name="mul;while/body/closed_call"}
+  %add.43 = f32[] add(%Arg_0.17, %closed_call.7), metadata={op_name="add" stack_frame_id=2}
+  %tanh.1 = f32[] tanh(%add.43), metadata={op_name="tanh" stack_frame_id=3}
+  %Arg_2.11 = f32[200]{0} parameter(2)
+  %Arg_1.17 = f32[20,200]{1,0} parameter(1)
+  %slice.28 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[0:1], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.44 = f32[200]{0} reshape(%slice.28), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.20 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.44), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %slice.29 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[1:2], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.45 = f32[200]{0} reshape(%slice.29), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.21 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.45), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.44 = f32[] add(%jit__interp_.20, %jit__interp_.21), metadata={op_name="add" stack_frame_id=4}
+  %slice.30 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[2:3], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.46 = f32[200]{0} reshape(%slice.30), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.22 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.46), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.45 = f32[] add(%add.44, %jit__interp_.22), metadata={op_name="add" stack_frame_id=4}
+  %slice.31 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[3:4], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.47 = f32[200]{0} reshape(%slice.31), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.23 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.47), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.46 = f32[] add(%add.45, %jit__interp_.23), metadata={op_name="add" stack_frame_id=4}
+  %slice.32 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[4:5], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.48 = f32[200]{0} reshape(%slice.32), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.24 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.48), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.47 = f32[] add(%add.46, %jit__interp_.24), metadata={op_name="add" stack_frame_id=4}
+  %slice.33 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[5:6], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.49 = f32[200]{0} reshape(%slice.33), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.25 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.49), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.48 = f32[] add(%add.47, %jit__interp_.25), metadata={op_name="add" stack_frame_id=4}
+  %slice.34 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[6:7], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.50 = f32[200]{0} reshape(%slice.34), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.26 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.50), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.49 = f32[] add(%add.48, %jit__interp_.26), metadata={op_name="add" stack_frame_id=4}
+  %slice.35 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[7:8], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.51 = f32[200]{0} reshape(%slice.35), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.27 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.51), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.50 = f32[] add(%add.49, %jit__interp_.27), metadata={op_name="add" stack_frame_id=4}
+  %slice.36 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[8:9], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.52 = f32[200]{0} reshape(%slice.36), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.28 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.52), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.51 = f32[] add(%add.50, %jit__interp_.28), metadata={op_name="add" stack_frame_id=4}
+  %slice.37 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[9:10], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.53 = f32[200]{0} reshape(%slice.37), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.29 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.53), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.52 = f32[] add(%add.51, %jit__interp_.29), metadata={op_name="add" stack_frame_id=4}
+  %slice.38 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[10:11], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.54 = f32[200]{0} reshape(%slice.38), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.30 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.54), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.53 = f32[] add(%add.52, %jit__interp_.30), metadata={op_name="add" stack_frame_id=4}
+  %slice.39 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[11:12], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.55 = f32[200]{0} reshape(%slice.39), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.31 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.55), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.54 = f32[] add(%add.53, %jit__interp_.31), metadata={op_name="add" stack_frame_id=4}
+  %slice.40 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[12:13], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.56 = f32[200]{0} reshape(%slice.40), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.32 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.56), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.55 = f32[] add(%add.54, %jit__interp_.32), metadata={op_name="add" stack_frame_id=4}
+  %slice.41 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[13:14], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.57 = f32[200]{0} reshape(%slice.41), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.33 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.57), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.56 = f32[] add(%add.55, %jit__interp_.33), metadata={op_name="add" stack_frame_id=4}
+  %slice.42 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[14:15], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.58 = f32[200]{0} reshape(%slice.42), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.34 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.58), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.57 = f32[] add(%add.56, %jit__interp_.34), metadata={op_name="add" stack_frame_id=4}
+  %slice.43 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[15:16], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.59 = f32[200]{0} reshape(%slice.43), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.35 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.59), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.58 = f32[] add(%add.57, %jit__interp_.35), metadata={op_name="add" stack_frame_id=4}
+  %slice.44 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[16:17], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.60 = f32[200]{0} reshape(%slice.44), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.36 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.60), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.59 = f32[] add(%add.58, %jit__interp_.36), metadata={op_name="add" stack_frame_id=4}
+  %slice.45 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[17:18], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.61 = f32[200]{0} reshape(%slice.45), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.37 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.61), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.60 = f32[] add(%add.59, %jit__interp_.37), metadata={op_name="add" stack_frame_id=4}
+  %slice.46 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[18:19], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.62 = f32[200]{0} reshape(%slice.46), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.38 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.62), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.61 = f32[] add(%add.60, %jit__interp_.38), metadata={op_name="add" stack_frame_id=4}
+  %slice.47 = f32[1,200]{1,0} slice(%Arg_1.17), slice={[19:20], [0:200]}, metadata={op_name="slice" stack_frame_id=5}
+  %squeeze.63 = f32[200]{0} reshape(%slice.47), metadata={op_name="squeeze" stack_frame_id=5}
+  %jit__interp_.39 = f32[] call(%tanh.1, %Arg_2.11, %squeeze.63), to_apply=%_interp.10, metadata={op_name="jit(_interp)" stack_frame_id=6}
+  %add.62 = f32[] add(%add.61, %jit__interp_.39), metadata={op_name="add" stack_frame_id=4}
+  %add.63 = f32[] add(%Arg_4.1, %add.62), metadata={op_name="add" stack_frame_id=7}
+  ROOT %tuple.5 = (s32[], f32[]) tuple(%add.42, %add.63)
+}
+
+%region_0.12 (arg_tuple.5: (s32[], s32[], f32[], f32[])) -> (s32[], s32[], f32[], f32[]) {
+  %arg_tuple.5 = (s32[], s32[], f32[], f32[]) parameter(0)
+  %get-tuple-element.24 = s32[] get-tuple-element(%arg_tuple.5), index=0
+  %constant.35 = s32[] constant(1)
+  %add.65 = s32[] add(%get-tuple-element.24, %constant.35), metadata={op_name="jit(run)/while/body/add" stack_frame_id=11}
+  %get-tuple-element.27 = f32[] get-tuple-element(%arg_tuple.5), index=3
+  %constant.37 = f32[20,200]{1,0} constant({...})
+  %constant.36 = f32[200]{0} constant({...})
+  %get-tuple-element.25 = s32[] get-tuple-element(%arg_tuple.5), index=1
+  %get-tuple-element.26 = f32[] get-tuple-element(%arg_tuple.5), index=2
+  %closed_call.11 = (s32[], f32[]) call(%get-tuple-element.27, %constant.37, %constant.36, %get-tuple-element.25, %get-tuple-element.26), to_apply=%closed_call.11, metadata={op_name="jit(run)/while/body/closed_call" stack_frame_id=11}
+  %closed_call.12 = s32[] get-tuple-element(%closed_call.11), index=0, metadata={op_name="jit(run)/while/body/closed_call" stack_frame_id=11}
+  %closed_call.13 = f32[] get-tuple-element(%closed_call.11), index=1, metadata={op_name="jit(run)/while/body/closed_call" stack_frame_id=11}
+  ROOT %tuple.7 = (s32[], s32[], f32[], f32[]) tuple(%add.65, %closed_call.12, %closed_call.13, %get-tuple-element.27)
+}
+
+%region_3.13 (arg_tuple.7: (s32[], s32[], f32[], f32[])) -> pred[] {
+  %arg_tuple.7 = (s32[], s32[], f32[], f32[]) parameter(0)
+  %get-tuple-element.33 = s32[] get-tuple-element(%arg_tuple.7), index=1
+  %get-tuple-element.34 = f32[] get-tuple-element(%arg_tuple.7), index=2
+  %get-tuple-element.35 = f32[] get-tuple-element(%arg_tuple.7), index=3
+  %get-tuple-element.32 = s32[] get-tuple-element(%arg_tuple.7), index=0
+  %constant.39 = s32[] constant(200)
+  ROOT %lt.19 = pred[] compare(%get-tuple-element.32, %constant.39), direction=LT, metadata={op_name="jit(run)/while/cond/lt" stack_frame_id=11}
+}
+
+ENTRY %main.14 (t.1: f32[]) -> f32[] {
+  %constant.40 = s32[] constant(0)
+  %constant.41 = f32[] constant(0)
+  %t.1 = f32[] parameter(0), metadata={op_name="t"}
+  %while.15 = (s32[], s32[], f32[], f32[]) tuple(%constant.40, %constant.40, %constant.41, %t.1), metadata={op_name="jit(run)/while" stack_frame_id=10}
+  %while.16 = (s32[], s32[], f32[], f32[]) while(%while.15), condition=%region_3.13, body=%region_0.12, metadata={op_name="jit(run)/while" stack_frame_id=10}
+  %while.17 = s32[] get-tuple-element(%while.16), index=0, metadata={op_name="jit(run)/while" stack_frame_id=10}
+  %while.18 = s32[] get-tuple-element(%while.16), index=1, metadata={op_name="jit(run)/while" stack_frame_id=10}
+  ROOT %while.19 = f32[] get-tuple-element(%while.16), index=2, metadata={op_name="jit(run)/while" stack_frame_id=10}
+}
+

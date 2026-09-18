@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -125,22 +126,6 @@ class ExecutableBuildOptions {
   }
   ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_ids(
       std::vector<int64_t> mesh_ids);
-
-  float exec_time_optimization_effort() const {
-    return exec_time_optimization_effort_;
-  }
-  ExecutableBuildOptions& set_exec_time_optimization_effort(
-      float exec_time_optimization_effort) {
-    exec_time_optimization_effort_ = exec_time_optimization_effort;
-    return *this;
-  }
-
-  float memory_fitting_effort() const { return memory_fitting_effort_; }
-  ExecutableBuildOptions& set_memory_fitting_effort(
-      float memory_fitting_effort) {
-    memory_fitting_effort_ = memory_fitting_effort;
-    return *this;
-  }
 
   ExecutionOptions::EffortLevel optimization_level() const {
     return optimization_level_;
@@ -300,9 +285,12 @@ class ExecutableBuildOptions {
     key_value_store_ = kv_store;
   }
 
-  // Number of devices in a fast-interconnect domain, i.e. a slice.
-  int64_t slice_size() const { return slice_size_; }
-  void set_slice_size(int64_t slice_size) { slice_size_ = slice_size; }
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
+  }
+  void set_gpu_topology(const GpuTopology& gpu_topology) {
+    gpu_topology_ = gpu_topology;
+  }
 
  private:
   int device_ordinal_ = -1;
@@ -317,8 +305,6 @@ class ExecutableBuildOptions {
   bool use_auto_spmd_partitioning_ = false;
   std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
-  float exec_time_optimization_effort_ = 0.0f;
-  float memory_fitting_effort_ = 0.0f;
   ExecutionOptions::EffortLevel optimization_level_ =
       ExecutionOptions::EFFORT_UNKNOWN;
   ExecutionOptions::EffortLevel memory_fitting_level_ =
@@ -340,7 +326,7 @@ class ExecutableBuildOptions {
   int process_index_ = 0;
   int process_count_ = 1;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;
-  int64_t slice_size_ = 0;
+  std::optional<GpuTopology> gpu_topology_;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

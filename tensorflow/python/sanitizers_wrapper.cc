@@ -16,7 +16,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 
 // Check if specific santizers are enabled.
-PYBIND11_MODULE(_pywrap_sanitizers, m) {
+PYBIND11_MODULE(_pywrap_sanitizers, m, pybind11::mod_gil_not_used()) {
   m.def("is_asan_enabled", []() -> bool {
 #if defined(ADDRESS_SANITIZER)
     return true;

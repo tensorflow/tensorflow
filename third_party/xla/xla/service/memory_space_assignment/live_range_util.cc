@@ -220,7 +220,7 @@ std::vector<LiveRange> LiveRangeCalculator::DetermineLiveRangesGivenLastUses(
     const std::vector<const HloUse*>& last_uses, const HloValue* value,
     int64_t start_time) {
   CHECK(!last_uses.empty());
-  const HloInstruction* last_inst = last_uses[0]->instruction;
+  HloInstruction* last_inst = last_uses[0]->instruction;
   for (const HloUse* last_use : last_uses) {
     CHECK_EQ(last_use->instruction, last_inst);
   }
@@ -240,10 +240,34 @@ std::vector<LiveRange> LiveRangeCalculator::DetermineLiveRangesGivenLastUses(
     return result;
   }
 
-  // For while loop parameter positions, the positions inside the condition and
-  // body computations are considered separate HloValues. Their live ranges
-  // will be computed independently. We do not need any special handling for
-  // while loops apart from this common logic.
+  if (last_inst->opcode() == HloOpcode::kWhile) {
+    // While loop output corresponding to the operand index.
+    HloPosition output_position{use.instruction, use.operand_index};
+    // An HloValue that is an operand to a while loop, at one or more operand
+    // indices, is a pass-through, i.e., it is a read only operand inside the
+    // while loop. If the last uses at the while loop is a pass-through, the
+    // live range end would be until the while instruction.
+    bool pass_through = true;
+    // If no hlo value in the buffer has a defining position at the
+    // corresponding while loop output, then the while loop is a pass-through.
+    for (const HloValue* val : buffer_.values()) {
+      if (val->defining_instruction() == last_inst) {
+        pass_through = false;
+        break;
+      }
+    }
+    if (pass_through) {
+      LiveRange live_range = {start_time, last_inst_time};
+      SetLiveRangeForNonTrivialNonForwardedPosition(
+          current_non_trivial_position, live_range, result);
+      return result;
+    }
+  }
+
+  // For while loop uses that are not pass-through, the corresponding positions
+  // inside the condition, body computation and the while loop output are
+  // considered distinct HloValues. Their live ranges will be computed
+  // independently. Any special handing is not required.
   int64_t earliest_schedule_flattened_computation_start_time =
       GetEarliestCalledComputationStartTime(last_inst);
   LiveRange live_range = {start_time,

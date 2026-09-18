@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::llvm_ir {
@@ -56,8 +56,8 @@ class EmitReducePrecisionIrExecutionTest : public HloTestBaseLegacy {
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), args, nullopt));
   }
 
@@ -67,8 +67,8 @@ class EmitReducePrecisionIrExecutionTest : public HloTestBaseLegacy {
     debug_options.set_xla_cpu_fast_math_honor_nans(true);
     debug_options.set_xla_cpu_fast_math_honor_infs(true);
     config.set_debug_options(debug_options);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
   }
 };

@@ -127,6 +127,10 @@ bool isLegalType(mlir::Type type, const Version& version) {
         version < Version(0, 3, 0)) {
       return false;
     }
+    if (llvm::isa<VifrtStringV1Type>(array_type.getShape().getElementType()) &&
+        version < Version(0, 5, 0)) {
+      return false;
+    }
     return isLegalAttribute(array_type.getShardingAttr(), version);
   }
   if (auto func_type = llvm::dyn_cast<VifrtFunctionV1Type>(type)) {

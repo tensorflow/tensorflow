@@ -24,13 +24,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -86,19 +86,19 @@ using ::tsl::proto_testing::EquivToProto;
 
 // Serialized `ModuleOp` that does add 1.
 static const char* const module_add_one =
-    R"(module {
+    R"mlir(module {
   func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
     %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
     %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
     %2 = stablehlo.add %arg0, %1 : tensor<2x3xf32>
     return %2 : tensor<2x3xf32>
   }
-})";
+})mlir";
 
 // Serialized `ModuleOp` that has 3 inputs and 3 outputs, adding a constant 100,
 // 200, 300 to each input to produce an output, respectively.
 static const char* const module_three_inputs_outputs =
-    R"(module {
+    R"mlir(module {
   func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) {
     %0 = stablehlo.constant dense<1.000000e+02> : tensor<f32>
     %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
@@ -114,9 +114,9 @@ static const char* const module_three_inputs_outputs =
 
     return %out0, %out1, %out2 : tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>
   }
-})";
+})mlir";
 
-static const char* const module_add_sub = R"(
+static const char* const module_add_sub = R"mlir(
 module @add_sub attributes {
   mhlo.num_replicas = 1 : i32,
   mhlo.num_partitions = 2 : i32
@@ -132,7 +132,7 @@ module @add_sub attributes {
     %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
     return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
-})";
+})mlir";
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
@@ -144,7 +144,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     absl::Span<Device* const> devices, bool replicated, bool serialize,
     std::optional<std::vector<int>> outputs_bundle_slice_sizes = std::nullopt) {
   mlir::MLIRContext context;
-  ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                    xla::ParseMlirModuleString(mlir_module_str, context));
 
   xla::CompileOptions compile_options;
@@ -153,7 +153,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   DeviceListRef device_list;
   if (devices.empty()) {
     compile_options.compile_portable_executable = true;
-    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(
+    ABSL_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(
                                       {client->addressable_devices().front()}));
   } else {
     if (devices.size() == 1) {
@@ -181,13 +181,13 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       }
       build_options.set_device_assignment(device_assignment);
     }
-    ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
+    ABSL_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
   auto xla_compile_options =
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
   xla_compile_options->outputs_bundle_slice_sizes =
       std::move(outputs_bundle_slice_sizes);
-  ASSIGN_OR_RETURN(auto loaded_executable,
+  ABSL_ASSIGN_OR_RETURN(auto loaded_executable,
                    compiler
                        ->CompileAndLoad(std::make_unique<HloProgram>(*module),
                                         std::move(xla_compile_options))
@@ -195,7 +195,7 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   if (!serialize) {
     return loaded_executable;
   }
-  ASSIGN_OR_RETURN(auto serialized_executable, loaded_executable->Serialize());
+  ABSL_ASSIGN_OR_RETURN(auto serialized_executable, loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
   return compiler
@@ -205,12 +205,42 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
 }
 
 class LoadedExecutableImplTest
-    : public testing::TestWithParam</*serialize=*/bool> {};
+    : public testing::TestWithParam</*serialize=*/bool> {
+ protected:
+  static void SetUpTestSuite() {
+    // Compile a simple program and check if serialization is supported. This
+    // assumes that the client either support serialization for all modules or
+    // for none, which is generally true.
+    ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+    ASSERT_OK_AND_ASSIGN(
+        auto loaded_executable,
+        CompileOnDevices(client.get(), client->GetDefaultCompiler(),
+                         module_add_one, {client->addressable_devices().at(0)},
+                         /*replicated=*/false, /*serialize=*/false));
+    const absl::Status status = loaded_executable->Serialize().status();
+    if (absl::IsUnimplemented(status)) {
+      supports_serialization_ = false;
+    } else {
+      ASSERT_OK(status);
+      supports_serialization_ = true;
+    }
+  }
+
+  void SetUp() override {
+    if (GetParam() && !supports_serialization_) {
+      GTEST_SKIP() << "Serialization is not supported on this platform";
+    }
+  }
+
+  static bool supports_serialization_;
+};
+
+bool LoadedExecutableImplTest::supports_serialization_ = true;
 
 TEST_P(LoadedExecutableImplTest, Properties) {
   bool serialize = GetParam();
 
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @add_sub attributes {
   mhlo.num_replicas = 1 : i32,
   mhlo.num_partitions = 2 : i32
@@ -226,7 +256,7 @@ module @add_sub attributes {
     %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
     return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
-})";
+})mlir";
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -267,7 +297,7 @@ module @add_sub attributes {
 
 absl::StatusOr<const LoadedExecutableRef> SimpleAddExecutable(Client* client,
                                                               bool serialize) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @add attributes {
   mhlo.num_replicas = 1 : i32,
   mhlo.num_partitions = 2 : i32
@@ -278,7 +308,7 @@ module @add attributes {
     %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xi32>
     return %0 : tensor<2x3xi32>
   }
-})";
+})mlir";
   Compiler* compiler = client->GetDefaultCompiler();
   return CompileOnDevices(client, compiler, kModule,
                           {client->addressable_devices().front()},
@@ -329,7 +359,7 @@ TEST_P(LoadedExecutableImplTest, Analysis) {
 TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
   bool serialize = GetParam();
 
-  static const char* const multi_arg_add_all = R"(module {
+  static const char* const multi_arg_add_all = R"mlir(module {
     func.func @main(
         %arg0: tensor<2x3xf32> {jax.buffer_donor = true},
         %arg1: tensor<2x3xf32>,
@@ -340,7 +370,7 @@ TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
       %5 = stablehlo.add %arg2, %arg3 : tensor<2x3xf32>
       %6 = stablehlo.add %4, %5 : tensor<2x3xf32>
       return %6 : tensor<2x3xf32>
-    }})";
+    }})mlir";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
@@ -475,7 +505,7 @@ TEST_P(LoadedExecutableImplTest,
   ASSERT_THAT(retrieved_outputs, SizeIs(3));
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(retrieved_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(retrieved_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);
@@ -573,7 +603,7 @@ TEST_P(LoadedExecutableImplTest,
   all_outputs.push_back(retrieved_outputs1[0]);
 
   for (int i = 0; i < 3; ++i) {
-    auto* out_array = llvm::dyn_cast<Array>(all_outputs[i].get());
+    auto* out_array = dyn_cast<Array>(all_outputs[i].get());
     ASSERT_NE(out_array, nullptr);
 
     std::vector<float> out_data(6);
@@ -800,7 +830,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
 TEST_P(LoadedExecutableImplTest, NoInputOutput) {
   bool serialize = GetParam();
 
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @nop attributes {
   mhlo.num_replicas = 1 : i32,
   mhlo.num_partitions = 2 : i32
@@ -808,7 +838,7 @@ module @nop attributes {
   func.func @main() {
     return
   }
-})";
+})mlir";
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -830,7 +860,7 @@ module @nop attributes {
 TEST_P(LoadedExecutableImplTest, Donation) {
   bool serialize = GetParam();
 
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @add_sub {
   func.func @main(
     %arg0: tensor<2x3xi32> {jax.buffer_donor = true},
@@ -840,7 +870,7 @@ module @add_sub {
     %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
     return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
-})";
+})mlir";
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -923,7 +953,7 @@ module @add_sub {
 // Regression test for a segfault during executable serialization when both a
 // sharded parameter and a token parameter are present.
 TEST_P(LoadedExecutableImplTest, ShardingsAndTokens) {
-  static constexpr absl::string_view kModule = R"(
+  static constexpr absl::string_view kModule = R"mlir(
 module @f attributes {mhlo.num_partitions = 2 : i32, mhlo.num_replicas = 1 : i32} {
   func.func @main(
     %arg0: !stablehlo.token,
@@ -935,7 +965,7 @@ module @f attributes {mhlo.num_partitions = 2 : i32, mhlo.num_replicas = 1 : i32
     %0 = stablehlo.add %arg1, %arg1 : tensor<2x4xf32>
     return %arg0, %0 : !stablehlo.token, tensor<2x4xf32>
   }
-})";
+})mlir";
   ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
   absl::Span<Device* const> devices =

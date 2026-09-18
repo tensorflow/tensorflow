@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/abi/runtime_abi_version.pb.h"
@@ -43,12 +43,12 @@ CudaRuntimeAbiVersion::CudaRuntimeAbiVersion(
 
 absl::StatusOr<std::unique_ptr<CudaRuntimeAbiVersion>>
 CudaRuntimeAbiVersion::FromProto(const CudaRuntimeAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       SemanticVersion cuda_toolkit_version,
       SemanticVersion::ParseFromString(proto.cuda_toolkit_version()));
-  ASSIGN_OR_RETURN(SemanticVersion cudnn_version,
+  ABSL_ASSIGN_OR_RETURN(SemanticVersion cudnn_version,
                    SemanticVersion::ParseFromString(proto.cudnn_version()));
-  ASSIGN_OR_RETURN(SemanticVersion cub_version,
+  ABSL_ASSIGN_OR_RETURN(SemanticVersion cub_version,
                    SemanticVersion::ParseFromString(proto.cub_version()));
   return std::make_unique<CudaRuntimeAbiVersion>(cuda_toolkit_version,
                                                  cudnn_version, cub_version);
@@ -102,7 +102,7 @@ absl::Status CudaRuntimeAbiVersion::IsCompatibleWith(
         "ExecutableAbiVersionProto does not have CUDA platform version.");
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       SemanticVersion required_cuda_toolkit_version,
       SemanticVersion::ParseFromString(
           executable_proto.cuda_platform_version().cuda_toolkit_version()));
@@ -113,7 +113,7 @@ absl::Status CudaRuntimeAbiVersion::IsCompatibleWith(
         ", but executable requires >= ", required_cuda_toolkit_version));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       SemanticVersion required_cudnn_version,
       SemanticVersion::ParseFromString(
           executable_proto.cuda_platform_version().cudnn_version()));
@@ -123,7 +123,7 @@ absl::Status CudaRuntimeAbiVersion::IsCompatibleWith(
         ", but executable requires >= ", required_cudnn_version));
   }
 
-  ASSIGN_OR_RETURN(SemanticVersion required_cub_version,
+  ABSL_ASSIGN_OR_RETURN(SemanticVersion required_cub_version,
                    SemanticVersion::ParseFromString(
                        executable_proto.cuda_platform_version().cub_version()));
   if (cub_version_ < required_cub_version) {

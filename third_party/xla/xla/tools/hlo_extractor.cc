@@ -36,8 +36,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -104,8 +104,12 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     // Replace the following two types of instructions with parameters/constants
     // (1) the instructions at the boundary with (2) the instructions that are
     // not selected by the hlo_selector.
-    if ((boundary_ != nullptr && boundary_->contains(hlo) > 0) ||
-        (extract_selector_ != nullptr && !extract_selector_(hlo))) {
+    const bool in_root_async_chain =
+        hlo->IsAsynchronous() && root_instruction_->IsAsynchronous() &&
+        hlo->async_chain_start() == root_instruction_->async_chain_start();
+    if (!in_root_async_chain &&
+        ((boundary_ != nullptr && boundary_->contains(hlo) > 0) ||
+         (extract_selector_ != nullptr && !extract_selector_(hlo)))) {
       if (replace_type_selector_ != nullptr) {
         switch (replace_type_selector_(hlo)) {
           case ReplaceType::kReplaceConst:
@@ -194,6 +198,9 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       // Schedule any called computations.
       for (const HloComputation* old_computation :
            old_module_->computations()) {
+        if (old_computation == root_instruction_->parent()) {
+          continue;
+        }
         if (old_schedule.is_computation_scheduled(old_computation)) {
           if (HloComputation* new_computation =
                   clone_context_.FindComputation(old_computation);
@@ -212,7 +219,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         }
       }
       if (!new_schedule.empty()) {
-        RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
+        ABSL_RETURN_IF_ERROR(module_->set_schedule(std::move(new_schedule)));
       }
     }
 
@@ -357,8 +364,11 @@ void ComputeBoundary(const HloInstruction* root, int64_t limit,
       if (visited.count(operand)) {
         continue;
       }
+      const bool in_same_async_chain =
+          hlo->IsAsynchronous() && operand->IsAsynchronous() &&
+          hlo->async_chain_start() == operand->async_chain_start();
       worklist.push_back(operand);
-      visited.emplace(operand, hops + 1);
+      visited.emplace(operand, in_same_async_chain ? hops : hops + 1);
     }
   }
 }
@@ -373,7 +383,7 @@ absl::Status Inline(HloModule* module) {
                 /*operands=*/instruction->operands(),
                 /*computation=*/
                 instruction->fused_instructions_computation()));
-        RETURN_IF_ERROR(computation
+        ABSL_RETURN_IF_ERROR(computation
                             ->ReplaceInstruction(
                                 /*old_instruction=*/instruction,
                                 /*new_instruction=*/new_instruction,
@@ -384,10 +394,10 @@ absl::Status Inline(HloModule* module) {
       }
     }
   }
-  RETURN_IF_ERROR(CallInliner().Run(module).status());
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(CallInliner().Run(module).status());
+  ABSL_RETURN_IF_ERROR(
       AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
-  RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  ABSL_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
   return absl::OkStatus();
 }
 
@@ -401,17 +411,23 @@ std::unique_ptr<HloModule> ExtractModule(
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
+  const HloInstruction* root = instruction;
+  if (instruction->IsAsynchronous() &&
+      instruction->async_chain_done() != nullptr) {
+    root = instruction->async_chain_done();
+  }
+
   absl::flat_hash_set<const HloInstruction*> boundary;
   if (height != -1) {
-    ComputeBoundary(instruction, height, &boundary);
+    ComputeBoundary(root, height, &boundary);
   }
-  ExtractionVisitor visitor(instruction, &boundary, extract_selector,
+  ExtractionVisitor visitor(root, &boundary, extract_selector,
                             replace_type_selector, inherit_module_config,
                             inherit_schedule);
 
-  CHECK_OK(instruction->Accept(&visitor, /*call_finish_visit=*/true,
-                               /*ignore_control_predecessors=*/false,
-                               /*cross_computation=*/cross_computation));
+  CHECK_OK(root->Accept(&visitor, /*call_finish_visit=*/true,
+                        /*ignore_control_predecessors=*/false,
+                        /*cross_computation=*/cross_computation));
 
   // Inline called computations and fusions if the flag
   // `inline_calls_and_fusions` is true.

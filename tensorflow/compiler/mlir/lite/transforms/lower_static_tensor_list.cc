@@ -1414,7 +1414,7 @@ struct ConvertIf : public OpConversionPattern<TF::IfOp> {
   LogicalResult matchAndRewrite(
       TF::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Find all Tensor List arugments.
+    // Find all Tensor List arguments.
     auto tensor_list_args = GetTensorListArgumentsIndex(op.else_function());
     auto tensor_list_results = GetTensorListResultsIndex(op.else_function());
     auto tensor_list_map = MapTensorListResultToArgument(op.else_function());
@@ -1451,7 +1451,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
   LogicalResult matchAndRewrite(
       TF::WhileOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Find all Tensor List arugments.
+    // Find all Tensor List arguments.
     auto tensor_list_args = GetTensorListArgumentsIndex(op.body_function());
 
     llvm::SmallVector<Type, 8> result_types;

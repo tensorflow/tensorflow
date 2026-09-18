@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -51,6 +51,7 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kAbs, ynn_unary_abs},
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
+          {HloOpcode::kCos, ynn_unary_cos},
           {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
           {HloOpcode::kExpm1, ynn_unary_expm1},
@@ -60,10 +61,12 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kLogistic, ynn_unary_sigmoid},
           {HloOpcode::kNegate, ynn_unary_negate},
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
-          {HloOpcode::kRsqrt, ynn_unary_reciprocal_square_root},
+          {HloOpcode::kRsqrt, ynn_unary_rsqrt},
           {HloOpcode::kSign, ynn_unary_sign},
-          {HloOpcode::kSqrt, ynn_unary_square_root},
+          {HloOpcode::kSin, ynn_unary_sin},
+          {HloOpcode::kSqrt, ynn_unary_sqrt},
           {HloOpcode::kTanh, ynn_unary_tanh},
+          {HloOpcode::kTan, ynn_unary_tan},
       });
   return *unary_op_map;
 }
@@ -377,6 +380,7 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
           {BF16, BF16, F32},
+          {BF16, BF16, BF16},
           {S8, S8, S32},
           {U8, S8, S32},
           // TODO(b/441600372): We don't have fast int4 kernels yet. Even the
@@ -399,10 +403,10 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
   }
 
   // Check shapes.
-  ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+  ABSL_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                    rhs_shape, out_shape));
 
-  ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+  ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dot_dimensions, dot_shape));
 
   if (dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) {

@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -81,7 +81,7 @@ absl::StatusOr<RelocatableModule>
 SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  ASSIGN_OR_RETURN(auto assembly,
+  ABSL_ASSIGN_OR_RETURN(auto assembly,
                    CompileHelper(path_to_ptxas_, cc, ptx, options,
                                  /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
@@ -92,20 +92,25 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
+  if (path_to_nvlink_.empty()) {
+    return absl::FailedPreconditionError(
+        "Can't link PTX because no nvlink binary was found.");
+  }
+
   std::vector<std::vector<uint8_t>> images;
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
       images.push_back(std::get<RelocatableModule>(input).cubin);
     } else {
       // If we have a PTX string, we need to compile it to CUBIN first.
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           RelocatableModule module,
           CompileToRelocatableModule(cc, std::get<Ptx>(input).ptx, options));
       images.push_back(std::move(module.cubin));
     }
   }
 
-  ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
+  ABSL_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
 }
 

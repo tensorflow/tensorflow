@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -40,8 +40,8 @@ using testing::IsEmpty;
 using testing::Not;
 
 TEST(RocmExecutorTest, CreateDeviceDescription) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
-                          RocmExecutor::CreateDeviceDescription(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
+                       RocmExecutor::CreateDeviceDescription(0));
 
   constexpr SemanticVersion kNullVersion{0, 0, 0};
   EXPECT_NE(result->runtime_version(), kNullVersion);
@@ -62,14 +62,14 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
 }
 
 TEST(RocmExecutorTest, GetRocmKernel) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
-                          GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
-                          executor->LoadKernel(add_kernel));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
+                       GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                       executor->LoadKernel(add_kernel));
 
   auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
   ASSERT_NE(rocm_executor, nullptr);
@@ -85,54 +85,53 @@ TEST(RocmExecutorTest, GetRocmKernel) {
 }
 
 TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemorySpace::kUnified));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(1024));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                       executor->CreateMemoryAllocator(MemorySpace::kUnified));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
   EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
 TEST(RocmExecutorTest, CreateHostMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
-                          executor->CreateMemoryAllocator(MemorySpace::kHost));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(1024));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                       executor->CreateMemoryAllocator(MemorySpace::kHost));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
   EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
 TEST(RocmExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
       executor->CreateMemoryAllocator(MemorySpace::kCollective));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
-                          allocator->Allocate(1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       allocator->Allocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
   EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
 TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("ROCM"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("ROCM"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemorySpace::kDevice),
               Not(absl_testing::IsOk()));
 }

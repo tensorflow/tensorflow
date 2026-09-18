@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/stream_executor/kernel_args_packing_spec.pb.h"
@@ -97,7 +97,7 @@ KernelArgsPackingSpec::BuildArguments(
   std::vector<std::vector<char>> result;
   result.reserve(kernel_arguments_.size());
   for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
-    ASSIGN_OR_RETURN(std::vector<char> arg,
+    ABSL_ASSIGN_OR_RETURN(std::vector<char> arg,
                      kernel_argument.BuildArgument(args));
     result.push_back(std::move(arg));
   }
@@ -108,7 +108,7 @@ absl::StatusOr<KernelArgPackingSpecProto> KernelArgPackingSpec::ToProto()
     const {
   KernelArgPackingSpecProto proto;
   if (relocation_.has_value()) {
-    ASSIGN_OR_RETURN(*proto.add_relocations(), relocation_->ToProto());
+    ABSL_ASSIGN_OR_RETURN(*proto.add_relocations(), relocation_->ToProto());
   } else {
     proto.set_data(constant_.data(), constant_.size());
   }
@@ -127,7 +127,7 @@ absl::StatusOr<KernelArgPackingSpec> KernelArgPackingSpec::FromProto(
           "Both relocation and constant data cannot be provided "
           "simultaneously.");
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         KernelArgPackingRelocation relocation,
         KernelArgPackingRelocation::FromProto(proto.relocations()[0]));
     return KernelArgPackingSpec({}, std::move(relocation));
@@ -153,7 +153,7 @@ KernelArgPackingRelocation::ToProto() const {
 absl::StatusOr<KernelArgPackingRelocation>
 KernelArgPackingRelocation::FromProto(
     const KernelArgPackingRelocationProto& proto) {
-  ASSIGN_OR_RETURN(KernelArgPackingRelocation::Kind kind,
+  ABSL_ASSIGN_OR_RETURN(KernelArgPackingRelocation::Kind kind,
                    FromProtoKind(proto.kind()));
   if (proto.argument_index() < 0) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -166,7 +166,7 @@ absl::StatusOr<KernelArgsPackingSpecProto> KernelArgsPackingSpec::ToProto()
     const {
   KernelArgsPackingSpecProto proto;
   for (const KernelArgPackingSpec& kernel_argument : kernel_arguments_) {
-    ASSIGN_OR_RETURN(*proto.add_kernel_arguments(), kernel_argument.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*proto.add_kernel_arguments(), kernel_argument.ToProto());
   }
   return proto;
 }
@@ -177,7 +177,7 @@ absl::StatusOr<KernelArgsPackingSpec> KernelArgsPackingSpec::FromProto(
   kernel_arguments.reserve(proto.kernel_arguments().size());
   for (const KernelArgPackingSpecProto& kernel_argument_proto :
        proto.kernel_arguments()) {
-    ASSIGN_OR_RETURN(KernelArgPackingSpec kernel_argument,
+    ABSL_ASSIGN_OR_RETURN(KernelArgPackingSpec kernel_argument,
                      KernelArgPackingSpec::FromProto(kernel_argument_proto));
     kernel_arguments.push_back(std::move(kernel_argument));
   }

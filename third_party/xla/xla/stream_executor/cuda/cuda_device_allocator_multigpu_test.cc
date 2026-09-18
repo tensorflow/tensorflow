@@ -20,8 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -36,9 +36,9 @@ namespace stream_executor::gpu {
 namespace {
 
 absl::StatusOr<StreamExecutor*> GetGpuExecutor(int64_t device_ordinal) {
-  ASSIGN_OR_RETURN(Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(Platform * platform,
                    PlatformManager::PlatformWithName(GpuPlatformName()));
-  ASSIGN_OR_RETURN(StreamExecutor * executor,
+  ABSL_ASSIGN_OR_RETURN(StreamExecutor * executor,
                    platform->ExecutorForDevice(device_ordinal));
   return executor;
 }

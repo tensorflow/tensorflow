@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -63,7 +63,7 @@ absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
             original_dims.begin(), absl::c_find(original_dims, new_dims[i]));
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           HloInstruction * transposed_operand,
           MakeTransposeHlo(hlo->mutable_operand(0), operand_transpose_dims));
       // MakeTransposeHlo uses shape inference to derive the transpose shape
@@ -75,7 +75,7 @@ absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
       auto new_broadcast =
           MakeBroadcastHlo(transposed_operand, new_dims, hlo->shape());
 
-      RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
+      ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
       changed = true;
     }
   }

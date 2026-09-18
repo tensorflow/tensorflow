@@ -45,6 +45,13 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 7}), "sm_107");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                10, 7, FeatureExtension::kAcceleratedFeatures}),
+            "sm_107a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                10, 7, FeatureExtension::kFamilyCompatibleFeatures}),
+            "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 11, 0, FeatureExtension::kAcceleratedFeatures}),
             "sm_110a");
@@ -56,10 +63,10 @@ TEST(UtilsTest, TestGetSmName) {
             "sm_121a");
   // Do not use the extension for a yet-unknown compute capability.
   // https://docs.nvidia.com/cuda/parallel-thread-execution/#release-notes-ptx-release-history
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_103f");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 9, FeatureExtension::kAcceleratedFeatures}),
-            "sm_103f");
+            "sm_107f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{12, 9}), "sm_121f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }
@@ -74,11 +81,11 @@ TEST(UtilsTest, UnknownCapabilityFallsBackToFamilyCompatible) {
   // An unknown compute capability within a known major version falls back to
   // the latest supported minor version with the family compatible extension.
   // This mirrors a yet-unreleased device (e.g. sm_1099a) where ptxas only knows
-  // about sm_103f.
+  // about sm_107f.
   EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
                 10, 99, FeatureExtension::kAcceleratedFeatures}),
             (se::CudaComputeCapability{
-                10, 3, FeatureExtension::kFamilyCompatibleFeatures}));
+                10, 7, FeatureExtension::kFamilyCompatibleFeatures}));
   // When no family-compatible extension is available, don't use any.
   EXPECT_EQ(nvptx::ResolveSupportedComputeCapability(se::CudaComputeCapability{
                 9, 99, FeatureExtension::kAcceleratedFeatures}),
@@ -116,6 +123,12 @@ INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
                              {{12, 6, 0}, {8, 5, 0}},
                              {{12, 8, 0}, {8, 7, 0}},
                              {{12, 9, 0}, {8, 8, 0}},
+                             // CUDA 13
+                             {{13, 0, 0}, {9, 0, 0}},
+                             {{13, 1, 0}, {9, 1, 0}},
+                             {{13, 2, 0}, {9, 2, 0}},
+                             {{13, 3, 0}, {9, 3, 0}},
+                             {{13, 4, 0}, {9, 4, 0}},
                          }),
                          [](::testing::TestParamInfo<VersionPair> data) {
                            se::SemanticVersion cuda_version = data.param.first;

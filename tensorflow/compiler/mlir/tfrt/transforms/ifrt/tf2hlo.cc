@@ -56,7 +56,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/layout.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"

@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/dtype.h"
@@ -31,12 +31,12 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
 
 class Client;
+class AbstractArraySpec;
 
 // Specification of an array that groups the static properties of an `Array`
 // together. Typically used for describing expected or requested static
@@ -90,9 +90,12 @@ struct ArraySpec {
   absl::StatusOr<ArraySpecProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
     ArraySpecProto proto;
-    RETURN_IF_ERROR(ToProto(proto, version));
+    ABSL_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
+
+  // Converts this array spec to an `AbstractArraySpec`.
+  absl::StatusOr<AbstractArraySpec> ToAbstractArraySpec() const;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ArraySpec& array_spec) {

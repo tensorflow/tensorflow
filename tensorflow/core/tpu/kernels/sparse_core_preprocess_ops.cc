@@ -33,9 +33,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "hwy/base.h"  // from @com_google_highway
-#include "hwy/contrib/sort/order.h"  // from @com_google_highway
-#include "hwy/contrib/sort/vqsort.h"  // from @com_google_highway
+#include "hwy/base.h"  // from @highway
+#include "hwy/contrib/sort/order.h"  // from @highway
+#include "hwy/contrib/sort/vqsort.h"  // from @highway
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_ops_c_api.h"
 #include "xla/util.h"
@@ -1242,6 +1242,20 @@ ConvertToListOfSparseCoreCooTensorsOp::ConvertToListOfSparseCoreCooTensorsOp(
       ctx, IsPowerOfTwo(num_sc_shards_),
       absl::InvalidArgumentError(absl::StrCat("num_sc_shards ", num_sc_shards_,
                                               " is not a power of two.")));
+
+  OP_REQUIRES(ctx, num_sc_per_chip_ > 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "num_sc_per_chip must be > 0, got ", num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ >= num_sc_per_chip_,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " must be >= the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " is not divisible by the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
 
   int32_t num_sc_shards_bit = std::log2(num_sc_shards_);
   num_sc_shards_bit_mod_ = (1 << num_sc_shards_bit) - 1;

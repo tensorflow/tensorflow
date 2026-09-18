@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -389,6 +390,65 @@ TEST(FingerprintingTest, TestHashSavedObjectGraph) {
       HashSavedObjectGraph(&saved_object_graph, chunk_metadata.message(),
                            reader, chunks_info),
       absl_testing::IsOkAndHolds(17454850744699451884U));
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefCpbEmptyMetaGraphsReturnsError) {
+  const std::string temp_dir = testing::TempDir();
+  const std::string cpb_src = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  const std::string cpb_dst = io::JoinPath(temp_dir, "saved_model.cpb");
+  TF_ASSERT_OK(Env::Default()->CopyFile(cpb_src, cpb_dst));
+
+  absl::StatusOr<FingerprintDef> result =
+      CreateFingerprintDefCpb(temp_dir, cpb_dst);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(
+      std::string(result.status().message()),
+      ::testing::HasSubstr("SavedModel (.cpb) contains no MetaGraphs."));
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefNonExistentDirectoryReturnsError) {
+  const std::string synthetic_dir =
+      "/tmp/synthetic_non_existent_model_path_12345";
+  absl::StatusOr<FingerprintDef> result =
+      CreateFingerprintDefCpb(synthetic_dir, "saved_model.cpb");
+  EXPECT_FALSE(result.ok());
+}
+
+TEST(FingerprintingTest, TestHashFieldsReturnsErrorOnInvalidChunkIndex) {
+  std::string cpb_file = io::JoinPath(
+      TensorFlowSrcRoot(), "tools/proto_splitter/testdata", "many-field.cpb");
+  TF_ASSERT_OK_AND_ASSIGN(auto reader, GetRiegeliReader(cpb_file));
+
+  auto read_metadata = GetChunkMetadata(reader);
+  if (!read_metadata.ok()) {
+    reader.Close();
+    TF_ASSERT_OK(read_metadata.status());
+  }
+  ChunkMetadata chunk_metadata = read_metadata.value();
+
+  ChunkedMessage invalid_chunked_message;
+  invalid_chunked_message.set_chunk_index(0);
+  auto* invalid_field = invalid_chunked_message.add_chunked_fields();
+  invalid_field->add_field_tag()->set_field(1);
+
+  std::vector<ChunkInfo> chunks_info = std::vector<ChunkInfo>(
+      chunk_metadata.chunks().begin(), chunk_metadata.chunks().end());
+  invalid_field->mutable_message()->set_chunk_index(chunks_info.size());
+
+  RepeatedPtrField<FieldIndex> target_tags;
+  target_tags.Add()->set_field(1);
+
+  ManyFields merged_message;
+
+  auto statusor = HashFields(invalid_chunked_message, reader, chunks_info,
+                             target_tags, &merged_message);
+
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_EQ(statusor.status().code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(std::string(statusor.status().message()),
+              ::testing::HasSubstr("is out of range"));
 }
 
 }  // namespace

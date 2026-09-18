@@ -17,9 +17,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/utils.h"
 
 namespace xla {
 
@@ -35,6 +37,13 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
         device_kind_(std::move(device_kind)),
         coords_(
             {partition_index, process_index_in_partition, local_device_id}) {}
+
+  void SetPlatformName(absl::string_view platform_name) {
+    std::string device_name =
+        absl::StrCat(MakeAsciiTitlecase(platform_name), "Device");
+    debug_string_ = absl::StrCat(platform_name, ":", id_);
+    to_string_ = absl::StrCat(device_name, "(id=", id_, ")");
+  }
 
   int id() const override { return id_; }
 

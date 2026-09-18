@@ -18,9 +18,11 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "if_oss", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load("//tensorflow/lite:api_visibility.bzl", "TFLITE_PYTHON_CLIENTS_VISIBILITY")
+load("//tensorflow/lite:build_def.bzl", "tflite_exec_properties")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
@@ -63,7 +65,7 @@ py_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strict_deps = True,
-    visibility = ["//visibility:public"],
+    visibility = TFLITE_PYTHON_CLIENTS_VISIBILITY,
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics",
@@ -80,6 +82,7 @@ py_test(
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
+    exec_properties = tflite_exec_properties(),
     # Static linking is required because this loads a cc_binary as a shared
     # library, which would otherwise create ODR violations.
     # copybara:uncomment linking_mode = "static",
@@ -224,7 +227,7 @@ py_library(
         ":util",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/framework:graph_proto_py_proto",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/profiling/proto:model_runtime_info_py",
         "//tensorflow/lite/profiling/proto:profiling_info_py",
@@ -281,7 +284,7 @@ py_test(
         ":util",
         #internal proto upb dep
         "//third_party/py/numpy",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -314,13 +317,7 @@ py_test(
         "//tensorflow/lite/python/testdata:test_delegate.so",
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
-    exec_properties = if_oss(
-        None,
-        select({
-            "@bazel_tools//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
-            "//conditions:default": None,
-        }),
-    ),
+    exec_properties = tflite_exec_properties(),
     shard_count = 18,
     strict_deps = True,
     tags = [
@@ -689,6 +686,7 @@ py_test(
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
+    exec_properties = tflite_exec_properties(),
     strict_deps = True,
     deps = [
         ":analyzer",

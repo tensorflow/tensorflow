@@ -101,13 +101,13 @@ class LiveRangeCalculator {
   // given computation.
   int64_t GetEarliestInstructionTime(const HloComputation* comp) const;
 
-  const absl::flat_hash_map<HloPosition, LiveRange>& position_to_live_range()
-      const {
+  const absl::flat_hash_map<HloPosition, LiveRange>&
+  non_trivial_non_forwarded_position_to_live_range() const {
     return position_to_live_range_;
   }
 
   const absl::flat_hash_map<HloPosition, std::vector<const HloUse*>>&
-  position_to_uses() const {
+  non_trivial_non_forwarded_position_to_uses() const {
     return position_to_uses_;
   }
 

@@ -19,7 +19,7 @@
 !array1 = !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
 !array2 = !ifrt.array<tensor<2xi32>, #sharding, [4,5]>
 !array3 = !ifrt.array<tensor<2xi32>, #sharding, [6,7]>
-!array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "(default)">
+!array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "device">
 !array_pinned_host_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "pinned_host">
 !array_minor_to_major = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{0,1}">
 !array_major_to_minor = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{1,0}">

@@ -1,0 +1,128 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_reshape_split
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<8x4x4xf32>
+// CHECK: results %[[OUT]]
+
+test_reshape_split {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,4,4] bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_reshape_join
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<128xf32>
+// CHECK: results %[[OUT]]
+
+test_reshape_join {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[128] bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_reshape_mixed
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<32x4xf32>
+// CHECK: results %[[OUT]]
+
+test_reshape_mixed {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[32,4] bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_input_layout
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32> {nv_tensor_ir.stride = "(32,256,1)"}
+// CHECK: %[[OUT:.*]] = transpose %[[ARG0]] permutation = [1, 0, 2] : tensor<8x16x32xf32> -> tensor<16x8x32xf32>
+// CHECK: results %[[OUT]]
+
+test_input_layout {
+  %p0 = f32[8,16,32]{2,0,1} parameter(0)
+  %out = f32[16,8,32]{2,1,0} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_output_layout
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32>
+// CHECK-SAME: -> (tensor<32x8x16xf32> {nv_tensor_ir.stride = "(1,512,32)"})
+// CHECK: %[[OUT:.*]] = transpose %[[ARG0]] permutation = [2, 0, 1] : tensor<8x16x32xf32> -> tensor<32x8x16xf32>
+// CHECK: results %[[OUT]]
+
+test_output_layout {
+  %p0 = f32[8,16,32]{2,1,0} parameter(0)
+  %out = f32[32,8,16]{0,2,1} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_input_output_layout
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32> {nv_tensor_ir.stride = "(1,8,128)"}
+// CHECK-SAME: -> (tensor<16x8x32xf32> {nv_tensor_ir.stride = "(8,1,128)"})
+// CHECK: %[[TEMP:.*]] = transpose %[[ARG0]] permutation = [2, 1, 0] : tensor<8x16x32xf32> -> tensor<32x16x8xf32>
+// CHECK: %[[OUT:.*]] = transpose %[[TEMP]] permutation = [1, 2, 0] : tensor<32x16x8xf32> -> tensor<16x8x32xf32>
+// CHECK: results %[[OUT]]
+
+test_input_output_layout {
+  %p0 = f32[8,16,32]{0,1,2} parameter(0)
+  %out = f32[16,8,32]{1,0,2} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_transpose_reshape
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32> {nv_tensor_ir.stride = "(32,256,1)"}
+// CHECK: %[[TEMP:.*]] = transpose %[[ARG0]] permutation = [1, 0, 2] : tensor<8x16x32xf32> -> tensor<16x8x32xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[TEMP]] : tensor<16x8x32xf32> -> tensor<128x32xf32>
+// CHECK: results %[[OUT]]
+
+test_transpose_reshape {
+  %p0 = f32[8,16,32]{2,0,1} parameter(0)
+  %out = f32[128,32]{1,0} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_reshape_transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32>
+// CHECK-SAME: -> (tensor<32x128xf32> {nv_tensor_ir.stride = "(1,32)"})
+// CHECK: %[[TEMP:.*]] = reshape %[[ARG0]] : tensor<8x16x32xf32> -> tensor<128x32xf32>
+// CHECK: %[[OUT:.*]] = transpose %[[TEMP]] permutation = [1, 0] : tensor<128x32xf32> -> tensor<32x128xf32>
+// CHECK: results %[[OUT]]
+
+test_reshape_transpose {
+  %p0 = f32[8,16,32]{2,1,0} parameter(0)
+  %out = f32[32,128]{0,1} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_transpose_reshape_transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16x32xf32> {nv_tensor_ir.stride = "(1,8,128)"}
+// CHECK-SAME: -> (tensor<32x128xf32> {nv_tensor_ir.stride = "(1,32)"})
+// CHECK: %[[T1:.*]] = transpose %[[ARG0]] permutation = [2, 1, 0] : tensor<8x16x32xf32> -> tensor<32x16x8xf32>
+// CHECK: %[[T2:.*]] = reshape %[[T1]] : tensor<32x16x8xf32> -> tensor<128x32xf32>
+// CHECK: %[[OUT:.*]] = transpose %[[T2]] permutation = [1, 0] : tensor<128x32xf32> -> tensor<32x128xf32>
+// CHECK: results %[[OUT]]
+
+test_transpose_reshape_transpose {
+  %p0 = f32[8,16,32]{0,1,2} parameter(0)
+  %out = f32[32,128]{0,1} bitcast(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_reshape_is_bitcast
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK: %[[OUT:.*]] = reshape %[[ARG0]] : tensor<8x16xf32> -> tensor<8x4x4xf32>
+// CHECK: results %[[OUT]]
+
+test_reshape_is_bitcast {
+  %p0 = f32[8,16] parameter(0)
+  %out = f32[8,4,4] reshape(%p0)
+}

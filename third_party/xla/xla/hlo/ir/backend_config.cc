@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/message.h"
 #include "re2/re2.h"
 #include "xla/util.h"
@@ -109,7 +109,7 @@ absl::Status BackendConfigWrapper::GetProto(
     return copy_from_cache();
   }
 
-  RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
+  ABSL_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
   return absl::OkStatus();

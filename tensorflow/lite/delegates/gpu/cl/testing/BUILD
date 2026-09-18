@@ -48,7 +48,7 @@ cc_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",

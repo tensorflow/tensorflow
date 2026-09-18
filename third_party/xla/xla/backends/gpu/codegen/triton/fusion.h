@@ -18,22 +18,22 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -44,7 +44,7 @@ class TritonFusion : public FusionInterface {
  public:
   struct LaunchConfig {
     LaunchDimensions launch_dimensions;
-    BlockLevelParameters block_level_parameters;
+    xla::xtile::BlockLevelParameters block_level_parameters;
   };
 
   explicit TritonFusion(const HloFusionAnalysis& analysis)
@@ -56,9 +56,13 @@ class TritonFusion : public FusionInterface {
   // This is a more concrete emission result that can be used in
   // places where we know we are dealing with Triton fusions.
   struct EmitResult {
-    KernelReuseCache::Entry entry;
+    // Owned by the `KernelReuseCache` of the `IrEmitterContext` that the
+    // result was emitted with. Never null.
+    const KernelReuseCache::Entry* entry;
     emitters::KernelArguments kernel_arguments;
   };
+  using EmitThunk =
+      absl::AnyInvocable<absl::StatusOr<ThunkSequence>(EmitResult)>;
   // Overload of [Emit] that allows passing overrides for instructions
   // and unmanaged arguments.
   // - Instruction overloads are required when we forcibly form fusions for

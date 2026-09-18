@@ -440,10 +440,10 @@ struct ColumnIndexCreator {
 };
 
 template <typename T>
-Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
-                        int num_cols, int k,
-                        typename TTypes<T, 2>::Tensor values,
-                        TTypes<int, 2>::Tensor indices) {
+absl::Status LaunchSortKernel(OpKernelContext* ctx, const T* input,
+                              int num_rows, int num_cols, int k,
+                              typename TTypes<T, 2>::Tensor values,
+                              TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
   const auto& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
@@ -553,7 +553,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     To32Bit(values).device(d) =
         To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace impl
@@ -562,7 +562,7 @@ namespace functor {
 
 template <typename T, typename Tidx>
 struct TopKFunctor<GPUDevice, T, Tidx> {
-  static EIGEN_ALWAYS_INLINE Status Compute(
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
       OpKernelContext* context, bool sorted, int k,
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
@@ -583,7 +583,7 @@ struct TopKFunctor<GPUDevice, T, Tidx> {
         return errors::Internal(
             "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
       } else {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }

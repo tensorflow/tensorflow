@@ -2725,9 +2725,9 @@ def TFL_NegOp: TFL_Op<"neg", [
     Computes element-wise negation of input
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I32, I64]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, F16, I32, I64]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, I32, I64]>:$y);
+  let results = (outs TFL_TensorOf<[F32, F16, I32, I64]>:$y);
 
   let hasOptions = 0b1;
 
@@ -3699,12 +3699,12 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, F32, F16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$input,
+    TFL_TensorOf<[I32, F32, F16, BF16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$input,
     TFL_TensorOf<[I32]>:$perm
   );
 
   let results = (outs
-    TFL_TensorOf<[I32, F32, F16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$output
+    TFL_TensorOf<[I32, F32, F16, BF16, I8, UI8, QI8, QUI8, TFL_I4, QI4, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -4244,13 +4244,13 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$operand,
-    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$update,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16, BF16]>:$operand,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16, BF16]>:$update,
     TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (
-    outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$output);
+    outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16, BF16]>:$output);
 
   let extraClassDeclaration = [{
     // Quantized axes are verified in the Verify function.
@@ -4397,7 +4397,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
     ElementsAttr:$value
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value),
@@ -4428,7 +4428,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
     ElementsAttr:$compressed_data
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value,

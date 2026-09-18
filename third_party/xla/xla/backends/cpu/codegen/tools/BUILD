@@ -41,12 +41,12 @@ cc_library(
         "//xla/service/cpu:cpu_compiler_pure",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
@@ -65,6 +65,7 @@ cc_library(
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
+    alwayslink = True,
 )
 
 xla_cc_binary(
@@ -106,10 +107,10 @@ xla_cc_binary(
         "//xla/codegen:kernel_definition",
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:platform_port",
     ],
@@ -129,6 +130,7 @@ xla_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
         "@stablehlo//:linalg_passes",

@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using Int4Test = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using Int4Test = HloInterpreterReferenceMixin<HloTestBase>;
 
 TEST_F(Int4Test, InputIsOutput) {
   const std::string hlo_text = R"(
@@ -309,7 +309,7 @@ TEST_F(Int4TestWithAlgsimpDisabled, TwoDots) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-class ElementwiseTest : public HloPjRtInterpreterReferenceMixin<HloTestBase>,
+class ElementwiseTest : public HloInterpreterReferenceMixin<HloTestBase>,
                         public ::testing::WithParamInterface<
                             std::tuple<HloOpcode, PrimitiveType>> {
  public:

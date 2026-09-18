@@ -85,9 +85,9 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "@xla//xla/python:__pkg__",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
-        "//third_party/py/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu:__subpackages__",
     ]),
     deps = [
         ":profiler_interface",
@@ -106,7 +106,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@xla//xla/tsl/profiler:internal",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
     ]),
     deps = [
         ":profiler_controller",
@@ -144,7 +144,7 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
-        "//third_party/py/torch_tpu/pjrt:__pkg__",
+        "//third_party/py/torch_tpu:__subpackages__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -345,6 +345,7 @@ cc_library(
         # Remove this once we clean up all the CUDA specific deps.
         "@xla//xla/tsl:libtpu_on_gce": [":nvtx_utils_external"],
         # Place holder for internal dependencies
+        "@xla//xla/tsl:chromiumos": [":nvtx_utils_external"],
         "//conditions:default": [":nvtx_utils_impl"],
     }),
 )
@@ -399,7 +400,7 @@ cc_library(
     hdrs = ["profiler_collection.h"],
     visibility = internal_visibility([
         "@xla//xla/backends/profiler/plugin:__pkg__",
-        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//learning/brain/tfrc/executor/api:__pkg__",
         "@xla//xla/backends/profiler/cpu:__pkg__",
         "@xla//xla/backends/profiler/subprocess:__pkg__",
     ]),

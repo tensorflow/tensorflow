@@ -134,7 +134,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@tsl//tsl/platform:protobuf",
         "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/service:computation_placer_hdr",
     ],
 )
 
@@ -179,7 +178,7 @@ cc_library(
         "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/python/ifrt",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/tsl/platform:errors",
@@ -245,7 +244,7 @@ tf_cc_test(
         "@xla//xla/python/ifrt:test_util",
         "@xla//xla/python/pjrt_ifrt",
         "@xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
-        "@xla//xla/service:computation_placer_hdr",
+        "@xla//xla/service:device_assignment",
         "@xla//xla/tsl/platform:statusor",
     ],
 )

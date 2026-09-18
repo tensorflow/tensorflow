@@ -507,6 +507,33 @@ class TrainingOpsTest(TensorFlowTestCase):
     thread1.join()
     thread2.join()
 
+  def testResourceSparseApplyAdagradDARejectsScalarGrad(self):
+    # Regression test for #94130: a scalar grad made the kernel read dimension
+    # 1 and terminate the process instead of returning InvalidArgument.
+    with ops.device("/CPU:0"):
+      var, grad_accum, grad_squared_accum = [
+          variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
+      ]
+      self.evaluate(variables.global_variables_initializer())
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_adagrad_da(
+                var.handle,
+                grad_accum.handle,
+                grad_squared_accum.handle,
+                np.float32(0.0),
+                constant_op.constant([0, 0], dtypes.int32),
+                np.float32(0.0),
+                np.float32(0.0),
+                np.float32(0.0),
+                np.int64(1),
+                use_locking=True,
+            )
+        )
+
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
     # per-dimension shape check read past grad's rank and crash the process.
@@ -575,6 +602,43 @@ class TrainingOpsTest(TensorFlowTestCase):
     for apply_op in cases:
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(apply_op())
+
+  @test_util.run_v2_only
+  def testResourceSparseApplyAdagradDAInvalidGradRank(self):
+    # A scalar `grad` with a higher-rank `var` used to hit a fatal CHECK
+    # instead of raising InvalidArgumentError (see GitHub issue #94130).
+    # ResourceSparseApplyAdagradDA only has a CPU kernel, so pin the whole
+    # test to CPU rather than relying on default placement.
+    with ops.device("/cpu:0"):
+      var = variables.Variable([[0.0, 0.0]] * 10, dtype=dtypes.float32)
+      gradient_accumulator = variables.Variable(
+          [[0.0, 0.0]] * 10, dtype=dtypes.float32
+      )
+      gradient_squared_accumulator = variables.Variable(
+          [[0.0, 0.0]] * 10, dtype=dtypes.float32
+      )
+      self.evaluate(variables.global_variables_initializer())
+
+      grad = constant_op.constant(0.0, dtype=dtypes.float32)  # wrong rank
+      indices = constant_op.constant([0, 0], dtype=dtypes.int32)
+
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
+      ):
+        self.evaluate(
+            gen_training_ops.resource_sparse_apply_adagrad_da(
+                var.handle,
+                gradient_accumulator.handle,
+                gradient_squared_accumulator.handle,
+                grad,
+                indices,
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(0.0, dtype=dtypes.float32),
+                constant_op.constant(1, dtype=dtypes.int64),
+            )
+        )
 
 
 if __name__ == '__main__':

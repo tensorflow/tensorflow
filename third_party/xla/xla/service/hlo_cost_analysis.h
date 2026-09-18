@@ -502,6 +502,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleAllToAll(const HloInstruction* hlo) override;
   absl::Status HandleRaggedAllToAll(const HloInstruction* hlo) override;
   absl::Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
+  absl::Status HandleCollectiveReduce(const HloInstruction* hlo) override;
   absl::Status HandleCollectivePermute(const HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;

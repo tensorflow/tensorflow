@@ -88,6 +88,9 @@ struct PassConfig {
   // have side effects e.g. reduced flatbuffer size. Only certain type
   // conversions are supported.
   bool reduce_type_precision = false;
+  // Whether to fold 16-bit (bf16/f16) to 32-bit (f32) casts on large resource
+  // constants.
+  bool fold_fp16_resource_casts = true;
   // Whether to consider this model a quantized model with quantize/dequantize
   // ops and to convert kernels to quantized kernels wherever appropriate.
   QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;

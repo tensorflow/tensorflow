@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -44,7 +45,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -81,7 +82,7 @@ TEST_F(DotAlgorithmRewriterTest, NoDefaultToBF16) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(false);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -107,7 +108,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Result) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -132,7 +133,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_NonF32Operands) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -158,7 +159,7 @@ TEST_F(DotAlgorithmRewriterTest, DefaultToBF16_HighestPrecision) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   DebugOptions debug_options = config.debug_options();
-  debug_options.set_xla_gpu_match_tpu_precision(true);
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,

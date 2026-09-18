@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -25,13 +26,12 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -64,6 +64,15 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaCubinInMemorySpec(
+    std::shared_ptr<const std::vector<uint8_t>> cubin_bytes,
+    std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  CHECK(cubin_bytes != nullptr);
+  return KernelLoaderSpec{SharedCudaCubinInMemory{std::move(cubin_bytes)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
 KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
     absl::string_view ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
@@ -75,6 +84,14 @@ KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
     std::string ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
   return KernelLoaderSpec{OwningCudaPtxInMemory{std::move(ptx)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
+KernelLoaderSpec KernelLoaderSpec::CreateSharedCudaPtxInMemorySpec(
+    std::shared_ptr<const std::string> ptx, std::string kernel_name,
+    size_t arity, KernelArgsPacking kernel_args_packing) {
+  CHECK(ptx != nullptr);
+  return KernelLoaderSpec{SharedCudaPtxInMemory{std::move(ptx)},
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
@@ -113,7 +130,7 @@ absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
         has_in_process_symbol());
 
   if (std::holds_alternative<KernelArgsPackingSpec>(kernel_args_packing_)) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *proto.mutable_kernel_args_packing_spec(),
         std::get<KernelArgsPackingSpec>(kernel_args_packing_).ToProto());
   }
@@ -126,7 +143,7 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
     std::optional<SymbolResolver> symbol_resolver) {
   KernelArgsPacking kernel_args_packing;
   if (proto.has_kernel_args_packing_spec()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         kernel_args_packing,
         KernelArgsPackingSpec::FromProto(proto.kernel_args_packing_spec()));
   }
@@ -157,7 +174,7 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
             "persistent name has been provided.");
       }
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           void* symbol,
           (*symbol_resolver)(proto.in_process_symbol().persistent_name()));
       return KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(

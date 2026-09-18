@@ -38,7 +38,7 @@ TEST(SetSparseCoreFrontendAttributesTest, Basic) {
                                       /*feature_width=*/64,
                                       /*input_size=*/128,
                                       /*table_name=*/"test_table"),
-      IsOk());
+      absl_testing::IsOk());
   const auto& attr_map = attributes.map();
   EXPECT_EQ(attr_map.at("_xla_compute_type"), "sparse");
   EXPECT_EQ(attr_map.at("_xla_sharding_strategy"), "mod");
@@ -65,7 +65,7 @@ TEST(SetSparseCoreFrontendAttributesTest, WithOptionals) {
                   /*quantization_config_low=*/-1.5f,
                   /*quantization_config_high=*/1.5f,
                   /*quantization_config_num_buckets=*/256),
-              IsOk());
+              absl_testing::IsOk());
   const auto& attr_map = attributes.map();
   EXPECT_EQ(attr_map.at("_xla_vocab_size"), "1000");
   EXPECT_EQ(attr_map.at("_xla_feature_width"), "64");

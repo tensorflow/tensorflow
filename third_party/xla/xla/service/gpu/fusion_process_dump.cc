@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -105,7 +105,7 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromFile(
     const std::string& path) {
   std::string format = std::string(tsl::io::Extension(path));
   std::string data;
-  RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
+  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return FusionProcessDump::LoadFromData(data, format);
 }
 
@@ -132,12 +132,12 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromData(
 
 absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
     const FusionProcessDumpProto& fusion_process_dump_proto) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto module,
       LoadModuleFromData(fusion_process_dump_proto.hlo_module_before_fusion(),
                          /*format=*/"txt"));
 
-  ASSIGN_OR_RETURN(se::DeviceDescription gpu_device_info,
+  ABSL_ASSIGN_OR_RETURN(se::DeviceDescription gpu_device_info,
                    se::DeviceDescription::FromProto(
                        fusion_process_dump_proto.gpu_device_info()));
 

@@ -62,17 +62,13 @@ message CollectiveKernelSpecProto {
   repeated ScratchBufferSpecProto scratch_buffers = 3;
   repeated KernelArgDescriptorProto argument_descriptors = 4;
   int32 invocation_count_increment = 5;
+  bool copy_input_to_scratch = 6;
 }
 
 message CollectiveKernelThunkProto {
   // Configuration parameters for the collective operation, including replica
   // groups, number of participants, and participant ranks.
   CollectiveConfigProto collective_config = 1;
-
-  reserved 2;  // Was reduction_kind.
-
-  // If true, execution runs asynchronously on a dedicated collective stream.
-  bool is_async = 3;
 
   // The descriptors of the buffers involved in the collective operation.
   repeated CollectiveBufferProto buffers = 4;
@@ -92,8 +88,6 @@ message CollectiveKernelThunkProto {
   // collective kernel.
   int32 shmem_bytes = 8;
 
-  reserved 9;  // Was is_multimem_enabled.
-
   // Precompiled GPU kernel (CUDA binary) containing the compiled collective
   // kernel.
   optional bytes cubin = 10;
@@ -106,4 +100,8 @@ message CollectiveKernelThunkProto {
   // Used to find runtime requirements for an emitted kernel.
   // See collective_params.h for more details.
   CollectiveKernelSpecProto kernel_spec = 12;
+
+  reserved 2;  // Was reduction_kind.
+  reserved 3;  // Was is_async.
+  reserved 9;  // Was is_multimem_enabled.
 }

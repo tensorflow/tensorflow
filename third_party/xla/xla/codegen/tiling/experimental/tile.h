@@ -127,6 +127,13 @@ struct DimTile {
   // Simplify expressions inside the DimTile using the actual dimension and
   // symbol bounds.
   void Simplify(const TilingSpace& space);
+
+  std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DimTile& dim_tile) {
+    sink.Append(dim_tile.ToString());
+  }
 };
 
 template <typename H>
@@ -187,6 +194,9 @@ class Tile {
   // and upper bounds according to the input. The other fields are copied from
   // the original tile.
   Tile CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const;
+
+  // Creates a copy of the tile associated with a new tiling space.
+  Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
 
   bool operator==(const Tile& other) const;
 

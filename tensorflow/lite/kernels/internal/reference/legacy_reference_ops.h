@@ -986,18 +986,18 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
             output);
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, template <typename> class F>
 inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
                        const T* input2_data, const Dims<4>& input2_dims,
                        bool* output_data, const Dims<4>& output_dims) {
   ComparisonParams op_params;
   // No parameters needed.
-  ComparisonImpl<T, F>(op_params, DimsToShape(input1_dims), input1_data,
-                       DimsToShape(input2_dims), input2_data,
-                       DimsToShape(output_dims), output_data);
+  ComparisonImpl<T, F<T>>(op_params, DimsToShape(input1_dims), input1_data,
+                          DimsToShape(input2_dims), input2_data,
+                          DimsToShape(output_dims), output_data);
 }
 
-template <typename T, ComparisonFn<int32_t> F>
+template <typename T, template <typename> class F>
 inline void Comparison(int left_shift, const T* input1_data,
                        const Dims<4>& input1_dims, int32_t input1_offset,
                        int32_t input1_multiplier, int input1_shift,
@@ -1016,12 +1016,13 @@ inline void Comparison(int left_shift, const T* input1_data,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
-  ComparisonWithScaling<T, F>(op_params, DimsToShape(input1_dims), input1_data,
-                              DimsToShape(input2_dims), input2_data,
-                              DimsToShape(output_dims), output_data);
+  ComparisonWithScaling<T, F<int32_t>>(op_params, DimsToShape(input1_dims),
+                                       input1_data, DimsToShape(input2_dims),
+                                       input2_data, DimsToShape(output_dims),
+                                       output_data);
 }
 
-template <typename T, ComparisonFn<T> F>
+template <typename T, template <typename> class F>
 inline void BroadcastComparison(const T* input1_data,
                                 const Dims<4>& input1_dims,
                                 const T* input2_data,
@@ -1029,13 +1030,13 @@ inline void BroadcastComparison(const T* input1_data,
                                 const Dims<4>& output_dims) {
   ComparisonParams op_params;
   // No parameters needed.
-  BroadcastComparison4DSlowImpl<T, F>(op_params, DimsToShape(input1_dims),
-                                      input1_data, DimsToShape(input2_dims),
-                                      input2_data, DimsToShape(output_dims),
-                                      output_data);
+  BroadcastComparison4DSlowImpl<T, F<T>>(op_params, DimsToShape(input1_dims),
+                                         input1_data, DimsToShape(input2_dims),
+                                         input2_data, DimsToShape(output_dims),
+                                         output_data);
 }
 
-template <typename T, ComparisonFn<int32_t> F>
+template <typename T, template <typename> class F>
 inline void BroadcastComparison(
     int left_shift, const T* input1_data, const Dims<4>& input1_dims,
     int32_t input1_offset, int32_t input1_multiplier, int input1_shift,
@@ -1054,7 +1055,7 @@ inline void BroadcastComparison(
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
-  BroadcastComparison4DSlowWithScaling<T, F>(
+  BroadcastComparison4DSlowWithScaling<T, F<int32_t>>(
       op_params, DimsToShape(input1_dims), input1_data,
       DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
       output_data);

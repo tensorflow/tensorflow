@@ -100,6 +100,21 @@ class EigTest(test.TestCase):
               Tout=dtypes_lib.complex128,  # Expected dtype: complex64.
               compute_v=True))
 
+  def testUnsupportedDtype(self):
+    # Only float32, float64, complex64 and complex128 are supported. Any other
+    # dtype left `out_dtype` unassigned and raised an UnboundLocalError.
+    for dtype in [
+        dtypes_lib.half,
+        dtypes_lib.bfloat16,
+        dtypes_lib.int32,
+        dtypes_lib.int64,
+    ]:
+      tensor = constant_op.constant([[0, 1], [2, 3]], dtype=dtype)
+      with self.assertRaisesRegex(ValueError, "must have dtype"):
+        linalg_ops.eig(tensor)
+      with self.assertRaisesRegex(ValueError, "must have dtype"):
+        linalg_ops.eigvals(tensor)
+
 
 def SortEigenValues(e):
   perm = np.argsort(e.real + e.imag, -1)

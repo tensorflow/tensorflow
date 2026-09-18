@@ -109,6 +109,9 @@ _EXCLUDED_DUNDERS = frozenset(vars(object)) - {
     # in tensorflow/python/ops/numpy_ops/np_array_ops.py, so we exclude it
     # to keep API generation deterministic.
     '__round__',
+    # Python 3.14 deferred annotations
+    '__annotate__',
+    '__annotate_func__',
 }
 
 

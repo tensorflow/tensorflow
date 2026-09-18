@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -49,7 +50,8 @@ class StreamPool {
   // returns the stream to the pool on destruction.
   //
   // This method is thread-safe.
-  Ptr BorrowStream(se::StreamPriority priority = se::StreamPriority::Default);
+  absl::StatusOr<Ptr> BorrowStream(
+      se::StreamPriority priority = se::StreamPriority::Default);
 
  private:
   // Puts a pointer to a stream back into the pool, leaving it free

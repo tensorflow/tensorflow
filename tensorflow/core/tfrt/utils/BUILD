@@ -13,12 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_shared_test", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 

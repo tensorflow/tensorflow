@@ -489,6 +489,14 @@ class EluTest(test.TestCase):
         err = np.abs(got - want)
         self.assertLess(err, 1e-4)
 
+      # exp(x) is 1 for tiny negative x, so elu(x) rounds to 0 and the
+      # second derivative must still take the exp branch.
+      tiny = constant_op.constant(-1e-300, dtype=dtypes.float64)
+      got = self.evaluate(f(tiny))
+      want = _elu_grad_grad(-1e-300)
+      err = np.abs(got - want)
+      self.assertLess(err, 1e-4)
+
   def testGradGradFloat32(self):
     with self.cached_session():
 

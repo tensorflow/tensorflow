@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
@@ -105,10 +105,10 @@ TEST(BundleImplTest, Roundtrip) {
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values,
                        bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 2);
-  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  auto* retrieved_array0 = dyn_cast<Array>(retrieved_values[0].get());
   ASSERT_NE(retrieved_array0, nullptr);
   CheckArrayContents(retrieved_array0, array1.get());
-  auto* retrieved_array1 = llvm::dyn_cast<Array>(retrieved_values[1].get());
+  auto* retrieved_array1 = dyn_cast<Array>(retrieved_values[1].get());
   ASSERT_NE(retrieved_array1, nullptr);
   CheckArrayContents(retrieved_array1, array2.get());
 }
@@ -162,10 +162,10 @@ TEST(BundleImplTest, ConcatBundles) {
       std::vector<ValueRef> retrieved_values,
       concat_bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 2);
-  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  auto* retrieved_array0 = dyn_cast<Array>(retrieved_values[0].get());
   ASSERT_NE(retrieved_array0, nullptr);
   CheckArrayContents(retrieved_array0, array1.get());
-  auto* retrieved_array1 = llvm::dyn_cast<Array>(retrieved_values[1].get());
+  auto* retrieved_array1 = dyn_cast<Array>(retrieved_values[1].get());
   ASSERT_NE(retrieved_array1, nullptr);
   CheckArrayContents(retrieved_array1, array2.get());
 }
@@ -220,17 +220,17 @@ TEST(BundleImplTest, Slice) {
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values0,
                        slices[0]->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values0.size(), 1);
-  auto* retrieved_array0 = llvm::dyn_cast<Array>(retrieved_values0[0].get());
+  auto* retrieved_array0 = dyn_cast<Array>(retrieved_values0[0].get());
   ASSERT_NE(retrieved_array0, nullptr);
   CheckArrayContents(retrieved_array0, array1.get());
 
   ASSERT_OK_AND_ASSIGN(std::vector<ValueRef> retrieved_values1,
                        slices[1]->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values1.size(), 2);
-  auto* retrieved_array1_0 = llvm::dyn_cast<Array>(retrieved_values1[0].get());
+  auto* retrieved_array1_0 = dyn_cast<Array>(retrieved_values1[0].get());
   ASSERT_NE(retrieved_array1_0, nullptr);
   CheckArrayContents(retrieved_array1_0, array2.get());
-  auto* retrieved_array1_1 = llvm::dyn_cast<Array>(retrieved_values1[1].get());
+  auto* retrieved_array1_1 = dyn_cast<Array>(retrieved_values1[1].get());
   ASSERT_NE(retrieved_array1_1, nullptr);
   CheckArrayContents(retrieved_array1_1, array3.get());
 }
@@ -312,7 +312,7 @@ TEST(BundleImplTest, CopyArrays) {
       std::vector<ValueRef> retrieved_values,
       copied_bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 1);
-  auto* copied_array = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  auto* copied_array = dyn_cast<Array>(retrieved_values[0].get());
   ASSERT_NE(copied_array, nullptr);
   EXPECT_EQ(copied_array->dtype(), dtype);
   EXPECT_EQ(copied_array->shape(), shape);
@@ -359,7 +359,7 @@ TEST(BundleImplTest, ReshardArrays) {
       std::vector<ValueRef> retrieved_values,
       resharded_bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 1);
-  auto* resharded_array = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  auto* resharded_array = dyn_cast<Array>(retrieved_values[0].get());
   ASSERT_NE(resharded_array, nullptr);
   EXPECT_EQ(resharded_array->dtype(), dtype);
   EXPECT_EQ(resharded_array->shape(), shape);
@@ -413,7 +413,7 @@ TEST(BundleImplTest, CopyArraysExhaustive) {
             std::vector<ValueRef> retrieved_values,
             copied_bundle->GetValues(ArrayCopySemantics::kReuseInput));
         ASSERT_EQ(retrieved_values.size(), 1);
-        auto* new_array = llvm::dyn_cast<Array>(retrieved_values[0].get());
+        auto* new_array = dyn_cast<Array>(retrieved_values[0].get());
         ASSERT_NE(new_array, nullptr);
 
         EXPECT_THAT(new_array->sharding().devices()->devices(),
@@ -479,7 +479,7 @@ TEST(BundleImplTest, CopyArraysSubByteDType) {
             std::vector<ValueRef> retrieved_values,
             copied_bundle->GetValues(ArrayCopySemantics::kReuseInput));
         ASSERT_EQ(retrieved_values.size(), 1);
-        auto* new_array = llvm::dyn_cast<Array>(retrieved_values[0].get());
+        auto* new_array = dyn_cast<Array>(retrieved_values[0].get());
         ASSERT_NE(new_array, nullptr);
 
         EXPECT_THAT(new_array->sharding().devices()->devices(),
@@ -570,7 +570,7 @@ TEST(BundleImplTest, CopyArraysWithPartialReuse) {
       std::vector<ValueRef> retrieved_values,
       copied_bundle->GetValues(ArrayCopySemantics::kReuseInput));
   ASSERT_EQ(retrieved_values.size(), 1);
-  auto* copied_array = llvm::dyn_cast<Array>(retrieved_values[0].get());
+  auto* copied_array = dyn_cast<Array>(retrieved_values[0].get());
   ASSERT_NE(copied_array, nullptr);
 
   ASSERT_OK_AND_ASSIGN(auto single_device_arrays,

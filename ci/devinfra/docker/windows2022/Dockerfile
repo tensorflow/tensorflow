@@ -123,7 +123,7 @@ RUN function Install-Python { \
         @{ version = '3.10.11'; prependPath = 0 }, \
         @{ version = '3.11.9'; prependPath = 0 }, \
         @{ version = '3.12.8'; prependPath = 0 }, \
-        @{ version = '3.13.1'; prependPath = 0 } \
+        @{ version = '3.13.1'; prependPath = 0 }, \
         @{ version = '3.14.3'; prependPath = 1 } \
     ); \
     foreach ($v in $versions) { \

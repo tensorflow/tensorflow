@@ -23,7 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
+#include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -68,16 +68,16 @@ class RocmMemoryReservationTest : public ::testing::Test {
 };
 
 TEST_F(RocmMemoryReservationTest, CreateReservation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
 
   EXPECT_NE(res->address().opaque(), nullptr);
   EXPECT_GE(res->address().size(), kTestSize);
 }
 
 TEST_F(RocmMemoryReservationTest, MapToWrongType) {
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
 
   FakeAllocation fake;
   EXPECT_THAT(res->MapTo(0, 0, kTestSize, fake),
@@ -85,44 +85,44 @@ TEST_F(RocmMemoryReservationTest, MapToWrongType) {
 }
 
 TEST_F(RocmMemoryReservationTest, MapToSingleAllocation) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, RocmRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
 
   const size_t alloc_size = alloc->address().size();
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
+  ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
 
   EXPECT_EQ(mapping.mapped_address().opaque(), res->address().opaque());
   EXPECT_EQ(mapping.mapped_address().size(), alloc_size);
 }
 
 TEST_F(RocmMemoryReservationTest, ScopedMappingUnmapsOnDestruction) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, RocmRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
 
   const size_t alloc_size = alloc->address().size();
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
+    ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping2, res->MapTo(0, 0, alloc_size, *alloc));
+  ASSERT_OK_AND_ASSIGN(auto mapping2, res->MapTo(0, 0, alloc_size, *alloc));
   EXPECT_NE(mapping2.mapped_address().opaque(), nullptr);
 }
 
 TEST_F(RocmMemoryReservationTest, MapToMultipleAllocations) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc1, RocmRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc2, RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc1,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc2,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
 
   const size_t size1 = alloc1->address().size();
   const size_t size2 = alloc2->address().size();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto res, RocmMemoryReservation::Create(executor_, size1 + size2));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, size1 + size2));
   ASSERT_GE(res->address().size(), size1 + size2);
 
   MemoryReservation::MappingDescriptor descs[] = {
@@ -130,17 +130,17 @@ TEST_F(RocmMemoryReservationTest, MapToMultipleAllocations) {
       {/*reservation_offset=*/size1, /*allocation_offset=*/0, size2,
        alloc2.get()},
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
+  ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
 
   EXPECT_EQ(mapping.mapped_address().opaque(), res->address().opaque());
   EXPECT_EQ(mapping.mapped_address().size(), size1 + size2);
 }
 
 TEST_F(RocmMemoryReservationTest, TwoReservationsDifferentAddresses) {
-  TF_ASSERT_OK_AND_ASSIGN(auto res1,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(auto res2,
-                          RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res1,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res2,
+                       RocmMemoryReservation::Create(executor_, kTestSize));
 
   EXPECT_NE(res1->address().opaque(), res2->address().opaque());
 }
@@ -148,23 +148,23 @@ TEST_F(RocmMemoryReservationTest, TwoReservationsDifferentAddresses) {
 // Remap with every slice marked remap_required=false must leave the existing
 // physical backing (and therefore the data) untouched.
 TEST_F(RocmMemoryReservationTest, RemapPreservesUnchangedSlices) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc_a, RocmRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc_b, RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc_a,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc_b,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
   const size_t sa = alloc_a->address().size();
   const size_t sb = alloc_b->address().size();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, sa + sb));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, sa + sb));
 
   MemoryReservation::MappingDescriptor descs[] = {
       {/*reservation_offset=*/0, /*allocation_offset=*/0, sa, alloc_a.get()},
       {/*reservation_offset=*/sa, /*allocation_offset=*/0, sb, alloc_b.get()},
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
+  ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
   void* const base = res->address().opaque();
   DeviceAddressBase slice0(base, sizeof(uint64_t));
   DeviceAddressBase slice1(reinterpret_cast<uint8_t*>(base) + sa,
@@ -180,8 +180,8 @@ TEST_F(RocmMemoryReservationTest, RemapPreservesUnchangedSlices) {
       {0, 0, sa, alloc_a.get(), /*remap_required=*/false},
       {sa, 0, sb, alloc_b.get(), /*remap_required=*/false},
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping2,
-                          std::move(mapping).Remap(absl::MakeSpan(remaps)));
+  ASSERT_OK_AND_ASSIGN(auto mapping2,
+                       std::move(mapping).Remap(absl::MakeSpan(remaps)));
   EXPECT_EQ(mapping2.mapped_address().opaque(), base);
   EXPECT_EQ(mapping2.mapped_address().size(), sa + sb);
 
@@ -196,23 +196,23 @@ TEST_F(RocmMemoryReservationTest, RemapPreservesUnchangedSlices) {
 // Remap with remap_required=true for a slice must repoint that slice at the
 // new physical allocation while preserving the slices left unchanged.
 TEST_F(RocmMemoryReservationTest, RemapRepointsRequiredSlice) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc_a, RocmRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc_b, RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc_a,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc_b,
+                       RocmRawMemoryAllocation::Create(executor_, kTestSize));
   const size_t sa = alloc_a->address().size();
   const size_t sb = alloc_b->address().size();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          RocmMemoryReservation::Create(executor_, sa + sb));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       RocmMemoryReservation::Create(executor_, sa + sb));
 
   MemoryReservation::MappingDescriptor descs[] = {
       {/*reservation_offset=*/0, /*allocation_offset=*/0, sa, alloc_a.get()},
       {/*reservation_offset=*/sa, /*allocation_offset=*/0, sb, alloc_b.get()},
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
+  ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(absl::MakeSpan(descs)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
   void* const base = res->address().opaque();
   DeviceAddressBase slice0(base, sizeof(uint64_t));
   DeviceAddressBase slice1(reinterpret_cast<uint8_t*>(base) + sa,
@@ -231,8 +231,8 @@ TEST_F(RocmMemoryReservationTest, RemapRepointsRequiredSlice) {
       {0, 0, sa, alloc_a.get(), /*remap_required=*/false},
       {sa, 0, sb, alloc_a.get(), /*remap_required=*/true},
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping2,
-                          std::move(mapping).Remap(absl::MakeSpan(remaps)));
+  ASSERT_OK_AND_ASSIGN(auto mapping2,
+                       std::move(mapping).Remap(absl::MakeSpan(remaps)));
   EXPECT_EQ(mapping2.mapped_address().opaque(), base);
   EXPECT_EQ(mapping2.mapped_address().size(), sa + sb);
 

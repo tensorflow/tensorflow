@@ -508,6 +508,45 @@ tf_cc_test(
 
 # Linked directly into ":tensorflow_framework".
 cc_library(
+    name = "singleprint_impl",
+    srcs = [
+        "singleprint.cc",
+        "singleprint.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "singleprint",
+    hdrs = ["singleprint.h"],
+    visibility = ["//visibility:public"],
+    deps = if_static([
+        ":singleprint_impl",
+    ]) + [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "singleprint_test",
+    size = "small",
+    srcs = ["singleprint_test.cc"],
+    deps = [
+        ":singleprint",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
     name = "fingerprinting_impl",
     srcs = [
         "fingerprinting.cc",
@@ -520,6 +559,7 @@ cc_library(
     deps = [
         ":constants",
         ":fingerprinting_x_platform_utils",
+        ":singleprint",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
@@ -555,7 +595,9 @@ cc_library(
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
-    deps = if_static([
+    deps = [
+        ":singleprint",
+    ] + if_static([
         ":fingerprinting_impl",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/status:statusor",
@@ -616,8 +658,8 @@ tf_cc_test(
     deps = [
         ":fingerprinting_utils",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/cc:util",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
@@ -625,8 +667,8 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:status_matchers",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",

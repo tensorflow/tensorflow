@@ -103,14 +103,12 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
     CHECK:           xla.pure_call
     CHECK:           scf.if
     CHECK:             xla.pure_call
-    CHECK:             xla.pure_call
+    CHECK:             tensor.extract
     CHECK:             arith.addf
     CHECK:           return %[[XLA_LOOP]]
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kScatterHlo));
-  auto& debug_options = hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_fusion_emitters(true);
   TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
                           RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
@@ -137,7 +135,6 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kScatterHlo));
   auto& debug_options = hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_fusion_emitters(true);
   debug_options.set_xla_cpu_prefer_vector_width(512);
   TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
                           RunBufferAssignment(*hlo_module));

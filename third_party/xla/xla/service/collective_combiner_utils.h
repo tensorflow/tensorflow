@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,9 +27,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,6 +56,12 @@ FrontendAttributes MergeFrontendAttributes(
 // as a base, then extends source_line/source_end_line to cover all instructions
 // from the same source file, and joins distinct op_names with commas.
 OpMetadata MergeMetadata(absl::Span<HloInstruction* const> to_combine);
+
+// Returns the longest common prefix shared by all `names`, trimmed back to the
+// last '/' so a path component is never split. Returns "" when the names share
+// no leading component. Used both to elide a shared op_name prefix when merging
+// collectives and when reporting on a set of related collectives.
+std::string CommonOpNamePrefix(absl::Span<const std::string> names);
 
 // Combines instructions with matching keys together.
 //
@@ -184,7 +191,7 @@ absl::StatusOr<bool> CombineInstructionsByKey(
     }
 
     if (to_combine.size() > 1) {
-      RETURN_IF_ERROR(combine_fn(to_combine));
+      ABSL_RETURN_IF_ERROR(combine_fn(to_combine));
       changed = true;
     }
   }

@@ -578,6 +578,13 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "chromiumos",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("@platforms//os:chromiumos", ":google"),
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
@@ -641,7 +648,7 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
+        "//conditions:default": ["@grpc//:grpc++"],
     }),
 )
 # copybara:comment_end

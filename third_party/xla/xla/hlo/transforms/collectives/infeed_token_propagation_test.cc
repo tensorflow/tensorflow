@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -404,6 +405,140 @@ ENTRY main {
   HloInstruction* cond_param = cond_comp->parameter_instruction(0);
   EXPECT_EQ(cond_param->shape().tuple_shapes().size(), 1);
   EXPECT_TRUE(cond_param->shape().tuple_shapes()[0].IsToken());
+}
+
+TEST_F(InfeedTokenPropagationTest, WhileInfeedPreservesOriginalValue) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+comp {
+  arg.0 = s32[] parameter(0), origin={{"prev.1"}}
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+  ROOT res.0 = s32[] constant(0), origin={{"res.0"}}
+}
+
+cond {
+  arg.0 = s32[] parameter(0), origin={{"cond_arg.0"}}
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  init.0 = s32[] constant(0), origin={{"init.0"}}
+  ROOT while.0 = s32[] while(init.0), condition=cond, body=comp, origin={{"while.0"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  InfeedTokenPropagation itp;
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The while loop should have been tuplified and had token appended.
+  HloInstruction* loop = FindInstruction(module.get(), "while.0");
+  ASSERT_NE(loop, nullptr);
+  EXPECT_TRUE(loop->shape().IsTuple());
+  EXPECT_EQ(loop->shape().tuple_shapes().size(), 2);
+  ASSERT_NE(loop->original_value(), nullptr);
+  EXPECT_TRUE(
+      loop->original_value()->tree().element(ShapeIndex({0})).has_value());
+  EXPECT_EQ(
+      loop->original_value()->tree().element(ShapeIndex({0}))->instruction_name,
+      "while.0");
+  EXPECT_FALSE(
+      loop->original_value()->tree().element(ShapeIndex({1})).has_value());
+
+  // The body parameter should have matching original_value.
+  HloComputation* body_comp = FindComputation(module.get(), "comp");
+  HloInstruction* body_param = body_comp->parameter_instruction(0);
+  ASSERT_NE(body_param, nullptr);
+  EXPECT_TRUE(body_param->shape().IsTuple());
+  EXPECT_EQ(body_param->shape().tuple_shapes().size(), 2);
+  ASSERT_NE(body_param->original_value(), nullptr);
+  EXPECT_TRUE(body_param->original_value()
+                  ->tree()
+                  .element(ShapeIndex({0}))
+                  .has_value());
+  EXPECT_EQ(body_param->original_value()
+                ->tree()
+                .element(ShapeIndex({0}))
+                ->instruction_name,
+            "prev.1");
+  EXPECT_FALSE(body_param->original_value()
+                   ->tree()
+                   .element(ShapeIndex({1}))
+                   .has_value());
+
+  // The condition parameter should have matching original_value.
+  HloComputation* cond_comp = FindComputation(module.get(), "cond");
+  HloInstruction* cond_param = cond_comp->parameter_instruction(0);
+  ASSERT_NE(cond_param, nullptr);
+  EXPECT_TRUE(cond_param->shape().IsTuple());
+  EXPECT_EQ(cond_param->shape().tuple_shapes().size(), 2);
+  ASSERT_NE(cond_param->original_value(), nullptr);
+  EXPECT_TRUE(cond_param->original_value()
+                  ->tree()
+                  .element(ShapeIndex({0}))
+                  .has_value());
+  EXPECT_EQ(cond_param->original_value()
+                ->tree()
+                .element(ShapeIndex({0}))
+                ->instruction_name,
+            "cond_arg.0");
+  EXPECT_FALSE(cond_param->original_value()
+                   ->tree()
+                   .element(ShapeIndex({1}))
+                   .has_value());
+}
+
+TEST_F(InfeedTokenPropagationTest, ConditionalInfeedPreservesOriginalValue) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+true_comp {
+  arg.0 = s32[] parameter(0), origin={{"true_arg.0"}}
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+  gte.0 = get-tuple-element(infeed.0), index=0
+  ROOT res.0 = (s32[]) tuple(gte.0)
+}
+
+false_comp {
+  arg.0 = s32[] parameter(0), origin={{"false_arg.0"}}
+  ROOT res.1 = (s32[]) tuple(arg.0)
+}
+
+ENTRY main {
+  pred.0 = pred[] constant(true)
+  arg.1 = s32[] constant(0), origin={{"arg.1"}}
+  arg.2 = s32[] constant(1), origin={{"arg.2"}}
+  ROOT cond.0 = (s32[]) conditional(pred.0, arg.1, arg.2), true_computation=true_comp, false_computation=false_comp, origin={({"cond.0"})}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  InfeedTokenPropagation itp;
+  ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloComputation* true_comp = FindComputation(module.get(), "true_comp");
+  HloInstruction* true_param = true_comp->parameter_instruction(0);
+  ASSERT_NE(true_param, nullptr);
+  EXPECT_TRUE(true_param->shape().IsTuple());
+  ASSERT_NE(true_param->original_value(), nullptr);
+  EXPECT_TRUE(true_param->original_value()
+                  ->tree()
+                  .element(ShapeIndex({0}))
+                  .has_value());
+  EXPECT_EQ(true_param->original_value()
+                ->tree()
+                .element(ShapeIndex({0}))
+                ->instruction_name,
+            "true_arg.0");
+  EXPECT_FALSE(true_param->original_value()
+                   ->tree()
+                   .element(ShapeIndex({1}))
+                   .has_value());
 }
 
 TEST_F(InfeedTokenPropagationTest, WhileOutfeed) {

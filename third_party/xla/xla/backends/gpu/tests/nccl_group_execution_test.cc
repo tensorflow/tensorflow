@@ -73,29 +73,21 @@ TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
     async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
       ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
       (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
-      data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+      data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv,
+      frontend_attributes={_collectives_group=""}
     async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
-      (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
-    unpack-recv-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=2
-    recv-done-data1 = f32[] get-tuple-element(unpack-recv-done1), index=0
-    recv-done-token1 = token[] get-tuple-element(unpack-recv-done1), index=2
-    recv-done1 = (f32[], token[]) tuple(recv-done-data1, recv-done-token1),
-      control-predecessors={async-comp-start}
-    data-out1 = f32[] get-tuple-element(recv-done1), index=0
-    unpack-recv-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=3
-    recv-done-data2 = f32[] get-tuple-element(unpack-recv-done2), index=0
-    recv-done-token2 = token[] get-tuple-element(unpack-recv-done2), index=2
-    recv-done2 = (f32[], token[]) tuple(recv-done-data2, recv-done-token2),
-      control-predecessors={async-comp-start}
-    data-out2 = f32[] get-tuple-element(recv-done2), index=0
+      (f32[], u32[], token[]), (f32[], u32[], token[]))
+      async-done(async-comp-start)
+    recv-context1 = (f32[], u32[], token[])
+      get-tuple-element(async-comp-done), index=2
+    data-out1 = f32[] get-tuple-element(recv-context1), index=0
+    recv-context2 = (f32[], u32[], token[])
+      get-tuple-element(async-comp-done), index=3
+    data-out2 = f32[] get-tuple-element(recv-context2), index=0
     c100 = f32[] constant(100)
     res1 = f32[] dot(data-out1, c100)
     res2 = f32[] dot(data-out2, c100)
     ROOT out = (f32[], f32[]) tuple(res1, res2)
-    unpack-send-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=0
-    send-done1 = token[] get-tuple-element(unpack-send-done1), index=2
-    unpack-send-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=1
-    send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
   }
 
   )";
@@ -126,14 +118,14 @@ TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
 
 TEST_F(NcclGroupExecutionTest, BidirectionalCommunication) {
   const absl::string_view kModuleStr = R"(
-  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, num_replicas=4
+  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, replica_count=4
 
   bidirectional_ring {
     a = u32[] parameter(0)
-    start = (u32[], u32[]) collective-permute-start(a), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-    done = u32[] collective-permute-done(start)
-    start.1 = (u32[], u32[]) collective-permute-start(a), source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-    done.1 = u32[] collective-permute-done(start.1)
+    done = u32[] collective-permute(a),
+      source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+    done.1 = u32[] collective-permute(a),
+      source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
     ROOT tuple = (u32[], u32[]) tuple(done, done.1)
   }
 

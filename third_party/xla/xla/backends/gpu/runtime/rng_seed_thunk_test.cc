@@ -39,8 +39,8 @@ namespace xla::gpu {
 namespace {
 
 static absl::StatusOr<se::StreamExecutor*> GpuExecutor() {
-  ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
-  ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(
+  ABSL_ASSIGN_OR_RETURN(auto name, PlatformUtil::CanonicalPlatformName("gpu"));
+  ABSL_ASSIGN_OR_RETURN(auto* platform, se::PlatformManager::PlatformWithName(
                                        absl::AsciiStrToUpper(name)));
   return platform->ExecutorForDevice(0);
 }

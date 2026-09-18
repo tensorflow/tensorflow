@@ -19,8 +19,9 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/statusor.h"
@@ -35,20 +36,20 @@ struct TestResource : public StreamExecutor::Resource {
 };
 
 static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
-  ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  ASSIGN_OR_RETURN(auto stream_exec, platform->ExecutorForDevice(0));
+  ABSL_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
+  ABSL_ASSIGN_OR_RETURN(auto stream_exec, platform->ExecutorForDevice(0));
   return stream_exec;
 }
 
 TEST(StreamExecutorTest, HostMemoryAllocate) {
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
-  TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
   EXPECT_NE(allocation->address().opaque(), nullptr);
   EXPECT_EQ(allocation->address().size(), 1024);
 }
 
 TEST(StreamExecutorTest, GetOrCreateResource) {
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
 
   EXPECT_EQ(executor->GetOrNullResource<TestResource>(), nullptr);
 

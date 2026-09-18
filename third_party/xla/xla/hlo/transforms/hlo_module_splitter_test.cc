@@ -19,14 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/hlo_verifier.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 
@@ -42,15 +41,15 @@ class HloModuleSplitterTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<SplitResult> RunSplitter(absl::string_view hlo_string) {
     std::unique_ptr<HloModule> module;
-    ASSIGN_OR_RETURN(module, ParseAndReturnVerifiedModule(hlo_string));
+    ABSL_ASSIGN_OR_RETURN(module, ParseAndReturnVerifiedModule(hlo_string));
     HloModuleSplitter splitter;
     bool changed = false;
-    ASSIGN_OR_RETURN(changed, splitter.Run(module.get()));
+    ABSL_ASSIGN_OR_RETURN(changed, splitter.Run(module.get()));
     if (!changed) {
       return Internal("Expected splitter to run and change the module");
     }
     for (auto& submodule : splitter.submodules()) {
-      RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/false,
+      ABSL_RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/false,
                                   /*allow_mixed_precision=*/true)
                           .Run(submodule.get())
                           .status());
@@ -274,7 +273,30 @@ ENTRY entry {
   EXPECT_TRUE(splitter.submodules().empty());
 }
 
-TEST_F(HloModuleSplitterTest, IgnoreCallWithInlineableFalseOnly) {
+TEST_F(HloModuleSplitterTest, SplitsCallWithInlineableXlaLate) {
+  const char* hlo_string_late = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="xla_late"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module_late,
+                       ParseAndReturnVerifiedModule(hlo_string_late));
+
+  HloModuleSplitter splitter_late;
+  ASSERT_OK_AND_ASSIGN(bool changed_late, splitter_late.Run(module_late.get()));
+
+  EXPECT_TRUE(changed_late);
+  EXPECT_EQ(splitter_late.submodules().size(), 1);
+}
+
+TEST_F(HloModuleSplitterTest, IgnoreCallWithInlineableFalse) {
   const char* hlo_string = R"(
 HloModule module
 callee {
@@ -292,8 +314,52 @@ ENTRY entry {
   HloModuleSplitter splitter;
   ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
 
-  // Verify that the splitter ignored the call because it only has
-  // inlineable="false" (no compilation_unit)
+  // Verify inlineable="false" is ignored by HloModuleSplitter
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(splitter.submodules().empty());
+}
+
+TEST_F(HloModuleSplitterTest, IgnoreCallWithInlineableTrue) {
+  const char* hlo_string = R"(
+HloModule module
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  ROOT call = f32[] call(p0), to_apply=callee, frontend_attributes={inlineable="true"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  HloModuleSplitter splitter;
+  ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+
+  EXPECT_FALSE(changed);
+  EXPECT_TRUE(splitter.submodules().empty());
+}
+
+TEST_F(HloModuleSplitterTest, IgnoreShardyManualComputationWhenShardyEnabled) {
+  const char* hlo_string = R"(
+HloModule module
+xla.sdy.manual_computation_body {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0)
+}
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  ROOT call = f32[] call(p0), to_apply=xla.sdy.manual_computation_body, frontend_attributes={inlineable="xla_late"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_use_shardy_partitioner(true);
+
+  HloModuleSplitter splitter;
+  ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+
   EXPECT_FALSE(changed);
   EXPECT_TRUE(splitter.submodules().empty());
 }

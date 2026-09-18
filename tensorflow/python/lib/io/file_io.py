@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""File IO methods that wrap the C++ FileSystem API."""
+"""File IO methods that wrap the C++ FileSystem API.
+
+**Security Note:** These file I/O functions do not perform path validation or
+sandboxing. They do not prevent path traversal (e.g., using `..`), do not
+restrict access to any directory, and will follow symbolic links. Applications
+that accept file paths from untrusted sources (such as user input, model
+configurations, or checkpoint metadata) must validate and canonicalize paths
+before passing them to these functions.
+"""
+
 import binascii
 import io
 import os
@@ -255,6 +264,8 @@ class FileIO(object):
     loss as last write might not have been replicated.
     """
     self._read_buf = None
+    if not self._closed and ("w" in self.__mode or "a" in self.__mode):
+      self._prewrite_check()
     if self._writable_file:
       self._writable_file.close()
       self._writable_file = None

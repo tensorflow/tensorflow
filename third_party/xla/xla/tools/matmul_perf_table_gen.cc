@@ -33,13 +33,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -127,8 +127,8 @@ struct StaticSpec {
     const HloInstructionProto& instr = profile.instruction();
     CHECK_EQ(instr.opcode(), HloOpcodeString(HloOpcode::kDot));
     const DotDimensionNumbers& dot_dims = instr.dot_dimension_numbers();
-    ASSIGN_OR_RETURN(Shape lhs, Shape::FromProto(profile.operands(0).shape()));
-    ASSIGN_OR_RETURN(Shape rhs, Shape::FromProto(profile.operands(1).shape()));
+    ABSL_ASSIGN_OR_RETURN(Shape lhs, Shape::FromProto(profile.operands(0).shape()));
+    ABSL_ASSIGN_OR_RETURN(Shape rhs, Shape::FromProto(profile.operands(1).shape()));
     int b = 1, m = 1, n = 1, k = 1;
     for (int dim : dot_dims.lhs_batch_dimensions()) {
       b *= ShapeUtil::GetDimension(lhs, dim);
@@ -402,23 +402,28 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
   // Flip flop between arguments to prevent caching.
   std::minstd_rand0 engine;
 
-  std::vector<Literal> args_small = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/false)
-                                        .value();
-  std::vector<Literal> args_large = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/true)
-                                        .value();
+  FakeArgumentsOptions small_options;
+  small_options.engine = &engine;
+  small_options.use_large_range = false;
+  auto args_small = MakeFakeArguments(module.get(), small_options);
+  CHECK_OK(args_small);
+
+  FakeArgumentsOptions large_options;
+  large_options.engine = &engine;
+  large_options.use_large_range = true;
+  auto args_large = MakeFakeArguments(module.get(), large_options);
+  CHECK_OK(args_large);
 
   std::unique_ptr<OpaqueExecutable> compiled = Compile(std::move(module));
 
   // First run to warm up stuff.
-  CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), args_small).status());
+  CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), *args_small).status());
 
   // Trace `kNumProfilingRuns` times to get decent measurement.
   std::unique_ptr<HloOpProfiler::KernelTracer> tracer =
       HloOpProfiler::GetKernelTracer();
   for (int i = 0; i < kNumProfilingRuns; i++) {
-    Measure(runner_, compiled.get(), args_small, args_large);
+    Measure(runner_, compiled.get(), *args_small, *args_large);
   }
 
   return absl::Nanoseconds(std::move(*tracer).getMedianKernelTimeNs());
@@ -576,7 +581,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     absl::btree_map<std::array<int64_t, 4>, GemmPerfTableEntry>
         gemm_perf_table_entry;
     for (const HloInstructionProfile& profile : profile_list.entries()) {
-      ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
+      ABSL_ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
 
       std::array<int64_t, 4> key = {spec.b, spec.m, spec.k, spec.n};
       if (!gemm_perf_table_entry.contains(key)) {
@@ -613,7 +618,7 @@ absl::Status MatmulPerfTableGen::Dump(
 
   DeviceHloInstructionProfiles file;
   if (tsl::Env::Default()->FileExists(config_.output).ok()) {
-    RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
@@ -625,12 +630,12 @@ absl::Status MatmulPerfTableGen::Dump(
     }
 
     if (absl::StrContains(config_.output, ".pbtxt")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
       continue;
     }
     if (absl::StrContains(config_.output, ".pb")) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
       continue;
     }

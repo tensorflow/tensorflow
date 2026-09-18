@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -56,12 +56,12 @@ ReadTFRecordIOLiteral(const std::string& dir) {
   auto* env = tsl::Env::Default();
 
   std::vector<std::string> files;
-  RETURN_IF_ERROR(env->GetChildren(dir, &files));
+  ABSL_RETURN_IF_ERROR(env->GetChildren(dir, &files));
 
   std::vector<std::pair<std::string, Literal>> result;
   for (const std::string& path : files) {
     std::unique_ptr<tsl::RandomAccessFile> file;
-    RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->NewRandomAccessFile(
         tsl::io::JoinPath(dir, path), &file));
     tsl::io::RecordReader reader(file.get());
 
@@ -74,10 +74,10 @@ ReadTFRecordIOLiteral(const std::string& dir) {
       if (absl::IsOutOfRange(status)) {
         break;
       }
-      RETURN_IF_ERROR(status);
+      ABSL_RETURN_IF_ERROR(status);
 
-      RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
-      ASSIGN_OR_RETURN(Literal literal, Literal::DeserializeFromString(record));
+      ABSL_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
+      ABSL_ASSIGN_OR_RETURN(Literal literal, Literal::DeserializeFromString(record));
       result.emplace_back(metadata, std::move(literal));
     }
   }

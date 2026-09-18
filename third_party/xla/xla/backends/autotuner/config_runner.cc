@@ -29,14 +29,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/shaped_buffer.h"
@@ -64,7 +67,7 @@ ConfigRunner::ProfileAll(
 
   absl::MutexLock lock(profiler_m_);
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<InputBuffers> input_buffers,
       profiler_->CreateInputBuffers(candidates[0].executable.get(), instr));
 
@@ -152,29 +155,34 @@ ConfigRunner::ConfigProfile ConfigRunner::ProfileCandidate(
   }
 
   CHECK(profile_result->output_buffer.has_value());
-  int assigned_cluster =
-      AssignToOutputCluster(clusters, profile_result->output_buffer.value(),
-                            is_trusted_config, allow_new_cluster);
+  std::string diff_report_with_first_cluster;
+  int assigned_cluster = AssignToOutputCluster(
+      clusters, profile_result->output_buffer.value(), is_trusted_config,
+      allow_new_cluster, &diff_report_with_first_cluster);
 
   return ConfigProfile{/*config=*/std::move(candidate.config),
                        /*failure=*/std::nullopt,
                        /*duration=*/profile_result->duration,
                        /*scratch_bytes=*/profile_result->scratch_bytes,
-                       /*cluster_index=*/assigned_cluster};
+                       /*cluster_index=*/assigned_cluster,
+                       /*diff_report_with_first_cluster=*/
+                       std::move(diff_report_with_first_cluster)};
 }
 
-int ConfigRunner::AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                                        ScopedShapedBuffer& output,
-                                        bool is_trusted_config,
-                                        bool allow_new_cluster) {
+int ConfigRunner::AssignToOutputCluster(
+    std::vector<OutputCluster>& clusters, ScopedShapedBuffer& output,
+    bool is_trusted_config, bool allow_new_cluster,
+    std::string* diff_report_with_first_cluster) {
   for (int c = 0; c < clusters.size(); ++c) {
-    if (profiler_
-            ->CheckOutputBuffer(output, clusters[c].representative,
-                                options_.relative_tolerance)
-            .ok()) {
+    absl::Status status = profiler_->CheckOutputBuffer(
+        output, clusters[c].representative, options_.relative_tolerance);
+    if (status.ok()) {
       clusters[c].count++;
       clusters[c].has_trusted_member |= is_trusted_config;
       return c;
+    }
+    if (c == 0 && diff_report_with_first_cluster != nullptr) {
+      *diff_report_with_first_cluster = std::string(status.message());
     }
   }
   if (!allow_new_cluster) {
@@ -202,20 +210,27 @@ void ConfigRunner::DemoteNonWinningClusterConfigs(
       winner = c;
     }
   }
+  if (winner < 0) {
+    return;
+  }
   VLOG(2) << "Output clustering formed " << clusters.size()
           << " cluster(s); selected cluster " << winner << " with "
           << clusters[winner].count
           << " member(s), trusted=" << clusters[winner].has_trusted_member;
   for (ConfigProfile& result : results) {
     if (!result.failure.has_value() && result.cluster_index != winner) {
-      result.failure = Failure{
-          FailureKind::kWrongResults,
-          absl::StrCat("Output disagrees with winning cluster (member of "
-                       "cluster ",
-                       result.cluster_index, " of ", clusters.size(),
-                       "; winning cluster has ", clusters[winner].count,
-                       " member(s), trusted=",
-                       clusters[winner].has_trusted_member, ").")};
+      std::string message = absl::StrCat(
+          "Output disagrees with winning cluster (member of "
+          "cluster ",
+          result.cluster_index, " of ", clusters.size(),
+          "; winning cluster has ", clusters[winner].count,
+          " member(s), trusted=", clusters[winner].has_trusted_member, ").");
+      // Only append the diff report if cluster 0 (the reference cluster) won,
+      // to avoid attaching a diff report against a non-winning cluster.
+      if (winner == 0 && !result.diff_report_with_first_cluster.empty()) {
+        absl::StrAppend(&message, "\n", result.diff_report_with_first_cluster);
+      }
+      result.failure = Failure{FailureKind::kWrongResults, std::move(message)};
       VLOG(3) << "Demoted config " << result.config.ToString() << " (cluster "
               << result.cluster_index << ").";
     }
@@ -290,6 +305,52 @@ AutotuneResult ConfigRunner::ConfigProfile::ToProto() const {
   *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
   result.set_scratch_bytes(scratch_bytes);
   return result;
+}
+
+namespace {
+
+autotuner::Config ToConfigProto(const CodegenOrchestrator::Config& config) {
+  autotuner::Config config_proto;
+  config_proto.set_backend(config.codegen_backend->backend());
+  if (config.backend_config != nullptr) {
+    *config_proto.mutable_backend_config() = *config.backend_config;
+  }
+  return config_proto;
+}
+
+}  // namespace
+
+autotuner::ConfigProfile ConfigRunner::ConfigProfile::ToConfigProfileProto()
+    const {
+  autotuner::ConfigProfile proto;
+  *proto.mutable_config() = ToConfigProto(config);
+  *proto.mutable_run_time() = tsl::proto_utils::ToDurationProto(duration);
+  proto.set_scratch_bytes(scratch_bytes);
+  return proto;
+}
+
+autotuner::FailedConfigs ConfigRunner::ConfigProfile::ToFailedConfigsProto()
+    const {
+  autotuner::FailedConfigs proto;
+  *proto.mutable_config() = ToConfigProto(config);
+  if (failure.has_value()) {
+    switch (failure->kind) {
+      case FailureKind::kCompilationFailed:
+        proto.set_kind(autotuner::FailedConfigs::COMPILATION_FAILED);
+        break;
+      case FailureKind::kExecutionFailed:
+        proto.set_kind(autotuner::FailedConfigs::EXECUTION_FAILED);
+        break;
+      case FailureKind::kRedzoneCheckFailed:
+        proto.set_kind(autotuner::FailedConfigs::REDZONE_CHECK_FAILED);
+        break;
+      case FailureKind::kWrongResults:
+        proto.set_kind(autotuner::FailedConfigs::WRONG_RESULTS);
+        break;
+    }
+    proto.set_message(failure->message);
+  }
+  return proto;
 }
 
 }  // namespace xla

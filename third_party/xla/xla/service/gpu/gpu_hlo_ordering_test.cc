@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_ordering.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -56,7 +57,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, ExecutesBeforeInConcurrentRegion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a, b, c, d, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // There are no data dependencies between a, b, c, and d. All ops can be
   // executed concurrently.
@@ -93,7 +94,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, DataDependentOpsInSameRegion) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a0, a1, b0, b1, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // a1 has a data dependency on a0.
   EXPECT_TRUE(ordering.ExecutesBefore(a0, a1));
@@ -152,7 +153,7 @@ TEST_F(ConcurrentRegionsHloOrderingTest, GemmSeparatesConcurrentRegions) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(entry, {param, a, b, gemm, c, d, root});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   ConcurrentRegionsHloOrdering ordering(schedule);
   // No data dependency between a and b and can be executed concurrently.
   EXPECT_FALSE(ordering.ExecutesBefore(a, b));

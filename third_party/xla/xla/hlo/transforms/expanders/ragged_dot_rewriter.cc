@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -440,9 +440,9 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
   }
 
   for (auto* ragged_dot : ragged_dots) {
-    ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
+    ABSL_ASSIGN_OR_RETURN(auto general_dot, RaggedToGeneral(ragged_dot));
     general_dot->set_metadata(ragged_dot->metadata());
-    RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
+    ABSL_RETURN_IF_ERROR(ragged_dot->parent()->ReplaceWithNewInstruction(
         ragged_dot, std::move(general_dot)));
   }
 

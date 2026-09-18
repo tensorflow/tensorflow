@@ -80,7 +80,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/container:inlined_vector",
@@ -205,8 +205,8 @@ cc_library(
         ":tpu_api",
         ":tpu_executor_init_fns",
         ":tpu_ops_c_api_hdrs",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 

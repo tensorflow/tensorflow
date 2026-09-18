@@ -44,6 +44,10 @@ class FakeCodegenBackend : public CodegenBackend {
   GetSupportedConfigs(const HloInstruction& instr) override {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
+  absl::StatusOr<std::vector<EstimatedConfig>> GetSupportedConfigsWithEstimates(
+      const HloInstruction& instr) override {
+    return std::vector<EstimatedConfig>();
+  }
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& instr, const BackendConfig& config) override {
     return absl::UnimplementedError("");

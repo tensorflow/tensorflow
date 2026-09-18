@@ -113,7 +113,7 @@ absl::Status PhaseValidator(
 
 absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> PhaseCompiler(
     xla::CompileOptions compile_options,
-    const std::vector<xla::PjRtPartialProgramProto>& input_programs,
+    std::vector<xla::PjRtPartialProgramProto>&& input_programs,
     const xla::PjRtTopologyDescription& topology) {
   std::vector<xla::PjRtPartialProgramProto> serialized_output_objects;
   mlir::MLIRContext context;
@@ -161,7 +161,6 @@ absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> PhaseCompiler(
 
     serialized_output_objects.push_back(std::move(serialized_output_object));
   }
-
   return serialized_output_objects;
 }
 

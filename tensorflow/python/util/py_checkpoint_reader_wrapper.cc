@@ -119,7 +119,7 @@ static py::object CheckpointReader_GetTensor(
 
 }  // namespace tensorflow
 
-PYBIND11_MODULE(_pywrap_checkpoint_reader, m) {
+PYBIND11_MODULE(_pywrap_checkpoint_reader, m, py::mod_gil_not_used()) {
   // Initialization code to use numpy types in the type casters.
   import_array1();
   py::class_<tensorflow::checkpoint::CheckpointReader> checkpoint_reader_class(

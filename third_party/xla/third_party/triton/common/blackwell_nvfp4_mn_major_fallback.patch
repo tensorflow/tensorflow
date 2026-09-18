@@ -1,0 +1,55 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+Backport of https://github.com/triton-lang/triton/pull/11245.
+
+Support Blackwell NVFP4 MMA with MN-major operand fallback and validate scale formats.
+mxf4/mxf4nvf4 instructions do not support MN-major operands, so FP4 x FP4 falls back
+to mxf8f6f4 if either operand is not K-packed. However, mxf4nvf4 supports UE4M3/UE5M3
+scales while the mxf8f6f4 fallback only supports E8M0 scales; this patch adds validation
+to disallow unsupported scale formats with MN-major operands and configures FP4 padding.
+
+--- a/python/test/conftest.py
++++ b/python/test/conftest.py
+@@ -1,4 +1,15 @@
++import multiprocessing
+ import pytest
++import sys
++import tempfile
++
++if not sys.executable:
++    sys.executable = sys.argv[0]
++if hasattr(multiprocessing, "set_executable") and sys.argv[0]:
++    try:
++        multiprocessing.set_executable(sys.argv[0])
++    except Exception:
++        pass
+ 
+ 
+ def pytest_configure(config):
+
+--- a/python/test/unit/language/test_warp_specialization.py
++++ b/python/test/unit/language/test_warp_specialization.py
+@@ -8,6 +8,10 @@ import triton.language as tl
+ from triton._internal_testing import is_compile_warmup, is_hip, is_hopper, is_blackwell
+ from triton.tools.tensor_descriptor import TensorDescriptor
+ 
++# Attempts to dlopen cuBLAS, prevent this path
++# TODO: b/436154455 - Re-enable once we can link in cuBLAS properly
++cublas = None
++
+ pytestmark = pytest.mark.enable_warmup(min_capability=9)
+ 
+ 
+

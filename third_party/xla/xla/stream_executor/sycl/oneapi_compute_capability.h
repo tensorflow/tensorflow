@@ -17,65 +17,74 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_SYCL_ONEAPI_COMPUTE_CAPABILITY_H_
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <utility>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/utility/utility.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.pb.h"
 
 namespace stream_executor {
 
-#define EMIT_COMPUTE_CAPABILITY_FOR(HW)                    \
-  static OneAPIComputeCapability HW() {                    \
-    return absl::make_from_tuple<OneAPIComputeCapability>( \
-        BaseVersionTupleFor(#HW));                         \
-  }
+#define FOR_KNOWN_ONEAPI_DEVICES(EMIT)                               \
+  EMIT(/*device=*/PVC, /*idx=*/0, /*gen=*/0xc, /*default_ver=*/0x3c) \
+  EMIT(/*device=*/BMG, /*idx=*/1, /*gen=*/0x14, /*default_ver=*/0x1) \
+  EMIT(/*device=*/DG2, /*idx=*/2, /*gen=*/0xc, /*default_ver=*/0x37)
+
+#define DEVICE_INFO(HW, ...) {#HW, OneAPIDeviceType::k##HW},
+#define DEVICE_ENTRIES(HW, I, G, V) k##HW = ((G << 22) | (V << 14) | (I)),
+
+// Convenience utilities for each known device family. For example, PVC()
+// returns the compute capability for PVC variants and IsPVC() checks whether
+// this capability corresponds to a PVC variant.
+#define DEVICE_UTILITIES(HW, ...)                                              \
+  static OneAPIComputeCapability HW() { return OneAPIComputeCapability{#HW}; } \
+  bool Is##HW() const { return device_ == OneAPIDeviceType::k##HW; }
+
+// Each enum entry encodes the generation, version, and index of a given device
+enum class OneAPIDeviceType : uint32_t {
+  FOR_KNOWN_ONEAPI_DEVICES(DEVICE_ENTRIES) kUnknown
+};
 
 class OneAPIComputeCapability {
  public:
   OneAPIComputeCapability() = default;
 
-  explicit OneAPIComputeCapability(uint32_t generation, uint32_t version)
-      : generation_(generation), version_(version) {}
+  explicit OneAPIComputeCapability(uint32_t generation, uint32_t version);
 
   explicit OneAPIComputeCapability(const OneAPIComputeCapabilityProto& proto)
       : OneAPIComputeCapability(FromProto(proto)) {}
 
+  // Device's architecture and variant are encoded in an IP version. The 10 most
+  // significant bits represent the architecture, the next 8 bits represent the
+  // architecture variant, and the 14 least significant bits hold the
+  // architecture family index. The IP version can be queried via Level Zero
+  // calls.
   explicit OneAPIComputeCapability(const uint32_t ip_version)
       : OneAPIComputeCapability((ip_version >> 22) & 0x3ff,
                                 (ip_version >> 14) & 0xff) {}
 
-  explicit OneAPIComputeCapability(absl::string_view name)
-      : OneAPIComputeCapability(GenericIPVersionFor(name)) {}
+  explicit OneAPIComputeCapability(absl::string_view arch,
+                                   absl::string_view variant = "");
 
   uint32_t generation() const { return generation_; }
   uint32_t version() const { return version_; }
 
+  std::string architecture() const;
+
+  std::string variant() const;
+
   std::string ToString() const;
 
-  EMIT_COMPUTE_CAPABILITY_FOR(PVC);
-  EMIT_COMPUTE_CAPABILITY_FOR(BMG);
-  EMIT_COMPUTE_CAPABILITY_FOR(DG2);
+  FOR_KNOWN_ONEAPI_DEVICES(DEVICE_UTILITIES)
 
   OneAPIComputeCapabilityProto ToProto() const;
 
   static OneAPIComputeCapability FromProto(
       const OneAPIComputeCapabilityProto& proto);
-
-  bool IsPVC() const { return generation_ == 0xc && (version_ & 0xfe) == 0x3c; }
-
-  bool IsBMG() const { return generation_ == 0x14 && version_ <= 0x2; }
-
-  bool IsDG2() const {
-    return generation_ == 0xc &&
-           (version_ == 0x37 || (version_ & 0xfe) == 0x38);
-  }
 
   bool operator==(const OneAPIComputeCapability& other) const {
     return generation_ == other.generation_ && version_ == other.version_;
@@ -86,19 +95,58 @@ class OneAPIComputeCapability {
   }
 
  private:
+  struct OneAPIDeviceInfo {
+    const char* name;
+    OneAPIDeviceType type;
+  };
+
+  // Device-specific variant codec operations (encode, decode, validate).
+  template <OneAPIDeviceType device>
+  struct OneAPIDeviceVariantOps {
+    static bool IsKnown(uint32_t /*version*/) { return false; }
+    static std::string Decode(uint32_t /*version*/) { return ""; }
+    static uint32_t Encode(absl::string_view /*variant*/) { return 0; }
+  };
+
+  static constexpr uint32_t kUnknownVariantValue = 0xff;
+  static constexpr OneAPIDeviceInfo kKnownDevices[]{
+      FOR_KNOWN_ONEAPI_DEVICES(DEVICE_INFO)};
+
   uint32_t generation_ = 0;
   uint32_t version_ = 0;
+  OneAPIDeviceType device_ = OneAPIDeviceType::kUnknown;
 
-  // A utility function that returns the base (generation, version) tuple for
-  // the given platform name
-  static std::pair<uint32_t, uint32_t> BaseVersionTupleFor(
-      absl::string_view name);
+  // Helpers to dispatch over kKnownDevices using index_sequence.
+  // TODO(intel-tf): These private helpers can be abstracted into templated
+  // lambdas once C++20 is available.
+  template <std::size_t... I>
+  OneAPIDeviceType InferDeviceType(uint32_t generation, uint32_t version,
+                                   std::index_sequence<I...>);
 
-  // Return the generic IP version for the given platform name
-  static uint32_t GenericIPVersionFor(absl::string_view name);
+  template <std::size_t... I>
+  static uint32_t ApplyVariantToIpVersion(absl::string_view variant,
+                                          uint32_t ip_version,
+                                          OneAPIDeviceType type,
+                                          std::index_sequence<I...>);
+
+  template <std::size_t... I>
+  std::string VariantStringForDevice(std::index_sequence<I...>) const;
+
+  // Maps a device name string to its corresponding OneAPIDeviceType.
+  static OneAPIDeviceType NameToDeviceType(absl::string_view name) {
+    for (const auto& info : kKnownDevices) {
+      if (absl::EqualsIgnoreCase(name, info.name)) {
+        return info.type;
+      }
+    }
+    return OneAPIDeviceType::kUnknown;
+  }
 };
 
-#undef EMIT_COMPUTE_CAPABILITY_FOR
+#undef DEVICE_UTILITIES
+#undef DEVICE_ENTRIES
+#undef DEVICE_INFO
+#undef FOR_KNOWN_ONEAPI_DEVICES
 
 }  // namespace stream_executor
 

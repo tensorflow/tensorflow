@@ -29,10 +29,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -80,7 +80,7 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
       std::vector<HloInstruction*> new_operands;
       new_operands.reserve(inst->operand_count());
       for (HloInstruction* operand : inst->mutable_operands()) {
-        ASSIGN_OR_RETURN(auto* new_operand, resolve(operand));
+        ABSL_ASSIGN_OR_RETURN(auto* new_operand, resolve(operand));
         new_operands.push_back(new_operand);
       }
       auto* new_inst = builder->AddInstruction(
@@ -115,16 +115,16 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     std::vector<HloSharding> arg_shardings;
     std::optional<HloSharding> result_sharding;
     std::string mlir_module;
-    ASSIGN_OR_RETURN(std::tie(mlir_module, arg_shardings, result_sharding),
+    ABSL_ASSIGN_OR_RETURN(std::tie(mlir_module, arg_shardings, result_sharding),
                      jax::ConsumeResults(&args));
-    RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
+    ABSL_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
         mlir_module, computation, /*use_tuple_args=*/false,
         /*return_tuple=*/false));
     auto hlo_module_config =
         xla::HloModule::CreateModuleConfigFromProto(
             computation.proto(), xla::DefaultDebugOptionsIgnoringFlags())
             .value();
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                      xla::HloModule::CreateFromProto(computation.proto(),
                                                      hlo_module_config));
     std::vector<HloInstruction*> operands;
@@ -146,9 +146,9 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     // so inline all calls here explicitly, since some targets require it.
     HloPassPipeline pipeline("custom-call-inliner");
     pipeline.AddPass<CallInliner>();
-    RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
+    ABSL_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
 
-    ASSIGN_OR_RETURN(auto* partitioned_hlo,
+    ABSL_ASSIGN_OR_RETURN(auto* partitioned_hlo,
                      InlineHloComputation(
                          instruction, hlo_module->entry_computation(),
                          partitioner->builder(), operands,
@@ -240,7 +240,7 @@ absl::StatusOr<xla::HloSharding> ReadHloSharding(
     return absl::InternalError(
         "custom_call_sharding.cc: error parsing OpShardingProto");
   }
-  ASSIGN_OR_RETURN(xla::HloSharding sharding,
+  ABSL_ASSIGN_OR_RETURN(xla::HloSharding sharding,
                    xla::HloSharding::FromProto(std::move(proto)));
   sharding = xla::HloSharding::V3ToV2Sharding(sharding);
   return sharding;
@@ -312,13 +312,13 @@ ConsumeResults(JAX_CustomCallPartitioner_Partition_Args* args) {
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  RETURN_IF_ERROR(ConsumeHeader(args->header));
-  ASSIGN_OR_RETURN(auto result_sharding,
+  ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
+  ABSL_ASSIGN_OR_RETURN(auto result_sharding,
                    ReadHloSharding(args->result_sharding));
   std::vector<xla::HloSharding> arg_shardings;
   arg_shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    ASSIGN_OR_RETURN(auto arg_sharding,
+    ABSL_ASSIGN_OR_RETURN(auto arg_sharding,
                      ReadHloSharding(args->args_sharding[i]));
     arg_shardings.push_back(std::move(arg_sharding));
   }
@@ -358,10 +358,10 @@ ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
   shapes.reserve(args->num_args);
   shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
+    ABSL_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
     shapes.push_back(shape);
     if (args->op_args[i].has_sharding) {
-      ASSIGN_OR_RETURN(auto sharding,
+      ABSL_ASSIGN_OR_RETURN(auto sharding,
                        ReadHloSharding(args->op_args[i].sharding));
       shardings.push_back(std::move(sharding));
     } else {
@@ -369,10 +369,10 @@ ReadArgs(JAX_CustomCallPartitioner_Partition_Args* args) {
     }
   }
 
-  ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->op_result.shape));
+  ABSL_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->op_result.shape));
   std::optional<xla::HloSharding> result_sharding;
   if (args->op_result.has_sharding) {
-    ASSIGN_OR_RETURN(result_sharding,
+    ABSL_ASSIGN_OR_RETURN(result_sharding,
                      ReadHloSharding(args->op_result.sharding));
   }
   return std::tuple<std::vector<xla::Shape>,
@@ -391,10 +391,10 @@ ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
   shapes.reserve(args->num_args);
   shardings.reserve(args->num_args);
   for (size_t i = 0; i < args->num_args; ++i) {
-    ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
+    ABSL_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->op_args[i].shape));
     shapes.push_back(shape);
     if (args->op_args[i].has_sharding) {
-      ASSIGN_OR_RETURN(auto sharding,
+      ABSL_ASSIGN_OR_RETURN(auto sharding,
                        ReadHloSharding(args->op_args[i].sharding));
       shardings.push_back(std::move(sharding));
     } else {
@@ -402,7 +402,7 @@ ReadArgs(JAX_CustomCallPartitioner_InferShardingFromOperands_Args* args) {
     }
   }
 
-  ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->result_shape));
+  ABSL_ASSIGN_OR_RETURN(auto result_shape, ReadHloShape(args->result_shape));
   return std::tuple<std::vector<xla::Shape>,
                     std::vector<std::optional<xla::HloSharding>>, xla::Shape,
                     absl::string_view>(std::move(shapes), std::move(shardings),
@@ -457,7 +457,7 @@ absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  RETURN_IF_ERROR(ConsumeHeader(args->header));
+  ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
   if (!args->has_result_sharding) {
     return std::nullopt;
   }
@@ -466,8 +466,8 @@ absl::StatusOr<std::optional<xla::HloSharding>> ConsumeResults(
 
 absl::StatusOr<std::tuple<xla::HloSharding, xla::Shape, absl::string_view>>
 ReadArgs(JAX_CustomCallPartitioner_PropagateUserSharding_Args* args) {
-  ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->result_shape));
-  ASSIGN_OR_RETURN(auto sharding, ReadHloSharding(args->result_sharding));
+  ABSL_ASSIGN_OR_RETURN(auto shape, ReadHloShape(args->result_shape));
+  ABSL_ASSIGN_OR_RETURN(auto sharding, ReadHloSharding(args->result_sharding));
   return std::tuple<xla::HloSharding, xla::Shape, absl::string_view>(
       std::move(sharding), std::move(shape),
       ToStringView(args->backend_config));
@@ -508,7 +508,7 @@ absl::StatusOr<xla::HloSharding> ConsumeResults(
   absl::Cleanup cleanup = [args] {
     args->header.cleanup_fn(args->header.data);
   };
-  RETURN_IF_ERROR(ConsumeHeader(args->header));
+  ABSL_RETURN_IF_ERROR(ConsumeHeader(args->header));
   return ReadHloSharding(args->result_sharding);
 }
 

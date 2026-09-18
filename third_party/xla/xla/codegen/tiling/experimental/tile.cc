@@ -89,6 +89,12 @@ bool DimTile::operator==(const DimTile& other) const {
          stride == other.stride && upper_bound == other.upper_bound;
 }
 
+std::string DimTile::ToString() const {
+  return absl::StrCat("offset [", offset.ToString(), "], size [",
+                      size.ToString(), "], stride [", stride.ToString(),
+                      "], upper bound [", upper_bound.ToString(), "]");
+}
+
 Tile::Tile(const TilingSpace& tiling_space, ArrayRef<SymbolicExpr> offsets,
            ArrayRef<SymbolicExpr> sizes, ArrayRef<SymbolicExpr> strides,
            ArrayRef<SymbolicExpr> upper_bounds)
@@ -235,6 +241,10 @@ void Tile::Simplify() {
 Tile Tile::CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const {
   Tile ret{*tiling_space_, std::move(new_dim_tiles), replica_ids_};
   return ret;
+}
+
+Tile Tile::CloneWithNewTilingSpace(const TilingSpace& new_space) const {
+  return Tile(new_space, dim_tiles_, replica_ids_);
 }
 
 bool Tile::operator==(const Tile& other) const {

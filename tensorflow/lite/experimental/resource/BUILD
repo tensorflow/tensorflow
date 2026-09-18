@@ -76,12 +76,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mock_resource",
+    testonly = 1,
+    hdrs = ["mock_resource.h"],
+    deps = [
+        ":resource",
+    ],
+)
+
 cc_test(
     name = "resource_variable_test",
     srcs = [
         "resource_variable_test.cc",
     ],
     deps = [
+        ":mock_resource",
         ":resource",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",

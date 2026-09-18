@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
@@ -40,7 +39,7 @@ class TestProfiler : public ProfilerInterface {
 
 std::unique_ptr<ProfilerInterface> TestFactoryFunction(
     const tensorflow::ProfileOptions& options) {
-  return absl::make_unique<TestProfiler>();
+  return std::make_unique<TestProfiler>();
 }
 
 TEST(ProfilerFactoryTest, FactoryFunctionPointer) {
@@ -53,7 +52,7 @@ TEST(ProfilerFactoryTest, FactoryFunctionPointer) {
 TEST(ProfilerFactoryTest, FactoryLambda) {
   ClearRegisteredProfilersForTest();
   RegisterProfilerFactory([](const tensorflow::ProfileOptions& options) {
-    return absl::make_unique<TestProfiler>();
+    return std::make_unique<TestProfiler>();
   });
   auto profilers = CreateProfilers(tensorflow::ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
@@ -79,7 +78,7 @@ class FactoryClass {
 
   std::unique_ptr<ProfilerInterface> CreateProfiler(
       const tensorflow::ProfileOptions& options) const {
-    return absl::make_unique<TestProfiler>();
+    return std::make_unique<TestProfiler>();
   }
 
  private:

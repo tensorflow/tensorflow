@@ -92,7 +92,7 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
   }
 }
 
-template <typename input_dtype, reference_ops::ComparisonFn<int32> opname>
+template <typename input_dtype, typename OpName>
 void ComparisonQuantized(const TfLiteTensor* input1, const TfLiteTensor* input2,
                          TfLiteTensor* output, bool requires_broadcast) {
   if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8 ||
@@ -117,12 +117,12 @@ void ComparisonQuantized(const TfLiteTensor* input1, const TfLiteTensor* input2,
     op_params.input2_multiplier = input2_multiplier;
     op_params.input2_shift = input2_shift;
     if (requires_broadcast) {
-      reference_ops::BroadcastComparison4DSlowWithScaling<input_dtype, opname>(
+      reference_ops::BroadcastComparison4DSlowWithScaling<input_dtype, OpName>(
           op_params, GetTensorShape(input1), GetTensorData<input_dtype>(input1),
           GetTensorShape(input2), GetTensorData<input_dtype>(input2),
           GetTensorShape(output), GetTensorData<bool>(output));
     } else {
-      reference_ops::ComparisonWithScaling<input_dtype, opname>(
+      reference_ops::ComparisonWithScaling<input_dtype, OpName>(
           op_params, GetTensorShape(input1), GetTensorData<input_dtype>(input1),
           GetTensorShape(input2), GetTensorData<input_dtype>(input2),
           GetTensorShape(output), GetTensorData<bool>(output));
@@ -130,16 +130,16 @@ void ComparisonQuantized(const TfLiteTensor* input1, const TfLiteTensor* input2,
   }
 }
 
-template <typename T, reference_ops::ComparisonFn<T> opname>
+template <typename T, typename OpName>
 void Comparison(const TfLiteTensor* input1, const TfLiteTensor* input2,
                 TfLiteTensor* output, bool requires_broadcast) {
   ComparisonParams op_params;
   requires_broadcast
-      ? reference_ops::BroadcastComparison4DSlowImpl<T, opname>(
+      ? reference_ops::BroadcastComparison4DSlowImpl<T, OpName>(
             op_params, GetTensorShape(input1), GetTensorData<T>(input1),
             GetTensorShape(input2), GetTensorData<T>(input2),
             GetTensorShape(output), GetTensorData<bool>(output))
-      : reference_ops::ComparisonImpl<T, opname>(
+      : reference_ops::ComparisonImpl<T, OpName>(
             op_params, GetTensorShape(input1), GetTensorData<T>(input1),
             GetTensorShape(input2), GetTensorData<T>(input2),
             GetTensorShape(output), GetTensorData<bool>(output));
@@ -173,40 +173,40 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
     case kTfLiteBool:
-      Comparison<bool, reference_ops::EqualFn>(input1, input2, output,
-                                               requires_broadcast);
+      Comparison<bool, reference_ops::EqualFn<bool>>(input1, input2, output,
+                                                     requires_broadcast);
       break;
     case kTfLiteFloat32:
-      Comparison<float, reference_ops::EqualFn>(input1, input2, output,
-                                                requires_broadcast);
+      Comparison<float, reference_ops::EqualFn<float>>(input1, input2, output,
+                                                       requires_broadcast);
       break;
     case kTfLiteFloat16:
-      Comparison<Eigen::half, reference_ops::EqualFn>(input1, input2, output,
-                                                      requires_broadcast);
+      Comparison<Eigen::half, reference_ops::EqualFn<Eigen::half>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt16:
       if (input1->quantization.type == kTfLiteNoQuantization) {
-        Comparison<int16_t, reference_ops::EqualFn>(input1, input2, output,
-                                                    requires_broadcast);
+        Comparison<int16_t, reference_ops::EqualFn<int16_t>>(
+            input1, input2, output, requires_broadcast);
       } else {
-        ComparisonQuantized<int16_t, reference_ops::EqualFn>(
+        ComparisonQuantized<int16_t, reference_ops::EqualFn<int32_t>>(
             input1, input2, output, requires_broadcast);
       }
       break;
     case kTfLiteInt32:
-      Comparison<int32_t, reference_ops::EqualFn>(input1, input2, output,
-                                                  requires_broadcast);
+      Comparison<int32_t, reference_ops::EqualFn<int32_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt64:
-      Comparison<int64_t, reference_ops::EqualFn>(input1, input2, output,
-                                                  requires_broadcast);
+      Comparison<int64_t, reference_ops::EqualFn<int64_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      ComparisonQuantized<uint8_t, reference_ops::EqualFn>(
+      ComparisonQuantized<uint8_t, reference_ops::EqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt8:
-      ComparisonQuantized<int8_t, reference_ops::EqualFn>(
+      ComparisonQuantized<int8_t, reference_ops::EqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteString:
@@ -236,36 +236,36 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
     case kTfLiteBool:
-      Comparison<bool, reference_ops::NotEqualFn>(input1, input2, output,
-                                                  requires_broadcast);
+      Comparison<bool, reference_ops::NotEqualFn<bool>>(input1, input2, output,
+                                                        requires_broadcast);
       break;
     case kTfLiteFloat32:
-      Comparison<float, reference_ops::NotEqualFn>(input1, input2, output,
-                                                   requires_broadcast);
+      Comparison<float, reference_ops::NotEqualFn<float>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteFloat16:
-      Comparison<Eigen::half, reference_ops::NotEqualFn>(input1, input2, output,
-                                                         requires_broadcast);
+      Comparison<Eigen::half, reference_ops::NotEqualFn<Eigen::half>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt32:
-      Comparison<int32_t, reference_ops::NotEqualFn>(input1, input2, output,
-                                                     requires_broadcast);
+      Comparison<int32_t, reference_ops::NotEqualFn<int32_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt64:
-      Comparison<int64_t, reference_ops::NotEqualFn>(input1, input2, output,
-                                                     requires_broadcast);
+      Comparison<int64_t, reference_ops::NotEqualFn<int64_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      ComparisonQuantized<uint8_t, reference_ops::NotEqualFn>(
+      ComparisonQuantized<uint8_t, reference_ops::NotEqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt8:
-      ComparisonQuantized<int8_t, reference_ops::NotEqualFn>(
+      ComparisonQuantized<int8_t, reference_ops::NotEqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt16:
       if (input1->quantization.type != kTfLiteNoQuantization) {
-        ComparisonQuantized<int16_t, reference_ops::NotEqualFn>(
+        ComparisonQuantized<int16_t, reference_ops::NotEqualFn<int32_t>>(
             input1, input2, output, requires_broadcast);
       }
       break;
@@ -295,36 +295,36 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node, int lhs,
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
     case kTfLiteFloat32:
-      Comparison<float, reference_ops::LessFn>(input1, input2, output,
-                                               requires_broadcast);
+      Comparison<float, reference_ops::LessFn<float>>(input1, input2, output,
+                                                      requires_broadcast);
       break;
     case kTfLiteFloat16:
-      Comparison<Eigen::half, reference_ops::LessFn>(input1, input2, output,
-                                                     requires_broadcast);
+      Comparison<Eigen::half, reference_ops::LessFn<Eigen::half>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteBFloat16:
-      Comparison<Eigen::bfloat16, reference_ops::LessFn>(input1, input2, output,
-                                                         requires_broadcast);
+      Comparison<Eigen::bfloat16, reference_ops::LessFn<Eigen::bfloat16>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt16:
-      Comparison<int16_t, reference_ops::LessFn>(input1, input2, output,
-                                                 requires_broadcast);
+      Comparison<int16_t, reference_ops::LessFn<int16_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt32:
-      Comparison<int32_t, reference_ops::LessFn>(input1, input2, output,
-                                                 requires_broadcast);
+      Comparison<int32_t, reference_ops::LessFn<int32_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt64:
-      Comparison<int64_t, reference_ops::LessFn>(input1, input2, output,
-                                                 requires_broadcast);
+      Comparison<int64_t, reference_ops::LessFn<int64_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      ComparisonQuantized<uint8_t, reference_ops::LessFn>(
+      ComparisonQuantized<uint8_t, reference_ops::LessFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt8:
-      ComparisonQuantized<int8_t, reference_ops::LessFn>(input1, input2, output,
-                                                         requires_broadcast);
+      ComparisonQuantized<int8_t, reference_ops::LessFn<int32_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -347,31 +347,31 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node, int lhs,
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
     case kTfLiteFloat32:
-      Comparison<float, reference_ops::LessEqualFn>(input1, input2, output,
-                                                    requires_broadcast);
+      Comparison<float, reference_ops::LessEqualFn<float>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteFloat16:
-      Comparison<Eigen::half, reference_ops::LessEqualFn>(
+      Comparison<Eigen::half, reference_ops::LessEqualFn<Eigen::half>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt16:
-      Comparison<int16_t, reference_ops::LessEqualFn>(input1, input2, output,
-                                                      requires_broadcast);
+      Comparison<int16_t, reference_ops::LessEqualFn<int16_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt32:
-      Comparison<int32_t, reference_ops::LessEqualFn>(input1, input2, output,
-                                                      requires_broadcast);
+      Comparison<int32_t, reference_ops::LessEqualFn<int32_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt64:
-      Comparison<int64_t, reference_ops::LessEqualFn>(input1, input2, output,
-                                                      requires_broadcast);
+      Comparison<int64_t, reference_ops::LessEqualFn<int64_t>>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteUInt8:
-      ComparisonQuantized<uint8_t, reference_ops::LessEqualFn>(
+      ComparisonQuantized<uint8_t, reference_ops::LessEqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt8:
-      ComparisonQuantized<int8_t, reference_ops::LessEqualFn>(
+      ComparisonQuantized<int8_t, reference_ops::LessEqualFn<int32_t>>(
           input1, input2, output, requires_broadcast);
       break;
     default:

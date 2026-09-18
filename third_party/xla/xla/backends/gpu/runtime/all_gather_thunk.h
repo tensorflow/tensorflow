@@ -42,6 +42,7 @@ namespace xla::gpu {
 
 struct AllGatherConfig {
   CollectiveConfig config;
+  bool enable_gxl = false;
 };
 
 // Thunk that performs an All-Gather among CUDA GPU-based replicas.
@@ -49,6 +50,10 @@ class AllGatherThunk : public CollectiveThunk {
  public:
   AllGatherThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
                  std::vector<Buffer> buffers);
+  AllGatherThunk(ThunkInfo thunk_info, AllGatherConfig config,
+                 std::vector<Buffer> buffers,
+                 CollectivesMode collectives_mode =
+                     DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
   AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
                  std::vector<Buffer> buffers,
                  CollectivesMode collectives_mode =
@@ -64,6 +69,9 @@ class AllGatherThunk : public CollectiveThunk {
       const HloAllGatherInstruction* inst);
 
   const CollectiveConfig& config() const override { return config_.config; }
+
+  CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key, const PrepareParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<AllGatherThunk>> FromProto(
       ThunkInfo thunk_info, const AllGatherThunkProto& thunk_proto,

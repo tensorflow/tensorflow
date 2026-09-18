@@ -34,11 +34,13 @@ package(
         # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
         # copybara:uncomment "//learning/pathways/util/platform:__subpackages__",
+        # copybara:uncomment "//third_party/pathways/oss_binary_targets:__subpackages__",
         # copybara:uncomment "//third_party/pathways/util/platform:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
         "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/core/tfrt:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//xla/pjrt:__subpackages__",
         "//xla/service/gpu:__subpackages__",
@@ -229,10 +231,10 @@ cc_library(
         ":test_utils",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],

@@ -116,6 +116,14 @@ void NUMASetThreadNodeAffinity(int node) {
     return;
   }
 
+  // An empty cpuset means no CPU of this node is allowed (e.g. cgroup/SLURM
+  // restrictions); binding would fail with EINVAL, so fall back quietly.
+  if (hwloc_bitmap_iszero(obj->cpuset)) {
+    VLOG(1) << "No allowed CPUs on NUMA node " << node
+            << ", falling back to OS scheduling.";
+    return;
+  }
+
   if (hwloc_set_cpubind(topology, obj->cpuset,
                         HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT)) {
     LOG_FIRST_N(ERROR, 1).WithPerror() << "Call to hwloc_set_cpubind() failed";

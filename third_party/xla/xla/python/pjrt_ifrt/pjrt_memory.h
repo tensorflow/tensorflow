@@ -20,26 +20,24 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 
 namespace xla {
 namespace ifrt {
 
 class PjRtClient;
 
-class PjRtCompatibleMemory
-    : public llvm::RTTIExtends<PjRtCompatibleMemory, Memory> {
+class PjRtCompatibleMemory : public RTTIExtends<PjRtCompatibleMemory, Memory> {
  public:
   virtual xla::PjRtMemorySpace* pjrt_memory() = 0;
 
   static char ID;  // NOLINT
 };
 
-class PjRtMemory final
-    : public llvm::RTTIExtends<PjRtMemory, PjRtCompatibleMemory> {
+class PjRtMemory final : public RTTIExtends<PjRtMemory, PjRtCompatibleMemory> {
  public:
   PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory);
 
@@ -64,17 +62,6 @@ class PjRtMemory final
   MemoryKind kind_;
   std::vector<Device*> devices_;
 };
-
-// Canonicalizes `MemoryKind`. If `MemoryKind` has no memory kind chosen,
-// returns a default `MemoryKind` chosen for the PjRt device. If there is no
-// default indicated by the device, simply returns `MemoryKind` with no memory
-// kind chosen.
-//
-// TODO(hyeontaek,yashkatariya): Harden `MemoryKind` creation paths so that
-// every `MemoryKind` is canonicalized and does not require on-demand
-// canonicalization.
-MemoryKind CanonicalizeMemoryKindWithPjRtDevice(MemoryKind memory_kind,
-                                                xla::PjRtDevice* device);
 
 }  // namespace ifrt
 }  // namespace xla

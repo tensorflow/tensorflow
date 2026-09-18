@@ -69,6 +69,23 @@ TEST(DeviceCompilationClusterSignatureTest, SignatureEquality) {
   }
 }
 
+TEST(DeviceCompilationClusterSignatureTest, StringConstantDoesNotCrash) {
+  NameAttrList fn;
+  fn.set_name("afunction");
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_STRING;
+  Tensor t(DT_STRING, TensorShape({2}));
+  t.flat<tstring>()(0) = "hi";
+  t.flat<tstring>()(1) = "cat";
+  args[0].constant_value = t;
+
+  TF_ASSERT_OK_AND_ASSIGN(DeviceCompilationClusterSignature s1,
+                          DeviceCompilationClusterSignature::Build(fn, args));
+  EXPECT_TRUE(s1 == s1);
+  EXPECT_EQ(SignatureHash()(s1), SignatureHash()(s1));
+}
+
 TEST(DeviceCompilationClusterSignatureTest, SignatureUniqueness) {
   NameAttrList fn;
   fn.set_name("afunction");

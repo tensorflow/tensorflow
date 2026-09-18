@@ -1,0 +1,143 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_float_eq
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] oeq %[[ARG1]]
+
+test_float_eq {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=EQ
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_ne
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] une %[[ARG1]]
+
+test_float_ne {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=NE
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_gt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] ogt %[[ARG1]]
+
+test_float_gt {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=GT
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_ge
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] oge %[[ARG1]]
+
+test_float_ge {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=GE
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_lt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] olt %[[ARG1]]
+
+test_float_lt {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=LT
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_le
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>, %[[ARG1:.*]]: tensor<8x16xf32>
+// CHECK: cmp %[[ARG0]] ole %[[ARG1]]
+
+test_float_le {
+  %p0 = f32[8,16] parameter(0)
+  %p1 = f32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=LE
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_eq
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] eq %[[ARG1]]
+
+test_integer_eq {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=EQ
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_ne
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] neq %[[ARG1]]
+
+test_integer_ne {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=NE
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_lt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] lt %[[ARG1]]
+
+test_integer_lt {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=LT
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_le
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] le %[[ARG1]]
+
+test_integer_le {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=LE
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_gt
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] gt %[[ARG1]]
+
+test_integer_gt {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=GT
+}
+
+// -----
+
+// CHECK-LABEL: @test_integer_ge
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xsi32>, %[[ARG1:.*]]: tensor<8x16xsi32>
+// CHECK: cmp %[[ARG0]] ge %[[ARG1]]
+
+test_integer_ge {
+  %p0 = s32[8,16] parameter(0)
+  %p1 = s32[8,16] parameter(1)
+  %out = pred[8,16] compare(%p0, %p1), direction=GE
+}

@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/bundle.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-class BasicBundle final : public llvm::RTTIExtends<BasicBundle, Bundle> {
+class BasicBundle final : public RTTIExtends<BasicBundle, Bundle> {
  public:
   // Creates a new `BundleRef` from `ValueRef`s.
   static absl::StatusOr<BundleRef> Create(absl::Span<ValueRef> values,

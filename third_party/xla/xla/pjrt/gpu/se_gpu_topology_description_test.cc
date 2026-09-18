@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/se/pjrt_stream_executor_device_description.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -57,6 +59,29 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, SymmetricTopology) {
   EXPECT_EQ(topology_desc.platform_id(), xla::CudaId());
   EXPECT_EQ(topology_desc.platform_name(), xla::CudaName());
   EXPECT_EQ(topology_desc.platform_version(), "12.3");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto process_and_index,
+      topology_desc.ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+          GlobalDeviceId(5)));
+  EXPECT_EQ(process_and_index.first, ProcessId(1));
+  EXPECT_EQ(process_and_index.second, 1);
+
+  EXPECT_FALSE(topology_desc
+                   .ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
+                       GlobalDeviceId(100))
+                   .ok());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto assignment,
+      topology_desc.GetDefaultDeviceAssignment(
+          /*process_index=*/0,
+          /*num_replicas=*/2, /*num_replicas_per_slice=*/std::nullopt,
+          /*num_partitions=*/2, /*multi_slice_config=*/nullptr));
+  EXPECT_EQ(assignment(0, 0), 0);
+  EXPECT_EQ(assignment(0, 1), 2);
+  EXPECT_EQ(assignment(1, 0), 1);
+  EXPECT_EQ(assignment(1, 1), 3);
 
   const auto device_descs = topology_desc.DeviceDescriptions();
   EXPECT_EQ(device_descs.size(), 24);

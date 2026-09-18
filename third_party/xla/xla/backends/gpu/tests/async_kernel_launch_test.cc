@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using AsyncKernelLaunchTest = HloInterpreterReferenceMixin<HloPjRtTestBase>;
+using AsyncKernelLaunchTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 HloModuleConfig GetModuleConfig() {
   // Allow even small graphs to be launched on the GPU.

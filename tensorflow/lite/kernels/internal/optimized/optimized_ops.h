@@ -1828,20 +1828,32 @@ inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
+  // The element-wise sum is performed in the unsigned domain so that any
+  // overflow wraps in a well-defined manner instead of triggering
+  // signed-integer-overflow UB inside Eigen's expression evaluators. The
+  // wrapped result is bit-identical to the previous two's-complement behavior
+  // and is then clamped back in the signed domain by the activation min/max.
+  using UnsignedT = typename std::make_unsigned<T>::type;
   if (input1_shape == input2_shape) {
-    output_map.array() = (input1_map.array() + input2_map.array())
+    output_map.array() = (input1_map.array().template cast<UnsignedT>() +
+                          input2_map.array().template cast<UnsignedT>())
+                             .template cast<T>()
                              .cwiseMax(activation_min)
                              .cwiseMin(activation_max);
   } else if (input2_shape.FlatSize() == 1) {
-    auto scalar = input2_data[0];
-    output_map.array() = (input1_map.array() + scalar)
-                             .cwiseMax(activation_min)
-                             .cwiseMin(activation_max);
+    UnsignedT scalar = static_cast<UnsignedT>(input2_data[0]);
+    output_map.array() =
+        (input1_map.array().template cast<UnsignedT>() + scalar)
+            .template cast<T>()
+            .cwiseMax(activation_min)
+            .cwiseMin(activation_max);
   } else if (input1_shape.FlatSize() == 1) {
-    auto scalar = input1_data[0];
-    output_map.array() = (scalar + input2_map.array())
-                             .cwiseMax(activation_min)
-                             .cwiseMin(activation_max);
+    UnsignedT scalar = static_cast<UnsignedT>(input1_data[0]);
+    output_map.array() =
+        (scalar + input2_map.array().template cast<UnsignedT>())
+            .template cast<T>()
+            .cwiseMax(activation_min)
+            .cwiseMin(activation_max);
   } else {
     reference_ops::BroadcastAdd6DSlow<T>(params, input1_shape, input1_data,
                                          input2_shape, input2_data,
@@ -2362,7 +2374,16 @@ void BroadcastDivSlow(const ArithmeticParams& params,
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
   auto op = [output_activation_min, output_activation_max](T a, T b) {
-    return ActivationFunctionWithMinMax(a / b, output_activation_min,
+    T div_result;
+    // Guard against signed integer overflow: INT_MIN / -1 is undefined
+    // behavior in C++. Saturate to T::max() instead.
+    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+        b == static_cast<T>(-1) && a == std::numeric_limits<T>::min()) {
+      div_result = std::numeric_limits<T>::max();
+    } else {
+      div_result = a / b;
+    }
+    return ActivationFunctionWithMinMax(div_result, output_activation_min,
                                         output_activation_max);
   };
   reference_ops::BroadcastBinaryOpSimple(
@@ -7329,8 +7350,11 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
 }
 
 template <typename T>
-void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
-                bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumsumImpl(const T* input_data,
+                                                    const RuntimeShape& shape,
+                                                    int axis, bool exclusive,
+                                                    bool reverse,
+                                                    T* output_data) {
   Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
 
   for (int i = 0; i < axis; ++i) {
@@ -7361,8 +7385,10 @@ void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
 }
 
 template <typename T>
-void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
-            bool exclusive, bool reverse, T* output_data) {
+TFLITE_NO_SANITIZE_INTEGER_OVERFLOW void CumSum(const T* input_data,
+                                                const RuntimeShape& shape,
+                                                int axis, bool exclusive,
+                                                bool reverse, T* output_data) {
   const int dim = shape.DimensionsCount();
   TFLITE_DCHECK_GE(dim, 1);
   CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
@@ -8032,7 +8058,7 @@ inline void Conv3DTranspose(
 
   const int spatial_dim_1_padding_before = params.padding_values.depth;
   const int spatial_dim_1_padding_after =
-      params.padding_values.height + params.padding_values.depth_offset;
+      params.padding_values.depth + params.padding_values.depth_offset;
   const int spatial_dim_2_padding_before = params.padding_values.height;
   const int spatial_dim_2_padding_after =
       params.padding_values.height + params.padding_values.height_offset;

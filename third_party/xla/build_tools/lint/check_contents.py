@@ -71,15 +71,15 @@ def filter_hunks_by_path(
   if not path_regexes:
     path_regexes = [".*"]  # by default match everything
 
-  path_regexes = [re.compile(regex) for regex in path_regexes]
+  path_regexes = [re.compile(regex) for regex in path_regexes]  # pyrefly: ignore[bad-assignment]
 
   def should_include(path: str) -> bool:
-    return any(regex.search(path) for regex in path_regexes)
+    return any(regex.search(path) for regex in path_regexes)  # pyrefly: ignore[missing-attribute]
 
-  path_regex_exclusions = [re.compile(regex) for regex in path_regex_exclusions]
+  path_regex_exclusions = [re.compile(regex) for regex in path_regex_exclusions]  # pyrefly: ignore[bad-assignment]
 
   def should_exclude(path: str) -> bool:
-    return any(regex.search(path) for regex in path_regex_exclusions)
+    return any(regex.search(path) for regex in path_regex_exclusions)  # pyrefly: ignore[missing-attribute]
 
   return [
       hunk
@@ -107,13 +107,13 @@ def check_diffs(
     A list of RegexLocations where the prohibited_regex is found.
   """
 
-  prohibited_regex = re.compile(prohibited_regex)
+  prohibited_regex = re.compile(prohibited_regex)  # pyrefly: ignore[bad-assignment]
   if suppression_regex is not None:
-    suppression_regex = re.compile(suppression_regex)
+    suppression_regex = re.compile(suppression_regex)  # pyrefly: ignore[bad-assignment]
 
   def should_not_suppress(line) -> bool:
     if suppression_regex:
-      return not suppression_regex.search(line)
+      return not suppression_regex.search(line)  # pyrefly: ignore[missing-attribute]
     return True
 
   regex_locations = []
@@ -123,7 +123,7 @@ def check_diffs(
         regex_locations.extend(
             [
                 RegexLocation(hunk.file, line_no, line, regex_match.group())
-                for regex_match in prohibited_regex.finditer(line)
+                for regex_match in prohibited_regex.finditer(line)  # pyrefly: ignore[missing-attribute]
             ]
         )
 

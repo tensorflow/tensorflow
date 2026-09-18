@@ -278,6 +278,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/util:nest",
         "@six_archive//:six",
     ],
@@ -338,4 +339,15 @@ py_library(
     srcs = ["feature_column_v2_types.py"],
     strict_deps = True,
     deps = ["//tensorflow/python/util:tf_export"],
+)
+
+tf_py_strict_test(
+    name = "utils_test",
+    srcs = ["utils_test.py"],
+    deps = [
+        ":utils",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+    ],
 )

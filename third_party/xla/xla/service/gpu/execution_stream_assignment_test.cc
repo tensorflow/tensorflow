@@ -23,11 +23,14 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/side_effect_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -293,6 +296,82 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
       absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
+TEST_F(ExecutionStreamAssignmentTest, CollectiveDomainRoundRobin) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  reduce {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT sum = f32[] add(x, y)
+  }
+
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[2] parameter(1)
+    ar-start = f32[] all-reduce-start(p0), to_apply=reduce
+    rs-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs1-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs2-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs3-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    rs4-start = ((f32[2]), f32[1]) reduce-scatter-start(p1),
+      to_apply=reduce, dimensions={0}
+    ar-done = f32[] all-reduce-done(ar-start)
+    rs-done = f32[1] reduce-scatter-done(rs-start)
+    rs1-done = f32[1] reduce-scatter-done(rs1-start)
+    rs2-done = f32[1] reduce-scatter-done(rs2-start)
+    rs3-done = f32[1] reduce-scatter-done(rs3-start)
+    rs4-done = f32[1] reduce-scatter-done(rs4-start)
+    ROOT result = (f32[], f32[1], f32[1], f32[1], f32[1], f32[1])
+      tuple(ar-done, rs-done, rs1-done, rs2-done, rs3-done, rs4-done)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  GpuBackendConfig scale_up_fabric_config;
+  scale_up_fabric_config.mutable_collective_backend_config()
+      ->set_communication_domain(kScaleUpFabricCollectiveDomain);
+  for (absl::string_view name : {"ar-start", "rs1-start", "rs3-start"}) {
+    HloInstruction* start = FindInstruction(module.get(), name);
+    ASSERT_OK(start->set_backend_config(scale_up_fabric_config));
+  }
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/2});
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ar-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  // Each domain advances independently and wraps within its own two-stream
+  // pool.
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs1-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(4))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs2-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs3-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "rs4-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+}
+
 TEST_F(ExecutionStreamAssignmentTest,
        ExplicitCollectivesGroupUsesCommunicationStream) {
   const char* const hlo_string = R"(
@@ -320,6 +399,22 @@ TEST_F(ExecutionStreamAssignmentTest,
       assignment.GetExecutionStreamId(
           FindInstruction(module.get(), "group-start")),
       absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+
+  HloInstruction* group_start = FindInstruction(module.get(), "group-start");
+  GpuBackendConfig config;
+  config.mutable_collective_backend_config()->set_communication_domain(
+      kScaleUpFabricCollectiveDomain);
+  ASSERT_OK(group_start->set_backend_config(config));
+  assignment = ExecutionStreamAssignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(group_start),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(3))));
+
+  group_start->set_frontend_attribute(kXlaStreamAnnotationAttr, "7");
+  assignment = ExecutionStreamAssignment(module.get());
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(group_start),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(7))));
   EXPECT_THAT(assignment.GetExecutionStreamId(
                   FindInstruction(module.get(), "group-done")),
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
