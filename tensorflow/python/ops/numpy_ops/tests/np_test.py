@@ -2958,6 +2958,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
       return tnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
 
+  def testStackInvalidAxis(self):
+    # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
+    # insertion position, so rank itself is in bounds.
+    a = onp.ones((2, 3))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=4)
+    # In-bounds boundaries still work.
+    self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
+
   @jtu.disable
   def testReluGradientConstants(self):
     # This is a regression test that verifies that constants associated with the
