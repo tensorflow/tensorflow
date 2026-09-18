@@ -1349,6 +1349,18 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
                                      data_format=data_format,
                                      dtype=dtypes.float32)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DGroupConvRejectsInvalidOutputDepth(self):
+    x = constant_op.constant(
+        [[[[1.0, 2.0], [3.0, 4.0]]]], dtype=dtypes.float32)
+    filt = constant_op.constant([[[[1.0]]], [[[2.0]]]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"Depth of output \(1\) is not a multiple of the number of groups "
+        r"\(2\)"):
+      self.evaluate(nn_ops.conv2d(x, filt, [1, 1, 1, 1], padding="VALID"))
+
   @test_util.deprecated_graph_mode_only
   @test_util.run_gpu_only
   @test.disable_with_predicate(
