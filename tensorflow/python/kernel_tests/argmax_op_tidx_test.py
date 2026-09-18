@@ -75,7 +75,7 @@ class ArgMaxMinTidxRegistrationTest(test_util.TensorFlowTestCase):
       input_tensor = constant_op.constant([1.0, 3.0, 2.0], dtype=dtypes.float32)
       dimension = constant_op.constant(0, dtype=dtypes.int32)
       result = self.evaluate(array_ops.argmin(input_tensor, axis=dimension))
-      self.assertEqual(result, 0)
+      self.assertAllEqual(result, 0)
 
 
 if __name__ == "__main__":
