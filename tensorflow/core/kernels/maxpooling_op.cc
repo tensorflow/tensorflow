@@ -866,6 +866,10 @@ class MaxPoolingNoMaskOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    RequirePositiveSpatialOutput(context, params);
+    if (!context->status().ok()) {
+      return;
+    }
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -956,6 +960,10 @@ class MaxPoolingNoMaskV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    RequirePositiveSpatialOutput(context, params);
+    if (!context->status().ok()) {
+      return;
+    }
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -1032,6 +1040,10 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
                           /*explicit_paddings=*/{},
                           FORMAT_NHWC,
                           tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    RequirePositiveSpatialOutput(context, params);
     if (!context->status().ok()) {
       return;
     }
@@ -1325,6 +1337,10 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    RequirePositiveSpatialOutput(context, params);
+    if (!context->status().ok()) {
+      return;
+    }
 
     TensorShape out_shape;
     OP_REQUIRES_OK(
@@ -1459,6 +1475,10 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
                           /*explicit_paddings=*/{},
                           data_format_,
                           tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    RequirePositiveSpatialOutput(context, params);
     if (!context->status().ok()) {
       return;
     }

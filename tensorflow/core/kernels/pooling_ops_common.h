@@ -83,6 +83,20 @@ struct PoolParameters {
   TensorFormat data_format;
 };
 
+// Forward pooling only: oversized VALID windows must raise InvalidArgument.
+// Gradient ops may receive zero-sized spatial outputs and return zeros.
+inline void RequirePositiveSpatialOutput(OpKernelContext* context,
+                                         const PoolParameters& params) {
+  OP_REQUIRES(
+      context, params.out_height > 0 && params.out_width > 0,
+      absl::InvalidArgumentError(absl::StrCat(
+          "Pooling would produce zero-sized spatial output. "
+          "input: ",
+          params.tensor_in_rows, "x", params.tensor_in_cols, " window: ",
+          params.window_rows, "x", params.window_cols, " stride: ",
+          params.row_stride, "x", params.col_stride)));
+}
+
 // An implementation of MaxPooling (forward).
 // TODO (yongtang): Remove MaxPoolingOp and use MaxPoolingV2Op,
 //     QuantizedMaxPoolingOp depends on MaxPoolingOp so keep intact for now
@@ -133,6 +147,10 @@ class MaxPoolingOp : public OpKernel {
     PoolParameters params{
         context,     ksize_,           stride_, padding_, explicit_paddings_,
         FORMAT_NHWC, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    RequirePositiveSpatialOutput(context, params);
     if (!context->status().ok()) {
       return;
     }
@@ -411,6 +429,10 @@ class MaxPoolingV2Op : public OpKernel {
         data_format_,
         tensor_in.shape(),
     };
+    if (!context->status().ok()) {
+      return;
+    }
+    RequirePositiveSpatialOutput(context, params);
     if (!context->status().ok()) {
       return;
     }
