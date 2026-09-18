@@ -370,6 +370,7 @@ cc_library(
         ":stream_executor_h",
         "//xla/service:device_assignment",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -389,6 +390,7 @@ xla_cc_test(
     srcs = ["device_address_vmm_allocator_test.cc"],
     deps = [
         ":device_address",
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":memory_allocation",
         ":memory_reservation",
@@ -879,7 +881,6 @@ cc_library(
         ":kernel_args",
         ":kernel_args_packing_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
