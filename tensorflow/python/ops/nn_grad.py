@@ -111,16 +111,18 @@ def _FusedLinearCrossEntropyGrad(op, grad_loss):
   # Compute dL/dlogits = (probs - labels) * grad_loss
   grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
 
-  # Gradients w.r.t features, weights, and biases
+  # Gradients w.r.t features, weights, and labels (non-differentiable)
   grad_features = math_ops.matmul(grad_logits, weights, transpose_b=True)
   grad_weights = math_ops.matmul(features, grad_logits, transpose_a=True)
+  grad_labels = array_ops.zeros_like(labels)
 
   grad_biases = None
   if len(op.inputs) > 3:
     grad_biases = math_ops.reduce_sum(grad_logits, axis=0)
+    return grad_features, grad_weights, grad_labels, grad_biases
 
-  return grad_features, grad_weights, None, grad_biases
-
+  return grad_features, grad_weights, grad_labels
+  
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputGrad(op: ops.Operation, grad):
   """The derivatives for deconvolution.
