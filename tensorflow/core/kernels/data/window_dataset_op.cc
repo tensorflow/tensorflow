@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <deque>
 #include <memory>
 #include <string>
@@ -24,8 +25,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -124,7 +128,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64_t rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+      int64_t target =
+          MultiplyWithoutOverflow(window_size_ - 1, window_stride_);
+      if (target >= 0) target = AddWithoutOverflow(target, 1);
+      // If the target overflows, no finite input can fill a complete window.
+      int64_t rest_elements = target < 0 ? -1 : n - target;
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
       cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
@@ -183,7 +191,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       std::vector<std::vector<Tensor>> window_elements;
       absl::Status status = absl::OkStatus();
       {
-        const size_t target_size = TargetBufferSize(window_size, window_stride);
+        TF_ASSIGN_OR_RETURN(const size_t target_size,
+                            TargetBufferSize(window_size, window_stride));
 
         mutex_lock l(mu_);
         if (!input_impl_ &&
@@ -410,8 +419,19 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
     }
 
-    size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
-      return (window_size - 1) * window_stride + 1;
+    absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
+                                            int64_t window_stride) {
+      int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+      if (result >= 0) result = AddWithoutOverflow(result, 1);
+      if (result < 0 || static_cast<uint64_t>(result) >
+                            std::numeric_limits<size_t>::max()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Window target buffer size overflow: (window_size=%lld - 1) * "
+            "window_stride=%lld + 1 is not representable.",
+            static_cast<long long>(window_size),
+            static_cast<long long>(window_stride)));
+      }
+      return static_cast<size_t>(result);
     }
 
     mutex mu_;
