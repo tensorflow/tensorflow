@@ -623,19 +623,27 @@ def _reduce(
   # NumPy raises AxisError for out-of-bounds axes instead of letting the
   # backend kernel fail with a confusing error.
   maybe_rank = a.shape.rank
-  if (
-      maybe_rank is not None
-      and axis is not None
-      and isinstance(axis, (list, tuple, range, np.ndarray))
-      and builtins.all(isinstance(x, (int, np.integer)) for x in axis)
-  ):
-    for ax in axis:
-      normalized = ax + maybe_rank if ax < 0 else ax
-      if normalized < 0 or normalized >= maybe_rank:
-        raise ValueError(
-            f'Argument `axis` (received axis={ax}) is out of bounds '
-            f'for input of rank {maybe_rank}.'
-        )
+  if maybe_rank is not None and axis is not None:
+    # Wrap scalar axes into a sequence so both ints and sequences of ints
+    # are validated; 0-d NumPy arrays cannot be iterated directly.
+    if isinstance(axis, (int, np.integer)):
+      static_axes = (axis,)
+    elif isinstance(axis, np.ndarray) and axis.ndim == 0:
+      static_axes = (int(axis),)
+    elif isinstance(axis, (list, tuple, range, np.ndarray)):
+      static_axes = axis
+    else:
+      static_axes = None
+    if static_axes is not None and builtins.all(
+        isinstance(ax, (int, np.integer)) for ax in static_axes
+    ):
+      for ax in static_axes:
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f'Argument `axis` (received axis={ax}) is out of bounds '
+              f'for input of rank {maybe_rank}.'
+          )
   if (
       dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
   ) and tf_bool_fn is not None:
