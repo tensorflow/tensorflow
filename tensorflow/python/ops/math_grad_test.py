@@ -833,6 +833,42 @@ class PowGradTest(test.TestCase):
     g = self.evaluate(g)
     self.assertAllClose([-2., 0., 2.], g)
 
+  def test_pow_grad_y_finite_when_forward_overflows(self):
+    # Regression test for GitHub issue #126627 (b/555972764).
+    cases = [
+        (dtypes.float64, 2.0, 1024.0, 1.0, 1.2460659279417838e308),
+        (dtypes.float64, 0.5, -1024.0, 1.0, -1.2460659279417838e308),
+        (dtypes.float64, 2.0, 1025.0, 0.25, 6.230329639708919e307),
+        (dtypes.float32, 2.0, 128.0, 1.0, 2.3586576e38),
+    ]
+    for dtype, x_val, y_val, scale_val, expected in cases:
+      with self.subTest(dtype=dtype, x=x_val, y=y_val, scale=scale_val):
+        x = constant_op.constant(x_val, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        scale = constant_op.constant(scale_val, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(y)
+          z = math_ops.pow(x, y)
+        gy = self.evaluate(tape.gradient(z, y, output_gradients=scale))
+        self.assertTrue(np.isfinite(gy))
+        self.assertAllClose(expected, gy, rtol=1e-6)
+
+  def test_pow_grad_y_second_order_when_forward_overflows(self):
+    x = constant_op.constant(1.5, dtype=dtypes.float64)
+    y = constant_op.constant(1751.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape2:
+      tape2.watch(y)
+      with backprop.GradientTape() as tape1:
+        tape1.watch(y)
+        z = math_ops.pow(x, y)
+      gy = tape1.gradient(z, y)
+    ggy = self.evaluate(tape2.gradient(gy, y))
+    # At x=1.5, y=1751, z = 1.5^1751 overflows to inf in float64, while both
+    # dy = 1.5^1751 * ln(1.5) and d^2y = 1.5^1751 * (ln 1.5)^2 are finite.
+    self.assertTrue(np.isinf(self.evaluate(z)))
+    self.assertTrue(np.isfinite(ggy))
+    self.assertAllClose(3.562063418193927e307, ggy, rtol=1e-6)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NextAfterTest(test.TestCase):

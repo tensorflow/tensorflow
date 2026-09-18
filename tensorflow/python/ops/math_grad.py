@@ -1552,6 +1552,7 @@ def _PowGrad(op: ops.Operation, grad):
   if 1 in skip_input_indices:
     gy = None
   else:
+    z = op.outputs[0]
     # Avoid false singularity at x = 0
     if x.dtype.is_complex:
       # real(x) < 0 is fine for the complex case
@@ -1561,7 +1562,20 @@ def _PowGrad(op: ops.Operation, grad):
       mask = cx > 0
     safe_x = array_ops.where(mask, cx, array_ops.ones_like(x))
     log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-    gy = grad * math_ops.conj(op.outputs[0]) * log_x
+    if x.dtype.is_floating:
+      # Split exponent if z = x**y overflows but grad * x**y * ln(x) is finite.
+      use_split = math_ops.logical_and(mask, math_ops.is_inf(z))
+      safe_z = array_ops.where_v2(use_split, array_ops.zeros_like(z), z)
+      safe_half_y = array_ops.where_v2(
+          use_split,
+          cy * math_ops.cast(0.5, cy.dtype),
+          array_ops.zeros_like(cy),
+      )
+      h = math_ops.pow(safe_x, safe_half_y)
+      gy_inf = (grad * h) * (h * log_x)
+      gy = array_ops.where_v2(use_split, gy_inf, grad * safe_z * log_x)
+    else:
+      gy = grad * math_ops.conj(z) * log_x
 
   return _ReduceGradientArgs(x, y, gx, gy)
 
