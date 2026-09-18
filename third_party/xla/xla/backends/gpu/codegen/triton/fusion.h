@@ -56,9 +56,7 @@ class TritonFusion : public FusionInterface {
   // This is a more concrete emission result that can be used in
   // places where we know we are dealing with Triton fusions.
   struct EmitResult {
-    // Owned by the `KernelReuseCache` of the `IrEmitterContext` that the
-    // result was emitted with. Never null.
-    const KernelReuseCache::Entry* entry;
+    KernelReuseCache::Entry entry;
     emitters::KernelArguments kernel_arguments;
   };
   using EmitThunk =

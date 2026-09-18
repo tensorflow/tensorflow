@@ -46,8 +46,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/util/sorted_range.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 namespace {
@@ -89,17 +88,15 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
     return absl::OkStatus();
   }
   absl::MutexLock lock(m_);
-  for (const auto& [name, entry] : tsl::KeySortedRange(proto.entries())) {
+  for (const auto& [name, entry] : proto.entries()) {
     std::optional<se::ClusterDim> cluster_dim;
     if (entry.has_cluster_dim()) {
       cluster_dim =
           se::ClusterDim{entry.cluster_dim().x(), entry.cluster_dim().y(),
                          entry.cluster_dim().z()};
     }
-    std::shared_ptr<const std::vector<uint8_t>> binary =
-        std::make_shared<const std::vector<uint8_t>>(
-            entry.binary().data(),
-            entry.binary().data() + entry.binary().size());
+    std::vector<uint8_t> binary(entry.binary().data(),
+                                entry.binary().data() + entry.binary().size());
     TF_RET_CHECK(
         cache_
             .insert(
@@ -119,7 +116,7 @@ CompilationCacheProto KernelReuseCache::Export() const {
   absl::MutexLock lock(m_);
   CompilationCacheProto proto;
   proto.set_compatibility_version(kCacheCompatibilityVersion);
-  for (const auto& [fingerprint, future] : tsl::KeySortedRange(cache_)) {
+  for (const auto& [fingerprint, future] : cache_) {
     const absl::StatusOr<Entry>& cache_entry = future.Await();
     if (!cache_entry.ok()) {
       // If a generator failed, the Future will hold an error.
@@ -150,11 +147,9 @@ CompilationCacheProto KernelReuseCache::Export() const {
       *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
     }
     proto_entry.set_shmem_bytes(cache_entry->shmem_bytes);
-    if (cache_entry->binary != nullptr) {
-      proto_entry.set_binary(absl::string_view(
-          reinterpret_cast<const char*>(cache_entry->binary->data()),
-          cache_entry->binary->size()));
-    }
+    proto_entry.set_binary(absl::string_view(
+        reinterpret_cast<const char*>(cache_entry->binary.data()),
+        cache_entry->binary.size()));
   }
   return proto;
 }
@@ -173,13 +168,12 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
   }
 
   absl::flat_hash_set<std::string> kernel_fingerprints;
-  for (const auto& [_, entry] : tsl::KeySortedRange(disk_cache.entries())) {
+  for (const auto& [_, entry] : disk_cache.entries()) {
     kernel_fingerprints.insert(entry.fingerprint());
   }
 
   int stored_kernel_count = 0;
-  for (const auto& [name, entry] :
-       tsl::KeySortedRange(current_cache.entries())) {
+  for (const auto& [name, entry] : current_cache.entries()) {
     if (kernel_fingerprints.contains(entry.fingerprint())) {
       continue;
     }

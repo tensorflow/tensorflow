@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
-#include <cstdint>
-#include <memory>
 #include <string>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,7 +22,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -90,11 +89,8 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        KernelReuseCache::Entry entry;
-        entry.kernel_name = kernel_name;
-        entry.binary = std::make_shared<const std::vector<uint8_t>>(
-            std::vector<uint8_t>{5, 6});
-        return entry;
+        return KernelReuseCache::Entry{.kernel_name = kernel_name,
+                                       .binary = {5, 6}};
       });
       return cache.Export();
     }("k1");
@@ -105,11 +101,8 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
-        KernelReuseCache::Entry entry;
-        entry.kernel_name = kernel_name;
-        entry.binary = std::make_shared<const std::vector<uint8_t>>(
-            std::vector<uint8_t>{7, 8});
-        return entry;
+        return KernelReuseCache::Entry{.kernel_name = kernel_name,
+                                       .binary = {7, 8}};
       });
       return cache.Export();
     }("k2");
