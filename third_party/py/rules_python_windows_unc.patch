@@ -1,0 +1,132 @@
+diff --git a/python/private/python_bootstrap_template.txt b/python/private/python_bootstrap_template.txt
+index 482918c..3b208bf 100644
+--- a/python/private/python_bootstrap_template.txt
++++ b/python/private/python_bootstrap_template.txt
+@@ -141,20 +141,6 @@ def get_windows_path_with_unc_prefix(path):
+   if not IS_WINDOWS or sys.version_info[0] < 3:
+     return path
+ 
+-  # Starting in Windows 10, version 1607(OS build 14393), MAX_PATH limitations have been
+-  # removed from common Win32 file and directory functions.
+-  # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
+-  import platform
+-  win32_version = None
+-  # Windows 2022 with Python 3.12.8 gives flakey errors, so try a couple times.
+-  for _ in range(3):
+-    try:
+-      win32_version = platform.win32_ver()[1]
+-      break
+-    except (ValueError, KeyError):
+-      pass
+-  if win32_version and win32_version >= '10.0.14393':
+-    return path
+ 
+   # import sysconfig only now to maintain python 2.6 compatibility
+   import sysconfig
+diff --git a/python/private/site_init_template.py b/python/private/site_init_template.py
+index 12be98e..2dc4300 100644
+--- a/python/private/site_init_template.py
++++ b/python/private/site_init_template.py
+@@ -93,21 +93,6 @@ def _get_windows_path_with_unc_prefix(path):
+     if not _is_windows() or sys.version_info[0] < 3:
+         return path
+ 
+-    # Starting in Windows 10, version 1607(OS build 14393), MAX_PATH limitations have been
+-    # removed from common Win32 file and directory functions.
+-    # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
+-    import platform
+-
+-    win32_version = None
+-    # Windows 2022 with Python 3.12.8 gives flakey errors, so try a couple times.
+-    for _ in range(3):
+-        try:
+-            win32_version = platform.win32_ver()[1]
+-            break
+-        except (ValueError, KeyError):
+-            pass
+-    if win32_version and win32_version >= "10.0.14393":
+-        return path
+ 
+     # import sysconfig only now to maintain python 2.6 compatibility
+     import sysconfig
+diff --git a/python/private/stage2_bootstrap_template.py b/python/private/stage2_bootstrap_template.py
+index f445ad2..740ef24 100644
+--- a/python/private/stage2_bootstrap_template.py
++++ b/python/private/stage2_bootstrap_template.py
+@@ -113,22 +113,6 @@ def get_windows_path_with_unc_prefix(path):
+     if not IS_WINDOWS or sys.version_info[0] < 3:
+         return path
+ 
+-    # Starting in Windows 10, version 1607(OS build 14393), MAX_PATH limitations have been
+-    # removed from common Win32 file and directory functions.
+-    # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
+-    import platform
+-
+-    win32_version = None
+-    # Windows 2022 with Python 3.12.8 gives flakey errors, so try a couple times.
+-    for _ in range(3):
+-        try:
+-            win32_version = platform.win32_ver()[1]
+-            break
+-        except (ValueError, KeyError):
+-            pass
+-    if win32_version and win32_version >= "10.0.14393":
+-        return path
+-
+     # import sysconfig only now to maintain python 2.6 compatibility
+     import sysconfig
+ 
+@@ -136,11 +120,12 @@ def get_windows_path_with_unc_prefix(path):
+         return path
+ 
+     # Lets start the unicode fun
+-    if path.startswith(unicode_prefix):  # noqa: F821
++    unicode_prefix = "\\\\?\\"
++    if path.startswith(unicode_prefix):
+         return path
+ 
+     # os.path.abspath returns a normalized absolute path
+-    return unicode_prefix + os.path.abspath(path)  # noqa: F821
++    return unicode_prefix + os.path.abspath(path)
+ 
+ 
+ def print_verbose(*args, mapping=None, values=None):
+@@ -504,6 +489,8 @@ def main():
+         runfiles_root = find_runfiles_root("")
+ 
+     site_packages = os.path.join(runfiles_root, VENV_ROOT, VENV_SITE_PACKAGES)
++    if IS_WINDOWS:
++        site_packages = get_windows_path_with_unc_prefix(site_packages)
+     if site_packages not in sys.path and os.path.exists(site_packages):
+         # This can happen in a few situations:
+         # 1. We're running with a different Python version than was built with.
+@@ -551,6 +538,11 @@ def main():
+             prepend_path_entries = [
+                 os.path.join(runfiles_root, os.path.dirname(main_rel_path))
+             ]
++            if IS_WINDOWS:
++                prepend_path_entries = [
++                    get_windows_path_with_unc_prefix(p)
++                    for p in prepend_path_entries
++                ]
+         else:
+             prepend_path_entries = []
+ 
+diff --git a/python/private/zipapp/zip_main_template.py b/python/private/zipapp/zip_main_template.py
+index 709e088..3c291e1 100644
+--- a/python/private/zipapp/zip_main_template.py
++++ b/python/private/zipapp/zip_main_template.py
+@@ -103,13 +103,6 @@ def get_windows_path_with_unc_prefix(path):
+     if not IS_WINDOWS or sys.version_info[0] < 3:
+         return path
+ 
+-    # Starting in Windows 10, version 1607(OS build 14393), MAX_PATH limitations have been
+-    # removed from common Win32 file and directory functions.
+-    # Related doc: https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd#enable-long-paths-in-windows-10-version-1607-and-later
+-    import platform
+-
+-    if platform.win32_ver()[1] >= "10.0.14393":
+-        return path
+ 
+     # import sysconfig only now to maintain python 2.6 compatibility
+     import sysconfig

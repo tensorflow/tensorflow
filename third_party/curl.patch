@@ -1,0 +1,13 @@
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -248,10 +248,6 @@
+ 
+     # Extra defines needed by curl
+     "-DBUILDING_LIBCURL",
+-    # These 3 all have to be set correctly
+-    "-DCURL_HIDDEN_SYMBOLS",
+-    '-DCURL_EXTERN_SYMBOL=__attribute__((__visibility__(\"default\")))',
+-    "-fvisibility=hidden",
+ ]
+ 
+ expand_template(

@@ -181,6 +181,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla/tsl/platform:logging",
     ],
+    alwayslink = True,
 )
 
 cc_library(

@@ -72,3 +72,9 @@ py_library(
     srcs = ["setup_py_nvidia_dependencies_util.py"],
     visibility = ["//visibility:public"],
 )
+
+exports_files([
+    "rules_python_freethreaded.patch",
+    "rules_python_scope.patch",
+    "rules_python_windows_unc.patch",
+])
