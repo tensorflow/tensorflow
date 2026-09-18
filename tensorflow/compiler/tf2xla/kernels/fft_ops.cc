@@ -78,13 +78,16 @@ class GenericFftOp : public XlaOpKernel {
       }
       for (int i = 0; i < fft_rank_; i++) {
         int index = input_shape.dims() - fft_rank_ + i;
-        OP_REQUIRES(
-            ctx,
-            input_shape.dim_size(index) == 0 ||
-                input_shape.dim_size(index) >= expected_sizes[i],
-            absl::InvalidArgumentError(absl::StrCat(
-                "Input dimension ", index, " must have length of at least ",
-                expected_sizes[i], " but got: ", input_shape.dim_size(index))));
+        if (fft_type_ == FftType::IRFFT) {
+          OP_REQUIRES(
+              ctx,
+              input_shape.dim_size(index) == 0 ||
+                  input_shape.dim_size(index) >= expected_sizes[i],
+              absl::InvalidArgumentError(absl::StrCat(
+                  "Input dimension ", index, " must have length of at least ",
+                  expected_sizes[i],
+                  " but got: ", input_shape.dim_size(index))));
+        }
         if (input_shape.dim_size(index) > expected_sizes[i]) {
           slice_sizes[index] = expected_sizes[i];
         } else {
