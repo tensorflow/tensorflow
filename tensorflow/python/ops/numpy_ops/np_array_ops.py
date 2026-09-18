@@ -1319,7 +1319,7 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
   # backend kernel fail with a confusing error. `axis` is an insertion
   # position, so rank itself is in bounds (NumPy 2.x allows axis == rank).
   if arrays:
-    maybe_rank = unwrapped_arrays[0].shape.rank
+    maybe_rank = asarray(unwrapped_arrays[0]).shape.rank
     if (
         maybe_rank is not None
         and isinstance(axis, (int, np.integer))
