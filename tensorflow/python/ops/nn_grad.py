@@ -1138,12 +1138,20 @@ def _MeanAggregator(inputs, segments):
   value computed from the values that belong to the same segment.
 
   Args:
-   inputs: A 2-tensor. Aggregation is done over dimension 1.
-   segments: A 2-tensor, same shape as `input`.
+   inputs: A 1-tensor or a 2-tensor. Aggregation is done over the last axis.
+   segments: A tensor of the same shape as `input`.
 
   Returns:
     The result, same shape and type as `inputs`.
   """
+  # Aggregation below runs one row at a time, so a 1-D input is treated as a
+  # single row.  Splitting a 1-D input along axis 0 would instead turn every
+  # element into its own row, which collapses each segment to a single element
+  # and leaves the gradient of pooled blocks unaggregated.
+  is_1d = inputs.shape.rank == 1
+  if is_1d:
+    inputs = array_ops.expand_dims(inputs, 0)
+    segments = array_ops.expand_dims(segments, 0)
   result = []
   for inputs_i, segments_i in zip(
       array_ops.split(inputs, inputs.shape[0]),
@@ -1153,7 +1161,10 @@ def _MeanAggregator(inputs, segments):
         inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
     result.append(
         array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
-  return array_ops_stack.stack(result, axis=0)
+  result = array_ops_stack.stack(result, axis=0)
+  if is_1d:
+    result = array_ops.squeeze(result, [0])
+  return result
 
 
 # We have to register the gradients for these ops so that tensorflow will know
