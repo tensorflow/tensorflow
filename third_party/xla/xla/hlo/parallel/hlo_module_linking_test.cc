@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/separate_compilation/hlo_module_linking.h"
+#include "xla/hlo/parallel/hlo_module_linking.h"
 
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -27,17 +28,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
-#include "xla/hlo/separate_compilation/hlo_linking_manifest.h"
-#include "xla/hlo/separate_compilation/hlo_module_splitting.h"
+#include "xla/hlo/parallel/hlo_linking_manifest.h"
+#include "xla/hlo/parallel/hlo_module_splitting.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
-namespace xla::separate_compilation {
+// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
+
+namespace xla::parallel {
 namespace {
 
 // Function to normalize an HloModule by removing/replacing names.
@@ -108,12 +109,13 @@ TEST_F(LinkingTest, SingleCallLinking) {
       ROOT %result = f32[] call(%p), to_apply=%comp
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto original_module,
-                          ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto original_module,
+                       ParseAndReturnVerifiedModule(module_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*original_module));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*original_module));
   // LOG the split group.
+  // NOLINTBEGIN(*-custom-deterministic-iteration-order)
   for (const auto& split : module_split_group->module_splits) {
     LOG(INFO) << "Split: " << split->submodule->name();
     LOG(INFO) << "Split module: " << split->submodule->ToString();
@@ -143,32 +145,32 @@ TEST_F(LinkingTest, SingleCallLinking) {
        module_split_group->linking_manifest.stub_links) {
     LOG(INFO) << "  " << stub->name() << " ==>> " << comp->name();
   }
+  // NOLINTEND(*-custom-deterministic-iteration-order)
 
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  TF_ASSERT_OK_AND_ASSIGN(
-      const HloComputation* split_group_root,
-      module_split_group->GetClonedComputation(original_root));
+  ASSERT_OK_AND_ASSIGN(const HloComputation* split_group_root,
+                       module_split_group->GetClonedComputation(original_root));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
-                          LinkComputation(linking_manifest, split_group_root));
+  ASSERT_OK_AND_ASSIGN(auto linked_module,
+                       LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform->id()));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   VLOG(6) << linked_module->ToString();
-  TF_ASSERT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 TEST_F(LinkingTest, ChainGraphLinking) {
@@ -200,36 +202,35 @@ TEST_F(LinkingTest, ChainGraphLinking) {
       ROOT %result = f32[] add(%call_res, %p)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto original_module,
-                          ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto original_module,
+                       ParseAndReturnVerifiedModule(module_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*original_module));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*original_module));
 
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  TF_ASSERT_OK_AND_ASSIGN(
-      const HloComputation* split_group_root,
-      module_split_group->GetClonedComputation(original_root));
+  ASSERT_OK_AND_ASSIGN(const HloComputation* split_group_root,
+                       module_split_group->GetClonedComputation(original_root));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
-                          LinkComputation(linking_manifest, split_group_root));
+  ASSERT_OK_AND_ASSIGN(auto linked_module,
+                       LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform->id()));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
   VLOG(6) << linked_module->ToString();
-  TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 TEST_F(LinkingTest, DiamondGraphLinking) {
@@ -273,38 +274,39 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
       ROOT %result = f32[] add(%call_a, %call_b)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto original_module,
-                          ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto original_module,
+                       ParseAndReturnVerifiedModule(module_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*original_module));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*original_module));
 
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  TF_ASSERT_OK_AND_ASSIGN(
-      const HloComputation* split_group_root,
-      module_split_group->GetClonedComputation(original_root));
+  ASSERT_OK_AND_ASSIGN(const HloComputation* split_group_root,
+                       module_split_group->GetClonedComputation(original_root));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
-                          LinkComputation(linking_manifest, split_group_root));
+  ASSERT_OK_AND_ASSIGN(auto linked_module,
+                       LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform->id()));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   VLOG(6) << linked_module->ToString();
-  TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 }  // namespace
-}  // namespace xla::separate_compilation
+}  // namespace xla::parallel
+
+// NOLINTEND(clang-diagnostic-pre-c++20-compat)

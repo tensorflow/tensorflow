@@ -2017,6 +2017,104 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloEnums.td b/stablehlo/stablehlo/dial
  
 +
  #endif // STABLEHLO_DIALECT_CHLO_ENUMS
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -827,6 +827,10 @@
+   if (adaptor.getScanDimSize().has_value()) {
+     dimSize = adaptor.getScanDimSize().value();
+   }
++  int64_t dimBound = ShapedType::kDynamic;
++  // Prototype encoding attribute used to construct dialect type extensions
++  // if an output does not already have an encoding.
++  Attribute prototypeEncoding;
+   for (auto [i, type] : llvm::enumerate(adaptor.getInputs().getTypes())) {
+     auto inputType = dyn_cast<RankedTensorType>(type);
+     if (!inputType) {
+@@ -839,7 +843,26 @@
+     if (dimSize == ShapedType::kDynamic) {
+       dimSize = inputType.getDimSize(dim);
+     }
+-  }
++    if (inputType.getEncoding()) {
++      prototypeEncoding = inputType.getEncoding();
++    }
++    ArrayRef<int64_t> bounds = hlo::encodingToBounds(inputType.getEncoding());
++    if (!bounds.empty() && dim < static_cast<int64_t>(bounds.size())) {
++      int64_t currentBound = bounds[dim];
++      if (currentBound != ShapedType::kDynamic) {
++        if (dimBound == ShapedType::kDynamic) {
++          dimBound = currentBound;
++        } else {
++          dimBound = std::min(dimBound, currentBound);
++        }
++      }
++    }
++  }
++
++  // If the scan dimension size is dynamic, propagate any bound inferred from
++  // the inputs; otherwise static dimensions do not need a bound.
++  const int64_t insertBound =
++      (dimSize == ShapedType::kDynamic) ? dimBound : ShapedType::kDynamic;
+ 
+   for (auto [i, type] : llvm::enumerate(terminator->getOperands().getTypes())) {
+     auto resultType = dyn_cast<RankedTensorType>(type);
+@@ -849,10 +872,34 @@
+     }
+     SmallVector<int64_t> shape(resultType.getShape().begin(),
+                                resultType.getShape().end());
++    Attribute encoding = resultType.getEncoding();
++    // The first `numOutputs` terminator operands correspond to scan outputs,
++    // which have the scan dimension re-inserted. The remaining operands are
++    // carries whose shapes and encodings are preserved as-is.
+     if (i < numOutputs) {
+       shape.insert(std::next(shape.begin(), dim), dimSize);
+-    }
+-    inferredReturnShapes.emplace_back(shape, resultType.getElementType());
++      SmallVector<int64_t> resultBounds =
++          llvm::to_vector(hlo::encodingToBounds(encoding));
++      // Re-insert bounds along the scan dimension if the result has bounds or
++      // if the scan dimension has a bound.
++      if (!resultBounds.empty() || insertBound != ShapedType::kDynamic) {
++        // If the body result did not have bounds, initialize all dimensions to
++        // dynamic and borrow the prototype encoding to create dialect type
++        // extensions.
++        if (resultBounds.empty()) {
++          resultBounds.assign(resultType.getRank(), ShapedType::kDynamic);
++          if (!encoding) {
++            encoding = prototypeEncoding;
++          }
++        }
++        resultBounds.insert(std::next(resultBounds.begin(), dim), insertBound);
++        if (encoding) {
++          encoding = hlo::boundsToEncoding(encoding, resultBounds);
++        }
++      }
++    }
++    inferredReturnShapes.emplace_back(shape, resultType.getElementType(),
++                                      encoding);
+   }
+ 
+   return success();
+@@ -902,7 +949,17 @@
+     if (i < getInputs().size()) {
+       auto argShape = llvm::to_vector(argType.getShape());
+       argShape.erase(std::next(argShape.begin(), dim));
+-      argType = argType.clone(argShape);
++      Attribute encoding = argType.getEncoding();
++      SmallVector<int64_t> argBounds =
++          llvm::to_vector(hlo::encodingToBounds(encoding));
++      if (!argBounds.empty()) {
++        argBounds.erase(std::next(argBounds.begin(), dim));
++        encoding = argBounds.empty()
++                       ? Attribute()
++                       : hlo::boundsToEncoding(encoding, argBounds);
++      }
++      argType =
++          RankedTensorType::get(argShape, argType.getElementType(), encoding);
+     }
+     if (!hlo::isCompatibleForHloTypeInference(
+             argType, bodyBlock.getArgument(i).getType())) {
 diff --ruN a/stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp b/stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
 --- stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
 +++ stablehlo/stablehlo/dialect/ReplicaGroupUtils.cpp
@@ -2974,6 +3072,65 @@ diff --ruN a/stablehlo/stablehlo/tests/BUILD.bazel b/stablehlo/stablehlo/tests/B
 +        "//stablehlo/tests:stablehlo_tests",
 +    ],
 +)
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -5424,6 +5424,55 @@
+ 
+ // -----
+ 
++// CHECK-LABEL:   func.func @scan_bounded(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<?x?xi32, #stablehlo.bounds<2, 3>>,
++// CHECK-SAME:      %[[ARG1:.*]]: tensor<?xi32, #stablehlo.bounds<3>>) -> (tensor<?x?xi32, #stablehlo.bounds<2, 3>>, tensor<?xi32, #stablehlo.bounds<3>>) {
++// CHECK:           %[[GET_DIM_SIZE_0:.*]] = stablehlo.get_dimension_size %[[ARG0]], dim = 0 : (tensor<?x?xi32, #stablehlo.bounds<2, 3>>) -> tensor<i32>
++// CHECK:           %[[CONVERT_0:.*]] = stablehlo.convert %[[GET_DIM_SIZE_0]] : (tensor<i32>) -> tensor<i64>
++// CHECK:           %[[C0:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:           %[[C0_I32:.*]] = stablehlo.constant dense<0> : tensor<i32>
++// CHECK:           %[[SHAPE:.*]] = shape.shape_of %[[ARG0]] : tensor<?x?xi32, #stablehlo.bounds<2, 3>> -> tensor<2xindex>
++// CHECK:           %[[INIT_OUT:.*]] = stablehlo.dynamic_broadcast_in_dim %[[C0_I32]], %[[SHAPE]], dims = [] : (tensor<i32>, tensor<2xindex>) -> tensor<?x?xi32, #stablehlo.bounds<2, 3>>
++// CHECK:           %[[WHILE:.*]]:3 = stablehlo.while(%[[ITER_I:.*]] = %[[C0]], %[[ITER_CARRY:.*]] = %[[ARG1]], %[[ITER_OUT:.*]] = %[[INIT_OUT]]) : tensor<i64>, tensor<?xi32, #stablehlo.bounds<3>>, tensor<?x?xi32, #stablehlo.bounds<2, 3>>
++// CHECK:           cond {
++// CHECK:             %[[CMP:.*]] = stablehlo.compare LT, %[[ITER_I]], %[[CONVERT_0]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
++// CHECK:             stablehlo.return %[[CMP]] : tensor<i1>
++// CHECK:           } do {
++// CHECK:             %[[C0_1:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:             %[[I_RESHAPED:.*]] = stablehlo.reshape %[[ITER_I]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK:             %[[C0_RESHAPED:.*]] = stablehlo.reshape %[[C0_1]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK:             %[[START_INDICES:.*]] = stablehlo.concatenate %[[I_RESHAPED]], %[[C0_RESHAPED]], dim = 0 : (tensor<1xi64>, tensor<1xi64>) -> tensor<2xi64>
++// CHECK:             %[[C1:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK:             %[[I_PLUS_1:.*]] = stablehlo.add %[[ITER_I]], %[[C1]] : tensor<i64>
++// CHECK:             %[[GET_DIM_SIZE_1:.*]] = stablehlo.get_dimension_size %[[ARG0]], dim = 1 : (tensor<?x?xi32, #stablehlo.bounds<2, 3>>) -> tensor<i32>
++// CHECK:             %[[CONVERT_1:.*]] = stablehlo.convert %[[GET_DIM_SIZE_1]] : (tensor<i32>) -> tensor<i64>
++// CHECK:             %[[LIMIT_0:.*]] = stablehlo.reshape %[[I_PLUS_1]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK:             %[[LIMIT_1:.*]] = stablehlo.reshape %[[CONVERT_1]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK:             %[[LIMIT_INDICES:.*]] = stablehlo.concatenate %[[LIMIT_0]], %[[LIMIT_1]], dim = 0 : (tensor<1xi64>, tensor<1xi64>) -> tensor<2xi64>
++// CHECK:             %[[STRIDES:.*]] = stablehlo.constant dense<1> : tensor<2xi64>
++// CHECK:             %[[SLICE:.*]] = stablehlo.real_dynamic_slice %[[ARG0]], %[[START_INDICES]], %[[LIMIT_INDICES]], %[[STRIDES]] : (tensor<?x?xi32, #stablehlo.bounds<2, 3>>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x?xi32, #stablehlo.bounds<?, 3>>
++// CHECK:             %[[INPUT_ELEM:.*]] = stablehlo.reshape %[[SLICE]] : (tensor<1x?xi32, #stablehlo.bounds<?, 3>>) -> tensor<?xi32, #stablehlo.bounds<3>>
++// CHECK:             %[[ADD:.*]] = stablehlo.add %[[INPUT_ELEM]], %[[ITER_CARRY]] : tensor<?xi32, #stablehlo.bounds<3>>
++// CHECK:             %[[OUT_ELEM:.*]] = stablehlo.reshape %[[ADD]] : (tensor<?xi32, #stablehlo.bounds<3>>) -> tensor<1x?xi32, #stablehlo.bounds<?, 3>>
++// CHECK:             %[[C0_2:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK:             %[[UPDATED_OUT:.*]] = stablehlo.dynamic_update_slice %[[ITER_OUT]], %[[OUT_ELEM]], %[[ITER_I]], %[[C0_2]] : (tensor<?x?xi32, #stablehlo.bounds<2, 3>>, tensor<1x?xi32, #stablehlo.bounds<?, 3>>, tensor<i64>, tensor<i64>) -> tensor<?x?xi32, #stablehlo.bounds<2, 3>>
++// CHECK:             %[[C1_2:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK:             %[[NEXT_I:.*]] = stablehlo.add %[[ITER_I]], %[[C1_2]] : tensor<i64>
++// CHECK:             stablehlo.return %[[NEXT_I]], %[[ADD]], %[[UPDATED_OUT]] : tensor<i64>, tensor<?xi32, #stablehlo.bounds<3>>, tensor<?x?xi32, #stablehlo.bounds<2, 3>>
++// CHECK:           }
++// CHECK:           return %[[WHILE]]#2, %[[WHILE]]#1 : tensor<?x?xi32, #stablehlo.bounds<2, 3>>, tensor<?xi32, #stablehlo.bounds<3>>
++// CHECK:         }
++func.func @scan_bounded(%arg0: tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>) {
++  %0:2 = chlo.scan(%arg0) inits(%arg1) dimension=0 {
++  ^bb0(%scan_arg0: tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>, %scan_arg1: tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>
++    stablehlo.return %1, %1 : tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>
++  } : (tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>)
++  func.return %0#0, %0#1 : tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [3]>>
++}
++
++// -----
++
+ // CHECK-LABEL:   func.func @mulhi_i32(
+ // CHECK-SAME:      %[[ARG0:.*]]: tensor<4xi32>,
+ // CHECK-SAME:      %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32> {
 diff --ruN a/stablehlo/stablehlo/tests/interpret/all_gather.mlir b/stablehlo/stablehlo/tests/interpret/all_gather.mlir
 --- stablehlo/stablehlo/tests/interpret/all_gather.mlir
 +++ stablehlo/stablehlo/tests/interpret/all_gather.mlir
@@ -3164,6 +3321,91 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/reduce_scatter.mlir b/stablehlo
 +    func.return
 +  }
 +}
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -485,6 +485,50 @@
+     stablehlo.return %1, %2, %1, %2 : tensor<3xf32>, tensor<3xi32>, tensor<3xf32>, tensor<3xi32>
+   } : (tensor<2x3xf32>, tensor<2x3xi32>, tensor<3xf32>, tensor<3xi32>) -> (tensor<2x3xf32>, tensor<2x3xi32>, tensor<3xf32>, tensor<3xi32>)
+   func.return %0#0, %0#1 : tensor<2x3xf32>, tensor<2x3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_bounded_dynamism
++func.func @scan_bounded_dynamism(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) {
++  // CHECK: chlo.scan
++  // CHECK: } : (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?xf32, #stablehlo.bounds<3>>) -> (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?xf32, #stablehlo.bounds<3>>)
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
++  ^bb0(%input0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %carry0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++    stablehlo.return %2, %2 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++  } : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>)
++  func.return %0, %1 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_bounded_dynamism_multiple_inputs
++func.func @scan_bounded_dynamism_multiple_inputs(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %arg2: tensor<?x?x?xi32, #stablehlo.type_extensions<bounds = [2, 4, 5]>>, %arg3: tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?x?xi32, #stablehlo.type_extensions<bounds = [2, 4, 5]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>) {
++  // CHECK: chlo.scan
++  // CHECK: } : (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?x?x?xi32, #stablehlo.bounds<2, 4, 5>>, tensor<?xf32, #stablehlo.bounds<3>>, tensor<?x?xi32, #stablehlo.bounds<4, 5>>) -> (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?x?x?xi32, #stablehlo.bounds<2, 4, 5>>, tensor<?xf32, #stablehlo.bounds<3>>, tensor<?x?xi32, #stablehlo.bounds<4, 5>>)
++  %0:4 = chlo.scan (%arg0, %arg2) inits (%arg1, %arg3) dimension = 0 {
++  ^bb0(%input0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %input1: tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>, %carry0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %carry1: tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>):
++    %1 = stablehlo.add %input0, %carry0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++    %2 = stablehlo.add %input1, %carry1 : tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>
++    stablehlo.return %1, %2, %1, %2 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>
++  } : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?x?xi32, #stablehlo.type_extensions<bounds = [2, 4, 5]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?x?xi32, #stablehlo.type_extensions<bounds = [2, 4, 5]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>)
++  func.return %0#0, %0#1, %0#2, %0#3 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?x?xi32, #stablehlo.type_extensions<bounds = [2, 4, 5]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [4, 5]>>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_bounded_dynamism_multiple_inputs_same_rank
++func.func @scan_bounded_dynamism_multiple_inputs_same_rank(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %arg2: tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 4]>>, %arg3: tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 4]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>) {
++  // CHECK: chlo.scan
++  // CHECK: } : (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?x?xi32, #stablehlo.bounds<2, 4>>, tensor<?xf32, #stablehlo.bounds<3>>, tensor<?xi32, #stablehlo.bounds<4>>) -> (tensor<?x?xf32, #stablehlo.bounds<2, 3>>, tensor<?x?xi32, #stablehlo.bounds<2, 4>>, tensor<?xf32, #stablehlo.bounds<3>>, tensor<?xi32, #stablehlo.bounds<4>>)
++  %0:4 = chlo.scan (%arg0, %arg2) inits (%arg1, %arg3) dimension = 0 {
++  ^bb0(%input0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %input1: tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>, %carry0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %carry1: tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>):
++    %1 = stablehlo.add %input0, %carry0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++    %2 = stablehlo.add %input1, %carry1 : tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>
++    stablehlo.return %1, %2, %1, %2 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>
++  } : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 4]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 4]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>)
++  func.return %0#0, %0#1, %0#2, %0#3 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?x?xi32, #stablehlo.type_extensions<bounds = [2, 4]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xi32, #stablehlo.type_extensions<bounds = [4]>>
+ }
+ 
+ // -----
+@@ -561,6 +605,30 @@
+ 
+ // -----
+ 
++func.func @scan_bounded_dynamism_mismatch(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) {
++  // expected-error @+1 {{'chlo.scan' op operand and body argument 0 are incompatible}}
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
++  ^bb0(%input0: tensor<4xf32>, %carry0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>):
++    stablehlo.return %carry0, %carry0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++  } : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>)
++  func.return %0, %1 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++}
++
++// -----
++
++func.func @scan_bounded_dynamism_result_rank_mismatch(%arg0: tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, %arg1: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?xf32>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) {
++  // expected-error @+2 {{op failed to infer returned types}}
++  // expected-error @+1 {{'chlo.scan' op inferred type(s) 'tensor<?x?xf32, #stablehlo.bounds<2, 3>>', 'tensor<?xf32, #stablehlo.bounds<3>>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xf32, #stablehlo.bounds<3>>'}}
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
++  ^bb0(%input0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, %carry0: tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++    stablehlo.return %2, %2 : tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++  } : (tensor<?x?xf32, #stablehlo.type_extensions<bounds = [2, 3]>>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>) -> (tensor<?xf32>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>)
++  func.return %0, %1 : tensor<?xf32>, tensor<?xf32, #stablehlo.type_extensions<bounds = [3]>>
++}
++
++// -----
++
+ // CHECK-LABEL: func @mulhi_i32
+ func.func @mulhi_i32(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+   %0 = "chlo.mulhi"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 diff --ruN a/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir b/stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 --- stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
 +++ stablehlo/stablehlo/tests/transforms/mesh_axes_replica_group_compatibility.mlir
@@ -3319,4 +3561,70 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b
      %2 = stablehlo.dynamic_iota %1, dim = 0 : (tensor<1xi64>) -> tensor<?xi32>
      return %2 : tensor<?xi32>
    }
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -2930,8 +2930,19 @@
+       SmallVector<int64_t> sliceShape(inputType.getShape().begin(),
+                                       inputType.getShape().end());
+       sliceShape[dim] = 1;
++      Attribute sliceEncoding;
++      ArrayRef<int64_t> inputBounds =
++          hlo::encodingToBounds(inputType.getEncoding());
++      if (!inputBounds.empty()) {
++        SmallVector<int64_t> sliceBounds(inputBounds.begin(),
++                                         inputBounds.end());
++        sliceBounds[dim] = ShapedType::kDynamic;
++        sliceEncoding =
++            hlo::boundsToEncoding(inputType.getEncoding(), sliceBounds);
++      }
+       auto sliceType =
+-          RankedTensorType::get(sliceShape, inputType.getElementType());
++          RankedTensorType::get(sliceShape, inputType.getElementType(),
++                                sliceEncoding);
+ 
+       Value slice;
+       if (inputType.hasStaticShape()) {
+@@ -2980,9 +2991,18 @@
+       for (int64_t d = 0; d < rank; ++d) {
+         if (d != dim) resultShape.push_back(sliceShape[d]);
+       }
++      Attribute resultEncoding;
++      if (!inputBounds.empty()) {
++        SmallVector<int64_t> resultBounds(inputBounds.begin(),
++                                          inputBounds.end());
++        resultBounds.erase(std::next(resultBounds.begin(), dim));
++        resultEncoding =
++            hlo::boundsToEncoding(inputType.getEncoding(), resultBounds);
++      }
+       Value reshaped = ReshapeOp::create(
+           rewriter, loc,
+-          RankedTensorType::get(resultShape, inputType.getElementType()),
++          RankedTensorType::get(resultShape, inputType.getElementType(),
++                                resultEncoding),
+           slice);
+       slicedInputs.push_back(reshaped);
+     }
+@@ -3004,9 +3024,20 @@
+       SmallVector<int64_t> elementShape(outputType.getShape().begin(),
+                                         outputType.getShape().end());
+       elementShape[dim] = 1;
++      Attribute elementEncoding;
++      ArrayRef<int64_t> outputBounds =
++          hlo::encodingToBounds(outputType.getEncoding());
++      if (!outputBounds.empty()) {
++        SmallVector<int64_t> elementBounds(outputBounds.begin(),
++                                           outputBounds.end());
++        elementBounds[dim] = ShapedType::kDynamic;
++        elementEncoding =
++            hlo::boundsToEncoding(outputType.getEncoding(), elementBounds);
++      }
+       Value reshapedElement = ReshapeOp::create(
+           rewriter, loc,
+-          RankedTensorType::get(elementShape, outputType.getElementType()),
++          RankedTensorType::get(elementShape, outputType.getElementType(),
++                                elementEncoding),
+           newElement);
+ 
+       int64_t outRank = outputType.getRank();
 

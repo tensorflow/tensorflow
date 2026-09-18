@@ -17450,6 +17450,55 @@ ENTRY %entry {
   EXPECT_THAT(topk_operand, op::Shape("bf16[32,256000]{1,0}"));
 }
 
+TEST_P(SpmdPartitioningTest, TopKCustomCallTupleRootUsesIndices) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+region {
+  index_lhs = s32[] parameter(2)
+  index_rhs = s32[] parameter(3)
+  value_lhs = bf16[] parameter(0)
+  value_rhs = bf16[] parameter(1)
+  ROOT compare = pred[] compare(value_lhs, value_rhs), direction=GT, order=TOTAL
+}
+
+ENTRY entry {
+  input = bf16[64,4096]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT topk = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(input), custom_call_target="TopK", called_computations={region}, sharding={{devices=[2,1]<=[2]}, {devices=[2,1]<=[2]}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
+}
+
+TEST_P(SpmdPartitioningTest, TopKCustomCallIndexRootUsesIndices) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+region {
+  index_lhs = s32[] parameter(2)
+  index_rhs = s32[] parameter(3)
+  value_lhs = bf16[] parameter(0)
+  value_rhs = bf16[] parameter(1)
+  ROOT compare = pred[] compare(value_lhs, value_rhs), direction=GT, order=TOTAL
+}
+
+ENTRY entry {
+  input = bf16[64,4096]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  topk = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(input), custom_call_target="TopK", called_computations={region}, sharding={{devices=[2,1]<=[2]}, {devices=[2,1]<=[2]}}
+  ROOT indices = s32[64,40]{1,0} get-tuple-element(topk), index=1, sharding={devices=[2,1]<=[2]}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("s32[32,40]{1,0}"));
+}
+
 TEST_P(SpmdPartitioningTest,
        TopKCustomCallTopkReplicatedOperandNonTopKDimSharded) {
   absl::string_view hlo_string = R"(
