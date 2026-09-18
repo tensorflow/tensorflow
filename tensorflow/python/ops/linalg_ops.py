@@ -379,10 +379,26 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
             math_ops.is_nan(math_ops.imag(solution))))
       else:
         factorization_failed = math_ops.reduce_any(math_ops.is_nan(solution))
-      return cond.cond(
+
+      def fallback_fn():
+        # The QR-based fallback kernel (fast=False) has no custom backward
+        # pass, so stop gradients from propagating up this path to avoid
+        # breaking tf.GradientTape on graph control flow.
+        return array_ops.stop_gradient(
+            gen_linalg_ops.matrix_solve_ls(
+                matrix, rhs, l2_regularizer, fast=False))
+
+      from tensorflow.python.eager import context
+      if context.executing_eagerly():
+        if factorization_failed.numpy():
+          return fallback_fn()
+        else:
+          return solution
+
+      from tensorflow.python.ops import cond_v2
+      return cond_v2.cond_v2(
           factorization_failed,
-          lambda: gen_linalg_ops.matrix_solve_ls(
-              matrix, rhs, l2_regularizer, fast=False),
+          fallback_fn,
           lambda: solution)
 
   matrix = ops.convert_to_tensor(matrix, name='matrix')
