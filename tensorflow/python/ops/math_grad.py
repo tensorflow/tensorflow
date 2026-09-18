@@ -2042,31 +2042,38 @@ def _CumprodGrad(op: ops.Operation, grad):
 def _CumulativeLogsumexpGrad(op: ops.Operation, grad):
   x = op.inputs[0]
   axis = op.inputs[1]
-  cumulative_logsumexp = op.outputs[0]
 
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
+  cumulative_logsumexp = math_ops.cumulative_logsumexp(
+      x, axis=axis, exclusive=exclusive, reverse=reverse
+  )
 
   # Split the incoming gradient into positive and negative part
   # in order to take logs. This is required for stable results.
+  finite_lse = math_ops.is_finite(cumulative_logsumexp)
+  pos_mask = math_ops.logical_and(math_ops.greater(grad, 0), finite_lse)
+  safe_pos_grad = array_ops.where_v2(pos_mask, grad, array_ops.ones_like(grad))
   log_grad_positive = array_ops.where_v2(
-      math_ops.greater(grad, 0),
-      math_ops.log(grad),
+      pos_mask,
+      math_ops.log(safe_pos_grad) - cumulative_logsumexp,
       grad.dtype.min)
 
+  neg_mask = math_ops.logical_and(math_ops.less(grad, 0), finite_lse)
+  safe_neg_grad = array_ops.where_v2(neg_mask, -grad, array_ops.ones_like(grad))
   log_grad_negative = array_ops.where_v2(
-      math_ops.less(grad, 0),
-      math_ops.log(-grad),
+      neg_mask,
+      math_ops.log(safe_neg_grad) - cumulative_logsumexp,
       grad.dtype.min)
 
   output_pos = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_positive - cumulative_logsumexp,
+          log_grad_positive,
           axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   output_neg = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_negative - cumulative_logsumexp,
+          log_grad_negative,
           axis=axis, reverse=not reverse, exclusive=exclusive) + x)
 
   return [output_pos - output_neg, None]
