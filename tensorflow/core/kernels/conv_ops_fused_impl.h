@@ -375,12 +375,20 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     const int64_t out_cols = GetTensorDim(*output, params.data_format, 'W');
     const int64_t out_depths = GetTensorDim(*output, params.data_format, 'C');
 
-    // Bias of the following dimensions: [ output_depth ]
+    // Bias of the following dimensions: [ output_depth ] or [1, ..., 1, output_depth]
     const Tensor& bias = context->input(2);
-    OP_REQUIRES(context, bias.dims() == 1,
+    OP_REQUIRES(context, bias.dims() >= 1,
                 absl::InvalidArgumentError(absl::StrCat(
-                    "bias must be 1-dimensional", bias.shape().DebugString())));
-    OP_REQUIRES(context, bias.dim_size(0) == out_depths,
+                    "bias must be at least 1-dimensional, got: ",
+                    bias.shape().DebugString())));
+    for (int i = 0; i < bias.dims() - 1; ++i) {
+      OP_REQUIRES(context, bias.dim_size(i) == 1,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "For bias_dims > 1, all except the last dimension "
+                      "must be 1, got: ",
+                      bias.shape().DebugString())));
+    }
+    OP_REQUIRES(context, bias.dim_size(bias.dims() - 1) == out_depths,
                 absl::InvalidArgumentError(
                     absl::StrCat("bias depth must be equal to out depth",
                                  bias.shape().DebugString())));
