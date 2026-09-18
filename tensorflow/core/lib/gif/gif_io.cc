@@ -78,6 +78,29 @@ uint8_t* Decode(
     return nullptr;
   }
 
+  // Reject pathological logical-screen sizes before DGifSlurp.
+  // DGifOpen fills SWidth/SHeight from the GIF header; DGifSlurp then
+  // allocates RasterBits for every frame. A huge declared canvas (e.g.
+  // 32767x32767) can OOM inside giflib before any TF output callback runs.
+  //
+  // Limits: RGB path uses 3 channels; bound canvas bytes by ~1 GiB (2^30),
+  // consistent with DecodeBmpV2's effective allocation ceiling.
+  // Frame count is only known *after* DGifSlurp, so multi-frame cumulative
+  // OOM with modest per-frame sizes is a separate, wrapper-level follow-up
+  // (would require replacing DGifSlurp with incremental frame reads).
+  {
+    const int64_t screen_w = static_cast<int64_t>(gif_file->SWidth);
+    const int64_t screen_h = static_cast<int64_t>(gif_file->SHeight);
+    const int64_t screen_bytes = screen_w * screen_h * 3;
+    if (screen_w <= 0 || screen_h <= 0 || screen_bytes >= (1LL << 30)) {
+      *error_string = absl::StrCat(
+          "GIF logical screen too large: ", gif_file->SWidth, "x",
+          gif_file->SHeight,
+          ". Canvas must be less than 2^30 bytes (RGB)");
+      return nullptr;
+    }
+  }
+
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = absl::StrCat("failed to slurp gif file: ",
                                  GifErrorStringNonNull(gif_file->Error));

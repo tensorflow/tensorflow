@@ -331,7 +331,13 @@ class DecodeImageV2Op : public OpKernel {
     uint8_t* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8_t* {
-          buffer_size = height * width * channels;
+          // NOTE: jpeg::Uncompress already rejects images with total_size >=
+          // 512 MiB (1LL << 29) in jpeg_mem.cc *before* this callback is
+          // invoked. An additional op-level 1 GiB bound here is unreachable
+          // and was removed after review.
+          const int64_t temp_buffer_size =
+              static_cast<int64_t>(height) * width * channels;
+          buffer_size = static_cast<int>(temp_buffer_size);
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
           // op. We need to make sure to return 4-D shapes when using
@@ -527,6 +533,18 @@ class DecodeImageV2Op : public OpKernel {
         [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
+
+          // Post-decode bound on the *final* TF output tensor only. gif::Decode
+          // calls DGifSlurp before this callback, so giflib may already have
+          // allocated SavedImages/RasterBits; a pre-slurp logical-screen check
+          // lives in gif_io.cc. Total-bytes matter for multi-frame output DoS.
+          if (buffer_size >= (1LL << 30)) {
+            context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                "GIF image too large: ", buffer_size, " bytes (",
+                num_frames, " frame(s) x ", height, "x", width, "x",
+                channels, "). Total allocation must be less than 2^30 bytes")));
+            return nullptr;
+          }
 
           absl::Status status;
           // By the existing API, we support decoding GIF with `decode_jpeg` or
