@@ -491,6 +491,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Runs a feature that attempts to expand the size of scoped alternate memory
   // allocations to the largest contiguous open space available.
   void ExtendScopedAlternateMemoryAllocations();
+  bool HasOnlyAlternateMemoryCopyUses(
+      const AllocationValue& allocation_value) const;
 
   // The same as FindBestChunkCandidate() but allocates the request in slices.
   // The ith returned chunk should be allocated at slice time i.
