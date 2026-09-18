@@ -153,6 +153,17 @@ TEST(BFCAllocatorTest, DefaultAlignment) {
   alloc.DeallocateRaw(ptr);
 }
 
+TEST(BFCAllocatorTest, RejectsAllocationWhoseRoundedSizeWouldOverflow) {
+  BFCAllocator::Options opts;
+  opts.allow_retry_on_failure = false;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/1 << 20, /*name=*/"test", opts);
+
+  EXPECT_EQ(
+      alloc.AllocateRaw(kAlignment, std::numeric_limits<size_t>::max() - 1),
+      nullptr);
+}
+
 TEST(BFCAllocatorTest, OomLogsAllocationAnnotations) {
   BFCAllocator::Options opts;
   opts.allow_growth = false;
