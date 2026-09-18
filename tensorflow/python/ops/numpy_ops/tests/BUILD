@@ -252,7 +252,7 @@ py_test(
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
-    shard_count = 10,
+    shard_count = 30,
     strict_deps = True,
     # TODO(b/164245103): Re-enable GPU once tf.tensor_strided_slice_update's segfault is fixed.
     tags = [
