@@ -278,6 +278,15 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
 
   CopyOriginalValue(while_init, new_while_init, old_to_new_tuple_idx);
   CopyOriginalValue(while_op, new_while_op, old_to_new_tuple_idx);
+  CopyOriginalValue(while_body->parameter_instruction(0),
+                    new_while_op->while_body()->parameter_instruction(0),
+                    old_to_new_tuple_idx);
+  CopyOriginalValue(while_cond->parameter_instruction(0),
+                    new_while_op->while_condition()->parameter_instruction(0),
+                    old_to_new_tuple_idx);
+  CopyOriginalValue(while_body_root,
+                    new_while_op->while_body()->root_instruction(),
+                    old_to_new_tuple_idx);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -846,7 +855,9 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   };
 
   auto add_constant_elems =
-      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
+      [&](HloInstruction* instr,
+          const HloInstruction* old_instr =
+              nullptr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -861,7 +872,11 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
         ++j;
       }
     }
-    return HloInstruction::CreateTuple(tuple_elems);
+    auto tuple = HloInstruction::CreateTuple(tuple_elems);
+    if (old_instr != nullptr) {
+      tuple->CopyOriginalValue(old_instr);
+    }
+    return tuple;
   };
 
   // Special case: constant_tuple_indices covers the whole while parameter, so
@@ -883,17 +898,20 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       while_cond->CloneWithReplacementPairs({
           while_cond->parameter_instruction(0),
           add_constant_elems(add_new_instr(HloInstruction::CreateParameter(
-              0, new_while_shape,
-              while_cond->parameter_instruction(0)->name()))),
+                                 0, new_while_shape,
+                                 while_cond->parameter_instruction(0)->name())),
+                             while_cond->parameter_instruction(0)),
       });
 
   std::unique_ptr<HloComputation> new_while_body =
       while_body->CloneWithReplacementPairs(
           {
               while_body->parameter_instruction(0),
-              add_constant_elems(add_new_instr(HloInstruction::CreateParameter(
-                  0, new_while_shape,
-                  while_cond->parameter_instruction(0)->name()))),
+              add_constant_elems(
+                  add_new_instr(HloInstruction::CreateParameter(
+                      0, new_while_shape,
+                      while_cond->parameter_instruction(0)->name())),
+                  while_body->parameter_instruction(0)),
           },
           {
               while_body->root_instruction(),
@@ -909,22 +927,29 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
-  if (while_op->original_value()) {
-    auto new_ov = std::make_shared<OriginalValue>(new_while_op->shape());
-    int64_t new_i = 0;
-    for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
-      if (!constant_tuple_indices.count(i)) {
-        CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
-            while_op->original_value()->tree(), {i}, {new_i++}));
-      }
+  absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx;
+  for (int64_t i = 0, new_i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+    if (!constant_tuple_indices.count(i)) {
+      old_to_new_tuple_idx[i] = new_i++;
     }
-    new_while_op->set_original_value(new_ov);
   }
+  CopyOriginalValue(while_init, new_while_op->mutable_operand(0),
+                    old_to_new_tuple_idx);
+  CopyOriginalValue(while_op, new_while_op, old_to_new_tuple_idx);
+  CopyOriginalValue(while_body->parameter_instruction(0),
+                    new_while_op->while_body()->parameter_instruction(0),
+                    old_to_new_tuple_idx);
+  CopyOriginalValue(while_cond->parameter_instruction(0),
+                    new_while_op->while_condition()->parameter_instruction(0),
+                    old_to_new_tuple_idx);
+  CopyOriginalValue(while_body->root_instruction(),
+                    new_while_op->while_body()->root_instruction(),
+                    old_to_new_tuple_idx);
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
   ABSL_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-      while_op, add_constant_elems(new_while_op)));
+      while_op, add_constant_elems(new_while_op, while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
@@ -1170,11 +1195,11 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   if (HasDisableWhileLoopDceAttr(while_op)) {
     return false;
   }
-  auto flatten_original_value = [&](HloInstruction* old_instr,
+  auto flatten_original_value = [&](const HloInstruction* old_instr,
                                     HloInstruction* new_instr) {
     if (old_instr->original_value()) {
-      auto new_original_value =
-          std::make_shared<OriginalValue>(new_instr->shape());
+      auto new_original_value = std::make_shared<OriginalValue>(
+          new_instr->shape(), old_instr->original_value()->call_hierarchy());
       int64_t i = 0;
       for (auto& [shape_index, original_array] :
            old_instr->original_value()->tree().leaves()) {
@@ -1223,7 +1248,8 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
     return new_instrs.back().get();
   };
 
-  auto nested = [&](HloInstruction* instr) {
+  auto nested = [&](HloInstruction* instr,
+                    const HloInstruction* old_instr = nullptr) {
     std::vector<HloInstruction*> gtes;
     const Shape& flat_shape = instr->shape();
     gtes.reserve(flat_shape.tuple_shapes().size());
@@ -1236,6 +1262,9 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
     CHECK(ShapeUtil::Compatible(nested_instr->shape(), while_shape))
         << ShapeUtil::HumanString(nested_instr->shape()) << " vs "
         << ShapeUtil::HumanString(while_shape);
+    if (old_instr != nullptr) {
+      nested_instr->CopyOriginalValue(old_instr);
+    }
     return nested_instr;
   };
 
@@ -1249,8 +1278,9 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
       while_cond->CloneWithReplacementPairs({
           while_cond->parameter_instruction(0),
           nested(add_new_instr(HloInstruction::CreateParameter(
-              0, flattened_shape,
-              while_cond->parameter_instruction(0)->name()))),
+                     0, flattened_shape,
+                     while_cond->parameter_instruction(0)->name())),
+                 while_cond->parameter_instruction(0)),
       });
 
   // Create a new while-body computation, where parameter 0 has a flat shape and
@@ -1261,8 +1291,9 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
           {
               while_body->parameter_instruction(0),
               nested(add_new_instr(HloInstruction::CreateParameter(
-                  0, flattened_shape,
-                  while_body->parameter_instruction(0)->name()))),
+                         0, flattened_shape,
+                         while_body->parameter_instruction(0)->name())),
+                     while_body->parameter_instruction(0)),
           },
           {
               while_body->root_instruction(),
@@ -1280,14 +1311,21 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
-  ABSL_RETURN_IF_ERROR(
-      computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
+  flatten_original_value(while_init, new_while_op->mutable_operand(0));
+  flatten_original_value(while_op, new_while_op);
+  flatten_original_value(while_body->parameter_instruction(0),
+                         new_while_op->while_body()->parameter_instruction(0));
+  flatten_original_value(
+      while_cond->parameter_instruction(0),
+      new_while_op->while_condition()->parameter_instruction(0));
+  flatten_original_value(while_body_root,
+                         new_while_op->while_body()->root_instruction());
+  ABSL_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      while_op, nested(new_while_op, while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
 
-  flatten_original_value(while_init, new_while_op->mutable_operand(0));
-  flatten_original_value(while_op, new_while_op);
   return true;
 }
 
@@ -1416,7 +1454,8 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   // Converts `instr` into a tuple of the "old" form -- that is, to a tuple with
   // shape `while_body->shape()` and where the induction variables are "reified"
   // (i.e. they have value <init> + <counter> * <constant>).
-  auto convert_to_old_form = [&](HloInstruction* instr) {
+  auto convert_to_old_form = [&](HloInstruction* instr,
+                                 const HloInstruction* old_instr = nullptr) {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
     std::vector<HloInstruction*> tuple_elems;
     for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
@@ -1433,7 +1472,11 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
       // Copy the original value of the induction variable to its replacement.
       tuple_elems.back()->CopyOriginalValue(while_body_root->operand(i));
     }
-    return HloInstruction::CreateTuple(tuple_elems);
+    auto tuple = HloInstruction::CreateTuple(tuple_elems);
+    if (old_instr != nullptr) {
+      tuple->CopyOriginalValue(old_instr);
+    }
+    return tuple;
   };
 
   // Converts `root` into a tuple of the "new" form -- that is, to a tuple with
@@ -1485,9 +1528,11 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   std::unique_ptr<HloComputation> new_while_cond =
       while_cond->CloneWithReplacementPairs({
           while_cond->parameter_instruction(0),
-          convert_to_old_form(add_new_instr(HloInstruction::CreateParameter(
-              0, new_while_shape,
-              while_cond->parameter_instruction(0)->name()))),
+          convert_to_old_form(
+              add_new_instr(HloInstruction::CreateParameter(
+                  0, new_while_shape,
+                  while_cond->parameter_instruction(0)->name())),
+              while_cond->parameter_instruction(0)),
       });
 
   // Creating the new while body proceeds in two steps.  First we convert the
@@ -1502,9 +1547,11 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   HloComputation* temp_new_while_body =
       module->AddEmbeddedComputation(while_body->CloneWithReplacementPairs({
           while_body->parameter_instruction(0),
-          convert_to_old_form(add_new_instr(HloInstruction::CreateParameter(
-              0, new_while_shape,
-              while_body->parameter_instruction(0)->name()))),
+          convert_to_old_form(
+              add_new_instr(HloInstruction::CreateParameter(
+                  0, new_while_shape,
+                  while_body->parameter_instruction(0)->name())),
+              while_body->parameter_instruction(0)),
       }));
   std::unique_ptr<HloComputation> new_while_body =
       temp_new_while_body->CloneWithReplacementPairs({
@@ -1531,13 +1578,72 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   if (auto original_value = while_op->original_value()) {
     new_while->set_original_value(original_value);
   }
+  if (auto original_value =
+          while_op->while_body()->parameter_instruction(0)->original_value()) {
+    new_while->while_body()->parameter_instruction(0)->set_original_value(
+        original_value);
+  }
+  if (auto original_value = while_op->while_condition()
+                                ->parameter_instruction(0)
+                                ->original_value()) {
+    new_while->while_condition()->parameter_instruction(0)->set_original_value(
+        original_value);
+  }
+  if (auto original_value =
+          while_op->while_body()->root_instruction()->original_value()) {
+    new_while->while_body()->root_instruction()->set_original_value(
+        original_value);
+  }
   if (added_trip_counter) {
-    AppendToWhileLoopOriginalValue(new_while, {});
+    AppendToWhileLoopOriginalValue(new_while, {nullptr});
+  }
+  if (new_while->original_value() != nullptr) {
+    CHECK(new_while->original_value()->IsCompatibleWith(new_while->shape()))
+        << "Incompatible OriginalValue for new_while: "
+        << new_while->ToString();
+  }
+  if (new_while->while_init()->original_value() != nullptr) {
+    CHECK(new_while->while_init()->original_value()->IsCompatibleWith(
+        new_while->while_init()->shape()))
+        << "Incompatible OriginalValue for new_while init: "
+        << new_while->while_init()->ToString();
+  }
+  if (new_while->while_body()->root_instruction()->original_value() !=
+      nullptr) {
+    CHECK(new_while->while_body()
+              ->root_instruction()
+              ->original_value()
+              ->IsCompatibleWith(
+                  new_while->while_body()->root_instruction()->shape()))
+        << "Incompatible OriginalValue for new_while body root: "
+        << new_while->while_body()->root_instruction()->ToString();
+  }
+  if (new_while->while_body()->parameter_instruction(0)->original_value() !=
+      nullptr) {
+    CHECK(new_while->while_body()
+              ->parameter_instruction(0)
+              ->original_value()
+              ->IsCompatibleWith(
+                  new_while->while_body()->parameter_instruction(0)->shape()))
+        << "Incompatible OriginalValue for new_while body param: "
+        << new_while->while_body()->parameter_instruction(0)->ToString();
+  }
+  if (new_while->while_condition()
+          ->parameter_instruction(0)
+          ->original_value() != nullptr) {
+    CHECK(new_while->while_condition()
+              ->parameter_instruction(0)
+              ->original_value()
+              ->IsCompatibleWith(new_while->while_condition()
+                                     ->parameter_instruction(0)
+                                     ->shape()))
+        << "Incompatible OriginalValue for new_while cond param: "
+        << new_while->while_condition()->parameter_instruction(0)->ToString();
   }
   CopyFrontendAttributes(while_op, new_while);
   CopyMetadata(while_op, new_while);
   ABSL_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-      while_op, convert_to_old_form(new_while)));
+      while_op, convert_to_old_form(new_while, while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
