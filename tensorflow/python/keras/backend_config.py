@@ -52,10 +52,16 @@ def set_epsilon(value):
   >>> tf.keras.backend.set_epsilon(1e-5)
   >>> tf.keras.backend.epsilon()
   1e-05
-   >>> tf.keras.backend.set_epsilon(1e-7)
+  >>> tf.keras.backend.set_epsilon(1e-7)
+
+  Raises:
+      ValueError: In case of invalid value.
   """
   global _EPSILON
-  _EPSILON = value
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    raise TypeError(
+        'Expected a float, got: {}'.format(type(value).__name__))
+  _EPSILON = float(value)
 
 
 def floatx():
