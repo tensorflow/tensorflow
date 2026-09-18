@@ -2709,6 +2709,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.h b/stablehlo/stablehlo/di
  }  // namespace vhlo
  }  // namespace mlir
  
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -4322,14 +4322,10 @@
+   auto final_lhs_condition =
+       OrOp::create(builder, loc, gt_pred, tie_breaker_condition).getResult();
+ 
+-  // Select Final Results:
+-  // if final_lhs_condition:
+-  //     return (lhs_value, lhs_index)
+-  // else:
+-  //     return (rhs_value, rhs_index)
++  // Use MaxOp for the value so that NaNs propagate properly and unused-index
++  // reductions simplify to kMaximum.
+   auto selected_value =
+-      SelectOp::create(builder, loc, final_lhs_condition, lhs_value, rhs_value)
+-          .getResult();
++      MaxOp::create(builder, loc, lhs_value, rhs_value).getResult();
+   auto selected_index =
+       SelectOp::create(builder, loc, final_lhs_condition, lhs_index, rhs_index)
+           .getResult();
 diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
 --- stablehlo/stablehlo/dialect/VhloEnums.td
 +++ stablehlo/stablehlo/dialect/VhloEnums.td
@@ -3927,6 +3948,73 @@ diff --ruN a/stablehlo/stablehlo/reference/Value.cpp b/stablehlo/stablehlo/refer
    if (isTensor())
      getTensor().print(os);
    else if (isToken())
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -15,6 +15,7 @@
+ 
+ #include <complex>
+ #include <cstdint>
++#include <limits>
+ #include <string>
+ 
+ #include "gtest/gtest.h"
+@@ -29,6 +30,9 @@
+ #include "mlir/Support/LLVM.h"
+ #include "stablehlo/dialect/Register.h"
+ #include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/reference/Ops.h"
++#include "stablehlo/reference/Tensor.h"
++#include "stablehlo/reference/Value.h"
+ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+ #include "stablehlo/integrations/cpp/builder/FuncBuilder.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
+@@ -308,6 +312,45 @@
+   OwningOpRef<ModuleOp> module = mb->build();
+   EXPECT_TRUE(succeeded(mlir::verify(*module)));
+   EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, BuildMaxAndArgmaxBodyUsesMaxOp) {
++  MLIRContext context;
++  context.loadDialect<StablehloDialect>();
++  OpBuilder builder(&context);
++  OwningOpRef<ModuleOp> module = ModuleOp::create(builder.getUnknownLoc());
++  builder.setInsertionPointToEnd(module->getBody());
++
++  buildMaxAndArgmaxBody(builder.getF32Type(), builder.getI32Type(),
++                        module->getBodyRegion(), builder);
++
++  Operation& returnOp = module->getBody()->back();
++  EXPECT_TRUE(isa<MaxOp>(returnOp.getOperand(0).getDefiningOp()));
++  EXPECT_TRUE(isa<SelectOp>(returnOp.getOperand(1).getDefiningOp()));
++}
++
++TEST(MlirBuilderTest, BuildMaxAndArgmaxBodyPropagatesNaN) {
++  MLIRContext context;
++  context.loadDialect<StablehloDialect>();
++  OpBuilder builder(&context);
++  OwningOpRef<ModuleOp> module = ModuleOp::create(builder.getUnknownLoc());
++  builder.setInsertionPointToEnd(module->getBody());
++
++  buildMaxAndArgmaxBody(builder.getF32Type(), builder.getI32Type(),
++                        module->getBodyRegion(), builder);
++
++  auto makeScalar = [&](TypedAttr attr) {
++    return InterpreterValue(makeTensor(DenseElementsAttr::get(
++        RankedTensorType::get({}, attr.getType()), attr)));
++  };
++  float nan = std::numeric_limits<float>::quiet_NaN();
++  // SelectOp would drop NaN when lhs=NaN and rhs=5.0; MaxOp propagates NaN.
++  auto res = eval(module->getBodyRegion(),
++                  {makeScalar(builder.getF32FloatAttr(nan)),
++                   makeScalar(builder.getI32IntegerAttr(0)),
++                   makeScalar(builder.getF32FloatAttr(5.0f)),
++                   makeScalar(builder.getI32IntegerAttr(1))});
++  EXPECT_TRUE(res[0].getTensor().get({}).getFloatValue().isNaN());
+ }
+ 
+ TEST(MlirBuilderTest, GatherOp) {
 diff --ruN a/stablehlo/stablehlo/testdata/BUILD.bazel b/stablehlo/stablehlo/testdata/BUILD.bazel
 --- stablehlo/stablehlo/testdata/BUILD.bazel
 +++ stablehlo/stablehlo/testdata/BUILD.bazel
