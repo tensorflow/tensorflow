@@ -4872,5 +4872,6 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:fused_linear_cross_entropy_op"
     ],
 )
