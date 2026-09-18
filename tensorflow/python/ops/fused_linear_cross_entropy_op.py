@@ -16,11 +16,12 @@
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.util.tf_export import tf_export
 
+# ...
+@tf_export("nn.fused_linear_cross_entropy")
+def fused_linear_cross_entropy(labels, features, weights, biases=None, name=None):
 
-def fused_linear_cross_entropy(
-    labels, features, weights, biases=None, name=None
-):
   """Computes softmax cross entropy loss directly from linear projection weights.
 
   Fuses matrix multiplication with cross entropy computation to prevent
