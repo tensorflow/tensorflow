@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/jit_memory_mapper.h"
+#include "xla/backends/cpu/codegen/object_buffer_identifier.h"
 
 namespace xla::cpu {
 
@@ -37,8 +38,10 @@ static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
 CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
   return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
       execution_session, [](const llvm::MemoryBuffer& obj) {
+        absl::string_view memory_region_name =
+            ExtractMemoryRegionName(obj.getBufferIdentifier());
         return std::make_unique<ContiguousSectionMemoryManager>(
-            GetJitMemoryMapper(obj.getBufferIdentifier()));
+            GetJitMemoryMapper(memory_region_name));
       });
 }
 
