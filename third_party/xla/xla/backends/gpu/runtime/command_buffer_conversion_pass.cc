@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -207,6 +208,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAll:
     case Thunk::kCollectiveBroadcast:
     case Thunk::kCollectivePermute:
+    case Thunk::kGroup:
     case Thunk::kRaggedAllToAll:
     case Thunk::kReduceScatter:
     case Thunk::kRecv:
@@ -434,6 +436,11 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
   if (thunk.kind() == Thunk::kRaggedAllToAll) {
     return IsConvertible(static_cast<const RaggedAllToAllThunk&>(thunk),
                          config);
+  }
+
+  if (thunk.kind() == Thunk::kGroup) {
+    return ThunkSequenceIsConvertible(
+        static_cast<const CollectiveGroupThunk&>(thunk).thunks(), config);
   }
   return true;
 }
