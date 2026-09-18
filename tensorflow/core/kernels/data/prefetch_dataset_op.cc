@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/mutex.h"
 
 namespace tensorflow {
@@ -544,7 +545,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             std::make_shared<IteratorContext>(*ctx);
         prefetch_thread_.reset(Env::Default()->StartThread(
             /*thread_options=*/{}, "tf_data_prefetch",
-            [this, new_ctx]() { PrefetchThread(new_ctx); }));
+            tsl::WithCurrentContext(
+                [this, new_ctx]() { PrefetchThread(new_ctx); })));
       }
       return absl::OkStatus();
     }

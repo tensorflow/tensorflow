@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -528,7 +529,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         runner_thread_.reset(Env::Default()->StartThread(
             /*thread_options=*/{}, kTFDataMapAndBatch,
-            std::bind(&Iterator::RunnerThread, this, new_ctx)));
+            tsl::WithCurrentContext(
+                std::bind(&Iterator::RunnerThread, this, new_ctx))));
       }
     }
 
