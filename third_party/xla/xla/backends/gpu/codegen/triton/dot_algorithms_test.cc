@@ -1142,6 +1142,11 @@ class NumericTestsForTriton : public TritonAlgorithmTest,
 };
 
 TEST_P(NumericTestsForBlas, Infinity) {
+  // hipBLASLt emulates TF32 on gfx950 and returns NaN for inf*1.
+  if (GetParam() == PC::ALG_DOT_TF32_TF32_F32_X3 && GpuComputeComp().IsRocm() &&
+      GpuComputeComp().rocm_compute_capability()->gfx9_mi350()) {
+    GTEST_SKIP() << "hipBLASLt FAST_TF32 inf*1 returns NaN on MI350 ";
+  }
   std::string hlo_text = HloText();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
