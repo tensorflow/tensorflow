@@ -22,9 +22,11 @@ import sys
 import tempfile
 import unittest
 
+from build_tools.lint import check_dwyu
 from build_tools.lint import run_dwyu
 
 _BANT = shutil.which(os.environ.get("BANT_BIN", "bant"))
+_BANT_MACROS = pathlib.Path(run_dwyu.__file__).parents[2] / ".bant-macros"
 
 
 class BantWorkspaceTest(unittest.TestCase):
@@ -42,7 +44,7 @@ class BantWorkspaceTest(unittest.TestCase):
     self.external.mkdir(parents=True)
     (self.external / "_main").symlink_to(self.root, target_is_directory=True)
     self.write_file("MODULE.bazel", 'module(name = "xla")\n')
-    self.write_file(".bant-macros", "")
+    self.write_file(".bant-macros", _BANT_MACROS.read_text())
     self.write_file("third_party/tsl/WORKSPACE", "")
 
   def write_file(self, path, contents):
@@ -138,7 +140,7 @@ cc_library(name = "unrelated", srcs = ["unrelated.cc"])
   def check_targets(self, *targets):
     return subprocess.run(
         [
-            sys.executable,
+            sys.executable or shutil.which("python3"),
             run_dwyu.__file__,
             "--bant",
             _BANT,
@@ -230,10 +232,6 @@ cc_library(
 
   def test_conditional_deps_macro_resolves_wrapped_dependency(self):
     self.write_file(
-        ".bant-macros",
-        "if_cuda_is_configured = _arg_0\nif_static = _arg_0\n",
-    )
-    self.write_file(
         "xla/consumer/BUILD",
         """\
 cc_library(
@@ -248,7 +246,25 @@ cc_library(
     self.assertEqual(result.stdout, "")
     self.assertIn("Checked DWYU on 1 targets.", result.stderr)
 
+  def test_all_allowed_rules_supported_by_bant_macros(self):
+    rules = []
+    labels = []
+    for index, rule in enumerate(check_dwyu.DEFAULT_ALLOWED_RULES):
+      target = f"target_{index}_{rule}"
+      rules.append(
+          f'{rule}(name = "{target}", srcs = ["consumer.cc"],'
+          ' deps = ["//xla/platform:errors"])'
+      )
+      labels.append(f"//xla/consumer:{target}")
+    self.write_file("xla/consumer/BUILD", "\n".join(rules) + "\n")
+    result = self.check_targets(*labels)
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    self.assertEqual(result.stdout, "")
+    self.assertIn(
+        f"Checked DWYU on {len(labels)} targets.",
+        result.stderr,
+    )
+
 
 if __name__ == "__main__":
   unittest.main()
-
