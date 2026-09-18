@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -39,7 +41,7 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dims->dims->data[0]);
   for (int i = 0; i < output_shape->size; ++i) {
     T data = GetTensorData<T>(dims)[i];
-    if (data < 0) {
+    if (data < 0 || data > std::numeric_limits<int32_t>::max()) {
       TfLiteIntArrayFree(output_shape);
       TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0 got %d",
                          dims->type);
@@ -109,13 +111,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
+TfLiteStatus FillString(TfLiteContext* context, const TfLiteTensor* value,
+                        TfLiteTensor* output) {
   DynamicBuffer buffer;
   const auto string_ref = GetString(value, 0);
   int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
-  }
+  TF_LITE_ENSURE_OK(context, CheckedNumElements(output, n));
   for (int i = 0; i < n; ++i) {
     buffer.AddString(string_ref.str, string_ref.len);
   }
@@ -137,7 +138,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   }
   if (value->type == kTfLiteString) {
-    FillString(value, output);
+    TF_LITE_ENSURE_OK(context, FillString(context, value, output));
     return kTfLiteOk;
   }
 #define TF_LITE_FILL(data_type)                                               \
