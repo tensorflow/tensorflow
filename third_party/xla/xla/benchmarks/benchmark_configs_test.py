@@ -31,16 +31,22 @@ from xla.benchmarks.pallas_microbenchmarks import subchannel_matmul_lib
 
 class BenchmarkConfigsTest(parameterized.TestCase):
 
-  def test_dense_matmul_configs(self):
-    chip = pltpu.ChipVersion.TPU_V5E
+  @parameterized.named_parameters(
+      ("v5e", pltpu.ChipVersion.TPU_V5E, jnp.int4, jnp.int32),
+      ("7x", pltpu.ChipVersion.TPU_7X, jnp.float8_e4m3fn, jnp.float32),
+      ("8t", pltpu.ChipVersion.TPU_8T, jnp.int4, jnp.float32),
+  )
+  def test_dense_matmul_configs(
+      self, chip, expected_low_precision_dtype, expected_int_acc_dtype
+  ):
     configs = benchmark_configs.get_dense_matmul_configs(chip_version=chip)
     # Expected total configs:
     # M in [1024, 2048] ->
-    #   2 sizes * 5 dtype pairs * 2 out_dtypes * 2 mems (HBM, VMEM) = 40
+    #   2 sizes * 3 dtype pairs * 2 out_dtypes * 2 mems (HBM, VMEM) = 24
     # M in [4096, 8192, 16384, 32768] ->
-    #   4 sizes * 4 dtype pairs * 2 out_dtypes * 1 mem (HBM) = 40
-    # Total = 32 configs.
-    self.assertLen(configs, 80)
+    #   4 sizes * 3 dtype pairs * 2 out_dtypes * 1 mem (HBM) = 24
+    # Total = 48 configs.
+    self.assertLen(configs, 48)
 
     for cfg in configs:
       self.assertIsInstance(cfg, dense_matmul_lib.DenseMatmulConfig)
@@ -51,14 +57,15 @@ class BenchmarkConfigsTest(parameterized.TestCase):
           (cfg.lhs_dtype, cfg.rhs_dtype),
           [
               (jnp.bfloat16, jnp.bfloat16),
-              (jnp.bfloat16, jnp.float8_e4m3fn),
-              (jnp.bfloat16, jnp.int4),
-              (jnp.float8_e4m3fn, jnp.float8_e4m3fn),
-              (jnp.float8_e4m3fn, jnp.int4),
+              (jnp.bfloat16, expected_low_precision_dtype),
+              (expected_low_precision_dtype, expected_low_precision_dtype),
           ],
       )
       self.assertIn(cfg.out_dtype, [jnp.float32, jnp.bfloat16])
-      self.assertEqual(cfg.acc_dtype, jnp.float32)
+      if jnp.issubdtype(cfg.lhs_dtype, jnp.integer):
+        self.assertEqual(cfg.acc_dtype, expected_int_acc_dtype)
+      else:
+        self.assertEqual(cfg.acc_dtype, jnp.float32)
       self.assertEqual(cfg.lhs_mem, cfg.rhs_mem)
       self.assertEqual(cfg.lhs_mem, cfg.out_mem)
 
@@ -71,27 +78,38 @@ class BenchmarkConfigsTest(parameterized.TestCase):
       self.assertGreater(cfg.block_k, 0)
       self.assertGreater(cfg.block_n, 0)
 
-  def test_subchannel_matmul_configs(self):
-    chip = pltpu.ChipVersion.TPU_V5E
+  @parameterized.named_parameters(
+      ("v5e", pltpu.ChipVersion.TPU_V5E, jnp.int4, jnp.int32),
+      ("7x", pltpu.ChipVersion.TPU_7X, jnp.float8_e4m3fn, jnp.float32),
+  )
+  def test_subchannel_matmul_configs(
+      self, chip, expected_lhs_quantized_dtype, expected_inner_acc_dtype
+  ):
     configs = benchmark_configs.get_subchannel_matmul_configs(chip_version=chip)
-    # Expected: 2 configs (HBM and VMEM)
-    self.assertLen(configs, 2)
+    # Expected: 4 configs (k=4096 with HBM and VMEM; k=8192, 16384 with HBM)
+    self.assertLen(configs, 4)
 
     mems = set()
     for cfg in configs:
       self.assertIsInstance(cfg, subchannel_matmul_lib.SubchannelMatmulConfig)
       self.assertEqual(cfg.m, 128)
-      self.assertEqual(cfg.k, 8192)
-      self.assertEqual(cfg.n, 4096)
+      self.assertEqual(cfg.k, cfg.n)
+      self.assertIn(cfg.k, [4096, 8192, 16384])
       self.assertEqual(cfg.lhs_dtype, jnp.bfloat16)
       self.assertEqual(cfg.rhs_dtype, jnp.bfloat16)
       self.assertEqual(cfg.out_dtype, jnp.bfloat16)
+      self.assertEqual(cfg.inner_acc_dtype, expected_inner_acc_dtype)
+      self.assertEqual(cfg.outer_acc_dtype, jnp.bfloat16)
       self.assertEqual(cfg.subchannel_size, 1024)
-      self.assertEqual(cfg.lhs_quantized_dtype, jnp.float8_e4m3fn)
+      self.assertEqual(cfg.lhs_quantized_dtype, expected_lhs_quantized_dtype)
       self.assertEqual(cfg.rhs_quantized_dtype, jnp.int4)
       self.assertFalse(cfg.pre_quantize_lhs)
       self.assertEqual(cfg.lhs_mem, cfg.rhs_mem)
       self.assertEqual(cfg.lhs_mem, cfg.out_mem)
+      if cfg.k == 4096:
+        self.assertIn(cfg.lhs_mem, [pltpu.HBM, pltpu.VMEM])
+      else:
+        self.assertEqual(cfg.lhs_mem, pltpu.HBM)
       self.assertGreater(cfg.block_m, 0)
       self.assertGreater(cfg.block_k, 0)
       self.assertGreater(cfg.block_n, 0)
@@ -99,10 +117,14 @@ class BenchmarkConfigsTest(parameterized.TestCase):
 
     self.assertEqual(mems, {pltpu.HBM, pltpu.VMEM})
 
-  def test_jax_matmul_configs(self):
-    configs = benchmark_configs.get_jax_matmul_configs()
-    # 6 dim sizes * 5 dtype pairs * 2 out dtypes = 60 configs.
-    self.assertLen(configs, 60)
+  @parameterized.named_parameters(
+      ("v5e", pltpu.ChipVersion.TPU_V5E, jnp.int4),
+      ("7x", pltpu.ChipVersion.TPU_7X, jnp.float8_e4m3fn),
+  )
+  def test_jax_matmul_configs(self, chip, expected_low_precision_dtype):
+    configs = benchmark_configs.get_jax_matmul_configs(chip_version=chip)
+    # 6 dim sizes * 3 dtype pairs * 2 out dtypes = 36 configs.
+    self.assertLen(configs, 36)
     for cfg in configs:
       self.assertIsInstance(cfg, matmul_lib.JaxMatmulConfig)
       self.assertEqual(cfg.b, 1)
@@ -113,10 +135,8 @@ class BenchmarkConfigsTest(parameterized.TestCase):
           (cfg.lhs_dtype, cfg.rhs_dtype),
           [
               (jnp.bfloat16, jnp.bfloat16),
-              (jnp.bfloat16, jnp.float8_e4m3fn),
-              (jnp.bfloat16, jnp.int4),
-              (jnp.float8_e4m3fn, jnp.float8_e4m3fn),
-              (jnp.float8_e4m3fn, jnp.int4),
+              (jnp.bfloat16, expected_low_precision_dtype),
+              (expected_low_precision_dtype, expected_low_precision_dtype),
           ],
       )
       self.assertIn(cfg.out_dtype, [jnp.float32, jnp.bfloat16])
