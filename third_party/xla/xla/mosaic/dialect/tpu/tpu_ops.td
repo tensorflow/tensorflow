@@ -221,7 +221,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
     preserve their input order regardless of the sorting order. Masked-out keys
     and values are placed at the end of the output vectors. Integer keys are
     treated as unsigned. An output mask indicates which outputs correspond to
-    the valid inputs. 
+    the valid inputs.
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -1493,7 +1493,8 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
     Optional<I32>:$subcore_id,
     // Smaller number means higher priority. 0 is the highest and the default.
     DefaultValuedAttr<I32Attr, "0">:$priority,
-    DefaultValuedAttr<BoolAttr, "false">:$strict_ordering
+    DefaultValuedAttr<BoolAttr, "false">:$strict_ordering,
+    DefaultValuedOptionalAttr<I32Attr, "0">:$dma_type
   );
   let assemblyFormat = [{
     `source` `(` $source `:` type($source) `)`
