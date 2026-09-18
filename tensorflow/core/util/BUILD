@@ -552,6 +552,7 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
