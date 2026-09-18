@@ -25,6 +25,7 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
@@ -352,12 +353,13 @@ class ForwardAccumulator():
     Args:
       primals: A tensor or nested structure of tensors to watch.
       tangents: A tensor or nested structure of tensors, with the same nesting
-        structure as `primals`, with each element being a vector with the same
-        size as the corresponding primal element.
+        structure as `primals`, with each element having the same shape as the
+        corresponding primal element.
 
     Raises:
       ValueError: If the same tensor or variable is specified multiple times in
-        `primals`.
+        `primals`, or if `primals` and `tangents` have fully-defined but
+        different shapes.
     """
     self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(False)
     self._recording = False
@@ -369,6 +371,17 @@ class ForwardAccumulator():
             "indicate an error. If it was intended, please sum the "
             "corresponding tangents.")
       primal_ids.add(id(primal))
+
+    def _validate_shape(primal, tangent):
+      primal = ops.convert_to_tensor(primal)
+      tangent = ops.convert_to_tensor(tangent, dtype=primal.dtype)
+      if (primal.shape.is_fully_defined() and tangent.shape.is_fully_defined()
+          and primal.shape != tangent.shape):
+        raise ValueError(
+            "primals and tangents must have the same shape, got {} vs {}"
+            .format(primal.shape, tangent.shape))
+
+    nest.map_structure(_validate_shape, primals, tangents)
     self._watch(primals, tangents)
 
   def __enter__(self):
@@ -408,6 +421,11 @@ class ForwardAccumulator():
     """
 
     def _watch(primal, tangent):
+      if (not isinstance(primal, tensor.Tensor) and
+          not hasattr(primal, "handle")):
+        # Convert non-Tensor primals (e.g. NumPy arrays or Python
+        # scalars) so that the dtype check and watch below work.
+        primal = ops.convert_to_tensor(primal)
       if not primal.dtype.is_floating:
         logging.log_first_n(
             logging.WARN, "The dtype of the watched primal must be "
