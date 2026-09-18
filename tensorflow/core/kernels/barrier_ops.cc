@@ -587,6 +587,11 @@ class TakeManyOp : public BarrierOpKernel {
         ctx, TensorShapeUtils::IsScalar(Tnum_elements->shape()),
         absl::InvalidArgumentError("num_elements must be a scalar."), callback);
     const int32_t num_elements = Tnum_elements->scalar<int32_t>()();
+    OP_REQUIRES_ASYNC(
+        ctx, num_elements >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "BarrierTakeMany requested ", num_elements, " < 0 elements")),
+        callback);
 
     DataTypeVector expected_inputs = {DT_STRING_REF, DT_INT32};
     // The first output is the insertion index, the second output is the key.
