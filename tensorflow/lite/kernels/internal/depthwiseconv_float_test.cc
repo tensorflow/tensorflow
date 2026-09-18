@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #define ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -156,5 +157,18 @@ TEST(TestDepthwiseConv, TestDepthwiseConv) {
     TestOneDepthwiseConv();
   }
 }
+
+TEST(TestDepthwiseConv, LargeDimensionOverflow) {
+  ArithmeticParams params;
+  EXPECT_EQ(sizeof(params.broadcast_shape), 40U);
+  EXPECT_EQ(sizeof(params.broadcast_shape[0]), sizeof(int64_t));
+
+  int d1 = 2, d2 = 8, d3 = 0x10000000, d4 = 2;
+  RuntimeShape shape0({d1, d2, d3, d4});
+  RuntimeShape shape1({1, d2, d3, d4});
+  EXPECT_TRUE(reference_ops::ProcessBroadcastShapes(shape0, shape1, &params));
+  EXPECT_EQ(params.broadcast_shape[4], 4294967296LL);
+}
+
 }  // namespace
 }  // namespace tflite
