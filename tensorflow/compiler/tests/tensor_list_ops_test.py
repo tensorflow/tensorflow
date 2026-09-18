@@ -28,6 +28,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -301,6 +303,99 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       z = list_ops.tensor_list_stack(z, element_dtype=dtypes.float32)
       self.assertAllEqual(z.shape.as_list(), [None])
       self.assertAllEqual(z, [0.0, 0.0])
+
+  def testSetItemResizeIsRejected(self):
+    # Regression test for GitHub issue 127528. A TensorListSetItem that is
+    # allowed to grow the list cannot be compiled, because the buffer that
+    # TensorListReserve allocated has a static shape. It must be rejected at
+    # compile time rather than silently dropping the write, which the lowering
+    # does either by returning the list unchanged when the element does not
+    # fit, or by letting DynamicUpdateSlice clamp an out-of-range index so the
+    # element overwrites an earlier one.
+    @def_function.function(jit_compile=True)
+    def grows():
+      tensor_list = list_ops.tensor_list_reserve(
+          element_shape=[], element_dtype=dtypes.float32, num_elements=1
+      )
+      tensor_list = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
+          index=0,
+          item=constant_op.constant(1.0),
+          resize_if_index_out_of_bounds=True,
+      )
+      # Stack inside the compiled function so that no TensorList crosses the
+      # XLA/TF boundary, which would raise a different error and stop this
+      # test from covering the rejection above.
+      return list_ops.tensor_list_stack(
+          tensor_list, element_dtype=dtypes.float32
+      )
+
+    with self.session():
+      # Either bridge may compile this. The classic tf2xla kernel raises
+      # UnimplementedError; the MLIR pass reports the same message through
+      # emitOpError, which surfaces as InvalidArgumentError. The message is
+      # what pins this to the rejection under test.
+      with self.assertRaisesRegex(
+          (errors.UnimplementedError, errors.InvalidArgumentError),
+          "TensorLists that grow on an out-of-bounds write",
+      ):
+        self.evaluate(grows())
+
+  def testSetItemWithoutResizeStillCompiles(self):
+    # The rejection above keys off the attribute rather than the index, so an
+    # ordinary fixed-size write must still compile and run.
+    @def_function.function(jit_compile=True)
+    def fixed():
+      tensor_list = list_ops.tensor_list_reserve(
+          element_shape=[], element_dtype=dtypes.float32, num_elements=1
+      )
+      tensor_list = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
+          index=0,
+          item=constant_op.constant(1.0),
+          resize_if_index_out_of_bounds=False,
+      )
+      return list_ops.tensor_list_stack(
+          tensor_list, element_dtype=dtypes.float32
+      )
+
+    with self.session():
+      self.assertAllEqual(self.evaluate(fixed()), [1.0])
+
+  def testDynamicSizeTensorArrayIsRejected(self):
+    # End to end case for GitHub issue 127528. A dynamic_size TensorArray
+    # written past its initial size used to compile and return a truncated
+    # result with no error, so this asserts the compile-time failure instead.
+    # The whole function is jit-compiled so the list stays inside XLA rather
+    # than crossing the XLA/TF boundary at the stack op.
+    @def_function.function(jit_compile=True)
+    def f():
+      ta = tensor_array_ops.TensorArray(
+          dtypes.float32, size=0, dynamic_size=True
+      )
+
+      def cond(i, ta):
+        del ta  # Unused.
+        return i < 2
+
+      def body(i, ta):
+        return i + 1, ta.write(i, constant_op.constant(1.0))
+
+      _, out = while_loop.while_loop(
+          cond, body, [constant_op.constant(0), ta]
+      )
+      return out.stack()
+
+    with self.session():
+      # Either bridge may compile this. The classic tf2xla kernel raises
+      # UnimplementedError; the MLIR pass reports the same message through
+      # emitOpError, which surfaces as InvalidArgumentError. The message is
+      # what pins this to the rejection under test.
+      with self.assertRaisesRegex(
+          (errors.UnimplementedError, errors.InvalidArgumentError),
+          "TensorLists that grow on an out-of-bounds write",
+      ):
+        self.evaluate(f())
 
   def testInvalidSplitLength(self):
     with self.session(), self.test_scope():
