@@ -831,6 +831,23 @@ class BinaryOpTest(test.TestCase):
           error = gradient_checker.compute_gradient_error(y, [], z, [])
           self.assertLess(error, 2e-4)
 
+  def testComplexPowWithZeroExponent(self):
+    for dtype in np.complex64, np.complex128:
+      bases = np.array(
+          [
+              complex(0.0, 0.0),
+              complex(-0.0, 0.0),
+              complex(0.0, -0.0),
+              1 + 2j,
+              np.nan,
+          ],
+          dtype=dtype,
+      )
+      exponents = np.zeros_like(bases)
+      with test_util.force_cpu():
+        result = self.evaluate(math_ops.pow(bases, exponents))
+      self.assertAllEqual(result, np.ones_like(bases))
+
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
                    (1.0, 0.0), (-1.0, 0.0), (1.0, -0.0), (-1.0, -0.0),
