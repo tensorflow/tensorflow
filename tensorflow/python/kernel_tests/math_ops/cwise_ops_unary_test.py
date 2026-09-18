@@ -736,6 +736,26 @@ class UnaryOpTest(test.TestCase):
         # Always check the full array including boundary/pole values.
         self.assertAllClose(expected, y_val)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testLogSigmoidSecondDerivativePreservesSmallValue(self):
+    for x_val, expected in [
+        (-37.42994775023705, -5.551115123125775e-17),
+        (37.42994775023705, -5.551115123125775e-17),
+        (0.0, -0.25),
+    ]:
+      x = constant_op.constant(x_val, dtype=dtypes_lib.float64)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = math_ops.log_sigmoid(x)
+        grad = inner_tape.gradient(y, x)
+      grad_grad = outer_tape.gradient(grad, x)
+
+      self.assertAllClose(
+          expected, self.evaluate(grad_grad), rtol=1e-14, atol=0
+      )
+
 
 if __name__ == "__main__":
   test.main()
