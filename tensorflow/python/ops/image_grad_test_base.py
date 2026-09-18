@@ -783,6 +783,33 @@ class ImageProjectiveTransformOpTestBase(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(y), -863.0)
       self.assertAllClose(self.evaluate(actual), 17.0)
 
+  @parameterized.parameters(*[(fill_mode, shape)
+                              for fill_mode in _TRANSFORM_FILL_MODES
+                              for shape in [(1, 1, 1, 1), (1, 1, 5, 1),
+                                            (1, 5, 1, 1)]])
+  def testOnePixelWideInputIsFinite(self, fill_mode, shape):
+    """Regression test for a `length == 1` axis dividing by zero.
+
+    `_map_coordinate`'s WRAP and REFLECT branches divide by `length - 1`,
+    which is 0 for a `length == 1` axis. The masked-out result is correct
+    either way, but the *intermediate* division must not compute an inf/nan
+    that then gets cast to int32, which is platform-dependent undefined
+    behavior even when its result is later discarded.
+    """
+    images = constant_op.constant(
+        np.random.default_rng(0).standard_normal(shape), dtype=dtypes.float32)
+    transforms = constant_op.constant(
+        [[1, 0, 0.3, 0, 1, 0.2, 0, 0]], dtype=dtypes.float32)
+
+    with self.cached_session():
+      with backprop.GradientTape() as tape:
+        tape.watch(images)
+        out = self._transform(images, transforms, [shape[1], shape[2]],
+                              'BILINEAR', fill_mode)
+        loss = math_ops.reduce_sum(out)
+      grad = self.evaluate(tape.gradient(loss, images))
+    self.assertTrue(np.all(np.isfinite(grad)))
+
 
 if __name__ == '__main__':
   test.main()

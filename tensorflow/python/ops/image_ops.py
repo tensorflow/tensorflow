@@ -153,7 +153,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -274,15 +273,21 @@ def _map_coordinate(coord, length, fill_mode):
   if fill_mode == "NEAREST":
     return clip_ops.clip_by_value(coord, 0.0, last)
 
+  # `length <= 1` makes `last`/`sz2` 0, which would divide by zero below;
+  # the result is discarded by the `length <= 1` select further down, but
+  # an intermediate inf/nan cast to int32 is platform-dependent undefined
+  # behavior, so avoid it rather than merely discard it.
+  safe_last = array_ops.where_v2(length <= 1, 1.0, last)
   if fill_mode == "WRAP":
-    below = coord + length_f * (_trunc_div(-coord, last) + 1.0)
-    above = coord - length_f * _trunc_div(coord, last)
+    below = coord + length_f * (_trunc_div(-coord, safe_last) + 1.0)
+    above = coord - length_f * _trunc_div(coord, safe_last)
   elif fill_mode == "REFLECT":
     sz2 = 2.0 * length_f
-    folded_low = sz2 * _trunc_div(-coord, sz2) + coord
+    safe_sz2 = array_ops.where_v2(length <= 1, 2.0, sz2)
+    folded_low = sz2 * _trunc_div(-coord, safe_sz2) + coord
     below = array_ops.where_v2(folded_low < -length_f, folded_low + sz2,
                                -folded_low - 1.0)
-    folded_high = coord - sz2 * _trunc_div(coord, sz2)
+    folded_high = coord - sz2 * _trunc_div(coord, safe_sz2)
     above = array_ops.where_v2(folded_high >= length_f,
                                sz2 - folded_high - 1.0, folded_high)
   else:
@@ -371,9 +376,9 @@ def _image_projective_transform_grad_impl(images, transforms, grad,
   x = _map_coordinate(input_x, in_w, fill_mode)
   y = _map_coordinate(input_y, in_h, fill_mode)
 
-  batch_idx = math_ops.cast(
-      array_ops.reshape(math_ops.range(batch), [-1, 1, 1]), dtypes.float32)
-  batch_idx += array_ops.zeros_like(x)  # -> [batch, out_H, out_W]
+  batch_idx = array_ops.broadcast_to(
+      array_ops.reshape(math_ops.range(batch), [-1, 1, 1]),
+      array_ops.shape(x))  # int32, [batch, out_H, out_W]
 
   grad = ops.convert_to_tensor(grad)
   compute_dtype = grad.dtype.base_dtype  # accumulate at the tape's precision
@@ -388,8 +393,7 @@ def _image_projective_transform_grad_impl(images, transforms, grad,
     zero_i = array_ops.zeros_like(iy)
     safe_iy = math_ops.cast(array_ops.where_v2(keep, iy, zero_i), dtypes.int32)
     safe_ix = math_ops.cast(array_ops.where_v2(keep, ix, zero_i), dtypes.int32)
-    indices = array_ops_stack.stack(
-        [math_ops.cast(batch_idx, dtypes.int32), safe_iy, safe_ix], axis=-1)
+    indices = array_ops_stack.stack([batch_idx, safe_iy, safe_ix], axis=-1)
     weight = array_ops.where_v2(keep, weight, array_ops.zeros_like(weight))
     weight = math_ops.cast(array_ops.reshape(weight, [-1, 1]), compute_dtype)
     return array_ops.reshape(indices, [-1, 3]), weight * grad_flat
@@ -418,11 +422,10 @@ def _image_projective_transform_grad_impl(images, transforms, grad,
     all_indices.append(indices)
     all_updates.append(updates)
 
-  zeros = array_ops.zeros(
-      array_ops_stack.stack([batch, in_h, in_w, channels]), dtype=compute_dtype)
-  return gen_array_ops.tensor_scatter_add(
-      zeros, array_ops.concat(all_indices, axis=0),
-      array_ops.concat(all_updates, axis=0))
+  return array_ops.scatter_nd(
+      array_ops.concat(all_indices, axis=0),
+      array_ops.concat(all_updates, axis=0),
+      array_ops_stack.stack([batch, in_h, in_w, channels]))
 
 
 @ops.RegisterGradient("ImageProjectiveTransformV2")
