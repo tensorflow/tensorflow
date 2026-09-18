@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("//xla:lit.bzl", "lit_test_suite")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -24,24 +23,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-copy_file(
-    name = "cpu_fusion_to_mlir_copy",
-    testonly = True,
-    src = "//xla/backends/cpu/codegen/tools:fusion_to_mlir",
-    out = "cpu_fusion_to_mlir",
-    allow_symlink = True,
-    is_executable = True,
-)
-
-copy_file(
-    name = "gpu_fusion_to_mlir_copy",
-    testonly = True,
-    src = "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
-    out = "gpu_fusion_to_mlir",
-    allow_symlink = True,
-    is_executable = True,
 )
 
 #Need no gpu to run
@@ -77,9 +58,9 @@ lit_test_suite(
     default_tags = tf_cuda_tests_tags(),
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     tools = [
-        ":cpu_fusion_to_mlir_copy",
-        ":gpu_fusion_to_mlir_copy",
+        "//xla/backends/cpu/codegen/tools:cpu_fusion_to_mlir",
         "//xla/backends/cpu/codegen/tools:cpu_test_correctness",
+        "//xla/backends/gpu/codegen/tools:gpu_fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
@@ -92,8 +73,8 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     default_tags = ["gpu"],
     tools = [
-        ":cpu_fusion_to_mlir_copy",
-        ":gpu_fusion_to_mlir_copy",
+        "//xla/backends/cpu/codegen/tools:cpu_fusion_to_mlir",
+        "//xla/backends/gpu/codegen/tools:gpu_fusion_to_mlir",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],
