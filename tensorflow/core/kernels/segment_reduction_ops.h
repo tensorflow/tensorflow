@@ -106,6 +106,10 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T, typename Index, typename InitialValueF,
           typename EmptySegmentValueF, typename ReductionF>
 struct SegmentReductionFunctor {
+  absl::Status ValidateSegmentIds(
+      const GPUDevice& d, typename TTypes<Index>::ConstFlat segment_ids,
+      int* invalid_segment_ids);
+
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   bool is_mean, typename TTypes<Index>::ConstFlat segment_ids,
