@@ -2464,6 +2464,9 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* lhs,
     base = b_->CreateMul(base, base);
     exponent = b_->CreateLShr(exponent, 1);
   }
+  if (!is_signed) {
+    return accumulator;
+  }
 
   llvm::Value* neg_one_base_result = b_->CreateSelect(
       b_->CreateICmpEQ(b_->CreateAnd(original_exponent, exp_one), exp_one),

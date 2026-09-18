@@ -643,6 +643,9 @@ absl::StatusOr<unsigned int> GetNvLinkCount(nvmlDevice_t nvml_device) {
   field_value.fieldId = NVML_FI_DEV_NVLINK_LINK_COUNT;
   ABSL_RETURN_IF_ERROR(
       ToStatus(nvmlDeviceGetFieldValues(nvml_device, 1, &field_value)));
+  if (field_value.nvmlReturn == NVML_ERROR_NOT_SUPPORTED) {
+    return 0;
+  }
   ABSL_RETURN_IF_ERROR(ToStatus(field_value.nvmlReturn));
   if (field_value.valueType != NVML_VALUE_TYPE_UNSIGNED_INT) {
     return absl::InternalError(
@@ -1787,9 +1790,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     if (bandwidth.ok()) {
       desc.set_pcie_bandwidth(*bandwidth);
     } else {
-      LOG(ERROR) << bandwidth.status().message()
-                 << " Assuming PCIe gen 3 x16 bandwidth.";
-      bandwidth = 16LL * 1024 * 1024 * 1024;
+      LOG(ERROR) << "Unable to determine PCIe bandwidth: "
+                 << bandwidth.status().message();
     }
 
     absl::StatusOr<int64_t> p2p_link_count =

@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -74,11 +75,20 @@ class HloDataflowAnalysis {
   //   propagate_through_calls : If false, kCall instructions are treated as
   //     opaque instructions that define their own output values, and dataflow
   //     across kCall boundaries is ignored.
+  //
+  //   precompute_uses : If set, the values this predicate accepts get their
+  //     uses (HloValue::GetUses) before Run returns, in one pass that shares
+  //     the per instruction work between them. Every other value computes its
+  //     uses on the first GetUses, one value at a time, which is quadratic in
+  //     the width of a tuple. Set it when the uses of many values are read
+  //     before the module is mutated.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       absl::flat_hash_set<absl::string_view> execution_threads = {},
-      bool propagate_through_calls = true);
+      bool propagate_through_calls = true,
+      std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses =
+          std::nullopt);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.

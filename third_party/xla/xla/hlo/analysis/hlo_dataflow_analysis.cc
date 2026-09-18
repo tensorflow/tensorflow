@@ -1654,7 +1654,8 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads,
-    bool propagate_through_calls) {
+    bool propagate_through_calls,
+    std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
@@ -1662,6 +1663,15 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
       new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
                               execution_threads, propagate_through_calls));
   ABSL_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  if (precompute_uses.has_value()) {
+    std::vector<HloValue*> values;
+    for (HloValue* value : dataflow_analysis->values()) {
+      if ((*precompute_uses)(*value)) {
+        values.push_back(value);
+      }
+    }
+    HloValue::PrecomputeUses(values);
+  }
   return dataflow_analysis;
 }
 

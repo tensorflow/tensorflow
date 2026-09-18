@@ -139,9 +139,15 @@ bool RecursivelyPrintLoc(mlir::Location loc,
       })
       .Case([&](mlir::NameLoc name_loc) -> bool {
         if (RecursivelyPrintLoc(name_loc.getChildLoc(), loc_stream)) {
-          loc_stream << "\t ^ " << name_loc.getName() << "\n";
+          if (!name_loc.getName().empty()) {
+            loc_stream << "\t ^ " << name_loc.getName() << "\n";
+          }
           return true;
-        };
+        }
+        if (!name_loc.getName().empty()) {
+          loc_stream << name_loc.getName() << "\n";
+          return true;
+        }
         return false;
       })
       .Case([&](mlir::OpaqueLoc opaque_loc) -> bool {
@@ -158,13 +164,17 @@ bool RecursivelyPrintLoc(mlir::Location loc,
 void GetPrettyLocation(mlir::Location loc,
                        llvm::raw_string_ostream& loc_stream) {
   loc_stream << "\t";
-  if (auto call_loc = GetCallSiteLoc(loc)) {
+  if (mlir::isa<mlir::UnknownLoc>(loc)) {
+    loc_stream << "<unknown location>\n";
+    return;
+  }
+  if (std::optional<mlir::CallSiteLoc> call_loc = GetCallSiteLoc(loc)) {
     // Print the file location from the current loc.
-    RecursivelyPrintLoc(*call_loc, loc_stream);
+    RecursivelyPrintLoc(loc, loc_stream);
     // Print the file locations of the callers.
     GetPrettyLocation(call_loc->getCaller(), loc_stream);
-  } else if (auto file_loc = mlir::dyn_cast<mlir::FileLineColLoc>(loc)) {
-    PrintFileLoc(file_loc, loc_stream);
+  } else if (!RecursivelyPrintLoc(loc, loc_stream)) {
+    loc_stream << "<unknown location>\n";
   }
 }
 
@@ -211,7 +221,17 @@ std::string GetPrettyLocation(mlir::Location loc) {
   std::string loc_str;
   llvm::raw_string_ostream loc_stream(loc_str);
   GetPrettyLocation(loc, loc_stream);
+  if (loc_str.empty()) {
+    return "\t<unknown location>";
+  }
   return loc_str;
+}
+
+std::string GetArgPrettyLocation(int index, mlir::ModuleOp module) {
+  mlir::func::FuncOp func = GetMainFunction(module);
+  CHECK_GE(index, 0);
+  CHECK_LT(index, func.getNumArguments());
+  return GetPrettyLocation(func.getArgument(index).getLoc());
 }
 
 unsigned IfrtCallOpInfo::getHashValue(CallOp call_op) {

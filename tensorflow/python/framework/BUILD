@@ -1326,6 +1326,7 @@ pytype_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:lock_util",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
@@ -1554,6 +1555,21 @@ py_library(
         "//tensorflow/python/util:_pywrap_tensor_float_32_execution",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_strict_test(
+    name = "pluggable_device_c_api_test",
+    size = "small",
+    srcs = ["pluggable_device_c_api_test.py"],
+    # It asks the process for symbols the public C headers declare, so it has
+    # to run against a build that actually linked them rather than against the
+    # source tree.
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
     ],
 )
 

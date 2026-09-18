@@ -340,6 +340,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_all_gather_mode(DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(false);
   opts.set_xla_gpu_enable_approx_costly_collectives(false);
+  opts.set_xla_autotuner_preferred_backend(
+      autotuner::Backend::UNSPECIFIED_BACKEND);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -519,7 +521,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_gpu_experimental_enable_conv_fusion(true);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -586,7 +588,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_collective_timeout_seconds(30 * 60 * kSanitizerMultiplier);
 
   opts.set_xla_keep_shardings_after_spmd(false);
-  opts.set_xla_enable_hlo_sharding_v3(false);
+  opts.set_xla_enable_hlo_sharding_v3(true);
   opts.set_xla_enable_rgv3_materialization(true);
   opts.set_xla_spmd_enable_dynamic_slice_collective_broadcast(false);
   opts.set_xla_sdy_export_all_reduce_scatter(false);
@@ -595,6 +597,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_thunk_buffer_debug_module_outputs(false);
   opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
+  opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
+  opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -763,6 +767,25 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         }
         debug_options->set_xla_gpu_deviceless_cub_mode(mode);
         return true;
+      };
+
+  // Custom "sub-parser" lambda for `xla_gpu_autotuner_preferred_backend`.
+  auto autotuner_backend_setter_for =
+      [debug_options](void (DebugOptions::*member_setter)(autotuner::Backend)) {
+        return [debug_options, member_setter](const std::string& value) {
+          if (value.empty() || absl::AsciiStrToUpper(value) == "NONE") {
+            (debug_options->*member_setter)(
+                autotuner::Backend::UNSPECIFIED_BACKEND);
+            return true;
+          }
+          autotuner::Backend backend;
+          if (!autotuner::Backend_Parse(absl::AsciiStrToUpper(value),
+                                        &backend)) {
+            return false;
+          }
+          (debug_options->*member_setter)(backend);
+          return true;
+        };
       };
 
   // Custom "sub-parser" lambda for xla_gpu_cudnn_deviceless_compilation_mode.
@@ -3097,6 +3120,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Available: cudnn, triton, cublas, cublaslt etc, check "
       "xla.autotuner.Backend for the full list."));
   flag_list->push_back(tsl::Flag(
+      "xla_autotuner_preferred_backend",
+      autotuner_backend_setter_for(
+          &DebugOptions::set_xla_autotuner_preferred_backend),
+      autotuner::Backend_Name(debug_options->xla_autotuner_preferred_backend()),
+      "Preferred backend for autotuning. If set and the preferred backend "
+      "generates valid configs for an instruction, the autotuner will pick a "
+      "config from this backend even if another backend is faster. If no "
+      "valid config from the preferred backend is available, the autotuner "
+      "falls back to other backends. Available: cudnn, triton, cublas, "
+      "cublaslt, etc."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_all_fusions_with_triton",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_experimental_all_fusions_with_triton),
@@ -3608,6 +3642,20 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int64_setter_for(&DebugOptions::set_xla_gpu_gxl_scratch_size_bytes),
       debug_options->xla_gpu_gxl_scratch_size_bytes(),
       "Size in bytes of the scratch buffer for GXL collectives."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_persistent_symmetric_memory",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_persistent_symmetric_memory),
+      debug_options->xla_gpu_enable_persistent_symmetric_memory(),
+      "If true, allows skipping defensive copy insertion for S(1) collective "
+      "memory parameters that have input-output aliasing and execute on all "
+      "available devices in the topology."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_raft_for_stable_topk",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_raft_for_stable_topk),
+      debug_options->xla_gpu_experimental_enable_raft_for_stable_topk(),
+      "If true, enables RAFT for stable TopK."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(

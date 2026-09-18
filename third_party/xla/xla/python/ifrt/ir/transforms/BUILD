@@ -212,3 +212,15 @@ xla_cc_test(
         "@tsl//tsl/platform:path",
     ],
 )
+
+xla_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":utils",
+        "//xla/python/ifrt/ir/support:module_parsing",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)

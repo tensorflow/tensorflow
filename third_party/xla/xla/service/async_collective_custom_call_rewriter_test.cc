@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,10 +47,10 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest, DirectRewriteLegacyAndGeneric) {
 
   // Legacy collectives mode.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
     AsyncCollectiveCustomCallRewriter rewriter(/*use_legacy_collectives=*/true);
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_TRUE(changed);
     EXPECT_TRUE(HloVerifier(HloVerifierOpts{}).Run(module.get()).status().ok());
 
@@ -63,11 +62,11 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest, DirectRewriteLegacyAndGeneric) {
 
   // Generic async mode.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
     AsyncCollectiveCustomCallRewriter rewriter(
         /*use_legacy_collectives=*/false);
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_TRUE(changed);
     EXPECT_TRUE(HloVerifier(HloVerifierOpts{}).Run(module.get()).status().ok());
 
@@ -98,10 +97,10 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest, RewriteThroughIntermediaries) {
 
   // Legacy mode.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
     AsyncCollectiveCustomCallRewriter rewriter(/*use_legacy_collectives=*/true);
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_TRUE(changed);
     EXPECT_TRUE(HloVerifier(HloVerifierOpts{}).Run(module.get()).status().ok());
 
@@ -116,11 +115,11 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest, RewriteThroughIntermediaries) {
 
   // Generic async mode.
   {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
     AsyncCollectiveCustomCallRewriter rewriter(
         /*use_legacy_collectives=*/false);
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_TRUE(changed);
     EXPECT_TRUE(HloVerifier(HloVerifierOpts{}).Run(module.get()).status().ok());
 
@@ -151,10 +150,10 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
       ROOT res = (f32[32,10], f32[16,10], f32[16,10], f32[16,10]) tuple(done, pred_op, succ_op, final_succ)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
   AsyncCollectiveCustomCallRewriter rewriter(/*use_legacy_collectives=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(HloVerifier(HloVerifierOpts{}).Run(module.get()).status().ok());
 
@@ -189,11 +188,11 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
         ROOT done = f32[32,10] custom-call(neg), custom_call_target="all-gather-done"
       }
     )";
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(unrewritable_hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(unrewritable_hlo));
     AsyncCollectiveCustomCallRewriter rewriter(
         /*use_legacy_collectives=*/false);
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
     EXPECT_FALSE(changed);
   }
 
@@ -208,8 +207,8 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
         ROOT done = f32[32,10] custom-call(start), custom_call_target="all-gather-done"
       }
     )";
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnUnverifiedModule(invalid_config_hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnUnverifiedModule(invalid_config_hlo));
     AsyncCollectiveCustomCallRewriter rewriter(
         /*use_legacy_collectives=*/false);
     EXPECT_FALSE(rewriter.Run(module.get()).ok());

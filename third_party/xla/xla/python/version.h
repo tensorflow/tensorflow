@@ -19,6 +19,6 @@ limitations under the License.
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
 #define JAX_IFRT_VERSION_NUMBER \
-  68  // StableHlo CollectiveBroadcastOp Compatibility
+  71  // Fix use-after-free in CopyArraysToHostBufferShards
 
 #endif  // XLA_PYTHON_VERSION_H_

@@ -106,6 +106,10 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profiler.stop()
     self.assertFalse(trace.enabled())
 
+  def test_start_with_none_logdir(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      profiler.start(None)
+
 
 if __name__ == '__main__':
   test.main()

@@ -3839,6 +3839,8 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
         "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4309,6 +4311,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
@@ -4338,10 +4341,15 @@ cc_library(
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -8285,8 +8293,11 @@ cc_library(
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

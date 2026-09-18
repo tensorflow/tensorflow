@@ -34,10 +34,14 @@ ENTRY main {
 // CHECK-VECTOR:         memref.subview %{{.*}} [1, 4, 1, 1] [1, 3, 1, 1]
 
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR-COUNT-4:   memref.load {{.*}} : memref<1x12x1x1xf64>
+// NEW-VECTOR:           memref.alloca
+// NEW-VECTOR:           scf.for
+// NEW-VECTOR:             memref.load %arg0
+// NEW-VECTOR:             memref.store %{{.*}}, %alloca
+// NEW-VECTOR:           vector.transfer_read
 // NEW-VECTOR:           vector.transfer_write
 // NEW-VECTOR-SAME:        : vector<1x1x2x2xf64>, memref<1x3x2x2xf64>
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT:   llvm.alloca
+// NEW-VECTOR-LLVM:         llvm.alloca
 

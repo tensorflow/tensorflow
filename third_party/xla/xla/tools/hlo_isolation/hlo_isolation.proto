@@ -57,6 +57,7 @@ message HloIsolationTestResult {
   repeated NumericCheck numeric_checks = 5;
   google.protobuf.Any platform_payload = 6;
   optional bool module_contains_constant_inf_or_nan = 7;
+  optional bool is_intentional_inf_nan = 8;
 }
 
 message HloIsolationTestSummary {

@@ -1453,9 +1453,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
       << "Expect TopK custom call to have tuple shape.";
-  TF_RET_CHECK(shape.tuple_shapes().size() == 2)
-      << "Expect TopK custom call shape to have exactly 2 "
-         "sub-shapes.";
+  TF_RET_CHECK(shape.tuple_shapes().size() == 2 ||
+               shape.tuple_shapes().size() == 3)
+      << "Expect TopK custom call shape to have 2 or 3 sub-shapes.";
 
   auto data_shape = operands[0]->shape();
   auto top_elements_shape = shape.tuple_shapes()[0];
@@ -2614,10 +2614,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteDone(
   auto it = GetInstructionToHostExecuteAsyncEvents().find(host_execute);
   TF_RET_CHECK(it != GetInstructionToHostExecuteAsyncEvents().end())
       << "could not find async events for host execute operation";
+
+  absl::InlinedVector<ShapedSlice, 4> result_slices;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(host_execute->shape())) {
+    ABSL_ASSIGN_OR_RETURN(auto slice,
+                     ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                         host_execute, indexed.index));
+    result_slices.push_back({slice, indexed.shape});
+  }
+
   return ThunkSequence::Of<HostExecuteDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           async_done, ir_emitter_context_->GetNextThunkId()),
-      it->second);
+      it->second, std::move(result_slices));
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitAsyncStart(

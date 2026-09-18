@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -7391,12 +7391,11 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   ASSERT_NE(parameter_instruction, nullptr);
 
   Literal expected = LiteralUtil::CreateR0<int32_t>(42);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*hlo_module));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
-      evaluator_.Evaluate(parameter_instruction, {tuple_points_to.get()},
+      evaluator_.Evaluate(parameter_instruction, {dataflow.get()},
                           /*recursively_evaluate_nonconstant_operands=*/true));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
@@ -7485,14 +7484,14 @@ TEST_F(PatternMatchParseWhileLoopTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to,
-      TuplePointsToAnalysis::Run(hlo_module.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                          HloDataflowAnalysis::Run(*hlo_module));
 
   HloInstruction* while_op =
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   std::optional<ParsedWhileLoop> parsed_while_loop =
-      PatternMatchParseWhileLoop(while_op, {tuple_points_to.get()});
+      PatternMatchParseWhileLoop(while_op, {dataflow.get()});
   ASSERT_TRUE(parsed_while_loop.has_value());
   EXPECT_FALSE(parsed_while_loop->is_dynamic());
   EXPECT_EQ(parsed_while_loop->static_while_loop->trip_count, 5);
@@ -8507,6 +8506,303 @@ TEST_F(HloEvaluatorTest, ScanDisagreeingCarry) {
       LiteralUtil::CreateR2<float>({{2.0f, 4.0f}, {8.0f, 12.0f}}),
       LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {4.0f, 6.0f}}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DefaultDoesNotMemoizeCall) {
+  const char* const hlo_string = R"(
+  HloModule DefaultNoMemoization
+
+  callee {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    call1 = f32[] call(c), to_apply=callee
+    call2 = f32[] call(c), to_apply=callee
+    ROOT add = f32[] add(call1, call2)
+  }
+  )";
+  EXPECT_FALSE(evaluator_.cache_call_computation_evals());
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(30.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache(), nullptr);
+}
+
+TEST_F(HloEvaluatorTest, ConstructorEnablesCacheCallComputationEvals) {
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
+  EXPECT_TRUE(evaluator.cache_call_computation_evals());
+
+  const char* const hlo_string = R"(
+  HloModule CtorMemoization
+
+  callee {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    call1 = f32[] call(c), to_apply=callee
+    call2 = f32[] call(c), to_apply=callee
+    ROOT add = f32[] add(call1, call2)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(30.0f), result));
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
+}
+
+TEST_F(HloEvaluatorTest, MemoizationSameComputationIdenticalArguments) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule MemoizationSameArgs
+
+  callee {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    call1 = f32[] call(c), to_apply=callee
+    call2 = f32[] call(c), to_apply=callee
+    ROOT add = f32[] add(call1, call2)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(30.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+}
+
+TEST_F(HloEvaluatorTest, MemoizationDifferentArguments) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule MemoizationDiffArgs
+
+  callee {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c1 = f32[] constant(5)
+    c2 = f32[] constant(7)
+    call1 = f32[] call(c1), to_apply=callee
+    call2 = f32[] call(c2), to_apply=callee
+    ROOT add = f32[] add(call1, call2)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(32.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+}
+
+TEST_F(HloEvaluatorTest, MemoizationMultipleParameters) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule MemoizationMultiParams
+
+  callee {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT sub = f32[] subtract(p0, p1)
+  }
+
+  ENTRY entry {
+    c1 = f32[] constant(10)
+    c2 = f32[] constant(3)
+    call1 = f32[] call(c1, c2), to_apply=callee
+    call2 = f32[] call(c1, c2), to_apply=callee
+    call3 = f32[] call(c2, c1), to_apply=callee
+    add12 = f32[] add(call1, call2)
+    ROOT final = f32[] add(add12, call3)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  // call1 = 10 - 3 = 7
+  // call2 = 10 - 3 = 7 (cache hit)
+  // call3 = 3 - 10 = -7 (cache miss, order matters)
+  // final = 7 + 7 + (-7) = 7
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(7.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+}
+
+TEST_F(HloEvaluatorTest, MemoizationZeroParameters) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule MemoizationZeroParams
+
+  callee {
+    ROOT c = f32[] constant(42)
+  }
+
+  ENTRY entry {
+    call1 = f32[] call(), to_apply=callee
+    call2 = f32[] call(), to_apply=callee
+    ROOT add = f32[] add(call1, call2)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(84.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+}
+
+TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule NestedCalls
+
+  comp_b {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  comp_a {
+    p_a = f32[] parameter(0)
+    call_b = f32[] call(p_a), to_apply=comp_b
+    c2 = f32[] constant(2)
+    ROOT mul = f32[] multiply(call_b, c2)
+  }
+
+  comp_c {
+    p_c = f32[] parameter(0)
+    call_b = f32[] call(p_c), to_apply=comp_b
+    c3 = f32[] constant(3)
+    ROOT mul = f32[] multiply(call_b, c3)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    call_a = f32[] call(c), to_apply=comp_a
+    call_c = f32[] call(c), to_apply=comp_c
+    ROOT add = f32[] add(call_a, call_c)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  // comp_b(5) = 15
+  // comp_a(5) = 15 * 2 = 30
+  // comp_c(5) = 15 * 3 = 45
+  // entry = 30 + 45 = 75
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(75.0f), result));
+  // comp_a, comp_c, and comp_b should each have 1 entry in the specialization
+  // cache. comp_b with argument 5 is evaluated only once and shared between
+  // comp_a and comp_c.
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 3);
+
+  const HloComputation* comp_b = m_->GetComputationWithName("comp_b");
+  ASSERT_NE(comp_b, nullptr);
+  int comp_b_entries = 0;
+  for (const auto& [key, val] : *evaluator_.specialization_cache()) {
+    if (key.computation == comp_b) {
+      ++comp_b_entries;
+      EXPECT_TRUE(
+          LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), val));
+    }
+  }
+  EXPECT_EQ(comp_b_entries, 1);
+}
+
+TEST_F(HloEvaluatorTest, ClearSpecializationCache) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string = R"(
+  HloModule ClearCacheModule
+
+  callee {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    ROOT call = f32[] call(c), to_apply=callee
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+
+  evaluator_.ClearSpecializationCache();
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 0);
+
+  // Re-evaluating on the top-level evaluator should repopulate the cache
+  evaluator_.ResetVisitStates();
+  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result2));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+}
+
+TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
+  evaluator_.set_cache_call_computation_evals(true);
+  const char* const hlo_string1 = R"(
+  HloModule Module1
+
+  callee1 {
+    p0 = f32[] parameter(0)
+    c10 = f32[] constant(10)
+    ROOT add = f32[] add(p0, c10)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(5)
+    ROOT call = f32[] call(c), to_apply=callee1
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string1));
+  ASSERT_OK_AND_ASSIGN(Literal result1, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result1));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+
+  const char* const hlo_string2 = R"(
+  HloModule Module2
+
+  callee2 {
+    p0 = f32[] parameter(0)
+    c20 = f32[] constant(20)
+    ROOT add = f32[] add(p0, c20)
+  }
+
+  ENTRY entry {
+    c = f32[] constant(7)
+    ROOT call = f32[] call(c), to_apply=callee2
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string2));
+  // Reset visitor state before running visitor on the new module.
+  evaluator_.ResetVisitStates();
+  // Second top-level Evaluate() must automatically clear previous cache
+  // entries.
+  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(27.0f), result2));
+  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
 }
 
 TEST(EvalErrorTest, OK) {

@@ -232,7 +232,8 @@ def minimum(x1, x2):
 @np_utils.np_doc('clip')
 def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
   if a_min is None and a_max is None:
-    raise ValueError('Not more than one of `a_min` and `a_max` may be `None`.')
+    # NumPy (>= 2.0) returns the input unchanged when both bounds are None.
+    return np_array_ops.asarray(a)
   if a_min is None:
     return minimum(a, a_max)
   elif a_max is None:
@@ -1105,6 +1106,14 @@ def isinf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return _scalar(math_ops.is_inf, x, True)
+  if x.dtype.is_complex:
+    # Match NumPy: a complex value is infinite if either its real or its
+    # imaginary part is infinite. The IsInf kernel has no complex variant,
+    # so check the two parts separately.
+    return math_ops.logical_or(
+        _scalar(math_ops.is_inf, math_ops.real(x), True),
+        _scalar(math_ops.is_inf, math_ops.imag(x), True),
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
@@ -1114,6 +1123,12 @@ def isneginf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, -np.inf)
+  if x.dtype.is_complex:
+    # Match NumPy, which rejects complex inputs as ambiguous.
+    raise TypeError(
+        f'This operation is not supported for {x.dtype.name} values '
+        'because it would be ambiguous.'
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
@@ -1123,6 +1138,12 @@ def isposinf(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_floating:
     return x == np_array_ops.full_like(x, np.inf)
+  if x.dtype.is_complex:
+    # Match NumPy, which rejects complex inputs as ambiguous.
+    raise TypeError(
+        f'This operation is not supported for {x.dtype.name} values '
+        'because it would be ambiguous.'
+    )
   return np_array_ops.zeros_like(x, dtypes.bool)
 
 
@@ -1449,6 +1470,15 @@ def concatenate(arys, axis=0):  # pylint: disable=missing-function-docstring
         for array in arys
     ]
     axis = 0
+  else:
+    maybe_rank = arys[0].shape.rank
+    if maybe_rank is not None:
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input {arys[0]} of rank {maybe_rank}.'
+        )
   return array_ops.concat(arys, axis)
 
 
@@ -1476,7 +1506,20 @@ def tile(a, reps):  # pylint: disable=missing-function-docstring
 @tf_export.tf_export('experimental.numpy.count_nonzero', v1=[])
 @np_utils.np_doc('count_nonzero')
 def count_nonzero(a, axis=None):
-  return math_ops.count_nonzero(np_array_ops.array(a), axis)
+  a = np_array_ops.array(a)
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy accepts axis 0 (and -1) on 0-d inputs.
+    validation_rank = max(maybe_rank, 1)
+    axes = axis if isinstance(axis, (tuple, list)) else (axis,)
+    for ax in axes:
+      normalized = ax + validation_rank if ax < 0 else ax
+      if normalized < 0 or normalized >= validation_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={ax}) is out of bounds '
+            f'for input {a} of rank {maybe_rank}.'
+        )
+  return math_ops.count_nonzero(a, axis)
 
 
 @tf_export.tf_export('experimental.numpy.argsort', v1=[])
@@ -1500,6 +1543,18 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
         'argsort does not support complex64/complex128 dtypes. '
         f'Received dtype: {a.dtype}'
     )
+
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy treats 0-d inputs as 1-D of size 1 for axis validation, so
+    # axes -1 and 0 are valid on scalars.
+    validation_rank = max(maybe_rank, 1)
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {maybe_rank}.'
+      )
 
   def _argsort(a, axis, stable):
     if axis is None:
@@ -1534,6 +1589,15 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
 
   a = np_array_ops.array(a)
 
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    normalized = axis + maybe_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input {a} of rank {maybe_rank}.'
+      )
+
   if axis is None:
     return sort_ops.sort(array_ops.reshape(a, [-1]), 0)
   else:
@@ -1547,6 +1611,20 @@ def _argminmax(fn, a, axis=None):
     a_t = array_ops.reshape(a, [-1])
   else:
     a_t = np_array_ops.atleast_1d(a)
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a_t.shape.rank
+    if (
+        maybe_rank is not None
+        and isinstance(axis, (int, np.integer))
+        and not bool(isinstance(axis, (bool, np.bool_)))
+    ):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
   return fn(input=a_t, axis=axis)
 
 

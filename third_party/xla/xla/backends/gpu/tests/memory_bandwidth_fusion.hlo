@@ -9,7 +9,7 @@
 // PriorityFusionRocmMemoryBandwidthTest.MemoryBandwidthTipsReduceFusion in
 // priority_fusion_test.cc):
 //
-//   - mi350 (gfx950, HBM3e, 6.81 TB/s): with the corrected per-gfx bandwidth
+//   - mi350 (gfx950, HBM3e, 7.78 TB/s): with the corrected per-gfx bandwidth
 //     (rocm_memory_bandwidth.cc) the re-read is cheap, so PriorityFusion
 //     duplicates the reduce into both consumers (two fusions); a later
 //     multi-output fusion pass then merges them, since they share the input,

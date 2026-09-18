@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -30,13 +32,19 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -44,7 +52,8 @@ namespace xla::gpu {
 CollectiveGroupThunk::CollectiveGroupThunk(ThunkInfo thunk_info,
                                            Thunk::Kind kind,
                                            ThunkSequence thunks)
-    : Thunk(kind, std::move(thunk_info)), executor_(std::move(thunks)) {}
+    : TracedCommand(kind, std::move(thunk_info)),
+      executor_(std::move(thunks)) {}
 
 absl::Status CollectiveGroupThunk::Prepare(const PrepareParams& params) {
   return executor_.Prepare(params);
@@ -56,6 +65,17 @@ absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
 
 std::string CollectiveGroupThunk::ToString(int indent) const {
   return absl::StrCat("\n", executor_.thunks().ToString(indent + 1));
+}
+
+Thunk::BufferUses CollectiveGroupThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(thunks().size() * 2);
+  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
+    BufferUses sub_uses = thunk->buffer_uses();
+    uses.insert(uses.end(), std::make_move_iterator(sub_uses.begin()),
+                std::make_move_iterator(sub_uses.end()));
+  }
+  return uses;
 }
 
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
@@ -102,6 +122,38 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   // Otherwise use a multi-comm group launch.
   return params.collective_params->collectives->GroupLaunch(
       comms, [&] { return executor_.ExecuteOnStream(params); });
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectiveGroupThunk::Record(
+    const ExecuteParams& execute_params, const RecordParams& record_params,
+    RecordAction record_action, se::CommandBuffer* command_buffer) {
+  // Like CollectiveThunk::Record, trace directly via TraceCommandBufferFactory
+  // rather than TracedCommand::RecordTracedCommand (which uses a per-rank
+  // TracedCommandBuffer LRU cache). With NCCL collectives, all participating
+  // ranks must enter stream capture together whenever Record is invoked; if one
+  // rank hits its local TracedCommandBuffer cache and skips tracing while
+  // another rank misses the cache and traces, NCCL will deadlock.
+  std::unique_ptr<se::CommandBuffer> nested_cmd;
+  ABSL_ASSIGN_OR_RETURN(
+      nested_cmd,
+      se::TraceCommandBufferFactory::Create(
+          execute_params.stream->parent(),
+          execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
+            return ExecuteOnStream(execute_params.WithComputeStream(stream));
+          }));
+
+  ABSL_RETURN_IF_ERROR(nested_cmd->SetPriority(se::StreamPriority::Highest));
+
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateChildCommand(*nested_cmd,
+                                              create->dependencies);
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    ABSL_RETURN_IF_ERROR(
+        command_buffer->UpdateChildCommand(update->command, *nested_cmd));
+    return update->command;
+  }
+  return Internal("Invalid record action");
 }
 
 absl::Status CollectiveGroupThunk::WalkNested(Walker pre_order,

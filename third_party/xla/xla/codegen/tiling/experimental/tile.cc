@@ -243,6 +243,10 @@ Tile Tile::CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const {
   return ret;
 }
 
+Tile Tile::CloneWithNewTilingSpace(const TilingSpace& new_space) const {
+  return Tile(new_space, dim_tiles_, replica_ids_);
+}
+
 bool Tile::operator==(const Tile& other) const {
   return tiling_space_ == other.tiling_space_ &&  //
          dim_tiles_ == other.dim_tiles_ &&        //

@@ -556,6 +556,40 @@ HloInstruction* GetWhileForBodyRoot(HloInstruction* body_root) {
   return nullptr;
 }
 
+// Returns the async pipelined while loop associated with 'instruction' (if
+// 'instruction' is the while loop itself, the body parameter, or the body root
+// tuple), or nullptr if there is none.
+const HloInstruction* GetAsyncPipelinedWhileLoop(
+    const HloInstruction* instruction) {
+  if (instruction == nullptr) {
+    return nullptr;
+  }
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    for (const HloInstruction* caller :
+         instruction->parent()->caller_instructions(HloOpcode::kWhile)) {
+      if (caller->while_body() == instruction->parent() &&
+          IsAsyncPipelinedWhileLoop(caller)) {
+        return caller;
+      }
+    }
+  } else if (instruction->opcode() == HloOpcode::kWhile) {
+    if (IsAsyncPipelinedWhileLoop(instruction)) {
+      return instruction;
+    }
+  } else {
+    const HloComputation* comp = instruction->parent();
+    if (comp != nullptr && instruction == comp->root_instruction() &&
+        instruction->opcode() == HloOpcode::kTuple) {
+      HloInstruction* while_caller =
+          GetWhileForBodyRoot(const_cast<HloInstruction*>(instruction));
+      if (while_caller != nullptr && IsAsyncPipelinedWhileLoop(while_caller)) {
+        return while_caller;
+      }
+    }
+  }
+  return nullptr;
+}
+
 // Returns true if the position corresponds to loop-carried state (parameter or
 // body root tuple) of an async pipelined while loop, or while/DUS/DS in an
 // async pipelined while loop.
@@ -612,6 +646,115 @@ int64_t GetShapeSizeBytes(const CostAnalysis* cost_analysis,
 }
 
 }  // namespace
+
+// Helper to inspect the async wrapped opcode of a pipelined while loop
+// position.
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, const HloPosition& pos,
+    const HloAliasAnalysis& alias_analysis) {
+  if (while_instr == nullptr || while_instr->opcode() != HloOpcode::kWhile ||
+      pos.index.empty()) {
+    return std::nullopt;
+  }
+
+  int64_t tuple_idx = pos.index[0];
+  ShapeIndex base_index = {tuple_idx, 0, 0};
+  if (!ShapeUtil::IndexIsValid(pos.instruction->shape(), base_index)) {
+    return std::nullopt;
+  }
+
+  std::vector<const HloBuffer*> buffers =
+      alias_analysis.ComputeBuffersAt(pos.instruction, base_index);
+  const HloInstruction* async_start = nullptr;
+  for (const HloBuffer* buffer : buffers) {
+    for (const HloPosition& p : buffer->ComputePositions()) {
+      if (p.instruction->opcode() == HloOpcode::kAsyncStart &&
+          p.instruction->parent() == while_instr->while_body()) {
+        async_start = p.instruction;
+      }
+    }
+  }
+
+  if (async_start == nullptr) {
+    return std::nullopt;
+  }
+  return async_start->async_wrapped_opcode();
+}
+
+std::optional<HloOpcode> GetAsyncPipelinedWhileWrappedOpcode(
+    const HloInstruction* while_instr, int64_t tuple_idx,
+    const HloAliasAnalysis& alias_analysis) {
+  if (while_instr == nullptr || while_instr->opcode() != HloOpcode::kWhile) {
+    return std::nullopt;
+  }
+  return GetAsyncPipelinedWhileWrappedOpcode(
+      while_instr,
+      HloPosition{const_cast<HloInstruction*>(while_instr), {tuple_idx}},
+      alias_analysis);
+}
+
+// Returns true if the position in an async pipelined while loop corresponds to
+// a buffer that is intended to reside in alternate memory (e.g., prefetched
+// dynamic-slice output, or dynamic-update-slice update slice). Base tensors of
+// dynamic-slice or dynamic-update-slice and dynamic-update-slice outputs
+// reside in default memory (HBM) on TPU and return false.
+bool IsAsyncPipelinedWhileAlternateMemoryPosition(
+    const HloPosition& pos, const HloAliasAnalysis& alias_analysis) {
+  if (pos.instruction->IsAsynchronous()) {
+    HloOpcode wrapped_opcode = pos.instruction->async_wrapped_opcode();
+    if (wrapped_opcode == HloOpcode::kDynamicSlice) {
+      if (pos.instruction->opcode() == HloOpcode::kAsyncDone) {
+        return pos.index.empty();
+      }
+      if (pos.instruction->opcode() == HloOpcode::kAsyncStart) {
+        return pos.index == ShapeIndex({1});
+      }
+    }
+    // DynamicUpdateSlice base tensor and output reside in default memory.
+    return false;
+  }
+
+  if (pos.index.empty()) {
+    return false;
+  }
+
+  const HloInstruction* while_instr =
+      GetAsyncPipelinedWhileLoop(pos.instruction);
+  if (while_instr == nullptr) {
+    return false;
+  }
+
+  int64_t tuple_idx = pos.index[0];
+  ShapeIndex base_index = {tuple_idx, 0, 0};
+  if (!ShapeUtil::IndexIsValid(pos.instruction->shape(), base_index)) {
+    return false;
+  }
+
+  std::optional<HloOpcode> wrapped_opcode =
+      GetAsyncPipelinedWhileWrappedOpcode(while_instr, pos, alias_analysis);
+  if (!wrapped_opcode.has_value()) {
+    return false;
+  }
+
+  if (*wrapped_opcode == HloOpcode::kDynamicUpdateSlice) {
+    // In an async dynamic-update-slice bundle:
+    // {tuple_idx, 0, 0} is the base tensor -> default memory
+    // {tuple_idx, 0, 1} is the update slice -> alternate memory
+    // {tuple_idx, 1} is the dynamic-update-slice output (aliased to base) ->
+    // default memory
+    return pos.index == ShapeIndex({tuple_idx, 0, 1});
+  }
+
+  if (*wrapped_opcode == HloOpcode::kDynamicSlice) {
+    // In an async dynamic-slice bundle:
+    // {tuple_idx, 0, 0} is the base tensor -> default memory
+    // {tuple_idx, 1} or {tuple_idx} is the slice output -> alternate memory
+    return pos.index == ShapeIndex({tuple_idx, 1}) ||
+           pos.index == ShapeIndex({tuple_idx});
+  }
+
+  return false;
+}
 
 bool TimeInterval::operator<(const TimeInterval& other) const {
   return std::forward_as_tuple(inclusive_start_time, inclusive_end_time) <
@@ -5577,12 +5720,10 @@ bool MsaAlgorithm::GetUpdatedRequireNoCopyAlternateMemForAsyncPipelinedWhile(
     return true;
   }
 
-  // Check 3: we're only looking to override async DUS and async dynamic slice.
+  // Check 3: we're only looking to override async dynamic-update-slice update
+  // slice and async dynamic-slice output.
   const HloPosition& def_pos = allocation_value_to_update.position();
-  const HloInstruction* def_instr = def_pos.instruction;
-  if (def_instr->IsAsynchronous() &&
-      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicUpdateSlice &&
-      def_instr->async_wrapped_opcode() != HloOpcode::kDynamicSlice) {
+  if (!IsAsyncPipelinedWhileAlternateMemoryPosition(def_pos, alias_analysis_)) {
     return false;
   }
 
@@ -5900,8 +6041,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           }
         }
         if (allocate_segment_result == AllocationResult::kSuccess &&
-            NeedsMirroredAllocation(allocation_value_to_update, use,
-                                    previous_use)) {
+            ShouldBeMirrored(allocation_value_to_update, use, previous_use)) {
           CreateMirroredAllocations(
               allocation_value_to_update, use, previous_use, allocation_values,
               already_processed_allocation_values_inside_a_conditional);
@@ -6631,19 +6771,19 @@ void MsaAlgorithm::SynchronizeAliasedWhileLoopOffsets(
       {hlo_use.instruction, hlo_use.operand_index}, offset);
 }
 
-bool MsaAlgorithm::NeedsMirroredAllocation(
+bool MsaAlgorithm::ShouldBeMirroredByNestedConditionals(
     const AllocationValue& allocation_value,
     const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use) const {
-  // We create mirrored allocations for allocation values, inside
-  // conditional branches, by verifying that all of the following conditions
-  // are met:
+  // If all of the following conditions are met, we need mirrored allocations
+  // for the aliasing, nested allocation values in the time range
+  // [time(`previous_use`), time(`current_use`)]:
   // 1. The previous use is a conditional and the current use is strictly after
   //    the conditional.
-  // 2. The last allocation in the AllocationSequence is in the alternate
+  // 2. The previous allocation in the AllocationSequence is in the alternate
   //    memory.
-  // 3. The last allocation serves the previous use and the current use.
-  // 4. The last allocation extends throughout the conditional live range.
+  // 3. The previous allocation serves the previous use and the current use.
+  // 4. The previous allocation extends throughout the conditional live range.
 
   // Check conditions 1 and 2.
   const AllocationSequence* allocation_sequence =
@@ -6672,7 +6812,15 @@ bool MsaAlgorithm::NeedsMirroredAllocation(
   return last_allocation_covers_conditional_live_range;
 }
 
-void MsaAlgorithm::CreateMirroredAllocations(
+bool MsaAlgorithm::ShouldBeMirrored(
+    const AllocationValue& allocation_value,
+    const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use) const {
+  return ShouldBeMirroredByNestedConditionals(allocation_value, current_use,
+                                              previous_use);
+}
+
+void MsaAlgorithm::CreateMirroredAllocationsForNestedConditionals(
     AllocationValue& allocation_value, const AllocationValue::Use& current_use,
     const AllocationValue::Use* previous_use,
     absl::Span<AllocationValue> allocation_values,
@@ -6772,6 +6920,17 @@ void MsaAlgorithm::CreateMirroredAllocations(
         *allocation_val.mutable_allocation_sequence()->back(),
         /*aliased_offset=*/nullptr);
   }
+}
+
+void MsaAlgorithm::CreateMirroredAllocations(
+    AllocationValue& allocation_value, const AllocationValue::Use& current_use,
+    const AllocationValue::Use* previous_use,
+    absl::Span<AllocationValue> allocation_values,
+    absl::flat_hash_set<AllocationValue*>&
+        already_processed_allocation_values_inside_a_conditional) {
+  CreateMirroredAllocationsForNestedConditionals(
+      allocation_value, current_use, previous_use, allocation_values,
+      already_processed_allocation_values_inside_a_conditional);
 }
 
 bool MsaAlgorithm::IsEvictionRequiredForPreviousUseAtConditional(
@@ -10706,6 +10865,9 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
           alternate_mem_interval->UpdateEndTime(use);
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
+          if (chunk_candidates.empty()) {
+            return false;
+          }
           int64_t max_chunk_end =
               absl::c_max_element(chunk_candidates, [](const Chunk& c1,
                                                        const Chunk& c2) {
@@ -10739,6 +10901,12 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
   alternate_mem_interval->UpdateEndTime(end_time);
   std::vector<Chunk> chunk_candidates =
       FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
+  // Ensure that chunk candidates exist before querying min/max elements to
+  // prevent undefined behavior or segmentation faults when chunk_candidates is
+  // empty.
+  if (chunk_candidates.empty()) {
+    return {};
+  }
   int64_t candidates_start =
       absl::c_min_element(chunk_candidates, [](const Chunk& c1,
                                                const Chunk& c2) {

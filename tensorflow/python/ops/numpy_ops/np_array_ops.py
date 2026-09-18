@@ -328,6 +328,11 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
       [v_rank],
   )
 
+  if isinstance(k, core_tf_types.Tensor) and k.shape.ndims is None:
+    control_flow_assert.Assert(math_ops.equal(array_ops.rank(k), 0), [k])
+  elif not isscalar(k):
+    raise ValueError(f'k must be an integer scalar, got {k}')
+
   def _diag(v, k):
     return np_utils.cond(
         math_ops.equal(array_ops.size(v), 0),
@@ -460,7 +465,10 @@ def compress(condition, a, axis=None):  # pylint: disable=redefined-outer-name,m
   if axis < 0:
     axis += a.ndim
 
-  assert axis >= 0 and axis < a.ndim
+  if axis < 0 or axis >= a.ndim:
+    raise ValueError(
+        f'Argument `axis` is out of bounds for input of rank {a.ndim}.'
+    )
 
   # `tf.boolean_mask` requires `a`'s size along `axis` to equal `condition`'s
   # length. `np.compress` instead pairs `condition[k]` with `a[k]` along `axis`
@@ -517,8 +525,19 @@ def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumprod(a, axis)
 
 
@@ -534,8 +553,19 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   if axis is None:
     a = ravel(a)
     axis = 0
-  elif axis < 0:
-    axis += array_ops.rank(a)
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
+    elif axis < 0:
+      axis += array_ops.rank(a)
   return math_ops.cumsum(a, axis)
 
 
@@ -1606,9 +1636,14 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     delta = -1
 
   x = array_ops.expand_dims(x, -1)
-  return math_ops.pow(
-      x, math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  exponents = math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  # Avoid 0.0 ** 0.0 in pow, whose gradient evaluates 0 * 0^(-1) = 0 * inf = NaN.
+  # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
+  # where exponent == 0 preserves both forward values and exact derivatives.
+  safe_x = array_ops.where_v2(
+      math_ops.equal(exponents, 0), constant_op.constant(1, dtype=x.dtype), x
   )
+  return math_ops.pow(safe_x, exponents)
 
 
 @tf_export.tf_export('experimental.numpy.ix_', v1=[])

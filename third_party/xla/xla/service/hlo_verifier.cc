@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -55,12 +55,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cycle.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
@@ -130,7 +130,7 @@ absl::Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
     return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
                            hlo->ToString());
   }
-  if (hlo->shape().has_layout()) {
+  if (opts_.layout_sensitive && hlo->shape().has_layout()) {
     if (hlo->shape().layout().minor_to_major().size() !=
         hlo->shape().dimensions().size()) {
       return InvalidArgument(
@@ -3680,12 +3680,12 @@ std::string FormatShapeIndexValidationError(
   }
   return absl::StrFormat(
       "Mismatched tuple structure in shape and original value.\n%s"
-      "Instruction: %s\nShape indices in shape only: {%s}\nShape indices in "
-      "original value "
-      "only: {%s}",
-      module_info, instruction->ToString(),
-      absl::StrJoin(shape_only, ", ", shape_index_formatter),
-      absl::StrJoin(ov_only, ", ", shape_index_formatter));
+      "Shape indices in shape only: {%s}\nShape indices in "
+      "original value only: {%s}\n"
+      "Instruction: %s\n",
+      module_info, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      absl::StrJoin(ov_only, ", ", shape_index_formatter),
+      instruction->ToString());
 }
 
 }  // namespace

@@ -56,17 +56,17 @@ def workspace():
 
     tf_http_archive(
         name = "bazel_features",
-        sha256 = "4fd9922d464686820ffd8fcefa28ccffa147f7cdc6b6ac0d8b07fde565c65d66",
-        strip_prefix = "bazel_features-1.25.0",
-        urls = tf_mirror_urls("https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz"),
+        sha256 = "094367e732ece23f334eaf84089a720b861d053beeba6a6a68356d3aee1dc32b",
+        strip_prefix = "bazel_features-1.50.0",
+        urls = tf_mirror_urls("https://github.com/bazel-contrib/bazel_features/releases/download/v1.50.0/bazel_features-v1.50.0.tar.gz"),
     )
 
     tf_http_archive(
         name = "rules_cc",
-        sha256 = "69e05df29f0010ba248ef8dafc1f084c8fd2f5c553da634422d8167f5c4b277b",
-        strip_prefix = "rules_cc-0.2.20",
+        sha256 = "bd7124a844d0403b4b353bcea34d6c8b2ba88dc26881c26c9ee668da89b71846",
+        strip_prefix = "rules_cc-0.2.25",
         urls = tf_mirror_urls(
-            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.20/rules_cc-0.2.20.tar.gz",
+            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.25/rules_cc-0.2.25.tar.gz",
         ),
     )
 
@@ -74,10 +74,10 @@ def workspace():
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "66d823b6c6b4ea6f09d79ef6fe49e181e5301759ee07d176a6c82a01e1227d6b",
-        strip_prefix = "rules_ml_toolchain-e8709f15382e4da1de5ca15672cb4412da3d989d",
+        sha256 = "302ded361f154c20c507b547eed313f01d4ece57abc6be66f0f77b10c1076429",
+        strip_prefix = "rules_ml_toolchain-2d318f0d6a4c7a402d30a0bce260040e6807b196",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/e8709f15382e4da1de5ca15672cb4412da3d989d.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/2d318f0d6a4c7a402d30a0bce260040e6807b196.tar.gz",
         ),
     )
 

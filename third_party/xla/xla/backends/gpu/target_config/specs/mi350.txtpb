@@ -24,7 +24,7 @@ gpu_device_info {
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65536
   block_dim_limit_z: 65536
-  memory_bandwidth: 6810000000000
+  memory_bandwidth: 7782000000000
   l2_cache_size: 4194304
   clock_rate_ghz: 2.2
   device_memory_size: 270566162432

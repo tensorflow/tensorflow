@@ -16,17 +16,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -125,13 +124,15 @@ void FillKernelArgumentAttributes(
 
 struct OutputArguments {
   std::vector<KernelArgument> output_arguments;
+  // Shape index of each entry of `output_arguments`, in the same order.
+  std::vector<ShapeIndex> output_shape_indices;
   absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
 };
 
 // Extract output arguments from an instruction's shape and return both
 // the arguments and the set of written buffer slices
 absl::StatusOr<OutputArguments> ExtractOutputArguments(
-    const BufferAssignment& buffer_assignment,
+    KernelArguments::SliceProvider slice_provider,
     const HloInstruction* hlo_instruction) {
   OutputArguments result;
   ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
@@ -139,56 +140,144 @@ absl::StatusOr<OutputArguments> ExtractOutputArguments(
       [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) return absl::OkStatus();
 
-        ABSL_ASSIGN_OR_RETURN(
-            BufferAllocation::Slice slice,
-            buffer_assignment.GetUniqueSlice(hlo_instruction, index));
+        ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                         slice_provider(*hlo_instruction, index));
 
         result.output_arguments.emplace_back(KernelArgument(subshape, slice));
+        result.output_shape_indices.push_back(index);
         result.buffers_written.insert(slice);
         return absl::OkStatus();
       }));
   return result;
 }
-absl::StatusOr<KernelArguments> CreateKernelArguments(
-    const BufferAssignment& buffer_assignment,
-    const KernelArguments::BufferAlignment& buffer_alignment,
+
+// Validates `interleaved_output_indices` and returns the position that each
+// result must take in the argument list, in result order.
+//
+// An empty `interleaved_output_indices` means "no interleaving": the results
+// follow the operands.
+absl::StatusOr<std::vector<int64_t>> ResultPositions(
+    absl::Span<const int32_t> interleaved_output_indices, size_t num_operands,
+    size_t num_results) {
+  std::vector<int64_t> result_positions;
+  result_positions.reserve(num_results);
+
+  if (interleaved_output_indices.empty()) {
+    for (size_t i = 0; i < num_results; ++i) {
+      result_positions.push_back(num_operands + i);
+    }
+    return result_positions;
+  }
+
+  if (interleaved_output_indices.size() != num_results) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected an interleaving index for each of the ", num_results,
+        " results, got ", interleaved_output_indices.size(), " indices"));
+  }
+
+  const size_t num_arguments = num_operands + num_results;
+  int64_t previous_index = -1;
+  for (const int32_t index : interleaved_output_indices) {
+    if (index < 0 || static_cast<size_t>(index) >= num_arguments) {
+      return absl::InvalidArgumentError("Output index out of bounds");
+    }
+    if (index <= previous_index) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Output indices must be strictly increasing, got ",
+                       index, " after ", previous_index));
+    }
+    previous_index = index;
+    result_positions.push_back(index);
+  }
+  return result_positions;
+}
+
+}  // namespace
+
+absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
+    SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
-    absl::Span<const Shape> unmanaged_arguments) {
-  std::vector<KernelArgument> kernel_arguments;
+    absl::Span<const Shape> unmanaged_arguments,
+    absl::Span<const int32_t> interleaved_output_indices) {
   absl::flat_hash_set<int> no_invariant_operands =
       NonInvariantOperands(*hlo_instruction);
 
+  std::vector<KernelArgument> operand_arguments;
+  operand_arguments.reserve(hlo_instruction->operand_count());
   for (auto [op_idx, operand] : llvm::enumerate(hlo_instruction->operands())) {
     ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                     buffer_assignment.GetUniqueSlice(operand, {}));
+                     slice_provider(*operand, {}));
     KernelArgument arg(operand->shape(), slice);
     if (no_invariant_operands.contains(op_idx)) {
       arg.set_invariant(false);
     }
-    kernel_arguments.emplace_back(std::move(arg));
+    operand_arguments.push_back(std::move(arg));
   }
 
   ABSL_ASSIGN_OR_RETURN(OutputArguments output_result,
-                   ExtractOutputArguments(buffer_assignment, hlo_instruction));
+                   ExtractOutputArguments(slice_provider, hlo_instruction));
 
-  absl::c_move(output_result.output_arguments,
-               std::back_inserter(kernel_arguments));
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<int64_t> result_positions,
+      ResultPositions(interleaved_output_indices, operand_arguments.size(),
+                      output_result.output_arguments.size()));
+
+  const size_t num_managed_arguments =
+      operand_arguments.size() + output_result.output_arguments.size();
+
+  std::vector<KernelArgument> kernel_arguments;
+  kernel_arguments.reserve(num_managed_arguments + unmanaged_arguments.size());
+  ArgumentPositions positions;
+  positions.operands.reserve(operand_arguments.size());
+  positions.results.reserve(output_result.output_arguments.size());
+
+  // `result_positions` is strictly increasing and holds exactly one position
+  // per result, so the remaining positions hold exactly the operands, in
+  // operand order.
+  size_t next_operand = 0;
+  size_t next_result = 0;
+  for (size_t position = 0; position < num_managed_arguments; ++position) {
+    if (next_result < result_positions.size() &&
+        result_positions[next_result] == static_cast<int64_t>(position)) {
+      positions.results.emplace_back(
+          output_result.output_shape_indices[next_result], position);
+      kernel_arguments.push_back(
+          std::move(output_result.output_arguments[next_result]));
+      ++next_result;
+      continue;
+    }
+    positions.operands.push_back(position);
+    kernel_arguments.push_back(std::move(operand_arguments[next_operand]));
+    ++next_operand;
+  }
+
   for (const Shape& unmanaged_argument : unmanaged_arguments) {
     kernel_arguments.emplace_back(unmanaged_argument);
   }
   FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
                                output_result.buffers_written);
-  return KernelArguments(std::move(kernel_arguments));
+  return KernelArguments(std::move(kernel_arguments), std::move(positions));
 }
 
-}  // namespace
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    SliceProvider slice_provider, const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction,
+    absl::Span<const Shape> unmanaged_arguments) {
+  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction,
+                        unmanaged_arguments,
+                        /*interleaved_output_indices=*/{});
+}
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction) {
-  return CreateKernelArguments(buffer_assignment, buffer_alignment,
-                               hlo_instruction, {});
+  auto slice_provider = [&buffer_assignment](const HloInstruction& instruction,
+                                             const ShapeIndex& index) {
+    return buffer_assignment.GetUniqueSlice(&instruction, index);
+  };
+  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction, {},
+                        /*interleaved_output_indices=*/{});
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
@@ -196,8 +285,13 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
     absl::Span<const Shape> unmanaged_arguments) {
-  return CreateKernelArguments(buffer_assignment, buffer_alignment,
-                               hlo_instruction, unmanaged_arguments);
+  auto slice_provider = [&buffer_assignment](const HloInstruction& instruction,
+                                             const ShapeIndex& index) {
+    return buffer_assignment.GetUniqueSlice(&instruction, index);
+  };
+  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction,
+                        unmanaged_arguments,
+                        /*interleaved_output_indices=*/{});
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
@@ -205,65 +299,43 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
     absl::Span<const int32_t> interleaved_output_indices) {
-  if (interleaved_output_indices.empty()) {
-    // Fall back to regular Create method when no interleaving is requested
-    return CreateKernelArguments(buffer_assignment, buffer_alignment,
-                                 hlo_instruction, {});
+  auto slice_provider = [&buffer_assignment](const HloInstruction& instruction,
+                                             const ShapeIndex& index) {
+    return buffer_assignment.GetUniqueSlice(&instruction, index);
+  };
+  return CreateInternal(slice_provider, buffer_alignment, hlo_instruction, {},
+                        interleaved_output_indices);
+}
+
+absl::StatusOr<int64_t> KernelArguments::OperandIndex(
+    int64_t operand_index) const {
+  if (!positions_.has_value()) {
+    return absl::FailedPreconditionError(
+        "KernelArguments were not created from an HLO instruction, so operand "
+        "positions are unknown");
   }
+  if (operand_index < 0 ||
+      operand_index >= static_cast<int64_t>(positions_->operands.size())) {
+    return absl::OutOfRangeError(
+        absl::StrCat("No such operand: ", operand_index));
+  }
+  return positions_->operands[operand_index];
+}
 
-  const auto& operands = hlo_instruction->operands();
-
-  ABSL_ASSIGN_OR_RETURN(OutputArguments output_result,
-                   ExtractOutputArguments(buffer_assignment, hlo_instruction));
-  auto& [output_arguments, buffers_written] = output_result;
-
-  // Check bounds: all output indices must be valid positions
-  size_t total_positions = operands.size() + output_arguments.size();
-  for (int32_t idx : interleaved_output_indices) {
-    if (idx < 0 || static_cast<size_t>(idx) >= total_positions) {
-      return absl::InvalidArgumentError("Output index out of bounds");
+absl::StatusOr<int64_t> KernelArguments::ResultIndex(
+    const ShapeIndex& shape_index) const {
+  if (!positions_.has_value()) {
+    return absl::FailedPreconditionError(
+        "KernelArguments were not created from an HLO instruction, so result "
+        "positions are unknown");
+  }
+  for (const auto& [index, position] : positions_->results) {
+    if (index == shape_index) {
+      return position;
     }
   }
-
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(total_positions);
-
-  // Interleave the inputs and outputs according to the indices
-  size_t arg_idx = 0;
-  size_t output_pos = 0;
-
-  for (size_t i = 0; i < total_positions; ++i) {
-    if (output_pos < interleaved_output_indices.size() &&
-        interleaved_output_indices[output_pos] == static_cast<int32_t>(i)) {
-      // Place output at this position
-      if (output_pos >= output_arguments.size()) {
-        return absl::InvalidArgumentError("Invalid output position index");
-      }
-      kernel_arguments.emplace_back(output_arguments[output_pos]);
-      ++output_pos;
-    } else {
-      // Place input at this position
-      if (arg_idx >= operands.size()) {
-        return absl::InvalidArgumentError(
-            "Not enough inputs for remaining positions");
-      }
-      ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                       buffer_assignment.GetUniqueSlice(operands[arg_idx], {}));
-      kernel_arguments.emplace_back(
-          KernelArgument(operands[arg_idx]->shape(), slice));
-      ++arg_idx;
-    }
-  }
-
-  // Verify we used all inputs and outputs
-  if (arg_idx != operands.size() || output_pos != output_arguments.size()) {
-    return absl::InvalidArgumentError("Did not use all inputs/outputs");
-  }
-
-  FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
-                               buffers_written);
-
-  return KernelArguments(std::move(kernel_arguments));
+  return absl::OutOfRangeError(
+      absl::StrCat("No such result: ", shape_index.ToString()));
 }
 
 }  // namespace xla::emitters

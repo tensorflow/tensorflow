@@ -50,8 +50,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
@@ -619,11 +617,9 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
       pjrt::CreateMemoryDescriptionsExtension(&ffi_extension.base);
 
-  static PJRT_Triton_Extension triton_extension =
-      pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
-
   static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
-      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
+      pjrt::CreateCrossHostTransfersExtension(
+          &memory_descriptions_extension.base);
 
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);

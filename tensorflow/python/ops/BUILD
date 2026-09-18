@@ -3765,6 +3765,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["nn_test.py"],
     main = "nn_test.py",
+    shard_count = 20,
     tags = [
         "no_windows",
         "notap",  # TODO(b/290819913)
@@ -4005,6 +4006,7 @@ py_test(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":gradient_checker_v2",
         ":math_ops",
         ":random_ops",
         "//tensorflow/core/config:flags_py",

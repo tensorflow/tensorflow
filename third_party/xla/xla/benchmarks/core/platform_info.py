@@ -103,13 +103,18 @@ class PlatformInfo:
     """Returns the emulated dtype for the given dtype."""
     if dtype in supported_dtypes:
       return dtype
+    if (
+        dtype == jnp.float8_e4m3fn
+        and jnp.float8_e4m3b11fnuz in supported_dtypes
+    ):
+      return jnp.float8_e4m3b11fnuz
     dtype_bits = jax.dtypes.itemsize_bits(dtype)
     if dtype_bits < 8 and jnp.float8_e4m3fn in supported_dtypes:
       return jnp.float8_e4m3fn
     elif dtype_bits == 8 and jnp.bfloat16 in supported_dtypes:
       return jnp.bfloat16
     else:
-      return jnp.float32
+      return jnp.float32  # pyrefly: ignore[bad-return]
 
   def get_matmul_cadence_cycles(self, lhs_dtype: jnp.dtype) -> int:
     """Returns the number of cycles between each matmul on a single MXU.
@@ -170,8 +175,8 @@ _PLATFORM_INFOS = (
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V5E,
         default_internal_scratch_bytes=73728,
-        matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 32,
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 32,
             jnp.float8_e5m2: 32,
             jnp.bfloat16: 16,
             jnp.float32: 8,
@@ -180,8 +185,8 @@ _PLATFORM_INFOS = (
             jnp.int4: 16,
             jnp.uint4: 16,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -197,8 +202,8 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=1459,
         hbm_to_vmem_latency_ns=1133,
         vmem_to_hbm_latency_ns=439,
-        matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 131,
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 131,
             jnp.float8_e5m2: 131,
             jnp.bfloat16: 131,
             jnp.float32: 131,
@@ -208,13 +213,13 @@ _PLATFORM_INFOS = (
             jnp.uint4: 121,
         }),
         default_p_state=None,
-        default_vmem_limit_kib=32 * 1024,
+        default_vmem_limit_kib=16 * 1024,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V5P,
         default_internal_scratch_bytes=73728,
-        matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 32,
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 32,
             jnp.float8_e5m2: 32,
             jnp.bfloat16: 16,
             jnp.float32: 8,
@@ -223,8 +228,8 @@ _PLATFORM_INFOS = (
             jnp.int4: 16,
             jnp.uint4: 16,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -240,8 +245,8 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=1459,
         hbm_to_vmem_latency_ns=667,
         vmem_to_hbm_latency_ns=624,
-        matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 131,
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 131,
             jnp.float8_e5m2: 131,
             jnp.bfloat16: 131,
             jnp.float32: 131,
@@ -251,13 +256,13 @@ _PLATFORM_INFOS = (
             jnp.uint4: 121,
         }),
         default_p_state=None,
-        default_vmem_limit_kib=32 * 1024,
+        default_vmem_limit_kib=16 * 1024,
     ),
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_V6E,
         default_internal_scratch_bytes=73728,
-        matmul_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 16,
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 16,
             jnp.float8_e5m2: 16,
             jnp.bfloat16: 8,
             jnp.float32: 4,
@@ -266,8 +271,8 @@ _PLATFORM_INFOS = (
             jnp.int4: 8,
             jnp.uint4: 8,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 4,
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
             jnp.float32: 2,
@@ -283,8 +288,8 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=1373,
         hbm_to_vmem_latency_ns=628,
         vmem_to_hbm_latency_ns=523,
-        matmul_latency_cycles_by_dtype=immutabledict({
-            jnp.float8_e4m3fn: 192,
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
+            jnp.float8_e4m3b11fnuz: 192,
             jnp.float8_e5m2: 192,
             jnp.bfloat16: 192,
             jnp.float32: 192,
@@ -299,13 +304,13 @@ _PLATFORM_INFOS = (
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_7X,
         default_internal_scratch_bytes=73728,
-        matmul_cadence_cycles_by_dtype=immutabledict({
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.float8_e4m3fn: 8,
             jnp.float8_e5m2: 8,
             jnp.bfloat16: 8,
             jnp.float32: 4,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.float8_e4m3fn: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 4,
@@ -324,7 +329,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=3207,
         hbm_to_vmem_latency_ns=692,
         vmem_to_hbm_latency_ns=594,
-        matmul_latency_cycles_by_dtype=immutabledict({
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.float8_e4m3fn: 204,
             jnp.float8_e5m2: 204,
             jnp.bfloat16: 211,
@@ -336,13 +341,13 @@ _PLATFORM_INFOS = (
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8I,
         default_internal_scratch_bytes=73728,
-        matmul_cadence_cycles_by_dtype=immutabledict({
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.float8_e4m3fn: 4,
             jnp.float8_e5m2: 4,
             jnp.bfloat16: 16,
             jnp.float32: 8,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.int4: 2,
             jnp.float8_e4m3fn: 2,
             jnp.float8_e5m2: 2,
@@ -362,7 +367,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=3741,
         hbm_to_vmem_latency_ns=645,
         vmem_to_hbm_latency_ns=512,
-        matmul_latency_cycles_by_dtype=immutabledict({
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.float8_e4m3fn: 211,
             jnp.float8_e5m2: 211,
             jnp.bfloat16: 235,
@@ -374,7 +379,7 @@ _PLATFORM_INFOS = (
     PlatformInfo(
         chip_version=pltpu.ChipVersion.TPU_8T,
         default_internal_scratch_bytes=278528,
-        matmul_cadence_cycles_by_dtype=immutabledict({
+        matmul_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.int4: 16 / 3,
             jnp.float4_e2m1fn: 16 / 3,
             jnp.float8_e4m3fn: 16 / 3,
@@ -382,7 +387,7 @@ _PLATFORM_INFOS = (
             jnp.bfloat16: 16,
             jnp.float32: 8,
         }),
-        latch_cadence_cycles_by_dtype=immutabledict({
+        latch_cadence_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.int4: 4,
             jnp.float4_e2m1fn: 4,
             jnp.float8_e4m3fn: 4,
@@ -400,7 +405,7 @@ _PLATFORM_INFOS = (
         hbm_to_vmem_bandwidth_gb_per_sec=5679,
         hbm_to_vmem_latency_ns=821,
         vmem_to_hbm_latency_ns=821,
-        matmul_latency_cycles_by_dtype=immutabledict({
+        matmul_latency_cycles_by_dtype=immutabledict({  # pyrefly: ignore[bad-argument-type]
             jnp.int4: 225,
             jnp.float4_e2m1fn: 225,
             jnp.float8_e4m3fn: 225,

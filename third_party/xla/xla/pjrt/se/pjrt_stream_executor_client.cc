@@ -165,6 +165,7 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -226,13 +227,6 @@ PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
   to_string_ = absl::StrFormat("MEMORY_SPACE_%i", id_);
   debug_string_ = absl::StrFormat("PjRtStreamExecutorMemory(id=%i, device=%s)",
                                   id_, device_->DebugString());
-}
-
-PjRtPlatformId PjRtStreamExecutorDevice::platform_id() const {
-  return client_->platform_id();
-}
-absl::string_view PjRtStreamExecutorDevice::platform_name() const {
-  return client_->platform_name();
 }
 
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
@@ -335,12 +329,6 @@ PjRtStreamExecutorRawClient::~PjRtStreamExecutorRawClient() {
       local_device_state->async_dispatch_thread()->Drain();
     }
   }
-}
-
-absl::StatusOr<std::unique_ptr<HloCostAnalysis>>
-PjRtStreamExecutorClient::GetHloCostAnalysis() const {
-  return std::make_unique<HloCostAnalysis>(
-      raw_client()->client()->backend().compiler()->ShapeSizeBytesFunction());
 }
 
 namespace {
@@ -676,14 +664,6 @@ absl::Status PjRtStreamExecutorRawClient::DmaUnmap(void* data) {
   return absl::OkStatus();
 }
 
-absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
-  return raw_client()->DmaMap(data, buffer_size);
-}
-
-absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
-  return raw_client()->DmaUnmap(data);
-}
-
 absl::StatusOr<PjRtRawBufferRef>
 PjRtStreamExecutorRawClient::ImportForeignMemory(
     PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
@@ -765,91 +745,62 @@ absl::Status PjRtStreamExecutorRawClient::TransferFromOutfeed(
   });
 }
 
-// Transfer the given literal to the infeed queue of the given local device.
-absl::Status PjRtStreamExecutorDevice::TransferToInfeed(
-    const LiteralSlice& literal) {
-  return absl::down_cast<CommonPjRtClient*>(client_)
-      ->raw_client()
-      ->TransferToInfeed(local_device_id(), literal);
-}
-
-absl::Status PjRtStreamExecutorDevice::TransferFromOutfeed(
-    MutableBorrowingLiteral literal) {
-  return absl::down_cast<CommonPjRtClient*>(client_)
-      ->raw_client()
-      ->TransferFromOutfeed(local_device_id(), literal);
-}
-
-void PjRtStreamExecutorDevice::AttachMemorySpace(PjRtMemorySpace* memory_space,
-                                                 bool is_default) {
-  CHECK(memory_space != nullptr);
-  CHECK(client_ == memory_space->client()) << absl::StrFormat(
-      "Could not attach a PjRtStreamExecutorDevice to a PjRtMemorySpace owned "
-      "by a different client, the device's client: %s, the memory space's "
-      "client: %s.",
-      client_->platform_name(), memory_space->client()->platform_name());
-
-  memory_spaces_.push_back(memory_space);
-  memory_spaces_by_id_.emplace(memory_space->kind_id(), memory_space);
-  if (is_default) {
-    CHECK(default_memory_space_ == nullptr)
-        << "Default memory space already set to "
-        << default_memory_space_->DebugString() << ".";
-    default_memory_space_ = memory_space;
-  }
-}
-
-absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
-    const {
-  return memory_spaces_;
-}
-
-absl::StatusOr<PjRtMemorySpace*>
-PjRtStreamExecutorDevice::default_memory_space() const {
-  if (default_memory_space_ == nullptr) {
-    return absl::InternalError(
-        "No default memory space is set for this device.");
-  }
-  return default_memory_space_;
-}
-
-absl::StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::memory_space_by_kind(
-    absl::string_view memory_space_kind) const {
-  auto it =
-      absl::c_find_if(memory_spaces_, [memory_space_kind](PjRtMemorySpace* ms) {
-        return ms->kind() == memory_space_kind;
-      });
-  if (it != memory_spaces_.end()) {
-    return *it;
-  }
-  return absl::InternalError(
-      absl::StrCat("No memory space found (kind: ", memory_space_kind, ")"));
-}
-
-absl::StatusOr<PjRtMemorySpace*>
-PjRtStreamExecutorDevice::memory_space_by_kind_id(int id) const {
-  auto it = memory_spaces_by_id_.find(id);
-  if (it == memory_spaces_by_id_.end()) {
-    return absl::InternalError(
-        absl::StrCat("No memory space found (kind_id: ", id, ")"));
-  }
-  return it->second;
-}
-
 absl::StatusOr<std::intptr_t>
-PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
+PjRtStreamExecutorRawClient::GetStreamForExternalReadyEvents(
+    LocalDeviceId local_device_id) const {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   absl::down_cast<PjRtStreamExecutorClient*>(client_)
-                       ->raw_client()
-                       ->GetLocalDeviceState(local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   se::Stream* stream = local_device->GetExternalReadyEventStream();
   void* raw_stream = stream->platform_specific_handle().stream;
   if (raw_stream == nullptr) {
     return Unimplemented(
         "GetStreamForExternalReadyEvents not implemented for platform '%s'.",
-        platform_name());
+        local_device->executor()->GetPlatform()->Name());
   }
   return absl::bit_cast<std::intptr_t>(raw_stream);
+}
+
+absl::StatusOr<tsl::AllocatorStats>
+PjRtStreamExecutorRawClient::GetAllocatorStats(
+    LocalDeviceId local_device_id) const {
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  if (!allocator_adapter) {
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto allocator,
+                   allocator_adapter->GetAllocator(local_device_id.value()));
+
+  auto stats = allocator->GetStats();
+  if (!stats.has_value()) {
+    return Unimplemented(
+        "GetAllocatorStats() is not supported by this allocator");
+  }
+  return *stats;
+}
+
+absl::Status PjRtStreamExecutorRawClient::ClearMemoryStats(
+    LocalDeviceId local_device_id) {
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  if (!allocator_adapter) {
+    return absl::UnimplementedError(
+        "ClearMemoryStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto allocator,
+                   allocator_adapter->GetAllocator(local_device_id.value()));
+
+  // Call the ClearStats() method on the underlying tsl::Allocator
+  // (BFCAllocator)
+  if (allocator->ClearStats()) {
+    return absl::OkStatus();
+  }
+
+  return absl::UnavailableError(
+      "ClearStats not supported by the underlying allocator");
 }
 
 namespace {
@@ -871,12 +822,6 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 }
 
 }  // namespace
-
-const HloInputOutputAliasConfig&
-PjRtStreamExecutorLoadedExecutable::input_output_alias_config() const {
-  auto se_exec = static_cast<StreamExecutorExecutable*>(GetExecutable());
-  return se_exec->hlo_module()->input_output_alias_config();
-}
 
 template <typename T>
 static const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
@@ -1790,11 +1735,16 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   return execute_results;
 }
 
-void PjRtStreamExecutorClient::LaunchOnDevice(
-    PjRtDevice* device, absl::AnyInvocable<void()> execute_fn) const {
-  const LocalDeviceState& device_state =
-      this->device_state(device->local_device_id().value());
-  device_state.execute_thread()->Schedule(
+void PjRtStreamExecutorRawClient::RecordMemoryStats() {
+  for (const std::unique_ptr<LocalDeviceState>& local_device_state :
+       local_device_states_) {
+    RecordMemoryStats(local_device_state.get());
+  }
+}
+
+void PjRtStreamExecutorRawClient::LaunchOnDevice(
+    LocalDeviceId device_id, absl::AnyInvocable<void()> execute_fn) const {
+  device_state(device_id)->execute_thread()->Schedule(
       tsl::WithCurrentContext(std::move(execute_fn)));
 }
 
@@ -2135,22 +2085,6 @@ PjRtStreamExecutorRawClient::CrossCompile(
                          topology, target_topology, options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return LoadInternal(std::move(executable), load_options, /*dump=*/true);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::LoadSerializedExecutable(
-    const absl::Cord& serialized, std::optional<CompileOptions> options,
-    const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
-  return LoadInternal(std::move(executable), load_options, /*dump=*/true);
-}
-
 absl::Status PjRtStreamExecutorExecutableLoadState::Preload(
     PjRtExecutable* executable) {
   return absl::down_cast<StreamExecutorExecutable*>(executable)
@@ -2170,36 +2104,12 @@ PjRtStreamExecutorRawClient::ToAsyncExecutable(
       std::static_pointer_cast<StreamExecutorExecutable>(executable));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Load(std::shared_ptr<PjRtExecutable> executable,
-                               const LoadOptions& load_options) {
-  auto loaded_executable =
-      LoadInternal(std::move(executable), load_options, /*dump=*/false);
-  for (const PjRtDevice* device : addressable_devices()) {
-    LocalDeviceState* local_device_state =
-        raw_client()->device_state(device->local_device_id());
-    raw_client()->RecordMemoryStats(local_device_state);
-  }
-  return loaded_executable;
+bool PjRtStreamExecutorRawClient::IsHostMemoryPinned(const void* ptr,
+                                                     uint64_t size) const {
+  return executor_->IsHostMemoryPinned(ptr, size);
 }
 
-bool PjRtStreamExecutorClient::IsHostMemoryPinned(const void* ptr,
-                                                  uint64_t size) const {
-  if (addressable_devices().empty()) {
-    return false;
-  }
-  auto local_device_state = raw_client()->GetLocalDeviceState(
-      addressable_devices()[0]->local_device_id());
-  if (!local_device_state.ok()) {
-    return false;
-  }
-  return local_device_state.value()
-      ->compute_stream()
-      ->parent()
-      ->IsHostMemoryPinned(ptr, size);
-}
-
-absl::Status PjRtStreamExecutorClient::WaitOnStream(
+absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
     PjRtMemorySpace* memory_space, PjRtDeviceEventRef event,
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(

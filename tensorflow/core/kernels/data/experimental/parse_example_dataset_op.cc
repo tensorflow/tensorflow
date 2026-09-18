@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -567,13 +569,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!runner_thread_) {
           auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-          runner_thread_ = ctx->StartThread(
-              "tf_data_parallel_map",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy));
+          runner_thread_.reset(Env::Default()->StartThread(
+              /*thread_options=*/{}, "tf_data_parallel_map",
+              std::bind(&Iterator::RunnerThread, this, ctx_copy)));
           if (ctx->stats_aggregator()) {
-            stats_thread_ = ctx->StartThread(
-                "tf_data_parallel_map_stats",
-                std::bind(&Iterator::StatsThread, this, ctx_copy));
+            stats_thread_.reset(Env::Default()->StartThread(
+                /*thread_options=*/{}, "tf_data_parallel_map_stats",
+                std::bind(&Iterator::StatsThread, this, ctx_copy)));
           }
         }
       }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/gpu/gpu_compiler.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -73,6 +76,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -84,6 +88,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -398,7 +403,7 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 
   HloModuleConfig config = GetModuleConfigForTest();
   // Check that it writes the results on the first compilation.
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
@@ -407,11 +412,11 @@ TEST_P(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 
   // Overwrite results with an invalid textproto.
   tsl::Env* env = tsl::Env::Default();
-  TF_EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
-                                      kInvalidTextProto));
+  EXPECT_OK(tsl::WriteStringToFile(env, xla_gpu_dump_autotune_results_to_,
+                                   kInvalidTextProto));
 
   // Check that it writes the results on the second compilation.
-  TF_EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
+  EXPECT_OK(GetOptimizedModuleForExecutable(kHloText, config).status());
   {
     ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
@@ -693,14 +698,11 @@ ENTRY main {
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* module = module_and_executable.first;
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
   EXPECT_EQ(CountCopies(*module), 5);
   // All-gather-done is scheduled as late as possible to overlap with
   // computation, which requires an extra copy to resolve the live range
   // conflict with param_1.
-  const HloInstruction* while_op =
-      root->operand(0)->operand(0)->operand(0)->operand(0);
+  const HloInstruction* while_op = FindInstruction(module, HloOpcode::kWhile);
   const HloInstruction* operand_1 =
       while_op->while_body()->root_instruction()->operand(1);
   EXPECT_EQ(operand_1->opcode(), HloOpcode::kCopy);
@@ -1553,15 +1555,15 @@ ENTRY %main {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
-                                   gpu_target_config().ToProto()));
+  ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
+                                gpu_target_config().ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kHlo, config));
 
-  TF_ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
+  ASSERT_OK(compiler()->RunHloPasses(std::move(module), nullptr, nullptr));
 }
 
 TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
@@ -1579,8 +1581,8 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
 
   std::string target_file;
   ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
-  TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
-                                   gpu_target_config().ToProto()));
+  ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), target_file,
+                                gpu_target_config().ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
   ASSERT_OK_AND_ASSIGN(auto exe_module_and_executable,
@@ -1791,6 +1793,7 @@ ENTRY main {
   // Configure module with debug options.
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   config.set_debug_options(debug_options);
 
   ASSERT_OK_AND_ASSIGN(auto module,
@@ -1937,18 +1940,11 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_MULTI]]), index=0
     // CHECK-DAG: [[GTE_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NON]]), index=0
 
-    // XLA packs an intermediate tuple
-    // CHECK-DAG: [[INTER_TUPLE:%[^ ]+]] = (s32[1]{0:S(1)}, s32[1]{0}) tuple([[GTE_MULTI]], [[GTE_NON]])
-
-    // XLA unpacks the intermediate tuple to perform the isolation copies
-    // CHECK-DAG: [[GTE_OUT_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[INTER_TUPLE]]), index=0
-    // CHECK-DAG: [[GTE_OUT_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[INTER_TUPLE]]), index=1
-
     // The S1 -> S0 isolation copies
-    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_OUT_MULTI]])
+    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_MULTI]])
 
     // The final ROOT is pure S0
-    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_OUT_NON]])
+    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_NON]])
     )";
 
   EXPECT_THAT(RunFileCheck(
@@ -2863,6 +2859,254 @@ TEST_P(FrontendAttributesMemorySpaceTest, LoopUsage) {
                                                  .set_print_metadata(false)),
                   expected_check),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisSkipsS1AliasedEntryParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_persistent_symmetric_memory(true);
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Since flag is enabled, module matches topology, and parameter(0)/ROOT
+  // are in S(1) and aliased, no copies should be added.
+  EXPECT_TRUE(copies_to_add.empty());
+
+  // Also test with explicit matching GpuTopology (1 device).
+  GpuTopology matching_topology("test", /*num_partitions=*/1,
+                                /*num_hosts_per_partition=*/1,
+                                /*num_devices_per_host=*/1);
+  copies_to_add.clear();
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy,
+                              &matching_topology);
+  EXPECT_TRUE(copies_to_add.empty());
+
+  // With mismatched GpuTopology (2 devices vs module's 1 device), copies
+  // must be added.
+  GpuTopology mismatched_topology("test", /*num_partitions=*/1,
+                                  /*num_hosts_per_partition=*/1,
+                                  /*num_devices_per_host=*/2);
+  copies_to_add.clear();
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy,
+                              &mismatched_topology);
+  EXPECT_EQ(copies_to_add.size(), 2);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS1AliasedWhenFlagDisabled) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  // Persistent symmetric memory is disabled by default.
+  EXPECT_FALSE(module->config()
+                   .debug_options()
+                   .xla_gpu_enable_persistent_symmetric_memory());
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // When flag is disabled, copies into/out of S(1) must be added even if
+  // aliased.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS1NonAliasedParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test
+
+    ENTRY test_computation {
+      p = f32[16]{0:S(1)} parameter(0)
+      ROOT cc = f32[16]{0:S(1)} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Since parameter(0) and ROOT are in S(1) but NOT aliased, copies must be
+  // added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS0AliasedParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {}: (0, {}) }
+
+    ENTRY test_computation {
+      p = f32[16]{0} parameter(0)
+      ROOT cc = f32[16]{0} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Even though aliased, parameter and ROOT are in S(0), so copies into S(1)
+  // must be added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS0ParameterAndRoot) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test
+
+    ENTRY test_computation {
+      p = f32[16]{0} parameter(0)
+      ROOT cc = f32[16]{0} custom-call(p),
+        custom_call_target="__xla_test_mock_custom_call_f32",
+        api_version=API_VERSION_TYPED_FFI,
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1}"
+        }
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // For S(0) parameter and ROOT without alias, both Case A and Case B copies
+  // must be added.
+  EXPECT_EQ(copies_to_add.size(), 2);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(copies_to_add[1].first->opcode(), HloOpcode::kCustomCall);
+}
+
+TEST_F(GpuCompilerTest,
+       GpuCollectiveBufferAnalysisAddsCopiesForS1UnaliasedRootTupleElement) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule test, input_output_alias={ {0}: (0, {}) }
+
+    ENTRY test_computation {
+      p0 = f32[16]{0:S(1)} parameter(0)
+      cc = (f32[16]{0:S(1)}, f32[16]{0:S(1)}) custom-call(p0),
+        custom_call_target="mock_call",
+        frontend_attributes={
+          operands_memory_spaces="{0:1}",
+          results_memory_spaces="{0:1,1:1}"
+        }
+      elem0 = f32[16]{0:S(1)} get-tuple-element(cc), index=0
+      elem1 = f32[16]{0:S(1)} get-tuple-element(cc), index=1
+      ROOT out = (f32[16]{0:S(1)}, f32[16]{0:S(1)}) tuple(elem1, elem0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_persistent_symmetric_memory(true);
+  GpuAliasInfo alias_info(device_description());
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+
+  std::vector<std::pair<HloInstruction*, ShapeIndex>> copies_to_add;
+  auto add_index_to_copy = [&](HloInstruction* instr, const ShapeIndex& index) {
+    copies_to_add.emplace_back(instr, index);
+  };
+
+  GpuCollectiveBufferAnalysis(module.get(), *alias_analysis, add_index_to_copy);
+
+  // Parameter 0 is aliased to ROOT index {0} (holding elem1):
+  // - Parameter 0 is aliased -> Case A skips it.
+  // - ROOT index {0} is aliased -> Case B skips it.
+  // - ROOT index {1} (holding elem0) is NOT aliased -> Case B MUST insert a
+  //   copy!
+  ASSERT_EQ(copies_to_add.size(), 1);
+  EXPECT_EQ(copies_to_add[0].first->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(copies_to_add[0].second, ShapeIndex({1}));
 }
 
 TEST_F(GpuCompilerTest, NonIotaStaticDeviceAssignment) {

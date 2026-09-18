@@ -457,6 +457,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -585,6 +586,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/hlo/ir:hlo",
         "//xla/service:algorithm_util",
         "//xla/service:decision",

@@ -39,6 +39,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -305,15 +306,23 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   return stats;
 }
 
-void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
-  if (sharding.type() == OpSharding::TUPLE) {
-    for (const OpSharding& s : sharding.tuple_shardings()) {
-      GetOpSharding(out, s);
+namespace {
+
+void GetOpSharding(const HloSharding& sharding, std::vector<OpSharding>& out) {
+  if (sharding.IsTuple()) {
+    for (const HloSharding& s : sharding.tuple_elements()) {
+      GetOpSharding(s, out);
     }
   } else {
-    out.push_back(sharding);
+    if (sharding.UseNamedShardingLeaf()) {
+      out.push_back(HloSharding::V3ToV2Sharding(sharding).ToProto());
+    } else {
+      out.push_back(sharding.ToProto());
+    }
   }
 }
+
+}  // namespace
 
 absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PjRtExecutable::GetHloModules() const {
@@ -330,7 +339,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetOutputShardings()
   }
 
   std::vector<OpSharding> out;
-  GetOpSharding(out, (*modules)[0]->spmd_output_sharding().ToProto());
+  GetOpSharding((*modules)[0]->spmd_output_sharding(), out);
   return out;
 }
 
@@ -344,7 +353,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
 
   std::vector<OpSharding> out;
   for (const auto& s : (*modules)[0]->spmd_parameters_shardings()) {
-    GetOpSharding(out, s.ToProto());
+    GetOpSharding(s, out);
   }
   return out;
 }

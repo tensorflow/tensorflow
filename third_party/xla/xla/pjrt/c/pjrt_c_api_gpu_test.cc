@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -1454,87 +1453,6 @@ TEST(PjrtCApiGpuExtensionTest,
   error_destroy_args.extension_start = nullptr;
   error_destroy_args.error = duplicate_error;
   GetPjrtApi()->PJRT_Error_Destroy(&error_destroy_args);
-}
-
-constexpr absl::string_view kAddOneTTIR = R"(
-module {
-  tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
-    %0 = tt.get_program_id x : i32
-    %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    %cst = arith.constant 1.000000e+00 : f32
-    %3 = arith.addf %1, %cst : f32
-    %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-    %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
-    tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
-    tt.return
-  }
-}
-)";
-
-TEST(PjrtCAPIGpuExtensionTest, TritonCompile) {
-#ifdef TENSORFLOW_USE_SYCL
-  GTEST_SKIP() << "Triton compilation not supported on SYCL backend";
-#endif
-  auto api = GetPjrtApi();
-
-  PJRT_Client_Create_Args create_args;
-  create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  create_args.extension_start = nullptr;
-  create_args.create_options = nullptr;
-  create_args.num_options = 0;
-  create_args.kv_get_callback = nullptr;
-  create_args.kv_get_user_arg = nullptr;
-  create_args.kv_put_callback = nullptr;
-  create_args.kv_put_user_arg = nullptr;
-  create_args.kv_try_get_callback = nullptr;
-  create_args.kv_try_get_user_arg = nullptr;
-  PJRT_Error* client_create_error = api->PJRT_Client_Create(&create_args);
-  EXPECT_EQ(client_create_error, nullptr)
-      << GetErrorMessage(client_create_error, api);
-
-  PJRT_Client_PlatformName_Args platform_name_args;
-  platform_name_args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  platform_name_args.extension_start = nullptr;
-  platform_name_args.client = create_args.client;
-  PJRT_Error* platform_name_error =
-      api->PJRT_Client_PlatformName(&platform_name_args);
-  EXPECT_EQ(platform_name_error, nullptr)
-      << GetErrorMessage(platform_name_error, api);
-
-  bool is_rocm = absl::string_view(platform_name_args.platform_name) == "rocm";
-  absl::string_view arch_name = is_rocm ? "gfx942:sramecc+:xnack-" : "7.0";
-
-  PJRT_Client_Destroy_Args destroy_args;
-  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-  destroy_args.extension_start = nullptr;
-  destroy_args.client = create_args.client;
-
-  PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
-  CHECK_EQ(destroy_error, nullptr);
-
-  PJRT_Triton_Compile_Args args;
-  args.struct_size = PJRT_Triton_Compile_Args_STRUCT_SIZE;
-  args.module = kAddOneTTIR.data();
-  args.module_size = kAddOneTTIR.size();
-  args.arch_name = arch_name.data();
-  args.arch_name_size = arch_name.size();
-  args.num_stages = 1;
-  args.num_ctas = 1;
-  args.num_warps = 1;
-  const auto* triton_ext = pjrt::FindExtension<PJRT_Triton_Extension>(
-      api, PJRT_Extension_Type::PJRT_Extension_Type_Triton);
-  ASSERT_NE(triton_ext, nullptr);
-
-  PJRT_Error* error = triton_ext->compile(&args);
-  CHECK_EQ(error, nullptr) << GetErrorMessage(error, api);
-  if (args.out_asm) {
-    delete[] args.out_asm;
-  } else {
-    std::remove(args.out_path);
-    delete[] args.out_path;
-  }
 }
 
 }  // namespace

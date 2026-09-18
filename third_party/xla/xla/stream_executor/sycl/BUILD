@@ -92,8 +92,6 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -232,6 +230,7 @@ xla_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -358,6 +357,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -437,7 +437,7 @@ xla_test(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:typed_kernel_factory",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -477,7 +477,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -616,6 +616,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":sycl_conv_utils",
         ":sycl_platform_id",
         "//xla/service/gpu:gpu_conv_runner",
         "//xla/stream_executor:device_memory",
@@ -628,6 +629,7 @@ cc_library(
         "//xla/tsl/mkl:onednn",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
@@ -669,5 +671,34 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "sycl_conv_utils",
+    srcs = ["sycl_conv_utils.cc"],
+    hdrs = ["sycl_conv_utils.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":onednn_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:gpu_conv_runner",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/mkl:onednn",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

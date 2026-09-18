@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -541,8 +542,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
-        prefetch_thread_ = ctx->StartThread(
-            "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
+        prefetch_thread_.reset(Env::Default()->StartThread(
+            /*thread_options=*/{}, "tf_data_prefetch",
+            [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return absl::OkStatus();
     }

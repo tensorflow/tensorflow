@@ -290,6 +290,15 @@ def _SoftmaxGrad(op: ops.Operation, grad_softmax):
 
     grad_x = grad_softmax * softmax - sum(grad_softmax * softmax) * softmax
 
+  For ``float64``, when one logit dominates (e.g. [40.0, 0.0]), the stored
+  probabilities round to [1.0, 0.0], causing (grad_softmax - sum_channels)
+  to suffer catastrophic cancellation (1.0 - 1.0 = 0.0) at the dominant
+  position while dropping the finite tail (~4.25e-18), which breaks the
+  logit-translation invariance sum_j(grad_x[j]) = 0. Since mathematically
+  sum_j(grad_x[j]) = 0, the dominant component equals -sum_{j != k}(grad_x[j]).
+  Correcting the dominant component by subtracting the residual sum restores
+  both the finite tail and the exact sum-to-zero invariant.
+
   Args:
      op: the Softmax op.
      grad_softmax:  the tensor representing the gradient w.r.t. the softmax
@@ -297,11 +306,19 @@ def _SoftmaxGrad(op: ops.Operation, grad_softmax):
 
   Returns:
      gradient w.r.t the input to the softmax
-
   """
   softmax = op.outputs[0]
   sum_channels = math_ops.reduce_sum(grad_softmax * softmax, -1, keepdims=True)
-  return (grad_softmax - sum_channels) * softmax
+  grad_x = (grad_softmax - sum_channels) * softmax
+  if softmax.dtype == dtypes.float64:
+    k = math_ops.argmax(softmax, axis=-1)
+    num_classes = array_ops.shape(softmax)[-1]
+    one_hot_mask = array_ops.stop_gradient(
+        array_ops.one_hot(k, depth=num_classes, dtype=dtypes.float64)
+    )
+    grad_sum = math_ops.reduce_sum(grad_x, -1, keepdims=True)
+    grad_x = grad_x - grad_sum * one_hot_mask
+  return grad_x
 
 
 @ops.RegisterGradient("LogSoftmax")
@@ -319,7 +336,11 @@ def _LogSoftmaxGrad(op: ops.Operation, grad):
     The gradients w.r.t. the input.
   """
   softmax = math_ops.exp(op.outputs[0])
-  return grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
+  result = grad - math_ops.reduce_sum(grad, -1, keepdims=True) * softmax
+  if result.dtype == dtypes.float64:
+    # Remove the zero-sum residual left by cancellation at saturated logits.
+    result = result - math_ops.reduce_sum(result, -1, keepdims=True) * softmax
+  return result
 
 
 @ops.RegisterGradient("BiasAdd")
@@ -418,9 +439,12 @@ def _ReluGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("EluGrad")
 def _EluGradGrad(op: ops.Operation, grad):
   elu_x = op.inputs[1]
-  return (gen_nn_ops.elu_grad(grad, elu_x),
-          array_ops.where(
-              elu_x < 0, grad * op.inputs[0], array_ops.zeros_like(elu_x)))
+  return (
+      gen_nn_ops.elu_grad(grad, elu_x),
+      array_ops.where(
+          elu_x <= 0, grad * op.inputs[0], array_ops.zeros_like(elu_x)
+      ),
+  )
 
 
 @ops.RegisterGradient("SeluGrad")
@@ -483,7 +507,7 @@ def _SeluGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("Softplus")
 def _SoftplusGrad(op: ops.Operation, grad):
-  return grad * math_ops.sigmoid(op.inputs[0])
+  return gen_nn_ops.softplus_grad(grad, op.inputs[0])
 
 
 @ops.RegisterGradient("SoftplusGrad")
@@ -1114,12 +1138,20 @@ def _MeanAggregator(inputs, segments):
   value computed from the values that belong to the same segment.
 
   Args:
-   inputs: A 2-tensor. Aggregation is done over dimension 1.
-   segments: A 2-tensor, same shape as `input`.
+   inputs: A 1-tensor or a 2-tensor. Aggregation is done over the last axis.
+   segments: A tensor of the same shape as `input`.
 
   Returns:
     The result, same shape and type as `inputs`.
   """
+  # Aggregation below runs one row at a time, so a 1-D input is treated as a
+  # single row.  Splitting a 1-D input along axis 0 would instead turn every
+  # element into its own row, which collapses each segment to a single element
+  # and leaves the gradient of pooled blocks unaggregated.
+  is_1d = inputs.shape.rank == 1
+  if is_1d:
+    inputs = array_ops.expand_dims(inputs, 0)
+    segments = array_ops.expand_dims(segments, 0)
   result = []
   for inputs_i, segments_i in zip(
       array_ops.split(inputs, inputs.shape[0]),
@@ -1129,7 +1161,10 @@ def _MeanAggregator(inputs, segments):
         inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
     result.append(
         array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
-  return array_ops_stack.stack(result, axis=0)
+  result = array_ops_stack.stack(result, axis=0)
+  if is_1d:
+    result = array_ops.squeeze(result, [0])
+  return result
 
 
 # We have to register the gradients for these ops so that tensorflow will know

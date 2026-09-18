@@ -121,14 +121,20 @@ class HloRunnerAgnosticReferenceMixin : public T {
     return *result;
   }
 
+  // Returns the default options used for generating fake arguments in
+  // RunAndCompare / RunAndCompareNoHloPasses. Subclasses and mixins may
+  // override this to provide platform-specific defaults (e.g. alignment or
+  // bitmasks).
+  virtual FakeArgumentsOptions GetArgumentOptions() const {
+    return FakeArgumentsOptions{};
+  }
+
   // Executes an hlo module with fake inputs and compares the results.
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
+      const FakeArgumentsOptions& options,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
-      const std::optional<int64_t> args_max_bits_of_precision = std::nullopt) {
-    FakeArgumentsOptions options;
-    options.max_bits_of_precision = args_max_bits_of_precision;
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
     const absl::StatusOr<std::vector<Literal>> fake_arguments =
         MakeFakeArguments(module.get(), options);
     if (!fake_arguments.ok()) {
@@ -139,14 +145,28 @@ class HloRunnerAgnosticReferenceMixin : public T {
                          reference_preprocessor, test_preprocessor);
   }
 
+  ::testing::AssertionResult RunAndCompare(
+      std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      const std::optional<int64_t> args_max_bits_of_precision = std::nullopt) {
+    FakeArgumentsOptions options = GetArgumentOptions();
+    if (args_max_bits_of_precision.has_value()) {
+      options.max_bits_of_precision = args_max_bits_of_precision;
+    }
+    return RunAndCompare(std::move(module), error, options,
+                         reference_preprocessor, test_preprocessor);
+  }
+
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
+      const FakeArgumentsOptions& options,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
     const absl::StatusOr<std::vector<Literal>> fake_arguments =
-        MakeFakeArguments(module.get());
+        MakeFakeArguments(module.get(), options);
     if (!fake_arguments.ok()) {
       return ::testing::AssertionFailure() << fake_arguments.status().message();
     }
@@ -155,27 +175,21 @@ class HloRunnerAgnosticReferenceMixin : public T {
         reference_preprocessor, test_preprocessor);
   }
 
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
+      std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
+    return RunAndCompareNoHloPasses(std::move(module), error,
+                                    GetArgumentOptions(),
+                                    reference_preprocessor, test_preprocessor);
+  }
+
   // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   ::testing::AssertionResult RunAndCompare(
       const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
-      const std::optional<int64_t> args_max_bits_of_precision = std::nullopt) {
-    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
-        this->ParseAndReturnVerifiedModule(hlo_string);
-    if (!module.ok()) {
-      return ::testing::AssertionFailure()
-             << "Error while parsing HLO text format: "
-             << module.status().ToString();
-    }
-    return RunAndCompare(*std::move(module), error, reference_preprocessor,
-                         test_preprocessor, args_max_bits_of_precision);
-  }
-
-  ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      const FakeArgumentsOptions& options,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
     absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
@@ -185,7 +199,44 @@ class HloRunnerAgnosticReferenceMixin : public T {
              << "Error while parsing HLO text format: "
              << module.status().ToString();
     }
-    return RunAndCompareNoHloPasses(*std::move(module), error,
+    return RunAndCompare(*std::move(module), error, options,
+                         reference_preprocessor, test_preprocessor);
+  }
+
+  ::testing::AssertionResult RunAndCompare(
+      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      const std::optional<int64_t> args_max_bits_of_precision = std::nullopt) {
+    FakeArgumentsOptions options = GetArgumentOptions();
+    if (args_max_bits_of_precision.has_value()) {
+      options.max_bits_of_precision = args_max_bits_of_precision;
+    }
+    return RunAndCompare(hlo_string, error, options, reference_preprocessor,
+                         test_preprocessor);
+  }
+
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
+      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      const FakeArgumentsOptions& options,
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
+    absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+        this->ParseAndReturnVerifiedModule(hlo_string);
+    if (!module.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module.status().ToString();
+    }
+    return RunAndCompareNoHloPasses(*std::move(module), error, options,
+                                    reference_preprocessor, test_preprocessor);
+  }
+
+  ::testing::AssertionResult RunAndCompareNoHloPasses(
+      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
+    return RunAndCompareNoHloPasses(hlo_string, error, GetArgumentOptions(),
                                     reference_preprocessor, test_preprocessor);
   }
 
