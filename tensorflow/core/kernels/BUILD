@@ -2798,7 +2798,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tensor_array_ops",
     prefix = "tensor_array_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 DYNAMIC_DEPS = [
