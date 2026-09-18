@@ -951,7 +951,11 @@ tf_py_strict_test(
     name = "fused_linear_cross_entropy_op_test",
     srcs = ["fused_linear_cross_entropy_op_test.py"],
     deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
