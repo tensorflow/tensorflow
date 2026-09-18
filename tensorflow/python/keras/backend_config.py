@@ -58,9 +58,9 @@ def set_epsilon(value):
       ValueError: In case of invalid value.
   """
   global _EPSILON
-  if not isinstance(value, (int, float)):
-    raise ValueError(
-        'Unknown epsilon type: {}; expected a float.'.format(value))
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    raise TypeError(
+        'Expected a float, got: {}'.format(type(value).__name__))
   _EPSILON = float(value)
 
 
