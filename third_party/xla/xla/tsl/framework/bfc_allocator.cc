@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -524,6 +525,11 @@ void* BFCAllocator::AllocateRawInternal(size_t alignment, size_t num_bytes,
                                         AllocationEnd allocation_end) {
   if (ABSL_PREDICT_FALSE(num_bytes == 0)) {
     VLOG(2) << "tried to allocate 0 bytes";
+    return nullptr;
+  }
+  if (ABSL_PREDICT_FALSE(num_bytes > std::numeric_limits<size_t>::max() -
+                                         (kMinAllocationSize - 1))) {
+    VLOG(2) << "allocation size cannot be safely rounded: " << num_bytes;
     return nullptr;
   }
   // First, always allocate memory of at least kMinAllocationSize

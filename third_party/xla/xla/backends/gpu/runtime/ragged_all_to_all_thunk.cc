@@ -437,6 +437,7 @@ absl::Status RunNcclFallbackRaggedAllToAll(
   const int64_t* input_offsets = ragged_metadata_allocs[0];
   const int64_t* send_sizes = ragged_metadata_allocs[1];
   const int64_t* output_offsets = ragged_metadata_allocs[2];
+  const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
   if (use_put_path) {
     XLA_VLOG_DEVICE(3, device_ordinal)
@@ -445,11 +446,25 @@ absl::Status RunNcclFallbackRaggedAllToAll(
     int64_t element_byte_width = primitive_util::ByteWidth(element_type);
     se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
 
+    // WaitSignal observes puts sent by `peer` to this rank, so its op_cnt must
+    // be the number of nonzero receives expected from that peer.
+    std::vector<int> puts_from_peer(num_ranks, 0);
+    for (int peer = 0; peer < num_ranks; ++peer) {
+      for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+        const int64_t idx = peer * num_updates_per_replica + i;
+        puts_from_peer[peer] += recv_sizes[idx] != 0;
+      }
+    }
+
     Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
       for (int peer = 0; peer < num_ranks; ++peer) {
         for (int64_t i = 0; i < num_updates_per_replica; ++i) {
           const int64_t idx = peer * num_updates_per_replica + i;
           const int64_t send_count = send_sizes[idx] * ragged_row_element_size;
+
+          // Skip zero-size sends: NCCL still pays ~12 us per LaunchPut even
+          // at count=0, causing O(n_devices) cost for sparse neighbor patterns.
+          if (send_count == 0) continue;
 
           const se::DeviceAddressBase send_slice = GpuCollectives::Slice(
               input_buffer, element_type,
@@ -472,8 +487,9 @@ absl::Status RunNcclFallbackRaggedAllToAll(
 
     GpuSignalDesc signal_desc(/*sig_idx=*/0, /*ctx=*/0);
     for (int peer = 0; peer < num_ranks; ++peer) {
+      if (puts_from_peer[peer] == 0) continue;
       ABSL_RETURN_IF_ERROR(comm.WaitSignal(RankId(peer),
-                                      /*op_cnt=*/num_updates_per_replica,
+                                      /*op_cnt=*/puts_from_peer[peer],
                                       signal_desc, GpuCollectives::On(stream))
                           .Await());
     }
@@ -483,7 +499,6 @@ absl::Status RunNcclFallbackRaggedAllToAll(
 
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "RunFallbackNcclRaggedAllToAll: using Send/Recv path";
-  const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
   Future<> future = gpu_comm->GroupExecute([&]() -> absl::Status {
     PrimitiveType element_type = buffers[0].element_type;
@@ -494,23 +509,32 @@ absl::Status RunNcclFallbackRaggedAllToAll(
     for (int64_t i = 0; i < num_updates_per_replica; ++i) {
       for (int peer = 0; peer < num_ranks; ++peer) {
         int64_t idx = peer * num_updates_per_replica + i;
-        se::DeviceAddressBase send_slice =
-            GpuCollectives::Slice(input_buffer, element_type,
-                                  input_offsets[idx] * ragged_row_element_size,
-                                  send_sizes[idx] * ragged_row_element_size);
 
-        se::DeviceAddressBase recv_slice =
-            GpuCollectives::Slice(output_buffer, element_type,
-                                  output_offsets[idx] * ragged_row_element_size,
-                                  recv_sizes[idx] * ragged_row_element_size);
+        // Send and receive refer to different slots. Skip each zero-size
+        // operation independently: NCCL pays ~12 us per LaunchSend/LaunchRecv
+        // even at count=0, causing O(n_devices) cost for sparse neighbor
+        // patterns (issue #46982).
+        if (send_sizes[idx] != 0) {
+          se::DeviceAddressBase send_slice = GpuCollectives::Slice(
+              input_buffer, element_type,
+              input_offsets[idx] * ragged_row_element_size,
+              send_sizes[idx] * ragged_row_element_size);
+          ABSL_RETURN_IF_ERROR(
+              gpu_comm->LaunchSend(send_slice, element_type,
+                                   send_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream)));
+        }
 
-        ABSL_RETURN_IF_ERROR(gpu_comm->LaunchSend(
-            send_slice, element_type, send_sizes[idx] * ragged_row_element_size,
-            RankId(peer), GpuCollectives::On(stream)));
-
-        ABSL_RETURN_IF_ERROR(gpu_comm->LaunchRecv(
-            recv_slice, element_type, recv_sizes[idx] * ragged_row_element_size,
-            RankId(peer), GpuCollectives::On(stream)));
+        if (recv_sizes[idx] != 0) {
+          se::DeviceAddressBase recv_slice = GpuCollectives::Slice(
+              output_buffer, element_type,
+              output_offsets[idx] * ragged_row_element_size,
+              recv_sizes[idx] * ragged_row_element_size);
+          ABSL_RETURN_IF_ERROR(
+              gpu_comm->LaunchRecv(recv_slice, element_type,
+                                   recv_sizes[idx] * ragged_row_element_size,
+                                   RankId(peer), GpuCollectives::On(stream)));
+        }
       }
     }
 
