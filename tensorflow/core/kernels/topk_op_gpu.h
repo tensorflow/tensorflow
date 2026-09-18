@@ -238,12 +238,12 @@ __device__ void heapTopK(const T* __restrict__ input, int length, int k,
   // Now iterate over the remaining items.
   // If an item is smaller than the min element, it is not amongst the top k.
   // Otherwise, replace the min element with it and push upwards.
-  for (int index = heap_end_index; index < length; index += step_size) {
+  for (int64_t index = heap_end_index; index < length; index += step_size) {
     // We prefer elements with lower indices. This is given here.
     // Later elements automatically have higher indices, so can be discarded.
     if (input[index] > heap.root().value) {
       // This element should replace the min.
-      heap.replace_root({index, input[index]}, k);
+      heap.replace_root({static_cast<int>(index), input[index]}, k);
     }
   }
 
