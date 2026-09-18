@@ -49,8 +49,13 @@ template <typename T>
 struct LogSumExp {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
                                                      const T& b) const {
-    auto mi = Eigen::internal::scalar_min_op<T>()(a, b);
-    auto ma = Eigen::internal::scalar_max_op<T>()(a, b);
+    // The min and max must propagate NaN. Eigen's default mode reduces to
+    // `(b < a) ? b : a`, and every comparison against NaN is false, so a NaN
+    // operand is discarded in favor of the other one. That loses the NaN
+    // entirely: for `(1, NaN)` both mi and ma become 1, and the result is
+    // log1p(exp(0)) + 1 rather than NaN.
+    auto mi = Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>()(a, b);
+    auto ma = Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>()(a, b);
 
     auto sub = Eigen::internal::scalar_difference_op<T>();
     auto add = Eigen::internal::scalar_sum_op<T>();
@@ -61,7 +66,8 @@ struct LogSumExp {
 
     auto logsumexp = add(log1p(exp(sub(mi, ma))), ma);
     // Return ma directly if it is -inf (all inputs -inf) or +inf
-    // (avoids inf - inf = NaN in the subtraction above).
+    // (avoids inf - inf = NaN in the subtraction above). A NaN ma fails both
+    // comparisons, so it falls through to logsumexp, which is NaN.
     return (cmp_lt(ma, Eigen::NumTraits<T>::lowest()) ||
             cmp_lt(Eigen::NumTraits<T>::highest(), ma))
                ? ma
@@ -69,8 +75,10 @@ struct LogSumExp {
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T packetOp(const T& a,
                                                    const T& b) const {
-    auto mi = Eigen::internal::pmin(a, b);
-    auto ma = Eigen::internal::pmax(a, b);
+    // See the comment in operator() above: these must propagate NaN, or a NaN
+    // operand is silently replaced by the other one.
+    auto mi = Eigen::internal::pmin<Eigen::PropagateNaN>(a, b);
+    auto ma = Eigen::internal::pmax<Eigen::PropagateNaN>(a, b);
     using Eigen::internal::padd;
     using Eigen::internal::pcmp_lt;
     using Eigen::internal::pexp;
@@ -80,7 +88,8 @@ struct LogSumExp {
     using Eigen::internal::psub;
 
     auto logsumexp = padd(plog1p(pexp(psub(mi, ma))), ma);
-    // Select ma directly if it is -inf or +inf.
+    // Select ma directly if it is -inf or +inf. A NaN ma fails both
+    // comparisons, so the select keeps logsumexp, which is NaN.
     auto is_inf = por(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())),
                       pcmp_lt(pset1(Eigen::NumTraits<T>::highest()), ma));
     return pselect(is_inf, ma, logsumexp);
