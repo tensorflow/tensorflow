@@ -111,6 +111,12 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
         &padding_right));
     DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<CPUDevice, T>()(
+          ctx->eigen_device<CPUDevice>(), filter_backprop->flat<T>());
+      return;
+    }
+
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
 
     // WARNING: Need to swap row/col, padding_top/padding_left, and
@@ -216,6 +222,12 @@ void LaunchConv2DBackpropFilterOpImpl(
       col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
       &padding_right));
   DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
+
+  if (out_backprop.NumElements() == 0) {
+    functor::SetZeroFunctor<GPUDevice, T>()(
+        ctx->eigen_device<GPUDevice>(), filter_backprop->flat<T>());
+    return;
+  }
 
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));

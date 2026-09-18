@@ -312,6 +312,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
         "@xla//xla:util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
