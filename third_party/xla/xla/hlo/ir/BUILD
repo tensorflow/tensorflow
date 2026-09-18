@@ -169,13 +169,11 @@ xla_cc_test(
     srcs = ["hlo_computation_test.cc"],
     deps = [
         ":hlo",
-        "//third_party/gloop/util/task:status_matchers",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

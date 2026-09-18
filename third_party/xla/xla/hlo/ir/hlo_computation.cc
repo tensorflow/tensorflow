@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
-#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -58,7 +57,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
-#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
@@ -70,7 +68,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
@@ -1250,22 +1247,6 @@ void HloComputation::Print(
     printer->Append(execution_thread());
     printer->Append("\"");
   }
-  if (options.print_backend_config() && has_backend_config()) {
-    absl::string_view config = raw_backend_config_string();
-    std::string sorted_config;
-    if (options.sort_backend_config()) {
-      sorted_config = SortJson(config).value_or(std::string(config));
-      config = sorted_config;
-    }
-    printer->Append(", backend_config=");
-    if (printer->is_hasher() || LexesAsJsonDict(config)) {
-      printer->Append(config);
-    } else {
-      printer->Append("\"");
-      printer->Append(absl::CEscape(config));
-      printer->Append("\"");
-    }
-  }
   if (options.print_name_after_closing_brace() && instruction_count() > 5) {
     printer->Append(" // ");
     printer->Append(name());
@@ -1311,9 +1292,6 @@ void HloComputation::ToProto(HloComputationProto* proto,
   proto->set_is_fusion_computation(IsFusionComputation());
   proto->set_execution_thread(IsMainThread() ? ""
                                              : std::string(execution_thread()));
-  if (has_backend_config()) {
-    proto->set_backend_config(raw_backend_config_string());
-  }
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
@@ -1459,9 +1437,6 @@ HloComputation::CreateFromProto(
   computation->SetUniqueIdHelper(proto.id());
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
-  }
-  if (!proto.backend_config().empty()) {
-    computation->set_raw_backend_config_string(proto.backend_config());
   }
   return computation;
 }
@@ -2265,7 +2240,6 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
 
   context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
-  result->backend_config_ = backend_config_;
   return result;
 }
 
