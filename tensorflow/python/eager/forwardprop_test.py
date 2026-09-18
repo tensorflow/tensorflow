@@ -232,6 +232,28 @@ def _test_gradients(testcase,
 @test_util.with_eager_op_as_function
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
+  @parameterized.product(
+      dtype=[dtypes.float32, dtypes.float64],
+      segments=[
+          ([0, 0, 1], [3., 8.]),
+          ([0, 0, 2], [3., 0., 8.]),
+          ([1, 1, 3], [0., 3., 0., 8.]),
+      ],
+      matrix=[False, True],
+  )
+  def testSegmentMeanJVP(self, dtype, segments, matrix):
+    segment_ids, expected = segments
+    primal = constant_op.constant([1., 3., 5.], dtype=dtype)
+    tangent = constant_op.constant([2., 4., 8.], dtype=dtype)
+    if matrix:
+      primal = array_ops_stack.stack([primal, 2 * primal], axis=1)
+      tangent = array_ops_stack.stack([tangent, 2 * tangent], axis=1)
+      expected = [[value, 2 * value] for value in expected]
+    with forwardprop.ForwardAccumulator(primal, tangent) as acc:
+      result = math_ops.segment_mean(primal, segment_ids)
+    # Each nonempty segment averages its input tangents; empty ones are zero.
+    self.assertAllClose(expected, self.evaluate(acc.jvp(result)))
+
   def testJVPFunction(self):
     add_outputs = (constant_op.constant(4.),)
     vp, = forwardprop._jvp_dispatch(
@@ -311,8 +333,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(acc2.jvp(y))
 
   def testRunFunctionsEagerly(self):
+    original_setting = def_function.functions_run_eagerly()
     try:
-      original_setting = def_function.functions_run_eagerly()
       def_function.run_functions_eagerly(True)
       x = constant_op.constant(1.)
       with forwardprop.ForwardAccumulator(x, 2.) as acc:
