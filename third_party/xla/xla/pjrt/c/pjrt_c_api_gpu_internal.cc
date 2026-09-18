@@ -84,7 +84,9 @@ namespace gpu_plugin {
 #if TENSORFLOW_USE_ROCM
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
 #elif TENSORFLOW_USE_SYCL
-#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ONEAPI"
+// TODO(Intel-tf)  this will be changed to ONEAPI
+// when the SYCL backend has been renamed to ONEAPI.
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "SYCL"
 #else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
@@ -337,7 +339,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   if (plugin_platform == "ROCM") {
     platform_id = xla::RocmId();
     platform_name = xla::RocmName();
-  } else if (plugin_platform == "ONEAPI") {
+  } else if (plugin_platform == "SYCL") {
     platform_id = xla::OneapiId();
     platform_name = xla::OneapiName();
   } else {
