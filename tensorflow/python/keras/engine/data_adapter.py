@@ -1093,6 +1093,7 @@ def broadcast_sample_weight_modes(target_structure, sample_weight_modes):
 
 
 class DataHandler(object):
+
   """Handles iterating over epoch-level `tf.data.Iterator` objects."""
 
   def __init__(self,
@@ -1193,13 +1194,17 @@ class DataHandler(object):
     """Yields `(epoch, tf.data.Iterator)`."""
     with self._truncate_execution_to_epoch():
       data_iterator = iter(self._dataset)
-      for epoch in range(self._initial_epoch, self._epochs):
-        if self._insufficient_data:  # Set by `catch_stop_iteration`.
-          break
-        if self._adapter.should_recreate_iterator():
-          data_iterator = iter(self._dataset)
-        yield epoch, data_iterator
-        self._adapter.on_epoch_end()
+      try:
+        for epoch in range(self._initial_epoch, self._epochs):
+          if self._insufficient_data:  # Set by `catch_stop_iteration`.
+            break
+          if self._adapter.should_recreate_iterator():
+            del data_iterator
+            data_iterator = iter(self._dataset)
+          yield epoch, data_iterator
+          self._adapter.on_epoch_end()
+      finally:
+        del data_iterator
 
   @contextlib.contextmanager
   def _truncate_execution_to_epoch(self):
