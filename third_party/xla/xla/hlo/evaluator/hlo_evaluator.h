@@ -16,14 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
-#include "absl/log/log.h"
-#include "absl/status/status_macros.h"
 #define _USE_MATH_DEFINES
 
 #include <complex>
-#include <cstddef>  // NOLINT(build/include_order)
+#include <cstddef>
 #include <cstdint>
-#include <deque>  // NOLINT(build/include_order)
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -35,7 +33,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
