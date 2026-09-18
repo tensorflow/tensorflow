@@ -222,7 +222,6 @@ py_test(
     shard_count = 20,
     strict_deps = True,
     tags = [
-        "exclusive-if-local",
         "gpu",
         "no_pip",
         "requires-gpu-nvidia",
