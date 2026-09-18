@@ -78,6 +78,8 @@ class OneDnnThreadPool final
       tsl::BlockUntilReady(done_event_);
     }
   }
+#else
+  void wait() override {}
 #endif  // ENABLE_ONEDNN_ASYNC
 
   void parallel_for(int n, const std::function<void(int, int)>& fn) final {
