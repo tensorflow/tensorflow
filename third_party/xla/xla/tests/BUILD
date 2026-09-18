@@ -3013,10 +3013,7 @@ xla_test(
         "interpreter",
     ],
     shard_count = 30,
-    tags = [
-        "cuda-only",
-        "optonly",
-    ],
+    tags = ["optonly"],
     use_legacy_runtime = True,
     deps = [
         ":literal_test_util",
