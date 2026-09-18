@@ -197,32 +197,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
-// PATCH: Fix for severe memory leak in Python 3.11+ (GitHub Issue #65675).
-// Python 3.11's allocation pattern causes glibc to retain memory
-// unnecessarily during generator iteration. Setting M_TRIM_THRESHOLD to 128kb
-// disables the dynamic memory allocator and forces to use mmaped memory,
-// preventing OOM crashes.
-void ApplyPython311MemoryPatch() {
-#ifdef __GLIBC__
-  // M_MMAP_THRESHOLD: 128KB is default, 0 means "always mmap"
-  int result_mmap = mallopt(M_MMAP_THRESHOLD, 128 * 1024);
-
-  if (result_mmap != 1) {
-    LOG(WARNING) << "Cannot set mallopt to mitigate memory leak in Python 3.11";
-  } else {
-    LOG(INFO) << "Memory patch applied: M_TRIM_THRESHOLD=128 kb was set.";
-  }
-#endif
-}
-
 GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  static const bool memory_patch_applied = [] {
-    ApplyPython311MemoryPatch();
-    return true;
-  }();
-  (void)memory_patch_applied;  // Silence unused variable warning.
-
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kInitFunc, /*params=*/{},
                                                &init_func_metadata_));
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kNextFunc, /*params=*/{},
