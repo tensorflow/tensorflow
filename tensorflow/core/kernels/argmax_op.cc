@@ -1,278 +1,82 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+"""Regression test for ArgMax/ArgMin CPU kernel registration of `Tidx`.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+Covers the fix adding `.TypeConstraint<int32>("Tidx")` to the CPU
+registrations in `tensorflow/core/kernels/argmax_op.cc`, mirroring the
+GPU registrations, which already had it. Before the fix, a `dimension`
+tensor of dtype int64 (Tidx=int64) on CPU would be matched by a kernel
+whose `Compute()` unconditionally reads `dimension` as int32, hitting a
+fatal `Tensor::scalar<T>()` dtype-mismatch CHECK and crashing the
+process. After the fix, TensorFlow should instead fail this combination
+cleanly at kernel-lookup time with a catchable error, exactly as it
+already does on GPU.
+"""
 
-    http://www.apache.org/licenses/LICENSE-2.0
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
 
-// See docs in ../ops/math_ops.cc.
+class ArgMaxMinTidxRegistrationTest(test_util.TensorFlowTestCase):
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#define EIGEN_USE_THREADS
+  def testArgMaxInt64DimensionOnCpuFailsCleanly(self):
+    """ArgMax with an int64 `dimension` tensor on CPU must not crash.
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-#define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    Before the fix, this combination was incorrectly matched by the
+    CPU kernel (which only supports int32 `dimension`), and would
+    crash the process with a fatal CHECK failure rather than raising a
+    catchable Python exception. This test only verifies the failure is
+    now catchable and clean; it does not (and should not) attempt to
+    assert the exact resulting value.
+    """
+    with test_util.use_cpu():
+      input_tensor = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+      dimension = constant_op.constant(0, dtype=dtypes.int64)
+      with self.assertRaises((errors.InvalidArgumentError,
+                              errors.NotFoundError)):
+        self.evaluate(array_ops.argmax(input_tensor, axis=dimension))
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/argmax_op.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
+  def testArgMinInt64DimensionOnCpuFailsCleanly(self):
+    """Same as above, for ArgMin."""
+    with test_util.use_cpu():
+      input_tensor = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+      dimension = constant_op.constant(0, dtype=dtypes.int64)
+      with self.assertRaises((errors.InvalidArgumentError,
+                              errors.NotFoundError)):
+        self.evaluate(array_ops.argmin(input_tensor, axis=dimension))
 
-namespace tensorflow {
+  def testArgMaxInt32DimensionOnCpuStillWorks(self):
+    """Sanity check: the fix must not regress the supported Tidx=int32 case."""
+    with test_util.use_cpu():
+      input_tensor = constant_op.constant([1.0, 3.0, 2.0], dtype=dtypes.float32)
+      dimension = constant_op.constant(0, dtype=dtypes.int32)
+      result = self.evaluate(array_ops.argmax(input_tensor, axis=dimension))
+      self.assertEqual(result, 1)
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-typedef Eigen::GpuDevice GPUDevice;
+  def testArgMinInt32DimensionOnCpuStillWorks(self):
+    """Sanity check: the fix must not regress the supported Tidx=int32 case."""
+    with test_util.use_cpu():
+      input_tensor = constant_op.constant([1.0, 3.0, 2.0], dtype=dtypes.float32)
+      dimension = constant_op.constant(0, dtype=dtypes.int32)
+      result = self.evaluate(array_ops.argmin(input_tensor, axis=dimension))
+      self.assertEqual(result, 0)
 
-template <typename Device, typename T, typename Tout, typename ArgFunctor>
-class ArgOp : public OpKernel {
- public:
-  explicit ArgOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    const Tensor& dimension = context->input(1);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(dimension.shape()),
-                absl::InvalidArgumentError(absl::StrCat(
-                    "dim must be a scalar, but received tensor of shape: ",
-                    dimension.shape().DebugString())));
-
-    const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
-    const int input_dims = input.dims();
-
-    int axis = dim < 0 ? dim + input_dims : dim;
-
-    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Expected dimension in the range [", -input_dims, ", ",
-                    input_dims, "), but got ", dim)));
-    OP_REQUIRES(context, input.dim_size(axis) > 0,
-                absl::InvalidArgumentError(
-                    absl::StrCat("Reduction axis ", dim, " is empty in shape ",
-                                 input.shape().DebugString())));
-
-    TensorShape output_shape;
-    const TensorShape& input_shape = input.shape();
-    for (int d = 0; d < input_dims - 1; ++d) {
-      OP_REQUIRES_OK(context,
-                     output_shape.AddDimWithStatus(
-                         input_shape.dim_size((d < axis) ? d : d + 1)));
-    }
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-
-    if (output_shape.num_elements() == 0) {
-      return;
-    }
-
-#define HANDLE_DIM(NDIM)                                        \
-  case NDIM:                                                    \
-    ArgFunctor::Reduce##NDIM(context->eigen_device<Device>(),   \
-                             input.tensor<T, NDIM>(), axis,     \
-                             output->tensor<Tout, NDIM - 1>()); \
-    break;
-
-    switch (input_dims) {
-      HANDLE_DIM(1);
-      HANDLE_DIM(2);
-      HANDLE_DIM(3);
-      HANDLE_DIM(4);
-      HANDLE_DIM(5);
-      HANDLE_DIM(6);
-      HANDLE_DIM(7);
-
-      default:
-        OP_REQUIRES(
-            context, false,
-            absl::InvalidArgumentError(absl::StrCat(
-                "Argmax and Argmin only support up "
-                "to 7 input dimensions, but got ",
-                input_dims, ". Inputs shape: ", input.shape().DebugString())));
-    }
-  }
-#undef HANDLE_DIM
-
- private:
-  ArgOp(const ArgOp&) = delete;
-  void operator=(const ArgOp&) = delete;
-};
-
-template <typename Device, typename T, typename Tout>
-class ArgMaxOp
-    : public ArgOp<Device, T, Tout, functor::ArgMax<Device, T, Tout> > {
- public:
-  explicit ArgMaxOp(OpKernelConstruction* context)
-      : ArgOp<Device, T, Tout, functor::ArgMax<Device, T, Tout> >(context) {}
-};
-
-template <typename Device, typename T, typename Tout>
-class ArgMinOp
-    : public ArgOp<Device, T, Tout, functor::ArgMin<Device, T, Tout> > {
- public:
-  explicit ArgMinOp(OpKernelConstruction* context)
-      : ArgOp<Device, T, Tout, functor::ArgMin<Device, T, Tout> >(context) {}
-};
-
-// NB: `ArgOp::Compute` above unconditionally reads the `dimension` input as
-// `int32_t` (`dimension.scalar<int32_t>()()`), regardless of what the op's
-// `Tidx` attr actually is. Every CPU registration below therefore now
-// explicitly constrains `Tidx` to `int32`, matching the GPU registrations
-// further down in this file (which already had this constraint). Without
-// it, TensorFlow's kernel-matching would treat these CPU kernels as also
-// matching `Tidx=int64` (since an unconstrained attr matches any legal
-// value), and the hardcoded `scalar<int32_t>()` read would then fail a
-// fatal `Tensor::scalar<T>()` dtype-mismatch CHECK -- crashing the process
-// -- instead of TensorFlow cleanly reporting "No OpKernel registered for
-// this op with these attr values" the way it already does on GPU.
-#define REGISTER_ARGMAX(type)                                         \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int64_t>("output_type") \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<CPUDevice, type, int64>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int64_t>("output_type") \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMinOp<CPUDevice, type, int64>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int32>("output_type")   \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<CPUDevice, type, int32>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int32>("output_type")   \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMinOp<CPUDevice, type, int32>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int16>("output_type")   \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<CPUDevice, type, int16>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<uint16>("output_type")  \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<CPUDevice, type, uint16>);
-
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
-TF_CALL_bool(REGISTER_ARGMAX);
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-
-#define DECLARE_GPU_SPEC(T, Tout, Dims)                                       \
-  template <>                                                                 \
-  void ArgMax<GPUDevice, T, Tout>::Reduce##Dims(                              \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,        \
-      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output); \
-  template <>                                                                 \
-  void ArgMin<GPUDevice, T, Tout>::Reduce##Dims(                              \
-      const GPUDevice& d, typename TTypes<T, Dims>::ConstTensor input,        \
-      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output);
-
-#define DECLARE_GPU_SPECS(T)       \
-  DECLARE_GPU_SPEC(T, int64_t, 1); \
-  DECLARE_GPU_SPEC(T, int64_t, 2); \
-  DECLARE_GPU_SPEC(T, int64_t, 3); \
-  DECLARE_GPU_SPEC(T, int64_t, 4); \
-  DECLARE_GPU_SPEC(T, int64_t, 5); \
-  DECLARE_GPU_SPEC(T, int64_t, 6); \
-  DECLARE_GPU_SPEC(T, int64_t, 7); \
-  DECLARE_GPU_SPEC(T, int32, 1);   \
-  DECLARE_GPU_SPEC(T, int32, 2);   \
-  DECLARE_GPU_SPEC(T, int32, 3);   \
-  DECLARE_GPU_SPEC(T, int32, 4);   \
-  DECLARE_GPU_SPEC(T, int32, 5);   \
-  DECLARE_GPU_SPEC(T, int32, 6);   \
-  DECLARE_GPU_SPEC(T, int32, 7);
-
-#define DECLARE_GPU_CLASS(T)                            \
-  extern template struct ArgMax<GPUDevice, T, int64_t>; \
-  extern template struct ArgMin<GPUDevice, T, int64_t>; \
-  extern template struct ArgMax<GPUDevice, T, int32>;   \
-  extern template struct ArgMin<GPUDevice, T, int32>;
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bool(DECLARE_GPU_SPECS);
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_CLASS);
-TF_CALL_bool(DECLARE_GPU_CLASS);
-
-#undef DECLARE_GPU_SPECS
-#undef DECLARE_GPU_CLASS
-
-}  // namespace functor
-
-// Registration of the GPU implementations.
-#define REGISTER_ARGMAX_GPU(type)                                     \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_GPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int64_t>("output_type") \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<GPUDevice, type, int64>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
-                              .Device(DEVICE_GPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int64_t>("output_type") \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMinOp<GPUDevice, type, int64>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
-                              .Device(DEVICE_GPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int32>("output_type")   \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMaxOp<GPUDevice, type, int32>);          \
-  REGISTER_KERNEL_BUILDER(Name("ArgMin")                              \
-                              .Device(DEVICE_GPU)                     \
-                              .TypeConstraint<type>("T")              \
-                              .TypeConstraint<int32>("output_type")   \
-                              .TypeConstraint<int32>("Tidx")          \
-                              .HostMemory("dimension"),               \
-                          ArgMinOp<GPUDevice, type, int32>);
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
-TF_CALL_bool(REGISTER_ARGMAX_GPU);
-
-#undef REGISTER_ARGMAX_GPU
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-}  // namespace tensorflow
+if __name__ == "__main__":
+  test.main()
