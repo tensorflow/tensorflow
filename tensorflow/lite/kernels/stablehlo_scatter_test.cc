@@ -39,8 +39,13 @@ class StablehloScatterOpModel : public SingleOpModel {
   StablehloScatterOpModel(const TensorData& input, const TensorData& indices,
                           const TensorData& updates,
                           const TfLiteStablehloScatterParams& params,
-                          StablehloScatterOpType op_type) {
-    input_ = AddInput(input);
+                          StablehloScatterOpType op_type,
+                          const std::vector<float>* const_input = nullptr) {
+    if (const_input != nullptr) {
+      input_ = AddConstInput(input, *const_input);
+    } else {
+      input_ = AddInput(input);
+    }
     indices_ = AddInput(indices);
     updates_ = AddInput(updates);
     output_ = AddOutput(input.type);
@@ -267,6 +272,46 @@ TEST(StablehloScatterOpTest, PerformsUpdate) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   std::vector<float> expected_values = {1, 2, 2, 2, 2, 2, 7, 8, 2,  2,  2,  2,
                                         2, 2, 2, 2, 2, 2, 2, 2, 21, 22, 23, 24};
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray(expected_values));
+}
+
+// A constant tensor's raw FlatBuffer buffer may legally be larger than
+// its logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TEST(StablehloScatterOpTest, ConstantOperandWithOversizedBuffer) {
+  StablehloScatterOpType op_type = StablehloScatterOpType::kAdd;
+
+  TfLiteStablehloScatterParams params = {
+      false,   // indices_are_sorted
+      {2, 3},  // std::vector<update_window_dims>
+      2,       // num_update_window_dims
+      {0},     // std::vector<inserted_window_dims>
+      1,       // num_inserted_window_dims
+      {1, 0},  // std::vector<scatter_dims_to_operand_dims>
+      2,       // num_scatter_dims_to_operand_dims
+      2,       // index_vector_dim
+      false,   // unique_indices
+      1        // update_computation_subgraph_index
+  };
+  std::vector<float> input_data(1 << 12);
+  const std::vector<float> logical{1,  2,  3,  4,  5,  6,  7,  8,
+                                   9,  10, 11, 12, 13, 14, 15, 16,
+                                   17, 18, 19, 20, 21, 22, 23, 24};
+  for (int i = 0; i < 24; ++i) {
+    input_data[i] = logical[i];
+  }
+  StablehloScatterOpModel model(
+      {TensorType_FLOAT32, {3, 4, 2}}, {TensorType_INT64, {2, 3, 2}},
+      {TensorType_FLOAT32, {2, 3, 2, 2}}, params, op_type, &input_data);
+  model.SetIndices<int64_t>({0, 2, 1, 0, 2, 1, 0, 1, 1, 0, 0, 9});
+  model.SetUpdates<float>(
+      {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  std::vector<float> expected_values = {1,  2,  7,  8,  9,  10, 7,  8,
+                                        11, 12, 13, 14, 15, 16, 17, 18,
+                                        19, 20, 21, 22, 21, 22, 23, 24};
   EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray(expected_values));
 }
 
