@@ -61,6 +61,22 @@ module @module_1 {
     return %6 : tensor<16xi64>
   }
 
+  // A replicated HloShardingV1/V2 is a placeholder sharding that is ignored on
+  // import. Verify no `sdy.sharding` is added to the custom call, as opposed to
+  // one holding a null sharding.
+  // CHECK-LABEL: func @x64_combine_replicated_placeholder
+  func.func @x64_combine_replicated_placeholder(
+    %arg0: tensor<16xi64>) -> tensor<16xi64> {
+    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[COMBINE:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW]], %[[SPLIT_HIGH]]) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    // CHECK-NEXT: return %[[COMBINE]]
+    %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %2 = stablehlo.custom_call @X64Combine(%0, %1) {mhlo.sharding = "{replicated}"} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    return %2 : tensor<16xi64>
+  }
+
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,

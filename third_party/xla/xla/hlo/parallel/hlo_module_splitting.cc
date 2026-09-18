@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/separate_compilation/hlo_module_splitting.h"
+#include "xla/hlo/parallel/hlo_module_splitting.h"
 
 #include <cstdint>
 #include <deque>
@@ -39,14 +39,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/separate_compilation/hlo_linking_manifest.h"
+#include "xla/hlo/parallel/hlo_linking_manifest.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
-namespace xla::separate_compilation {
+// NOLINTBEGIN(clang-diagnostic-pre-c++20-compat)
+
+namespace xla::parallel {
 namespace {
 
 constexpr absl::string_view kEntryName = "entry";
@@ -109,6 +109,7 @@ absl::StatusOr<absl::flat_hash_map<K, V>> ComposeMaps(
     const absl::flat_hash_map<K, KV>& first,
     const absl::flat_hash_map<KV, V>& second) {
   absl::flat_hash_map<K, V> result;
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
   for (const auto [k, kv] : first) {
     if (auto it = second.find(kv); it != second.end()) {
       result.insert({k, it->second});
@@ -123,6 +124,7 @@ template <typename K, typename V>
 absl::Status MergeMapInto(absl::flat_hash_map<K, V>& into,
                           const absl::flat_hash_map<K, V>& from,
                           bool error_on_duplicate_key = true) {
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
   for (const auto& [k, v] : from) {
     if (!into.insert({k, v}).second) {
       if (error_on_duplicate_key) {
@@ -265,7 +267,7 @@ absl::StatusOr<std::unique_ptr<HloModuleSplit>> CreateHloModuleSplit(
     if (replacement->parent() != submodule.get()) {
       replacement = clone_context.GetComputation(replacement);
     }
-    mapped_call_instruction->set_to_apply(callee_replacements[caller]);
+    mapped_call_instruction->set_to_apply(replacement);
   }
 
   entry_computation->SetAndSanitizeName(kEntryName);
@@ -296,6 +298,7 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
   for (const auto& split : splits) {
     ABSL_ASSIGN_OR_RETURN(auto module_split, CreateHloModuleSplit(module, split));
     module_splits.push_back(std::move(module_split));
+    // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
     for (const auto* original_comp : split) {
       computation_address_book.insert(
           {original_comp, module_splits.back().get()});
@@ -311,6 +314,7 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
     for (const auto& split : module_splits) {
       VLOG(5) << "Split: " << split->submodule->name();
       VLOG(5) << " Stub links:";
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
       for (const auto& [stub, comp] : split->stub_map) {
         VLOG(5)
             << "  " << stub->name() << " ==>> " << comp->name() << "("
@@ -354,4 +358,6 @@ absl::StatusOr<const HloComputation*> HloModuleSplitGroup::GetClonedComputation(
   return it2->second;
 }
 
-}  // namespace xla::separate_compilation
+}  // namespace xla::parallel
+
+// NOLINTEND(clang-diagnostic-pre-c++20-compat)
