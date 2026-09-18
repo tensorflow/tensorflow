@@ -891,6 +891,53 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_PreservesInitialData) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
+// Regression test for issue #46982: zero-size peer slices must be skipped so
+// that the collective's cost is O(actual_neighbors) not O(n_devices).
+//
+// Pattern: replica_0 sends 3 rows to replica_1; replica_1 sends 0 rows to
+// replica_0. This creates one direction with all-zero sizes per peer, which
+// previously caused ~12 us of unnecessary NCCL overhead for every zero-size
+// slot in the Send/Recv or Put+Signal paths.
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_SparseNeighbors) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleReplicatedStr, kNumReplicas));
+
+  // Sparse pattern: replica_0 sends 3 rows to replica_1, and 1 row to itself.
+  // replica_1 sends 0 rows to replica_0 (zero-size slot), and 1 row to itself.
+  // The zero-size slot for replica_1->replica_0 must be skipped without hangs.
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 3},
+                                                  /*replica_1=*/{0, 1}}));
+
+  ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1

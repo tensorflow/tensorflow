@@ -77,6 +77,9 @@ def tf_cuda_2gpu_tests_tags():
 def tf_has_tag(kwargs, tag):
     return ("tags" in kwargs and kwargs["tags"] != None and tag in kwargs["tags"])
 
+def tf_has_any_tag(kwargs, tags):
+    return any([tf_has_tag(kwargs, tag) for tag in tags])
+
 def tf_exec_properties(kwargs):
     """Gets execution_properties for TensorFlow GPU tests based on the provided tags.
 
@@ -85,7 +88,7 @@ def tf_exec_properties(kwargs):
     Returns:
         execution_properties with the execution pool names for rbe.
     """
-    if is_rocm_configured():
+    if is_rocm_configured() and tf_has_any_tag(kwargs, ["requires-gpu-rocm", "requires-gpu-amd"]):
         if tf_has_tag(kwargs, "multi_gpu"):
             return ROCM_MULTI_GPU_TEST_PROPERTIES
         if tf_has_tag(kwargs, "gpu"):
