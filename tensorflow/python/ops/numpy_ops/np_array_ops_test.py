@@ -1022,9 +1022,20 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[2, -3], [-6, 7]], axis=1, keepdims=True)
     run_test([[2, -3], [-6, 7]], axis=(0, 1))
     run_test([[2, -3], [-6, 7]], axis=(1, 0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=(0, 2))
 
   def testSum(self):
     self._testReduce(np_array_ops.sum, np.sum, 'sum')
+    # Scalar input: axes -1 and 0 are in bounds, 1 and -2 are not.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=-2)
 
   def testAmax(self):
     self._testReduce(np_array_ops.amax, np.amax, 'amax')

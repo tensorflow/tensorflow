@@ -620,6 +620,22 @@ def _reduce(
   if keepdims is None:
     keepdims = False
   a = asarray(a, dtype=dtype)
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error.
+  maybe_rank = a.shape.rank
+  if (
+      maybe_rank is not None
+      and axis is not None
+      and isinstance(axis, (list, tuple, range, np.ndarray))
+      and builtins.all(isinstance(x, (int, np.integer)) for x in axis)
+  ):
+    for ax in axis:
+      normalized = ax + maybe_rank if ax < 0 else ax
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={ax}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
   if (
       dtype == np.bool_ or preserve_bool and a.dtype == np.bool_
   ) and tf_bool_fn is not None:
