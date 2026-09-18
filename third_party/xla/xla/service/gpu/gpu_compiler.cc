@@ -2037,7 +2037,6 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
   // I.e. transform single dot into a chain of dots with the default algorithm
   // that cublas can handle. These dots were inlined by the CallInliner pass
   // above.
-  pipeline.AddPass<DotAlgorithmRewriter>();
 
   GemmRewriterOptions fp8_options{GemmRewriterOptions::DType::kFp8Only,
                                   bias_mode};
@@ -2045,6 +2044,7 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
   pipeline.AddPass<GemmRewriter>(
       gpu_version, toolkit_version,
       GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode});
+  pipeline.AddPass<DotAlgorithmRewriter>();
 }
 }  // namespace
 
