@@ -233,6 +233,10 @@ class KernelLoaderSpec {
       const KernelLoaderSpecProto& proto,
       std::optional<SymbolResolver> symbol_resolver = std::nullopt);
 
+  // Converts any owning in-memory CUBIN/PTX payload to a reference-counted
+  // shared payload so copies of this spec share the underlying binary.
+  KernelLoaderSpec ToShared() &&;
+
  private:
   using Payload =
       std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory,

@@ -37,6 +37,7 @@ tf_proto_library(
     srcs = ["custom_kernel.proto"],
     visibility = [":friends"],
     deps = [
+        "//xla/backends/gpu/runtime:internable_kernel_loader_spec_proto",
         "//xla/stream_executor:kernel_spec_proto",
         "//xla/stream_executor:launch_dim_proto",
     ],
@@ -52,9 +53,12 @@ cc_library(
     ],
     deps = [
         ":custom_kernel_proto_cc",
+        "//xla/backends/gpu/runtime:internable_kernel_loader_spec",
+        "//xla/backends/gpu/runtime:internable_kernel_loader_spec_proto_cc",
+        "//xla/backends/gpu/runtime:kernel_spec_table",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -68,8 +72,10 @@ xla_cc_test(
     deps = [
         ":custom_kernel",
         ":custom_kernel_proto_cc",
+        "//xla/backends/gpu/runtime:internable_kernel_loader_spec",
+        "//xla/backends/gpu/runtime:kernel_spec_table",
+        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/base",
