@@ -966,7 +966,13 @@ absl::Status CustomReader::SnappyUncompress(
   for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata->tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
-      TensorShape shape(tensor_metadata.tensor_shape());
+      // The shape comes from the snapshot file. Build it through the checked
+      // API: constructing a TensorShape directly from an unvalidated proto
+      // CHECK-fails on a negative or overflowing dimension, which aborts the
+      // process instead of reporting a corrupt snapshot.
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(
+          TensorShape::BuildTensorShape(tensor_metadata.tensor_shape(), &shape));
       Tensor simple_tensor(dtypes_[i], shape);
       TensorBuffer* buffer = DMAHelper::buffer(&simple_tensor);
       iov[index].iov_base = buffer->data();
