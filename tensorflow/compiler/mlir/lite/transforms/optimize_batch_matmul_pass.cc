@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -50,7 +51,9 @@ bool NotFromFoldableChain(mlir::Value value) {
   mlir::Operation* defining_op = value.getDefiningOp();
 
   while (defining_op) {
-    if (mlir::isa<DequantizeOp>(defining_op)) {
+    if (mlir::isa<DequantizeOp>(defining_op) ||
+        defining_op->hasTrait<mlir::OpTrait::ConstantLike>() ||
+        matchPattern(defining_op, mlir::m_Constant())) {
       return false;
     }
 
@@ -59,8 +62,10 @@ bool NotFromFoldableChain(mlir::Value value) {
       defining_op = reshape_op.getInput().getDefiningOp();
     } else if (auto split_op = mlir::dyn_cast<SplitOp>(defining_op)) {
       defining_op = split_op.getValue().getDefiningOp();
+    } else if (auto transpose_op = mlir::dyn_cast<TransposeOp>(defining_op)) {
+      defining_op = transpose_op.getInput().getDefiningOp();
     } else {
-      // Stop if the op is not Dequantize, Reshape, or Split.
+      // Stop if the op does not preserve constant nature.
       break;
     }
   }
