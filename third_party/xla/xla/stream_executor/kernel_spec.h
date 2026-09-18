@@ -224,6 +224,9 @@ class KernelLoaderSpec {
 
   const std::string& kernel_name() const { return kernel_name_; }
 
+  // Returns true if this spec can be serialized to `KernelLoaderSpecProto`.
+  bool IsSerializable() const;
+
   absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
 
   using SymbolResolver =
@@ -232,6 +235,10 @@ class KernelLoaderSpec {
   static absl::StatusOr<KernelLoaderSpec> FromProto(
       const KernelLoaderSpecProto& proto,
       std::optional<SymbolResolver> symbol_resolver = std::nullopt);
+
+  // Converts any owning in-memory CUBIN/PTX payload to a reference-counted
+  // shared payload so copies of this spec share the underlying binary.
+  KernelLoaderSpec ToShared() &&;
 
  private:
   using Payload =
