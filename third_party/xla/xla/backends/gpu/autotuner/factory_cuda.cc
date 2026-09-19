@@ -87,11 +87,11 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
   backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_executor, debug_options, compiler, target_config));
+      stream_executor, debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<CublasLtBackend>(stream_executor, debug_options,
-                                        compiler, target_config),
+                                        compiler, target_config, mlir_context),
       GetCublasLtRewriterPipeline(target_config->device_description),
       alias_info, mlir_context));
   backends.push_back(std::make_unique<NativeEmitterBackend>(

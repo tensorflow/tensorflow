@@ -17,26 +17,37 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -91,12 +102,13 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
 
 }  // namespace
 
-absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
+absl::StatusOr<FissionBackend::FissionedModuleWithInstrs>
+FissionBackend::GetFissionedModuleWithSupportedInstrs(
+    const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     VLOG(3) << "Instruction not supported by " << name() << ": "
             << instr.ToString();
-    return std::vector<std::unique_ptr<BackendConfig>>();
+    return FissionedModuleWithInstrs{};
   }
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
@@ -105,10 +117,83 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (supported_instrs.status().code() == absl::StatusCode::kNotFound) {
     VLOG(3) << "No supported instructions found by " << name() << ": "
             << instr.ToString();
-    return std::vector<std::unique_ptr<BackendConfig>>();
+    return FissionedModuleWithInstrs{};
   }
   ABSL_RETURN_IF_ERROR(supported_instrs.status());
-  return codegen_backend_->GetSupportedConfigs(*(*supported_instrs)[0]);
+  return FissionedModuleWithInstrs{std::move(hlo_module),
+                                   std::move(*supported_instrs)};
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
+  ABSL_ASSIGN_OR_RETURN(FissionedModuleWithInstrs fissioned_instrs,
+                   GetFissionedModuleWithSupportedInstrs(instr));
+  if (fissioned_instrs.instructions.empty()) {
+    return std::vector<std::unique_ptr<BackendConfig>>();
+  }
+  return codegen_backend_->GetSupportedConfigs(
+      *fissioned_instrs.instructions[0]);
+}
+
+absl::StatusOr<std::vector<CodegenBackend::EstimatedConfig>>
+FissionBackend::GetSupportedConfigsWithEstimates(const HloInstruction& instr) {
+  ABSL_ASSIGN_OR_RETURN(FissionedModuleWithInstrs fissioned_instrs,
+                   GetFissionedModuleWithSupportedInstrs(instr));
+  if (fissioned_instrs.instructions.empty()) {
+    return std::vector<EstimatedConfig>{};
+  }
+
+  const size_t num_fissioned_instructions =
+      fissioned_instrs.instructions.size();
+
+  ABSL_ASSIGN_OR_RETURN(std::vector<EstimatedConfig> underlying_configs,
+                   codegen_backend_->GetSupportedConfigsWithEstimates(
+                       *fissioned_instrs.instructions[0]));
+
+  const bool has_underlying_estimates =
+      absl::c_any_of(underlying_configs, [](const EstimatedConfig& config) {
+        return config.estimated_runtime.has_value() &&
+               *config.estimated_runtime > absl::ZeroDuration();
+      });
+
+  // It does not make sense to estimate prologue and epilogue without
+  // estimates from the underlying backend.
+  if (!has_underlying_estimates) {
+    return underlying_configs;
+  }
+
+  absl::StatusOr<absl::Duration> prologue_epilogue_est =
+      EstimateFissionPrologueEpilogue(std::move(fissioned_instrs.module));
+
+  if (!prologue_epilogue_est.ok()) {
+    VLOG(1) << "Failed to estimate fissioned prologue and epilogue for "
+               "instruction "
+            << instr.name() << ", returning configs without estimates: "
+            << prologue_epilogue_est.status();
+    // Even though the underlying estimates may be present we cannot use them
+    // because we don't have prologue and epilogue estimates.
+    for (EstimatedConfig& config : underlying_configs) {
+      config.estimated_runtime = std::nullopt;
+    }
+    return underlying_configs;
+  }
+
+  for (EstimatedConfig& config : underlying_configs) {
+    if (config.estimated_runtime.has_value() &&
+        *config.estimated_runtime > absl::ZeroDuration()) {
+      absl::Duration fissioned_kernel_runtime =
+          *config.estimated_runtime +
+          GpuPerformanceModelBase::kKernelLaunchOverhead;
+
+      // We assume that fissioned instructions take the same time since they
+      // have the same config.
+      config.estimated_runtime =
+          (num_fissioned_instructions * fissioned_kernel_runtime) +
+          *prologue_epilogue_est;
+    }
+  }
+
+  return underlying_configs;
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
@@ -119,7 +204,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
       "FissionBackend does not support a default config.");
 }
 
-absl::Status FissionBackend::RunPriorityFusion(HloModule* module) {
+absl::Status FissionBackend::RunPriorityFusion(HloModule* module) const {
   HloCostAnalysis::Options priority_fusion_options;
   priority_fusion_options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(
@@ -176,13 +261,58 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   return module->RemoveUnusedComputations();
 }
 
+absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
+    std::unique_ptr<HloModule> fissioned_and_rewritten_module) const {
+  ABSL_RETURN_IF_ERROR(RunPriorityFusion(fissioned_and_rewritten_module.get()));
+
+  const stream_executor::DeviceDescription& device_info =
+      target_config().device_description;
+  HloFusionAnalysisCache fusion_analysis_cache{device_info};
+  GpuPerformanceModelWithIndexingAnalysis indexing_cost_model{
+      &device_info, &fusion_analysis_cache, HloCostAnalysis::DefaultShapeSize,
+      mlir_context_,
+      /*use_experimental_tiling=*/
+      debug_options().xla_gpu_experimental_enable_tiling_propagation(),
+      /*enable_same_shape_multi_output_fusion=*/
+      debug_options()
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion()};
+
+  absl::Duration total_exec_time = absl::ZeroDuration();
+
+  for (const HloInstruction* instr :
+       fissioned_and_rewritten_module->entry_computation()
+           ->MakeInstructionPostOrder()) {
+    // Accumulate runtime of prologue and epilogue fusions. The fissioned
+    // instructions are assumed not to be a kFusion.
+    if (instr->opcode() != HloOpcode::kFusion) {
+      continue;
+    }
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
+    ABSL_ASSIGN_OR_RETURN(
+        TiledRunTimeDataOrError tiled_data_or_decision,
+        indexing_cost_model.TryFindBestTilingForFusion(*fusion_adaptor));
+
+    if (const auto* tiled_data =
+            std::get_if<TiledRunTimeData>(&tiled_data_or_decision)) {
+      total_exec_time += tiled_data->runtime_data.exec_time +
+                         GpuPerformanceModelBase::kKernelLaunchOverhead;
+    } else {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Failed to find valid tiling for fusion instruction ", instr->name(),
+          ": ", std::get<FusionDecision>(tiled_data_or_decision).Explain()));
+    }
+  }
+
+  return total_exec_time;
+}
+
 bool FissionBackend::IsSupported(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
 FissionBackend::GetFissionedAndRewrittenModule(
-    const HloInstruction& fusion_instr) {
+    const HloInstruction& fusion_instr) const {
   const auto* fusion = Cast<HloFusionInstruction>(&fusion_instr);
   std::unique_ptr<HloModule> hlo_module =
       ExtractComputationIntoNewModule(*fusion->called_computation());
@@ -200,7 +330,7 @@ FissionBackend::GetFissionedAndRewrittenModule(
 }
 
 absl::StatusOr<std::vector<HloInstruction*>>
-FissionBackend::FindSupportedInstructions(const HloModule* module) {
+FissionBackend::FindSupportedInstructions(const HloModule* module) const {
   std::vector<HloInstruction*> supported_instructions;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
