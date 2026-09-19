@@ -93,6 +93,12 @@ class Flag {
   Flag(const char* name, std::function<bool(std::string)> string_hook,
        std::string default_value_for_display, absl::string_view usage_text);
 
+  Flag(const Flag&);
+  Flag(Flag&&) noexcept;
+  Flag& operator=(const Flag&);
+  Flag& operator=(Flag&&) noexcept;
+  ~Flag();
+
  private:
   friend class Flags;
 

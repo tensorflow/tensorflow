@@ -528,6 +528,321 @@ TEST_F(CallGraphTest, ComplexGraphNearestAncestors) {
             std::make_pair(a_while, a_while));
 }
 
+TEST_F(CallGraphTest, NearestAncestorsThroughAsyncComputation) {
+  // The callee to caller chain of an async computation with several callers
+  // continues at the first of them.
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+
+    %inner (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %negate = f32[] negate(f32[] %p)
+    }, execution_thread="worker"
+
+    %async_wrapped (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %call = f32[] call(f32[] %param), to_apply=%inner
+    }, execution_thread="worker"
+
+    ENTRY %entry (x: f32[], y: f32[]) -> (f32[], f32[]) {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      %async-start = ((f32[]), f32[], u32[]) async-start(f32[] %x), async_execution_thread="worker", calls=%async_wrapped
+      %async-done = f32[] async-done(((f32[]), f32[], u32[]) %async-start)
+      %async-start.1 = ((f32[]), f32[], u32[]) async-start(f32[] %y), async_execution_thread="worker", calls=%async_wrapped
+      %async-done.1 = f32[] async-done(((f32[]), f32[], u32[]) %async-start.1)
+      ROOT %tuple = (f32[], f32[]) tuple(f32[] %async-done, f32[] %async-done.1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* negate = FindInstruction(module.get(), "negate");
+  HloInstruction* param = FindInstruction(module.get(), "param");
+  HloInstruction* call = FindInstruction(module.get(), "call");
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  ASSERT_EQ(call_graph->GetNode(async_start->async_wrapped_computation())
+                .caller_callsites()
+                .size(),
+            2);
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(negate, x),
+            std::make_pair(async_start, x));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(x, negate),
+            std::make_pair(x, async_start));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(negate, param),
+            std::make_pair(call, param));
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(x, async_done),
+            std::make_pair(x, async_done));
+
+  // Without the entry, the async computation has no caller in the graph and
+  // the chain ends there (it used to index an empty caller list).
+  std::unique_ptr<CallGraph> worker_graph =
+      CallGraph::Build(module.get(), {"worker"});
+  EXPECT_EQ(worker_graph->nodes().size(), 2);
+  EXPECT_EQ(worker_graph->NearestAncestorsInSameComputation(negate, param),
+            std::make_pair(call, param));
+  EXPECT_EQ(worker_graph->NearestAncestorsInSameComputation(negate, call),
+            std::make_pair(call, call));
+
+  // Instructions of two roots of the graph have no common ancestor.
+  HloComputation* other =
+      module->AddEmbeddedComputation(MakeScalarComputation(HloOpcode::kExp));
+  other->SetExecutionThread("worker");
+  std::unique_ptr<CallGraph> two_roots_graph =
+      CallGraph::Build(module.get(), {"worker"});
+  EXPECT_EQ(two_roots_graph->nodes().size(), 3);
+  std::pair<HloInstruction*, HloInstruction*> null_pair = {nullptr, nullptr};
+  EXPECT_EQ(two_roots_graph->NearestAncestorsInSameComputation(
+                negate, other->root_instruction()),
+            null_pair);
+}
+
+TEST_F(CallGraphTest, NearestAncestorsWithChildrenOnWhileAndConditional) {
+  // The walk reports, per side, the computation it stepped out of when it
+  // reached the common computation, and that every computation on the way
+  // has one caller computation.
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+
+    %inner (p: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %negate = f32[] negate(f32[] %p)
+    }
+
+    %cond (cp: f32[]) -> pred[] {
+      %cp = f32[] parameter(0)
+      %call = f32[] call(f32[] %cp), to_apply=%inner
+      %zero = f32[] constant(0)
+      ROOT %compare = pred[] compare(f32[] %call, f32[] %zero), direction=GT
+    }
+
+    %body (bp: f32[]) -> f32[] {
+      %bp = f32[] parameter(0)
+      ROOT %exp = f32[] exponential(f32[] %bp)
+    }
+
+    %branch0 (p0: f32[]) -> f32[] {
+      %p0 = f32[] parameter(0)
+      ROOT %b0 = f32[] abs(f32[] %p0)
+    }
+
+    %branch1 (p1: f32[]) -> f32[] {
+      %p1 = f32[] parameter(0)
+      ROOT %b1 = f32[] sine(f32[] %p1)
+    }
+
+    ENTRY %entry (x: f32[], i: s32[]) -> f32[] {
+      %x = f32[] parameter(0)
+      %i = s32[] parameter(1)
+      %while = f32[] while(f32[] %x), condition=%cond, body=%body
+      ROOT %conditional = f32[] conditional(s32[] %i, f32[] %while, f32[] %while), branch_computations={%branch0, %branch1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  auto computation = [&](absl::string_view name) {
+    return FindComputation(module.get(), name);
+  };
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+
+  CallGraph::NearestAncestors ancestors =
+      call_graph->NearestAncestorsWithChildren(instruction("negate"),
+                                               instruction("exp"));
+  EXPECT_EQ(ancestors.a, instruction("while"));
+  EXPECT_EQ(ancestors.b, instruction("while"));
+  EXPECT_EQ(ancestors.a_child, computation("cond"));
+  EXPECT_EQ(ancestors.b_child, computation("body"));
+  EXPECT_TRUE(ancestors.a_child_dominates);
+  EXPECT_TRUE(ancestors.b_child_dominates);
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(instruction("negate"),
+                                                          instruction("exp")),
+            std::make_pair(instruction("while"), instruction("while")));
+
+  // An instruction of the common computation has no child.
+  ancestors = call_graph->NearestAncestorsWithChildren(instruction("while"),
+                                                       instruction("exp"));
+  EXPECT_EQ(ancestors.a, instruction("while"));
+  EXPECT_EQ(ancestors.b, instruction("while"));
+  EXPECT_EQ(ancestors.a_child, nullptr);
+  EXPECT_TRUE(ancestors.a_child_dominates);
+  EXPECT_EQ(ancestors.b_child, computation("body"));
+  EXPECT_TRUE(ancestors.b_child_dominates);
+
+  ancestors = call_graph->NearestAncestorsWithChildren(instruction("b1"),
+                                                       instruction("negate"));
+  EXPECT_EQ(ancestors.a, instruction("conditional"));
+  EXPECT_EQ(ancestors.b, instruction("while"));
+  EXPECT_EQ(ancestors.a_child, computation("branch1"));
+  EXPECT_EQ(ancestors.b_child, computation("cond"));
+  EXPECT_TRUE(ancestors.a_child_dominates);
+  EXPECT_TRUE(ancestors.b_child_dominates);
+
+  ancestors = call_graph->NearestAncestorsWithChildren(instruction("b0"),
+                                                       instruction("b1"));
+  EXPECT_EQ(ancestors.a, instruction("conditional"));
+  EXPECT_EQ(ancestors.b, instruction("conditional"));
+  EXPECT_EQ(ancestors.a_child, computation("branch0"));
+  EXPECT_EQ(ancestors.b_child, computation("branch1"));
+
+  // Instructions of one computation are their own ancestors.
+  ancestors = call_graph->NearestAncestorsWithChildren(instruction("x"),
+                                                       instruction("while"));
+  EXPECT_EQ(ancestors.a, instruction("x"));
+  EXPECT_EQ(ancestors.b, instruction("while"));
+  EXPECT_EQ(ancestors.a_child, nullptr);
+  EXPECT_EQ(ancestors.b_child, nullptr);
+  EXPECT_TRUE(ancestors.a_child_dominates);
+  EXPECT_TRUE(ancestors.b_child_dominates);
+}
+
+TEST_F(CallGraphTest,
+       NearestAncestorsWithChildrenThroughSharedAsyncComputation) {
+  // An async computation started from two computations: its chain continues
+  // at the first call site, and the child it leads to does not dominate.
+  constexpr absl::string_view kHloString = R"(
+    HloModule test_module
+
+    %async_wrapped (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %negate = f32[] negate(f32[] %param)
+    }
+
+    %cond (cp: f32[]) -> pred[] {
+      %cp = f32[] parameter(0)
+      %async-start = ((f32[]), f32[], u32[]) async-start(f32[] %cp), calls=%async_wrapped
+      %async-done = f32[] async-done(((f32[]), f32[], u32[]) %async-start)
+      %zero = f32[] constant(0)
+      ROOT %compare = pred[] compare(f32[] %async-done, f32[] %zero), direction=GT
+    }
+
+    %body (bp: f32[]) -> f32[] {
+      %bp = f32[] parameter(0)
+      ROOT %exp = f32[] exponential(f32[] %bp)
+    }
+
+    %other (op: f32[]) -> f32[] {
+      %op = f32[] parameter(0)
+      %async-start.1 = ((f32[]), f32[], u32[]) async-start(f32[] %op), calls=%async_wrapped
+      ROOT %async-done.1 = f32[] async-done(((f32[]), f32[], u32[]) %async-start.1)
+    }
+
+    ENTRY %entry (x: f32[]) -> (f32[], f32[]) {
+      %x = f32[] parameter(0)
+      %while = f32[] while(f32[] %x), condition=%cond, body=%body
+      %call = f32[] call(f32[] %x), to_apply=%other
+      ROOT %tuple = (f32[], f32[]) tuple(f32[] %while, f32[] %call)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  auto instruction = [&](absl::string_view name) {
+    return FindInstruction(module.get(), name);
+  };
+  auto computation = [&](absl::string_view name) {
+    return FindComputation(module.get(), name);
+  };
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  const CallGraphNode& async_node =
+      call_graph->GetNode(computation("async_wrapped"));
+  ASSERT_EQ(async_node.caller_callsites().size(), 2);
+  ASSERT_EQ(async_node.caller_callsites()[0].instruction(),
+            instruction("async-start"));
+  EXPECT_EQ(async_node.callers().size(), 2);
+
+  CallGraph::NearestAncestors ancestors =
+      call_graph->NearestAncestorsWithChildren(instruction("negate"),
+                                               instruction("exp"));
+  EXPECT_EQ(ancestors.a, instruction("while"));
+  EXPECT_EQ(ancestors.b, instruction("while"));
+  EXPECT_EQ(ancestors.a_child, computation("cond"));
+  EXPECT_FALSE(ancestors.a_child_dominates);
+  EXPECT_EQ(ancestors.b_child, computation("body"));
+  EXPECT_TRUE(ancestors.b_child_dominates);
+  EXPECT_FALSE(
+      call_graph->Dominates(computation("cond"), computation("async_wrapped")));
+  EXPECT_TRUE(call_graph->Dominates(computation("entry"),
+                                    computation("async_wrapped")));
+
+  // Started twice from one computation instead, the chain is unique again.
+  constexpr absl::string_view kOneParentHloString = R"(
+    HloModule test_module
+
+    %async_wrapped (param: f32[]) -> f32[] {
+      %param = f32[] parameter(0)
+      ROOT %negate = f32[] negate(f32[] %param)
+    }
+
+    %cond (cp: f32[]) -> pred[] {
+      %cp = f32[] parameter(0)
+      %async-start = ((f32[]), f32[], u32[]) async-start(f32[] %cp), calls=%async_wrapped
+      %async-done = f32[] async-done(((f32[]), f32[], u32[]) %async-start)
+      %async-start.1 = ((f32[]), f32[], u32[]) async-start(f32[] %cp), calls=%async_wrapped
+      %async-done.1 = f32[] async-done(((f32[]), f32[], u32[]) %async-start.1)
+      %add = f32[] add(f32[] %async-done, f32[] %async-done.1)
+      %zero = f32[] constant(0)
+      ROOT %compare = pred[] compare(f32[] %add, f32[] %zero), direction=GT
+    }
+
+    %body (bp: f32[]) -> f32[] {
+      %bp = f32[] parameter(0)
+      ROOT %exp = f32[] exponential(f32[] %bp)
+    }
+
+    ENTRY %entry (x: f32[]) -> f32[] {
+      %x = f32[] parameter(0)
+      ROOT %while = f32[] while(f32[] %x), condition=%cond, body=%body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> one_parent,
+                       ParseAndReturnVerifiedModule(kOneParentHloString));
+  std::unique_ptr<CallGraph> one_parent_graph =
+      CallGraph::Build(one_parent.get());
+  const CallGraphNode& one_parent_async_node = one_parent_graph->GetNode(
+      FindComputation(one_parent.get(), "async_wrapped"));
+  ASSERT_EQ(one_parent_async_node.caller_callsites().size(), 2);
+  EXPECT_EQ(one_parent_async_node.callers().size(), 1);
+  ancestors = one_parent_graph->NearestAncestorsWithChildren(
+      FindInstruction(one_parent.get(), "negate"),
+      FindInstruction(one_parent.get(), "exp"));
+  EXPECT_EQ(ancestors.a, FindInstruction(one_parent.get(), "while"));
+  EXPECT_EQ(ancestors.a_child, FindComputation(one_parent.get(), "cond"));
+  EXPECT_TRUE(ancestors.a_child_dominates);
+}
+
+TEST_F(CallGraphTest, NearestAncestorsEndAtTwoCallSitesInOneComputation) {
+  // A computation called twice from one computation has a single caller
+  // computation, which dominates it, but the chain of its instructions ends
+  // there because the calling instruction is not unique.
+  auto module = CreateNewVerifiedModule();
+  HloComputation* callee_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation());
+  HloComputation* entry_computation = module->AddEntryComputation(
+      MakeCallingComputation(callee_computation, /*callsites=*/2));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(call_graph->GetNode(callee_computation).caller_callsites().size(),
+            2);
+  EXPECT_EQ(call_graph->GetNode(callee_computation).callers().size(), 1);
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, callee_computation));
+
+  const CallGraph::NearestAncestors ancestors =
+      call_graph->NearestAncestorsWithChildren(
+          callee_computation->root_instruction(),
+          entry_computation->root_instruction());
+  EXPECT_EQ(ancestors.a, nullptr);
+  EXPECT_EQ(ancestors.b, nullptr);
+  EXPECT_EQ(call_graph->NearestAncestorsInSameComputation(
+                callee_computation->root_instruction(),
+                entry_computation->root_instruction()),
+            std::make_pair(static_cast<HloInstruction*>(nullptr),
+                           static_cast<HloInstruction*>(nullptr)));
+}
+
 TEST_F(CallGraphTest, NearestCommonAncestorInstructions) {
   const std::string& hlo_string = R"(
   HloModule module
