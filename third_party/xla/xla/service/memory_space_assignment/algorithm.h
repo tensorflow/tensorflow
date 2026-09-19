@@ -1926,6 +1926,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // allocation attempt.
   absl::flat_hash_map<int64_t, AliasedOffset*>
       pipelined_while_buffer_id_to_aliased_offset_;
+  absl::flat_hash_map<int64_t, AliasedOffset*> buffer_id_to_aliased_offset_;
 
   // We have released the chunks corresponding to the allocations in the list.
   // When we uncommit the current pending state following a
