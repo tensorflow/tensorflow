@@ -197,7 +197,7 @@ absl::Status TFSavedModelAPI::GetFunctions(
     int node_id,
     absl::flat_hash_map<std::string, ConcreteFunction*>* functions) {
   const auto& nodes = bundle_.saved_object_graph().nodes();
-  if (node_id >= nodes.size()) {
+  if (node_id < 0 || node_id >= nodes.size()) {
     return absl::OutOfRangeError(
         absl::StrCat("node_id ", node_id,
                      " not found.  Maximum node ID: ", nodes.size() - 1));
