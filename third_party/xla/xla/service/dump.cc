@@ -402,7 +402,7 @@ class AsyncDumpWriter {
   // `cost_bytes` (the captured dot size) bounds the queue's memory.
   void Enqueue(size_t cost_bytes, absl::AnyInvocable<void() &&> write_fn) {
     {
-      absl::MutexLock lock(mu_);
+      absl::MutexLock lock(&mu_);
       // An oversized item is admitted once the queue is empty, and the
       // writes run on a dedicated pool, so this wait always progresses.
       AdmitArgs args{this, cost_bytes};
@@ -416,14 +416,14 @@ class AsyncDumpWriter {
         std::make_shared<absl::AnyInvocable<void() &&>>(std::move(write_fn));
     pool_.Schedule([this, shared_fn, cost_bytes] {
       std::move (*shared_fn)();
-      absl::MutexLock lock(mu_);
+      absl::MutexLock lock(&mu_);
       --pending_;
       pending_bytes_ -= cost_bytes;
     });
   }
 
   void Drain() {
-    absl::MutexLock lock(mu_);
+    absl::MutexLock lock(&mu_);
     mu_.Await(absl::Condition(
         +[](int64_t* pending) { return *pending == 0; }, &pending_));
   }
