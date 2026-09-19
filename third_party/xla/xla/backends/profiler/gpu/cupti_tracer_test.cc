@@ -402,9 +402,10 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
   EnableProfiling(options);
 
   // 3. Simulate callback
-  CUpti_CallbackData cbdata;
+  CUpti_CallbackData cbdata = {};
   cbdata.callbackSite = CUPTI_API_EXIT;
   cbdata.context = reinterpret_cast<CUcontext>(uintptr_t{1});
+  cbdata.functionName = "cuLaunchKernel";
   uint64_t correlationData = 100;
   cbdata.correlationData = &correlationData;
   cbdata.correlationId = 1;
@@ -450,6 +451,72 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
       tsl::profiler::FindMutablePlaneWithName(
           &space, tsl::profiler::kScopeRangeIdTreePlaneName);
   EXPECT_EQ(tree_plane, nullptr);
+}
+
+TEST_F(CuptiTracerTest, FailedEnableRollsBackCollectorAndTracingState) {
+  EXPECT_FALSE(CuptiDisabled());
+
+  CuptiTracerCollectorOptions collector_options;
+  collector_options.num_gpus = CuptiTracer::NumGpus();
+  collector_options.max_callback_api_events = 1000;
+  uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
+  uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
+  cupti_collector_ = CreateCuptiCollector(
+      collector_options, start_walltime_ns, start_gputime_ns);
+
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.prefer_cupti_v2 = true;
+
+  ::testing::InSequence in_sequence;
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(10));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/1);
+  ExpectV2KernelCallback(subscriber, /*enable=*/1);
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(subscriber))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(subscriber, _, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_ERROR_UNKNOWN));
+  EXPECT_CALL(*mock_, GetResultString(CUPTI_ERROR_UNKNOWN, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  ExpectV2KernelCallback(subscriber, /*enable=*/0);
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/0);
+  EXPECT_CALL(*mock_, Unsubscribe(subscriber)).WillOnce(Return(CUPTI_SUCCESS));
+
+  EXPECT_FALSE(cupti_tracer_->Enable(options, cupti_collector_.get()).ok());
+
+  // On failure, collector_ must be rolled back to nullptr.
+  // With collector_ == nullptr, TooManyCallbackEvents() returns true.
+  EXPECT_TRUE(cupti_tracer_->TooManyCallbackEvents());
+  EXPECT_TRUE(cupti_tracer_->TooManyAnnotationStrings(0));
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+
+  // Simulate destroying collector (as GpuTracer destructor would do on
+  // failure).
+  cupti_collector_.reset();
+
+  CUpti_CallbackData cbdata = {};
+  cbdata.callbackSite = CUPTI_API_EXIT;
+  cbdata.context = reinterpret_cast<CUcontext>(uintptr_t{1});
+  cbdata.functionName = "cuLaunchKernel";
+  uint64_t correlationData = 100;
+  cbdata.correlationData = &correlationData;
+  cbdata.correlationId = 1;
+
+  // HandleCallback should safely no-op without dereferencing collector.
+  EXPECT_OK(cupti_tracer_->HandleCallback(
+      CUPTI_CB_DOMAIN_DRIVER_API, CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+      &cbdata));
 }
 
 }  // namespace
