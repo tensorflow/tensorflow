@@ -1618,6 +1618,155 @@ ENTRY %main.3 (Arg_0.1: f32[10,11,12,13]) -> f32[10,11,12,13] {
 // -----
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
+// CHECK:           %[[SLICE_1:.*]] = stablehlo.slice %[[VAL_0]] [0:10, 3:11, 0:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x8x12x13xf32>
+// CHECK:           %[[SLICE_2:.*]] = stablehlo.slice %[[VAL_0]] [0:10, 0:3, 0:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x3x12x13xf32>
+// CHECK:           %[[CONCAT_1:.*]] = stablehlo.concatenate %[[SLICE_1]], %[[SLICE_2]], dim = 1 : (tensor<10x8x12x13xf32>, tensor<10x3x12x13xf32>) -> tensor<10x11x12x13xf32>
+// CHECK:           %[[SLICE_3:.*]] = stablehlo.slice %[[CONCAT_1]] [0:10, 0:11, 10:12, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x11x2x13xf32>
+// CHECK:           %[[SLICE_4:.*]] = stablehlo.slice %[[CONCAT_1]] [0:10, 0:11, 0:10, 0:13] : (tensor<10x11x12x13xf32>) -> tensor<10x11x10x13xf32>
+// CHECK:           %[[CONCAT_2:.*]] = stablehlo.concatenate %[[SLICE_3]], %[[SLICE_4]], dim = 2 : (tensor<10x11x2x13xf32>, tensor<10x11x10x13xf32>) -> tensor<10x11x12x13xf32>
+// CHECK:           return %[[CONCAT_2]] : tensor<10x11x12x13xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[10,11,12,13]{3,2,1,0})->f32[10,11,12,13]{3,2,1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[10,11,12,13]) -> f32[10,11,12,13] {
+  %Arg_0.1 = f32[10,11,12,13] parameter(0)
+  ROOT %shuffle.2 = f32[10,11,12,13] shuffle(%Arg_0.1), dimensions={1,2}, mode=rotate, shifts={3,-2}
+}
+
+// -----
+
+// One shuffled dimension of several: the coordinates gain their coordinate
+// dimension from the broadcast, and dimension 1 keeps its own coordinate via an
+// iota.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x2xf32>) -> tensor<3x2xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<{{\[\[}}2], [0], [1]]> : tensor<3x1xi32>
+// CHECK:           %[[BROADCAST_IN_DIM_0:.*]] = stablehlo.broadcast_in_dim %[[CONSTANT_0]], dims = [0, 1] : (tensor<3x1xi32>) -> tensor<3x2x1xi32>
+// CHECK:           %[[IOTA_0:.*]] = stablehlo.iota dim = 1 : tensor<3x2x1xi32>
+// CHECK:           %[[CONCATENATE_0:.*]] = stablehlo.concatenate %[[BROADCAST_IN_DIM_0]], %[[IOTA_0]], dim = 2 : (tensor<3x2x1xi32>, tensor<3x2x1xi32>) -> tensor<3x2x2xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[CONCATENATE_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = array<i64: 1, 1>}> : (tensor<3x2xf32>, tensor<3x2x2xi32>) -> tensor<3x2xf32>
+// CHECK:           return %[[VAL_1]] : tensor<3x2xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[3,2]) -> f32[3,2] {
+  %Arg_0.1 = f32[3,2] parameter(0)
+  ROOT %shuffle.2 = f32[3,2] shuffle(%Arg_0.1), dimensions={0}, mode=permute, indices=s32[3,1]{1,0} { {2}, {0}, {1} }
+}
+
+// -----
+
+// Every dimension shuffled in sorted order: the indices already hold the
+// gather's index vectors, so no broadcast, iota, slice or concatenate is
+// needed.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x2xf32>) -> tensor<3x2xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<{{\[\[}}[2, 0], [0, 1]], {{\[\[}}0, 0], [2, 1]], {{\[\[}}1, 0], [1, 1]]]> : tensor<3x2x2xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[CONSTANT_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = array<i64: 1, 1>}> : (tensor<3x2xf32>, tensor<3x2x2xi32>) -> tensor<3x2xf32>
+// CHECK:           return %[[VAL_1]] : tensor<3x2xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[3,2]) -> f32[3,2] {
+  %Arg_0.1 = f32[3,2] parameter(0)
+  ROOT %shuffle.2 = f32[3,2] shuffle(%Arg_0.1), dimensions={0,1}, mode=permute, indices=s32[3,2,2]{2,1,0} { { {2,0}, {0,1} }, { {0,0}, {2,1} }, { {1,0}, {1,1} } }
+}
+
+// -----
+
+// A rank 1 operand, where the only shuffled dimension is also every dimension,
+// so the broadcast that adds the coordinate dimension is all that the indices
+// need.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<4xf32>) -> tensor<4xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<[3, 1, 0, 2]> : tensor<4xi32>
+// CHECK:           %[[BROADCAST_IN_DIM_0:.*]] = stablehlo.broadcast_in_dim %[[CONSTANT_0]], dims = [0] : (tensor<4xi32>) -> tensor<4x1xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[BROADCAST_IN_DIM_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 1>, indices_are_sorted = false, slice_sizes = array<i64: 1>}> : (tensor<4xf32>, tensor<4x1xi32>) -> tensor<4xf32>
+// CHECK:           return %[[VAL_1]] : tensor<4xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[4]{0})->f32[4]{0}}
+
+ENTRY %main.3 (Arg_0.1: f32[4]) -> f32[4] {
+  %Arg_0.1 = f32[4] parameter(0)
+  ROOT %shuffle.2 = f32[4] shuffle(%Arg_0.1), dimensions={0}, mode=permute, indices=s32[4]{0} {3, 1, 0, 2}
+}
+
+// -----
+
+// Every dimension shuffled, but listed out of order. A coordinate of the
+// indices belongs to the dimension that `dimensions` lists at its position,
+// while the gather indexes the dimensions in order, so the coordinates have to
+// be sliced apart and concatenated back in the order of the operand: the slice
+// of coordinate 1 comes first because it holds the coordinates of dimension 0.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x2xf32>) -> tensor<3x2xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<{{\[\[}}[0, 2], [1, 0]], {{\[\[}}0, 0], [1, 2]], {{\[\[}}0, 1], [1, 1]]]> : tensor<3x2x2xi32>
+// CHECK:           %[[SLICE_0:.*]] = stablehlo.slice %[[CONSTANT_0]] [0:3, 0:2, 1:2] : (tensor<3x2x2xi32>) -> tensor<3x2x1xi32>
+// CHECK:           %[[SLICE_1:.*]] = stablehlo.slice %[[CONSTANT_0]] [0:3, 0:2, 0:1] : (tensor<3x2x2xi32>) -> tensor<3x2x1xi32>
+// CHECK:           %[[CONCATENATE_0:.*]] = stablehlo.concatenate %[[SLICE_0]], %[[SLICE_1]], dim = 2 : (tensor<3x2x1xi32>, tensor<3x2x1xi32>) -> tensor<3x2x2xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[CONCATENATE_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = array<i64: 1, 1>}> : (tensor<3x2xf32>, tensor<3x2x2xi32>) -> tensor<3x2xf32>
+// CHECK:           return %[[VAL_1]] : tensor<3x2xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[3,2]) -> f32[3,2] {
+  %Arg_0.1 = f32[3,2] parameter(0)
+  ROOT %shuffle.2 = f32[3,2] shuffle(%Arg_0.1), dimensions={1,0}, mode=permute, indices=s32[3,2,2]{2,1,0} { { {0,2}, {1,0} }, { {0,0}, {1,2} }, { {0,1}, {1,1} } }
+}
+
+// -----
+
+// Shuffled dimensions that are neither all of them nor adjacent, with indices
+// that share their coordinates along the dimension in between: the broadcast
+// materializes the shared coordinates, and the iota of the dimension that the
+// shuffle leaves in place is concatenated between the two sliced coordinates.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<{{\[\[}}{{\[\[}}1, 1], [1, 0]]], {{\[\[}}[0, 1], [0, 0]]]]> : tensor<2x1x2x2xi32>
+// CHECK:           %[[BROADCAST_IN_DIM_0:.*]] = stablehlo.broadcast_in_dim %[[CONSTANT_0]], dims = [0, 1, 2, 3] : (tensor<2x1x2x2xi32>) -> tensor<2x2x2x2xi32>
+// CHECK:           %[[SLICE_0:.*]] = stablehlo.slice %[[BROADCAST_IN_DIM_0]] [0:2, 0:2, 0:2, 0:1] : (tensor<2x2x2x2xi32>) -> tensor<2x2x2x1xi32>
+// CHECK:           %[[IOTA_0:.*]] = stablehlo.iota dim = 1 : tensor<2x2x2x1xi32>
+// CHECK:           %[[SLICE_1:.*]] = stablehlo.slice %[[BROADCAST_IN_DIM_0]] [0:2, 0:2, 0:2, 1:2] : (tensor<2x2x2x2xi32>) -> tensor<2x2x2x1xi32>
+// CHECK:           %[[CONCATENATE_0:.*]] = stablehlo.concatenate %[[SLICE_0]], %[[IOTA_0]], %[[SLICE_1]], dim = 3 : (tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>, tensor<2x2x2x1xi32>) -> tensor<2x2x2x3xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[CONCATENATE_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0, 1, 2], start_index_map = [0, 1, 2], index_vector_dim = 3>, indices_are_sorted = false, slice_sizes = array<i64: 1, 1, 1>}> : (tensor<2x2x2xf32>, tensor<2x2x2x3xi32>) -> tensor<2x2x2xf32>
+// CHECK:           return %[[VAL_1]] : tensor<2x2x2xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = f32[2,2,2] parameter(0)
+  ROOT %shuffle.2 = f32[2,2,2] shuffle(%Arg_0.1), dimensions={0,2}, mode=permute, indices=s32[2,1,2,2]{3,2,1,0} { { { {1,1}, {1,0} } }, { { {0,1}, {0,0} } } }
+}
+
+// -----
+
+// Indices of a narrower type than the coordinates, which hold every dimension
+// size and so are converted up to i32.
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
+// CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<3x2xf32>) -> tensor<3x2xf32> {
+// CHECK:           %[[CONSTANT_0:.*]] = stablehlo.constant dense<{{\[\[}}[2, 0], [0, 1]], {{\[\[}}0, 0], [2, 1]], {{\[\[}}1, 0], [1, 1]]]> : tensor<3x2x2xi8>
+// CHECK:           %[[CONVERT_0:.*]] = stablehlo.convert %[[CONSTANT_0]] : (tensor<3x2x2xi8>) -> tensor<3x2x2xi32>
+// CHECK:           %[[VAL_1:.*]] = "stablehlo.gather"(%[[VAL_0]], %[[CONVERT_0]]) <{dimension_numbers = #stablehlo.gather<collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = array<i64: 1, 1>}> : (tensor<3x2xf32>, tensor<3x2x2xi32>) -> tensor<3x2xf32>
+// CHECK:           return %[[VAL_1]] : tensor<3x2xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[3,2]{1,0})->f32[3,2]{1,0}}
+
+ENTRY %main.3 (Arg_0.1: f32[3,2]) -> f32[3,2] {
+  %Arg_0.1 = f32[3,2] parameter(0)
+  ROOT %shuffle.2 = f32[3,2] shuffle(%Arg_0.1), dimensions={0,1}, mode=permute, indices=s8[3,2,2]{2,1,0} { { {2,0}, {0,1} }, { {0,0}, {2,1} }, { {1,0}, {1,1} } }
+}
+
+// -----
+
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<2x3x5xf32> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.constant dense<[2, 3, 5]> : tensor<3xi64>

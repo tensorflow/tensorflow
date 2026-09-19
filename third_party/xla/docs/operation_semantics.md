@@ -5170,6 +5170,111 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical).
 
+## Shuffle
+
+See also
+[`XlaBuilder::Shuffle`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Shuffle(operand, dimensions, mode)`**
+
+Arguments     | Type                | Semantics
+------------- | ------------------- | -------------------------------------
+`operand`     | `XlaOp`             | array of type T
+`dimensions`  | `ArraySlice<int64>` | dimensions to shuffle
+`mode`        | `ShuffleMode`       | the shuffle pattern to apply, together with the attributes of that pattern
+
+Shuffles the elements of the `operand` array along the specified `dimensions`,
+generating an output array of the same shape. Because a shuffle only moves
+elements around, it never changes the shape of the operand.
+
+The `mode` selects which pattern is applied, and carries the attributes of that
+pattern:
+
+Mode      | Attributes | Semantics
+--------- | ---------- | --------------------------------------------------
+`permute` | `indices`  | Moves each element to the position given by `indices`
+
+### `rotate`
+
+Rotates the elements of the `operand` array along the specified `dimensions` to
+the left by the corresponding `shifts`, generating an output array of the same
+shape. Shifts outside of `[0, size(dimension))` are supported, and wrap around
+cyclically. Each element of the output array at a multidimensional index is
+retrieved from the operand array at a transformed index. The multidimensional
+index is transformed by rotating the index along each specified dimension (i.e.,
+for a dimension of size N with a corresponding shift S, the element at output
+index i is taken from operand index (i + S) % N).
+
+1-dimensional example:
+
+```cpp
+let a = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+Shuffle(a, {0}, shuffle::MakeRotateMode({4}))
+// Result: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3}
+```
+
+### `permute`
+
+Permutes the elements of the `operand` array along the specified `dimensions`
+according to `indices`, generating an output array of the same shape. The
+element of the output array at a multidimensional index is retrieved from the
+operand array at the index obtained by replacing the coordinates of the
+specified dimensions with the corresponding entries of `indices`; the
+coordinates of all other dimensions are left unchanged.
+
+`indices` is an integer array that holds the coordinates of the specified
+dimensions:
+
+*   If a single dimension is shuffled, `indices` has the rank of `operand` and
+    holds the coordinate along that dimension directly.
+*   Otherwise, `indices` has one dimension more than `operand`, and its
+    innermost dimension holds one coordinate per shuffled dimension, in the
+    order in which `dimensions` lists them.
+
+A dimension of `indices` other than the innermost one of the multi-dimensional
+form has the size of the corresponding dimension of `operand`, except that a
+dimension that is not shuffled may have size 1 instead, in which case it is
+broadcast to that size, which shares coordinates along that dimension. Every
+entry of `indices` must be a coordinate of the dimension it belongs to, i.e. it
+must lie in `[0, size(dimension))`.
+
+Example with a single shuffled dimension:
+
+```cpp
+let a = {{0, 1}, {2, 3}, {4, 5}};
+Shuffle(a, {0}, shuffle_util::MakePermuteMode(indices))
+// with indices = {{1}, {0}, {2}}, which is broadcast along dimension 1
+// Result: {{2, 3}, {0, 1}, {4, 5}}
+```
+
+Example with two shuffled dimensions:
+
+```cpp
+let a = {{0, 1}, {2, 3}, {4, 5}};
+Shuffle(a, {0, 1}, shuffle_util::MakePermuteMode(indices))
+// with indices = {{{2, 0}, {0, 1}}, {{0, 0}, {2, 1}}, {{1, 0}, {1, 1}}}
+// Result: {{4, 1}, {0, 5}, {2, 3}}
+```
+
+### `rotate`
+
+Rotates the elements of the `operand` array along the specified `dimensions` to
+the left by the corresponding `shifts`, generating an output array of the same
+shape. Shifts outside of `[0, size(dimension))` are supported, and wrap around
+cyclically. Each element of the output array at a multidimensional index is
+retrieved from the operand array at a transformed index. The multidimensional
+index is transformed by rotating the index along each specified dimension (i.e.,
+for a dimension of size N with a corresponding shift S, the element at output
+index i is taken from operand index (i + S) % N).
+
+1-dimensional example:
+
+```cpp
+let a = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+Shuffle(a, {0}, shuffle_util::MakeRotateMode({4}))
+// Result: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3}
+```
+
 ## Sign
 
 See also

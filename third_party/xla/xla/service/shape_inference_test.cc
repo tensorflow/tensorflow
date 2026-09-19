@@ -39,9 +39,11 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -3071,6 +3073,202 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
   ASSERT_FALSE(inferred_shape_error3.ok());
   ASSERT_THAT(inferred_shape_error3.status().message(),
               HasSubstr("Expected array argument"));
+}
+
+TEST_F(ShapeInferenceTest, ShufflePermute) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  const ShuffleMode mode = shuffle::MakePermuteMode(
+      LiteralUtil::CreateR2<int32_t>({{1, 1}, {0, 0}, {2, 2}}));
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0}, mode);
+
+  EXPECT_THAT(inferred_shape, absl_testing::IsOkAndHolds(operand_shape));
+}
+
+TEST_F(ShapeInferenceTest,
+       ShufflePermuteSharesIndicesAlongDimensionsOfSizeOne) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  const ShuffleMode mode =
+      shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>({{1}, {0}, {2}}));
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0}, mode);
+
+  EXPECT_THAT(inferred_shape, absl_testing::IsOkAndHolds(operand_shape));
+}
+
+TEST_F(ShapeInferenceTest, ShufflePermuteOfSeveralDimensions) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  const ShuffleMode mode =
+      shuffle::MakePermuteMode(LiteralUtil::CreateR3<int32_t>(
+          {{{2, 0}, {0, 1}}, {{0, 0}, {2, 1}}, {{1, 0}, {1, 1}}}));
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0, 1}, mode);
+
+  EXPECT_THAT(inferred_shape, absl_testing::IsOkAndHolds(operand_shape));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleRotate) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {10, 25});
+  const ShuffleMode mode = shuffle::MakeRotateMode({2, 5});
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0, 1}, mode);
+
+  EXPECT_THAT(inferred_shape, absl_testing::IsOkAndHolds(operand_shape));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleOfNonArrayOperand) {
+  const Shape operand_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(F32, {10})});
+  const ShuffleMode mode = shuffle::MakeRotateMode({2});
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0}, mode);
+
+  EXPECT_THAT(inferred_shape,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Expected array argument for operand of shuffle")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleWithoutMode) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferShuffleShape(operand_shape, {0, 1}, ShuffleMode());
+
+  EXPECT_THAT(inferred_shape,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must specify a mode")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleInvalidDimensions) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {10, 25});
+  const ShuffleMode mode = shuffle::MakeRotateMode({2, 5});
+
+  // No dimension to shuffle.
+  EXPECT_THAT(
+      ShapeInference::InferShuffleShape(operand_shape, {},
+                                        shuffle::MakeRotateMode({})),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must shuffle at least one dimension")));
+
+  // A dimension beyond the rank of the operand.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(operand_shape, {0, 2}, mode),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  // A negative dimension.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(operand_shape, {0, -1}, mode),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  // The same dimension twice.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(operand_shape, {0, 0}, mode),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("duplicated")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleInvalidRotateMode) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  // Fewer shifts than shuffled dimensions.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(operand_shape, {0, 1},
+                                                shuffle::MakeRotateMode({2})),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("dimensions and shifts must have the same size")));
+
+  // More shifts than shuffled dimensions.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0}, shuffle::MakeRotateMode({2, 5})),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("dimensions and shifts must have the same size")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleInvalidPermuteMode) {
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  const Literal indices = LiteralUtil::CreateR2<int32_t>({{1, 1}, {0, 0}});
+
+  // Indices that are not an array.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0},
+                  shuffle::MakePermuteMode(
+                      LiteralUtil::MakeTupleFromSlices({indices}))),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Expected array argument for indices of shuffle")));
+
+  // Indices that are not integers.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR2<float>(
+                      {{1.0, 1.0}, {0.0, 0.0}, {2.0, 2.0}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("indices of a shuffle must be "
+                                               "integers")));
+
+  // Indices of one shuffled dimension need the rank of the operand.
+  EXPECT_THAT(
+      ShapeInference::InferShuffleShape(
+          operand_shape, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR1<int32_t>({1, 0, 2}))),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must have rank 2")));
+
+  // Indices of several shuffled dimensions need a coordinate dimension on top.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0, 1},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>(
+                      {{1, 1}, {0, 0}, {2, 2}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must have rank 3")));
+
+  // The coordinate dimension holds one coordinate per shuffled dimension.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0, 1},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR3<int32_t>(
+                      {{{2}, {0}}, {{0}, {2}}, {{1}, {1}}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must have size 2")));
+
+  // A shuffled dimension needs one index per element, so it cannot be shared.
+  EXPECT_THAT(
+      ShapeInference::InferShuffleShape(
+          operand_shape, {0},
+          shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>({{1, 1}}))),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must have size 3,")));
+
+  // An unshuffled dimension is either matched or shared, not resized.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>(
+                      {{1, 1, 1}, {0, 0, 0}, {2, 2, 2}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("must have size 2 or 1")));
+
+  // An index beyond the size of the shuffled dimension.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>(
+                      {{1, 1}, {0, 0}, {3, 3}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("index 3 of a shuffle is "
+                                               "out-of-bounds")));
+
+  // A negative index.
+  EXPECT_THAT(ShapeInference::InferShuffleShape(
+                  operand_shape, {0},
+                  shuffle::MakePermuteMode(LiteralUtil::CreateR2<int32_t>(
+                      {{1, 1}, {0, 0}, {-1, -1}}))),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("index -1 of a shuffle is "
+                                               "out-of-bounds")));
 }
 
 TEST_F(ShapeInferenceTest, Call) {
