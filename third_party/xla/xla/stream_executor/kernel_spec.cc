@@ -173,4 +173,15 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
   }
 }
 
+KernelLoaderSpec KernelLoaderSpec::ToShared() && {
+  if (std::holds_alternative<OwningCudaCubinInMemory>(payload_)) {
+    payload_ = SharedCudaCubinInMemory{std::make_shared<std::vector<uint8_t>>(
+        std::move(std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes))};
+  } else if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
+    payload_ = SharedCudaPtxInMemory{std::make_shared<std::string>(
+        std::move(std::get<OwningCudaPtxInMemory>(payload_).ptx))};
+  }
+  return std::move(*this);
+}
+
 }  // namespace stream_executor
