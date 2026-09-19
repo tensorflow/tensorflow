@@ -1012,8 +1012,14 @@ class TensorListScatter : public OpKernel {
           highest_index = i;
         }
       }
-      output_list.tensors().resize(std::max(highest_index + 1, num_elements),
-                                   Tensor(DT_INVALID));
+      OP_REQUIRES(c, highest_index < std::numeric_limits<int32_t>::max(),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("TensorListScatter index ", highest_index,
+                                   " is too large and causes integer overflow.")));
+      const size_t target_size = std::max(
+          static_cast<size_t>(highest_index) + 1,
+          num_elements > 0 ? static_cast<size_t>(num_elements) : 0);
+      output_list.tensors().resize(target_size, Tensor(DT_INVALID));
     }
 
     OP_REQUIRES_OK(c,
