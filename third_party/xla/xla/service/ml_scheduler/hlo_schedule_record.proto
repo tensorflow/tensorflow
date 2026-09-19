@@ -1,0 +1,72 @@
+/* Copyright 2026 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ml_scheduler;
+
+import "xla/hlo/transforms/simplifiers/memory_scheduler.proto";
+import "xla/service/hlo.proto";
+import "xla/service/ml_scheduler/hardware_topology.proto";
+import "xla/service/ml_scheduler/hlo_benchmark.proto";
+import "xla/service/ml_scheduler/pjrt_executable_bundle.proto";
+import "xla/xla.proto";
+
+// Metadata associated with a single compilation, scheduling pass, or
+// demonstration episode.
+message HloScheduleMetadata {
+  // Unique compilation/demonstration episode identifier.
+  string episode_id = 1;
+
+  // 128-bit SHA-256 fingerprint of the pre-schedule HLO module.
+  string hlo_fingerprint = 2;
+
+  // Name of the HLO module.
+  string module_name = 3;
+
+  // Target hardware environment metadata.
+  HardwareTopologyMetadata hardware_topology = 4;
+
+  // Canonical memory scheduler algorithm type / name.
+  xla.MemorySchedulerProto.Value memory_scheduler_type = 5;
+  string scheduler_algorithm = 6;
+
+  // Timestamp in microseconds when the scheduling occurred.
+  int64 timestamp_micros = 7;
+  // Time taken by the scheduling pass itself to produce the schedule.
+  int64 scheduling_duration_micros = 8;
+
+  // Canonical XLA compiler debug options and flags used during compilation.
+  xla.DebugOptions debug_options = 9;
+}
+
+// Self-contained dataset record for HLO scheduling demonstrations
+// (pre-training / behavior cloning) and RL trajectories.
+message HloScheduleDatasetRecord {
+  HloScheduleMetadata metadata = 1;
+
+  // HLO module prior to scheduling.
+  xla.HloModuleProto pre_schedule_hlo = 2;
+
+  // Canonical HLO schedule produced by the pass (all computations).
+  xla.HloScheduleProto schedule = 3;
+
+  // Optional priority scores (only populated if the scheduler produces them).
+  map<string, float> instruction_priority_scores = 4;
+
+  optional xla.HloModuleProto post_optimization_hlo = 5;
+  optional xla.pjrt.PjRtExecutableBundleProto executable_bundle = 6;
+  optional HloBenchmarkResponse benchmark_results = 7;
+}
