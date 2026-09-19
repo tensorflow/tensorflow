@@ -4383,6 +4383,7 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":variables",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
