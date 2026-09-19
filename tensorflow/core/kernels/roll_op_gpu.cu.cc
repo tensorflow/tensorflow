@@ -30,12 +30,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
+__global__ void RollKernel(const int64_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
                            const int32_t* __restrict__ dim_size,
                            const int32_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+  for (int64_t out_idx : GpuGridRangeX(nthreads)) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
@@ -75,12 +75,15 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(num_elements, d);
+    OP_REQUIRES_OK(const_cast<OpKernelContext*>(context), config.status());
 
     TF_CHECK_OK(
-        GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
-                        d.stream(), cfg.virtual_thread_count, num_dims, input,
-                        output, reinterpret_cast<const int32_t*>(dim_buf),
+        GpuLaunchKernel(RollKernel<T>, config->block_count,
+                        config->thread_per_block, 0, d.stream(),
+                        config->virtual_thread_count, num_dims, input, output,
+                        reinterpret_cast<const int32_t*>(dim_buf),
                         reinterpret_cast<const int32_t*>(thres_buf),
                         reinterpret_cast<const int64_t*>(range_buf)));
 
