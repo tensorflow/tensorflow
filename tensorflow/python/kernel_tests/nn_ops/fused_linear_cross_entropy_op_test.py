@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -54,13 +55,15 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     labels = constant_op.constant(labels_val, dtype=dtypes.float32)
 
     expected_loss = self._unfused_linear_cross_entropy(x, w, labels)
-    actual_loss = nn_ops.fused_linear_cross_entropy(x, w, labels)
+    actual_loss = nn_ops.fused_linear_cross_entropy(
+        labels=labels, features=x, weights=w
+    )
 
     self.assertAllClose(expected_loss, actual_loss, rtol=1e-4, atol=1e-4)
 
   @test_util.run_in_graph_and_eager_modes
   def testFusedLinearCrossEntropyGradients(self):
-    """Test backward pass gradients using tf.test.compute_gradient."""
+    """Test backward pass gradients using gradient_checker_v2."""
     batch_size = 2
     in_features = 4
     num_classes = 3
@@ -73,14 +76,21 @@ class FusedLinearCrossEntropyOpTest(test_util.TensorFlowTestCase):
     w = constant_op.constant(w_val, dtype=dtypes.float32)
     labels = constant_op.constant(labels_val, dtype=dtypes.float32)
 
-    def forward_fn(inputs, weights):
-      return nn_ops.fused_linear_cross_entropy(inputs, weights, labels)
+    def forward_fn_x(x_in):
+      return nn_ops.fused_linear_cross_entropy(
+          labels=labels, features=x_in, weights=w
+      )
 
-    err_x = test_util.compute_gradient_error(
-        lambda x_in: forward_fn(x_in, w), [x]
+    def forward_fn_w(w_in):
+      return nn_ops.fused_linear_cross_entropy(
+          labels=labels, features=x, weights=w_in
+      )
+
+    err_x = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(forward_fn_x, [x])
     )
-    err_w = test_util.compute_gradient_error(
-        lambda w_in: forward_fn(x, w_in), [w]
+    err_w = gradient_checker_v2.max_error(
+        *gradient_checker_v2.compute_gradient(forward_fn_w, [w])
     )
 
     self.assertLess(err_x, 1e-3)
