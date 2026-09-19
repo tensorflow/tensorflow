@@ -606,10 +606,11 @@ cc_library(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_dnn",
     srcs = ["sycl_dnn.cc"],
     hdrs = ["sycl_dnn.h"],
+    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
@@ -674,10 +675,11 @@ xla_test(
     ],
 )
 
-cc_library(
+sycl_library(
     name = "sycl_conv_utils",
     srcs = ["sycl_conv_utils.cc"],
     hdrs = ["sycl_conv_utils.h"],
+    compatible_with = [],
     tags = [
         "gpu",
         "oneapi-only",
