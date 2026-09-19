@@ -32,6 +32,7 @@ namespace mlir::tpu {
 struct MosaicSerdePassOptions {
   bool serialize;
   int target_version;
+  bool allow_compiler_internal_ops = false;
 };
 
 struct MosaicSerdePass : public jaxlib::mlir::Pass<MosaicSerdePass, ModuleOp> {
@@ -49,16 +50,19 @@ struct MosaicSerdePass : public jaxlib::mlir::Pass<MosaicSerdePass, ModuleOp> {
   explicit MosaicSerdePass(MosaicSerdePassOptions options) {
     serialize = options.serialize;
     target_version = options.target_version;
+    allow_compiler_internal_ops = options.allow_compiler_internal_ops;
   }
 
   MosaicSerdePass(const MosaicSerdePass& other) {
     serialize = other.serialize;
     target_version = other.target_version;
+    allow_compiler_internal_ops = other.allow_compiler_internal_ops;
   }
 
   MosaicSerdePass& operator=(const MosaicSerdePass& other) {
     serialize = other.serialize;
     target_version = other.target_version;
+    allow_compiler_internal_ops = other.allow_compiler_internal_ops;
     return *this;
   }
 
@@ -70,6 +74,9 @@ struct MosaicSerdePass : public jaxlib::mlir::Pass<MosaicSerdePass, ModuleOp> {
       *this, "keep-version-attr", llvm::cl::desc(""), llvm::cl::init(true)};
   ::mlir::Pass::Option<int> target_version{*this, "target-version",
                                            llvm::cl::desc("")};
+  ::mlir::Pass::Option<bool> allow_compiler_internal_ops{
+      *this, "allow-compiler-internal-ops", llvm::cl::desc(""),
+      llvm::cl::init(false)};
 };
 
 inline std::unique_ptr<::mlir::Pass> createMosaicSerdePass() {
