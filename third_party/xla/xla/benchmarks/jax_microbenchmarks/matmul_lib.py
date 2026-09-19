@@ -23,6 +23,8 @@ import jax.numpy as jnp
 
 from xla.benchmarks.core import benchmark
 
+DTYPE_MAPPING = benchmark.STR_TO_DTYPE_MAPPING
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True, repr=False)
 class JaxMatmulConfig(benchmark.BenchmarkConfig):
