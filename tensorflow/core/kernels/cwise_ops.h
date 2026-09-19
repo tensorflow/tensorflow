@@ -876,6 +876,42 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
+// igamma(a, x) = P(a, x) is defined only for a > 0, x >= 0.  Eigen's
+// scalar_igamma_op short-circuits to 0 when x == 0 before the domain check
+// fires, so a <= 0 with x == 0 silently returns 0 instead of NaN.  The
+// wrapper restores the mathematically correct NaN for out-of-domain inputs.
+template <typename Scalar>
+struct igamma_op : binary_op_base<Scalar, Scalar> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& x) const {
+    if (x == Scalar(0) && !(a > Scalar(0))) {
+      return Eigen::NumTraits<Scalar>::quiet_NaN();
+    }
+    return Eigen::internal::scalar_igamma_op<Scalar>()(a, x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet
+  packetOp(const Packet& a, const Packet& x) const {
+    Packet zeros = pzero(x);
+    Packet x_is_zero = pcmp_eq(x, zeros);
+    Packet a_gt_zero = pcmp_lt(zeros, a);
+    Packet domain_error = pandnot(x_is_zero, a_gt_zero);
+    Packet nan = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet igamma_val =
+        Eigen::internal::scalar_igamma_op<Scalar>().packetOp(a, x);
+    return pselect(domain_error, nan, igamma_val);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<igamma_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_igamma_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::AddCost,
+    PacketAccess = functor_traits<scalar_igamma_op<Scalar>>::PacketAccess,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1209,7 +1245,7 @@ struct minimum
     : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
 
 template <typename T>
-struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+struct igamma : base<T, Eigen::internal::igamma_op<T>> {};
 
 template <typename T>
 struct random_gamma_grad
