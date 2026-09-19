@@ -1,4 +1,4 @@
-# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved. 
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 # ==============================================================================
 
 # Tests of TensorFlow NN kernels written using the Python API.
-
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
@@ -942,5 +941,18 @@ py_library(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_strict_test(
+    name = "fused_linear_cross_entropy_op_test",
+    srcs = ["fused_linear_cross_entropy_op_test.py"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

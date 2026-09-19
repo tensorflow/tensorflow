@@ -20,11 +20,14 @@ import operator
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.framework import ops
+
+
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -90,7 +93,37 @@ def _Conv2DBackpropFilterGrad(op: ops.Operation, grad):
           data_format=op.get_attr("data_format").decode())
   ]
 
+@ops.RegisterGradient("FusedLinearCrossEntropy")
+def _FusedLinearCrossEntropyGrad(op, grad_loss):
+  """Gradient for FusedLinearCrossEntropy operation."""
+  # Retrieve inputs and outputs from the forward op
+  x = op.inputs[0]
+  w = op.inputs[1]
+  labels = op.inputs[2]
+  
+  # Use gen_nn_ops directly instead of nn_ops to avoid cyclic dependencies
+  # Example if using bias_add or softmax inside your gradient logic:
+  logits = math_ops.matmul(x, w)
+  
+  if len(op.inputs) > 3:  # If bias is present
+    biases = op.inputs[3]
+    logits = gen_nn_ops.bias_add(logits, biases)
 
+  probs = gen_nn_ops.softmax(logits)
+  
+  # Compute gradients for x, w, labels, and optional biases
+  grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
+  
+  grad_x = math_ops.matmul(grad_logits, w, transpose_b=True)
+  grad_w = math_ops.matmul(x, grad_logits, transpose_a=True)
+  grad_labels = None  # Typically labels do not require gradients
+  
+  if len(op.inputs) > 3:
+    grad_biases = math_ops.reduce_sum(grad_logits, axis=0)
+    return grad_x, grad_w, grad_labels, grad_biases
+
+  return grad_x, grad_w, grad_labels
+  
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputGrad(op: ops.Operation, grad):
   """The derivatives for deconvolution.
