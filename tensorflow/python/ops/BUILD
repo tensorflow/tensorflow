@@ -3535,7 +3535,7 @@ cuda_py_strict_test(
         ":random_ops",
         ":stateless_random_ops",
         ":variables",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:get_single_element",
