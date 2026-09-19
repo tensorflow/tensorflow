@@ -375,9 +375,15 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         init_data = reinterpret_cast<const char*>(op->custom_options()->data());
         init_data_size = op->custom_options()->size();
       } else if (op->large_custom_options_offset() > 1 && allocation_) {
-        if (op->large_custom_options_offset() +
-                op->large_custom_options_size() >
-            allocation_->bytes()) {
+        // Overflow-safe bounds check. The raw `offset + size > bytes`
+        // check is unsafe because both operands are uint64_t and wrap on
+        // overflow, letting a crafted model pass the check and then
+        // dereference base + offset below. See CVE-2021-29605,
+        // CVE-2022-23558, CVE-2022-23559 for the same class of bug in
+        // this component.
+        if (op->large_custom_options_offset() > allocation_->bytes() ||
+            op->large_custom_options_size() >
+                allocation_->bytes() - op->large_custom_options_offset()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
               "Custom Option Offset for opcode_index %d is out of bound\n",
@@ -760,7 +766,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
           *buffer_data = reinterpret_cast<const char*>(array->data());
           return kTfLiteOk;
         } else if (offset > 1 && allocation_) {
-          if (offset + buffer->size() > allocation_->bytes()) {
+          // Overflow-safe bounds check; see note above in
+          // large_custom_options branch. A crafted Buffer with
+          // (offset, size) chosen so their uint64_t sum wraps below
+          // allocation_->bytes() would otherwise produce a wild
+          // base + offset pointer that the runtime dereferences.
+          if (offset > allocation_->bytes() ||
+              buffer->size() > allocation_->bytes() - offset) {
             TF_LITE_REPORT_ERROR(
                 error_reporter_,
                 "Constant buffer %d specified an out of range offset.\n",
