@@ -134,39 +134,39 @@ def adjoint(matrix, name=None):
 # https://eigen.tuxfamily.org/dox/unsupported/MatrixExponential_8h_source.html
 def _matrix_exp_pade3(matrix):
   """3rd-order Pade approximant for matrix exponential."""
-  b = [120.0, 60.0, 12.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [120.0, 60.0, 12.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
       dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
-  tmp = matrix_2 + b[1] * ident
+  tmp = c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade5(matrix):
   """5th-order Pade approximant for matrix exponential."""
-  b = [30240.0, 15120.0, 3360.0, 420.0, 30.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [30240.0, 15120.0, 3360.0, 420.0, 30.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
       dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
-  tmp = matrix_4 + b[3] * matrix_2 + b[1] * ident
+  tmp = c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[4] * matrix_4 + b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
 def _matrix_exp_pade7(matrix):
   """7th-order Pade approximant for matrix exponential."""
-  b = [17297280.0, 8648640.0, 1995840.0, 277200.0, 25200.0, 1512.0, 56.0]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  b = [17297280.0, 8648640.0, 1995840.0, 277200.0, 25200.0, 1512.0, 56.0, 1.0]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -174,9 +174,9 @@ def _matrix_exp_pade7(matrix):
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
-  tmp = matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 + b[1] * ident
+  tmp = c[7] * matrix_6 + c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
-  matrix_v = b[6] * matrix_6 + b[4] * matrix_4 + b[2] * matrix_2 + b[0] * ident
+  matrix_v = c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 + ident
   return matrix_u, matrix_v
 
 
@@ -184,9 +184,9 @@ def _matrix_exp_pade9(matrix):
   """9th-order Pade approximant for matrix exponential."""
   b = [
       17643225600.0, 8821612800.0, 2075673600.0, 302702400.0, 30270240.0,
-      2162160.0, 110880.0, 3960.0, 90.0
+      2162160.0, 110880.0, 3960.0, 90.0, 1.0
   ]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -196,12 +196,12 @@ def _matrix_exp_pade9(matrix):
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   matrix_8 = math_ops.matmul(matrix_6, matrix_2)
   tmp = (
-      matrix_8 + b[7] * matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 +
-      b[1] * ident)
+      c[9] * matrix_8 + c[7] * matrix_6 + c[5] * matrix_4 + c[3] * matrix_2 +
+      c[1] * ident)
   matrix_u = math_ops.matmul(matrix, tmp)
   matrix_v = (
-      b[8] * matrix_8 + b[6] * matrix_6 + b[4] * matrix_4 + b[2] * matrix_2 +
-      b[0] * ident)
+      c[8] * matrix_8 + c[6] * matrix_6 + c[4] * matrix_4 + c[2] * matrix_2 +
+      ident)
   return matrix_u, matrix_v
 
 
@@ -210,9 +210,9 @@ def _matrix_exp_pade13(matrix):
   b = [
       64764752532480000.0, 32382376266240000.0, 7771770303897600.0,
       1187353796428800.0, 129060195264000.0, 10559470521600.0, 670442572800.0,
-      33522128640.0, 1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0
+      33522128640.0, 1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0, 1.0
   ]
-  b = [constant_op.constant(x, matrix.dtype) for x in b]
+  c = [constant_op.constant(x / b[0], matrix.dtype) for x in b]
   ident = linalg_ops.eye(
       array_ops.shape(matrix)[-2],
       batch_shape=array_ops.shape(matrix)[:-2],
@@ -221,13 +221,14 @@ def _matrix_exp_pade13(matrix):
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   tmp_u = (
-      math_ops.matmul(matrix_6, matrix_6 + b[11] * matrix_4 + b[9] * matrix_2) +
-      b[7] * matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 + b[1] * ident)
+      math_ops.matmul(
+          matrix_6, c[13] * matrix_6 + c[11] * matrix_4 + c[9] * matrix_2) +
+      c[7] * matrix_6 + c[5] * matrix_4 + c[3] * matrix_2 + c[1] * ident)
   matrix_u = math_ops.matmul(matrix, tmp_u)
-  tmp_v = b[12] * matrix_6 + b[10] * matrix_4 + b[8] * matrix_2
+  tmp_v = c[12] * matrix_6 + c[10] * matrix_4 + c[8] * matrix_2
   matrix_v = (
-      math_ops.matmul(matrix_6, tmp_v) + b[6] * matrix_6 + b[4] * matrix_4 +
-      b[2] * matrix_2 + b[0] * ident)
+      math_ops.matmul(matrix_6, tmp_v) + c[6] * matrix_6 + c[4] * matrix_4 +
+      c[2] * matrix_2 + ident)
   return matrix_u, matrix_v
 
 
