@@ -18,11 +18,12 @@ limitations under the license, the license you must see.
 
 #if GOOGLE_CUDA
 
-// Clang can't always unroll all loops, and it's not clear yet why.
-// Silence the warning for now to avoid build breaks with -Werror, but do not
-// leak the suppression into includers via the diagnostic state.
+// clang sometimes fails to unroll the CUB loops below; silence
+// -Wpass-failed, but keep the suppression scoped to this header.
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpass-failed"
+#endif
 
 #include "cub/block/block_load.cuh"
 #include "cub/block/block_scan.cuh"
@@ -46,7 +47,9 @@ limitations under the license, the license you must see.
 #include "cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cusparse.h"
 
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 namespace gpuprim = ::cub;
 
