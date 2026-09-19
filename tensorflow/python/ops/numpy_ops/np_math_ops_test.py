@@ -19,7 +19,9 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -206,6 +208,49 @@ class MathTest(test.TestCase, parameterized.TestCase):
     actual = np_math_ops.hypot(x, y)
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
+
+  @parameterized.parameters([np.float32, np.float64])
+  def testHypotGradient(self, dtype):
+    # Covers |x| == |y|, a zero component, sign combinations and large finite
+    # inputs. Exact values: d/dx = x / h, d/dy = y / h, d2/dx2 = y**2 / h**3,
+    # d2/dy2 = x**2 / h**3, with h = hypot(x, y).
+    x_np = np.array([1.0, -2.0, 0.0, 3.0, 3.0, -0.5, 1e20], dtype=dtype)
+    y_np = np.array([1.0, 2.0, 3.0, 0.0, -4.0, -0.5, 1e20], dtype=dtype)
+    x = constant_op.constant(x_np)
+    y = constant_op.constant(y_np)
+    with backprop.GradientTape(persistent=True) as outer:
+      outer.watch([x, y])
+      with backprop.GradientTape(persistent=True) as inner:
+        inner.watch([x, y])
+        h = np_math_ops.hypot(x, y)
+      dx = inner.gradient(h, x)
+      dy = inner.gradient(h, y)
+    dxx = outer.gradient(dx, x)
+    dyy = outer.gradient(dy, y)
+
+    x64 = x_np.astype(np.float64)
+    y64 = y_np.astype(np.float64)
+    h64 = np.hypot(x64, y64)
+    self.assertAllClose(dx, x64 / h64)
+    self.assertAllClose(dy, y64 / h64)
+    self.assertAllClose(dxx, y64**2 / h64**3)
+    self.assertAllClose(dyy, x64**2 / h64**3)
+
+  def testHypotComplexInputs(self):
+    x = np.array([3 + 4j, -1j, 0j], dtype=np.complex128)
+    y = np.array([1 + 0j, 2 + 0j, 0j], dtype=np.complex128)
+    self.match(np_math_ops.hypot(x, y), np.hypot(np.abs(x), np.abs(y)))
+
+  def testHypotGradientAtOrigin(self):
+    # hypot is not differentiable at (0, 0); the gradient should be 0, not NaN.
+    x = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
+    y = constant_op.constant([0.0, 1.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch([x, y])
+      h = np_math_ops.hypot(x, y)
+    dx, dy = tape.gradient(h, [x, y])
+    self.assertAllEqual(dx, [0.0, 0.0])
+    self.assertAllEqual(dy, [0.0, 1.0])
 
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
