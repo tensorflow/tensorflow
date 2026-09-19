@@ -8,8 +8,8 @@ from tensorflow.python.platform import test
 class BinaryCrossentropyEagerGraphConsistencyTest(test_combinations.TestCase):
 
   def test_binary_crossentropy_eager_graph_consistency(self):
-    x = ops.convert_to_tensor_v2_with_dispatch([[1449.6967]])
-    y = ops.convert_to_tensor_v2_with_dispatch([[0.0]])
+    x = ops.convert_to_tensor([[1449.6967]])
+    y = ops.convert_to_tensor([[0.0]])
 
     eager_loss = keras.backend.binary_crossentropy(y, math_ops.sigmoid(x), from_logits=False)
 
