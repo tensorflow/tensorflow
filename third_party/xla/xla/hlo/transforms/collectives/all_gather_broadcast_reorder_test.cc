@@ -17,13 +17,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
 
 namespace m = xla::testing::opcode_matchers;
 
@@ -116,6 +120,91 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassOutput::NoChange);
+}
+
+TEST_F(AllGatherBroadcastReorderTest, DoesNotCrossCallBoundaries) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+foo {
+  param = f32[5, 4, 8, 128] parameter(0)
+  ROOT ag = f32[5, 4, 8, 256] all-gather(param), dimensions={3}, replica_groups={{0, 1}}
+}
+
+ENTRY main {
+  x = f32[128, 5] parameter(0)
+  bc = f32[5, 4, 8, 128] broadcast(x), dimensions={3, 0}
+  ROOT call = f32[5, 4, 8, 256] call(bc), to_apply=foo
+}
+)";
+  RunPass(hlo_string, PassOutput::NoChange);
+}
+
+TEST_F(AllGatherBroadcastReorderTest, EntryCallsFooTransformationOnFoo) {
+  absl::string_view hlo_string = R"(
+// CHECK: %foo (
+// CHECK: %[[AG:.*]] = f32[256,5]{{.*}} all-gather(%x_foo), {{.*}}dimensions={0}
+// CHECK: ROOT %[[BC:.*]] = f32[5,4,8,256]{{.*}} broadcast(%[[AG]]), dimensions={3,0}
+// CHECK: }
+// CHECK: ENTRY %main (
+// CHECK: ROOT %[[CALL:.*]] = f32[5,4,8,256]{{.*}} call(%x_main), to_apply=%foo
+HloModule m
+
+foo {
+  x_foo = f32[128, 5] parameter(0)
+  bc = f32[5, 4, 8, 128] broadcast(x_foo), dimensions={3, 0}
+  ROOT ag = f32[5, 4, 8, 256] all-gather(bc), dimensions={3}, replica_groups={{0, 1}}
+}
+
+ENTRY main {
+  x_main = f32[128, 5] parameter(0)
+  ROOT call = f32[5, 4, 8, 256] call(x_main), to_apply=foo
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllGatherBroadcastReorder().Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AllGatherBroadcastReorderTest,
+       EntryCallsFooAndBarFooCallsBarTransformationOnBar) {
+  absl::string_view hlo_string = R"(
+// CHECK: %bar (
+// CHECK: %[[AG:.*]] = f32[256,5]{{.*}} all-gather(%x_bar), {{.*}}dimensions={0}
+// CHECK: ROOT %[[BC:.*]] = f32[5,4,8,256]{{.*}} broadcast(%[[AG]]), dimensions={3,0}
+// CHECK: }
+// CHECK: %foo (
+// CHECK: ROOT %[[CALL_BAR:.*]] = f32[5,4,8,256]{{.*}} call(%x_foo), to_apply=%bar
+// CHECK: }
+// CHECK: ENTRY %main (
+// CHECK: %[[CALL_FOO:.*]] = f32[5,4,8,256]{{.*}} call(%x_main), to_apply=%foo
+// CHECK: %[[CALL_BAR2:.*]] = f32[5,4,8,256]{{.*}} call(%x_main), to_apply=%bar
+// CHECK: ROOT %[[ADD:.*]] = f32[5,4,8,256]{{.*}} add(%[[CALL_FOO]], %[[CALL_BAR2]])
+HloModule m
+
+bar {
+  x_bar = f32[128, 5] parameter(0)
+  bc = f32[5, 4, 8, 128] broadcast(x_bar), dimensions={3, 0}
+  ROOT ag = f32[5, 4, 8, 256] all-gather(bc), dimensions={3}, replica_groups={{0, 1}}
+}
+
+foo {
+  x_foo = f32[128, 5] parameter(0)
+  ROOT call_bar = f32[5, 4, 8, 256] call(x_foo), to_apply=bar
+}
+
+ENTRY main {
+  x_main = f32[128, 5] parameter(0)
+  call_foo = f32[5, 4, 8, 256] call(x_main), to_apply=foo
+  call_bar = f32[5, 4, 8, 256] call(x_main), to_apply=bar
+  ROOT add = f32[5, 4, 8, 256] add(call_foo, call_bar)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllGatherBroadcastReorder().Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace
