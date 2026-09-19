@@ -33,9 +33,27 @@ package(
     licenses = ["notice"],
 )
 
+pytype_strict_library(
+    name = "bazel_diff",
+    srcs = ["bazel_diff.py"],
+)
+
+py_test(
+    name = "bazel_diff_test",
+    srcs = ["bazel_diff_test.py"],
+    deps = [
+        ":bazel_diff",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 pytype_strict_binary(
     name = "build",
     srcs = ["build.py"],
+    deps = [
+        ":bazel_diff",
+    ],
 )
 
 pytype_strict_library(
