@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -32,7 +34,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -40,8 +44,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/ir_emission_utils.h"  // IWYU pragma:  export
 #include "xla/codegen/tiling/experimental/scheduling.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/interval.h"
@@ -62,6 +66,29 @@ namespace xla::xtile {
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
+
+struct TiledHloHash {
+  size_t operator()(
+      const gpu::experimental::TiledHloInstruction* tiled_hlo) const {
+    if (tiled_hlo == nullptr) {
+      return 0;
+    }
+    return absl::HashOf(tiled_hlo->hlo(), tiled_hlo->tile());
+  }
+};
+
+struct TiledHloEq {
+  bool operator()(const gpu::experimental::TiledHloInstruction* a,
+                  const gpu::experimental::TiledHloInstruction* b) const {
+    if (a == b) {
+      return true;
+    }
+    if (a == nullptr || b == nullptr) {
+      return false;
+    }
+    return a->hlo() == b->hlo() && a->tile() == b->tile();
+  }
+};
 
 // Convenience class for holding the emitted values.
 class EmitterContext {
@@ -91,6 +118,15 @@ class EmitterContext {
   TensorValue TiledHloToTensorValue(
       const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
     return tiled_hlo_to_tensor_.at(&tiled_hlo);
+  }
+
+  std::optional<TensorValue> FindTiledHloTensorValue(
+      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+    auto it = tiled_hlo_to_tensor_.find(&tiled_hlo);
+    if (it != tiled_hlo_to_tensor_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
   }
 
   bool MapTiledHloToTensorValue(
@@ -126,7 +162,7 @@ class EmitterContext {
   mlir::Value pid_;
   mlir::Value tid_;
   absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
-                      TensorValue>
+                      TensorValue, TiledHloHash, TiledHloEq>
       tiled_hlo_to_tensor_;
   gpu::experimental::Schedule schedule_;
   const HloFusionInstruction* fusion_ = nullptr;
