@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/profiler_options_util.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {
@@ -48,6 +49,37 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
     CuptiTracerOptions& tracer_options,
     CuptiTracerCollectorOptions& collector_options) {
+  // Read environment variable overrides if set.
+  int64_t env_buffer_size = 0;
+  if (tsl::ReadInt64FromEnvVar("TF_GPU_CUPTI_ACTIVITY_BUFFER_SIZE", 0,
+                               &env_buffer_size)
+          .ok() &&
+      env_buffer_size > 0) {
+    tracer_options.activity_buffer_size = env_buffer_size;
+  } else if (tsl::ReadInt64FromEnvVar("XLA_GPU_CUPTI_ACTIVITY_BUFFER_SIZE", 0,
+                                      &env_buffer_size)
+                 .ok() &&
+             env_buffer_size > 0) {
+    tracer_options.activity_buffer_size = env_buffer_size;
+  }
+
+  int64_t env_preallocation_count = 0;
+  if (tsl::ReadInt64FromEnvVar(
+          "TF_GPU_CUPTI_ACTIVITY_BUFFER_PREALLOCATION_COUNT", 0,
+          &env_preallocation_count)
+          .ok() &&
+      env_preallocation_count > 0) {
+    tracer_options.activity_buffer_preallocation_count =
+        env_preallocation_count;
+  } else if (tsl::ReadInt64FromEnvVar(
+                 "XLA_GPU_CUPTI_ACTIVITY_BUFFER_PREALLOCATION_COUNT", 0,
+                 &env_preallocation_count)
+                 .ok() &&
+             env_preallocation_count > 0) {
+    tracer_options.activity_buffer_preallocation_count =
+        env_preallocation_count;
+  }
+
   absl::flat_hash_set<absl::string_view> input_keys;
   for (const auto& [key, _] : profile_options.advanced_configuration()) {
     input_keys.insert(key);
@@ -82,6 +114,22 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
   ABSL_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
       [&](bool value) { tracer_options.enable_nvtx_tracking = value; }));
+
+  ABSL_RETURN_IF_ERROR(SetValue<int64_t>(profile_options, "gpu_activity_buffer_size",
+                                    input_keys, [&](int64_t value) {
+                                      if (value > 0) {
+                                        tracer_options.activity_buffer_size =
+                                            value;
+                                      }
+                                    }));
+
+  ABSL_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_activity_buffer_preallocation_count", input_keys,
+      [&](int64_t value) {
+        if (value > 0) {
+          tracer_options.activity_buffer_preallocation_count = value;
+        }
+      }));
 
   ABSL_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_aggregated_tracing", input_keys,

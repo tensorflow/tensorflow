@@ -107,6 +107,14 @@ CUptiResult CuptiWrapperStub::ActivityUsePerThreadBuffer() {
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::ActivitySetZeroedOutBufferV2() {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::ActivitySetZeroedOutBuffer() {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::SetActivityFlushPeriod(uint32_t period_ms) {
   return CUPTI_SUCCESS;
 }
