@@ -95,33 +95,34 @@ def _Conv2DBackpropFilterGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("FusedLinearCrossEntropy")
 def _FusedLinearCrossEntropyGrad(op, grad_loss):
-  """Gradients for FusedLinearCrossEntropy."""
-  features = op.inputs[0]
-  weights = op.inputs[1]
+  """Gradient for FusedLinearCrossEntropy operation."""
+  # Retrieve inputs and outputs from the forward op
+  x = op.inputs[0]
+  w = op.inputs[1]
   labels = op.inputs[2]
-
-  # Recompute soft-max probabilities: p = softmax(XW + b)
-  logits = math_ops.matmul(features, weights)
-  if len(op.inputs) > 3:
+  
+  # Use gen_nn_ops directly instead of nn_ops to avoid cyclic dependencies
+  # Example if using bias_add or softmax inside your gradient logic:
+  logits = math_ops.matmul(x, w)
+  
+  if len(op.inputs) > 3:  # If bias is present
     biases = op.inputs[3]
-    logits = nn_ops.bias_add(logits, biases)
+    logits = gen_nn_ops.bias_add(logits, biases)
 
-  probs = nn_ops.softmax(logits)
-
-  # Compute dL/dlogits = (probs - labels) * grad_loss
+  probs = gen_nn_ops.softmax(logits)
+  
+  # Compute gradients for x, w, labels, and optional biases
   grad_logits = (probs - labels) * array_ops.expand_dims(grad_loss, -1)
-
-  # Gradients w.r.t features, weights, and labels (non-differentiable)
-  grad_features = math_ops.matmul(grad_logits, weights, transpose_b=True)
-  grad_weights = math_ops.matmul(features, grad_logits, transpose_a=True)
-  grad_labels = array_ops.zeros_like(labels)
-
-  grad_biases = None
+  
+  grad_x = math_ops.matmul(grad_logits, w, transpose_b=True)
+  grad_w = math_ops.matmul(x, grad_logits, transpose_a=True)
+  grad_labels = None  # Typically labels do not require gradients
+  
   if len(op.inputs) > 3:
     grad_biases = math_ops.reduce_sum(grad_logits, axis=0)
-    return grad_features, grad_weights, grad_labels, grad_biases
+    return grad_x, grad_w, grad_labels, grad_biases
 
-  return grad_features, grad_weights, grad_labels
+  return grad_x, grad_w, grad_labels
   
 @ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputGrad(op: ops.Operation, grad):
