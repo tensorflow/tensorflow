@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
