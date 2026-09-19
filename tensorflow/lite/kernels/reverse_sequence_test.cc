@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -202,6 +204,26 @@ TEST(ReverseSequenceOpTest, Int16BatchDimIsGreater) {
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({13, 20, 15, 22, 17, 24, 7, 14, 9, 16, 11, 18, 1,
                                 8,  3,  10, 5,  12, 19, 2, 21, 4, 23, 6}));
+}
+
+TEST(ReverseSequenceOpTest, InvalidSeqLengthsNegative) {
+  ReverseSequenceOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                                      {TensorType_INT32, {4}}, 1, 0);
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.seq_lengths(), {3, -1, 3, 3});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
+}
+
+TEST(ReverseSequenceOpTest, InvalidSeqLengthsTooLarge) {
+  ReverseSequenceOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                                      {TensorType_INT32, {4}}, 1, 0);
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.seq_lengths(), {3, 4, 3, 3});
+  EXPECT_NE(model.Invoke(), kTfLiteOk);
 }
 
 }  // namespace
