@@ -61,6 +61,8 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util_internal.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -2810,12 +2812,36 @@ HloSharding CanonicalizeSharding(const HloSharding& sharding) {
   return HloSharding(HloSharding::ToNamedSharding(sharding));
 }
 
-std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat) {
-  if (concat->operand_count() != 2) {
+std::optional<RotateRightPatternMatch> FindRotateRightPattern(
+    const HloInstruction* inst) {
+  // 1. Check if the shuffle is in rotate mode.
+  if (inst->opcode() == HloOpcode::kShuffle) {
+    auto* shuffle = Cast<HloShuffleInstruction>(inst);
+    if (shuffle->mode() != ShuffleMode::kRotate) {
+      return std::nullopt;
+    }
+    for (int64_t i = 0; i < shuffle->dimensions().size(); ++i) {
+      int64_t dim = shuffle->dimensions()[i];
+      if (shuffle->sharding().dimension(dim) > 1) {
+        int64_t dim_size = shuffle->shape().dimensions(dim);
+        if (dim_size <= 0) {
+          continue;
+        }
+        int64_t left_shift =
+            shuffle::NormalizeShift(shuffle->rotate().shifts(i), dim_size);
+        int64_t right_shift = (dim_size - left_shift) % dim_size;
+        return RotateRightPatternMatch{/*dim=*/dim, /*amount=*/right_shift,
+                                       /*rotate_dim_idx=*/i};
+      }
+    }
     return std::nullopt;
   }
-  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
-  const HloInstruction* rhs = SkipCopyOperands(concat->operand(1));
+  // 2. Check if the concat is equivalent to a rotation.
+  if (inst->opcode() != HloOpcode::kConcatenate || inst->operand_count() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(inst->operand(0));
+  const HloInstruction* rhs = SkipCopyOperands(inst->operand(1));
   if (!lhs || !rhs) {
     return std::nullopt;
   }
@@ -2826,16 +2852,41 @@ std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat) {
     return std::nullopt;
   }
   const HloInstruction* to_rotate = lhs->operand(0);
-  if (!ShapeUtil::Compatible(to_rotate->shape(), concat->shape()) ||
-      concat->sharding() != to_rotate->sharding()) {
+  if (!ShapeUtil::Compatible(to_rotate->shape(), inst->shape()) ||
+      inst->sharding() != to_rotate->sharding()) {
     return std::nullopt;
   }
-  const int64_t dim = concat->concatenate_dimension();
+  const int64_t dim = inst->concatenate_dimension();
+  if (inst->sharding().dimension(dim) == 1) {
+    return std::nullopt;
+  }
   if (lhs->slice_strides(dim) != 1 || rhs->slice_strides(dim) != 1 ||
       lhs->slice_starts(dim) != rhs->slice_limits(dim)) {
     return std::nullopt;
   }
-  return lhs->shape().dimensions(dim);
+  return RotateRightPatternMatch{/*dim=*/dim,
+                                 /*amount=*/lhs->shape().dimensions(dim),
+                                 /*rotate_dim_idx=*/-1};
+}
+
+absl::StatusOr<HloInstruction*> PopRotateDimension(HloInstruction* shuffle_inst,
+                                                   int64_t rotate_dim_idx) {
+  auto* shuffle = Cast<HloShuffleInstruction>(shuffle_inst);
+  TF_RET_CHECK(shuffle->mode() == ShuffleMode::kRotate);
+  TF_RET_CHECK(rotate_dim_idx >= 0 &&
+               rotate_dim_idx < shuffle->dimensions().size());
+  shuffle->mutable_dimensions()->erase(shuffle->mutable_dimensions()->begin() +
+                                       rotate_dim_idx);
+  auto* shifts = shuffle->mutable_rotate()->mutable_shifts();
+  shifts->erase(shifts->begin() + rotate_dim_idx);
+
+  if (shuffle->dimensions().empty()) {
+    HloInstruction* operand = shuffle->mutable_operand(0);
+    ABSL_RETURN_IF_ERROR(shuffle->ReplaceAllUsesWith(operand));
+    ABSL_RETURN_IF_ERROR(shuffle->parent()->RemoveInstruction(shuffle));
+    return operand;
+  }
+  return shuffle;
 }
 
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
