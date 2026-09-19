@@ -30,13 +30,18 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops);
 
 // This function is a common entry point for all graph optimizations that are
-// not specific to any hardware. It legalizes SHLO->MHLO, does MHLO->MHLO
-// optimizations by calling `AddMhloOptimizationPasses` internally, and
-// legalizes MHLO->SHLO
+// not specific to any hardware.
 void AddStablehloOptimizationPasses(OpPassManager& pm);
 
-// Adds all the backend-agonstic stableHLO optimization passes
-void AddMhloOptimizationPasses(OpPassManager& pm, bool add_fold_broadcast_pass);
+// Adds all the backend-agnostic stableHLO optimization passes.
+void AddStablehloOptimizationPasses(OpPassManager& pm,
+                                    bool add_fold_broadcast_pass);
+
+// Deprecated: Use AddStablehloOptimizationPasses instead.
+inline void AddMhloOptimizationPasses(OpPassManager& pm,
+                                      bool add_fold_broadcast_pass) {
+  AddStablehloOptimizationPasses(pm, add_fold_broadcast_pass);
+}
 
 }  // namespace odml
 }  // namespace mlir
