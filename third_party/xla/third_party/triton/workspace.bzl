@@ -69,8 +69,8 @@ triton_archive = repository_rule(
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "a77e7c793abc0d0c923a9afb275058e2fe57a198"
-    TRITON_SHA256 = "140be1b8eedcef0dd495b2d5a0dab413ce67894bfd251c455d2d601b242d3315"
+    TRITON_COMMIT = "2074a1b8a5cd283ce584f8ebca825c4f0b215fc1"
+    TRITON_SHA256 = "3cf7fb4bf850a1e06dd96704a8407046c028129ebc9469a338856e30646d3f4b"
     triton_archive(
         name = "triton",
         sha256 = TRITON_SHA256,
