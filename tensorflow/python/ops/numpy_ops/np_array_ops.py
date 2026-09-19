@@ -1582,6 +1582,23 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
+  m = asarray(m)
+
+  maybe_rank = m.shape.rank
+  if maybe_rank is not None:
+    if not isinstance(axes, (tuple, list, range, np.ndarray)):
+      axes = tuple(axes)
+    if len(axes) != 2:
+      raise ValueError('len(axes) must be 2.')
+    if builtins.all(isinstance(axis, (int, np.integer)) for axis in axes):
+      norm_axes = [axis + maybe_rank if axis < 0 else axis for axis in axes]
+      if builtins.any(axis < 0 or axis >= maybe_rank for axis in norm_axes):
+        raise ValueError(
+            f'Axes={tuple(axes)} out of range for array of rank {maybe_rank}.'
+        )
+      if norm_axes[0] == norm_axes[1]:
+        raise ValueError('Axes must be different.')
+
   m_rank = array_ops.rank(m)
   ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
 
