@@ -2192,15 +2192,20 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
 XlaOp XlaBuilder::DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    absl::Span<const XlaOp> ext_operands, const SparsityConfig* sparsity_config,
+    const BlockScalingConfig* block_scaling_config) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     ABSL_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
-    ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferDotOpShape(
-                                      *lhs_shape, *rhs_shape, dimension_numbers,
-                                      preferred_element_type));
+    ABSL_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferDotOpShape(
+            *lhs_shape, *rhs_shape, dimension_numbers, preferred_element_type,
+            sparsity_config ? *sparsity_config : SparsityConfig()));
     return DotGeneralInternal(shape, lhs, rhs, dimension_numbers,
-                              precision_config);
+                              precision_config, ext_operands, sparsity_config,
+                              block_scaling_config);
   });
 }
 
@@ -2230,14 +2235,26 @@ XlaOp XlaBuilder::ScaledDot(
 absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     const Shape& shape, XlaOp lhs, XlaOp rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::Span<const XlaOp> ext_operands, const SparsityConfig* sparsity_config,
+    const BlockScalingConfig* block_scaling_config) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   *instr.mutable_dot_dimension_numbers() = dimension_numbers;
   if (precision_config != nullptr) {
     *instr.mutable_precision_config() = *precision_config;
   }
-  return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+  if (sparsity_config &&
+      (sparsity_config->has_lhs() || sparsity_config->has_rhs())) {
+    *instr.mutable_sparsity_config() = *sparsity_config;
+  }
+  if (block_scaling_config &&
+      (block_scaling_config->has_lhs() || block_scaling_config->has_rhs())) {
+    *instr.mutable_block_scaling_config() = *block_scaling_config;
+  }
+  std::vector<XlaOp> operands = {lhs, rhs};
+  operands.insert(operands.end(), ext_operands.begin(), ext_operands.end());
+  return AddInstruction(std::move(instr), HloOpcode::kDot, operands);
 }
 
 XlaOp ScaledDot(const XlaOp lhs, const XlaOp rhs, const XlaOp lhs_scale,
@@ -5793,9 +5810,13 @@ XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
 XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  const DotDimensionNumbers& dimension_numbers,
                  const PrecisionConfig* precision_config,
-                 std::optional<PrimitiveType> preferred_element_type) {
-  return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
-                                   precision_config, preferred_element_type);
+                 std::optional<PrimitiveType> preferred_element_type,
+                 absl::Span<const XlaOp> ext_operands,
+                 const SparsityConfig* sparsity_config,
+                 const BlockScalingConfig* block_scaling_config) {
+  return lhs.builder()->DotGeneral(
+      lhs, rhs, dimension_numbers, precision_config, preferred_element_type,
+      ext_operands, sparsity_config, block_scaling_config);
 }
 
 XlaOp RaggedAllToAll(const XlaOp input, const XlaOp input_offsets,

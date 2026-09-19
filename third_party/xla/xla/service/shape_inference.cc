@@ -857,9 +857,27 @@ absl::Status ValidateDotDimensionNumbers(
   return absl::OkStatus();
 }
 
+absl::StatusOr<int64_t> GetSparseDimSize(
+    int64_t raw_size, const SparsityConfig::TensorSparsityConfig& sp) {
+  if (sp.num_non_zero() <= 0 || sp.block_size() <= 0) {
+    return InvalidArgument(
+        "num_non_zero and block_size must be positive in SparsityConfig");
+  }
+  if (IsUnboundedDynamicSize(raw_size)) {
+    return raw_size;
+  }
+  if (raw_size % sp.num_non_zero() != 0) {
+    return InvalidArgument(
+        "Sparse dimension size (%d) must be divisible by num_non_zero (%d)",
+        raw_size, sp.num_non_zero());
+  }
+  return raw_size * sp.block_size() / sp.num_non_zero();
+}
+
 absl::Status CheckDotDimensionConstraints(
     const Shape& lhs, const Shape& rhs,
-    const DotDimensionNumbers& dimension_numbers) {
+    const DotDimensionNumbers& dimension_numbers,
+    const SparsityConfig& sparsity_config = {}) {
   auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
     std::string message =
         StrFormat("Cannot infer shape for dot operation: %s <dot> %s.",
@@ -884,8 +902,19 @@ absl::Status CheckDotDimensionConstraints(
         dimension_numbers.lhs_contracting_dimensions(i);
     const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    if (!CompatibleDimensionSizes(lhs.dimensions(lhs_contracting_dimension),
-                                  rhs.dimensions(rhs_contracting_dimension))) {
+    int64_t lhs_size = lhs.dimensions(lhs_contracting_dimension);
+    int64_t rhs_size = rhs.dimensions(rhs_contracting_dimension);
+    if (sparsity_config.has_lhs() &&
+        lhs_contracting_dimension == sparsity_config.lhs().dimension()) {
+      ABSL_ASSIGN_OR_RETURN(lhs_size,
+                       GetSparseDimSize(lhs_size, sparsity_config.lhs()));
+    }
+    if (sparsity_config.has_rhs() &&
+        rhs_contracting_dimension == sparsity_config.rhs().dimension()) {
+      ABSL_ASSIGN_OR_RETURN(rhs_size,
+                       GetSparseDimSize(rhs_size, sparsity_config.rhs()));
+    }
+    if (!CompatibleDimensionSizes(lhs_size, rhs_size)) {
       return fail("Contracting dimension sizes are not compatible.");
     }
   }
@@ -954,7 +983,8 @@ void GenerateDotResultDimensions(
 /* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
-    std::optional<PrimitiveType> preferred_element_type) {
+    std::optional<PrimitiveType> preferred_element_type,
+    const SparsityConfig& sparsity_config) {
   ABSL_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   ABSL_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
@@ -962,7 +992,8 @@ void GenerateDotResultDimensions(
   ABSL_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
   // Check the number and sizes of batch and contracting dimensions.
-  ABSL_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers));
+  ABSL_RETURN_IF_ERROR(CheckDotDimensionConstraints(lhs, rhs, dimension_numbers,
+                                               sparsity_config));
 
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
@@ -2495,8 +2526,12 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_spatial_dims[i] = lhs.dimensions(dnums.input_spatial_dimensions(i));
   }
-  const int64_t input_features =
-      lhs.dimensions(dnums.input_feature_dimension());
+  int64_t input_features = lhs.dimensions(dnums.input_feature_dimension());
+  if (sparsity_config.has_lhs() &&
+      sparsity_config.lhs().dimension() == dnums.input_feature_dimension()) {
+    ABSL_ASSIGN_OR_RETURN(input_features,
+                     GetSparseDimSize(input_features, sparsity_config.lhs()));
+  }
   const int64_t input_batch = lhs.dimensions(dnums.input_batch_dimension());
 
   std::vector<int64_t> kernel_spatial_dims(num_spatial_dims);
@@ -2505,19 +2540,14 @@ absl::StatusOr<Shape> InferWgradConvolveShape(
   }
   int64_t kernel_input_features =
       rhs.dimensions(dnums.kernel_input_feature_dimension());
-  if (sparsity_config.has_rhs()) {
+  if (sparsity_config.has_rhs() && sparsity_config.rhs().dimension() ==
+                                       dnums.kernel_input_feature_dimension()) {
     VLOG(8) << "Using sparse RHS for convolution. Got kernel_input_features: "
             << kernel_input_features
             << ", sparsity_config: " << SparsityConfigToString(sparsity_config);
-    int64_t num_non_zero = sparsity_config.rhs().num_non_zero();
-    int64_t block_size = sparsity_config.rhs().block_size();
-    if (num_non_zero != 1) {
-      return InvalidArgument("Only 1:N sparsity is currently supported.");
-    }
-    // Since the kernel is sparse, the effective number of input features is
-    // the number of non-zero elements times the block size. This currently
-    // assumes 1:N sparsity, where N is the block size.
-    kernel_input_features = kernel_input_features * block_size;
+    ABSL_ASSIGN_OR_RETURN(
+        kernel_input_features,
+        GetSparseDimSize(kernel_input_features, sparsity_config.rhs()));
   } else {
     VLOG(8) << "Not using sparse RHS for convolution.";
   }
