@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 
 #include <algorithm>
-#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -55,84 +54,49 @@ using ::xla::xtile::BlockLevelParameters;
 
 namespace detail {
 
-namespace {
-
 using ::xla::primitive_util::BitWidth;
 
-// Lookup table entry mapping DMA transfer size to fractional saturation
-// of peak bandwidth in [0.0, 1.0].
-struct BandwidthEntry {
-  int64_t dma_size_bytes;
-  float bandwidth_fraction;
-};
+namespace {
 
-constexpr int kHbmBandwidthTableEntries = 21;
+// Analytically calibrated Hockney parameters: eta_max (bus saturation),
+// t0 (latency).
+constexpr HockneyBandwidthParams kAmpereHockneyBandwidthParams = {
+    /*eta_max=*/0.930,
+    /*t0_sec=*/8.7e-6};
+constexpr HockneyBandwidthParams kHopperHockneyBandwidthParams = {
+    /*eta_max=*/0.955,
+    /*t0_sec=*/6.0e-6};
+constexpr HockneyBandwidthParams kBlackwellHockneyBandwidthParams = {
+    /*eta_max=*/0.936676,
+    /*t0_sec=*/7.0e-6};
+constexpr HockneyBandwidthParams kGenericHockneyBandwidthParams = {
+    /*eta_max=*/0.800,
+    /*t0_sec=*/8.0e-6};
 
-// TODO(b/547746872): Add tooling to measure and generate bandwidth derate
-// tables in a reproducible manner.
-// Empirical HBM bandwidth scaling tables mapping transfer size in bytes to
-// fraction of peak bandwidth [0.0, 1.0].
-constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
-    kAmpereScaledHbmBandwidthTable = {
-        {{8192, 0.00043418f},       {16384, 0.00092645f},
-         {32768, 0.00184066f},      {65536, 0.00359877f},
-         {131072, 0.00724035f},     {262144, 0.01447766f},
-         {524288, 0.02830100f},     {1048576, 0.05448203f},
-         {2097152, 0.10550455f},    {4194304, 0.19454216f},
-         {8388608, 0.32555948f},    {16777216, 0.48194352f},
-         {33554432, 0.60084187f},   {67108864, 0.71295513f},
-         {134217728, 0.79326842f},  {268435456, 0.83355906f},
-         {536870912, 0.89447866f},  {1073741824, 0.93435348f},
-         {2147483648, 0.94308240f}, {4294967296, 0.94739100f},
-         {8589934592, 0.94989600f}}};
+}  // namespace
 
-constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
-    kHopperScaledHbmBandwidthTable = {
-        {{8192, 0.00042359f},       {16384, 0.00090385f},
-         {32768, 0.00179577f},      {65536, 0.00351100f},
-         {131072, 0.00706376f},     {262144, 0.01412455f},
-         {524288, 0.02761073f},     {1048576, 0.05341375f},
-         {2097152, 0.10343583f},    {4194304, 0.19072761f},
-         {8388608, 0.31917596f},    {16777216, 0.47249365f},
-         {33554432, 0.58906066f},   {67108864, 0.69897562f},
-         {134217728, 0.78541428f},  {268435456, 0.82530600f},
-         {536870912, 0.88562244f},  {1073741824, 0.93248850f},
-         {2147483648, 0.94120000f}, {4294967296, 0.94550000f},
-         {8589934592, 0.94800000f}}};
-
-constexpr std::array<BandwidthEntry, kHbmBandwidthTableEntries>
-    kBlackwellScaledHbmBandwidthTable = {
-        {{8192, 0.00041057f},       {16384, 0.00080983f},
-         {32768, 0.00159736f},      {65536, 0.00315074f},
-         {131072, 0.00621472f},     {262144, 0.01009557f},
-         {524288, 0.01892165f},     {1048576, 0.03517364f},
-         {2097152, 0.06441370f},    {4194304, 0.11489171f},
-         {8388608, 0.19611710f},    {16777216, 0.31310696f},
-         {33554432, 0.45727190f},   {67108864, 0.60433204f},
-         {134217728, 0.72808478f},  {268435456, 0.81644540f},
-         {536870912, 0.87240125f},  {1073741824, 0.90518887f},
-         {2147483648, 0.92353306f}, {4294967296, 0.93353170f},
-         {8589934592, 0.93890402f}}};
-
-absl::Span<const BandwidthEntry> GetScaledHbmBandwidthTable(
-    se::CudaComputeCapability cuda_compute_capability) {
-  if (cuda_compute_capability.IsAtLeastBlackwell()) {
-    return kBlackwellScaledHbmBandwidthTable;
+HockneyBandwidthParams GetHockneyBandwidthParams(
+    const se::DeviceDescription& device_info) {
+  const se::CudaComputeCapability* cuda_cc =
+      device_info.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc == nullptr) {
+    // TODO(b/553466640): Add support for other architectures than NVIDIA.
+    return kGenericHockneyBandwidthParams;
   }
-  if (cuda_compute_capability.IsHopper()) {
-    return kHopperScaledHbmBandwidthTable;
+  if (cuda_cc->IsAtLeastBlackwell()) {
+    return kBlackwellHockneyBandwidthParams;
   }
-  return kAmpereScaledHbmBandwidthTable;
+  if (cuda_cc->IsHopper()) {
+    return kHopperHockneyBandwidthParams;
+  }
+  // Fall back to Ampere for older CUDA architectures (Volta, Turing, etc.).
+  return kAmpereHockneyBandwidthParams;
 }
 
-struct MemoryBandwidthSpec {
-  double l2_cache_bandwidth_bytes_per_sec;
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table;
-};
+namespace {
 
-MemoryBandwidthSpec GetMemoryBandwidthSpec(
-    const se::DeviceDescription& device_info) {
-  double device_memory_bandwidth_bytes_per_sec =
+double GetL2CacheBandwidth(const se::DeviceDescription& device_info) {
+  const double device_memory_bandwidth_bytes_per_sec =
       static_cast<double>(device_info.memory_bandwidth());
 
   // L2 cache bandwidth scales proportionally to memory bandwidth relative to
@@ -144,15 +108,10 @@ MemoryBandwidthSpec GetMemoryBandwidthSpec(
   // Peak memory bandwidth of H100 SXM in bytes/s (3352.32 GB/s) from
   // xla/backends/gpu/target_config/specs/h100_sxm.txtpb:L26.
   constexpr double kH100SxmPeakMemoryBandwidthBytesPerSec = 3352.32 * 1e9;
-  double bandwidth_scale = device_memory_bandwidth_bytes_per_sec /
-                           kH100SxmPeakMemoryBandwidthBytesPerSec;
+  const double bandwidth_scale = device_memory_bandwidth_bytes_per_sec /
+                                 kH100SxmPeakMemoryBandwidthBytesPerSec;
 
-  return MemoryBandwidthSpec{
-      /*l2_cache_bandwidth_bytes_per_sec=*/kH100L2CacheBandwidthBytesPerSec *
-          bandwidth_scale,
-      /*hbm_bandwidth_table=*/
-      GetScaledHbmBandwidthTable(device_info.cuda_compute_capability()),
-  };
+  return kH100L2CacheBandwidthBytesPerSec * bandwidth_scale;
 }
 
 int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
@@ -306,8 +265,7 @@ absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
 absl::StatusOr<absl::Duration> CalculateL2Time(
     int64_t dot_k, int64_t tile_k, const se::DeviceDescription& device_info,
     int64_t l2_bytes_read, bool is_tma_allowed) {
-  double l2_cache_bandwidth_bytes_per_sec =
-      GetMemoryBandwidthSpec(device_info).l2_cache_bandwidth_bytes_per_sec;
+  double l2_cache_bandwidth_bytes_per_sec = GetL2CacheBandwidth(device_info);
   int64_t num_k_iters = CeilOfRatio<int64_t>(dot_k, tile_k);
 
   // Empirical overheads per K-dimension iteration.
@@ -326,34 +284,31 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   return absl::Seconds(base_time_seconds + num_k_iters * k_loop_overhead);
 }
 
-// Returns the effective HBM bandwidth in bytes per second for a given dma_size.
-// dma_size is the total amount of data transferred to/from HBM in bytes.
+float EvaluateHockneyBandwidthFraction(int64_t dma_size,
+                                       const HockneyBandwidthParams& params,
+                                       double peak_bandwidth_bytes_per_sec) {
+  auto is_positive_finite = [](double val) {
+    return std::isfinite(val) && val > 0.0;
+  };
+  if (dma_size <= 0 || !is_positive_finite(peak_bandwidth_bytes_per_sec) ||
+      !is_positive_finite(params.eta_max) ||
+      !is_positive_finite(params.t0_sec)) {
+    return 0.0f;
+  }
+  const double denom =
+      dma_size + params.eta_max * params.t0_sec * peak_bandwidth_bytes_per_sec;
+  return std::min(static_cast<float>((params.eta_max * dma_size) / denom),
+                  1.0f);
+}
+
 float GetEffectiveHbmBandwidth(int64_t dma_size,
                                const se::DeviceDescription& device_info) {
-  MemoryBandwidthSpec spec = GetMemoryBandwidthSpec(device_info);
-  absl::Span<const BandwidthEntry> hbm_bandwidth_table =
-      spec.hbm_bandwidth_table;
-  float peak_hbm_bandwidth = static_cast<float>(device_info.memory_bandwidth());
-
-  if (dma_size <= hbm_bandwidth_table.front().dma_size_bytes) {
-    return hbm_bandwidth_table.front().bandwidth_fraction * peak_hbm_bandwidth;
-  }
-  if (dma_size >= hbm_bandwidth_table.back().dma_size_bytes) {
-    return hbm_bandwidth_table.back().bandwidth_fraction * peak_hbm_bandwidth;
-  }
-
-  auto it2 = std::lower_bound(
-      hbm_bandwidth_table.begin(), hbm_bandwidth_table.end(), dma_size,
-      [](const BandwidthEntry& a, int64_t b) { return a.dma_size_bytes < b; });
-  auto it1 = it2 - 1;
-
-  // Linear interpolation between the two entries in the lookup table. std::lerp
-  // is not used as it is only available since C++20.
-  float a = it1->bandwidth_fraction;
-  float b = it2->bandwidth_fraction;
-  float t = (dma_size - it1->dma_size_bytes) /
-            static_cast<float>(it2->dma_size_bytes - it1->dma_size_bytes);
-  return (a + t * (b - a)) * peak_hbm_bandwidth;
+  const double peak_bandwidth =
+      static_cast<double>(device_info.memory_bandwidth());
+  return static_cast<float>(
+      EvaluateHockneyBandwidthFraction(
+          dma_size, GetHockneyBandwidthParams(device_info), peak_bandwidth) *
+      peak_bandwidth);
 }
 
 HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
