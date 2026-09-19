@@ -4370,6 +4370,7 @@ py_library(
     strict_deps = True,
     deps = [
         ":array_ops",
+        ":array_ops_gen",
         ":array_ops_stack",
         ":candidate_sampling_ops",
         ":cond",

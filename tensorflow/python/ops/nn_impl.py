@@ -31,6 +31,7 @@ from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import ctc_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import linalg_ops
@@ -496,10 +497,19 @@ def swish(features, beta=1.0):
           sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
 
       activation_grad = sigmoid_features + logits * sigmoid_grad
-      beta_grad = math_ops.reduce_sum(
-          dy * math_ops.square(features) * sigmoid_grad
-      )
-      return (dy * activation_grad, beta_grad)
+      # Undo broadcasting separately for each input to the custom gradient.
+      features_shape = array_ops.shape(features)
+      beta_shape = array_ops.shape(beta)
+      features_axes, beta_axes = gen_array_ops.broadcast_gradient_args(
+          features_shape, beta_shape)
+      features_grad = array_ops.reshape(
+          math_ops.reduce_sum(dy * activation_grad, features_axes),
+          features_shape)
+      beta_grad = array_ops.reshape(
+          math_ops.reduce_sum(
+              dy * math_ops.square(features) * sigmoid_grad, beta_axes),
+          beta_shape)
+      return (features_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
 
