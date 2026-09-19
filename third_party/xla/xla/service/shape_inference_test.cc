@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -3071,6 +3072,58 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
   ASSERT_FALSE(inferred_shape_error3.ok());
   ASSERT_THAT(inferred_shape_error3.status().message(),
               HasSubstr("Expected array argument"));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleRotate) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(
+                  input_shape, {0, 1}, shuffle::MakeRotateMode({2, 5})),
+              absl_testing::IsOkAndHolds(input_shape));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleInvalidDimension) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(
+                  input_shape, {0, 2}, shuffle::MakeRotateMode({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(
+                  input_shape, {0, -1}, shuffle::MakeRotateMode({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(
+                  input_shape, {0, 0}, shuffle::MakeRotateMode({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("duplicated")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, 1},
+                                                shuffle::MakeRotateMode({2})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("dimensions and shifts must "
+                                               "have the same size")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleWithoutMode) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(
+      ShapeInference::InferShuffleShape(input_shape, {0, 1}, ShuffleMode()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must specify a mode")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleWithoutDimensions) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(
+      ShapeInference::InferShuffleShape(input_shape, {},
+                                        shuffle::MakeRotateMode({})),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must shuffle at least one dimension")));
 }
 
 TEST_F(ShapeInferenceTest, Call) {

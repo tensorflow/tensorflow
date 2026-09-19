@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1890,6 +1891,71 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         op->setAttr(attr.getName(), attr.getValue());
       }
       return op.getOperation();
+    }
+    case HloOpcode::kShuffle: {
+      const HloShuffleInstruction* shuffle_instruction =
+          Cast<HloShuffleInstruction>(instruction);
+      const Shape& result_shape = shuffle_instruction->shape();
+      if (!result_shape.is_static()) {
+        return InvalidArgument(
+            "Importing a shuffle of a dynamically shaped operand is not "
+            "supported, got %s",
+            ShapeUtil::HumanString(result_shape));
+      }
+      int64_t rank = result_shape.dimensions().size();
+      mlir::Value current_val = operands[0];
+
+      switch (shuffle_instruction->mode()) {
+        case ShuffleMode::kRotate:
+          // Rotating a dimension by `shift` is equivalent to
+          // concat(dim[shift:], dim[:shift])
+          for (const auto& [_, shift, dim] :
+               llvm::enumerate(shuffle_instruction->rotate().shifts(),
+                               shuffle_instruction->dimensions())) {
+            int64_t dim_size = result_shape.dimensions(dim);
+            int64_t norm_shift = shuffle::NormalizeShift(shift, dim_size);
+
+            // 1. slice1 = a[norm_shift:]
+            llvm::SmallVector<int64_t> slice1_starts(rank, 0);
+            slice1_starts[dim] = norm_shift;
+            llvm::SmallVector<int64_t> slice1_limits(
+                result_shape.dimensions().begin(),
+                result_shape.dimensions().end());
+
+            // 2. slice2 = a[:norm_shift]
+            llvm::SmallVector<int64_t> slice2_starts(rank, 0);
+            llvm::SmallVector<int64_t> slice2_limits(
+                result_shape.dimensions().begin(),
+                result_shape.dimensions().end());
+            slice2_limits[dim] = norm_shift;
+
+            llvm::SmallVector<int64_t> strides(rank, 1);
+
+            auto slice1 = mlir::stablehlo::SliceOp::create(
+                *func_builder, loc, current_val, ConvertArray(slice1_starts),
+                ConvertArray(slice1_limits), ConvertArray(strides));
+            auto slice2 = mlir::stablehlo::SliceOp::create(
+                *func_builder, loc, current_val, ConvertArray(slice2_starts),
+                ConvertArray(slice2_limits), ConvertArray(strides));
+
+            // 3. concatenate([slice1, slice2], dimension=dim)
+            auto concat = mlir::stablehlo::ConcatenateOp::create(
+                *func_builder, loc,
+                llvm::ArrayRef<mlir::Value>{slice1.getResult(),
+                                            slice2.getResult()},
+                builder_->getI64IntegerAttr(dim));
+            current_val = concat.getResult();
+          }
+          break;
+        case ShuffleMode::MODE_NOT_SET:
+          return InvalidArgument("Unsupported shuffle mode");
+      }
+
+      mlir::Operation* op = current_val.getDefiningOp();
+      for (const auto& attr : attributes) {
+        op->setAttr(attr.getName(), attr.getValue());
+      }
+      return op;
     }
     case HloOpcode::kRng: {
       auto shape = mlir::stablehlo::ConstantOp::create(
