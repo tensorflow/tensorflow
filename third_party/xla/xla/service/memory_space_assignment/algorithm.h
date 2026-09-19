@@ -380,6 +380,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Testing wrapper for FindAliases.
+  static void FindAliasesForTesting(
+      std::vector<AllocationValue>* allocation_values,
+      bool has_async_pipelined_while_loops = false);
+
   // Block prefetching is an MSA feature that allows processing all prefetches
   // in one pass within a block of memory space in the alternate memory. This
   // guarantees FIFO ordering of all prefetches and allows for more aggressive
@@ -478,10 +483,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   virtual void CreateAllocationValuesFromColocatedIntervals(
       absl::Span<const MsaBufferInterval* const> colocated_intervals,
       std::vector<AllocationValue>& allocation_values);
-
-  // Go through all the uses in the AllocationValues and find the aliasing
-  // positions.
-  void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
   AllocationSequence* allocations() { return allocations_; }
   const Options& options() const { return options_; }
