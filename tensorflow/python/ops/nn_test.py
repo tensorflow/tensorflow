@@ -1080,7 +1080,7 @@ class GeluTest(test_lib.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class SwishTest(test_lib.TestCase):
+class SwishTest(test_lib.TestCase, parameterized.TestCase):
 
   def testValues(self):
     np_values = np.array(
@@ -1135,6 +1135,37 @@ class SwishTest(test_lib.TestCase):
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           f, [x_tf])
       self.assertAllClose(theoretical, numerical)
+
+  @parameterized.product(
+      shapes=[
+          ((2, 3), ()),      # Scalar beta.
+          ((2, 3), (3,)),    # Vector beta.
+          ((2, 3), (1, 3)),  # Singleton dimension in beta.
+          ((2, 3), (2, 3)),  # Matching shapes.
+          ((3,), (2, 3)),    # Broadcast features.
+          ((2, 1), (1, 3)),  # Broadcast both inputs.
+          ((), (3,)),        # Scalar features.
+          ((0, 3), (3,)),    # Empty output.
+      ],
+      dtype=[dtypes.float32, dtypes.float64],
+      dynamic_shapes=[False, True],
+  )
+  def testBroadcastGradients(self, shapes, dtype, dynamic_shapes):
+    features_shape, beta_shape = shapes
+    features = constant_op.constant(
+        np.linspace(-1.0, 1.0, math.prod(features_shape)).reshape(
+            features_shape), dtype=dtype)
+    beta = constant_op.constant(
+        np.linspace(0.5, 1.5, math.prod(beta_shape)).reshape(beta_shape),
+        dtype=dtype)
+    swish = nn_impl.swish
+    if dynamic_shapes:
+      swish = def_function.function(
+          swish, input_signature=[tensor_spec.TensorSpec(None, dtype)] * 2)
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        swish, [features, beta])
+    self.assertAllClose(theoretical[0], numerical[0], atol=1e-4)
+    self.assertAllClose(theoretical[1], numerical[1], atol=1e-4)
 
 
 class MomentsTest(test_lib.TestCase):
