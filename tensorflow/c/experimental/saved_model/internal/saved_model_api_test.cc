@@ -16,15 +16,19 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/internal/saved_model_api_type.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
@@ -37,12 +41,12 @@ limitations under the License.
 #include "tensorflow/c/tf_shape.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace {
 
@@ -519,6 +523,65 @@ TEST_P(CSavedModelAPITest, LoadSavedModelWithUninitializedVariable) {
             model_api->GetVariable("sub_module.uninitialized_variable",
                                    &uninitialized_variable));
   ASSERT_EQ(tensorflow::DT_INT64, uninitialized_variable->dtype());
+
+  TF_DeleteSavedModel(saved_model);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
+TEST(SavedModelAPINegativeTest, GetFunctionsInvalidNodeId) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetTfrt(opts, false);
+
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::string model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(),
+      "c/experimental/saved_model/internal/testdata/UninitializedVariable");
+
+  TF_SavedModel* saved_model =
+      TF_LoadSavedModel(model_dir.c_str(), ctx, status);
+  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+  ASSERT_NE(saved_model, nullptr);
+
+  tensorflow::TFSavedModelAPI* model_api =
+      absl::down_cast<tensorflow::TFSavedModelAPI*>(
+          tensorflow::unwrap(saved_model));
+
+  absl::flat_hash_map<std::string, tensorflow::ConcreteFunction*> functions;
+
+  // Negative indices should return OutOfRangeError.
+  EXPECT_EQ(model_api->GetFunctions(-1, &functions).code(),
+            absl::StatusCode::kOutOfRange);
+  EXPECT_TRUE(functions.empty());
+
+  EXPECT_EQ(model_api->GetFunctions(std::numeric_limits<int>::min(), &functions)
+                .code(),
+            absl::StatusCode::kOutOfRange);
+  EXPECT_TRUE(functions.empty());
+
+  // Exact upper boundary (node_id == nodes.size()) and max int should return
+  // OutOfRangeError.
+  const int num_nodes =
+      model_api->GetBundle()->saved_object_graph().nodes().size();
+  EXPECT_EQ(model_api->GetFunctions(num_nodes, &functions).code(),
+            absl::StatusCode::kOutOfRange);
+  EXPECT_TRUE(functions.empty());
+
+  EXPECT_EQ(model_api->GetFunctions(std::numeric_limits<int>::max(), &functions)
+                .code(),
+            absl::StatusCode::kOutOfRange);
+  EXPECT_TRUE(functions.empty());
+
+  // Null functions output map pointer should return InvalidArgumentError.
+  EXPECT_EQ(model_api->GetFunctions(0, nullptr).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  // Valid in-bounds node_id should succeed.
+  EXPECT_TRUE(model_api->GetFunctions(0, &functions).ok());
 
   TF_DeleteSavedModel(saved_model);
   TF_DeleteStatus(status);
