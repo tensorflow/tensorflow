@@ -21,8 +21,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/stream_attribute_async_wrapper.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -60,7 +63,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
   // CHECK: %lhs.1 = f32[] constant(42)
-  // CHECK: %call-start = ((f32[]), f32[]) call-start(%lhs.1), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
+  // CHECK: %call-start = ((f32[]), f32[]) call-start(%lhs.1), async_execution_thread="parallel", to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done = f32[] call-done(%call-start), frontend_attributes={_xla_stream_annotation="1"}, backend_config={"operation_queue_id":"0","force_earliest_schedule":false
   )");
   ASSERT_OK(filecheck_result.status());
@@ -105,9 +108,9 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {
   ASSERT_TRUE(mutated);
 
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
-  // CHECK: %call-start = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), to_apply=%gemm1, frontend_attributes={_scheduling_group_id="0",_xla_stream_annotation="2"}
+  // CHECK: %call-start = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), async_execution_thread="parallel", to_apply=%gemm1, frontend_attributes={_scheduling_group_id="0",_xla_stream_annotation="2"}
   // CHECK: %call-done = f32[2048,2048]{1,0} call-done(%call-start), frontend_attributes={_scheduling_group_id="0",_xla_stream_annotation="2"}, backend_config={"operation_queue_id":"0","force_earliest_schedule":false
-  // CHECK: %call-start.1 = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), to_apply=%gemm2, frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}
+  // CHECK: %call-start.1 = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), async_execution_thread="parallel", to_apply=%gemm2, frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done.1 = f32[2048,2048]{1,0} call-done(%call-start.1), frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}, backend_config={"operation_queue_id":"0","force_earliest_schedule":false
   )");
   ASSERT_OK(filecheck_result.status());
@@ -173,7 +176,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
   ASSERT_TRUE(mutated);
 
   absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
-  // CHECK: %call-start = {{.*}} call-start(%a), to_apply=
+  // CHECK: %call-start = {{.*}} call-start(%a), async_execution_thread="parallel", to_apply=
   // CHECK-SAME: frontend_attributes={_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done = f32[4]{0} call-done(%call-start)
   // CHECK-SAME: frontend_attributes={_xla_stream_annotation="1"}
@@ -432,6 +435,52 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
   ASSERT_FALSE(mutated);
   // Verify the module still has the original custom-call directly in ENTRY.
   EXPECT_NE(FindInstruction(module.get(), "cc"), nullptr);
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       AsyncPairUsesParallelExecutionThread) {
+  // Verify that the async-start/done pair created by the wrapper uses
+  // async_execution_thread="parallel" (StreamAttributeAsyncWrapper::
+  // kParallelExecutionThread) rather than the old "main" thread.  The parallel
+  // thread is what causes ExecutionStreamAssignment to route the op to a
+  // communication stream so it can overlap with compute ops on the main stream.
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  ENTRY %main (a: f32[4]) -> f32[4] {
+    %a = f32[4]{0} parameter(0)
+    ROOT %cc = f32[4]{0} custom-call(%a), custom_call_target="te_op",
+      frontend_attributes={_xla_stream_annotation="collective",inlineable="false"}
+  })";
+
+  auto debug_options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_stream_annotation(true);
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_debug_options(debug_options);
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  // The printed form of async-start only emits async_execution_thread when it
+  // differs from "main", so presence of the attribute confirms the change.
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(module->ToString({}), R"(
+  // CHECK: call-start{{.*}}async_execution_thread="parallel"
+  )");
+  ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(*filecheck_result);
+
+  // Also verify programmatically: the start instruction's execution thread and
+  // the wrapped computation's thread must both equal kParallelExecutionThread.
+  const HloInstruction* call_start =
+      FindInstruction(module.get(), "call-start");
+  ASSERT_NE(call_start, nullptr);
+  const auto* async_start = DynCast<HloAsyncStartInstruction>(call_start);
+  ASSERT_NE(async_start, nullptr);
+  EXPECT_EQ(async_start->async_execution_thread(),
+            HloInstruction::kParallelExecutionThread);
+  EXPECT_EQ(async_start->async_wrapped_computation()->execution_thread(),
+            HloInstruction::kParallelExecutionThread);
 }
 
 }  // namespace

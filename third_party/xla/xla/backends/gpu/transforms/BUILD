@@ -1855,6 +1855,7 @@ cc_library(
     srcs = ["explicit_stream_annotation_async_wrapper.cc"],
     hdrs = ["explicit_stream_annotation_async_wrapper.h"],
     deps = [
+        ":stream_attribute_async_wrapper",
         "//xla:side_effect_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1877,6 +1878,7 @@ xla_cc_test(
     srcs = ["explicit_stream_annotation_async_wrapper_test.cc"],
     deps = [
         ":explicit_stream_annotation_async_wrapper",
+        ":stream_attribute_async_wrapper",
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
