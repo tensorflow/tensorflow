@@ -15,20 +15,69 @@ limitations under the License.
 
 #include "xla/tools/matmul_perf_table_gen.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <numeric>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
+
+class FakeKernelTracer final : public HloOpProfiler::KernelTracer {
+ public:
+  void AddKernelTimeNs(uint64_t kernel_time_ns) {
+    kernel_times_ns_.push_back(kernel_time_ns);
+  }
+
+  uint64_t getMedianKernelTimeNs() && override {
+    std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
+    size_t i = kernel_times_ns_.size() / 2;
+    if (kernel_times_ns_.size() % 2 != 0) {
+      return kernel_times_ns_[i];
+    }
+    return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
+  }
+
+  uint64_t getSumKernelTimeNs() && override {
+    return std::accumulate(kernel_times_ns_.begin(), kernel_times_ns_.end(),
+                           uint64_t{0});
+  }
+
+ private:
+  std::vector<uint64_t> kernel_times_ns_;
+};
+
+TEST(KernelExecutionTimerTest, MeasuresCompleteMultiKernelExecutions) {
+  FakeKernelTracer* active_tracer;
+  internal::KernelExecutionTimer timer(
+      [&]() -> std::unique_ptr<HloOpProfiler::KernelTracer> {
+        auto tracer = std::make_unique<FakeKernelTracer>();
+        active_tracer = tracer.get();
+        return tracer;
+      });
+
+  uint64_t measured_time_ns = timer.MeasureRepeated(10, [&](int) {
+    active_tracer->AddKernelTimeNs(25);
+    active_tracer->AddKernelTimeNs(75);
+    return absl::OkStatus();
+  });
+
+  EXPECT_EQ(measured_time_ns, 100);
+}
 
 class MatmulPerfTableGenTest : public HloPjRtGpuTestBase {
   void SetUp() override {
