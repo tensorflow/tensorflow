@@ -2357,5 +2357,70 @@ TEST_F(XlaCompilerTest, DeadNodePruning) {
                                         name_attr, args, &result));
 }
 
+TEST_F(XlaCompilerTest, CheckNumericsGpuAndCpu) {
+  auto build_graph = []() {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_FLOAT, 0);
+    auto id = ops::Add(scope.WithOpName("Id"), a, a);
+    auto check1 =
+        ops::CheckNumerics(scope.WithOpName("CheckSharded"), id,
+                           "msg \"quote\" \\slash\\ \nnewline\rreturn\ttab");
+    auto check2 =
+        ops::CheckNumerics(scope.WithOpName("CheckUnsharded"), check1, "plain");
+    auto ret = ops::_Retval(scope.WithOpName("Ret"), check2, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_EXPECT_OK(scope.ToGraph(graph.get()));
+
+    auto node_name_index = graph->BuildNodeNameIndex();
+    Node* id_node = node_name_index["Id"];
+    xla::Array<int64_t> tile_assignment({2});
+    tile_assignment.FillIota(0);
+    xla::HloSharding sharding = xla::HloSharding::Tile(tile_assignment);
+    id_node->AddAttr("_XlaSharding", sharding.ToProto().SerializeAsString());
+    return graph;
+  };
+
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_FLOAT;
+  args[0].shape = TensorShape({2});
+
+  XlaCompiler::Options gpu_options = DefaultOptions();
+  gpu_options.device_type = DeviceType(DEVICE_GPU_XLA_JIT);
+  XlaCompiler gpu_compiler(gpu_options);
+  XlaCompiler::CompilationResult gpu_result;
+  TF_ASSERT_OK(gpu_compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                         build_graph(), args, &gpu_result));
+
+  int gpu_assert_count = 0;
+  for (const auto& comp : gpu_result.computation->proto().computations()) {
+    for (const auto& inst : comp.instructions()) {
+      if (inst.opcode() == "custom-call" &&
+          inst.custom_call_target() == "__xla_gpu_assert") {
+        gpu_assert_count++;
+      }
+    }
+  }
+  EXPECT_EQ(gpu_assert_count, 2);
+
+  XlaCompiler::Options cpu_options = DefaultOptions();
+  cpu_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  XlaCompiler cpu_compiler(cpu_options);
+  XlaCompiler::CompilationResult cpu_result;
+  TF_ASSERT_OK(cpu_compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                         build_graph(), args, &cpu_result));
+
+  int cpu_assert_count = 0;
+  for (const auto& comp : cpu_result.computation->proto().computations()) {
+    for (const auto& inst : comp.instructions()) {
+      if (inst.opcode() == "custom-call" &&
+          inst.custom_call_target() == "__xla_gpu_assert") {
+        cpu_assert_count++;
+      }
+    }
+  }
+  EXPECT_EQ(cpu_assert_count, 0);
+}
+
 }  // namespace
 }  // namespace tensorflow
