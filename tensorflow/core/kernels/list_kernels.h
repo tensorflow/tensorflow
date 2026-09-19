@@ -1017,7 +1017,7 @@ class TensorListScatter : public OpKernel {
                       absl::StrCat("TensorListScatter index ", highest_index,
                                    " is too large and causes integer overflow.")));
       const size_t target_size = std::max(
-          static_cast<size_t>(highest_index) + 1,
+          static_cast<size_t>(highest_index + 1),
           num_elements > 0 ? static_cast<size_t>(num_elements) : 0);
       output_list.tensors().resize(target_size, Tensor(DT_INVALID));
     }
