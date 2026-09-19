@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/errors.h"
@@ -5042,6 +5043,42 @@ TEST_P(HloEvaluatorBf16Test, Reverse) {
     {{{5.0f}, {6.0f}},
      {{3.0f}, {4.0f}},
      {{1.0f}, {2.0f}}},
+  });
+  // clang-format on
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorBf16Test, ShuffleRotate) {
+  HloComputation::Builder b(TestName());
+
+  // Input shape is float[4x3x1x1].
+  // clang-format off
+  Array4D<float> input({
+    {{{1.0f}}, {{2.0f}}, {{3.0f}}},
+    {{{4.0f}}, {{5.0f}}, {{6.0f}}},
+    {{{7.0f}}, {{8.0f}}, {{9.0f}}},
+    {{{10.0f}}, {{11.0f}}, {{12.0f}}},
+  });
+  // clang-format on
+  auto operand_literal = LiteralUtil::CreateR4FromArray4D<float>(input);
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 1, 1});
+  b.AddInstruction(HloInstruction::CreateShuffle(
+      shape, operand, /*dimensions=*/{0, 1},
+      shuffle::MakeRotateMode(/*shifts=*/{1, 2})));
+  m_->AddEntryComputation(b.Build());
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+
+  // clang-format off
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>({
+    {{{6.0f}}, {{4.0f}}, {{5.0f}}},
+    {{{9.0f}}, {{7.0f}}, {{8.0f}}},
+    {{{12.0f}}, {{10.0f}}, {{11.0f}}},
+    {{{3.0f}}, {{1.0f}}, {{2.0f}}},
   });
   // clang-format on
 
