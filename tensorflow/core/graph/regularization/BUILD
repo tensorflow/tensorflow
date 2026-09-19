@@ -49,6 +49,7 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 
