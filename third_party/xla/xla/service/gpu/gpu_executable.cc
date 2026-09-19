@@ -55,7 +55,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.pb.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -108,6 +112,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_id.h"
@@ -386,6 +391,19 @@ static absl::StatusOr<std::vector<ShapedSlice>> GetModuleOutputSlices(
   return output_slices;
 }
 
+static void AttachKernelSpecTable(const ThunkSequence& thunks,
+                                  KernelSpecTable* table) {
+  for (const std::unique_ptr<Thunk>& thunk : thunks) {
+    thunk->Walk([&](Thunk* nested) {
+      if (auto* ck = dynamic_cast<CustomKernelThunk*>(nested)) {
+        ck->mutable_custom_kernel().set_kernel_spec_table(table);
+      } else if (auto* dsf = dynamic_cast<DynamicSliceFusionV2Thunk*>(nested)) {
+        AttachKernelSpecTable(dsf->thunks(), table);
+      }
+    });
+  }
+}
+
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
   if (params.buffer_allocations_debug_summary.empty()) {
@@ -396,6 +414,16 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
   int64_t next_idx = params.allocations.size();
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
+
+  // Hoist duplicated kernel loader specs into a side table so that a kernel
+  // invoked several times is serialized only once. Attaching the table before
+  // calling `ToProto()` lets each `CustomKernel` intern its spec directly into
+  // the table during serialization in deterministic schedule order.
+  auto kernel_spec_table = std::make_unique<KernelSpecTable>();
+  if (params.debug_options
+          .xla_gpu_experimental_deduplicate_custom_kernel_specs()) {
+    AttachKernelSpecTable(params.executable->thunks(), kernel_spec_table.get());
+  }
 
   // TODO(b/461380690): Remove this once we have a better way to distinguish
   // between compiler-generated and runtime-loaded GPU executables.
@@ -442,7 +470,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.alias_info), std::move(params.debug_options),
       std::move(params.constants), std::move(params.output_info),
       params.enable_debug_info_manager, std::move(params.module_stats),
-      std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
+      std::move(thunk_sequence_proto), std::move(kernel_spec_table),
+      std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
       std::move(params.buffer_allocations_debug_summary),
@@ -462,6 +491,7 @@ GpuExecutable::GpuExecutable(
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+    std::unique_ptr<KernelSpecTable> kernel_spec_table,
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
@@ -501,6 +531,7 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
+      kernel_spec_table_(std::move(kernel_spec_table)),
       executable_abi_version_(std::move(executable_abi_version)),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
@@ -1369,6 +1400,11 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
     *proto.add_thunks() = thunk_proto;
   }
 
+  if (!kernel_spec_table_->empty()) {
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec_table(),
+                     kernel_spec_table_->ToProto());
+  }
+
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
 
@@ -1477,12 +1513,17 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
+
+  ABSL_ASSIGN_OR_RETURN(
+      KernelSpecTable kernel_spec_table,
+      KernelSpecTable::FromProto(proto.kernel_spec_table(), symbol_resolver));
+
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
-                                    params.debug_module.get(), platform_name,
-                                    gpu_compute_capability, symbol_resolver,
-                                    params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, params.allocations, params.debug_module.get(),
+          platform_name, gpu_compute_capability, symbol_resolver,
+          params.cpu_target_machine_options, &kernel_spec_table));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

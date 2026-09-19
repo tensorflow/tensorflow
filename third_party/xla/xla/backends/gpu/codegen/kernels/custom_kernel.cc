@@ -20,18 +20,38 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/backends/gpu/runtime/internable_kernel_loader_spec.h"
+#include "xla/backends/gpu/runtime/internable_kernel_loader_spec.pb.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
+                           se::BlockDim block_dims, se::ThreadDim thread_dims,
+                           size_t shared_memory_bytes)
+    : CustomKernel(std::move(name),
+                   InternableKernelLoaderSpec(std::move(kernel_spec)),
+                   block_dims, thread_dims, shared_memory_bytes) {}
+
+CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
+                           se::BlockDim block_dims, se::ThreadDim thread_dims,
+                           se::ClusterDim cluster_dims,
+                           size_t shared_memory_bytes)
+    : CustomKernel(std::move(name),
+                   InternableKernelLoaderSpec(std::move(kernel_spec)),
+                   block_dims, thread_dims, cluster_dims, shared_memory_bytes) {
+}
+
+CustomKernel::CustomKernel(std::string name,
+                           InternableKernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
                            size_t shared_memory_bytes)
     : name_(std::move(name)),
@@ -41,7 +61,8 @@ CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
       cluster_dims_(std::nullopt),
       shared_memory_bytes_(shared_memory_bytes) {}
 
-CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
+CustomKernel::CustomKernel(std::string name,
+                           InternableKernelLoaderSpec kernel_spec,
                            se::BlockDim block_dims, se::ThreadDim thread_dims,
                            se::ClusterDim cluster_dims,
                            size_t shared_memory_bytes)
@@ -55,7 +76,7 @@ CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
 absl::string_view CustomKernel::name() const { return name_; }
 
 const se::KernelLoaderSpec& CustomKernel::kernel_spec() const {
-  return kernel_spec_;
+  return kernel_spec_.kernel_spec();
 }
 
 se::BlockDim CustomKernel::block_dims() const { return block_dims_; }
@@ -86,7 +107,16 @@ std::string CustomKernel::ToString() const {
 absl::StatusOr<CustomKernelProto> CustomKernel::ToProto() const {
   CustomKernelProto proto;
   proto.set_name(name_);
-  ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec(), kernel_spec_.ToProto());
+  ABSL_ASSIGN_OR_RETURN(InternableKernelLoaderSpecProto spec_proto,
+                   kernel_spec_.ToProto());
+  // Populate the legacy `kernel_spec` field whenever the spec is not interned
+  // so that serialized executables remain forward-compatible with older
+  // runtimes that do not yet recognize `internable_kernel_spec`.
+  if (spec_proto.has_kernel_spec()) {
+    *proto.mutable_kernel_spec() = std::move(*spec_proto.mutable_kernel_spec());
+  } else {
+    *proto.mutable_internable_kernel_spec() = std::move(spec_proto);
+  }
   *proto.mutable_block_dims() = block_dims_.ToProto();
   *proto.mutable_thread_dims() = thread_dims_.ToProto();
   if (cluster_dims_.has_value()) {
@@ -98,11 +128,21 @@ absl::StatusOr<CustomKernelProto> CustomKernel::ToProto() const {
 
 absl::StatusOr<CustomKernel> CustomKernel::FromProto(
     const CustomKernelProto& proto,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
-  ABSL_ASSIGN_OR_RETURN(
-      se::KernelLoaderSpec kernel_spec,
-      se::KernelLoaderSpec::FromProto(proto.kernel_spec(), symbol_resolver));
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    const KernelSpecTable* absl_nullable kernel_spec_table) {
+  ABSL_ASSIGN_OR_RETURN(InternableKernelLoaderSpec kernel_spec,
+                   [&]() -> absl::StatusOr<InternableKernelLoaderSpec> {
+                     if (proto.has_internable_kernel_spec()) {
+                       return InternableKernelLoaderSpec::FromProto(
+                           proto.internable_kernel_spec(), symbol_resolver,
+                           kernel_spec_table);
+                     }
+                     ABSL_ASSIGN_OR_RETURN(
+                         se::KernelLoaderSpec raw_spec,
+                         se::KernelLoaderSpec::FromProto(proto.kernel_spec(),
+                                                         symbol_resolver));
+                     return InternableKernelLoaderSpec(std::move(raw_spec));
+                   }());
   ABSL_ASSIGN_OR_RETURN(se::BlockDim block_dims,
                    se::BlockDim::FromProto(proto.block_dims()));
   ABSL_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
