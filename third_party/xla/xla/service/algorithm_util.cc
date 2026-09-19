@@ -282,6 +282,10 @@ bool IsSupportedDotAlgorithmOnGpu(
 
   const bool is_sycl = gpu_compute_capability.IsOneAPI();
 
+  const bool has_nanoo_fp8_support =
+      gpu_compute_capability.IsRocm() &&
+      gpu_compute_capability.rocm_compute_capability()->has_nanoo_fp8_support();
+
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
@@ -290,7 +294,8 @@ bool IsSupportedDotAlgorithmOnGpu(
       }
       if (output_storage_type != BF16 && output_storage_type != F16 &&
           output_storage_type != F32 && output_storage_type != F8E4M3FN &&
-          output_storage_type != F8E5M2) {
+          output_storage_type != F8E5M2 && output_storage_type != F8E4M3FNUZ &&
+          output_storage_type != F8E5M2FNUZ) {
         return false;
       }
       // Other F8 types are actually not supported by NVIDIA GPUs.
@@ -301,6 +306,17 @@ bool IsSupportedDotAlgorithmOnGpu(
       if (lhs_storage_type == F8E4M3FN &&
           (rhs_storage_type == F8E5M2 || rhs_storage_type == F8E4M3FN)) {
         return true;
+      }
+      // FNUZ types support (ROCm)
+      if (has_nanoo_fp8_support) {
+        if (lhs_storage_type == F8E5M2FNUZ && rhs_storage_type == F8E4M3FNUZ) {
+          return true;
+        }
+        if (lhs_storage_type == F8E4M3FNUZ &&
+            (rhs_storage_type == F8E5M2FNUZ ||
+             rhs_storage_type == F8E4M3FNUZ)) {
+          return true;
+        }
       }
       return false;
     case PrecisionConfig::ALG_DOT_F16_F16_F32:

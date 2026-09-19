@@ -197,6 +197,16 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
       GTEST_SKIP() << AlgorithmToString(params.algorithm)
                    << " not supported on MI200.";
     }
+    // FNUZ types are only supported on MI300 series
+    if (!rcc->has_nanoo_fp8_support() &&
+        (params.lhs_storage_type == F8E4M3FNUZ ||
+         params.lhs_storage_type == F8E5M2FNUZ ||
+         params.rhs_storage_type == F8E4M3FNUZ ||
+         params.rhs_storage_type == F8E5M2FNUZ ||
+         params.output_storage_type == F8E4M3FNUZ ||
+         params.output_storage_type == F8E5M2FNUZ)) {
+      GTEST_SKIP() << "FNUZ types only supported on MI300 series.";
+    }
   }
 
   if (is_algorithm_supported) {
@@ -235,6 +245,39 @@ INSTANTIATE_TEST_SUITE_P(
                    PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
             Values(F8E4M3FN), Values(F8E4M3FN),
             Values(F8E5M2, F8E4M3FN, F16, BF16, F32), Values(CC(8, 9)),
+            Values(SemanticVersion{6, 3, 0}),
+            Values(BackendRestriction::kNoRestriction),
+            Values(Sizes{32, 32}, Sizes{16, 2})),
+    TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    F8E4M3FNUZTests, DotAlgorithmSupportTest,
+    Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
+                   PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
+            Values(F8E4M3FNUZ), Values(F8E4M3FNUZ),
+            Values(F8E4M3FNUZ, F16, BF16, F32), Values(CC(8, 9)),
+            Values(SemanticVersion{6, 3, 0}),
+            Values(BackendRestriction::kNoRestriction),
+            Values(Sizes{32, 32}, Sizes{16, 2})),
+    TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    F8E5M2FNUZTests, DotAlgorithmSupportTest,
+    Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
+                   PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
+            Values(F8E5M2FNUZ), Values(F8E4M3FNUZ),
+            Values(F8E5M2FNUZ, F16, BF16, F32), Values(CC(8, 9)),
+            Values(SemanticVersion{6, 3, 0}),
+            Values(BackendRestriction::kNoRestriction),
+            Values(Sizes{32, 32}, Sizes{16, 2})),
+    TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    F8E4M3FNUZ_E5M2FNUZTests, DotAlgorithmSupportTest,
+    Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
+                   PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
+            Values(F8E4M3FNUZ), Values(F8E5M2FNUZ),
+            Values(F8E5M2FNUZ, F16, BF16, F32), Values(CC(8, 9)),
             Values(SemanticVersion{6, 3, 0}),
             Values(BackendRestriction::kNoRestriction),
             Values(Sizes{32, 32}, Sizes{16, 2})),
