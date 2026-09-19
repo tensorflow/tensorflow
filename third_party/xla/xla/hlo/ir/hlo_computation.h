@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -469,35 +471,41 @@ class HloComputation {
 
   tsl::gtl::iterator_range<xla::HloInstructionUnwrappingConstIterator>
   instructions() const {
-    const int end = instructions_.size();
+    const int end = instructions_->size();
     return {HloInstructionUnwrappingConstIterator(
-                HloInstructionConstIterator(&instructions_, 0, end)),
+                HloInstructionConstIterator(&instructions_.get(), 0, end)),
             HloInstructionUnwrappingConstIterator(
-                HloInstructionConstIterator(&instructions_, end, end))};
+                HloInstructionConstIterator(&instructions_.get(), end, end))};
   }
   tsl::gtl::iterator_range<xla::HloInstructionUnwrappingIterator>
   instructions() {
-    const int end = instructions_.size();
+    const int end = instructions_->size();
     return {HloInstructionUnwrappingIterator(
-                HloInstructionIterator(&instructions_, 0, end)),
+                HloInstructionIterator(&instructions_.get(), 0, end)),
             HloInstructionUnwrappingIterator(
-                HloInstructionIterator(&instructions_, end, end))};
+                HloInstructionIterator(&instructions_.get(), end, end))};
   }
   tsl::gtl::iterator_range<HloInstructionIterator> instructions_with_info() {
-    const int end = instructions_.size();
-    return {HloInstructionIterator(&instructions_, 0, end),
-            HloInstructionIterator(&instructions_, end, end)};
+    const int end = instructions_->size();
+    return {HloInstructionIterator(&instructions_.get(), 0, end),
+            HloInstructionIterator(&instructions_.get(), end, end)};
   }
   tsl::gtl::iterator_range<HloInstructionConstIterator> instructions_with_info()
       const {
-    const int end = instructions_.size();
-    return {HloInstructionConstIterator(&instructions_, 0, end),
-            HloInstructionConstIterator(&instructions_, end, end)};
+    const int end = instructions_->size();
+    return {HloInstructionConstIterator(&instructions_.get(), 0, end),
+            HloInstructionConstIterator(&instructions_.get(), end, end)};
   }
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
+  //
+  // The order is cached: repeated calls return a copy of the cached order
+  // instead of re-running the DFS until the graph changes. Every piece of
+  // state the order depends on is held in a PostOrderDependency, whose only
+  // mutable accessor invalidates the cache, so the cache can never be stale.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
+
   // Same as MakeInstructionPostOrder but starting at any instruction in the
   // computation, not just the root. Describes the corresponding subgraph.
   std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
@@ -1058,6 +1066,24 @@ class HloComputation {
       std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
+  // Computes the instruction post-order with a fresh DFS, bypassing (and not
+  // populating) the post-order cache.
+  std::vector<HloInstruction*> MakeInstructionPostOrderUncached() const;
+
+  // Returns the cached instruction post-order, computing it first if the cache
+  // is empty or stale. The returned snapshot stays valid across later graph
+  // mutations.
+  std::shared_ptr<const std::vector<HloInstruction*>>
+  GetOrComputeInstructionPostOrder() const;
+
+  // Records a mutation of state that the instruction post-order depends on;
+  // only reachable through PostOrderDependency::Mutate and
+  // HloInstruction::set_parent, which is what makes a stale cache impossible.
+  void InvalidateInstructionPostOrderCache() { ++graph_version_; }
+
+  template <typename T>
+  friend class PostOrderDependency;
+
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
       VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
@@ -1114,7 +1140,7 @@ class HloComputation {
   //
   // Note: removals from this vector must be stable because some users depend on
   // it. See the Cleanup() method for details on the two-stage removal process.
-  HloInstructionList instructions_;
+  PostOrderDependency<HloInstructionList> instructions_;
 
   // Number of not-marked-for-deletion entries in instructions_.
   int64_t instruction_count_;
@@ -1122,6 +1148,21 @@ class HloComputation {
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
   PtrVec<HloInstruction*> to_be_deleted_;
+
+  // Number of mutations recorded by InvalidateInstructionPostOrderCache. Only
+  // written by graph mutations, which are never concurrent with other access
+  // to the computation.
+  uint64_t graph_version_ = 0;
+
+  // Cache of the default instruction post-order (see
+  // MakeInstructionPostOrder) and the graph version it was computed at; the
+  // cache is valid iff that version is still current. The mutex makes
+  // concurrent const-qualified post-order queries safe.
+  mutable absl::Mutex post_order_cache_mutex_;
+  mutable std::shared_ptr<const std::vector<HloInstruction*>> post_order_cache_
+      ABSL_GUARDED_BY(post_order_cache_mutex_);
+  mutable uint64_t post_order_cache_version_
+      ABSL_GUARDED_BY(post_order_cache_mutex_) = 0;
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;
@@ -1210,6 +1251,20 @@ class HloComputation {
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
 };
+
+template <typename T>
+T& PostOrderDependency<T>::Mutate(HloInstruction* owner) {
+  if (HloComputation* computation = owner->parent(); computation != nullptr) {
+    computation->InvalidateInstructionPostOrderCache();
+  }
+  return value_;
+}
+
+template <typename T>
+T& PostOrderDependency<T>::Mutate(HloComputation* computation) {
+  computation->InvalidateInstructionPostOrderCache();
+  return value_;
+}
 
 template <typename HloInstructionPtr>
 absl::Status HloComputation::Accept(

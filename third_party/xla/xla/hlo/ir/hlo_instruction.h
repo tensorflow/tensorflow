@@ -170,7 +170,11 @@ class HloInstructionIteratorBase {
   int current_;
   int end_index_;
 };
-using HloInstructionIterator = HloInstructionIteratorBase<HloInstructionList>;
+// Both iterator flavors read through a const list: they never hand out mutable
+// access to the list entries, and the list itself is only writable through
+// PostOrderDependency::Mutate (see below).
+using HloInstructionIterator =
+    HloInstructionIteratorBase<const HloInstructionList>;
 using HloInstructionConstIterator =
     HloInstructionIteratorBase<const HloInstructionList>;
 
@@ -214,6 +218,34 @@ using HloInstructionUnwrappingIterator =
     HloInstructionUnwrappingIteratorBase<HloInstructionIterator>;
 using HloInstructionUnwrappingConstIterator =
     HloInstructionUnwrappingIteratorBase<HloInstructionConstIterator>;
+
+// Holds graph state that HloComputation::MakeInstructionPostOrder depends on:
+// an instruction's operands, users, control predecessors and parent, and a
+// computation's instruction list. The value can be read freely, but the only
+// way to obtain a mutable reference is Mutate(), which first invalidates the
+// cached post-order of the computation whose order depends on the value. Since
+// no other mutable access exists (the wrapper is not copyable or movable
+// either), no write to such state can leave a stale post-order cache behind.
+template <typename T>
+class PostOrderDependency {
+ public:
+  PostOrderDependency() = default;
+  PostOrderDependency(const PostOrderDependency&) = delete;
+  PostOrderDependency& operator=(const PostOrderDependency&) = delete;
+
+  const T& get() const { return value_; }
+  const T* operator->() const { return &value_; }
+
+  // Mutable access to state held by `owner`. Invalidates the post-order cache
+  // of owner->parent(), if any.
+  T& Mutate(HloInstruction* owner);
+
+  // Mutable access to state held directly by `computation`.
+  T& Mutate(HloComputation* computation);
+
+ private:
+  T value_{};
+};
 
 static constexpr uintptr_t kInstructionTypeMask = 0b111;
 
@@ -1252,7 +1284,7 @@ class HloInstruction {
   void MarkAsNonRoot() { is_root_ = false; }
 
   // Does this instruction have no users.
-  bool IsDead() const { return users_.empty() && !IsRoot(); }
+  bool IsDead() const { return users_->empty() && !IsRoot(); }
 
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
@@ -1300,12 +1332,12 @@ class HloInstruction {
   HloInstruction* mutable_operand(int64_t i);
 
   // Returns the number of operands to this instruction.
-  int64_t operand_count() const { return operands_.size(); }
+  int64_t operand_count() const { return operands_->size(); }
 
   // Returns the vector of operands of this instruction.
   using InstructionVector = absl::InlinedVector<HloInstruction*, 2>;
-  const InstructionVector& operands() const { return operands_; }
-  InstructionVector mutable_operands() { return operands_; }
+  const InstructionVector& operands() const { return operands_.get(); }
+  InstructionVector mutable_operands() { return operands_.get(); }
 
   // Returns the vector of unique operands, in the same order they are found
   // within the operand vector.
@@ -1320,19 +1352,19 @@ class HloInstruction {
   std::vector<int64_t> operand_indices(const HloInstruction* target) const;
 
   // Returns the number of users of this instruction.
-  int64_t user_count() const { return users_.size(); }
+  int64_t user_count() const { return users_->size(); }
 
   // Returns the users of this instruction.
-  const PtrVec<HloInstruction*>& users() const { return users_.vec(); }
+  const PtrVec<HloInstruction*>& users() const { return users_->vec(); }
 
   // Returns the index of the user in the users() vector.
   //
   // Precondition: `user` is a user of the instruction.
-  int64_t UserId(HloInstruction* user) { return users_.UserId(user); }
+  int64_t UserId(HloInstruction* user) { return users_->UserId(user); }
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
-    return instruction->users_.Contains(this);
+    return instruction->users_->Contains(this);
   }
 
   // Adds a control dependency from this instruction to the given
@@ -1386,7 +1418,7 @@ class HloInstruction {
   // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const PtrVec<HloInstruction*>& control_predecessors() const {
-    return rare()->control_predecessors;
+    return rare()->control_predecessors.get();
   }
   const PtrVec<HloInstruction*>& control_successors() const {
     return rare()->control_successors;
@@ -2237,8 +2269,8 @@ class HloInstruction {
   }
 
   // Get the computation containing this instruction.
-  const HloComputation* parent() const { return parent_; }
-  HloComputation* parent() { return parent_; }
+  const HloComputation* parent() const { return parent_.get(); }
+  HloComputation* parent() { return parent_.get(); }
 
   // Returns the module for this instruction.
   HloModule* GetModule() const;
@@ -2253,9 +2285,7 @@ class HloInstruction {
   // Sorts the users of this instruction using the given comparison function.
   void SortUsers(
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
-          compare) {
-    users_.SortInstructionUsers(compare);
-  }
+          compare);
 
   // Old methods kept for smooth subclassing transition BEGIN.
   // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
@@ -2644,16 +2674,14 @@ class HloInstruction {
     }
     RemoveAllOperands();
   }
-  void RemoveAllOperands() { operands_.clear(); }
+  void RemoveAllOperands();
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
-  void RemoveOperandAt(int index) {
-    operands_.erase(operands_.begin() + index);
-  }
+  void RemoveOperandAt(int index);
 
   // Removes a list of operands with the given indices in ascending order.
   void RemoveOperandsAtAscendingIndices(
@@ -2698,7 +2726,7 @@ class HloInstruction {
       bool ignore_commutative_operand_order) const;
 
   // Set the computation containing this instruction.
-  void set_parent(HloComputation* computation) { parent_ = computation; }
+  void set_parent(HloComputation* computation);
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,
@@ -2729,10 +2757,10 @@ class HloInstruction {
       absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
-  void AddUser(HloInstruction* user) { users_.AddUser(user); }
+  void AddUser(HloInstruction* user);
 
   // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
+  void RemoveUser(HloInstruction* user);
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -2769,7 +2797,7 @@ class HloInstruction {
     // order computed in HloComputation::ComputeInstructionPostOrder, which may
     // influence the result of the compilation by changing the scheduling. We
     // are not sure if it matters.
-    PtrVec<HloInstruction*> control_predecessors;
+    PostOrderDependency<PtrVec<HloInstruction*>> control_predecessors;
 
     // The set of control successors of this instruction.
     PtrVec<HloInstruction*> control_successors;
@@ -2834,7 +2862,7 @@ class HloInstruction {
     void AddUser(HloInstruction* user);
     void MaybeRemoveUser(HloInstruction* user);  // Remove user if present
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
-    int64_t UserId(HloInstruction* user);
+    int64_t UserId(HloInstruction* user) const;
     void SortInstructionUsers(
         absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
             compare);
@@ -2883,7 +2911,7 @@ class HloInstruction {
   bool shape_is_canonicalized_ : 1;
 
   // Instruction operands.
-  InstructionVector operands_;
+  PostOrderDependency<InstructionVector> operands_;
 
   // If needed, points off to allocated struct holding out-of-line info
   // for things that are rarely filled
@@ -2892,10 +2920,11 @@ class HloInstruction {
 
   // The users of this instruction. Users are HLOs where this instruction is an
   // operand.
-  Users users_;
+  PostOrderDependency<Users> users_;
 
-  // The computation in which this instruction is contained.
-  HloComputation* parent_ = nullptr;
+  // The computation in which this instruction is contained. Only written by
+  // set_parent().
+  PostOrderDependency<HloComputation*> parent_;
 
   // The sharding, if one exists.
   // Uses std::shared_ptr to allow reuse of the same sharding object between
