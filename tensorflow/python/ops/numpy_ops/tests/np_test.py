@@ -2069,6 +2069,26 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(
         lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
+  @new_test
+  def testRot90InvalidAxes(self):
+    a = tnp.ones((2, 3))
+    # Out-of-bounds axes must be rejected, matching NumPy's ValueError.
+    with self.assertRaisesRegex(ValueError, 'out of range'):
+      tnp.rot90(a, axes=(0, 3))
+    with self.assertRaisesRegex(ValueError, 'out of range'):
+      tnp.rot90(a, axes=(0, -5))
+    # Duplicate axes (after negative normalization) must be rejected.
+    with self.assertRaisesRegex(ValueError, 'must be different'):
+      tnp.rot90(a, axes=(0, 0))
+    with self.assertRaisesRegex(ValueError, 'must be different'):
+      tnp.rot90(a, axes=(0, -2))
+    # axes must have exactly two entries.
+    with self.assertRaisesRegex(ValueError, 'must be 2'):
+      tnp.rot90(a, axes=(0,))
+    # In-bounds negative axes remain valid.
+    self.assertAllClose(tnp.rot90(a, axes=(-2, -1)), onp.rot90(
+        onp.ones((2, 3)), axes=(-2, -1)))
+
   # TODO(mattjj): test infix operator overrides
 
   def testRavel(self):
