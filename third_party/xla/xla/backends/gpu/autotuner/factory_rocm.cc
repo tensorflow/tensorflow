@@ -62,7 +62,6 @@ std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
     absl::Span<const DType> dtypes) {
   auto pipeline =
       std::make_unique<HloPassPipeline>("hipblaslt_rewriter_pipeline");
-  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
   for (DType dtype : dtypes) {
     GemmRewriterOptions options{dtype};
@@ -71,6 +70,7 @@ std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
         device_description.runtime_version(), options);
     pipeline->AddPass(std::move(gemm_rewriter));
   }
+  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   return pipeline;
 }
 
