@@ -20,6 +20,7 @@ package(
     licenses = ["notice"],
 )
 
+# test comment 123
 pytype_strict_library(
     name = "test_utils",
     testonly = True,
