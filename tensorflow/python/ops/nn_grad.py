@@ -1138,37 +1138,25 @@ def _MeanAggregator(inputs, segments):
   value computed from the values that belong to the same segment.
 
   Args:
-   inputs: A 1-tensor or a 2-tensor. Aggregation is done over the last axis.
-   segments: A tensor of the same shape as `input`.
+   inputs: A tensor of rank at least one.
+   segments: A tensor of segment IDs, same shape as `inputs`.
 
   Returns:
     The result, same shape and type as `inputs`.
   """
-  # Aggregation below runs one row at a time, so a 1-D input is treated as a
-  # single row.  Splitting a 1-D input along axis 0 would instead turn every
-  # element into its own row, which collapses each segment to a single element
-  # and leaves the gradient of pooled blocks unaggregated.
-  is_1d = inputs.shape.rank == 1
-  if is_1d:
-    inputs = array_ops.expand_dims(inputs, 0)
-    segments = array_ops.expand_dims(segments, 0)
-  result = []
-  for inputs_i, segments_i in zip(
-      array_ops.split(inputs, inputs.shape[0]),
-      array_ops.split(segments, segments.shape[0])):
-    # Note that we do not use tf.math.segment_mean, as it has no TPU support.
-    means_i = math_ops.unsorted_segment_mean(
-        inputs_i, segments_i, num_segments=math_ops.reduce_max(segments_i) + 1)
-    result.append(
-        array_ops.reshape(array_ops.gather(means_i, segments_i), [-1]))
-  result = array_ops_stack.stack(result, axis=0)
-  if is_1d:
-    result = array_ops.squeeze(result, [0])
-  return result
+  shape = array_ops.shape(inputs)
+  num_rows = math_ops.reduce_prod(shape[:-1])
+  row_size = shape[-1]
+  # Segment IDs restart at zero in each row. Offset them before flattening so
+  # that values from different rows are never averaged together.
+  offsets = array_ops.expand_dims(math_ops.range(num_rows) * row_size, -1)
+  segment_ids = array_ops.reshape(segments, [num_rows, row_size]) + offsets
+  segment_ids = array_ops.reshape(segment_ids, [-1])
+  # Note that we do not use tf.math.segment_mean, as it has no TPU support.
+  means = math_ops.unsorted_segment_mean(
+      array_ops.reshape(inputs, [-1]), segment_ids, array_ops.size(inputs))
+  return array_ops.reshape(array_ops.gather(means, segment_ids), shape)
 
-
-# We have to register the gradients for these ops so that tensorflow will know
-# how to differentiate them.
 @ops.RegisterGradient("IsotonicRegression")
 def _IsotonicRegressionGrad(op: ops.Operation, grad_output, grad_segments):
   """Gradient for the isotonic regression function.

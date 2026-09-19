@@ -21,6 +21,7 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -2053,6 +2054,54 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
             [2.5, 1, 4.5, 3, 6.5]
         ])
     self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
+  @parameterized.product(
+      shape=[(3,), (2, 3), (2, 2, 3)],
+      axis=[0, -1],
+      decreasing=[True, False],
+      dtype=[np.float32, np.float64])
+  @test_util.run_in_graph_and_eager_modes
+  def test_pooled_gradient(self, shape, axis, decreasing, dtype):
+    # Each row has one singleton and a stable block pooling its last two values.
+    values = np.broadcast_to([4., 0.7, 2.], shape).astype(dtype)
+    weights = np.arange(1, np.prod(shape) + 1, dtype=dtype).reshape(shape)
+    expected = weights.copy()
+    expected[..., 1:] = weights[..., 1:].mean(axis=-1, keepdims=True)
+    if not decreasing:
+      values = -values
+    x = constant_op.constant(np.moveaxis(values, -1, axis))
+    weights = constant_op.constant(np.moveaxis(weights, -1, axis))
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y, _ = nn_ops.isotonic_regression(x, decreasing=decreasing, axis=axis)
+    gradient = tape.gradient(y, x, output_gradients=weights)
+    self.assertAllClose(
+        np.moveaxis(expected, -1, axis), self.evaluate(gradient))
+
+  @parameterized.parameters((0,), (0, 3), (2, 0), (2, 0, 3))
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_gradient(self, *shape):
+    x = array_ops.zeros(shape, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y, _ = nn_ops.isotonic_regression(x)
+    self.assertAllEqual(np.zeros(shape), self.evaluate(tape.gradient(y, x)))
+
+  @test_util.run_v2_only
+  def test_gradient_unknown_shape(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)])
+    def ComputeGradient(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y, _ = nn_ops.isotonic_regression(x)
+        selected = y[..., 1]
+      return tape.gradient(selected, x)
+
+    for shape in [(3,), (2, 3), (2, 2, 3)]:
+      x = constant_op.constant(np.broadcast_to([4., 0.7, 2.], shape))
+      expected = np.broadcast_to([0., 0.5, 0.5], shape)
+      self.assertAllClose(expected, self.evaluate(ComputeGradient(x)))
 
   @test_util.run_v2_only
   def testGradient1D(self):
