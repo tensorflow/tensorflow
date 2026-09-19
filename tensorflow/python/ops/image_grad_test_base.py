@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -675,6 +676,139 @@ class AdjustContrastOpTestBase(test.TestCase):
       )
     max_error = gradient_checker_v2.max_error(analytical, numerical)
     self.assertLess(max_error, 1e-4)
+
+
+_TRANSFORM_FILL_MODES = ['CONSTANT', 'NEAREST', 'REFLECT', 'WRAP']
+_TRANSFORM_INTERPOLATIONS = ['NEAREST', 'BILINEAR']
+_TRANSFORM_FILL_MODE_X_INTERPOLATION = [
+    (fill_mode, interpolation)
+    for fill_mode in _TRANSFORM_FILL_MODES
+    for interpolation in _TRANSFORM_INTERPOLATIONS
+]
+
+
+class ImageProjectiveTransformOpTestBase(test.TestCase, parameterized.TestCase):
+  """Tests the gradient of ImageProjectiveTransformV2/V3.
+
+  The forward op is linear in `images`, so for any `g` shaped like its
+  output, `<forward(images), g> == <images, grad_fn(g)>` must hold exactly
+  (up to float roundoff). That identity is what actually pins down that the
+  registered gradient is a true adjoint of the resampling, rather than
+  another resample through the inverted transform -- the latter silently
+  duplicates or drops gradient mass wherever `fill_mode` clamps or folds an
+  out-of-range coordinate, or the transform downscales, while still passing
+  a looser numerical gradient check on inputs that don't hit those cases.
+  """
+
+  def _transform(self, images, transforms, output_shape, interpolation,
+                fill_mode):
+    return gen_image_ops.image_projective_transform_v3(
+        images=images,
+        transforms=transforms,
+        output_shape=output_shape,
+        interpolation=interpolation,
+        fill_mode=fill_mode,
+        fill_value=0.0)
+
+  @parameterized.parameters(*_TRANSFORM_FILL_MODE_X_INTERPOLATION)
+  def testAdjointIdentity(self, fill_mode, interpolation):
+    rng = np.random.default_rng(0)
+    batch, in_h, in_w, out_h, out_w, channels = 2, 5, 6, 4, 5, 2
+    images_np = rng.standard_normal((batch, in_h, in_w, channels))
+    grad_out_np = rng.standard_normal((batch, out_h, out_w, channels))
+    # A representative non-trivial transform: rotation, translation, shear
+    # and a touch of perspective, so every coefficient participates.
+    transforms = constant_op.constant(
+        [[0.9, -0.2, 1.0, 0.2, 0.9, -0.5, 0.002, -0.001]],
+        dtype=dtypes.float32)
+
+    with self.cached_session():
+      images = constant_op.constant(images_np, dtype=dtypes.float64)
+      grad_out = constant_op.constant(grad_out_np, dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(images)
+        out = self._transform(images, transforms, [out_h, out_w],
+                              interpolation, fill_mode)
+        lhs = math_ops.reduce_sum(out * grad_out)
+      grad_images = tape.gradient(lhs, images)
+      rhs = math_ops.reduce_sum(images * grad_images)
+      self.assertAllClose(
+          self.evaluate(lhs), self.evaluate(rhs), rtol=1e-6, atol=1e-6)
+
+  @parameterized.parameters(*_TRANSFORM_FILL_MODE_X_INTERPOLATION)
+  def testGradientChecker(self, fill_mode, interpolation):
+    x = np.linspace(-1.0, 1.0, num=2 * 4 * 5 * 2).reshape([2, 4, 5, 2])
+    x = x.astype(np.float64)
+    transforms = constant_op.constant(
+        [[1, 0.05, 0.5, -0.05, 1, -0.3, 0.001, -0.001]], dtype=dtypes.float32)
+
+    def f(images):
+      return self._transform(images, transforms, [4, 5], interpolation,
+                             fill_mode)
+
+    with self.cached_session():
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(f, [constant_op.constant(x)]))
+    self.assertLess(err, 1e-4)
+
+  def testNearestFillModeRegression(self):
+    """github.com/tensorflow/tensorflow/issues/127241.
+
+    With `interpolation="nearest"` and a fixed transform, the selected
+    scalar output is linear in the image values by construction, so its
+    gradient has a closed form this test checks directly rather than via
+    finite differences: the transform maps output column 2 to input column
+    3, out of range, clamped by `fill_mode="nearest"` back to column 2 --
+    so `d(out[0,0,0])/dt = d(image[0,1,0])/dt` and
+    `d(out[1,0,0])/dt = d(image[1,1,0])/dt`, giving 1*2 + 3*5 = 17. The
+    previous (incorrect) gradient resampled through the inverted
+    transform and, hitting the same clamp in reverse, double-counted
+    column 0 to get 30 instead.
+    """
+    def target(t):
+      image = array_ops.reshape(
+          array_ops_stack.stack([(i + 1) * t - i for i in range(6)]),
+          [1, 2, 3, 1])
+      transforms = constant_op.constant(
+          [[1, 0, 1, 0, 1, 0, 0, 0]], dtype=dtypes.float32)
+      y = self._transform(image, transforms, [2, 3], 'NEAREST', 'NEAREST')
+      return y[0, 0, 0, 0] + 3 * y[0, 1, 0, 0]
+
+    x = constant_op.constant(-50.0, dtype=dtypes.float64)
+    with self.cached_session():
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = target(x)
+      actual = tape.gradient(y, x)
+      self.assertAllClose(self.evaluate(y), -863.0)
+      self.assertAllClose(self.evaluate(actual), 17.0)
+
+  @parameterized.parameters(*[(fill_mode, shape)
+                              for fill_mode in _TRANSFORM_FILL_MODES
+                              for shape in [(1, 1, 1, 1), (1, 1, 5, 1),
+                                            (1, 5, 1, 1)]])
+  def testOnePixelWideInputIsFinite(self, fill_mode, shape):
+    """Regression test for a `length == 1` axis dividing by zero.
+
+    `_map_coordinate`'s WRAP and REFLECT branches divide by `length - 1`,
+    which is 0 for a `length == 1` axis. The masked-out result is correct
+    either way, but the *intermediate* division must not compute an inf/nan
+    that then gets cast to int32, which is platform-dependent undefined
+    behavior even when its result is later discarded.
+    """
+    images = constant_op.constant(
+        np.random.default_rng(0).standard_normal(shape), dtype=dtypes.float32)
+    transforms = constant_op.constant(
+        [[1, 0, 0.3, 0, 1, 0.2, 0, 0]], dtype=dtypes.float32)
+
+    with self.cached_session():
+      with backprop.GradientTape() as tape:
+        tape.watch(images)
+        out = self._transform(images, transforms, [shape[1], shape[2]],
+                              'BILINEAR', fill_mode)
+        loss = math_ops.reduce_sum(out)
+      grad = self.evaluate(tape.gradient(loss, images))
+    self.assertTrue(np.all(np.isfinite(grad)))
 
 
 if __name__ == '__main__':
