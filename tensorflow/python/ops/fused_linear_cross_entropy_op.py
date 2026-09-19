@@ -51,16 +51,16 @@ def fused_linear_cross_entropy(
     if biases is not None:
       biases = ops.convert_to_tensor(biases, name="biases")
       return gen_nn_ops.fused_linear_cross_entropy(
-          features=features,
-          weights=weights,
+          x=features,
+          w=weights,
           labels=labels,
           biases=biases,
           name=name,
       )
 
     return gen_nn_ops.fused_linear_cross_entropy(
-        features=features,
-        weights=weights,
+        x=features,
+        w=weights,
         labels=labels,
         name=name,
     )
