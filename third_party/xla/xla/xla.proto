@@ -340,6 +340,9 @@ message DebugOptions {
   // the flag for more flexible control if necessary.
   optional string xla_cpu_max_isa = 333;
 
+  // Replace custom calls with noop operations on CPU.
+  optional bool xla_cpu_mock_custom_calls = 548;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
