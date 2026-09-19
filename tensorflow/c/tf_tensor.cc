@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
