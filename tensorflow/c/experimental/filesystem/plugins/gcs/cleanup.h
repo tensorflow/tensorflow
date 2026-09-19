@@ -92,14 +92,14 @@ class Cleanup {
   bool is_released() const { return released_; }
 
  private:
-  static_assert(!std::is_reference<F>::value, "F must not be a reference");
+  static_assert(!std::is_reference_v<F>, "F must not be a reference");
 
   bool released_ = false;
   F f_;
 };
 
 template <int&... ExplicitParameterBarrier, typename F,
-          typename DecayF = typename std::decay<F>::type>
+          typename DecayF = std::decay_t<F>>
 Cleanup<DecayF> MakeCleanup(F&& f) {
   return Cleanup<DecayF>(std::forward<F>(f));
 }
