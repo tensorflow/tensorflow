@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/flags.h"
 
+#include <vector>
+
 namespace tensorflow {
 namespace tfcompile {
 
