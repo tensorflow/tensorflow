@@ -907,7 +907,7 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  tensorflow::gtl::ArraySlice<const int64_t> dimarray(
+  absl::Span<const const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   if (alloc_attrs && !alloc_attrs->struct_size) {
     TF_SetStatus(
