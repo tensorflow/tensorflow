@@ -296,6 +296,7 @@ xla_cc_test(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/xtile:block_level_parameters",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
