@@ -2493,6 +2493,35 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
   return chunks;
 }
 
+namespace {
+
+template <typename BufferType>
+int64_t GetPreferredOffsetForBuffer(const BufferType* buffer,
+                                    int64_t alignment) {
+  if constexpr (std::is_same_v<BufferType, HloValue>) {
+    if (buffer != nullptr && buffer->defining_instruction() != nullptr &&
+        ((buffer->has_color() && buffer->color() == 1) ||
+         (buffer->shape().has_layout() &&
+          buffer->shape().layout().memory_space() == 1))) {
+      const HloInstruction* inst = buffer->defining_instruction();
+      const auto& map = inst->frontend_attributes().map();
+      auto fifo_it = map.find("xla_prefetch_fifo");
+      if (fifo_it == map.end() || fifo_it->second == "true") {
+        auto offset_it = map.find("xla_prefetch_buffer_offset");
+        if (offset_it != map.end()) {
+          int64_t offset = -1;
+          if (absl::SimpleAtoi(offset_it->second, &offset) && offset >= 0) {
+            return RoundUpTo(offset, alignment);
+          }
+        }
+      }
+    }
+  }
+  return -1;
+}
+
+}  // namespace
+
 template <typename BufferType>
 absl::StatusOr<HeapSimulator::Result<BufferType>>
 GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
@@ -2556,6 +2585,19 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
+  if (preferred_offset < 0) {
+    preferred_offset =
+        GetPreferredOffsetForBuffer(buffer_interval.buffer, alignment_);
+    if (preferred_offset < 0) {
+      for (const BufferType* coloc :
+           GetTransitiveColocations(buffer_interval)) {
+        preferred_offset = GetPreferredOffsetForBuffer(coloc, alignment_);
+        if (preferred_offset >= 0) {
+          break;
+        }
+      }
+    }
+  }
   const SlicedBufferInterval sliced_buffer_interval =
       SlicedBufferInterval::CreateConstInterval(buffer_interval);
   std::vector<Chunk> chunks =
