@@ -648,11 +648,7 @@ class LayoutAssignment : public HloModulePass {
       LayoutConstraints* constraints);
 
   virtual Layout GetUnconstrainedLayout(const LogicalBuffer& buffer) {
-    Layout layout = LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
-    if (buffer.shape().has_layout()) {
-      layout.set_memory_space(buffer.shape().layout().memory_space());
-    }
-    return layout;
+    return LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
   }
   // Called after layouts of an instruction have been finalized to allow
   // subclasses to check for platform specific assumptions.
