@@ -1,3 +1,9 @@
+from tensorflow.python import keras
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import ops
+from tensorflow.python.keras import test_combinations
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 class BinaryCrossentropyEagerGraphConsistencyTest(test_combinations.TestCase):
 
