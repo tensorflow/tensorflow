@@ -391,7 +391,7 @@ def canonicalize_function_inputs(
   Python function's positional (named) arguments and a dictionary
   corresponding to its kwargs.  Missing default arguments are added.
 
-  If the FunctionType has an type constraints, then they are used to convert
+  If the FunctionType has a type constraints, then they are used to convert
   arguments to tensors; otherwise, any inputs containing numpy arrays are
   converted to tensors.
 
