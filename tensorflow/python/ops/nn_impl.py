@@ -495,20 +495,21 @@ def swish(features, beta=1.0):
           sigmoid_features = math_ops.sigmoid(logits)
           sigmoid_grad = sigmoid_features * (1.0 - sigmoid_features)
 
-      activation_grad = sigmoid_features + logits * sigmoid_grad
-      # Undo broadcasting separately for each input to the custom gradient.
+      features_grad = dy * (sigmoid_features + logits * sigmoid_grad)
+      beta_grad = dy * math_ops.square(features) * sigmoid_grad
+
+      # Reduce each gradient back to its input shape after broadcasting.
       features_shape = array_ops.shape(features)
       beta_shape = array_ops.shape(beta)
       features_axes, beta_axes = array_ops.broadcast_gradient_args(
           features_shape, beta_shape)
-      features_grad = array_ops.reshape(
-          math_ops.reduce_sum(dy * activation_grad, features_axes),
-          features_shape)
-      beta_grad = array_ops.reshape(
-          math_ops.reduce_sum(
-              dy * math_ops.square(features) * sigmoid_grad, beta_axes),
-          beta_shape)
-      return (features_grad, beta_grad)
+      return (
+          array_ops.reshape(
+              math_ops.reduce_sum(features_grad, features_axes),
+              features_shape),
+          array_ops.reshape(
+              math_ops.reduce_sum(beta_grad, beta_axes), beta_shape),
+      )
 
     return features * math_ops.sigmoid(beta * features), grad
 
