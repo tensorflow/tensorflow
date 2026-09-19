@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/module_attributes_importer.h"
+#include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/tsl/platform/errors.h"
@@ -90,13 +91,19 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
                                 flatten_computation_args_result_, builder_);
   ImportUseAutoSpmdPartitioning(hlo_module, module, builder_);
 
+  // All computations of the module share the stack frame table, so they share
+  // the memo of frame locations too.
+  mlir::hlo::StackFrameLocationCache stack_frame_location_cache(hlo_module);
+
   if (!import_all_computation_) {
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    ABSL_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                        *hlo_module.entry_computation(), symbol_table_,
-                        &function_map_, &builder_,
-                        /*is_main*/ true, flatten_computation_args_result_)
+    HloFunctionImporter importer(symbol_table_, &function_map_, &builder_,
+                                 flatten_computation_args_result_,
+                                 &stack_frame_location_cache);
+    ABSL_RETURN_IF_ERROR(importer
+                        .ImportAsFunc(*hlo_module.entry_computation(),
+                                      /*is_main=*/true)
                         .status());
 
     // Convert all ops to MHLO
@@ -109,11 +116,14 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
 
   auto* module_entry_computation = hlo_module.entry_computation();
   for (const auto* computation : hlo_module.computations()) {
-    ABSL_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-                        *computation, symbol_table_, &function_map_, &builder_,
-                        /*is_main*/ computation == module_entry_computation,
-                        flatten_computation_args_result_)
-                        .status());
+    HloFunctionImporter importer(symbol_table_, &function_map_, &builder_,
+                                 flatten_computation_args_result_,
+                                 &stack_frame_location_cache);
+    ABSL_RETURN_IF_ERROR(
+        importer
+            .ImportAsFunc(*computation,
+                          /*is_main=*/computation == module_entry_computation)
+            .status());
   }
 
   ImportEntryComputationLayoutAndTiles(

@@ -29,7 +29,8 @@ namespace mlir {
 namespace hlo {
 
 mlir::Location GenerateInstructionLocation(
-    const xla::HloInstruction* instruction, mlir::MLIRContext* context) {
+    const xla::HloInstruction* instruction, mlir::MLIRContext* context,
+    StackFrameLocationCache* stack_frame_location_cache) {
   mlir::Builder b(context);
 
   const std::string& op_name = instruction->metadata().op_name();
@@ -39,9 +40,9 @@ mlir::Location GenerateInstructionLocation(
   }
 
   if (instruction->metadata().stack_frame_id() != 0) {
-    mlir::Location frame_location =
-        GetLocationFromFrameIndex(instruction->metadata().stack_frame_id(), b,
-                                  instruction->parent()->parent());
+    mlir::Location frame_location = GetLocationFromFrameIndex(
+        instruction->metadata().stack_frame_id(), b,
+        instruction->parent()->parent(), stack_frame_location_cache);
 
     if (!isa<mlir::UnknownLoc>(frame_location)) {
       return mlir::NameLoc::get(b.getStringAttr(op_name), frame_location);

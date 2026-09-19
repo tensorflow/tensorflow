@@ -370,7 +370,8 @@ absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
     mlir::Builder* builder, bool is_main,
     bool flatten_computation_args_result) {
   HloFunctionImporter importer(symbol_table, function_map, builder,
-                               flatten_computation_args_result);
+                               flatten_computation_args_result,
+                               /*stack_frame_location_cache=*/nullptr);
   return importer.ImportAsFunc(computation, is_main);
 }
 absl::Status HloFunctionImporter::ImportAsRegion(
@@ -378,7 +379,8 @@ absl::Status HloFunctionImporter::ImportAsRegion(
     mlir::Region* region, mlir::Builder* builder,
     bool flatten_computation_args_result) {
   HloFunctionImporter importer(symbol_table, {}, builder,
-                               flatten_computation_args_result);
+                               flatten_computation_args_result,
+                               /*stack_frame_location_cache=*/nullptr);
   return importer.ImportAsRegion(computation, region);
 }
 
@@ -472,7 +474,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         // NOTE: since we are flattening args, all arguments will share the same
         // location as the tuple parameter instruction.
         function.getArgument(arg_index).setLoc(
-            mlir::hlo::GenerateInstructionLocation(instruction, context_));
+            mlir::hlo::GenerateInstructionLocation(
+                instruction, context_, stack_frame_location_cache_));
         funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
       }
     } else {
@@ -500,7 +503,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
       }
       function.getArgument(arg_index).setLoc(
-          mlir::hlo::GenerateInstructionLocation(instruction, context_));
+          mlir::hlo::GenerateInstructionLocation(instruction, context_,
+                                                 stack_frame_location_cache_));
       funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
     }
   }
@@ -710,7 +714,8 @@ absl::StatusOr<mlir::Value> HloFunctionImporter::ImportInstructions(
   }
 
   HloFunctionImporter importer(symbol_table, {}, builder,
-                               flatten_computation_args_result);
+                               flatten_computation_args_result,
+                               /*stack_frame_location_cache=*/nullptr);
   return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
@@ -726,7 +731,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   }
 
   HloFunctionImporter importer(symbol_table, {}, builder,
-                               flatten_computation_args_result);
+                               flatten_computation_args_result,
+                               /*stack_frame_location_cache=*/nullptr);
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
@@ -741,7 +747,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   ABSL_ASSIGN_OR_RETURN(auto result_type,
                    ConvertShapeToType<RankedTensorType>(shape, *builder_));
   mlir::Location loc = mlir::hlo::GenerateInstructionLocation(
-      instruction, func_builder->getContext());
+      instruction, func_builder->getContext(), stack_frame_location_cache_);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {
