@@ -1754,6 +1754,7 @@ bool GpuCompiler::IsScaledDotSupportedByBackend(
   const se::GpuComputeCapability& gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
   return debug_options.xla_gpu_experimental_scaled_dot_with_triton() &&
+         IsTritonGemmEnabled(debug_options, gpu_version) &&
          IsTritonSupportedInstruction(*instr, gpu_version).IsAllowed();
 }
 

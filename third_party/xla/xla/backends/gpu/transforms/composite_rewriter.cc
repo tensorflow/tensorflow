@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 
-#include <cstdint>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -36,10 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
 #include "xla/service/decision.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -141,102 +136,6 @@ Decision HasSupportedDimensionNumbers(
   return Decision::Allow();
 }
 
-Decision IsValidBf16Scale(const HloInstruction* operand,
-                          const HloInstruction* scale) {
-  if (scale->shape().dimensions().size() !=
-      operand->shape().dimensions().size()) {
-    return Decision::Forbid("scale and operand rank mismatch for BF16");
-  }
-  for (int64_t dim : scale->shape().dimensions()) {
-    if (dim != 1) {
-      return Decision::Forbid("scale dim != 1 for BF16");
-    }
-  }
-  if (scale->opcode() != HloOpcode::kConstant) {
-    return Decision::Forbid("scale is not constant for BF16");
-  }
-  if (!scale->literal().IsAllFloat(1.0)) {
-    return Decision::Forbid("scale is not 1.0 for BF16");
-  }
-  return Decision::Allow();
-}
-
-Decision IsSupportedBf16(const HloInstruction* lhs, const HloInstruction* rhs,
-                         const HloInstruction* lhs_scale,
-                         const HloInstruction* rhs_scale) {
-  if (lhs_scale->shape().element_type() != BF16 ||
-      rhs_scale->shape().element_type() != BF16) {
-    return Decision::Forbid("BF16 operands require BF16 scales");
-  }
-  if (Decision d = IsValidBf16Scale(lhs, lhs_scale); !d) {
-    return d;
-  }
-  return IsValidBf16Scale(rhs, rhs_scale);
-}
-
-Decision IsSupportedScaleAndOperand(const HloInstruction* operand,
-                                    const HloInstruction* scale,
-                                    int64_t contracting_dim) {
-  PrimitiveType op_type = operand->shape().element_type();
-  PrimitiveType scale_type = scale->shape().element_type();
-
-  if (scale_type != F8E8M0FNU) {
-    return Decision::Forbid(absl::StrCat("Unsupported scale type: ",
-                                         PrimitiveType_Name(scale_type)));
-  }
-
-  if (contracting_dim >= scale->shape().dimensions().size()) {
-    return Decision::Forbid("contracting_dim out of bounds for scale");
-  }
-  int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
-  int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
-
-  if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
-    return Decision::Forbid("operand_dim_size not divisible by scale_dim_size");
-  }
-  int64_t scale_factor = operand_dim_size / scale_dim_size;
-
-  if (op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) {
-    if (scale_factor % 16 != 0) {
-      return Decision::Forbid(
-          absl::StrCat("scale_factor % 16 != 0: ", scale_factor));
-    }
-    return Decision::Allow();
-  }
-
-  return Decision::Forbid(
-      absl::StrCat("Unsupported operand type: ", PrimitiveType_Name(op_type)));
-}
-
-Decision IsSupportedScaledDot(
-    const HloCallInstruction* call,
-    const DotDimensionNumbers& dot_dimension_numbers) {
-  if (call->operand_count() < 4) {
-    return Decision::Forbid("Scaled dot call has fewer than 4 operands");
-  }
-  const HloInstruction* lhs = call->operand(0);
-  const HloInstruction* rhs = call->operand(1);
-  const HloInstruction* lhs_scale = call->operand(2);
-  const HloInstruction* rhs_scale = call->operand(3);
-
-  if (lhs->shape().element_type() == BF16 &&
-      rhs->shape().element_type() == BF16) {
-    return IsSupportedBf16(lhs, rhs, lhs_scale, rhs_scale);
-  }
-
-  int64_t lhs_contracting_dim =
-      dot_dimension_numbers.lhs_contracting_dimensions(0);
-  int64_t rhs_contracting_dim =
-      dot_dimension_numbers.rhs_contracting_dimensions(0);
-
-  if (Decision d =
-          IsSupportedScaleAndOperand(lhs, lhs_scale, lhs_contracting_dim);
-      !d) {
-    return d;
-  }
-  return IsSupportedScaleAndOperand(rhs, rhs_scale, rhs_contracting_dim);
-}
-
 absl::Status RewriteScaledDot(
     HloComputation* computation, HloCallInstruction* call,
     const DotDimensionNumbers& dot_dimension_numbers) {
@@ -251,7 +150,6 @@ absl::Status RewriteScaledDot(
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
   return absl::OkStatus();
 }
-
 }  // namespace
 
 absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
@@ -259,7 +157,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
   bool changed = false;
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (Decision d = IsScaledDotComposite(instruction); !d) {
-      VLOG(3) << d.Explain();
+      VLOG(5) << d.Explain();
       continue;
     }
     auto* call = Cast<HloCallInstruction>(instruction);
@@ -274,11 +172,6 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
 
     if (Decision d = HasSupportedDimensionNumbers(dot_dimension_numbers); !d) {
       LOG(ERROR) << d.Explain();
-      continue;
-    }
-
-    if (Decision d = IsSupportedScaledDot(call, dot_dimension_numbers); !d) {
-      VLOG(3) << "Scaled dot composite operands not supported: " << d.Explain();
       continue;
     }
 
