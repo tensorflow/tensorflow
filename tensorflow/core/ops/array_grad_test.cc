@@ -675,6 +675,7 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -702,6 +703,7 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -732,6 +734,8 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                                      test::AsTensor<int32_t>({0, 0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2],
                                      test::AsTensor<int32_t>({0, 0, 0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3],
+                                     test::AsTensor<int32_t>({0, 0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -760,6 +764,7 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
