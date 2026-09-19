@@ -3672,8 +3672,20 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       attrs["algorithm"] = {/*required=*/false, AttrTy::kPrecisionAlgorithm,
                             &algorithm};
 
+      optional<SparsityConfig> parsed_sparsity_config;
+      attrs["sparsity_config"] = {/*required=*/false, AttrTy::kSparsityConfig,
+                                  &parsed_sparsity_config};
+      optional<BlockScalingConfig> parsed_block_scaling_config;
+      attrs["block_scaling_config"] = {/*required=*/false,
+                                       AttrTy::kBlockScalingConfig,
+                                       &parsed_block_scaling_config};
+
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (operands.size() < 2) {
+        Error(lexer_.GetLoc(), "expects at least 2 operands");
         return nullptr;
       }
 
@@ -3706,15 +3718,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (algorithm) {
         precision_config.set_algorithm(*algorithm);
       }
+      SparsityConfig sp = parsed_sparsity_config.value_or(SparsityConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
-                /*preferred_element_type=*/std::nullopt);
+                /*preferred_element_type=*/std::nullopt, sp);
           })) {
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateDot(
-          *shape, operands[0], operands[1], dnum, precision_config));
+          *shape, operands, dnum, precision_config, sp,
+          parsed_block_scaling_config.value_or(BlockScalingConfig())));
     }
     case HloOpcode::kRaggedDot: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
@@ -9159,10 +9173,13 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
   // will fail and crash. When there are not enough operands at creation time
   // (when late binding is used), we add dummy operands, and update the
   // async-wrapped computation later.
-  std::optional<int8_t> async_wrapped_opcode_arity =
-      HloOpcodeArity(async_wrapped_opcode);
-  uint64_t num_async_operands = std::max<uint64_t>(
-      async_wrapped_opcode_arity.value_or(0), operand_shapes.size());
+  int64_t min_arity = HloOpcodeArity(async_wrapped_opcode).value_or(0);
+  if (async_wrapped_opcode == HloOpcode::kDot ||
+      async_wrapped_opcode == HloOpcode::kConvolution) {
+    min_arity = 2;
+  }
+  uint64_t num_async_operands =
+      std::max<uint64_t>(min_arity, operand_shapes.size());
 
   HloComputation::Builder async_wrapped_builder("async_wrapped");
   async_wrapped_operands.reserve(num_async_operands);

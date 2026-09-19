@@ -2777,6 +2777,25 @@ class HloDotInstruction : public HloInstruction {
                              const DotDimensionNumbers& dimension_numbers,
                              const PrecisionConfig& precision_config);
 
+  explicit HloDotInstruction(const Shape& shape,
+                             absl::Span<HloInstruction* const> operands,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig& precision_config,
+                             const SparsityConfig& sparsity_config,
+                             const BlockScalingConfig& block_scaling_config);
+
+  const SparsityConfig& sparsity_config() const { return sparsity_config_; }
+  void set_sparsity_config(const SparsityConfig& sparsity_config) {
+    sparsity_config_ = sparsity_config;
+  }
+
+  const BlockScalingConfig& block_scaling_config() const {
+    return block_scaling_config_;
+  }
+  void set_block_scaling_config(const BlockScalingConfig& config) {
+    block_scaling_config_ = config;
+  }
+
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
     return dot_dimension_numbers_;
@@ -2821,6 +2840,12 @@ class HloDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
+
+  // The sparsity configuration used for the dot.
+  SparsityConfig sparsity_config_;
+
+  // Dot block scaling config.
+  BlockScalingConfig block_scaling_config_;
 };
 
 class HloRaggedDotInstruction : public HloInstruction {

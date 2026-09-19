@@ -1240,10 +1240,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      auto operand_vector = all_operands();
       instruction = std::make_unique<HloDotInstruction>(
-          shape, operands(0), operands(1), proto.dot_dimension_numbers(),
-          precision_config);
+          shape, all_operands(), proto.dot_dimension_numbers(),
+          precision_config, proto.sparsity_config(),
+          proto.block_scaling_config());
       break;
     }
     case HloOpcode::kRaggedDot: {
@@ -1802,8 +1802,18 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
-                                             precision_config);
+  return CreateDot(shape, {lhs, rhs}, dimension_numbers, precision_config);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config) {
+  return std::make_unique<HloDotInstruction>(shape, operands, dimension_numbers,
+                                             precision_config, sparsity_config,
+                                             block_scaling_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
@@ -6426,20 +6436,32 @@ const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
 }
 
 const SparsityConfig& HloInstruction::sparsity_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->sparsity_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->sparsity_config();
 }
 
 void HloInstruction::set_sparsity_config(
     const SparsityConfig& sparsity_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_sparsity_config(sparsity_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
 const BlockScalingConfig& HloInstruction::block_scaling_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->block_scaling_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
 }
 
 void HloInstruction::set_block_scaling_config(
     const BlockScalingConfig& block_scaling_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_block_scaling_config(block_scaling_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
       block_scaling_config);
 }
