@@ -243,3 +243,36 @@ func.func @FuseBatchMatmulToTransposeNegative(%arg0: tensor<2048x32x1x8x2xf32>, 
   return %196 : tensor<2048x1x32x256xf32>
   // CHECK: "tfl.transpose"
 }
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmulResourceConstant
+func.func @NotFuseTransposeFCRhsToBatchMatmulResourceConstant(%arg0: tensor<16x1024xf32>, %arg1: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xf32>
+  %0 = "tfl.transpose"(%weight, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %1 = "tfl.fully_connected"(%arg0, %0, %arg1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmulReshapedResourceConstant
+func.func @NotFuseTransposeFCRhsToBatchMatmulReshapedResourceConstant(%arg0: tensor<16x1024xf32>, %arg1: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_shape = arith.constant dense<[1024, 128]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xf32>
+  %0 = "tfl.reshape"(%weight, %cst_shape) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %2 = "tfl.fully_connected"(%arg0, %1, %arg1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %2 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: BatchMatmulResourceConstantToFullyConnected
+func.func @BatchMatmulResourceConstantToFullyConnected(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %weight = arith.constant dense_resource<__elided__> : tensor<1024x128xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %0 = "tfl.batch_matmul"(%arg0, %weight) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %0 : tensor<16x128xf32>
+}

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_SEPARATE_COMPILATION_HLO_MODULE_SPLITTING_H_
-#define XLA_HLO_SEPARATE_COMPILATION_HLO_MODULE_SPLITTING_H_
+#ifndef XLA_HLO_PARALLEL_HLO_MODULE_SPLITTING_H_
+#define XLA_HLO_PARALLEL_HLO_MODULE_SPLITTING_H_
 
 #include <memory>
 #include <utility>
@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/separate_compilation/hlo_linking_manifest.h"
+#include "xla/hlo/parallel/hlo_linking_manifest.h"
 
-namespace xla::separate_compilation {
+namespace xla::parallel {
 
 // Returns a list of sets of computations that can be split into separate
 // modules. Adjacent computations in the same set can be compiled together.
@@ -108,5 +108,5 @@ struct HloModuleSplitGroup {
 absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
     const HloModule& module);
 
-}  // namespace xla::separate_compilation
-#endif  // XLA_HLO_SEPARATE_COMPILATION_HLO_MODULE_SPLITTING_H_
+}  // namespace xla::parallel
+#endif  // XLA_HLO_PARALLEL_HLO_MODULE_SPLITTING_H_

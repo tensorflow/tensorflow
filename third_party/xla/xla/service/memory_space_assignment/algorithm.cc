@@ -645,6 +645,212 @@ int64_t GetShapeSizeBytes(const CostAnalysis* cost_analysis,
   return cost_analysis ? cost_analysis->GetShapeSizeBytes(shape) : 0;
 }
 
+void FindAliases(std::vector<AllocationValue>* allocation_values,
+                 bool has_async_pipelined_while_loops = false) {
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<const AllocationValue*>>
+      values_by_defining_inst;
+  for (AllocationValue& value : *allocation_values) {
+    values_by_defining_inst[value.position().instruction].push_back(&value);
+  }
+  auto maybe_add_alias_with_instruction =
+      [&](const HloInstruction* instruction, AllocationValue::Use* use,
+          std::optional<ShapeIndex> expected_index = std::nullopt) {
+        auto aliased_values_it = values_by_defining_inst.find(instruction);
+        if (aliased_values_it != values_by_defining_inst.end()) {
+          for (const AllocationValue* aliased_value :
+               aliased_values_it->second) {
+            // Ensure that only matching tuple shape indexes are linked together
+            // as aliases when an expected shape index is specified (e.g. across
+            // while loop boundaries or async chain tuples).
+            if (expected_index.has_value() &&
+                !aliased_value->position().index.empty() &&
+                aliased_value->position().index != *expected_index) {
+              continue;
+            }
+            if (absl::c_find(use->aliases, aliased_value->position()) ==
+                use->aliases.end()) {
+              VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString()
+                      << " to " << aliased_value->ToShortString();
+              use->aliases.push_back(aliased_value->position());
+            }
+          }
+        }
+      };
+
+  for (AllocationValue& value : *allocation_values) {
+    for (AllocationValue::Use& use : value.uses()) {
+      // Find any aliases with the instruction itself (operand and output must
+      // alias), and any aliases with the parameters of called computations.
+      if (use.hlo_use.instruction->IsAsynchronous()) {
+        HloComputation* wrapped_computation =
+            use.hlo_use.instruction->async_wrapped_computation();
+        if (use.hlo_use.instruction->opcode() == HloOpcode::kAsyncStart) {
+          // Bound operand i of async-start is placed at tuple index {0, i} of
+          // async-start's output shape.
+          ShapeIndex expected_async_index = {0, use.hlo_use.operand_number};
+          expected_async_index.insert(expected_async_index.end(),
+                                      use.hlo_use.operand_index.begin(),
+                                      use.hlo_use.operand_index.end());
+          maybe_add_alias_with_instruction(use.hlo_use.instruction, &use,
+                                           expected_async_index);
+          if (use.hlo_use.instruction->async_wrapped_opcode() ==
+                  HloOpcode::kDynamicUpdateSlice &&
+              use.hlo_use.operand_number == 0) {
+            ShapeIndex expected_dus_index = {1};
+            expected_dus_index.insert(expected_dus_index.end(),
+                                      use.hlo_use.operand_index.begin(),
+                                      use.hlo_use.operand_index.end());
+            maybe_add_alias_with_instruction(use.hlo_use.instruction, &use,
+                                             expected_dus_index);
+          }
+          // Operands bound to async-start map directly to the initial
+          // parameters of the wrapped computation 1-to-1 by operand index.
+          if (use.hlo_use.operand_number <
+              wrapped_computation->num_parameters()) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(
+                    use.hlo_use.operand_number),
+                &use);
+          }
+        } else if (use.hlo_use.instruction->opcode() ==
+                   HloOpcode::kAsyncUpdate) {
+          // For async-update, operand 0 is the async context tuple (the result
+          // of async-start or a prior async-update), which forwards matching
+          // tuple indices and does not correspond to a computation parameter.
+          // Operands 1, 2, ... are late-bound arguments mapping to wrapped
+          // computation parameters offset by the number of operands already
+          // bound by previous instructions in the async chain, and placed at
+          // tuple index {0, param_idx} of async-update's output shape.
+          if (use.hlo_use.operand_number == 0) {
+            maybe_add_alias_with_instruction(use.hlo_use.instruction, &use,
+                                             use.hlo_use.operand_index);
+          } else if (use.hlo_use.operand_number >= 1) {
+            const HloInstruction* operand0 =
+                use.hlo_use.instruction->operand(0);
+            CHECK(operand0 != nullptr) << "Operand 0 is null for async update: "
+                                       << use.hlo_use.instruction->ToString();
+            CHECK(operand0->opcode() == HloOpcode::kAsyncStart ||
+                  operand0->opcode() == HloOpcode::kAsyncUpdate)
+                << "Unexpected operand for async update: "
+                << use.hlo_use.instruction->ToString();
+            std::vector<const HloInstruction*> previously_bound_operands =
+                hlo_instruction_utils::async::GetAsyncBoundOperands(
+                    Cast<HloAsyncInstruction>(operand0));
+            int previously_bound_operand_count =
+                previously_bound_operands.size();
+            int param_idx =
+                use.hlo_use.operand_number - 1 + previously_bound_operand_count;
+            ShapeIndex expected_async_index = {0, param_idx};
+            expected_async_index.insert(expected_async_index.end(),
+                                        use.hlo_use.operand_index.begin(),
+                                        use.hlo_use.operand_index.end());
+            maybe_add_alias_with_instruction(use.hlo_use.instruction, &use,
+                                             expected_async_index);
+            if (param_idx < wrapped_computation->num_parameters()) {
+              maybe_add_alias_with_instruction(
+                  wrapped_computation->parameter_instruction(param_idx), &use);
+            }
+          }
+        } else {
+          maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
+        }
+      } else if (use.hlo_use.instruction->opcode() == HloOpcode::kConditional) {
+        maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
+        // A conditional instruction has branch_count + 1 operands: operand 0 is
+        // the branch index/predicate (which does not correspond to any branch
+        // computation parameter), and each operand i >= 1 is the single
+        // argument forwarded to branch_computation(i - 1)'s parameter 0.
+        if (use.hlo_use.operand_number >= 1) {
+          const HloComputation* branch_computation =
+              use.hlo_use.instruction->branch_computation(
+                  use.hlo_use.operand_number - 1);
+          if (branch_computation->num_parameters() > 0) {
+            maybe_add_alias_with_instruction(
+                branch_computation->parameter_instruction(0), &use);
+          }
+        }
+      } else {
+        std::optional<ShapeIndex> expected_index = std::nullopt;
+        if (use.hlo_use.instruction->opcode() == HloOpcode::kWhile) {
+          expected_index = use.hlo_use.operand_index;
+        }
+        maybe_add_alias_with_instruction(use.hlo_use.instruction, &use,
+                                         expected_index);
+        // For synchronous instructions with called computations (such as kCall
+        // and kWhile), caller operand i maps 1-to-1 to parameter i of each
+        // called computation.
+        for (const HloComputation* called_computation :
+             use.hlo_use.instruction->called_computations()) {
+          if (use.hlo_use.operand_number <
+              called_computation->num_parameters()) {
+            maybe_add_alias_with_instruction(
+                called_computation->parameter_instruction(
+                    use.hlo_use.operand_number),
+                &use);
+          }
+        }
+      }
+
+      // Special case for kWhile: the root of the body computation must alias as
+      // well.
+      if (use.hlo_use.instruction->opcode() == HloOpcode::kWhile) {
+        HloPosition root_alias{
+            use.hlo_use.instruction->while_body()->root_instruction(),
+            use.hlo_use.operand_index};
+        VLOG(3) << "Adding while body root aliasing for use "
+                << use.hlo_use.ToString() << " to " << root_alias;
+        use.aliases.push_back(root_alias);
+      }
+
+      // Special case for conditionals - the output of a conditional op must
+      // alias with the branch computation outputs.
+      HloInstruction* conditional_instruction =
+          GetConditionalForBranchRoot(use.hlo_use.instruction);
+      if (conditional_instruction != nullptr &&
+          use.hlo_use.instruction->opcode() == HloOpcode::kTuple) {
+        // We only need to add a use alias if the branch root is a tuple,
+        // because a tuple is a use and any other instruction would be a
+        // definition or a position.
+        ShapeIndex index = use.hlo_use.operand_index;
+        index.push_front(use.hlo_use.operand_number);
+        HloPosition conditional_output_position{conditional_instruction, index};
+        VLOG(1) << "Add use alias for counditional output position "
+                << conditional_output_position.ToString() << " to use "
+                << use.hlo_use.ToString();
+        use.aliases.push_back(conditional_output_position);
+      }
+
+      // Special case for async pipelined while loops: an instruction
+      // producing a loop return operand that feeds into the body root tuple
+      // must alias with both the while body parameter(0) and the caller while
+      // instruction at the corresponding tuple index.
+      if (has_async_pipelined_while_loops) {
+        HloInstruction* while_instruction =
+            GetWhileForBodyRoot(use.hlo_use.instruction);
+        if (while_instruction != nullptr &&
+            IsAsyncPipelinedWhileLoop(while_instruction) &&
+            use.hlo_use.instruction->opcode() == HloOpcode::kTuple &&
+            while_instruction->while_body()->num_parameters() > 0) {
+          ShapeIndex index = use.hlo_use.operand_index;
+          index.push_front(use.hlo_use.operand_number);
+          HloInstruction* parameter_instruction =
+              while_instruction->while_body()->parameter_instruction(0);
+          HloPosition parameter_position{parameter_instruction, index};
+          HloPosition while_output_position{while_instruction, index};
+          VLOG(1)
+              << "Add use aliases for while body root position to parameter "
+              << parameter_position.ToString() << " and while output "
+              << while_output_position.ToString() << " for use "
+              << use.hlo_use.ToString();
+          use.aliases.push_back(parameter_position);
+          use.aliases.push_back(while_output_position);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 // Helper to inspect the async wrapped opcode of a pipelined while loop
@@ -1107,145 +1313,10 @@ void MsaAlgorithm::CreateAllocationValues(
   }
 }
 
-void MsaAlgorithm::FindAliases(
-    std::vector<AllocationValue>* allocation_values) const {
-  absl::flat_hash_map<const HloInstruction*,
-                      std::vector<const AllocationValue*>>
-      values_by_defining_inst;
-  for (AllocationValue& value : *allocation_values) {
-    values_by_defining_inst[value.position().instruction].push_back(&value);
-  }
-  auto maybe_add_alias_with_instruction = [&](const HloInstruction* instruction,
-                                              AllocationValue::Use* use) {
-    auto aliased_values_it = values_by_defining_inst.find(instruction);
-    if (aliased_values_it != values_by_defining_inst.end()) {
-      for (const AllocationValue* aliased_value : aliased_values_it->second) {
-        // When aliasing while loop boundaries, ensure that only matching tuple
-        // shape indexes are linked together as aliases.
-        if (use->hlo_use.instruction->opcode() == HloOpcode::kWhile &&
-            !aliased_value->position().index.empty() &&
-            aliased_value->position().index != use->hlo_use.operand_index) {
-          continue;
-        }
-        if (absl::c_find(use->aliases, aliased_value->position()) ==
-            use->aliases.end()) {
-          VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString()
-                  << " to " << aliased_value->ToShortString();
-          use->aliases.push_back(aliased_value->position());
-        }
-      }
-    }
-  };
-
-  for (AllocationValue& value : *allocation_values) {
-    for (AllocationValue::Use& use : value.uses()) {
-      // Find any aliases with the instruction itself (operand and output must
-      // alias).
-      maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
-
-      // Find any aliases with the parameters of called computations.
-      if (use.hlo_use.instruction->IsAsynchronous()) {
-        HloComputation* wrapped_computation =
-            use.hlo_use.instruction->async_wrapped_computation();
-        if (use.hlo_use.instruction->opcode() == HloOpcode::kAsyncStart &&
-            use.hlo_use.instruction->operand_count() > 0) {
-          // Operands bound with async-start map directly to the initial
-          // parameters of the wrapped computation.
-          for (int i = 0; i < use.hlo_use.instruction->operand_count(); ++i) {
-            maybe_add_alias_with_instruction(
-                wrapped_computation->parameter_instruction(i), &use);
-          }
-        } else if (use.hlo_use.instruction->opcode() ==
-                       HloOpcode::kAsyncUpdate &&
-                   use.hlo_use.instruction->operand_count() > 1) {
-          // Operands bound with async-update map to parameters of the
-          // wrapped computation offset by the number of operands
-          // that were bound by previous instructions.
-          const HloInstruction* operand0 = use.hlo_use.instruction->operand(0);
-          CHECK(operand0 != nullptr) << "Operand 0 is null for async update: "
-                                     << use.hlo_use.instruction->ToString();
-          CHECK(operand0->opcode() == HloOpcode::kAsyncStart ||
-                operand0->opcode() == HloOpcode::kAsyncUpdate)
-              << "Unexpected operand for async update: "
-              << use.hlo_use.instruction->ToString();
-          std::vector<const HloInstruction*> previously_bound_operands =
-              hlo_instruction_utils::async::GetAsyncBoundOperands(
-                  Cast<HloAsyncInstruction>(operand0));
-          int previously_bound_operand_count = previously_bound_operands.size();
-          for (int i = 1; i < use.hlo_use.instruction->operand_count(); ++i) {
-            maybe_add_alias_with_instruction(
-                wrapped_computation->parameter_instruction(
-                    i - 1 + previously_bound_operand_count),
-                &use);
-          }
-        }
-      } else {
-        for (const HloComputation* called_computation :
-             use.hlo_use.instruction->called_computations()) {
-          for (const HloInstruction* parameter_instruction :
-               called_computation->parameter_instructions()) {
-            maybe_add_alias_with_instruction(parameter_instruction, &use);
-          }
-        }
-      }
-
-      // Special case for kWhile: the root of the body computation must alias as
-      // well.
-      if (use.hlo_use.instruction->opcode() == HloOpcode::kWhile) {
-        HloPosition root_alias{
-            use.hlo_use.instruction->while_body()->root_instruction(),
-            use.hlo_use.operand_index};
-        VLOG(3) << "Adding while body root aliasing for use "
-                << use.hlo_use.ToString() << " to " << root_alias;
-        use.aliases.push_back(root_alias);
-      }
-
-      // Special case for conditionals - the output of a conditional op must
-      // alias with the branch computation outputs.
-      HloInstruction* conditional_instruction =
-          GetConditionalForBranchRoot(use.hlo_use.instruction);
-      if (conditional_instruction != nullptr &&
-          use.hlo_use.instruction->opcode() == HloOpcode::kTuple) {
-        // We only need to add a use alias if the branch root is a tuple,
-        // because a tuple is a use and any other instruction would be a
-        // definition or a position.
-        ShapeIndex index = use.hlo_use.operand_index;
-        index.push_front(use.hlo_use.operand_number);
-        HloPosition conditional_output_position{conditional_instruction, index};
-        VLOG(1) << "Add use alias for counditional output position "
-                << conditional_output_position.ToString() << " to use "
-                << use.hlo_use.ToString();
-        use.aliases.push_back(conditional_output_position);
-      }
-
-      // Special case for async pipelined while loops: an instruction
-      // producing a loop return operand that feeds into the body root tuple
-      // must alias with both the while body parameter(0) and the caller while
-      // instruction at the corresponding tuple index.
-      if (has_async_pipelined_while_loops_) {
-        HloInstruction* while_instruction =
-            GetWhileForBodyRoot(use.hlo_use.instruction);
-        if (while_instruction != nullptr &&
-            IsAsyncPipelinedWhileLoop(while_instruction) &&
-            use.hlo_use.instruction->opcode() == HloOpcode::kTuple &&
-            while_instruction->while_body()->num_parameters() > 0) {
-          ShapeIndex index = use.hlo_use.operand_index;
-          index.push_front(use.hlo_use.operand_number);
-          HloInstruction* parameter_instruction =
-              while_instruction->while_body()->parameter_instruction(0);
-          HloPosition parameter_position{parameter_instruction, index};
-          HloPosition while_output_position{while_instruction, index};
-          VLOG(1)
-              << "Add use aliases for while body root position to parameter "
-              << parameter_position.ToString() << " and while output "
-              << while_output_position.ToString() << " for use "
-              << use.hlo_use.ToString();
-          use.aliases.push_back(parameter_position);
-          use.aliases.push_back(while_output_position);
-        }
-      }
-    }
-  }
+void MsaAlgorithm::FindAliasesForTesting(
+    std::vector<AllocationValue>* allocation_values,
+    bool has_async_pipelined_while_loops) {
+  FindAliases(allocation_values, has_async_pipelined_while_loops);
 }
 
 void MsaAlgorithm::ExtendScopedAlternateMemoryAllocations() {
@@ -5466,7 +5537,7 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     }
   }
 
-  FindAliases(&new_allocation_values);
+  FindAliases(&new_allocation_values, has_async_pipelined_while_loops_);
   absl::c_move(new_allocation_values, std::back_inserter(allocation_values));
 }
 

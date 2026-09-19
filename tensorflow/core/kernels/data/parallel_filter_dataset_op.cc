@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -336,7 +337,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         runner_thread_.reset(Env::Default()->StartThread(
             /*thread_options=*/{}, "tf_data_parallel_filter",
-            std::bind(&Iterator::RunnerThread, this, ctx_copy)));
+            tsl::WithCurrentContext(
+                std::bind(&Iterator::RunnerThread, this, ctx_copy))));
       }
     }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -574,7 +575,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           worker_threads_.emplace_back(Env::Default()->StartThread(
               /*thread_options=*/{},
               absl::StrCat(kDataParallelInterleaveWorker, "_", i),
-              [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
+              tsl::WithCurrentContext(
+                  [this, new_ctx, i]() { WorkerThread(new_ctx, i); })));
         }
       }
       return absl::OkStatus();
@@ -697,7 +699,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           worker_threads_.emplace_back(Env::Default()->StartThread(
               /*thread_options=*/{},
               absl::StrCat(kDataParallelInterleaveWorker, "_", i),
-              [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
+              tsl::WithCurrentContext(
+                  [this, new_ctx, i]() { WorkerThread(new_ctx, i); })));
         }
         DCHECK(interleave_indices_.size() == dataset()->cycle_length_);
         DCHECK(staging_indices_.size() == dataset()->prefetch_input_elements_);
