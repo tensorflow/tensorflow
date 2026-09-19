@@ -22,10 +22,6 @@ load(
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
-    "//xla/stream_executor:build_defs.bzl",
-    "stream_executor_gpu_friends",
-)
-load(
     "//xla/tests:build_defs.bzl",
     "xla_test",
 )
@@ -53,13 +49,16 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([":friends"]),
+    default_visibility = internal_visibility(["//xla/stream_executor/gpu/visibility:friends"]),
     licenses = ["notice"],
 )
 
+# Deprecated. Please use //third_party/tensorflow/compiler/xla/stream_executor/gpu/visibility:friends.
 package_group(
     name = "friends",
-    packages = stream_executor_gpu_friends(),
+    includes = [
+        "//xla/stream_executor/gpu/visibility:friends",
+    ],
 )
 
 cc_library(
@@ -371,7 +370,7 @@ cc_library(
         "redzone_allocator.cc",
     ],
     hdrs = ["redzone_allocator.h"],
-    visibility = internal_visibility([":friends"]),
+    visibility = internal_visibility(["//xla/stream_executor/gpu/visibility:friends"]),
     deps = [
         ":gpu_kernel_registry",
         ":redzone_allocator_kernel",
@@ -760,7 +759,7 @@ tf_proto_library(
     name = "tma_metadata_proto",
     srcs = ["tma_metadata.proto"],
     visibility = internal_visibility([
-        ":friends",
+        "//xla/stream_executor/gpu/visibility:friends",
         "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
     ]),
 )
@@ -771,7 +770,7 @@ cc_library(
     hdrs = ["tma_metadata.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     visibility = internal_visibility([
-        ":friends",
+        "//xla/stream_executor/gpu/visibility:friends",
         "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
     ]),
     deps = [
@@ -923,7 +922,7 @@ cc_library(
     hdrs = ["collective_kernel_metadata.h"],
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
-        ":friends",
+        "//xla/stream_executor/gpu/visibility:friends",
     ]),
 )
 
