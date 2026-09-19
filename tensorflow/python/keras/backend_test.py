@@ -19,3 +19,6 @@ class BinaryCrossentropyEagerGraphConsistencyTest(test_combinations.TestCase):
 
     graph_loss = graph_loss_fn()
     self.assertAllClose(eager_loss, graph_loss)
+
+if __name__ == '__main__':
+  test.main()
