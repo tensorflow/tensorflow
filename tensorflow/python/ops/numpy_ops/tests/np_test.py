@@ -39,7 +39,9 @@ from tensorflow.python.util.numpy_compat import np_where
 config.parse_flags_with_absl()
 
 
-nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
+nonempty_nonscalar_array_shapes = [
+    (4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)
+]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
 empty_array_shapes = [(0,), (0, 4), (3, 0),]
 
@@ -2957,6 +2959,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def foo(x):
       return tnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
+
+  def testStackInvalidAxis(self):
+    # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
+    # insertion position, so rank itself is in bounds.
+    a = onp.ones((2, 3))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      tnp.stack([a, a], axis=4)
+    # In-bounds boundaries still work.
+    self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
 
   @jtu.disable
   def testReluGradientConstants(self):
