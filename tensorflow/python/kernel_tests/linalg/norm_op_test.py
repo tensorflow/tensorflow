@@ -59,6 +59,16 @@ class NormOpTest(test_lib.TestCase):
       with self.assertRaisesRegex(ValueError, error_prefix):
         linalg_ops.norm(matrix, axis=axis_)
 
+  @test_util.run_v1_only("b/120545219")
+  def testAxisOutOfBounds(self):
+    matrix = constant_op.constant([[0., 1.], [2., 3.]])
+    for axis_ in 2, -3, (0, 2), (-3, -1):
+      with self.assertRaisesRegex(ValueError, "out of bounds"):
+        linalg_ops.norm(matrix, axis=axis_)
+    # In-bounds negative axes still work.
+    self.evaluate(linalg_ops.norm(matrix, axis=-1))
+    self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
+
 
 def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
 
