@@ -83,7 +83,11 @@ cc_library(
     srcs = ["post_process_single_host_xplane.cc"],
     hdrs = ["post_process_single_host_xplane.h"],
     copts = tf_profiler_copts(),
-    visibility = internal_visibility(["//xla/tsl/profiler:internal"]),
+    visibility = internal_visibility([
+        "//xla/tsl/profiler:internal",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
+    ]),
     deps = [
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:timestamp_utils",
