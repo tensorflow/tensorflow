@@ -19,6 +19,19 @@ endif()
 
 include(OverridableFetchContent)
 
+# Match the YNNPACK reduction fix in the Bazel dependency without requiring Git
+# for archive-only builds that do not enable YNNPACK.
+set(_XNNPACK_PATCH_COMMAND "")
+if(XNNPACK_BUILD_YNNPACK)
+  find_package(Git REQUIRED)
+  set(_XNNPACK_PATCH_COMMAND
+    PATCH_COMMAND "${CMAKE_COMMAND}"
+    "-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+    "-DXNNPACK_SOURCE_DIR=<SOURCE_DIR>"
+    -P "${CMAKE_CURRENT_LIST_DIR}/xnnpack/ApplyYnnpackPatch.cmake"
+  )
+endif()
+
 OverridableFetchContent_Declare(
   xnnpack
   GIT_REPOSITORY https://github.com/google/XNNPACK
@@ -27,6 +40,7 @@ OverridableFetchContent_Declare(
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
+  ${_XNNPACK_PATCH_COMMAND}
 )
 OverridableFetchContent_GetProperties(xnnpack)
 if(NOT xnnpack_POPULATED)

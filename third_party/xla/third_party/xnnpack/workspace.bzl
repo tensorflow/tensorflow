@@ -23,6 +23,7 @@ def repo():
         name = "XNNPACK",
         sha256 = "aab0ed2b3972125ca057b8e2b16127fbf68f8128ea07dd7efe56cdb92f2c1917",
         strip_prefix = "XNNPACK-d89ef6669a14db203b3b7935b1b3862cb63fb6df",
+        patch_file = ["//third_party/xnnpack:ynn_reduce_broadcast.patch"],
         urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/d89ef6669a14db203b3b7935b1b3862cb63fb6df.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
