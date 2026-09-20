@@ -1472,14 +1472,14 @@ def _MulNoNanGrad(op: ops.Operation, grad):
   # mul_no_nan is unchanged.
   cx = math_ops.conj(x)
   cy = math_ops.conj(y)
+  gx = gen_math_ops.mul_no_nan(grad, cy)
+  gy = gen_math_ops.mul_no_nan(cx, grad)
   if isinstance(grad, tensor.Tensor) and _ShapesFullySpecifiedAndEqual(
       x, y, grad
   ):
-    return gen_math_ops.mul_no_nan(grad, cy), gen_math_ops.mul_no_nan(cx, grad)
+    return gx, gy
 
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
-  gx = gen_math_ops.mul_no_nan(grad, cy)
-  gy = gen_math_ops.mul_no_nan(cx, grad)
   return _ReduceGradientArgs(x, y, gx, gy)
 
 

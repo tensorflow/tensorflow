@@ -733,8 +733,7 @@ class ComplexBinaryGradientTest(test.TestCase, parameterized.TestCase):
           masked = masked_op(x, y)
           plain = plain_op(x, y)
         self.assertAllClose(
-            self.evaluate(tape.gradient(masked, wrt)),
-            self.evaluate(tape.gradient(plain, wrt)),
+            tape.gradient(masked, wrt), tape.gradient(plain, wrt)
         )
 
 
