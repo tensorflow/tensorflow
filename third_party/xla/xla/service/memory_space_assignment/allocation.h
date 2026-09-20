@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -256,6 +257,12 @@ class PinnedAllocation final : public Allocation {
   bool operator==(const PinnedAllocation& other) const;
 };
 
+// An AllocationBlock handed to the repacker, with the Allocation it mirrors
+// attached to make importing repacked offsets easier.
+struct RepackAllocationBlock : AllocationBlock {
+  Allocation* allocation;
+};
+
 // This class represents an allocation that is used to reserve a chunk of
 // memory. If an HloPosition or an HloUse is colored in alternate memory, to
 // make sure we are able to satisfy the coloring requirements, we reserve a
@@ -297,9 +304,23 @@ class ReservedAllocation final : public Allocation {
   void mark_chunk_freed_in_interval_tree() { reserved_ = false; }
   void mark_chunk_reserved_in_interval_tree() { reserved_ = true; }
 
+  // Iterator of the RepackAllocationBlock that mirrors this reservation in
+  // MsaAlgorithm::repack_allocation_blocks_, engaged while the chunk is
+  // reserved. Valid because that list is only appended to and erased from one
+  // element at a time; it is never cleared while a reservation exists.
+  std::optional<std::list<RepackAllocationBlock>::iterator> repack_block_it()
+      const {
+    return repack_block_it_;
+  }
+  void set_repack_block_it(std::list<RepackAllocationBlock>::iterator it) {
+    repack_block_it_ = it;
+  }
+  void clear_repack_block_it() { repack_block_it_.reset(); }
+
  private:
   // Indicates whether the chunk is still reserved in the interval_tree_.
   bool reserved_;
+  std::optional<std::list<RepackAllocationBlock>::iterator> repack_block_it_;
 };
 
 // This class represents an allocation as a result of a single asynchronous

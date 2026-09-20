@@ -539,12 +539,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const absl::flat_hash_map<const HloInstruction*, int64_t>&
           instruction_schedule);
 
-  // We inherit AllocationBlock struct to attach the Allocation information to
-  // make importing repacked offsets easier.
-  struct RepackAllocationBlock : AllocationBlock {
-    Allocation* allocation;
-  };
-
   // This struct contains mandatory memory assignments at a given time. E.g., an
   // input's required memory assignment time would correspond to the definition
   // time of the parameter instruction, and an output's time would correspond to
@@ -1726,6 +1720,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::linked_hash_map<const HloBuffer*, std::vector<BufferColoring>>
   GetHloBufferToColoringsMap() const;
 
+  // Appends a RepackAllocationBlock mirroring the given reserved allocation to
+  // repack_allocation_blocks_ and records its iterator on the allocation. The
+  // allocation must not have a block in the list already.
+  void AddRepackAllocationBlockForReservedAllocation(
+      ReservedAllocation* reserved_allocation);
+
   // Removes the reserved chunk from the interval_tree_ for the given
   // allocation (if it is still reserved) and removes the corresponding
   // RepackAllocationBlock from repack_allocation_blocks_.
@@ -1814,7 +1814,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   AsynchronousCopyResource eviction_async_copy_resource_;
   // A list of RepackAllocationBlock objects that mirrors allocation sequences,
   // used for repacking. We use a list here because we need pointer stability
-  // for aliased allocations.
+  // for aliased allocations; ReservedAllocations also hold iterators into it.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
   int64_t next_repack_allocation_block_id_ = 0;
   int64_t num_repacks_ = 0;
