@@ -236,6 +236,34 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(dxx, y64**2 / h64**3)
     self.assertAllClose(dyy, x64**2 / h64**3)
 
+  def testHypotGradientBroadcast(self):
+    # The scale is broadcast against both inputs, so the reduction back to each
+    # input shape has to stay exact. d2/dy2 of sum(hypot(x, y)) at y == 0 is
+    # sum over the broadcast axis of 1 / |x|.
+    x = constant_op.constant([[3.0], [4.0]], dtype=dtypes.float64)
+    y = constant_op.constant([0.0, 0.0, 0.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as outer:
+      outer.watch(y)
+      with backprop.GradientTape() as inner:
+        inner.watch(y)
+        total = np_array_ops.sum(np_math_ops.hypot(x, y))
+      dy = inner.gradient(total, y)
+    self.assertAllClose(outer.gradient(dy, y), [1 / 3 + 1 / 4] * 3)
+
+  def testHypotGradientWithInfiniteElement(self):
+    # hypot is not differentiable at infinity and the gradient there is NaN,
+    # but that must not spill over into the finite elements.
+    x = constant_op.constant([1.0, 3.0, np.inf], dtype=dtypes.float64)
+    y = constant_op.constant([1.0, 4.0, 1.0], dtype=dtypes.float64)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch([x, y])
+      h = np_math_ops.hypot(x, y)
+    dx = tape.gradient(h, x)
+    dy = tape.gradient(h, y)
+    self.assertAllClose(dx[:2], [0.5**0.5, 0.6])
+    self.assertAllClose(dy[:2], [0.5**0.5, 0.8])
+    self.assertTrue(np.isnan(dx[2]) and np.isnan(dy[2]))
+
   def testHypotComplexInputs(self):
     x = np.array([3 + 4j, -1j, 0j], dtype=np.complex128)
     y = np.array([1 + 0j, 2 + 0j, 0j], dtype=np.complex128)
