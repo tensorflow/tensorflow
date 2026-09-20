@@ -213,7 +213,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                          params.clique_id_callback ? *params.clique_id_callback
                                                    : default_clique_id_callback,
                          *rank, cliques_map, max_channels,
-                         params.collective_use_minimal_resource));
+                         params.collective_use_minimal_resource,
+                         r.use_gxl_requested));
 
     cliques_map[r.key] = std::move(clique);
   }

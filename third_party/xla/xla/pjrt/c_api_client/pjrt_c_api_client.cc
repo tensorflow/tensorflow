@@ -176,17 +176,17 @@ PjRtCApiClient::PjRtCApiClient(
       extensions_(InitExtensions(c_api)),
       host_memory_allocator_(InitHostMemoryAllocator(c_api, c_client)),
       // Example platform version string:
-      //   PJRT C API
       //   TFRT TPU v2
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_client, c_api)),
       platform_name_(::pjrt::GetPlatformName(c_client, c_api)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   InitDevicesAndMemorySpaces();
   InitAttributes();
   LOG(INFO) << "PjRtCApiClient created.";
 }
+
+bool PjRtCApiClient::IsCApi() const { return true; }
 
 void PjRtCApiClient::InitDevicesAndMemorySpaces() {
   // Initialize devices.
@@ -1400,6 +1400,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
       PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+  args.allow_cancel_notifier = true;
 
   ShapesInfo shapes_info = MakeShapesInfo(shapes);
   args.num_shapes = shapes.size();
@@ -4315,8 +4316,7 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
       tpu_topology_extension_(pjrt::FindExtension<PJRT_TpuTopology_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_TpuTopology)),
       c_topology_(c_topology),
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_topology, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_topology, c_api)),
       platform_name_(::pjrt::PlatformName(c_api, c_topology)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {

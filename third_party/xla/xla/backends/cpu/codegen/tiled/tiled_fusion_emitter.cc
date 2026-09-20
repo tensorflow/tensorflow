@@ -436,6 +436,7 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
   }
 
   // 1. Construct the Symbolic Graph EXACTLY ONCE on the stack/heap.
+  std::unique_ptr<ge::TilingSpace> base_tiling_space = tiling_space->Clone();
   ABSL_ASSIGN_OR_RETURN(
       ge::TiledHloComputation symbolic_computation,
       ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
@@ -506,8 +507,8 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
     VLOG(2) << "Trying candidate " << i << ": {"
             << absl::StrJoin(candidate.padded_tile_sizes, ", ")
             << "} cost: " << candidate.cost;
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> winning_tiling_space,
-                     ge::TilingSpace::Create(*fusion_adaptor, &context));
+    std::unique_ptr<ge::TilingSpace> winning_tiling_space =
+        base_tiling_space->Clone();
     if (const absl::Status status =
             winning_tiling_space->AssignTileSizes(candidate.padded_tile_sizes);
         !status.ok()) {

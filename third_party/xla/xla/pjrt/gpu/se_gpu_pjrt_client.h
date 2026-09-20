@@ -74,24 +74,6 @@ limitations under the License.
 
 namespace xla {
 
-class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
- public:
-  StreamExecutorGpuDevice(int id, LocalDeviceState* local_device_state,
-                          std::string device_kind, std::string device_vendor,
-                          std::string compute_capability, int core_count,
-                          int64_t device_memory_bytes_limit,
-                          int64_t shared_memory_per_block_optin,
-                          int local_device_id, int process_index,
-                          int process_index_in_partition, int partition_index,
-                          int numa_node, std::string fabric_uuid);
-
-  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
-
-  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
-
-  absl::Status ClearMemoryStats() override;
-};
-
 class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
  public:
   static constexpr absl::string_view kKind = "device";

@@ -194,8 +194,10 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
   // Generate input data and store the data for all the execution.
   std::minstd_rand0 rng_engine;
   if (input_data.empty()) {
+    FakeArgumentsOptions options;
+    options.engine = &rng_engine;
     absl::StatusOr<std::vector<Literal>> input_status =
-        MakeFakeArguments(module, &rng_engine);
+        MakeFakeArguments(module, options);
     CHECK(input_status.ok());
     input_data_ = std::move(input_status).value();
   } else {

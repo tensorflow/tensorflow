@@ -85,13 +85,13 @@ def TPU_TiledLayoutAttr
 
     // Returns the smallest tile that can be used to divide the first tile of
     // `tiles` into contiguous subtiles.
-    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the subtile unit. Then,
+    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the unit subtile. Then,
     //   (T1, T2, ..., Tn) is equivalent to (T1, Ts, T2, ..., Tn). Furthermore,
     //   tiles (T2, ..., Tn) permute data within each Ts tile, but never across
     //   Ts tiles.
-    static ::llvm::SmallVector<int64_t> getSubtileUnit(::llvm::ArrayRef<::xla::Tile> tiles);
-    ::llvm::SmallVector<int64_t> getSubtileUnit() const {
-      return getSubtileUnit(getTiles());
+    static ::llvm::SmallVector<int64_t> getUnitSubtile(::llvm::ArrayRef<::xla::Tile> tiles);
+    ::llvm::SmallVector<int64_t> getUnitSubtile() const {
+      return getUnitSubtile(getTiles());
     }
 
     int64_t getRank() const {
@@ -292,6 +292,45 @@ def TPU_VectorStoreOp :TPU_Op<"vector_store", [DefaultMemWrite, AttrSizedOperand
   let builders = [
     OpBuilder<(ins "::mlir::Value":$valueToStore, "::mlir::Value":$base, "::mlir::ValueRange":$indices, CArg<"::mlir::Value", "nullptr">:$mask, CArg<"bool", "false">:$add)>
   ];
+}
+
+def TPU_CompressStoreVregOp : TPU_Op<"compress_store_vreg", [DefaultMemWrite]> {
+  let summary = "Performs a masked, compressed store of a single vreg.";
+  let description = [{
+    `tpu.compress_store_vreg` performs a masked, compressed store of a single
+    vreg to memory starting at the address given by `base[indices]`. It is the
+    physical (vreg-level) counterpart of `tpu.vector_compress_store`.
+
+    Masked-out lanes are skipped when writing to memory: elements from the
+    enabled lanes are stored contiguously to sequential locations in memory
+    starting at `base[indices]`.
+
+    For example, storing [A, B, C, D] with mask [true, false, true, false]
+    writes A to `base[indices]` and C to `base[indices] + 1`.
+
+    valueToStore: The vreg to store. For packed (sub-32-bit) types, the vreg is
+                  2-D with shape `(lane_count, packing)`, and a lane stores all
+                  of its `packing` subelements together.
+    base        : Memref to store to.
+    indices     : Scalar indices into `base`, identifying the position of the
+                  first stored element. The length must be the same as the
+                  rank of `base`.
+    mask        : 1-D lane mask.
+    add         : If true, the enabled elements are added to the values already
+                  in memory instead of overwriting them.
+  }];
+  let arguments = (ins
+    TPU_Vreg:$valueToStore,
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfRankAndType<[1], [I1]>:$mask,
+    DefaultValuedAttr<BoolAttr, "false">:$add
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+  }];
+  let hasVerifier = 1;
 }
 
 // tpu.vector_load loads a vector from memory into a register.
@@ -1243,7 +1282,9 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }

@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,10 +49,24 @@ ENTRY main {
 }
 )hlo";
 
-absl::Status CompileAndWriteExecutable(absl::string_view output_path) {
+absl::StatusOr<GpuModel> ParseGpuModel(absl::string_view gpu_model_name) {
+  if (gpu_model_name == "h100" || gpu_model_name == "h100_sxm") {
+    return GpuModel::H100_SXM;
+  }
+  if (gpu_model_name == "b200") {
+    return GpuModel::B200;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported GPU model: ", gpu_model_name));
+}
+
+absl::Status CompileAndWriteExecutable(absl::string_view output_path,
+                                       absl::string_view gpu_model_name) {
+  ABSL_ASSIGN_OR_RETURN(GpuModel gpu_model, ParseGpuModel(gpu_model_name));
+
   ABSL_ASSIGN_OR_RETURN(
       stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::H100_SXM));
+      GetGpuTargetConfig(gpu_model));
   ABSL_ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
                    GpuTargetConfig::FromProto(gpu_target_config_proto));
 
@@ -82,10 +98,12 @@ absl::Status CompileAndWriteExecutable(absl::string_view output_path) {
 int main(int argc, char** argv) {
   tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2) {
-    LOG(FATAL) << "Usage: " << argv[0] << " <output_file>";
+    LOG(FATAL) << "Usage: " << argv[0] << " <output_file> [gpu_model]";
   }
   std::string output_path = argv[1];
-  absl::Status status = xla::gpu::CompileAndWriteExecutable(output_path);
+  std::string gpu_model = argc >= 3 ? argv[2] : "h100";
+  absl::Status status =
+      xla::gpu::CompileAndWriteExecutable(output_path, gpu_model);
   QCHECK_OK(status) << "Failed to compile HLO to AOT executable";
   return 0;
 }

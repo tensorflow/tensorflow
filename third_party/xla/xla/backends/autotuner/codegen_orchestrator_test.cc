@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/mock_codegen_backend.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -100,6 +104,108 @@ TEST_F(CodegenOrchestratorTest, GetSupportedConfigsAggregatesFromAllBackends) {
   ASSERT_THAT(supported, SizeIs(2));
   EXPECT_THAT(*supported[0].backend_config, ConfigMatcher("test_config_1"));
   EXPECT_THAT(*supported[1].backend_config, ConfigMatcher("test_config_2"));
+}
+
+TEST_F(CodegenOrchestratorTest, CandidateConfigsFileOverridesSupportedConfigs) {
+  std::string temp_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "candidate_configs.pbtxt");
+  std::string file_content = absl::StrFormat(
+      R"pb(
+        configs {
+          backend: UNSPECIFIED_BACKEND
+          backend_config { gemm { algorithm: %d } }
+        }
+        configs {
+          backend: UNSPECIFIED_BACKEND
+          backend_config { gemm { algorithm: %d } }
+        }
+      )pb",
+      GetAlgorithmId("test_candidate_1"), GetAlgorithmId("test_candidate_2"));
+  ASSERT_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), temp_file, file_content));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::UNSPECIFIED_BACKEND));
+  EXPECT_CALL(*backend, GetSupportedConfigs(_)).Times(0);
+  EXPECT_CALL(*backend, GetSupportedConfigsWithEstimates(_)).Times(0);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  CodegenOrchestrator::Options options;
+  options.candidate_configs_file = temp_file;
+
+  ASSERT_OK_AND_ASSIGN(auto orchestrator, CodegenOrchestrator::Create(
+                                              std::move(backends), options));
+
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  ASSERT_OK_AND_ASSIGN(auto supported,
+                       orchestrator->GetSupportedConfigs(*dummy_instr));
+  ASSERT_THAT(supported, SizeIs(2));
+  EXPECT_THAT(*supported[0].backend_config, ConfigMatcher("test_candidate_1"));
+  EXPECT_THAT(*supported[1].backend_config, ConfigMatcher("test_candidate_2"));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto supported_with_estimates,
+      orchestrator->GetSupportedConfigsWithEstimates(*dummy_instr));
+  ASSERT_THAT(supported_with_estimates, SizeIs(2));
+  EXPECT_THAT(*supported_with_estimates[0].config.backend_config,
+              ConfigMatcher("test_candidate_1"));
+  EXPECT_EQ(supported_with_estimates[0].estimated_runtime, std::nullopt);
+  EXPECT_THAT(*supported_with_estimates[1].config.backend_config,
+              ConfigMatcher("test_candidate_2"));
+  EXPECT_EQ(supported_with_estimates[1].estimated_runtime, std::nullopt);
+}
+
+TEST_F(CodegenOrchestratorTest,
+       CandidateConfigsFileNotFoundReturnsInvalidArgument) {
+  auto backend = std::make_unique<MockCodegenBackend>();
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  CodegenOrchestrator::Options options;
+  options.candidate_configs_file = "/nonexistent/path/configs.pbtxt";
+  EXPECT_THAT(CodegenOrchestrator::Create(std::move(backends), options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CodegenOrchestratorTest,
+       CandidateConfigsFileInvalidProtoReturnsInvalidArgument) {
+  std::string temp_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "invalid_configs.pbtxt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), temp_file,
+                                   "invalid { proto content"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  CodegenOrchestrator::Options options;
+  options.candidate_configs_file = temp_file;
+  EXPECT_THAT(CodegenOrchestrator::Create(std::move(backends), options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CodegenOrchestratorTest,
+       CandidateConfigsFileUnregisteredBackendReturnsInvalidArgument) {
+  std::string temp_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "unregistered_backend.pbtxt");
+  ASSERT_OK(tsl::WriteStringToFile(
+      tsl::Env::Default(), temp_file,
+      "configs { backend: TRITON backend_config { gemm { algorithm: 1 } } }"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::UNSPECIFIED_BACKEND));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  CodegenOrchestrator::Options options;
+  options.candidate_configs_file = temp_file;
+  EXPECT_THAT(CodegenOrchestrator::Create(std::move(backends), options),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CodegenOrchestratorTest,

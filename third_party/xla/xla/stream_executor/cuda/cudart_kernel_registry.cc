@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cudart_kernel_registry.h"
 
+#include <elf.h>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -23,23 +25,30 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_elf_utils.h"
 
 namespace stream_executor::cuda {
 namespace {
+
+// Captured fatbin blob together with the mangled kernel name.
+struct FatbinAndName {
+  absl::Span<const uint8_t> fatbin;
+  absl::string_view name;
+};
 
 class KernelRegistry {
  public:
   void RegisterFatBinary(void** handle, const void* fat_cubin);
   void RegisterCudaRuntimeKernel(void** handle, const void* host_fun,
                                  absl::string_view name);
-  absl::StatusOr<CudaRuntimeKernel> FindCudaRuntimeKernel(
-      const void* host_fun) const;
+  absl::StatusOr<FatbinAndName> FindFatbinAndName(const void* host_fun) const;
 
  private:
   struct RegisteredKernel {
@@ -76,7 +85,7 @@ void KernelRegistry::RegisterCudaRuntimeKernel(void** handle,
   kernel_map_[host_fun] = {handle, std::string(name)};
 }
 
-absl::StatusOr<CudaRuntimeKernel> KernelRegistry::FindCudaRuntimeKernel(
+absl::StatusOr<FatbinAndName> KernelRegistry::FindFatbinAndName(
     const void* host_fun) const {
   if (host_fun == nullptr) {
     return absl::InvalidArgumentError("Host function pointer cannot be null");
@@ -97,10 +106,10 @@ absl::StatusOr<CudaRuntimeKernel> KernelRegistry::FindCudaRuntimeKernel(
     return absl::NotFoundError(absl::StrFormat(
         "Fatbinary for kernel '%s' (handle %p) not found in CUDA runtime "
         "kernel registry",
-        k_it->second.name, fat_handle));
+        k_it->second.name, static_cast<const void*>(fat_handle)));
   }
 
-  return CudaRuntimeKernel{f_it->second, k_it->second.name};
+  return FatbinAndName{f_it->second, k_it->second.name};
 }
 
 KernelRegistry& GetKernelRegistry() {
@@ -111,7 +120,30 @@ KernelRegistry& GetKernelRegistry() {
 }  // namespace
 
 absl::StatusOr<CudaRuntimeKernel> FindCudaRuntimeKernel(const void* host_fun) {
-  return GetKernelRegistry().FindCudaRuntimeKernel(host_fun);
+  ABSL_ASSIGN_OR_RETURN(FatbinAndName fatbin_and_name,
+                   GetKernelRegistry().FindFatbinAndName(host_fun));
+  return CudaRuntimeKernel{fatbin_and_name.fatbin, fatbin_and_name.name};
+}
+
+absl::StatusOr<CudaRuntimeKernel> FindCudaRuntimeKernel(
+    const void* host_fun, const CudaComputeCapability& compute_capability) {
+  ABSL_ASSIGN_OR_RETURN(FatbinAndName fatbin_and_name,
+                   GetKernelRegistry().FindFatbinAndName(host_fun));
+  ABSL_ASSIGN_OR_RETURN(absl::Span<const uint8_t> cubin,
+                   FindCubinForArch(fatbin_and_name.fatbin, compute_capability),
+                   _ << " for kernel '" << fatbin_and_name.name << "'");
+  return CudaRuntimeKernel{cubin, fatbin_and_name.name};
+}
+
+absl::StatusOr<CudaKernelFuncAttributes> FindCudaRuntimeKernelFuncAttributes(
+    const void* host_fun, const CudaComputeCapability& compute_capability) {
+  ABSL_ASSIGN_OR_RETURN(FatbinAndName fatbin_and_name,
+                   GetKernelRegistry().FindFatbinAndName(host_fun));
+  ABSL_ASSIGN_OR_RETURN(absl::Span<const uint8_t> cubin,
+                   FindCubinForArch(fatbin_and_name.fatbin, compute_capability),
+                   _ << " for kernel '" << fatbin_and_name.name << "'");
+  return ParseFuncAttributesFromCubin(cubin, fatbin_and_name.name,
+                                      compute_capability);
 }
 
 }  // namespace stream_executor::cuda

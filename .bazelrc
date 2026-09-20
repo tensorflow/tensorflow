@@ -76,7 +76,7 @@
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
-common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+common --repo_env=ML_WHEEL_VERSION_SUFFIX="-rc0"
 
 common --incompatible_default_to_explicit_init_py
 
@@ -578,6 +578,7 @@ common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/wi
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+common:windows_x86_cpu_2022 --features=with_wrapper
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior

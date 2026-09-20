@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -123,6 +124,15 @@ CommandBufferConfig GetCommandBufferConfig(
       std::move(commands), std::move(enabled_collectives), device_info,
       debug_options.xla_gpu_command_buffer_unroll_loops(), num_local_devices};
 
+  // oneAPI command buffers are not implemented yet. Hence, disable command
+  // buffer conversion for the oneAPI backend.
+  // TODO(intel-tf): Remove this fallback once oneAPI command buffers are
+  // implemented.
+  if (device_info.gpu_compute_capability().IsOneAPI()) {
+    config.enabled_commands.clear();
+    return config;
+  }
+
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
                                                 DebugOptions::WHILE};
@@ -179,6 +189,9 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
         return std::nullopt;
       }
+    case Thunk::Kind::kHostExecuteStart:
+    case Thunk::Kind::kHostExecuteDone:
+      return DebugOptions::HOST_EXECUTE;
     case Thunk::kCustomKernel:
     case Thunk::kKernel:
     case Thunk::kPartitionId:
@@ -195,6 +208,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAll:
     case Thunk::kCollectiveBroadcast:
     case Thunk::kCollectivePermute:
+    case Thunk::kGroup:
     case Thunk::kRaggedAllToAll:
     case Thunk::kReduceScatter:
     case Thunk::kRecv:
@@ -205,6 +219,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kConvolution:
       return DebugOptions::CONVOLUTION;
     case Thunk::kCustomCall:
+    case Thunk::kSelectK:
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
@@ -422,6 +437,11 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     return IsConvertible(static_cast<const RaggedAllToAllThunk&>(thunk),
                          config);
   }
+
+  if (thunk.kind() == Thunk::kGroup) {
+    return ThunkSequenceIsConvertible(
+        static_cast<const CollectiveGroupThunk&>(thunk).thunks(), config);
+  }
   return true;
 }
 
@@ -565,6 +585,20 @@ ConvertThunksToCommandBuffer(
       debug_options.xla_enable_command_buffers_during_profiling());
 }
 
+int64_t CountCommandBufferSize(ThunkSequence& thunks) {
+  int64_t count = 0;
+  (void)thunks.WalkNested([&](Thunk* nested) -> absl::Status {
+    if (nested->kind() != Thunk::kAsyncDone &&
+        nested->kind() != Thunk::kAsyncStart &&
+        nested->kind() != Thunk::kGroup &&
+        nested->kind() != Thunk::kSequential) {
+      ++count;
+    }
+    return absl::OkStatus();
+  });
+  return std::max<int64_t>(thunks.size(), count);
+}
+
 absl::Status FlushCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options,
@@ -572,7 +606,7 @@ absl::Status FlushCommandBuffer(
     bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
   // them to the new thunks sequence as is.
-  if (current_command_buffer_thunks.size() <
+  if (CountCommandBufferSize(current_command_buffer_thunks) <
       std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
     if (VLOG_IS_ON(2)) {
       for (const auto& thunk : current_command_buffer_thunks) {

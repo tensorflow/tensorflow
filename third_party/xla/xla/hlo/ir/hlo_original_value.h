@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -70,16 +69,22 @@ class OriginalValue {
  public:
   // Constructor for a normal value with array information.
   explicit OriginalValue(
-      TupleTree<std::optional<OriginalArray>>::Node&& root_node);
-  explicit OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree);
-  explicit OriginalValue(const TupleTree<std::optional<OriginalArray>>& tree);
-  explicit OriginalValue(const Shape& shape)
-      : data_(TupleTree<std::optional<OriginalArray>>(shape)) {}
-
-  static OriginalValue SyntheticCall();
+      TupleTree<std::optional<OriginalArray>>::Node&& root_node,
+      std::optional<std::string> call_hierarchy = std::nullopt);
+  explicit OriginalValue(
+      TupleTree<std::optional<OriginalArray>>&& tree,
+      std::optional<std::string> call_hierarchy = std::nullopt);
+  explicit OriginalValue(
+      const TupleTree<std::optional<OriginalArray>>& tree,
+      std::optional<std::string> call_hierarchy = std::nullopt);
+  explicit OriginalValue(
+      const Shape& shape,
+      std::optional<std::string> call_hierarchy = std::nullopt)
+      : tree_(TupleTree<std::optional<OriginalArray>>(shape)),
+        call_hierarchy_(std::move(call_hierarchy)) {}
 
   bool is_synthetic_call() const {
-    return std::holds_alternative<SyntheticCallType>(data_);
+    return call_hierarchy_.has_value() && call_hierarchy_->empty();
   }
 
   std::string ToString() const;
@@ -89,16 +94,8 @@ class OriginalValue {
   static std::shared_ptr<OriginalValue> CreateFromInstruction(
       const HloInstruction* instruction, absl::string_view prefix = "");
 
-  const TupleTree<std::optional<OriginalArray>>& tree() const {
-    CHECK(!is_synthetic_call())
-        << "Cannot get tree from a synthetic OriginalValue";
-    return std::get<TupleTree<std::optional<OriginalArray>>>(data_);
-  }
-  TupleTree<std::optional<OriginalArray>>* mutable_tree() {
-    CHECK(!is_synthetic_call())
-        << "Cannot get tree from a synthetic OriginalValue";
-    return &std::get<TupleTree<std::optional<OriginalArray>>>(data_);
-  }
+  const TupleTree<std::optional<OriginalArray>>& tree() const { return tree_; }
+  TupleTree<std::optional<OriginalArray>>* mutable_tree() { return &tree_; }
 
   const std::optional<OriginalArray>& original_array(
       ShapeIndexView index) const {
@@ -111,24 +108,15 @@ class OriginalValue {
   // Returns a const iterator over the pairs of ShapeIndex and
   // std::optional<OriginalArray>.
   auto original_arrays() const {
-    if (is_synthetic_call()) {
-      return std::as_const(EmptyOriginalValueTupleTree()).leaves();
-    }
     return tree().leaves();
   }
   // Returns a non-const iterator over the pairs of ShapeIndex and
   // std::optional<OriginalArray>.
   auto mutable_original_arrays() {
-    if (is_synthetic_call()) {
-      return EmptyOriginalValueTupleTree().leaves();
-    }
     return mutable_tree()->leaves();
   }
 
   bool IsEmpty() const {
-    if (is_synthetic_call()) {
-      return true;
-    }
     return std::all_of(
         tree().leaves().begin(), tree().leaves().end(),
         [](const auto& pair) { return !pair.second.has_value(); });
@@ -144,15 +132,20 @@ class OriginalValue {
     return !(*this == other);
   }
 
-  // Gets the (partial) call hierarchy string of the original call instructions
+  // Gets the call hierarchy string of the original call instructions
   // that this OriginalValue is associated with. Returns std::nullopt if this
   // OriginalValue is not associated with a call instruction or the call
   // hierarchy is lost (e.g., after complicated optimizations).
-  std::optional<std::string> GetOriginalCallLikeInstructions() const;
+  const std::optional<std::string>& call_hierarchy() const {
+    return call_hierarchy_;
+  }
+  void set_call_hierarchy(std::optional<std::string> call_hierarchy) {
+    call_hierarchy_ = std::move(call_hierarchy);
+  }
 
   template <typename H>
   friend H AbslHashValue(H h, const OriginalValue& value) {
-    h = H::combine(std::move(h), value.is_synthetic_call());
+    h = H::combine(std::move(h), value.call_hierarchy_);
     auto original_arrays = value.original_arrays();
     h = H::combine(std::move(h), std::distance(original_arrays.begin(),
                                                original_arrays.end()));
@@ -163,15 +156,20 @@ class OriginalValue {
   }
 
  private:
-  // Represents a synthetic value, e.g., from a call instruction that doesn't
-  // have a direct mapping to original arrays and should be removed by inlining.
-  struct SyntheticCallType {};
-  explicit OriginalValue(SyntheticCallType synthetic);
   static TupleTree<std::optional<OriginalArray>>& EmptyOriginalValueTupleTree();
 
   void ClearInternalNodeValues();
-  std::variant<SyntheticCallType, TupleTree<std::optional<OriginalArray>>>
-      data_;
+  TupleTree<std::optional<OriginalArray>> tree_;
+  // The optional call hierarchy that this OriginalValue is associated with.
+  // This is only available if the OriginalValue is created from a call
+  // instruction or a call-like instruction (e.g., kWhile). The format is
+  // "<call_instruction_name>#$" where "#$" is a placeholder. If loop unrolling
+  // happens, "#$" is replaced with the specific iteration count (e.g., "#0").
+  // If a nested loop is hoisted during loop-invariant hoisting, the outerloop's
+  // call hierarchy is prepended to the hoisted loop's call hierarchy but with
+  // "#$" replaced with "#*". An empty string (std::string("")) indicates a
+  // synthetic call.
+  std::optional<std::string> call_hierarchy_;
 };
 
 }  // namespace xla

@@ -345,6 +345,7 @@ cc_library(
         # Remove this once we clean up all the CUDA specific deps.
         "@xla//xla/tsl:libtpu_on_gce": [":nvtx_utils_external"],
         # Place holder for internal dependencies
+        "@xla//xla/tsl:chromiumos": [":nvtx_utils_external"],
         "//conditions:default": [":nvtx_utils_impl"],
     }),
 )

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -85,6 +87,9 @@ static FailureOr<APFloat> convertFloatValue(
 }
 
 std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
+  if (!value) {
+    return std::nullopt;
+  }
   auto space = dyn_cast_if_present<tpu::MemorySpaceAttr>(
       value.getType().getMemorySpace());
   if (!space) {
@@ -633,73 +638,286 @@ void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 LogicalResult MemRefReshapeOp::verify() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
+  const MemRefType input_ty = getInput().getType();
+  const MemRefType result_ty = getType();
+  if (result_ty.getMemorySpace() != input_ty.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
-  if (src_ty.getShape().size() < 2 || tgt_ty.getShape().size() < 2) {
-    return emitError("Not implemented: 1d memref reshape.");
-  }
-  if (tgt_ty.getElementType() != src_ty.getElementType()) {
+  if (result_ty.getElementType() != input_ty.getElementType()) {
     return emitOpError("Element types don't match.");
   }
-  auto src_elements_num = ShapedType::getNumElements(src_ty.getShape());
-  auto tgt_elements_num = ShapedType::getNumElements(tgt_ty.getShape());
-  if (src_elements_num != tgt_elements_num) {
-    return emitOpError(
-        "Number of elements doesn't match between input and output memref "
-        "type.");
-  }
-  if (src_ty.getLayout().isIdentity() && tgt_ty.getLayout().isIdentity()) {
-    return success();  // Untiled reshape
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!src_layout || !tgt_layout) {
-    return emitOpError("Only identity or tiled layouts supported.");
-  }
-  return verifyTiling();
-}
-
-mlir::InFlightDiagnostic MemRefReshapeOp::verifyTiling() {
-  auto src_ty = getInput().getType();
-  auto tgt_ty = getType();
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (src_layout.getTiles() != tgt_layout.getTiles()) {
-    return emitOpError(
-        "Expected the same tiling for the input and output memref.");
-  }
-  if (src_layout.getTiles().empty()) {
-    return {};  // Untiled reshape
-  }
-  auto tile = src_layout.getTiles().front().dimensions();
-  if (tile.size() != 2) {
-    return emitOpError("Not implemented: memref reshape with 1D tiling.");
-  }
-  if (!src_layout.tilesAreKnownContiguous(src_ty.getShape()) ||
-      !tgt_layout.tilesAreKnownContiguous(tgt_ty.getShape())) {
-    return emitOpError("Not implemented: reshape on a non-contiguous memref.");
-  }
-  auto src_tiled_shape = src_ty.getShape().take_back(tile.size());
-  auto tgt_tiled_shape = tgt_ty.getShape().take_back(tile.size());
-  bool is_src_align_tile_2nd_minor = src_tiled_shape[0] % tile[0] == 0;
-  bool is_src_align_tile_minor = src_tiled_shape[1] % tile[1] == 0;
-  bool is_tgt_align_tile_2nd_minor = tgt_tiled_shape[0] % tile[0] == 0;
-  bool is_tgt_align_tile_minor = tgt_tiled_shape[1] % tile[1] == 0;
-  if (tile[0] == 1 && is_src_align_tile_minor && is_tgt_align_tile_minor) {
-    // When the tiling is (1, ?) and the source and target shapes are aligned
-    // to the tile, we support reshape on any dims.
-  } else if (tgt_tiled_shape[1] != src_tiled_shape[1]) {
-    return emitOpError("Expected the minormost dimension to be unchanged");
-  } else if (tgt_tiled_shape[0] != src_tiled_shape[0]) {
-    if (!is_src_align_tile_2nd_minor || !is_tgt_align_tile_2nd_minor) {
-      return emitOpError(
-          "Expected the 2nd minor dimension is aligned to the tile");
+  int64_t input_static_elements = 1;
+  int64_t result_static_elements = 1;
+  int64_t input_dynamic_dims = 0;
+  int64_t result_dynamic_dims = 0;
+  for (const int64_t dim : input_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++input_dynamic_dims;
+    } else {
+      input_static_elements *= dim;
     }
   }
-  return {};
+  for (const int64_t dim : result_ty.getShape()) {
+    if (ShapedType::isDynamic(dim)) {
+      ++result_dynamic_dims;
+    } else {
+      result_static_elements *= dim;
+    }
+  }
+  const bool is_static = input_dynamic_dims == 0;
+  if (is_static != (result_dynamic_dims == 0)) {
+    return emitOpError(
+        "Input and result shapes must be both static or both dynamic.");
+  }
+  if (is_static && input_static_elements != result_static_elements) {
+    return emitOpError("Input and result number of elements don't match.");
+  }
+  if (result_dynamic_dims > 1) {
+    return emitOpError(
+        "Multiple result dynamic dimensions (their values are ambiguous).");
+  }
+  // The above checks are fundamental, the following is simply unimplemented:
+  if (!is_static && (input_dynamic_dims > 1 ||
+                     input_static_elements != result_static_elements)) {
+    // inferResultLayout relies on this check. Make sure to update it when
+    // removing this.
+    return emitOpError(
+        "Not implemented: Input with multiple dynamic dimensions or a changing "
+        "single dynamic dimension.");
+  }
+  FAILUREOR_ASSIGN_OR_RETURN(
+      const MemRefLayoutAttrInterface expected_result_layout,
+      inferResultLayout(input_ty, result_ty.getShape(),
+                        [&]() { return emitOpError(); }));
+  if (expected_result_layout != result_ty.getLayout()) {
+    return emitOpError("Expected result layout to be ")
+           << expected_result_layout;
+  }
+  return success();
+}
+
+FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
+    const MemRefType input_type, const ArrayRef<int64_t> result_shape,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  MLIRContext* const ctx = input_type.getContext();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const MemRefLayoutAttrInterface input_layout = input_type.getLayout();
+  const int64_t input_rank = input_type.getRank();
+  const int64_t result_rank = result_shape.size();
+  if (const auto input_tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
+    if (!input_tiled_layout.tilesAreKnownContiguous(input_type.getShape())) {
+      return emit_error()
+             << "Not implemented: Reshape on a non-contiguous memref.";
+    }
+    const ArrayRef<xla::Tile> input_tiles = input_tiled_layout.getTiles();
+    if (input_tiles.empty()) {
+      // Untiled reshape
+      return MemRefLayoutAttrInterface(
+          TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape));
+    }
+    const ArrayRef<int64_t> input_first_tile = input_tiles.front().dimensions();
+    const int64_t input_first_tile_rank = input_first_tile.size();
+    const int64_t input_untiled_rank = input_rank - input_first_tile_rank;
+
+    const TiledLayoutAttr preserved_tile_layout = [&]() -> TiledLayoutAttr {
+      if (result_rank < input_first_tile_rank) {
+        return nullptr;
+      }
+      int64_t i = 0;
+      // Leading tile dimensions of size 1 can be effectively ignored.
+      while (i < input_first_tile_rank && input_first_tile[i] == 1) {
+        ++i;
+      }
+      if (i == input_first_tile_rank) {
+        // Untiled reshape
+        return TiledLayoutAttr::getContiguous(ctx, /*tiles=*/{}, result_shape);
+      }
+      // Excluding leading ones, tiled dimensions must remain unchanged, with
+      // the possible exception of the first. Dimensions can be folded into or
+      // unfolded from it if it is tile-aligned in both the input and result.
+      // NOTE: This relies on the verifier enforcing that, if there is a dynamic
+      //       dimension, it is preserved between input and result.
+      auto input_dim_it = input_shape.end() - input_first_tile_rank + i;
+      auto result_dim_it = result_shape.end() - input_first_tile_rank + i;
+      bool can_preserve_tiling = *input_dim_it == *result_dim_it ||
+                                 (ShapedType::isStatic(*input_dim_it) &&
+                                  ShapedType::isStatic(*result_dim_it) &&
+                                  *input_dim_it % input_first_tile[i] == 0 &&
+                                  *result_dim_it % input_first_tile[i] == 0);
+      ++i;
+      ++input_dim_it;
+      ++result_dim_it;
+      for (; i < input_first_tile_rank; ++i, ++input_dim_it, ++result_dim_it) {
+        can_preserve_tiling &= *input_dim_it == *result_dim_it;
+      }
+      if (!can_preserve_tiling) {
+        return nullptr;
+      }
+      return TiledLayoutAttr::getContiguous(ctx, input_tiles, result_shape);
+    }();
+    if (preserved_tile_layout != nullptr) {
+      return MemRefLayoutAttrInterface(preserved_tile_layout);
+    }
+    const TiledLayoutAttr reshaped_tile_layout = [&]() -> TiledLayoutAttr {
+      if (input_tiles.size() != 1) {
+        return nullptr;
+      }
+      // To reason about the reshape, it can be helpful to conceptually view it
+      // as having the following steps:
+      //
+      // 1. Expand the unpadded tiled dimensions as follows:
+      //      16x256 with T(8, 128) -> 2x8x2x128
+      //    Note that this is not the same as getExpandedShape. Expanded
+      //    dimensions from the same unexpanded dimension are kept adjacent.
+      //
+      // 2. Collapse adjacent dimensions that have compatible striding.
+      //    Note that tile dimensions can be collapsed together iff the non-tile
+      //    dimensions that separate them are of size 1 (i.e. the original
+      //    unexpanded dimension is exactly one tile).
+      //
+      // 3. Expand the collapsed dimensions into the result shape. Fail if this
+      //    is not possible.
+      //
+      // The code below does not implement this _exactly_, to maintain a tiled
+      // representation, but performs a similar process. The expanded shape can
+      // be viewed as alternating tile and non-tile dimensions. Like above, tile
+      // dimensions can be collapsed together iff the non-tile dimensions that
+      // separate them are of size 1. Likewise, non-tile dimensions can be
+      // collapsed together iff the tile dimensions that separate them are of
+      // size 1. We iteratively collapse tile and non-tile dimensions and then
+      // try expanding them into the result shape.
+      auto get_input_tile_size = [&](int64_t input_dim) {
+        return input_untiled_rank <= input_dim
+                   ? input_first_tile[input_dim - input_untiled_rank]
+                   : 1;
+      };
+      // Dynamic and padded dimensions must be preserved exactly.
+      // NOTE: This relies on the verifier enforcing that, if there is a dynamic
+      //       dimension, it is preserved between input and result.
+      auto input_dim_is_dynamic_or_padded = [&](int64_t input_dim) {
+        const int64_t input_tile_size = get_input_tile_size(input_dim);
+        return ShapedType::isDynamic(input_shape[input_dim]) ||
+               input_shape[input_dim] % input_tile_size != 0;
+      };
+      int64_t input_dim = 0;
+      int64_t result_dim = 0;
+      SmallVector<int64_t> result_tile;
+      while (input_dim < input_rank || result_dim < result_rank) {
+        if (input_dim < input_rank &&
+            input_dim_is_dynamic_or_padded(input_dim)) {
+          if (result_dim == result_rank ||
+              input_shape[input_dim] != result_shape[result_dim]) {
+            return nullptr;
+          }
+          if (input_untiled_rank <= input_dim) {
+            result_tile.push_back(
+                input_first_tile[input_dim - input_untiled_rank]);
+          }
+          ++input_dim;
+          ++result_dim;
+          continue;
+        }
+        // Take as many non-tile dimensions as possible
+        int64_t non_tile_elements = 1;
+        while (input_dim < input_rank) {
+          if (input_dim_is_dynamic_or_padded(input_dim)) {
+            break;
+          }
+          const int64_t input_tile_size = get_input_tile_size(input_dim);
+          non_tile_elements *= input_shape[input_dim] / input_tile_size;
+          if (input_tile_size != 1) {
+            break;
+          }
+          ++input_dim;
+        }
+        // Take as many tile dimensions as possible.
+        // TODO(tlongeri): This could be generalized to multiple tiles, if they
+        // do not tile across previous tiles (i.e. they are equal to the
+        // previous tile's unit subtile), by iteratively taking dims from the
+        // most nested tiles up to the least nested one.
+        int64_t tile_elements = 1;
+        while (input_dim < input_rank) {
+          if (input_dim_is_dynamic_or_padded(input_dim)) {
+            break;
+          }
+          tile_elements *= get_input_tile_size(input_dim);
+          ++input_dim;
+          if (input_dim == input_rank ||
+              input_shape[input_dim] != get_input_tile_size(input_dim)) {
+            break;
+          }
+        }
+
+        // Expand non-tile dimensions
+        while (result_dim < result_rank) {
+          CHECK_LT(result_dim, result_rank);
+          if (ShapedType::isDynamic(result_shape[result_dim])) {
+            break;
+          }
+          if (non_tile_elements % result_shape[result_dim] == 0) {
+            if (!result_tile.empty()) {
+              result_tile.push_back(1);
+            }
+            non_tile_elements /= result_shape[result_dim];
+            ++result_dim;
+          } else if (result_shape[result_dim] % non_tile_elements == 0) {
+            // non_tile_elements is left holding the non-tile size for the
+            // current result dimension.
+            break;
+          } else {
+            // Cannot expand into the desired shape
+            return nullptr;
+          }
+        }
+        // Expand tile dimensions
+        while (result_dim < result_rank) {
+          CHECK_LT(result_dim, result_rank);
+          if (ShapedType::isDynamic(result_shape[result_dim])) {
+            break;
+          }
+          CHECK_EQ(result_shape[result_dim] % non_tile_elements, 0);
+          const int64_t result_dim_size =
+              result_shape[result_dim] / non_tile_elements;
+          non_tile_elements = 1;
+          if (tile_elements % result_dim_size == 0) {
+            if (!result_tile.empty() || result_dim_size != 1) {
+              result_tile.push_back(result_dim_size);
+            }
+            tile_elements /= result_dim_size;
+            ++result_dim;
+          } else if (result_dim_size % tile_elements == 0) {
+            break;
+          } else {
+            // Cannot expand into the desired shape
+            return nullptr;
+          }
+        }
+        if (non_tile_elements != 1 || tile_elements != 1) {
+          // Cannot expand into the desired shape
+          return nullptr;
+        }
+      }
+      return TiledLayoutAttr::getContiguous(
+          ctx, /*tiles=*/{xla::Tile(result_tile)}, result_shape);
+    }();
+    if (reshaped_tile_layout != nullptr) {
+      return MemRefLayoutAttrInterface(reshaped_tile_layout);
+    }
+    // TODO(tlongeri): Unify preserved_tile_layout, reshaped_tile_layout cases
+    //                 by generalizing reshaped_tile_layout case to multiple
+    //                 tiles.
+    return emit_error()
+           << "Not implemented: Supported only when (a) tiled dimensions "
+              "remain unchanged, except maybe for tile-aligned "
+              "folding/unfolding of the first tiled dimension, or (b) the "
+              "input layout has a single tile, under specific conditions.";
+  }
+  if (input_layout.isIdentity()) {
+    // Untiled reshape
+    return MemRefLayoutAttrInterface(AffineMapAttr::get(
+        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
+  }
+  return emit_error() << "Only tiled or identity layouts supported.";
 }
 
 LogicalResult TransposeOp::verify() {
@@ -906,6 +1124,27 @@ void VectorStoreOp::build(OpBuilder& builder, OperationState& state,
                           Value mask, bool add) {
   build(builder, state, valueToStore, base, indices,
         /*strides=*/builder.getDenseI32ArrayAttr({}), mask, add);
+}
+
+LogicalResult CompressStoreVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType value_ty = getValueToStore().getType();
+  if (value_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and valueToStore element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  VectorType mask_ty = getMask().getType();
+  if (value_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected valueToStore dimension 0 to match mask dimension 0: ")
+           << value_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
+  }
+  return success();
 }
 
 template <typename Op>
@@ -1539,10 +1778,25 @@ LogicalResult ConvOp::verify() {
 }
 
 LogicalResult MaskCastOp::verify() {
-  auto input_ty = getInput().getType();
-  auto output_ty = getResult().getType();
-  return success(input_ty.getShape().take_front(2) ==
-                 output_ty.getShape().take_front(2));
+  const VectorType input_ty = getInput().getType();
+  const VectorType output_ty = getResult().getType();
+  const int64_t input_rank = input_ty.getRank();
+  const int64_t output_rank = output_ty.getRank();
+  const int64_t min_rank = std::min(input_rank, output_rank);
+  const int64_t max_rank = std::max(input_rank, output_rank);
+  CHECK_GE(max_rank, 1);
+  // Unfortunately, if input and output ranks are equal, we don't have enough
+  // information to determine whether the last dimension is a subelement
+  // dimension (packed mask) or a target shape dimension (unpacked mask).
+  if (min_rank < max_rank - 1) {
+    return emitOpError("Input and output ranks must differ by at most 1");
+  }
+  if (input_ty.getShape().take_front(max_rank - 1) !=
+      output_ty.getShape().take_front(max_rank - 1)) {
+    return emitOpError(
+        "Input and output shapes must match on leading dimensions");
+  }
+  return success();
 }
 
 LogicalResult ScanOp::verify() {
@@ -1649,6 +1903,19 @@ mlir::tpu::CoreType SemaphoreSignalOp::getTargetCoreType() {
   return getRefCoreType(getSemaphore()).value_or(GetCoreTypeOfParentOp(**this));
 }
 
+namespace {
+
+bool isRemote(Value device_id, Value core_id) {
+  return device_id != nullptr || core_id != nullptr;
+}
+
+template <typename OpTy>
+bool isRemote(OpTy op) {
+  return isRemote(op.getDeviceId(), op.getCoreId());
+}
+
+}  // namespace
+
 LogicalResult SemaphoreSignalOp::verify() {
   MemRefType sem_type = getSemaphore().getType();
   if (sem_type.getRank() != 0) {
@@ -1658,7 +1925,7 @@ LogicalResult SemaphoreSignalOp::verify() {
   CoreType issuing_core_type = GetCoreTypeOfParentOp(**this);
   CoreType target_core_type = getTargetCoreType();
 
-  if (getCoreId() == nullptr && getDeviceId() == nullptr) {
+  if (!isRemote(*this)) {
     if (target_core_type != issuing_core_type) {
       return emitOpError(
           absl::StrFormat("Target core type (%s) must match source core type "
@@ -1685,6 +1952,140 @@ LogicalResult SemaphoreWaitOp::verify() {
   return success();
 }
 
+namespace {
+
+bool isSparseCoreStreamLocalMemory(tpu::MemorySpaceAttr mem_space,
+                                   CoreType issuing_core) {
+  if (mem_space.getCoreType().value_or(issuing_core) != issuing_core) {
+    return false;
+  }
+  if (issuing_core == CoreType::kScVectorSubcore) {
+    return mem_space.getValue() == MemorySpace::kVmem;
+  }
+  if (issuing_core == CoreType::kScScalarSubcore) {
+    return mem_space.getValue() == MemorySpace::kSmem;
+  }
+  return false;
+}
+
+LogicalResult verifySparseCoreDmaSemaphores(
+    Operation* op, tpu::MemorySpaceAttr source_mem_space,
+    tpu::MemorySpaceAttr target_mem_space, Value source_semaphore,
+    Value target_semaphore, bool is_remote, CoreType issuing_core) {
+  if (is_remote) {
+    return success();
+  }
+  bool src_is_local =
+      isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+  bool tgt_is_local =
+      isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+  if (!src_is_local && tgt_is_local) {
+    if (source_semaphore != nullptr) {
+      return op->emitOpError(
+          "Source semaphores are unsupported for transfers from a "
+          "non-local memory to local memory on SparseCore");
+    }
+  }
+  return success();
+}
+
+LogicalResult verifyCommonDmaParams(
+    Operation* op, MemRefType source_ty, MemRefType target_ty,
+    TypedValue<MemRefType> source_sem, TypedValue<MemRefType> target_sem,
+    Value device_id, Value core_id, Value subcore_id, int priority,
+    bool strict_ordering, CoreType issuing_core) {
+  Type sem_elem_type = nullptr;
+
+  if (target_sem) {
+    MemRefType target_sem_type = getMemRefType(target_sem);
+    if (target_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA target semaphore must be rank 0");
+    }
+    sem_elem_type = target_sem_type.getElementType();
+  }
+
+  if (source_sem) {
+    MemRefType source_sem_type = getMemRefType(source_sem);
+    if (source_sem_type.getRank() != 0) {
+      return op->emitOpError("DMA source semaphore reference must be rank 0");
+    }
+    if (sem_elem_type && source_sem_type.getElementType() != sem_elem_type) {
+      return op->emitOpError(
+          "DMA source and target semaphore must have the same type");
+    }
+    if (!sem_elem_type) {
+      sem_elem_type = source_sem_type.getElementType();
+    }
+  }
+
+  if (source_ty.getElementType() != target_ty.getElementType()) {
+    return op->emitOpError("DMA source and target element type mismatch");
+  }
+  if (source_ty.getShape() != target_ty.getShape()) {
+    return op->emitOpError("DMA source and target shape mismatch.");
+  }
+
+  bool is_remote = isRemote(device_id, core_id);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+  if (is_sc) {
+    if (source_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Source memory space must be provided for SparseCore DMA");
+    }
+    if (target_ty.getMemorySpace() == nullptr) {
+      return op->emitOpError(
+          "Target memory space must be provided for SparseCore DMA");
+    }
+  }
+
+  if (priority < 0 || priority > 1) {
+    return op->emitOpError(
+               "Not implemented: only support priority 0 or 1, but got ")
+           << priority;
+  }
+  if (priority != 0 && is_remote) {
+    return op->emitOpError(
+        "Not implemented: non-zero priority is not supported for remote DMA");
+  }
+  if (source_sem &&
+      getRefCoreType(source_sem).value_or(issuing_core) != issuing_core) {
+    return op->emitOpError(
+        "Source semaphore and source ref core type mismatched");
+  }
+  // If the target core_type is different from the issuing core_type,
+  // the specific core_id must be provided. The device_id is irrelevant here.
+  CoreType target_core = getRefCoreType(target_sem).value_or(issuing_core);
+  if (target_core != issuing_core && core_id == nullptr) {
+    return op->emitOpError(
+        absl::StrFormat("Core id must be specified when target core type (%v) "
+                        "is different from source core type (%v)",
+                        target_core, issuing_core));
+  }
+  if (strict_ordering && issuing_core != CoreType::kScScalarSubcore &&
+      issuing_core != CoreType::kScVectorSubcore) {
+    return op->emitOpError(
+        "Strict ordering is only supported on the SC scalar and vector "
+        "subcores");
+  }
+  if (sem_elem_type && isa<SemaphoreType>(sem_elem_type)) {
+    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
+        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
+      return op->emitOpError(
+          "Non-DMA semaphores are not supported for DMAs involving SMEM");
+    }
+  }
+  // Subcore ID applies only to SC vector subcore DMAs.
+  if (target_core != CoreType::kScVectorSubcore && subcore_id != nullptr) {
+    return op->emitOpError(
+        "Subcore id should not be set unless target core type is SC vector "
+        "subcore");
+  }
+  return success();
+}
+
+}  // namespace
+
 void EnqueueDMAOp::build(OpBuilder& builder, OperationState& state,
                          Value source, Value source_semaphore, Value target,
                          Value target_semaphore, Value device_id, Value core_id,
@@ -1698,97 +2099,52 @@ mlir::tpu::CoreType EnqueueDMAOp::getTargetCoreType() {
 }
 
 LogicalResult EnqueueDMAOp::verify() {
-  Value target_sem = getTargetSemaphore();
-  if (!target_sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    return emitOpError("EnqueueDMA target semaphore must be provided.");
-  }
-  MemRefType target_sem_type = getMemRefType(target_sem);
-  if (target_sem_type.getRank() != 0) {
-    return emitOpError("DMA target semaphore must be rank 0");
-  }
-  Type target_sem_elem_type = target_sem_type.getElementType();
-
-  Value source_sem = getSourceSemaphore();
-  if (source_sem) {
-    MemRefType source_sem_type = getMemRefType(source_sem);
-    if (source_sem_type.getRank() != 0) {
-      return emitOpError("DMA source semaphore reference must be rank 0");
-    }
-    if (source_sem_type.getElementType() != target_sem_elem_type) {
-      return emitOpError(
-          "DMA source and target semaphore must have the same type");
-    }
-  }
   MemRefType source_ty = getMemRefType(getSource());
   MemRefType target_ty = getMemRefType(getTarget());
-  if (source_ty.getElementType() != target_ty.getElementType()) {
-    return emitOpError("DMA source and target element type mismatch");
-  }
-  if (source_ty.getShape() != target_ty.getShape()) {
-    return emitOpError("DMA source and target shape mismatch.");
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
   }
 
-  if (getDeviceId() || getCoreId()) {
+  if (is_remote) {
     if (!getSourceSemaphore()) {
       return emitOpError(
           "DMA source semaphore must be specified when device_id or core_id is "
           "specified");
     }
   }
-  bool is_remote = getDeviceId() || getCoreId();
-  if (getSourceSemaphore()) {
-    // TODO: b/501204503 - Support optional source and destination semaphores.
-    if (!is_remote) {
+
+  if (is_sc) {
+    auto source_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+    auto target_mem_space =
+        dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+    if (source_mem_space != nullptr && target_mem_space != nullptr) {
+      if (failed(verifySparseCoreDmaSemaphores(
+              getOperation(), source_mem_space, target_mem_space,
+              getSourceSemaphore(), getTargetSemaphore(), is_remote,
+              issuing_core))) {
+        return failure();
+      }
+    }
+  } else {
+    if (getTargetSemaphore() == nullptr) {
+      return emitOpError("DMA target semaphore must be specified");
+    }
+    if (!is_remote && getSourceSemaphore() != nullptr) {
       return emitOpError(
           "DMA destination device_id or core_id must be specified when source "
           "semaphore is specified");
     }
   }
-  int priority = getPriority();
-  if (priority < 0 || priority > 1) {
-    return emitOpError(
-               "Not implemented: only support priority 0 or 1, but got ")
-           << priority;
-  }
-  if (priority != 0 && is_remote) {
-    return emitOpError(
-        "Not implemented: non-zero priority is not supported for remote DMA");
-  }
-  // If the target core_type is different from the issuing core_type,
-  // the specific core_id must be provided. The device_id is irrelevant here.
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  CoreType target_core = getTargetCoreType();
-  if (getSourceSemaphore() &&
-      getRefCoreType(getSourceSemaphore()).value_or(issuing_core) !=
-          issuing_core) {
-    return emitOpError("Source semaphore and source ref core type mismatched");
-  }
-  if (target_core != issuing_core && getCoreId() == nullptr) {
-    return emitOpError(
-        absl::StrFormat("Core id must be specified when target core type (%v) "
-                        "is different from source core type (%v)",
-                        target_core, issuing_core));
-  }
-  if (getStrictOrdering() && issuing_core != CoreType::kScScalarSubcore &&
-      issuing_core != CoreType::kScVectorSubcore) {
-    return emitOpError(
-        "Strict ordering is only supported on the SC scalar and vector "
-        "subcores");
-  }
-  if (isa<SemaphoreType>(target_sem_elem_type)) {
-    if (HasMemorySpace(source_ty, MemorySpace::kSmem, CoreType::kTc) ||
-        HasMemorySpace(target_ty, MemorySpace::kSmem, CoreType::kTc)) {
-      return emitOpError(
-          "Non-DMA semaphores are not supported for DMAs involving SMEM");
-    }
-  }
-  // Subcore ID applies only to SC vector subcore DMAs.
-  if (target_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless target core type is SC vector "
-        "subcore");
-  }
+
   return success();
 }
 
@@ -1872,29 +2228,63 @@ LogicalResult WaitDMA2Op::verify() {
 }
 
 LogicalResult WaitDMAOp::verify() {
+  MemRefType source_ty = getMemRefType(getSource());
+  MemRefType target_ty = getMemRefType(getTarget());
+  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
+  bool is_remote = isRemote(*this);
+  bool is_sc = issuing_core == CoreType::kScVectorSubcore ||
+               issuing_core == CoreType::kScScalarSubcore;
+
+  if (failed(verifyCommonDmaParams(
+          getOperation(), source_ty, target_ty, getSourceSemaphore(),
+          getTargetSemaphore(), getDeviceId(), getCoreId(), getSubcoreId(),
+          getPriority(), getStrictOrdering(), issuing_core))) {
+    return failure();
+  }
+
   bool wait_destination = getWaitTarget();
   TypedValue<MemRefType> sem =
       wait_destination ? getTargetSemaphore() : getSourceSemaphore();
-  if (!sem) {
-    // TODO: b/501204503 - Support optional source and destination semaphores
-    // with global reserved semaphore allocation tracking.
-    return emitOpError("The awaited semaphore must be provided");
-  }
 
-  if (getMemRefType(sem).getRank() != 0) {
-    return emitOpError("DMA wait semaphore must be rank 0");
+  if (is_sc) {
+    if (!is_remote) {
+      auto source_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(source_ty.getMemorySpace());
+      auto target_mem_space =
+          dyn_cast_or_null<tpu::MemorySpaceAttr>(target_ty.getMemorySpace());
+      if (source_mem_space != nullptr && target_mem_space != nullptr) {
+        bool src_is_local =
+            isSparseCoreStreamLocalMemory(source_mem_space, issuing_core);
+        bool tgt_is_local =
+            isSparseCoreStreamLocalMemory(target_mem_space, issuing_core);
+        if (!src_is_local && tgt_is_local && !wait_destination) {
+          return emitOpError(
+              "Awaiting source read completion is unsupported for transfers "
+              "from a non-local memory to local memory on SparseCore");
+        }
+      }
+    }
+  } else {
+    if (wait_destination) {
+      if (getTargetSemaphore() == nullptr) {
+        return emitOpError("DMA target semaphore must be specified");
+      }
+      if (!is_remote && getSourceSemaphore() != nullptr) {
+        return emitOpError(
+            "DMA destination device_id or core_id must be specified when "
+            "source semaphore is specified");
+      }
+    } else {
+      if (getSourceSemaphore() == nullptr) {
+        return emitOpError("The awaited semaphore must be provided");
+      }
+    }
   }
-
-  CoreType issuing_core = GetCoreTypeOfParentOp(**this);
-  if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
-    return emitOpError("Can only await semaphores attached to the local core");
-  }
-
-  // Subcore ID applies only to SC vector subcore.
-  if (issuing_core != CoreType::kScVectorSubcore && getSubcoreId() != nullptr) {
-    return emitOpError(
-        "Subcore id should not be set unless issuing core type is SC vector "
-        "subcore");
+  if (sem) {
+    if (getRefCoreType(sem).value_or(issuing_core) != issuing_core) {
+      return emitOpError(
+          "Can only await semaphores attached to the local core");
+    }
   }
 
   return success();

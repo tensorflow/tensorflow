@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/ynnpack/copy.h"
 #include "tensorflow/lite/delegates/ynnpack/dot.h"
 #include "tensorflow/lite/delegates/ynnpack/elementwise.h"
+#include "tensorflow/lite/delegates/ynnpack/moe.h"
 #include "tensorflow/lite/delegates/ynnpack/pooling.h"
 #include "tensorflow/lite/delegates/ynnpack/reduction.h"
 #include "tensorflow/lite/delegates/ynnpack/softmax.h"
@@ -70,16 +71,16 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
     tensor_to_value_id_.clear();
     inputs_.clear();
-
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
 
     int num_dummy_inputs = 0;
     for (const auto& node : nodes_info_) {
-      if (IsRuntimeBmm(context, node.node_index) && node.inputs.size() >= 3) {
+      if (node.composite_op_type == CompositeOpType::kRuntimeBmm &&
+          node.inputs.size() >= 3) {
         num_dummy_inputs += 2;
-      } else if (IsSdpa(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         num_dummy_inputs += 4;
       }
     }
@@ -167,7 +168,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     // Now define internal nodes.
-    for (const auto& node : nodes_info_) {
+    for (size_t i = 0; i < nodes_info_.size(); ++i) {
+      const auto& node = nodes_info_[i];
       if (IsUnaryOp(node.builtin_code)) {
         TF_LITE_ENSURE_STATUS(
             DefineUnaryNode(context, subgraph_, tensor_to_value_id_, node));
@@ -221,11 +223,11 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDepthToSpace) {
         TF_LITE_ENSURE_STATUS(DefineDepthToSpaceNode(
             context, subgraph_, tensor_to_value_id_, node));
-      } else if (IsRuntimeBmm(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kRuntimeBmm) {
         TF_LITE_ENSURE_STATUS(DefineRuntimeBatchedMatMulNode(
             context, subgraph_, tensor_to_value_id_, next_external_id,
             dummy_inputs_, node));
-      } else if (IsSdpa(context, node.node_index)) {
+      } else if (node.composite_op_type == CompositeOpType::kSdpa) {
         TF_LITE_ENSURE_STATUS(
             DefineSdpaNode(context, subgraph_, tensor_to_value_id_,
                            next_external_id, dummy_inputs_, node));
@@ -256,6 +258,9 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (node.builtin_code == kTfLiteBuiltinDequantize) {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
+      } else if (node.composite_op_type == CompositeOpType::kMoe) {
+        TF_LITE_ENSURE_STATUS(
+            DefineMoeNode(context, subgraph_, tensor_to_value_id_, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -296,6 +301,13 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       node_info.outputs.assign(node->outputs->data,
                                node->outputs->data + node->outputs->size);
       node_info.activation = GetFusedActivation(reg, node);
+      if (IsRuntimeBmm(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kRuntimeBmm;
+      } else if (IsSdpa(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kSdpa;
+      } else if (IsMoe(reg, node)) {
+        node_info.composite_op_type = CompositeOpType::kMoe;
+      }
       nodes_info_.push_back(node_info);
     }
 
@@ -397,7 +409,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
-
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
     }
 
@@ -522,6 +533,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
              kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
+    } else if (IsMoe(registration, node)) {
+      return IsMoeSupported(registration, node, context) == kTfLiteOk;
     }
     return false;
   }
@@ -545,6 +558,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
         } else if (IsSdpa(reg, node) &&
                    IsSdpaSupported(reg, node, context) == kTfLiteOk) {
           // Don't inline this supported sdpa.
+          return false;
+        } else if (IsMoe(reg, node) &&
+                   IsMoeSupported(reg, node, context) == kTfLiteOk) {
+          // Don't inline this supported MoE.
           return false;
         }
         return true;

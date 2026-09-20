@@ -838,7 +838,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
     if (sg.ok()) {
       // Create remote contexts on the newly added workers only if the master
       // has collected all device information from them (i.e., the
-      // GetAllRemoteDevices call returns succussfully). Note that in rare cases
+      // GetAllRemoteDevices call returns successfully). Note that in rare cases
       // GetAllRemoteDevices can still fail even with RPCs configured to wait
       // until the remote workers to become alive. If the master creates remote
       // contexts on the workers whose devices are still not collected, those

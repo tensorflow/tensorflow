@@ -1,0 +1,50 @@
+Fix SymbolOpInterface usages for LLVM r632326.
+
+diff --git a/include/tensor_ir/Dialect/TensorOps.td b/include/tensor_ir/Dialect/TensorOps.td
+--- a/include/tensor_ir/Dialect/TensorOps.td
++++ b/include/tensor_ir/Dialect/TensorOps.td
+@@ -39,7 +39,8 @@ def TensorIR_TypedAttrArray
+ 
+ def TensorIR_GraphOp : TensorIR_Op<"graph",
+     [SingleBlock, SingleBlockImplicitTerminator<"ResultsOp">,
+-     FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface]> {
++     SymbolName, SymbolVisibility, FunctionOpInterface, IsolatedFromAbove,
++     OpAsmOpInterface]> {
+   let summary = "Define a flat graph of TensorIR operations";
+   let description = [{
+     This operation is modeling a unordered list of operations forming a
+@@ -52,6 +53,7 @@ def TensorIR_GraphOp : TensorIR_Op<"grap
+   }];
+   let arguments = (ins
+     SymbolNameAttr:$sym_name,
++    OptionalAttr<StrAttr>:$sym_visibility,
+     TypeAttrOf<FunctionType>:$function_type,
+     OptionalAttr<ArrayAttr>:$arg_attrs,
+     OptionalAttr<ArrayAttr>:$res_attrs
+diff --git a/lib/Compiler/CudaTile/CudaTileFrontend.cpp b/lib/Compiler/CudaTile/CudaTileFrontend.cpp
+--- a/lib/Compiler/CudaTile/CudaTileFrontend.cpp
++++ b/lib/Compiler/CudaTile/CudaTileFrontend.cpp
+@@ -240,8 +240,7 @@ static mlir::LogicalResult runTensorIRLo
+ }
+ 
+ static std::string getRuntimeKernelName(mlir::ModuleOp module) {
+-  auto moduleName = module->getAttrOfType<mlir::StringAttr>(
+-      mlir::SymbolTable::getSymbolAttrName());
++  auto moduleName = module->getAttrOfType<mlir::StringAttr>("sym_name");
+   return moduleName ? moduleName.getValue().str() : "tensor_ir_rtk";
+ }
+ 
+diff --git a/lib/Utils/Utils.cpp b/lib/Utils/Utils.cpp
+--- a/lib/Utils/Utils.cpp
++++ b/lib/Utils/Utils.cpp
+@@ -311,8 +311,8 @@ FailureOr<llvm::hash_code> getModuleHash
+   // Anonymize symbols to ignore symbol name discrepancy among modules
+   size_t symNameCounter = 0;
+   auto walkResult =
+-      clonedModuleOp->walk<WalkOrder::PreOrder>([&](Operation *op) {
+-        if (op->hasAttr(SymbolTable::getSymbolAttrName())) {
++      clonedModuleOp->walk<WalkOrder::PreOrder>([&](Operation* op) {
++        if (op->hasAttr("sym_name")) {
+           StringAttr oldName = SymbolTable::getSymbolName(op);
+ 
+           // Generate new anonymized name and replace all uses of the symbol

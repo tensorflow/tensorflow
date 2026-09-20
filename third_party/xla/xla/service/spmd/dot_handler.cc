@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/convolution_handler.h"
 #include "xla/service/spmd/custom_call_handler.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -152,9 +153,13 @@ class CreateShardedDotFunctor final
         ShapeInference::InferDotOpShape(
             l->shape(), r->shape(), dot_->dot_dimension_numbers(),
             /*preferred_element_type=*/dot_->shape().element_type()));
-    return b->AddInstruction(HloInstruction::CreateDot(
+    HloInstruction* sharded_dot = b->AddInstruction(HloInstruction::CreateDot(
         sharded_dot_shape, l, r, dot_->dot_dimension_numbers(),
         dot_->precision_config()));
+    if (dot_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+      sharded_dot->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
+    return sharded_dot;
   }
 
  private:
@@ -206,6 +211,9 @@ absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
   Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
       pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   if (!sharded_lhs_contracting_dims.empty()) {
     phlo = lhs.state().partitioner->AllReduceAlongShardingDims(

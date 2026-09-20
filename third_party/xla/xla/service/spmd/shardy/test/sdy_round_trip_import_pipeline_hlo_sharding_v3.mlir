@@ -127,11 +127,13 @@ module @module_1 {
   // Test that inlined meshes are lifted and deduplicated.
 
   // CHECK-LABEL: func @inlined_mesh(
-  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
+  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>},
+  // CHECK-SAME: %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>})
+  // CHECK-SAME: -> tensor<32xi32> {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}
+  ) -> tensor<32xi32> {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
     %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
@@ -239,6 +241,13 @@ module @maximal_sharding_module {
     } : (tensor<2xi64>) -> tuple<>
     return %arg0 : tensor<2xi64>
   }
+
+  // CHECK-LABEL: func @result_with_maximal_sharding
+  // CHECK-SAME:    (%arg0: tensor<32xi32>) -> tensor<32xi32> {
+  func.func @result_with_maximal_sharding(%arg0: tensor<32xi32>) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=0]}"}) {
+    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+    return %arg0 : tensor<32xi32>
+  }
 }
 
 // -----
@@ -267,5 +276,25 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
   func.func @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     // CHECK-NEXT: return %arg0 : tensor<32xi32>
     return %arg0 : tensor<32xi32>
+  }
+}
+
+// -----
+
+// A fully manual HLO sharding omits its dimension shardings, so their number
+// is taken from the rank of the value the sharding is on. Covers all three
+// carriers: a function argument, a function result, and an op result.
+module @fully_manual_sharding_module {
+  // CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+  // CHECK-LABEL: func @fully_manual_sharding(
+  // CHECK-SAME:    %arg0: tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
+  // CHECK-SAME:  ) -> (tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) {
+  func.func @fully_manual_sharding(
+    %arg0: tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}
+  ) -> (tensor<8x16xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"}) {
+    // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{}, {}]> : tensor<8x16xi32>
+    // CHECK-NEXT: return %[[SHARDING]]
+    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['a'=2,'b'=2], manual}"} : (tensor<8x16xi32>) -> tensor<8x16xi32>
+    return %0 : tensor<8x16xi32>
   }
 }

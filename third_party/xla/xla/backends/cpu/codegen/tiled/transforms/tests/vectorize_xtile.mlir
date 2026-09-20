@@ -705,16 +705,16 @@ func.func @test_extract_strided(%arg0: memref<12x1xf64>, %arg1: index) -> tensor
   return %0 : tensor<2x1xf64>
 }
 // CHECK-LABEL: @test_extract_strided
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<2x1xf64>
-// CHECK: %[[LOAD0:.*]] = memref.load %{{.*}}[%{{.*}}, %[[C0]]] : memref<12x1xf64>
-// CHECK: %[[INS0:.*]] = vector.insert %[[LOAD0]], %[[CST]] [0, 0] : f64 into vector<2x1xf64>
-// CHECK: %[[C3:.*]] = arith.constant 3 : index
-// CHECK: %[[OFF1:.*]] = arith.addi %{{.*}}, %[[C3]] : index
-// CHECK: %[[LOAD1:.*]] = memref.load %{{.*}}[%[[OFF1]], %[[C0]]] : memref<12x1xf64>
-// CHECK: %[[INS1:.*]] = vector.insert %[[LOAD1]], %[[INS0]] [1, 0] : f64 into vector<2x1xf64>
-// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[INS1]] : vector<2x1xf64> to tensor<2x1xf64>
-// CHECK: return %[[RET]]
+// CHECK: memref.alloca
+// CHECK: xla.apply_indexing
+// CHECK: scf.for
+// CHECK:   scf.for
+// CHECK:     xla.apply_indexing
+// CHECK:     memref.load
+// CHECK:     memref.store
+// CHECK: vector.transfer_read
+// CHECK: builtin.unrealized_conversion_cast
+// CHECK: return
 
 // -----
 
@@ -724,14 +724,13 @@ func.func @test_insert_strided(%arg0: tensor<2x1xf64>, %arg1: memref<12x1xf64>, 
   return
 }
 // CHECK-LABEL: @test_insert_strided
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast %{{.*}} : tensor<2x1xf64> to vector<2x1xf64>
-// CHECK: %[[EXT0:.*]] = vector.extract %[[CAST]][0, 0] : f64 from vector<2x1xf64>
-// CHECK: memref.store %[[EXT0]], %{{.*}}[%{{.*}}, %[[C0]]] : memref<12x1xf64>
-// CHECK: %[[C3:.*]] = arith.constant 3 : index
-// CHECK: %[[OFF1:.*]] = arith.addi %{{.*}}, %[[C3]] : index
-// CHECK: %[[EXT1:.*]] = vector.extract %[[CAST]][1, 0] : f64 from vector<2x1xf64>
-// CHECK: memref.store %[[EXT1]], %{{.*}}[%[[OFF1]], %[[C0]]] : memref<12x1xf64>
+// CHECK: builtin.unrealized_conversion_cast
+// CHECK: xla.apply_indexing
+// CHECK: scf.for
+// CHECK:   scf.for
+// CHECK:     xla.apply_indexing
+// CHECK:     vector.extract
+// CHECK:     memref.store
 // CHECK: return
 
 // -----
@@ -741,21 +740,16 @@ func.func @test_extract_multi_strided(%arg0: memref<8x8xf32>, %arg1: index, %arg
   return %0 : tensor<2x2xf32>
 }
 // CHECK-LABEL: @test_extract_multi_strided
-// CHECK: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<2x2xf32>
-// CHECK: %[[LOAD0:.*]] = memref.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<8x8xf32>
-// CHECK: %[[INS0:.*]] = vector.insert %[[LOAD0]], %[[CST]] [0, 0] : f32 into vector<2x2xf32>
-// CHECK: %[[OFF_D1_1:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[LOAD1:.*]] = memref.load %{{.*}}[%{{.*}}, %[[OFF_D1_1]]] : memref<8x8xf32>
-// CHECK: %[[INS1:.*]] = vector.insert %[[LOAD1]], %[[INS0]] [0, 1] : f32 into vector<2x2xf32>
-// CHECK: %[[OFF_D0_1:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[LOAD2:.*]] = memref.load %{{.*}}[%[[OFF_D0_1]], %{{.*}}] : memref<8x8xf32>
-// CHECK: %[[INS2:.*]] = vector.insert %[[LOAD2]], %[[INS1]] [1, 0] : f32 into vector<2x2xf32>
-// CHECK: %[[OFF_D0_2:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[OFF_D1_2:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[LOAD3:.*]] = memref.load %{{.*}}[%[[OFF_D0_2]], %[[OFF_D1_2]]] : memref<8x8xf32>
-// CHECK: %[[INS3:.*]] = vector.insert %[[LOAD3]], %[[INS2]] [1, 1] : f32 into vector<2x2xf32>
-// CHECK: %[[RET:.*]] = builtin.unrealized_conversion_cast %[[INS3]] : vector<2x2xf32> to tensor<2x2xf32>
-// CHECK: return %[[RET]]
+// CHECK: memref.alloca
+// CHECK: xla.apply_indexing
+// CHECK: scf.for
+// CHECK:   scf.for
+// CHECK:     xla.apply_indexing
+// CHECK:     memref.load
+// CHECK:     memref.store
+// CHECK: vector.transfer_read
+// CHECK: builtin.unrealized_conversion_cast
+// CHECK: return
 
 // -----
 
@@ -764,19 +758,13 @@ func.func @test_insert_multi_strided(%arg0: tensor<2x2xf32>, %arg1: memref<8x8xf
   return
 }
 // CHECK-LABEL: @test_insert_multi_strided
-// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %{{.*}} : tensor<2x2xf32> to vector<2x2xf32>
-// CHECK: %[[EXT0:.*]] = vector.extract %[[CAST]][0, 0] : f32 from vector<2x2xf32>
-// CHECK: memref.store %[[EXT0]], %{{.*}}[%{{.*}}, %{{.*}}] : memref<8x8xf32>
-// CHECK: %[[OFF_D1_1:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[EXT1:.*]] = vector.extract %[[CAST]][0, 1] : f32 from vector<2x2xf32>
-// CHECK: memref.store %[[EXT1]], %{{.*}}[%{{.*}}, %[[OFF_D1_1]]] : memref<8x8xf32>
-// CHECK: %[[OFF_D0_1:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[EXT2:.*]] = vector.extract %[[CAST]][1, 0] : f32 from vector<2x2xf32>
-// CHECK: memref.store %[[EXT2]], %{{.*}}[%[[OFF_D0_1]], %{{.*}}] : memref<8x8xf32>
-// CHECK: %[[OFF_D0_2:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[OFF_D1_2:.*]] = arith.addi %{{.*}}, %{{.*}} : index
-// CHECK: %[[EXT3:.*]] = vector.extract %[[CAST]][1, 1] : f32 from vector<2x2xf32>
-// CHECK: memref.store %[[EXT3]], %{{.*}}[%[[OFF_D0_2]], %[[OFF_D1_2]]] : memref<8x8xf32>
+// CHECK: builtin.unrealized_conversion_cast
+// CHECK: xla.apply_indexing
+// CHECK: scf.for
+// CHECK:   scf.for
+// CHECK:     xla.apply_indexing
+// CHECK:     vector.extract
+// CHECK:     memref.store
 // CHECK: return
 
 // -----

@@ -317,8 +317,9 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
   ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer reference,
                        CreateTestBuffer(allocator.get(), stream_exec_,
                                         stream.get(), /*value=*/2));
-  EXPECT_THAT(profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0),
-              StatusIs(absl::StatusCode::kInternal));
+  auto status = profiler->CheckOutputBuffer(output, reference, /*rtol=*/0.0);
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Mismatch count:"));
 }
 
 TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreSame) {

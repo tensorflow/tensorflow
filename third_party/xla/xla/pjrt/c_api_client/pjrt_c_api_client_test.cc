@@ -386,6 +386,21 @@ TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
   EXPECT_EQ(topology->platform_id(), xla::CpuId());
 }
 
+// Regression test: the client and its topology must report the same
+// platform_version. A mismatch causes cross-compilation to skip the real
+// backend, which can lead to timeouts and hangs.
+TEST(PjRtCApiClientTest, ClientAndTopologyPlatformVersionMatch) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  EXPECT_EQ(client->platform_version(), topology->platform_version());
+}
+
 TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -1135,6 +1150,13 @@ TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
   EXPECT_TRUE(canonical_shape_specific.has_layout());
   EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
             specific_layout.minor_to_major());
+}
+
+TEST(PjRtCApiClientTest, IsCApi) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  EXPECT_TRUE(client->IsCApi());
 }
 
 }  // namespace

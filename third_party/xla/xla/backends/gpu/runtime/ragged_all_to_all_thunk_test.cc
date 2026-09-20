@@ -539,6 +539,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           num_input_rows: 2
           num_row_elements: 5
           one_shot_kernel_enabled: true
+          enable_gxl: true
         }
       )pb");
 

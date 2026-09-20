@@ -1148,6 +1148,12 @@ cuda_py_strict_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:msan_build": {"mem": "30g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     grpc_enabled = True,
     shard_count = 2,
     tags = [

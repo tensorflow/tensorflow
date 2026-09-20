@@ -999,6 +999,38 @@ TEST_F(ConfigAssignerPassTest, CudnnFusionForbidsSpills) {
   EXPECT_FALSE(options.allow_reg_spills_fn(*instr, autotuner::Backend::CUDNN));
 }
 
+TEST_F(ConfigAssignerPassTest, ForceConfigPropagatesToConfigAssignerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  const std::string forced_config =
+      "backend: TRITON\n"
+      "backend_config {\n"
+      "  triton {\n"
+      "    block_m: 64\n"
+      "    block_n: 64\n"
+      "  }\n"
+      "}";
+  debug_options.set_xla_force_config(forced_config);
+  auto options =
+      GetConfigAssignerOptions(debug_options, /*is_deviceless=*/false);
+  EXPECT_EQ(options.force_config, forced_config);
+}
+
+TEST_F(ConfigAssignerPassTest,
+       CandidateConfigsFilePropagatesToCodegenOrchestratorOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_candidate_configs_file("/tmp/candidates.pbtxt");
+  auto options = GetCodegenOrchestratorOptions(debug_options);
+  EXPECT_EQ(options.candidate_configs_file, "/tmp/candidates.pbtxt");
+}
+
+TEST_F(ConfigAssignerPassTest, PreferredBackendPropagatesToAutotunerOptions) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_autotuner_preferred_backend(autotuner::Backend::CUDNN);
+  auto options = GetAutotunerOptions(debug_options,
+                                     /*is_buffer_check_supported=*/false);
+  EXPECT_EQ(options.preferred_backend, autotuner::Backend::CUDNN);
+}
+
 TEST_F(ConfigAssignerPassTest, CustomFusionForbidsSpills) {
   auto options = GetCodegenOrchestratorOptions(GetDebugOptionsForTest());
 

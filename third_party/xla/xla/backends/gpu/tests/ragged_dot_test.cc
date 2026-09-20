@@ -44,12 +44,10 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/10));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                          MakeFakeArguments(module.get(), options));
   // Set group sizes to reasonable numbers for ragged_dim_size=6.
   fake_arguments[2] = LiteralUtil::CreateR1<int64_t>({1, 2, 3});
   EXPECT_TRUE(RunAndCompare(std::move(module),
@@ -71,12 +69,10 @@ TEST_F(RaggedDotTest, NonContractingWithBatchDims) {
                       lhs_ragged_dims={1}, rhs_group_dims={1}
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/10));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                          MakeFakeArguments(module.get(), options));
   // Set group sizes to reasonable numbers for ragged_dim_size=9.
   fake_arguments[2] = LiteralUtil::CreateR2<int64_t>({{4, 5}, {7, 2}, {6, 3}});
   EXPECT_TRUE(RunAndCompare(std::move(module),
@@ -98,12 +94,10 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/10));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                          MakeFakeArguments(module.get(), options));
   // Set group sizes to reasonable numbers for ragged_dim_size=6.
   fake_arguments[2] = LiteralUtil::CreateR1<int64_t>({4, 2});
   EXPECT_TRUE(RunAndCompare(std::move(module),
@@ -125,12 +119,10 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto fake_arguments,
-      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/10));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  TF_ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                          MakeFakeArguments(module.get(), options));
   // Set group sizes to reasonable numbers for ragged_dim_size=6.
   fake_arguments[2] = LiteralUtil::CreateR2<int64_t>({{1, 2, 3}, {3, 2, 1}});
   EXPECT_TRUE(RunAndCompare(std::move(module),

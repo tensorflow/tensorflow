@@ -683,27 +683,6 @@ e {
                              ::testing::HasSubstr("Unsupported broadcast")));
 }
 
-TEST_F(TritonDotAnalysisTest, OutputBroadcastIsNotAccepted) {
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                       ParseAndReturnVerifiedModule(R"(
-HloModule t
-
-ENTRY e {
-  p0 = f16[2,35] parameter(0)
-  p0c = bf16[2,35] convert(p0)
-  p1 = bf16[35,2] parameter(1)
-  dot = bf16[2,2] dot(p0c, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
-})"));
-  EXPECT_TRUE(GemmFusion(se::GpuComputeCapability{se::CudaComputeCapability{
-                             se::CudaComputeCapability::kAmpere, 0}})
-                  .Run(module.get())
-                  .value());
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kBroadcast);
-}
-
 TEST_F(TritonDotAnalysisTest, DegenerateSplitFragmentIsHandled) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(

@@ -622,23 +622,22 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
     ENTRY main {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+      ROOT result = pred[] compare(p0, p1), direction=GT, order=TOTAL
     }
   )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(
-      root->ToString(),
-      "%result = pred[] compare(%p0, %p1), direction=GT, type=TOTALORDER");
+  EXPECT_EQ(root->ToString(),
+            "%result = pred[] compare(%p0, %p1), direction=GT, order=TOTAL");
   module->entry_computation()->set_root_instruction(
       root->mutable_operand(0), /*accept_different_shape=*/true);
   root->DetachFromOperandsAndUsers();
   EXPECT_EQ(
       root->ToString(),
-      "%result = pred[] compare(null , null ), direction=GT, type=TOTALORDER");
+      "%result = pred[] compare(null , null ), direction=GT, order=TOTAL");
   TF_ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
   EXPECT_EQ(root->ToString(),
-            "%result = pred[] compare(), direction=GT, type=TOTALORDER");
+            "%result = pred[] compare(), direction=GT, order=TOTAL");
   *module->mutable_entry_computation_layout() =
       module->compute_computation_layout();
 }
@@ -650,7 +649,7 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
     ENTRY main {
       p0 = f32[] parameter(0)
       p1 = f32[] parameter(1)
-      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+      ROOT result = pred[] compare(p0, p1), direction=GT, order=TOTAL
     }
   )"));
 
@@ -683,7 +682,7 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
   EXPECT_EQ(param2_to_string, "tmp_1 = f32[] parameter(1)");
   EXPECT_EQ(param3_to_string,
             "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
-            "type=TOTALORDER");
+            "order=TOTAL");
 }
 
 TEST_F(HloInstructionTest, CanonicalPrintingSupportsCustomCall) {
@@ -1049,6 +1048,40 @@ TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
       static_cast<const HloCompareInstruction*>(clone.get());
   EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
   EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloInstructionTest,
+       AsyncUpdatePreservesOutputToOperandAliasingRoundTrip) {
+  constexpr absl::string_view kHloString = R"(
+HloModule AsyncUpdateAliasing
+
+%async_computation (param_0: f32[10]) -> f32[10] {
+  %param_0 = f32[10] parameter(0)
+  ROOT %neg = f32[10] negate(%param_0)
+}
+
+ENTRY %main (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %async-start = ((f32[10]), f32[10], u32[]) async-start(%p0), calls=%async_computation
+  %async-update = ((f32[10]), f32[10], u32[]) async-update(%async-start), output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT %async-done = f32[10] async-done(%async-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* async_update =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  ASSERT_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  ASSERT_FALSE(async_update->output_operand_aliasing().empty());
+
+  HloModuleProto proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(auto roundtrip_module,
+                       HloModule::CreateFromProto(proto, module->config()));
+  HloInstruction* roundtrip_async_update = roundtrip_module->entry_computation()
+                                               ->root_instruction()
+                                               ->mutable_operand(0);
+  ASSERT_EQ(roundtrip_async_update->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(roundtrip_async_update->output_operand_aliasing(),
+            async_update->output_operand_aliasing());
 }
 
 }  // namespace

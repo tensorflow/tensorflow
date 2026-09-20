@@ -372,11 +372,11 @@ class HloIntrinsicAccuracyParamTest
 
     std::string hlo =
         MakeUnaryHloModule(param.hlo_op_name, param.primitive_type, count);
-    TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
     module->mutable_config().set_debug_options(GetDebugOptionsForTest());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto result,
-                            Execute(std::move(module), {&input_literal}));
+    ASSERT_OK_AND_ASSIGN(auto result,
+                         Execute(std::move(module), {&input_literal}));
 
     auto result_data = result.template data<T>();
     auto report = ComputeAccuracyReport<T>(golden, result_data.data(),

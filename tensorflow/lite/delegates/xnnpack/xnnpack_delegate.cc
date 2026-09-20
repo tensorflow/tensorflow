@@ -2062,17 +2062,17 @@ class Subgraph {
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Relu) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActReluN1To1:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (ReluMinus1To1) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActRelu6:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Relu6) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActTanh:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Tanh) in node #%d",
@@ -2636,6 +2636,7 @@ class Subgraph {
                   context,
                   "unsupported quantization type %d in tensor #%d in node #%d",
                   tensor.quantization.type, tensor_index, node_index);
+              return kTfLiteError;
           }
           return kTfLiteOk;
         }
@@ -5586,6 +5587,7 @@ class Subgraph {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context, "invalid padding mode (%d) in node #%d",
           static_cast<int>(pool_params->padding), node_index);
+      return kTfLiteError;
     }
 
     if (subgraph != nullptr) {
@@ -5877,6 +5879,7 @@ class Subgraph {
           logging_context,
           "unexpected number of dimensions %d in the output shape in node %d",
           SizeOfDimension(&shape_tensor, 0), node_index);
+      return kTfLiteError;
     }
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, shape_tensor, node->inputs->data[1],
@@ -5966,6 +5969,7 @@ class Subgraph {
           logging_context,
           "number of dimensions %d must be less than %d in SLICE node #%d",
           num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloatOrQUInt8Type(delegate, logging_context, input_tensor,
@@ -5987,6 +5991,7 @@ class Subgraph {
                                  "begin %" PRId64
                                  " must be greater than 0 in SLICE node #%d",
                                  begin[i], node_index);
+        return kTfLiteError;
       }
       if (size[i] <= 0) {
         // TODO(b/329228576): Add support for negative begin.
@@ -6215,6 +6220,7 @@ class Subgraph {
                                "number of dimensions %d must be less than %d "
                                "in TRANSPOSE node #%d",
                                dims_count, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
     std::array<size_t, XNN_MAX_TENSOR_DIMS> perm;
     for (int i = 0; i < dims_count; ++i) {
@@ -6272,6 +6278,7 @@ class Subgraph {
                                "number of dimensions %d must be less than %d "
                                "in STRIDED_SLICE node #%d",
                                num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
 
     // Only support strides = 1.

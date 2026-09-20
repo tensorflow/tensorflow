@@ -134,8 +134,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
@@ -168,8 +168,8 @@ ENTRY main {
   ROOT tuple = (f32[4,4], f32[4,4]) tuple(add, bitcast)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -198,8 +198,8 @@ ENTRY main {
   ROOT tuple = (f32[4,4], f32[4,4]) tuple(add, reshape)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -234,8 +234,8 @@ ENTRY %main (param_0: bf16[256,256], param_1: f8e4m3fn[256,256]) -> f32[256,256]
   ROOT %convolution.1 = f32[256,256]{1,0} convolution(%fusion.1, %fusion.2), dim_labels=bf_io->bf
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -297,8 +297,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());

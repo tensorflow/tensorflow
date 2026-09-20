@@ -124,6 +124,7 @@ class Comparison {
   inline bool IsNe() const { return dir_ == Direction::kNe; }
   inline bool IsGe() const { return dir_ == Direction::kGe; }
   inline bool IsGt() const { return dir_ == Direction::kGt; }
+  inline bool IsLe() const { return dir_ == Direction::kLe; }
   inline bool IsLt() const { return dir_ == Direction::kLt; }
   inline bool IsTotalOrder() const { return order_ == Order::kTotal; }
   inline bool IsPartialOrder() const { return order_ == Order::kPartial; }
@@ -215,6 +216,9 @@ class Comparison {
   // Returns the Comparison::Order corresponding to the deprecated
   // Comparison::Type.
   static Comparison::Order DefaultOrdering(Type type);
+
+  // Returns the expected Comparison::Order for each primitive type.
+  static Comparison::Order DefaultOrdering(PrimitiveType type);
 
   // Returns the Comparison::Type for the given primitive type. This assumes
   // that each numerical representation follows the standard behavior, e.g.,

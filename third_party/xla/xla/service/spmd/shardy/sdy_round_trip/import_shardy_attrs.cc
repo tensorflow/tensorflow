@@ -212,19 +212,24 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
       if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
+              parseShardingFromString(oldSharding),
+              mlir::sdy::getTensorRank(argType), funcOp.getContext())) {
         funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
       }
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
 
-  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
+  for (auto [resNum, resType] : llvm::enumerate(funcOp.getResultTypes())) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
-        funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+      HloSharding hloSharding = parseShardingFromString(oldSharding);
+      if (!hloSharding.IsSingleDevice()) {
+        if (auto sdySharding = convertToSdyShardingAttr(
+                hloSharding, mlir::sdy::getTensorRank(resType),
+                funcOp.getContext())) {
+          funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+        }
       }
     }
     funcOp.removeResultAttr(resNum, kXlaShardingAttr);
@@ -260,7 +265,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
             op)) {
       op->setAttr(kShardingAttr,
                   convertToSdySharding(parseShardingFromString(shardingAttr),
-                                       op->getContext()));
+                                       op->getResultTypes(), op->getContext()));
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
@@ -269,6 +274,7 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
         customCallOp->setAttr(
             kShardingAttr,
             convertToSdySharding(parseShardingFromString(shardingAttr),
+                                 customCallOp->getResultTypes(),
                                  customCallOp->getContext()));
       }
     }

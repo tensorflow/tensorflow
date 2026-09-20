@@ -360,17 +360,6 @@ bool IsRuntimeBmm(const TfLiteRegistration* registration,
   return false;
 }
 
-bool IsRuntimeBmm(TfLiteContext* context, int node_index) {
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  if (context == nullptr ||
-      context->GetNodeAndRegistration(context, node_index, &node,
-                                      &registration) != kTfLiteOk) {
-    return false;
-  }
-  return IsRuntimeBmm(registration, node);
-}
-
 TfLiteStatus IsRuntimeBatchedMatMulSupported(
     const TfLiteRegistration* registration, const TfLiteNode* node,
     TfLiteContext* context) {
