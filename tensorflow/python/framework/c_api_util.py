@@ -136,7 +136,10 @@ class ScopedTFBuffer(object):
     self.buffer = c_api.TF_NewBufferFromString(compat.as_bytes(buf_string))
 
   def __del__(self):
-    c_api.TF_DeleteBuffer(self.buffer)
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api is not None and c_api.TF_DeleteBuffer is not None:
+      c_api.TF_DeleteBuffer(self.buffer)
 
 
 class ApiDefMap(object):
