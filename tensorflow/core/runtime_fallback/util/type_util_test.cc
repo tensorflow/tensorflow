@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
