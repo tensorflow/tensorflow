@@ -122,5 +122,28 @@ class UniquePtrTest(test_util.TensorFlowTestCase):
     gc.collect()
     self.assertTrue(self.obj.deleted)
 
+
+class ScopedTFBufferTest(test_util.TensorFlowTestCase):
+
+  def testDeleteRunsUnderNormalConditions(self):
+    buf = c_api_util.ScopedTFBuffer(b"test")
+    del buf
+    gc.collect()
+
+  def testDeleteGuardsAgainstNoneCApi(self):
+    # Regression test: __del__ used to call c_api.TF_DeleteBuffer without
+    # guarding against c_api being None, which happens during interpreter
+    # shutdown. Call __del__ directly (rather than relying on `del` +
+    # garbage collection) since CPython suppresses exceptions raised
+    # inside a GC-triggered __del__ instead of propagating them.
+    buf = c_api_util.ScopedTFBuffer(b"test")
+    original_c_api = c_api_util.c_api
+    try:
+      c_api_util.c_api = None
+      buf.__del__()  # should not raise
+    finally:
+      c_api_util.c_api = original_c_api
+
+
 if __name__ == "__main__":
   googletest.main()
