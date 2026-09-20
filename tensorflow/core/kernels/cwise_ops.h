@@ -1019,7 +1019,7 @@ struct lgamma_op {
     using Eigen::numext::lgamma;
     if (TF_PREDICT_FALSE(std::is_floating_point<T>::value && a > T(0) &&
                          a < std::numeric_limits<T>::min())) {
-      if (sizeof(T) == sizeof(float)) {
+      if (std::is_same<T, float>::value) {
         return lgamma(a * T(16777216.0)) + T(16.635532333438687);  // 2^24
       } else {
         return lgamma(a * T(9007199254740992.0)) +
