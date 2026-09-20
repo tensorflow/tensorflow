@@ -127,8 +127,7 @@ class ScopedTFBufferTest(test_util.TensorFlowTestCase):
 
   def testDeleteRunsUnderNormalConditions(self):
     buf = c_api_util.ScopedTFBuffer(b"test")
-    del buf
-    gc.collect()
+    buf.__del__()
 
   def testDeleteGuardsAgainstNoneCApi(self):
     # Regression test: __del__ used to call c_api.TF_DeleteBuffer without
