@@ -1011,14 +1011,20 @@ struct atanh : base<T, Eigen::internal::scalar_atanh_op<T>> {};
 
 // lgamma(x) ~= -log(x) for tiny positive x.  Eigen/libm can mis-handle
 // positive subnormals, so scale them into the normal range first using
-// lgamma(x) = lgamma(x * 2^24) + 24*log(2) before delegating.
+// lgamma(x) = lgamma(x * 2^S) + S*log(2) before delegating, where 2^S is
+// large enough to lift the smallest subnormal of T into the normal range.
 template <typename T>
 struct lgamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a) const {
     using Eigen::numext::lgamma;
     if (TF_PREDICT_FALSE(std::is_floating_point<T>::value && a > T(0) &&
                          a < std::numeric_limits<T>::min())) {
-      return lgamma(a * T(16777216.0)) + T(16.635532333438687);
+      if (sizeof(T) == sizeof(float)) {
+        return lgamma(a * T(16777216.0)) + T(16.635532333438687);  // 2^24
+      } else {
+        return lgamma(a * T(9007199254740992.0)) +
+               T(36.736800569677101);  // 53*log(2)
+      }
     }
     return lgamma(a);
   }

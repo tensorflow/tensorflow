@@ -195,6 +195,13 @@ class UnaryOpTest(test.TestCase):
       result = self.evaluate(math_ops.lgamma(constant_op.constant(x)))
     self.assertAllClose(result, expected, atol=1e-4, rtol=1e-3)
 
+    # Smallest positive float64 subnormal: -log(2**-1074) ~= 1074*log(2).
+    x = np.array([[4.9406564584124654e-324]], dtype=np.float64)
+    expected = np.array([[744.4400719213812]], dtype=np.float64)
+    with test_util.force_cpu():
+      result = self.evaluate(math_ops.lgamma(constant_op.constant(x)))
+    self.assertAllClose(result, expected, atol=1e-12, rtol=1e-12)
+
   @test_util.run_deprecated_v1
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
