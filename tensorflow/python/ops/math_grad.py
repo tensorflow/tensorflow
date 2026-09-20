@@ -788,11 +788,13 @@ def _XLogyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    cx = math_ops.conj(x)
+    cy = math_ops.conj(y)
     # The gradient of xlogy w.r.t. x is log(y) for all x (including x=0),
     # because d/dx x*log(y) = log(y). The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
-    partial_x = gen_math_ops.log(y)
-    partial_y = gen_math_ops.xdivy(x, y)
+    partial_x = gen_math_ops.log(cy)
+    partial_y = gen_math_ops.xdivy(cx, cy)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
 
@@ -806,11 +808,13 @@ def _XLog1pyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    cx = math_ops.conj(x)
+    cy = math_ops.conj(y)
     # The gradient of xlog1py w.r.t. x is log1p(y) for all x (including x=0),
     # because d/dx x*log1p(y) = log1p(y). The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
-    partial_x = gen_math_ops.log1p(y)
-    partial_y = gen_math_ops.xdivy(x, y + 1.)
+    partial_x = gen_math_ops.log1p(cy)
+    partial_y = gen_math_ops.xdivy(cx, cy + 1.)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
 
@@ -824,11 +828,13 @@ def _XDivyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
+    cx = math_ops.conj(x)
+    cy = math_ops.conj(y)
     # The gradient of xdivy w.r.t. x is 1 / y for all x (including x=0),
     # because d/dx (x / y) = 1 / y. The zero-mask should only apply to
     # the forward value, not the derivative w.r.t. x.
-    partial_x = math_ops.reciprocal(y)
-    partial_y = gen_math_ops.xdivy(math_ops.negative(x), y**2)
+    partial_x = math_ops.reciprocal(cy)
+    partial_y = gen_math_ops.xdivy(math_ops.negative(cx), cy**2)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))
 
@@ -1462,14 +1468,18 @@ def _MulNoNanGrad(op: ops.Operation, grad):
   """The gradient of scalar multiplication with NaN-suppression."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # conj(y) is zero exactly where y is, so the NaN-suppressing mask of
+  # mul_no_nan is unchanged.
+  cx = math_ops.conj(x)
+  cy = math_ops.conj(y)
   if isinstance(grad, tensor.Tensor) and _ShapesFullySpecifiedAndEqual(
       x, y, grad
   ):
-    return gen_math_ops.mul_no_nan(grad, y), gen_math_ops.mul_no_nan(x, grad)
+    return gen_math_ops.mul_no_nan(grad, cy), gen_math_ops.mul_no_nan(cx, grad)
 
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
-  gx = gen_math_ops.mul_no_nan(grad, y)
-  gy = gen_math_ops.mul_no_nan(x, grad)
+  gx = gen_math_ops.mul_no_nan(grad, cy)
+  gy = gen_math_ops.mul_no_nan(cx, grad)
   return _ReduceGradientArgs(x, y, gx, gy)
 
 
