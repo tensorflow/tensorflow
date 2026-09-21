@@ -1176,8 +1176,15 @@ def positive(x):
 def sinc(x):
   def f(x):
     pi_x = x * np.pi
+    is_zero = x == 0
+    # `sin(pi_x) / pi_x` is 0/0 at `x == 0`. That branch is never selected, but
+    # `where` still propagates its gradient, and 0 * nan is nan, so the
+    # gradient at zero comes out as nan instead of 0. Substituting 1 for the
+    # denominator keeps the selected value bit-for-bit identical while making
+    # the discarded branch finite, so its contribution is scaled to exactly 0.
+    safe_pi_x = array_ops.where_v2(is_zero, array_ops.ones_like(pi_x), pi_x)
     return array_ops.where_v2(
-        x == 0, array_ops.ones_like(x), math_ops.sin(pi_x) / pi_x
+        is_zero, array_ops.ones_like(x), math_ops.sin(safe_pi_x) / safe_pi_x
     )
 
   return _scalar(f, x, True)
