@@ -558,6 +558,7 @@ cc_library(
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/core/host_offloading:host_offloading_executable_proto_cc",
         "//xla/ffi:attribute_map",
+        "//xla/ffi:attributes",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/mlir/utils:error_util",
