@@ -341,3 +341,17 @@ cuda_py_strict_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_strict_test(
+    name = "argmax_op_tidx_test",
+    size = "small",
+    srcs = ["argmax_op_tidx_test.py"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
