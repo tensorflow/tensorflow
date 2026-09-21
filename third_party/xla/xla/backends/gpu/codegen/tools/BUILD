@@ -65,7 +65,7 @@ cc_library(
 )
 
 xla_cc_binary(
-    name = "fusion_to_mlir",
+    name = "gpu_fusion_to_mlir",
     testonly = 1,
     srcs = ["fusion_to_mlir.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
