@@ -34,9 +34,6 @@ TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.dtensor.python.mesh_util",
     "tensorflow.dtensor.python.tpu_util",
     "tensorflow.dtensor.python.save_restore",
-    "tensorflow.lite.python.analyzer",
-    "tensorflow.lite.python.lite",
-    "tensorflow.lite.python.authoring.authoring",
     "tensorflow.python.modules_with_exports",
 ]
 
@@ -84,9 +81,6 @@ def gen_api_init_files(
         package_deps = [
             "//tensorflow/python:no_contrib",
             "//tensorflow/python:modules_with_exports",
-            "//tensorflow/lite/python:analyzer",
-            "//tensorflow/lite/python:lite",
-            "//tensorflow/lite/python/authoring",
         ],
         output_package = "tensorflow",
         output_dir = "",
