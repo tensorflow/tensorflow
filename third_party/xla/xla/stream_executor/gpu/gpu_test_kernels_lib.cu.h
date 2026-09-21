@@ -27,33 +27,34 @@ namespace stream_executor::gpu {
 // name, therefore we switch off name mangling
 extern "C" {
 
-__global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
+inline __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] + b[index];
 }
 
-__global__ void IncI32(int32_t a, int32_t* b, int32_t* c) {
+inline __global__ void IncI32(int32_t a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a + b[index];
 }
 
-__global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
+inline __global__ void MulI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] * b[index];
 }
 
-__global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t* value) {
+inline __global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t* value) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   pred[index] = counter[index] < *value;
   counter[index] += 1;
 }
 
-__global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
+inline __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   ptrs.c[index] = ptrs.a[index] + ptrs.b[index];
 }
 
-__global__ void CopyKernel(std::byte* dst, std::array<std::byte, 16> byval) {
+inline __global__ void CopyKernel(std::byte* dst,
+                                  std::array<std::byte, 16> byval) {
   if (threadIdx.x == 0) {
     for (int i = 0; i < byval.size(); i++) {
       dst[i] = byval[i];
@@ -64,8 +65,8 @@ __global__ void CopyKernel(std::byte* dst, std::array<std::byte, 16> byval) {
 // Copies each column of `buf` into dynamic shared memory, then writes it back
 // with both axes reversed. The caller must launch with
 // dynamic shared memory of at least n_cols * n_rows bytes.
-__global__ void DynShmemKernel(uint8_t* buf, uint32_t* n_cols,
-                               uint32_t* n_rows) {
+inline __global__ void DynShmemKernel(uint8_t* buf, uint32_t* n_cols,
+                                      uint32_t* n_rows) {
   extern __shared__ uint8_t shmem[];
   uint32_t src_col = threadIdx.x;
   uint32_t dst_col = *n_cols - src_col - 1;
