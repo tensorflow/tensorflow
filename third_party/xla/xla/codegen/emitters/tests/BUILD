@@ -48,11 +48,15 @@ _FILECHECK_ONLY_TESTS = [
     "concatenate/test_small_dim.hlo",
 ]
 
+_CPU_ONLY_TESTS = [
+    "dynamic_update_slice/out_of_place.hlo",
+]
+
 lit_test_suite(
     name = "tests",
     srcs = glob(
         ["**/*.hlo"],
-        exclude = _FILECHECK_ONLY_TESTS,
+        exclude = _FILECHECK_ONLY_TESTS + _CPU_ONLY_TESTS,
     ),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
@@ -75,6 +79,18 @@ lit_test_suite(
     tools = [
         "//xla/backends/cpu/codegen/tools:cpu_fusion_to_mlir",
         "//xla/backends/gpu/codegen/tools:gpu_fusion_to_mlir",
+        "//xla/codegen/tools:emitters_opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+lit_test_suite(
+    name = "cpu_only_tests",
+    srcs = _CPU_ONLY_TESTS,
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        "//xla/backends/cpu/codegen/tools:cpu_fusion_to_mlir",
+        "//xla/backends/cpu/codegen/tools:cpu_test_correctness",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],
