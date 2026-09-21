@@ -362,9 +362,10 @@ py_test(
     srcs = ["regularizers_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [
+        deps = [
         ":regularizers",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
