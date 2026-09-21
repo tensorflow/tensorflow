@@ -307,22 +307,23 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
                         interleaved_output_indices);
 }
 
-absl::StatusOr<int64_t> KernelArguments::OperandIndex(
-    int64_t operand_index) const {
+absl::StatusOr<int64_t> KernelArguments::PositionOfOperand(
+    int64_t operand_number_in_hlo) const {
   if (!positions_.has_value()) {
     return absl::FailedPreconditionError(
         "KernelArguments were not created from an HLO instruction, so operand "
         "positions are unknown");
   }
-  if (operand_index < 0 ||
-      operand_index >= static_cast<int64_t>(positions_->operands.size())) {
+  if (operand_number_in_hlo < 0 ||
+      operand_number_in_hlo >=
+          static_cast<int64_t>(positions_->operands.size())) {
     return absl::OutOfRangeError(
-        absl::StrCat("No such operand: ", operand_index));
+        absl::StrCat("No such operand: ", operand_number_in_hlo));
   }
-  return positions_->operands[operand_index];
+  return positions_->operands[operand_number_in_hlo];
 }
 
-absl::StatusOr<int64_t> KernelArguments::ResultIndex(
+absl::StatusOr<int64_t> KernelArguments::PositionOfResult(
     const ShapeIndex& shape_index) const {
   if (!positions_.has_value()) {
     return absl::FailedPreconditionError(
