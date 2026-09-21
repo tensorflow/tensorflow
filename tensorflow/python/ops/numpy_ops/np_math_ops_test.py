@@ -860,7 +860,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
           x_np == 0,
           0.0,
           (pi_x * np.cos(pi_x) - np.sin(pi_x)) / (np.pi * x_np * x_np),
-      ).astype(x_np.dtype)
+      ).astype(dtype.as_numpy_dtype)
       self.assertAllClose(tape.gradient(y, x), expected)
 
   def testConcatenateAxisNone(self):
