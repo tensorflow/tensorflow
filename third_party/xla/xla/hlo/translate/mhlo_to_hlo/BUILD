@@ -179,7 +179,9 @@ cc_library(
     hdrs = ["stack_frame_index_builder.h"],
     deps = [
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -324,6 +326,8 @@ xla_cc_test(
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
     ],
 )
