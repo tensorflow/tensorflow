@@ -6131,6 +6131,11 @@ def searchsorted(sorted_sequence,
                 If the first `N-1` dimensions of the two tensors don't match.
   """
   sequence_size = shape_internal(sorted_sequence)[-1]
+  values_shape = shape_internal(values)
+
+  if values.shape.rank == 0:
+    values = expand_dims(values, 0)
+
   values_size = shape_internal(values)[-1]
   sorted_sequence_2d = reshape(sorted_sequence, [-1, sequence_size])
   values_2d = reshape(values, [-1, values_size])
@@ -6143,7 +6148,7 @@ def searchsorted(sorted_sequence,
   else:
     raise ValueError("Argument `side` must be either 'right' or 'left'. "
                      f"Received: `side` = '{side}'.")
-  return reshape(output, shape_internal(values))
+  return reshape(output, values_shape)
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
