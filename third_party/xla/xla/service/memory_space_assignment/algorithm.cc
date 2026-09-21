@@ -5940,12 +5940,27 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       if (!preferred_offset_for_allocation_value.contains(
               &allocation_value_to_update)) {
         // Resolve the preferred alternate memory offset for this allocation
-        // value by inspecting the canonical HloBuffer alias set. This
-        // guarantees that all aliased positions across while loop boundaries
-        // (including loop input operands, loop parameters, and loop body root
-        // tuple elements) adopt identical starting offsets in alternate memory.
+        // value using the following precedence:
+        // 1. An explicit required memory assignment at the definition time.
+        // 2. The canonical HloBuffer alias set for async pipelined while loops,
+        //    which guarantees that all aliased positions across while loop
+        //    boundaries (including loop input operands, loop parameters, and
+        //    loop body root tuple elements) adopt identical starting offsets in
+        //    alternate memory.
+        // 3. Previously recorded preferred offsets for the computation.
+        // 4. Fallback to any pinned allocation offset recorded for the same
+        //    logical HloBuffer in buffer_id_to_aliased_offset_.
         AliasedOffset* preferred_offset = nullptr;
-        if (has_async_pipelined_while_loops_) {
+        std::optional<RequiredMemoryAssignment> req_at_def =
+            RequiredMemoryAssignmentAt(allocation_value_to_update.value(),
+                                       definition_time_for_allocation_value.at(
+                                           &allocation_value_to_update));
+        if (req_at_def.has_value() &&
+            req_at_def->memory_space == MemorySpace::kAlternate &&
+            req_at_def->offset != nullptr) {
+          preferred_offset = req_at_def->offset;
+        }
+        if (preferred_offset == nullptr && has_async_pipelined_while_loops_) {
           const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
               allocation_value_to_update.position().instruction,
               allocation_value_to_update.position().index);
@@ -5989,6 +6004,25 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
                   allocation_value_to_update.position().index);
               if (index_it != comp_it->second.end()) {
                 preferred_offset = index_it->second;
+              }
+            }
+          }
+        }
+        // Fallback: check if any pinned allocation belonging to this HloBuffer
+        // was already assigned an offset. Pinned allocations (e.g. for custom
+        // calls or aliased parameters) must share the exact physical alternate
+        // memory offset across all defining positions of the same logical
+        // buffer when not superseded by a loop or copy assignment.
+        if (preferred_offset == nullptr) {
+          const HloPosition& def_pos = allocation_value_to_update.position();
+          if (def_pos.instruction != nullptr) {
+            std::vector<const HloBuffer*> buffers =
+                alias_analysis_.ComputeBuffersAt(def_pos.instruction,
+                                                 def_pos.index);
+            if (buffers.size() == 1) {
+              auto buf_it = buffer_id_to_aliased_offset_.find(buffers[0]->id());
+              if (buf_it != buffer_id_to_aliased_offset_.end()) {
+                preferred_offset = buf_it->second;
               }
             }
           }
@@ -7547,6 +7581,19 @@ void MsaAlgorithm::MaybeCreateOrAddToAliasedOffset(
   CHECK_EQ(allocation.chunk().offset, aliased_offset->offset);
   CHECK(aliased_offset->allocations.insert(&allocation).second);
   aliased_offset_map_[&allocation] = aliased_offset;
+  // For pinned allocations, record the buffer ID to its assigned AliasedOffset
+  // so that subsequent allocations belonging to the same HloBuffer will reuse
+  // this exact offset, ensuring colocation in alternate memory.
+  if (allocation.is_pinned_allocation()) {
+    const HloPosition& def_pos = allocation.defining_position();
+    if (def_pos.instruction != nullptr) {
+      std::vector<const HloBuffer*> buffers =
+          alias_analysis_.ComputeBuffersAt(def_pos.instruction, def_pos.index);
+      if (buffers.size() == 1) {
+        buffer_id_to_aliased_offset_[buffers[0]->id()] = aliased_offset;
+      }
+    }
+  }
 }
 
 void MsaAlgorithm::RecordAliasedOffsetForAsyncPipelinedWhileLoop(
@@ -8651,10 +8698,12 @@ void MsaAlgorithm::ClearPendingChunks() {
   aliased_offset_map_.clear();
   aliased_offsets_.clear();
   // Ensure auxiliary maps referencing raw AliasedOffset* pointers owned by
-  // aliased_offsets_ are cleared during uncommits to prevent dangling pointer
+  // aliased_offsets_ (such as buffer_id_to_aliased_offset_ and pipelined while
+  // maps) are cleared during uncommits to prevent dangling pointer
   // segmentation faults upon subsequent allocation retries.
   pipelined_while_preferred_offset_for_computation_.clear();
   pipelined_while_buffer_id_to_aliased_offset_.clear();
+  buffer_id_to_aliased_offset_.clear();
   pending_deallocated_reserved_allocations_.clear();
 }
 
