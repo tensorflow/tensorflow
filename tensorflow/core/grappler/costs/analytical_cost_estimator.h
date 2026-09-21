@@ -53,7 +53,7 @@ class AnalyticalCostEstimator : public CostEstimator {
                           std::unique_ptr<VirtualPlacer> placer,
                           bool use_static_shapes,
                           bool use_aggressive_shape_inference);
-  ~AnalyticalCostEstimator() override {}
+  ~AnalyticalCostEstimator() override = default;
 
   // This implementation always returns OK.
   absl::Status Initialize(const GrapplerItem& item) override;
