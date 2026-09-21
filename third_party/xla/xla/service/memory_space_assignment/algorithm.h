@@ -514,6 +514,65 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     return FindChunkCandidates(sliced_buffer_interval, -1);
   }
 
+  // Commits the chunk and updates the peak memory. This method keeps other
+  // data structures consistent with the commit.
+  //
+  // MSA should not directly update interval_tree_ or directly call other
+  // Commit methods, e.g., CommitChunkAndInterval(). This is the definitive
+  // commit for MSA. Protected so that testing subclasses can populate the
+  // heap.
+  void CommitChunkAndUpdatePeakMemory(const MsaBufferInterval& buffer_interval,
+                                      const Chunk& chunk);
+
+  // Bytes in use at every logical time, with a cheap maximum over a time
+  // window. Besides the per time values it keeps the maximum of every block
+  // of kBlockSize consecutive times, so MaxInRange over a window of n times
+  // costs O(n / kBlockSize + kBlockSize) instead of O(n). Protected so that
+  // tests can check it directly.
+  class CommittedBytes {
+   public:
+    // The bytes [offset, offset + size) in use at every time in
+    // [start_time, end_time].
+    struct Range {
+      int64_t start_time;
+      int64_t end_time;
+      int64_t offset;
+      int64_t size;
+    };
+
+    explicit CommittedBytes(int64_t num_times);
+
+    int64_t num_times() const { return bytes_.size(); }
+
+    // Bytes in use at `time`. REQUIRES: 0 <= time < num_times().
+    int64_t Get(int64_t time) const { return bytes_[time]; }
+
+    // Adds `bytes` (which may be negative) to every time in [start, end].
+    // Does nothing when start > end. REQUIRES: 0 <= start and
+    // end < num_times().
+    void Add(int64_t start, int64_t end, int64_t bytes);
+
+    // Returns the maximum of Get(time) over [start, end].
+    // REQUIRES: 0 <= start <= end < num_times().
+    int64_t MaxInRange(int64_t start, int64_t end) const;
+
+    // Replaces the values with the union of the ranges: at every time, the
+    // bytes covered by at least one range in use at that time. Bytes covered
+    // by several ranges count once. Ranges with start_time > end_time or
+    // size <= 0 are ignored. REQUIRES: 0 <= start_time and
+    // end_time < num_times() for every counted range, and offset >= 0.
+    void AssignUnion(absl::Span<const Range> ranges);
+
+   private:
+    static constexpr int64_t kBlockSize = 64;
+
+    // Maximum of bytes_ over the times of `block`.
+    int64_t ComputeBlockMax(int64_t block) const;
+
+    std::vector<int64_t> bytes_;
+    std::vector<int64_t> block_max_;
+  };
+
  private:
   // Pins all scalar buffers in alternate memory. If a buffer has DMA like
   // uses that can be asyncified, we need to make sure the buffer is live until
@@ -1479,18 +1538,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // data structures consistent with the uncommit.
   //
   // MSA should not directly update interval_tree_ or directly call other
-  // Uncommit methods. This the definitive uncommit for MSA.
+  // Uncommit methods. This is the definitive uncommit for MSA.
   bool UncommitChunkAndUpdatePeakMemory(const MsaBufferInterval& interval,
                                         const Chunk& chunk);
 
-  // Commits the chunk and updates the peak memory. This method keeps other
-  // data structures consistent with the commit.
-  //
-  // MSA should not directly update interval_tree_ or directly call other
-  // Commit methods, e.g., CommitChunkAndInterval(). This the definitive
-  // uncommit for MSA.
-  void CommitChunkAndUpdatePeakMemory(const MsaBufferInterval& buffer_interval,
-                                      const Chunk& chunk);
+  // Returns the part of `chunk` below options_.max_size_in_bytes, which may
+  // be empty. Only these bytes compete with requests that must fit within the
+  // limit.
+  Chunk ChunkBelowLimit(const Chunk& chunk) const;
+
+  // Recomputes committed_bytes_ as the union of the chunks interval_tree_
+  // holds.
+  void RebuildCommittedBytes();
 
   // Imports repacked allocations and updates the internal data structures
   // consistent with the new packing.
@@ -1626,6 +1685,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // memory. If it doesn't fit, it returns nullopt.
   std::optional<int> FindEarliestExclusiveTimeToSatisfyPeakMemory(
       int exclusive_start_time, int end_time, int64_t size) const;
+
+  // Returns true if committed_bytes_ proves that FindChunkCandidates can only
+  // return a chunk ending beyond options_.max_size_in_bytes for the request:
+  // the request is unsliced, so its whole buffer must be free for the whole
+  // interval, and at some time of the interval the committed bytes plus the
+  // request size exceed the limit. Always false for sliced requests, whose
+  // earlier slices need less memory than the whole buffer.
+  bool IsRuledOutByCommittedBytes(
+      const SlicedBufferInterval& sliced_buffer_interval) const;
 
   // Creates and returns a RepackAllocationBlock.
   RepackAllocationBlock MakeRepackAllocationBlock(int64_t start_time,
@@ -1837,6 +1905,21 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
   // in the BufferIntervalTree, which also considers fragmentation.
   std::vector<int64_t> peak_memory_usage_;
+  // At each logical time, the bytes below options_.max_size_in_bytes covered
+  // by the union of the interval_tree_ chunks live at that time, so the free
+  // bytes below the limit are the limit minus this value. A committed chunk
+  // was found free over its interval, so CommitChunkAndUpdatePeakMemory adds
+  // its size and UncommitChunkAndUpdatePeakMemory subtracts it.
+  // ImportRepackedAllocations recomputes the union, because the imported
+  // blocks of aliased values overlap in time at one offset. The value never
+  // exceeds the union, which makes a rejection based on it sound. It stays
+  // equal to the union unless a repacker stacks blocks that are not colocated
+  // and one of them is released later; the production repacker does not.
+  // peak_memory_usage_ is not rebuilt at an import and
+  // UpdateReservedScopedAllocationSize resizes it without touching the tree,
+  // so FindBestChunkCandidates uses this, not peak_memory_usage_, to reject a
+  // request without searching the tree.
+  CommittedBytes committed_bytes_;
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;

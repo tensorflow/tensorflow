@@ -46,9 +46,29 @@ bool IsOneDnnSupportedDType(PrimitiveType dtype,
   // Check for data type support if target machine features are provided.
   // Unit tests may provide target machine features to simulate different CPU
   // capabilities.
-  return (cpu_features != nullptr &&
-          ((dtype == BF16 && cpu_features->has_avx512bf16()) ||
-           (dtype == F16 && cpu_features->has_avx512fp16())));
+  if (cpu_features == nullptr) {
+    return false;
+  }
+  switch (dtype) {
+    case BF16:
+      return cpu_features->has_avx512bf16();
+    case F16:
+      return cpu_features->has_avx512fp16();
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3:
+      if (cpu_features->has_amx_fp8()) {
+        return true;
+      }
+      if (cpu_features->has_amx_fp16()) {
+        LOG_FIRST_N(INFO, 1) << "XLA:CPU FP8 dispatched via oneDNN AMX-FP16 "
+                                "emulation path (target ISA lacks AMX-FP8).";
+        return true;
+      }
+      return false;
+    default:
+      return false;
+  }
 }
 
 bool IsOneDnnSupportedLayout(const Shape& shape) {

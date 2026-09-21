@@ -1008,7 +1008,8 @@ MsaAlgorithm::MsaAlgorithm(HloModule* module, AllocationSequence* allocations,
       alias_analysis_(alias_analysis),
       alias_info_(alias_info),
       hlo_live_range_(hlo_live_range),
-      peak_memory_usage_(hlo_live_range.schedule_end_time() + 1) {
+      peak_memory_usage_(hlo_live_range.schedule_end_time() + 1),
+      committed_bytes_(hlo_live_range.schedule_end_time() + 1) {
   // Override buffer interval compare if provided.
   auto comparison_function = GetSpatialBufferIntervalCompare();
   if (options.buffer_interval_comparator) {
@@ -8343,6 +8344,11 @@ void MsaAlgorithm::ImportRepackedAllocations() {
     }
     ImportRepackedNonSlicedAllocation(allocation_block);
   }
+  // The blocks come from Allocation start and end times, not from the
+  // committed intervals: colocated blocks of aliased values touch or nest in
+  // time at one offset, so the tree now holds chunks that overlap in space
+  // and committed_bytes_ must be the union of them, not their sum.
+  RebuildCommittedBytes();
 }
 
 void MsaAlgorithm::ImportRepackedNonSlicedAllocation(
@@ -8478,7 +8484,13 @@ bool MsaAlgorithm::UncommitChunkAndUpdatePeakMemory(
         << interval.start << "-" << interval.end << " : [" << chunk.offset
         << ", " << chunk.size << "]";
   }
-  return interval_tree_.Remove(interval.start, interval.end, chunk);
+  const bool removed =
+      interval_tree_.Remove(interval.start, interval.end, chunk);
+  if (removed) {
+    committed_bytes_.Add(interval.start, interval.end,
+                         -ChunkBelowLimit(chunk).size);
+  }
+  return removed;
 }
 
 void MsaAlgorithm::CommitChunkAndUpdatePeakMemory(
@@ -8493,7 +8505,165 @@ void MsaAlgorithm::CommitChunkAndUpdatePeakMemory(
         << (buffer_interval.buffer ? buffer_interval.buffer->ToString()
                                    : "null");
   }
+  // MSA intervals carry no colocations, so CommitChunkAndInterval adds exactly
+  // this chunk over this interval to interval_tree_. The chunk was found free
+  // over the interval, so it adds its whole size to the union of live chunks.
+  CHECK(buffer_interval.colocations.empty());
   CommitChunkAndInterval(buffer_interval, chunk);
+  committed_bytes_.Add(buffer_interval.start, buffer_interval.end,
+                       ChunkBelowLimit(chunk).size);
+}
+
+MsaAlgorithm::Chunk MsaAlgorithm::ChunkBelowLimit(const Chunk& chunk) const {
+  const int64_t offset = std::max<int64_t>(chunk.offset, 0);
+  const int64_t end =
+      std::max(offset, std::min(chunk.chunk_end(), options_.max_size_in_bytes));
+  return Chunk::FromOffsetEnd(offset, end);
+}
+
+void MsaAlgorithm::RebuildCommittedBytes() {
+  const int64_t last_time = committed_bytes_.num_times() - 1;
+  std::vector<CommittedBytes::Range> ranges;
+  interval_tree_.ApplyToNodesOverlappingInTime(
+      std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max(),
+      [&](const BufferIntervalTreeNode* node) {
+        const Chunk chunk = ChunkBelowLimit(node->chunk);
+        ranges.push_back({std::max<int64_t>(node->start, 0),
+                          std::min<int64_t>(node->end, last_time), chunk.offset,
+                          chunk.size});
+      });
+  committed_bytes_.AssignUnion(ranges);
+}
+
+MsaAlgorithm::CommittedBytes::CommittedBytes(int64_t num_times)
+    : bytes_(num_times, 0),
+      block_max_((num_times + kBlockSize - 1) / kBlockSize, 0) {}
+
+int64_t MsaAlgorithm::CommittedBytes::ComputeBlockMax(int64_t block) const {
+  const int64_t begin = block * kBlockSize;
+  const int64_t end = std::min(begin + kBlockSize, num_times());
+  return *std::max_element(bytes_.begin() + begin, bytes_.begin() + end);
+}
+
+void MsaAlgorithm::CommittedBytes::Add(int64_t start, int64_t end,
+                                       int64_t bytes) {
+  if (start > end) {
+    return;
+  }
+  DCHECK_GE(start, 0);
+  DCHECK_LT(end, num_times());
+  for (int64_t time = start; time <= end; ++time) {
+    bytes_[time] += bytes;
+  }
+  // A block fully inside the range shifts by `bytes`; a partially covered
+  // block is recomputed.
+  const int64_t last_time = num_times() - 1;
+  for (int64_t block = start / kBlockSize; block <= end / kBlockSize; ++block) {
+    const int64_t block_start = block * kBlockSize;
+    const int64_t block_end = std::min(block_start + kBlockSize - 1, last_time);
+    if (start <= block_start && block_end <= end) {
+      block_max_[block] += bytes;
+    } else {
+      block_max_[block] = ComputeBlockMax(block);
+    }
+  }
+}
+
+int64_t MsaAlgorithm::CommittedBytes::MaxInRange(int64_t start,
+                                                 int64_t end) const {
+  DCHECK_LE(start, end);
+  DCHECK_GE(start, 0);
+  DCHECK_LT(end, num_times());
+  const int64_t first_block = start / kBlockSize;
+  const int64_t last_block = end / kBlockSize;
+  if (first_block == last_block) {
+    return *std::max_element(bytes_.begin() + start, bytes_.begin() + end + 1);
+  }
+  int64_t result = *std::max_element(
+      bytes_.begin() + start, bytes_.begin() + (first_block + 1) * kBlockSize);
+  for (int64_t block = first_block + 1; block < last_block; ++block) {
+    result = std::max(result, block_max_[block]);
+  }
+  return std::max(result,
+                  *std::max_element(bytes_.begin() + last_block * kBlockSize,
+                                    bytes_.begin() + end + 1));
+}
+
+void MsaAlgorithm::CommittedBytes::AssignUnion(absl::Span<const Range> ranges) {
+  std::fill(bytes_.begin(), bytes_.end(), 0);
+  std::fill(block_max_.begin(), block_max_.end(), 0);
+  auto is_counted = [](const Range& range) {
+    return range.start_time <= range.end_time && range.size > 0;
+  };
+  // Sorted distinct range bounds; elementary segment i is
+  // [bounds[i], bounds[i + 1]).
+  std::vector<int64_t> bounds;
+  bounds.reserve(2 * ranges.size());
+  for (const Range& range : ranges) {
+    if (!is_counted(range)) {
+      continue;
+    }
+    DCHECK_GE(range.start_time, 0);
+    DCHECK_LT(range.end_time, num_times());
+    DCHECK_GE(range.offset, 0);
+    bounds.push_back(range.offset);
+    bounds.push_back(range.offset + range.size);
+  }
+  if (bounds.empty()) {
+    return;
+  }
+  std::sort(bounds.begin(), bounds.end());
+  bounds.erase(std::unique(bounds.begin(), bounds.end()), bounds.end());
+
+  // Sweep over time: a range covers its elementary segments [first, last)
+  // from its start time through its end time.
+  struct Event {
+    int64_t time;
+    int64_t first;
+    int64_t last;
+    int64_t delta;
+  };
+  std::vector<Event> events;
+  events.reserve(2 * ranges.size());
+  for (const Range& range : ranges) {
+    if (!is_counted(range)) {
+      continue;
+    }
+    const int64_t first =
+        std::lower_bound(bounds.begin(), bounds.end(), range.offset) -
+        bounds.begin();
+    const int64_t last = std::lower_bound(bounds.begin(), bounds.end(),
+                                          range.offset + range.size) -
+                         bounds.begin();
+    events.push_back({range.start_time, first, last, /*delta=*/1});
+    events.push_back({range.end_time + 1, first, last, /*delta=*/-1});
+  }
+  std::sort(events.begin(), events.end(),
+            [](const Event& a, const Event& b) { return a.time < b.time; });
+
+  // cover[i] counts the ranges covering segment i; the covered length changes
+  // when a count moves between 0 and 1, so overlapping ranges count once.
+  std::vector<int32_t> cover(bounds.size() - 1, 0);
+  int64_t covered_length = 0;
+  auto event = events.begin();
+  for (int64_t time = 0; time < num_times(); ++time) {
+    for (; event != events.end() && event->time <= time; ++event) {
+      for (int64_t segment = event->first; segment < event->last; ++segment) {
+        const int64_t length = bounds[segment + 1] - bounds[segment];
+        if (event->delta > 0) {
+          if (cover[segment]++ == 0) {
+            covered_length += length;
+          }
+        } else if (--cover[segment] == 0) {
+          covered_length -= length;
+        }
+      }
+    }
+    bytes_[time] = covered_length;
+  }
+  for (int64_t block = 0; block < block_max_.size(); ++block) {
+    block_max_[block] = ComputeBlockMax(block);
+  }
 }
 
 void MsaAlgorithm::UncommitPendingWork(
@@ -8687,6 +8857,27 @@ std::optional<int> MsaAlgorithm::FindEarliestExclusiveTimeToSatisfyPeakMemory(
   }
 
   return earliest_time_exclusive;
+}
+
+bool MsaAlgorithm::IsRuledOutByCommittedBytes(
+    const SlicedBufferInterval& sliced_buffer_interval) const {
+  if (sliced_buffer_interval.num_slices() != 1) {
+    return false;
+  }
+  // The same interval FindChunkCandidates searches the tree with. Times
+  // outside the schedule hold no chunks.
+  const MsaBufferInterval& interval =
+      sliced_buffer_interval.IntervalForMakeFreeChunks(/*slice_time=*/0);
+  const int64_t start = std::max<int64_t>(interval.start, 0);
+  const int64_t end =
+      std::min<int64_t>(interval.end, committed_bytes_.num_times() - 1);
+  if (start > end) {
+    return false;
+  }
+  // A chunk that is free for the whole interval needs interval.size free bytes
+  // below the limit at every time in it.
+  return committed_bytes_.MaxInRange(start, end) + interval.size >
+         options_.max_size_in_bytes;
 }
 
 std::string MsaAlgorithm::SingleFailureResultToString(
@@ -10934,6 +11125,10 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
     (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->UpdateEndTime(use);
+          // The search could only return a chunk that the check below rejects.
+          if (IsRuledOutByCommittedBytes(*alternate_mem_interval)) {
+            return false;
+          }
           std::vector<Chunk> chunk_candidates =
               FindChunkCandidates(*alternate_mem_interval);
           if (chunk_candidates.empty()) {
@@ -10970,6 +11165,10 @@ std::vector<MsaAlgorithm::Chunk> MsaAlgorithm::FindBestChunkCandidates(
   // If a preferred offset is given, try to find an allocation at that offset
   // only.
   alternate_mem_interval->UpdateEndTime(end_time);
+  // The search could only return a chunk that the check below rejects.
+  if (IsRuledOutByCommittedBytes(*alternate_mem_interval)) {
+    return {};
+  }
   std::vector<Chunk> chunk_candidates =
       FindChunkCandidates(*alternate_mem_interval, preferred_offset->offset);
   // Ensure that chunk candidates exist before querying min/max elements to
