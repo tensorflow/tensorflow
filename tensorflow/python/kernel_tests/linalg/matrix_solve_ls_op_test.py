@@ -170,6 +170,25 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       self.assertEqual(tf_ans.shape, (2, 2))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_in_graph_and_eager_modes
+  def testSingularMatrix(self):
+    # The composite implementation is based on a Cholesky factorization of the
+    # Gramian, which does not exist when the matrix is singular. It used to
+    # fill the output with NaN instead of returning the minimum-norm solution.
+    for dtype in (dtypes.float32, dtypes.float64):
+      np_dtype = dtype.as_numpy_dtype
+      # Gram matrix of four identical rows: rank one, hence singular.
+      x = np.tile(np.eye(1, 8), (4, 1)).astype(np_dtype)
+      matrix = np.matmul(x, x.T)
+      rhs = np.ones((4, 4), dtype=np_dtype)
+      solution = self.evaluate(linalg_ops.matrix_solve_ls(matrix, rhs))
+      self.assertFalse(np.any(np.isnan(solution)))
+      self.assertAllClose(
+          np.linalg.lstsq(matrix, rhs, rcond=None)[0],
+          solution,
+          rtol=1e-4,
+          atol=1e-5)
+
   def testBatchResultSize(self):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
     matrix = np.array([1., 0., 0., 0., 1., 0., 0., 0., 1.] * 3).reshape(3, 3, 3)  # pylint: disable=too-many-function-args
