@@ -393,9 +393,10 @@ AsyncThunkSequence MlirKernelFusion::Emit(
                   .Map([kernel_name = std::move(kernel_name),
                         launch_dims = std::move(launch_dims),
                         use_pdl](const std::vector<uint8_t>& cubin) mutable {
-                    KernelReuseCache::Entry entry{kernel_name, launch_dims,
-                                                  std::nullopt,
-                                                  /*shmem_bytes=*/0, cubin};
+                    KernelReuseCache::Entry entry{
+                        kernel_name, launch_dims, std::nullopt,
+                        /*shmem_bytes=*/0,
+                        std::make_shared<const std::vector<uint8_t>>(cubin)};
 
                     entry.use_pdl = use_pdl;
                     return entry;
@@ -413,7 +414,7 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
     }
     ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                     kernel::CreateOwnedCubinCustomKernel(
+                     kernel::CreateSharedCubinCustomKernel(
                          entry->kernel_name, entry->binary, args.args().size(),
                          entry->launch_dimensions.block_counts(),
                          entry->launch_dimensions.thread_counts_per_block(),

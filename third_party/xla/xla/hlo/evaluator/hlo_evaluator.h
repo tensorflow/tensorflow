@@ -530,6 +530,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleAddDependency(
       const HloInstruction* add_dependency) override;
   absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleShuffle(const HloInstruction* shuffle) override;
   absl::Status HandleSelectAndScatter(
       const HloInstruction* select_and_scatter) override;
   absl::Status HandleSlice(const HloInstruction* hlo) override;
