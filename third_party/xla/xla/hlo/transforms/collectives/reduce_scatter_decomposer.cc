@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_decomposer_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

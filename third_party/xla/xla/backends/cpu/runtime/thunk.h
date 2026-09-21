@@ -52,6 +52,10 @@ namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
 
+namespace xla {
+class CustomOptions;
+}  // namespace xla
+
 namespace xla::cpu {
 
 // Forward declare.
@@ -284,6 +288,9 @@ class Thunk {
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
     uint64_t rng_seed = 0;
+
+    // Per-execution custom options.
+    const CustomOptions* custom_options = nullptr;
   };
 
   // An execute event that becomes ready when all tasks are completed.
