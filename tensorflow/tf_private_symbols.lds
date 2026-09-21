@@ -6,4 +6,5 @@ _jzero_far
 _jcopy_*
 _jsimd_*
 _hwloc_*
+*llvm*
 *mlir*
