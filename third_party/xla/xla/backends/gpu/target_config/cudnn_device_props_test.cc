@@ -138,6 +138,21 @@ TEST(CudnnDevicePropsTest, MatchesLiveDevice) {
     VLOG(1) << "live : " << Dump(live_json);
     VLOG(1) << "synth: " << Dump(synth_json);
 
+    constexpr char kOversizedSharedMemoryField[] =
+        "oversizedSharedMemoryPerBlock";
+    const int64_t live_oversized_shared_memory =
+        live_json.get(kOversizedSharedMemoryField, 0).asInt64();
+    const int64_t synth_oversized_shared_memory =
+        synth_json.get(kOversizedSharedMemoryField, 0).asInt64();
+    EXPECT_EQ(synth_oversized_shared_memory,
+              desc.oversized_shared_memory_per_block());
+    // cuDNN may omit this property or report zero.
+    if (live_oversized_shared_memory != 0) {
+      EXPECT_EQ(synth_oversized_shared_memory, live_oversized_shared_memory);
+    }
+    live_json.removeMember(kOversizedSharedMemoryField);
+    synth_json.removeMember(kOversizedSharedMemoryField);
+
     StripIgnoredFields(live_json);
     StripIgnoredFields(synth_json);
     ExpectClockFieldsClose(live_json, synth_json);

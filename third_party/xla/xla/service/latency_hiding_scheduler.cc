@@ -1291,7 +1291,9 @@ int32_t MemoryPressureMetadata::ComputeBufferReleases(
 }
 
 void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
-  CHECK(metadata_ != nullptr);
+  if (!is_tracking()) {
+    return;
+  }
   int64_t computations_peak = 0;
   for (auto* called_comp : instruction->called_computations()) {
     if (called_comp->IsFusionComputation()) {
@@ -3597,16 +3599,46 @@ bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
   return false;
 }
 
+void DefaultSchedulerCore::ResetModulePressureState(const HloModule* module,
+                                                    bool top_down_scheduling) {
+  const bool track =
+      config_.memory_limit != UINT64_MAX ||
+      config_.track_memory_pressure_without_limit ||
+      module->config().debug_options().xla_dump_latency_hiding_schedule();
+  if (!track) {
+    module_pressure_state_.reset();
+    return;
+  }
+  module_pressure_state_ = std::make_unique<ModulePressureState>(
+      module, scheduling_context_->GetAliasAnalysis().get(),
+      scheduling_context_->GetShapeSizeBytes(), top_down_scheduling);
+  module_pressure_state_->InitializePressureStates();
+  module_pressure_state_->SetMemoryPeak(0);
+}
+
+void DefaultSchedulerCore::RecordComputationPressureState(
+    const HloComputation* computation, const MemoryPressureTracker& tracker) {
+  if (IsTrackingMemoryPressure()) {
+    module_pressure_state_->UpdatePressureStateForComputation(
+        computation, tracker.pressure_state());
+  }
+}
+
+void DefaultSchedulerCore::ResetMemoryPressureTracker(
+    const HloComputation* computation, MemoryPressureTracker& tracker) const {
+  if (IsTrackingMemoryPressure()) {
+    tracker.Reset(computation, module_pressure_state_
+                                   ->GetPressureStateForComputation(computation)
+                                   .live_ids_at_bottom);
+  } else {
+    tracker.Reset(computation, LiveBufferSet());
+  }
+}
+
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
   module_ = module;
-  module_pressure_state_ = std::make_unique<ModulePressureState>(
-      module, scheduling_context_->GetAliasAnalysis().get(),
-      scheduling_context_->GetShapeSizeBytes(), top_down_scheduling_);
-  // Initialize the pressure states for all computations in the module.
-  pressure_metadata_.clear();
-  module_pressure_state_->InitializePressureStates();
-  module_pressure_state_->SetMemoryPeak(0);
+  ResetModulePressureState(module, top_down_scheduling_);
   {
     absl::MutexLock lock(&reachability_cache_mu_);
     reachability_cache_.clear();
@@ -3856,7 +3888,9 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
 
   const MemoryPressureMetadata* metadata =
-      module_pressure_state_->GetOrCreatePressureMetadata(computation);
+      IsTrackingMemoryPressure()
+          ? module_pressure_state_->GetOrCreatePressureMetadata(computation)
+          : nullptr;
   auto reachability = GetReachabilityMap(computation);
   auto graph =
       CreateScheduleGraph(&module_schedule.sequence(computation).instructions(),
@@ -3886,9 +3920,8 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   // loop. The module-level pressure tracker is initialized once (capturing all
   // buffers), and the reachability map only acts as an execution constraint
   // without requiring continuous pressure recalculation during scheduling.
-  module_pressure_state_->UpdatePressureStateForComputation(
-      computation,
-      default_sched_state->memory_pressure_tracker.pressure_state());
+  RecordComputationPressureState(computation,
+                                 default_sched_state->memory_pressure_tracker);
   return new_schedule;
 }
 
@@ -3946,12 +3979,8 @@ DefaultSchedulerCore::ScheduleComputation(
   // Reset the scheduling state.
   sched_state->Reset();
 
-  // Reset the memory pressure tracker.
   auto& memory_pressure_tracker = sched_state->memory_pressure_tracker;
-  memory_pressure_tracker.Reset(
-      computation,
-      module_pressure_state_->GetPressureStateForComputation(computation)
-          .live_ids_at_bottom);
+  ResetMemoryPressureTracker(computation, memory_pressure_tracker);
 
   if (sched_state->graph_processing_hook) {
     ABSL_RETURN_IF_ERROR(
@@ -4276,7 +4305,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
   const MemoryPressureState* memory_pressure_state =
       memory_tracked ? &computation_pressure_state : nullptr;
   std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker_ptr;
-  if (memory_pressure_tracker == nullptr) {
+  if (memory_pressure_tracker == nullptr ||
+      !memory_pressure_tracker->is_tracking()) {
     const MemoryPressureMetadata* metadata =
         module_pressure_state->GetOrCreatePressureMetadata(computation);
     if (memory_pressure_state != nullptr) {
@@ -4499,10 +4529,16 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
                   scheduling_context_->GetAliasInfo())
             : 0;
   }
-  LOG(INFO) << "[" << name() << "]"
-            << " LatencyHidingScheduler current memory usage: "
-            << scheduler_core_->GetMemoryPeak()
-            << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
+  if (scheduler_core_->IsTrackingMemoryPressure()) {
+    LOG(INFO) << "[" << name() << "]"
+              << " LatencyHidingScheduler current memory usage: "
+              << scheduler_core_->GetMemoryPeak()
+              << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
+  } else {
+    LOG(INFO) << "[" << name() << "]"
+              << " LatencyHidingScheduler did not track memory pressure."
+              << " Current limit: " << scheduler_core_->GetMemoryLimit();
+  }
   if (VLOG_IS_ON(1)) {
     // Log the statistics after scheduling.
     ModulePressureState post_scheduling_pressure_state = ModulePressureState(

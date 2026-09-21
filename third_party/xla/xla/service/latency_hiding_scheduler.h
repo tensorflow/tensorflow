@@ -170,6 +170,12 @@ struct SchedulerConfig {
   int64_t send_recv_host_overlap_limit = 1;
   int64_t copy_overlap_limit = 1;
   uint64_t memory_limit = UINT64_MAX;
+  // Without a memory limit the memory pressure state cannot change a
+  // scheduling decision; it only feeds GetMemoryPeak(), the dumped schedule
+  // and logging. A backend that reads none of those can set this to false and
+  // skip building the state. Ignored when memory_limit is set or when
+  // xla_dump_latency_hiding_schedule needs the per instruction memory usage.
+  bool track_memory_pressure_without_limit = true;
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
   int64_t parallel_collective_overlap_limit = 1;
@@ -324,6 +330,8 @@ class SchedulerCore {
   }
 
   virtual ~SchedulerCore() = default;
+  // GetMemoryPeak() is meaningful only when this returns true.
+  virtual bool IsTrackingMemoryPressure() const { return true; }
   virtual int64_t GetMemoryPeak() = 0;
   virtual void SetMemoryLimit(uint64_t new_limit) = 0;
   virtual uint64_t GetMemoryLimit() = 0;
@@ -1612,6 +1620,11 @@ class MemoryPressureTracker {
     }
   }
 
+  // A tracker without metadata tracks nothing: UpdateBuffers is a no op and
+  // the usage and peak stay 0. MemoryPressureDifference still requires
+  // metadata; its callers only run under a memory limit.
+  bool is_tracking() const { return metadata_ != nullptr; }
+
   // Reset the memory pressure tracker to the initialized state.
   void Reset(const HloComputation* /*computation*/,
              const LiveBufferSet& initial_live_buffers);
@@ -1980,12 +1993,19 @@ class DefaultSchedulerCore : public SchedulerCore {
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
   static bool DefaultSchedulingInstructionCrossesOverlapLimit(
       const SchedulingState& sched_state, const HloGraphNode* node);
+  bool IsTrackingMemoryPressure() const override {
+    return module_pressure_state_ != nullptr;
+  }
   int64_t GetMemoryPeak() override {
-    return module_pressure_state_->GetMemoryPeak();
+    return IsTrackingMemoryPressure() ? module_pressure_state_->GetMemoryPeak()
+                                      : 0;
   }
   int64_t GetMemoryPeakForComputation(const HloComputation* computation) const {
-    return module_pressure_state_->GetPressureStateForComputation(computation)
-        .memory_peak;
+    return IsTrackingMemoryPressure()
+               ? module_pressure_state_
+                     ->GetPressureStateForComputation(computation)
+                     .memory_peak
+               : 0;
   }
 
   uint64_t GetMemoryLimit() override { return config_.memory_limit; }
@@ -2031,6 +2051,7 @@ class DefaultSchedulerCore : public SchedulerCore {
       const LatencyEstimator& estimator,
       const std::vector<HloInstruction*>& instructions);
 
+  // Null when memory pressure is not tracked.
   ModulePressureState* GetModulePressureState() {
     return module_pressure_state_.get();
   }
@@ -2061,10 +2082,21 @@ class DefaultSchedulerCore : public SchedulerCore {
       SchedulingState& sched_state,
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
 
+  // Builds the module memory pressure state for `module`, or drops it when
+  // nothing can read it: no memory limit, the config does not ask for it, and
+  // the schedule dump (which records per instruction memory usage) is off.
+  void ResetModulePressureState(const HloModule* module,
+                                bool top_down_scheduling);
+  // Folds the pressure state of a scheduled computation into the module
+  // state; no op when memory pressure is not tracked.
+  void RecordComputationPressureState(const HloComputation* computation,
+                                      const MemoryPressureTracker& tracker);
+  // Resets `tracker` to the live buffers at the bottom of `computation`, or
+  // to nothing when memory pressure is not tracked.
+  void ResetMemoryPressureTracker(const HloComputation* computation,
+                                  MemoryPressureTracker& tracker) const;
+  // Null when memory pressure is not tracked (see ResetModulePressureState).
   std::unique_ptr<ModulePressureState> module_pressure_state_;
-  absl::flat_hash_map<const HloComputation*,
-                      std::unique_ptr<MemoryPressureMetadata>>
-      pressure_metadata_;
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
