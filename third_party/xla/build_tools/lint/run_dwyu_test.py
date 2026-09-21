@@ -90,6 +90,33 @@ class BantWorkspaceTest(unittest.TestCase):
         0,
     )
 
+  def test_filters_absl_string_view_findings(self):
+    stdout = (
+        "buildozer 'remove deps @com_google_absl//absl/strings'"
+        " @xla//xla/only_string_view\n"
+        "buildozer 'add deps @com_google_absl//absl/strings:string_view'"
+        " @xla//xla/only_string_view\n"
+        "buildozer 'add deps @com_google_absl//absl/strings:string_view'"
+        " @xla//xla/with_str_cat\n"
+        "buildozer 'remove deps @com_google_absl//absl/strings'"
+        " @xla//xla/truly_unused_strings\n"
+        "buildozer 'add deps @xla//xla/platform:errors'"
+        " @xla//xla/with_str_cat\n"
+    )
+    self.assertEqual(
+        run_dwyu._filter_bant_stdout(stdout),
+        [
+            (
+                "buildozer 'remove deps @com_google_absl//absl/strings'"
+                " @xla//xla/truly_unused_strings"
+            ),
+            (
+                "buildozer 'add deps @xla//xla/platform:errors'"
+                " @xla//xla/with_str_cat"
+            ),
+        ],
+    )
+
 
 @unittest.skipUnless(
     _BANT, "requires the BANT binary installed by the workflow"
@@ -264,6 +291,92 @@ cc_library(
         f"Checked DWYU on {len(labels)} targets.",
         result.stderr,
     )
+
+  def _setup_absl_strings_repo(self):
+    self.write_file(
+        "MODULE.bazel",
+        """\
+module(name = "xla")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+""",
+    )
+    absl_repo = self.external / "abseil-cpp+"
+    (absl_repo / "absl/strings").mkdir(parents=True)
+    (absl_repo / "MODULE.bazel").write_text('module(name = "abseil-cpp")\n')
+    (absl_repo / "absl/strings/str_cat.h").write_text("// str_cat\n")
+    (absl_repo / "absl/strings/string_view.h").write_text("// string_view\n")
+    (absl_repo / "absl/strings/BUILD.bazel").write_text("""\
+cc_library(
+    name = "string_view",
+    hdrs = ["string_view.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "strings",
+    hdrs = [
+        "str_cat.h",
+        "string_view.h",
+    ],
+    textual_hdrs = [
+        "string_view.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":string_view"],
+)
+""")
+
+  def test_absl_strings_and_string_view_filtering(self):
+    self._setup_absl_strings_repo()
+    test_cases = [
+        (
+            "satisfies_string_view_and_str_cat_include",
+            '["@com_google_absl//absl/strings"]',
+            (
+                '#include "absl/strings/str_cat.h"\n'
+                '#include "absl/strings/string_view.h"\n'
+            ),
+            0,
+            "",
+        ),
+        (
+            "satisfies_string_view_only_include",
+            '["@com_google_absl//absl/strings"]',
+            '#include "absl/strings/string_view.h"\n',
+            0,
+            "",
+        ),
+        (
+            "unused_absl_strings_still_reported",
+            '["//xla/platform:errors", "@com_google_absl//absl/strings"]',
+            '#include "xla/platform/errors.h"\n',
+            3,
+            (
+                "buildozer 'remove deps @com_google_absl//absl/strings'"
+                " @xla//xla/consumer\n"
+            ),
+        ),
+    ]
+    for name, deps, source, expected_returncode, expected_stdout in test_cases:
+      with self.subTest(name):
+        self.write_file(
+            "xla/consumer/BUILD",
+            f"""\
+cc_library(
+    name = "consumer",
+    srcs = ["consumer.cc"],
+    deps = {deps},
+)
+""",
+        )
+        self.write_file("xla/consumer/consumer.cc", source)
+        result = self.check_targets("//xla/consumer:consumer")
+        self.assertEqual(
+            result.returncode,
+            expected_returncode,
+            result.stdout + result.stderr,
+        )
+        self.assertEqual(result.stdout, expected_stdout)
 
 
 if __name__ == "__main__":
