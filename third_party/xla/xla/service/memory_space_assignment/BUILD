@@ -403,6 +403,7 @@ xla_cc_test(
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/cost_modelling:op_cost",
         "@com_google_absl//absl/log",

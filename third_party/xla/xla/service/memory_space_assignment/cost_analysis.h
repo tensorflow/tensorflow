@@ -108,6 +108,15 @@ class CostAnalysis {
       const AliasInfo* alias_info, const HloModule& module,
       HloAliasAnalysis* alias_analysis);
 
+  // As above, but reads `hlo_live_range`, which the caller built from
+  // `module`'s schedule and `alias_analysis` and keeps alive for the lifetime
+  // of the returned object, instead of computing an identical one. Takes no
+  // AliasInfo: the overload above never reads its `alias_info`.
+  static absl::StatusOr<std::unique_ptr<CostAnalysis>> Create(
+      OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
+      const HloModule& module, HloAliasAnalysis* alias_analysis,
+      const HloLiveRange& hlo_live_range);
+
   int64_t GetShapeSizeBytes(const Shape& shape) const;
 
   float OperandBytesAccessed(const HloInstruction& instruction,
@@ -248,10 +257,19 @@ class CostAnalysis {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
  protected:
+  // Owns `hlo_live_range`.
   CostAnalysis(OpCostManager& op_cost_manager,
                const CostAnalysisOptions& options,
                HloAliasAnalysis* alias_analysis,
                std::unique_ptr<HloLiveRange> hlo_live_range,
+               std::unique_ptr<CallGraph> call_graph);
+
+  // Reads `hlo_live_range`, which the caller keeps alive for the lifetime of
+  // this object.
+  CostAnalysis(OpCostManager& op_cost_manager,
+               const CostAnalysisOptions& options,
+               HloAliasAnalysis* alias_analysis,
+               const HloLiveRange& hlo_live_range,
                std::unique_ptr<CallGraph> call_graph);
 
  private:
@@ -259,7 +277,10 @@ class CostAnalysis {
   OpCostManager& op_cost_manager_;
   const CostAnalysisOptions options_;
   HloAliasAnalysis* alias_analysis_;
-  std::unique_ptr<HloLiveRange> hlo_live_range_;
+  // Null when the live range is the caller's; hlo_live_range_ points at the
+  // live range in use either way.
+  std::unique_ptr<HloLiveRange> owned_hlo_live_range_;
+  const HloLiveRange* hlo_live_range_;
   std::unique_ptr<CallGraph> call_graph_;
 };
 
