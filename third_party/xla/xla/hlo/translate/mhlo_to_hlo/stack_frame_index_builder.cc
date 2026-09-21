@@ -107,21 +107,40 @@ bool IsFrameNameLocation(mlir::Location location) {
          isa<mlir::FileLineColLoc>(cast<mlir::NameLoc>(location).getChildLoc());
 }
 
-std::vector<mlir::NameLoc> CollectFrames(const mlir::Location& loc) {
-  std::vector<mlir::NameLoc> frames;
-  std::vector<mlir::Location> stack;
-  stack.push_back(loc);
-  while (!stack.empty()) {
-    mlir::Location curr = stack.back();
-    stack.pop_back();
-    if (auto call_site = dyn_cast<mlir::CallSiteLoc>(curr)) {
-      stack.push_back(call_site.getCaller());
-      stack.push_back(call_site.getCallee());
-    } else if (IsFrameNameLocation(curr)) {
-      frames.push_back(cast<mlir::NameLoc>(curr));
+// Appends the frames of the call stack encoded in `loc` to `frames`, from the
+// innermost (callee) frame to the outermost (caller) frame. Returns whether
+// `loc` holds a call stack.
+bool CollectFrames(mlir::Location loc, std::vector<mlir::NameLoc>& frames) {
+  // Based on JAX's `jaxlib/mlir/_mlir_libs/traceback_to_location.cc`, and on
+  // `stackLocations` in `mlir/lib/Transforms/Utils/InliningUtils.cpp`.
+  if (auto call_site = dyn_cast<mlir::CallSiteLoc>(loc)) {
+    bool callee_has_frames = CollectFrames(call_site.getCallee(), frames);
+    bool caller_has_frames = CollectFrames(call_site.getCaller(), frames);
+    return callee_has_frames || caller_has_frames;
+  }
+  // Also `jaxlib/mlir/_mlir_libs/traceback_to_location.cc`, which emits one
+  // `NameLoc(<function name>, FileLineColRange)` per Python frame.
+  if (IsFrameNameLocation(loc)) {
+    frames.push_back(cast<mlir::NameLoc>(loc));
+    return true;
+  }
+  // Based on `source_info_to_location` in JAX's
+  // `jax/_src/interpreters/mlir.py`, and on
+  // `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`.
+  if (auto name_loc = dyn_cast<mlir::NameLoc>(loc)) {
+    return CollectFrames(name_loc.getChildLoc(), frames);
+  }
+  // Based on `xla/hlo/translate/hlo_to_mhlo/location_importer.cc`. The
+  // sub-locations are unrelated ops, so keep the first stack instead of
+  // concatenating them.
+  if (auto fused_loc = dyn_cast<mlir::FusedLoc>(loc)) {
+    for (mlir::Location sub_loc : fused_loc.getLocations()) {
+      if (CollectFrames(sub_loc, frames)) {
+        return true;
+      }
     }
   }
-  return frames;
+  return false;
 }
 
 }  // namespace
@@ -129,7 +148,8 @@ std::vector<mlir::NameLoc> CollectFrames(const mlir::Location& loc) {
 StackFrameIndexBuilder::AddStackFrameResult
 StackFrameIndexBuilder::AddCallStackAndGetFirstFrameId(
     const mlir::Location& root_loc) {
-  std::vector<mlir::NameLoc> frames = CollectFrames(root_loc);
+  std::vector<mlir::NameLoc> frames;
+  CollectFrames(root_loc, frames);
 
   int parent_frame_id = StackFrameIndexBuilder::kInvalidIndex;
   for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
