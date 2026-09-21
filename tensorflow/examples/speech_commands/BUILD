@@ -328,6 +328,7 @@ tf_cc_binary(
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/platform:types",
         "@xla//xla/tsl/util:command_line_flags",
@@ -387,6 +388,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -421,7 +423,6 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
-        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -459,6 +460,7 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:types",
     ],
 )
