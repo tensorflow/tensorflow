@@ -6131,6 +6131,7 @@ def searchsorted(sorted_sequence,
                 If the first `N-1` dimensions of the two tensors don't match.
   """
   sequence_size = shape_internal(sorted_sequence)[-1]
+  values = ops.convert_to_tensor(values, name="values")
   values_shape = shape_internal(values)
 
   if values.shape.rank == 0:
