@@ -1386,7 +1386,10 @@ class HloInstruction {
   // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
   const PtrVec<HloInstruction*>& control_predecessors() const {
-    return rare()->control_predecessors;
+    // The flag avoids dereferencing the out of line Rare struct for the many
+    // instructions that own one for other fields but have no predecessors.
+    return has_control_predecessors_ ? rare()->control_predecessors
+                                     : kEmptyRare->control_predecessors;
   }
   const PtrVec<HloInstruction*>& control_successors() const {
     return rare()->control_successors;
@@ -2644,7 +2647,10 @@ class HloInstruction {
     }
     RemoveAllOperands();
   }
-  void RemoveAllOperands() { operands_.clear(); }
+  void RemoveAllOperands() {
+    operands_.clear();
+    InvalidateParentPostOrderCache();
+  }
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be
@@ -2653,6 +2659,7 @@ class HloInstruction {
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);
+    InvalidateParentPostOrderCache();
   }
 
   // Removes a list of operands with the given indices in ascending order.
@@ -2729,10 +2736,16 @@ class HloInstruction {
       absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
-  void AddUser(HloInstruction* user) { users_.AddUser(user); }
+  void AddUser(HloInstruction* user);
 
   // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
+  void RemoveUser(HloInstruction* user);
+
+  // Drops the cached instruction post order of parent_, if any. Called after
+  // every mutation of the inputs of HloComputation::MakeInstructionPostOrder()
+  // owned by this instruction: operands_, the control predecessors, and the
+  // users that have a parent (users outside any computation do not count).
+  void InvalidateParentPostOrderCache();
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -2881,6 +2894,13 @@ class HloInstruction {
 
   // True if the shape of this instruction has been canonicalized.
   bool shape_is_canonicalized_ : 1;
+
+  // True iff rare()->control_predecessors is not empty. Maintained by the
+  // control dependency writers so that control_predecessors() can skip the
+  // Rare dereference. A separate byte, not a bit above: the bits are written
+  // by non graph edits (MarkAsRoot(), mutable_shape()) that may run while
+  // another thread reads the post order.
+  bool has_control_predecessors_;
 
   // Instruction operands.
   InstructionVector operands_;

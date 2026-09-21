@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -171,7 +174,8 @@ class HloComputation {
   // Helper class for returning the instruction post order for a computation,
   // but maintaining a cache to avoid repeated calls to
   // computation->MakeInstructionPostorder().  The cache is invalidated if
-  // RecordChange(<something evaluating to true>)  is called.
+  // RecordChange(<something evaluating to true>)  is called. The computation
+  // caches the order itself; this helper saves the copy each call returns.
   //
   // This class can be handy to avoid recomputing the instruction post order
   // when an optimization pass wants to make multiple passes over the
@@ -497,6 +501,12 @@ class HloComputation {
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
+  //
+  // The order is a deterministic function of the instruction list, of the
+  // operand and control predecessor lists of the instructions and of which
+  // instructions have users inside a computation. It is cached, and the cache
+  // is dropped by every mutation of those inputs, so repeated calls without an
+  // intervening mutation cost one copy. Safe to call from several threads.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
   // Same as MakeInstructionPostOrder but starting at any instruction in the
   // computation, not just the root. Describes the corresponding subgraph.
@@ -507,7 +517,9 @@ class HloComputation {
   // will be sorted before other operations.
   std::vector<HloInstruction*> MakeInstructionPostOrderWithReshapeFirst() const;
 
-  // Calls `func` with each instruction in the computation in post-order.
+  // Calls `func` with each instruction in the computation in post order, the
+  // order MakeInstructionPostOrder() returns, taken once before the first
+  // call.
   void ForEachInstructionPostOrder(
       absl::FunctionRef<void(HloInstruction*)> func) const;
 
@@ -1053,14 +1065,34 @@ class HloComputation {
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
   class VisitMap;
+  // Appends the post order of the subgraph below `root` to `post_order`,
+  // skipping the instructions already marked in `visited`.
   void ComputeInstructionPostOrder(
       HloInstruction* root, VisitMap& visited,
       std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
-  void ForEachInstructionPostOrderImpl(
-      absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-      VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
+  // Fills `post_order` with a fresh traversal of the whole computation, the
+  // value MakeInstructionPostOrder() caches.
+  void ComputeFullInstructionPostOrder(
+      std::vector<HloInstruction*>& post_order) const;
+
+  // Returns the cached post order, refreshing it first if a mutation dropped
+  // it.
+  const std::vector<HloInstruction*>& CachedInstructionPostOrder() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(post_order_mutex_);
+
+  // True iff the cached post order equals a fresh traversal. A full walk;
+  // only evaluated by the DCHECK in CachedInstructionPostOrder().
+  bool CachedPostOrderIsFresh() const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(post_order_mutex_);
+
+  // Drops the cached instruction post order. Called by every mutation of
+  // instructions_ and, through HloInstruction, by every mutation of an
+  // operand, user or control predecessor list.
+  void InvalidatePostOrderCache() {
+    post_order_cache_valid_.store(false, std::memory_order_relaxed);
+  }
 
   absl::Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
@@ -1122,6 +1154,16 @@ class HloComputation {
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
   PtrVec<HloInstruction*> to_be_deleted_;
+
+  // Cache of MakeInstructionPostOrder(). The vector is filled and read under
+  // the mutex, so concurrent readers of one computation share one traversal.
+  // Mutations are never concurrent with reads of a computation, so they only
+  // clear the flag, without taking the mutex; the flag is atomic so that the
+  // store and the reader's load are well defined without it.
+  mutable absl::Mutex post_order_mutex_;
+  mutable std::vector<HloInstruction*> cached_post_order_
+      ABSL_GUARDED_BY(post_order_mutex_);
+  mutable std::atomic<bool> post_order_cache_valid_{false};
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;

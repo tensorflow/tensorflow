@@ -15,22 +15,29 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>  // NOLINT
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -465,6 +472,366 @@ TEST_F(HloComputationTest, CycleDetection) {
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.message(),
               ::testing::ContainsRegex("cycle is detecte"));
+}
+
+// The documented instruction post order, recomputed from scratch: from every
+// instruction without users inside a computation, in instruction list order, a
+// depth first search that pushes the operands in reverse order and then the
+// control predecessors. MakeInstructionPostOrder() caches this order; the
+// tests below compare the cache against this reference after each mutation.
+std::vector<HloInstruction*> ReferencePostOrder(
+    const HloComputation* computation) {
+  enum class State { kNew, kVisiting, kVisited };
+  std::vector<HloInstruction*> post_order;
+  absl::flat_hash_map<const HloInstruction*, State> states;
+  std::vector<HloInstruction*> stack;
+  auto push = [&](HloInstruction* instruction) {
+    if (states[instruction] != State::kVisited) {
+      stack.push_back(instruction);
+    }
+  };
+  for (HloInstruction* root : computation->instructions()) {
+    if (!absl::c_all_of(root->users(), [](const HloInstruction* user) {
+          return user->parent() == nullptr;
+        })) {
+      continue;
+    }
+    push(root);
+    while (!stack.empty()) {
+      HloInstruction* current = stack.back();
+      State& state = states[current];
+      if (state != State::kNew) {
+        stack.pop_back();
+        if (state != State::kVisited) {
+          state = State::kVisited;
+          post_order.push_back(current);
+        }
+        continue;
+      }
+      state = State::kVisiting;
+      const HloInstruction::InstructionVector& operands = current->operands();
+      std::for_each(operands.rbegin(), operands.rend(), push);
+      absl::c_for_each(current->control_predecessors(), push);
+    }
+  }
+  return post_order;
+}
+
+TEST_F(HloComputationTest, CachedPostOrderTracksEveryMutation) {
+  const char* const kHlo = R"(
+  HloModule m
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    a = f32[] negate(p0)
+    b = f32[] negate(p1)
+    c = f32[] subtract(a, b)
+    ROOT t = (f32[]) tuple(c)
+  })";
+  // Unverified: the steps below leave the module unverifiable (t grows an
+  // operand, the root changes shape).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  HloInstruction* c = FindInstruction(module.get(), "c");
+  HloInstruction* t = FindInstruction(module.get(), "t");
+
+  // Refreshes `order` after `step` and checks it against the reference. Every
+  // call but the first is served from the cache filled by the previous call
+  // unless the step dropped it.
+  std::vector<HloInstruction*> order;
+  auto check = [&](absl::string_view step) {
+    SCOPED_TRACE(step);
+    order = entry->MakeInstructionPostOrder();
+    EXPECT_EQ(order, ReferencePostOrder(entry));
+  };
+  auto expect_changed = [&](absl::string_view step) {
+    std::vector<HloInstruction*> previous = order;
+    check(step);
+    SCOPED_TRACE(step);
+    EXPECT_NE(previous, order);
+  };
+  auto expect_unchanged = [&](absl::string_view step) {
+    std::vector<HloInstruction*> previous = order;
+    check(step);
+    SCOPED_TRACE(step);
+    EXPECT_EQ(previous, order);
+  };
+
+  check("initial");
+  EXPECT_THAT(order, ElementsAre(p0, a, p1, b, c, t));
+
+  // Operand edits: c becomes subtract(b, a), which swaps the two subtrees.
+  ASSERT_OK(c->ReplaceOperandWith(0, b));
+  check("c = subtract(b, b)");
+  ASSERT_OK(c->ReplaceOperandWith(1, a));
+  expect_changed("c = subtract(b, a)");
+  EXPECT_THAT(order, ElementsAre(p1, b, p0, a, c, t));
+
+  // A user outside any computation does not count; adding it to the
+  // computation does.
+  std::unique_ptr<HloInstruction> negate_a =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, a);
+  expect_unchanged("n created outside the computation");
+  HloInstruction* n = entry->AddInstruction(std::move(negate_a));
+  expect_changed("n added");
+  EXPECT_THAT(order, ElementsAre(p1, b, p0, a, c, t, n));
+
+  t->AppendOperand(n);
+  expect_changed("t = tuple(c, n)");
+  EXPECT_THAT(order, ElementsAre(p1, b, p0, a, c, n, t));
+
+  // Control edges: a predecessor of b is visited before the operands of b.
+  ASSERT_OK(a->AddControlDependencyTo(b));
+  expect_changed("a -> b control edge added");
+  EXPECT_THAT(order, ElementsAre(p0, a, p1, b, c, n, t));
+  ASSERT_OK(a->RemoveControlDependencyTo(b));
+  expect_changed("a -> b control edge removed");
+  ASSERT_OK(a->AddControlDependencyTo(b));
+  expect_changed("a -> b control edge added again");
+  ASSERT_OK(a->DropAllControlDeps());
+  expect_changed("control edges of the predecessor dropped");
+  ASSERT_OK(a->AddControlDependencyTo(b));
+  expect_changed("a -> b control edge added a third time");
+  ASSERT_OK(b->DropAllControlDeps());
+  expect_changed("control edges of the successor dropped");
+  EXPECT_THAT(order, ElementsAre(p1, b, p0, a, c, n, t));
+
+  // Use edits.
+  ASSERT_OK(a->ReplaceAllUsesWith(b));
+  expect_changed("all uses of a replaced with b");
+  EXPECT_THAT(order, ElementsAre(p0, a, p1, b, c, n, t));
+  ASSERT_OK(b->ReplaceUseWith(n, a));
+  expect_changed("use of b in n replaced with a");
+  EXPECT_THAT(order, ElementsAre(p1, b, c, p0, a, n, t));
+
+  // Instruction removal, compaction and root changes.
+  HloInstruction* d = entry->AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, c));
+  expect_changed("dead d added");
+  ASSERT_OK(entry->RemoveInstruction(d));
+  expect_changed("d removed");
+  entry->Cleanup();
+  expect_unchanged("compacted");
+  HloInstruction* one = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::One(F32)));
+  expect_changed("operand free constant added");
+  ASSERT_OK(entry->RemoveInstruction(one));
+  expect_changed("constant removed");
+  HloInstruction* e = entry->AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, p1));
+  HloInstruction* f = entry->AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, e));
+  expect_changed("dead chain e, f added");
+  ASSERT_OK(entry->RemoveInstructionAndUnusedOperands(f));
+  expect_changed("dead chain removed");
+  entry->set_root_instruction(c, /*accept_different_shape=*/true);
+  expect_unchanged("root changed");
+  ASSERT_OK(entry->ReplaceWithNewInstruction(
+      n, HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, a)));
+  expect_changed("n replaced with a new instruction");
+  HloInstruction* exp = t->mutable_operand(1);
+  entry->CanonicalizeLocalIds();
+  expect_unchanged("local ids canonicalized");
+  EXPECT_THAT(order, ElementsAre(p1, b, c, p0, a, exp, t));
+
+  // Fusion rewrites both the computation and the new fused computation.
+  HloInstruction* fusion =
+      entry->CreateFusionInstruction({c}, HloInstruction::FusionKind::kLoop);
+  expect_changed("c fused");
+  EXPECT_THAT(order, ElementsAre(p1, b, fusion, p0, a, exp, t));
+  HloComputation* fused = fusion->fused_instructions_computation();
+  EXPECT_EQ(fused->MakeInstructionPostOrder(), ReferencePostOrder(fused));
+
+  // A dead fused parameter takes the fusion operand b, and then b, with it.
+  HloInstruction* fused_param = fused->parameter_instruction(0);
+  HloInstruction* zero = fused->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
+  ASSERT_OK(fused_param->ReplaceAllUsesWith(zero));
+  EXPECT_EQ(fused->MakeInstructionPostOrder(), ReferencePostOrder(fused));
+  ASSERT_OK(fused->RemoveInstructionAndUnusedOperands(fused_param));
+  EXPECT_EQ(fused->MakeInstructionPostOrder(), ReferencePostOrder(fused));
+  EXPECT_EQ(fusion->operand_count(), 0);
+  expect_changed("fusion operand removed");
+  EXPECT_THAT(order, ElementsAre(p1, fusion, p0, a, exp, t));
+
+  std::unique_ptr<HloComputation> clone = entry->Clone();
+  EXPECT_EQ(clone->MakeInstructionPostOrder(), ReferencePostOrder(clone.get()));
+}
+
+TEST_F(HloComputationTest, CachedPostOrderAfterCanonicalizeLocalIds) {
+  // x is a root that is also a control predecessor inside the tree of the
+  // other root r, and comes after r in the instruction list. Reordering the
+  // list into the post order moves x's subtree ahead of p1.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
+  HloInstruction* q = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, p1));
+  HloInstruction* r = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, p1, q));
+  HloInstruction* x = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, p0));
+  ASSERT_OK(x->AddControlDependencyTo(q));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build(r));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(p1, p0, x, q, r));
+  computation->CanonicalizeLocalIds();
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(p0, x, p1, q, r));
+  EXPECT_EQ(computation->MakeInstructionPostOrder(),
+            ReferencePostOrder(computation));
+}
+
+TEST_F(HloComputationTest, CachedPostOrderSeesUsersAddedToOtherComputations) {
+  // x is a root of the entry computation and a control predecessor of r2. The
+  // fusion helpers add clones whose operands are still in another computation;
+  // such a clone turns x into a non root, which moves it behind r_mid.
+  const char* const kHlo = R"(
+  HloModule m
+  other {
+    ROOT op = f32[] parameter(0)
+  }
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    x = f32[] negate(p0)
+    r_mid = f32[] negate(p1)
+    ROOT r2 = f32[] add(p0, p1), control-predecessors={x}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloComputation* other = module->GetComputationWithName("other");
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* r_mid = FindInstruction(module.get(), "r_mid");
+  HloInstruction* r2 = FindInstruction(module.get(), "r2");
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p0, x, p1, r_mid, r2));
+
+  std::unique_ptr<HloInstruction> negate_x =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, x);
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p0, x, p1, r_mid, r2));
+  HloInstruction* user = other->AddInstruction(std::move(negate_x));
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p1, r_mid, p0, x, r2));
+  EXPECT_EQ(entry->MakeInstructionPostOrder(), ReferencePostOrder(entry));
+
+  ASSERT_OK(other->RemoveInstruction(user));
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p0, x, p1, r_mid, r2));
+
+  // The same edges made and unmade by an instruction that already has a
+  // parent: only the user list of x changes on the entry side.
+  HloInstruction* tuple =
+      other->AddInstruction(HloInstruction::CreateTuple({}));
+  tuple->AppendOperand(x);
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p1, r_mid, p0, x, r2));
+  ASSERT_OK(tuple->ReplaceOperandWithDifferentShape(
+      0, other->parameter_instruction(0)));
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(p0, x, p1, r_mid, r2));
+  ASSERT_OK(other->RemoveInstruction(tuple));
+}
+
+TEST_F(HloComputationTest, CachedPostOrderAfterMergeFusion) {
+  // Merging clones the producer fusion, points the clone's instructions at
+  // operands in the entry computation, fuses them into the consumer and
+  // removes them from the clone. Checked: the consumer's rebuilt parameter
+  // list, and the entry once the dead producer is removed.
+  const char* const kHlo = R"(
+  HloModule m
+  producer {
+    p = f32[] parameter(0)
+    ROOT n = f32[] negate(p)
+  }
+  consumer {
+    q0 = f32[] parameter(0)
+    q1 = f32[] parameter(1)
+    ROOT s = f32[] add(q0, q1)
+  }
+  ENTRY main {
+    x = f32[] parameter(0)
+    fusion1 = f32[] fusion(x), kind=kLoop, calls=producer
+    ROOT fusion2 = f32[] fusion(fusion1, x), kind=kLoop, calls=consumer
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* fusion1 = FindInstruction(module.get(), "fusion1");
+  HloInstruction* fusion2 = FindInstruction(module.get(), "fusion2");
+  HloComputation* consumer = fusion2->fused_instructions_computation();
+  EXPECT_THAT(entry->MakeInstructionPostOrder(),
+              ElementsAre(x, fusion1, fusion2));
+  std::vector<HloInstruction*> consumer_before =
+      consumer->MakeInstructionPostOrder();
+
+  Cast<HloFusionInstruction>(fusion2)->MergeFusionInstruction(
+      Cast<HloFusionInstruction>(fusion1));
+  EXPECT_THAT(fusion2->operands(), ElementsAre(x));
+  EXPECT_EQ(entry->MakeInstructionPostOrder(), ReferencePostOrder(entry));
+  EXPECT_EQ(consumer->MakeInstructionPostOrder(), ReferencePostOrder(consumer));
+  EXPECT_NE(consumer->MakeInstructionPostOrder(), consumer_before);
+
+  // fusion1 is dead now; without it x is only reached from fusion2.
+  ASSERT_OK(entry->RemoveInstruction(fusion1));
+  EXPECT_THAT(entry->MakeInstructionPostOrder(), ElementsAre(x, fusion2));
+  EXPECT_EQ(entry->MakeInstructionPostOrder(), ReferencePostOrder(entry));
+}
+
+TEST_F(HloComputationTest, ConcurrentMakeInstructionPostOrder) {
+  const char* const kHlo = R"(
+  HloModule m
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    a = f32[] negate(p0)
+    b = f32[] negate(p1)
+    ROOT c = f32[] subtract(a, b)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  HloInstruction* c = FindInstruction(module.get(), "c");
+  constexpr int kNumThreads = 16;
+  constexpr int kNumReads = 100;
+  constexpr int kNumRounds = 4;
+  for (int round = 0; round < kNumRounds; ++round) {
+    const std::vector<HloInstruction*> expected = ReferencePostOrder(entry);
+    absl::Notification start;
+    std::vector<std::thread> threads;
+    threads.reserve(kNumThreads);
+    for (int i = 0; i < kNumThreads; ++i) {
+      threads.emplace_back([&] {
+        start.WaitForNotification();
+        for (int j = 0; j < kNumReads; ++j) {
+          EXPECT_EQ(entry->MakeInstructionPostOrder(), expected);
+        }
+      });
+    }
+    start.Notify();
+    for (std::thread& thread : threads) {
+      thread.join();
+    }
+    // Swap the operands of c between rounds so that every round starts with
+    // a stale cache.
+    ASSERT_OK(c->ReplaceOperandWith(0, c->mutable_operand(1)));
+    ASSERT_OK(c->ReplaceOperandWith(1, round % 2 == 0 ? a : b));
+  }
 }
 
 TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {

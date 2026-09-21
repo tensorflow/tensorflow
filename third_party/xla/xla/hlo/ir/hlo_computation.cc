@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/backend_config.h"
@@ -307,6 +309,7 @@ void HloComputation::CopyLocalIdsFromComputation(
 
   instructions_ = std::move(cloned_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  InvalidatePostOrderCache();
 }
 
 static void IncrementCount(
@@ -432,6 +435,15 @@ HloInstruction* HloComputation::AddInstructionInternal(
   }
 
   instruction_count_++;
+  InvalidatePostOrderCache();
+  // Now that it has a parent, the instruction counts as a user of its operands
+  // in their computations' post orders. Normally that is this computation;
+  // the fusion helpers briefly add clones whose operands are still elsewhere.
+  for (HloInstruction* operand : pinst->operands()) {
+    if (operand != nullptr) {
+      operand->InvalidateParentPostOrderCache();
+    }
+  }
 
   for (HloComputation* called_computation : pinst->called_computations()) {
     CHECK(called_computation);
@@ -834,6 +846,7 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
   instruction->local_id_ = -1;
   instruction_count_--;
+  InvalidatePostOrderCache();
 
   return absl::OkStatus();
 }
@@ -850,7 +863,8 @@ void HloComputation::Cleanup() {
 
   // Perform a stable compaction with the erase-remove idiom. We have to open
   // code it (instead of using std::erase(std::remove_if)) because we must
-  // update the reverse mapping.
+  // update the reverse mapping. The compaction keeps the relative order of the
+  // live instructions, so the cached post order stays valid.
   auto is_marked_for_removal = [](const HloInstructionInfo& info) {
     return info.inst() == nullptr;
   };
@@ -894,6 +908,7 @@ void HloComputation::CanonicalizeLocalIds() {
 
   instructions_ = std::move(new_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  InvalidatePostOrderCache();
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -936,14 +951,6 @@ void HloComputation::ComputeInstructionPostOrder(
     HloInstruction* root, VisitMap& visited,
     std::vector<HloInstruction*>& post_order,
     std::vector<HloInstruction*>* dfs_stack_scratch) const {
-  ForEachInstructionPostOrderImpl(
-      [&post_order](HloInstruction* hlo) { post_order.push_back(hlo); }, root,
-      visited, dfs_stack_scratch);
-}
-
-void HloComputation::ForEachInstructionPostOrderImpl(
-    absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-    VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const {
   auto* dfs_stack = dfs_stack_scratch;
   dfs_stack->clear();
 
@@ -970,7 +977,7 @@ void HloComputation::ForEachInstructionPostOrderImpl(
       dfs_stack->pop_back();
       if (state != VisitState::kVisited) {
         visited.SetState(h, VisitState::kVisited);
-        func(current);
+        post_order.push_back(current);
       }
       continue;
     }
@@ -998,8 +1005,9 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
   return post_order;
 }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  std::vector<HloInstruction*> post_order;
+void HloComputation::ComputeFullInstructionPostOrder(
+    std::vector<HloInstruction*>& post_order) const {
+  post_order.clear();
   post_order.reserve(instruction_count());
   VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
@@ -1015,6 +1023,36 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       ComputeInstructionPostOrder(instruction, visited, post_order,
                                   &dfs_stack_scratch);
     }
+  }
+}
+
+const std::vector<HloInstruction*>& HloComputation::CachedInstructionPostOrder()
+    const {
+  if (!post_order_cache_valid_.load(std::memory_order_relaxed)) {
+    // Mark the cache valid before the traversal, so that a mutation racing
+    // with the traversal (already a data race on the graph) is not lost.
+    post_order_cache_valid_.store(true, std::memory_order_relaxed);
+    ComputeFullInstructionPostOrder(cached_post_order_);
+  } else {
+    // Every mutation of an input of the traversal must drop the cache; debug
+    // builds check that against a fresh traversal.
+    DCHECK(CachedPostOrderIsFresh())
+        << "Stale cached instruction post order in computation " << name();
+  }
+  return cached_post_order_;
+}
+
+bool HloComputation::CachedPostOrderIsFresh() const {
+  std::vector<HloInstruction*> fresh_post_order;
+  ComputeFullInstructionPostOrder(fresh_post_order);
+  return fresh_post_order == cached_post_order_;
+}
+
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+  std::vector<HloInstruction*> post_order;
+  {
+    absl::MutexLock lock(&post_order_mutex_);
+    post_order = CachedInstructionPostOrder();
   }
   CHECK_EQ(instruction_count(), post_order.size())
       << "number of instructions does not match post order size";
@@ -1086,19 +1124,16 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
 
 void HloComputation::ForEachInstructionPostOrder(
     absl::FunctionRef<void(HloInstruction*)> func) const {
-  VisitMap visited(instructions_.size());
-  std::vector<HloInstruction*> dfs_stack_scratch;
-  dfs_stack_scratch.reserve(instruction_count());
-  for (const auto& instruction : instructions()) {
-    // We don't consider users outside any computation as real users. This can
-    // happen when creating new instructions for replacement when cloning
-    // computations.
-    if (absl::c_all_of(instruction->users(), [](const HloInstruction* user) {
-          return user->parent() == nullptr;
-        })) {
-      ForEachInstructionPostOrderImpl(func, instruction, visited,
-                                      &dfs_stack_scratch);
-    }
+  // Unlike MakeInstructionPostOrder(), this visits whatever the traversal
+  // reaches, without checking the instruction count. Iterate a copy: the mutex
+  // is not reentrant and `func` may call back into this computation.
+  std::vector<HloInstruction*> post_order;
+  {
+    absl::MutexLock lock(&post_order_mutex_);
+    post_order = CachedInstructionPostOrder();
+  }
+  for (HloInstruction* instruction : post_order) {
+    func(instruction);
   }
 }
 

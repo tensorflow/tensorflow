@@ -65,6 +65,7 @@ namespace m = ::xla::match;
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
@@ -2786,6 +2787,48 @@ TEST_F(HloInstructionTest, PrintCycle) {
               ::testing::HasSubstr("recv\n send\n send-done\n recv"));
   // Remove the cycle to avoid error when destructing the verified module.
   ASSERT_IS_OK(send_done->DropAllControlDeps());
+}
+
+TEST_F(HloInstructionTest, ControlPredecessorsAfterEveryWriter) {
+  // control_predecessors() is gated by a flag that every writer of the list
+  // maintains: adding, removing, dropping from the predecessor side and
+  // dropping from the successor side.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  HloInstruction* c = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, a, b));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(c->control_predecessors(), IsEmpty());
+  ASSERT_OK(a->AddControlDependencyTo(c));
+  ASSERT_OK(b->AddControlDependencyTo(c));
+  EXPECT_THAT(c->control_predecessors(), ElementsAre(a, b));
+
+  ASSERT_OK(a->RemoveControlDependencyTo(c));
+  EXPECT_THAT(c->control_predecessors(), ElementsAre(b));
+  ASSERT_OK(b->RemoveControlDependencyTo(c));
+  EXPECT_THAT(c->control_predecessors(), IsEmpty());
+  EXPECT_FALSE(c->HasControlDependencies());
+
+  ASSERT_OK(a->AddControlDependencyTo(c));
+  ASSERT_OK(b->AddControlDependencyTo(c));
+  ASSERT_OK(a->DropAllControlDeps());
+  EXPECT_THAT(c->control_predecessors(), ElementsAre(b));
+  ASSERT_OK(b->DropAllControlDeps());
+  EXPECT_THAT(c->control_predecessors(), IsEmpty());
+
+  ASSERT_OK(a->AddControlDependencyTo(c));
+  ASSERT_OK(b->AddControlDependencyTo(c));
+  ASSERT_OK(c->DropAllControlDeps());
+  EXPECT_THAT(c->control_predecessors(), IsEmpty());
+  EXPECT_THAT(a->control_successors(), IsEmpty());
+  EXPECT_THAT(b->control_successors(), IsEmpty());
+  ASSERT_OK(a->AddControlDependencyTo(c));
+  EXPECT_THAT(c->control_predecessors(), ElementsAre(a));
 }
 
 TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
