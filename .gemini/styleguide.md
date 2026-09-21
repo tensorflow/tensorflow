@@ -155,7 +155,7 @@ standards, API stability, and consistent behavior across supported environments.
     that do not impact readability, consistency, or correctness.
 *   Trivial or non-impactful differences.
 
-## Feedback Standards
+## Feedback for importance
 
 *   Be clear, concise, and actionable.
 *   Provide concrete suggestions where possible.
