@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/compile_only_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -40,7 +40,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
-    xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result);
+    xla::PjRtCompiler* compiler, XlaCompilationResult* compilation_result);
 
 };  // namespace internal
 };  // namespace tf2xla

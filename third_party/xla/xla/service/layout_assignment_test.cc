@@ -18,15 +18,20 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,6 +58,17 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class LayoutAssignmentPeer : public LayoutAssignment {
+ public:
+  using LayoutAssignment::ConsumeAddedConstraints;
+  using LayoutAssignment::kMinOperandsForIndexMemo;
+  using LayoutAssignment::LayoutAssignment;
+  using LayoutAssignment::OperandIndicesInUser;
+  using LayoutAssignment::PropagateBufferConstraintToUses;
+  using LayoutAssignment::SetPointsToAnalysis;
+};
+
 namespace {
 
 namespace m = xla::match;
@@ -3080,6 +3096,226 @@ ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
   EXPECT_TRUE(LayoutUtil::Equal(
       ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
       LayoutUtil::MakeLayout({1, 0})));
+}
+
+// SetArrayOperandLayout and UpdateLayout decide with
+// OperandLayoutConstraint::IsSatisfiedBy whether an array layout is already in
+// place; it must agree with the ShapeLayout predicate UpdateLayout keeps for
+// tuple shapes, which compares minor_to_major only.
+TEST_F(LayoutAssignmentTest, OperandLayoutConstraintIsSatisfiedBy) {
+  const char* module_str = R"hlo(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4,8]{1,0} parameter(0)
+  p1 = f32[4,8]{1,0} parameter(1)
+  ROOT add = f32[4,8]{1,0} add(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  const HloInstruction* add = m->entry_computation()->root_instruction();
+  const Shape& operand_shape = add->operand(0)->shape();
+  OperandLayoutConstraint constraint(ShapeLayout(operand_shape), add,
+                                     /*operand_no=*/0, /*mandatory=*/true,
+                                     /*dfs=*/true, /*priority=*/0);
+
+  auto expect_satisfied = [&](const Layout& layout, bool expected) {
+    Shape shape_with_layout = operand_shape;
+    *shape_with_layout.mutable_layout() = layout;
+    EXPECT_EQ(constraint.shape_layout().MatchesLayoutInShape(
+                  shape_with_layout, /*minor_to_major_only=*/true),
+              expected)
+        << shape_with_layout;
+    EXPECT_EQ(constraint.IsSatisfiedBy(layout), expected) << layout;
+  };
+
+  expect_satisfied(LayoutUtil::MakeLayout({1, 0}), true);
+  expect_satisfied(LayoutUtil::MakeLayout({0, 1}), false);
+  // Tiles, element size and memory space do not take part in the decision.
+  expect_satisfied(
+      LayoutUtil::MakeLayout({1, 0}, {Tile({8, 128})},
+                             /*tail_padding_alignment_in_elements=*/1,
+                             PRIMITIVE_TYPE_INVALID, PRIMITIVE_TYPE_INVALID,
+                             /*element_size_in_bits=*/32, /*memory_space=*/1),
+      true);
+}
+
+// SetArrayOperandLayout returns early when the constraint in place already
+// holds the layout: nothing is pushed and the constraint keeps its flags, as
+// on the full SetOperandLayout path. A new layout still replaces it.
+TEST_F(LayoutAssignmentTest, SetArrayOperandLayoutLeavesSatisfiedConstraint) {
+  const char* module_str = R"hlo(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  ROOT add = f32[4,8] add(p0, p1)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  HloInstruction* add = m->entry_computation()->root_instruction();
+  LayoutAssignmentPeer layout_assignment(m->mutable_entry_computation_layout());
+  LayoutAssignment::LayoutConstraints* constraints =
+      layout_assignment.mutable_computation_constraints(m->entry_computation());
+
+  const Layout row_major = LayoutUtil::MakeLayout({1, 0});
+  ASSERT_OK(layout_assignment.SetArrayOperandLayout(
+      row_major, add, /*operand_no=*/0, /*mandatory=*/false, /*dfs=*/true,
+      /*priority=*/1));
+  const OperandLayoutConstraint* constraint =
+      constraints->GetOperandLayoutConstraint(add, /*operand_no=*/0);
+  ASSERT_NE(constraint, nullptr);
+  EXPECT_THAT(layout_assignment.ConsumeAddedConstraints(),
+              ElementsAre(constraint));
+
+  // The same layout with other flags and a higher priority changes nothing.
+  ASSERT_OK(layout_assignment.SetArrayOperandLayout(
+      row_major, add, /*operand_no=*/0, /*mandatory=*/true, /*dfs=*/false,
+      /*priority=*/5));
+  EXPECT_THAT(layout_assignment.ConsumeAddedConstraints(),
+              ::testing::IsEmpty());
+  EXPECT_EQ(constraint->priority(), 1);
+  EXPECT_FALSE(constraint->mandatory());
+  EXPECT_TRUE(constraint->dfs());
+
+  // Another layout at a higher priority replaces the constraint in place.
+  ASSERT_OK(layout_assignment.SetArrayOperandLayout(
+      LayoutUtil::MakeLayout({0, 1}), add, /*operand_no=*/0,
+      /*mandatory=*/true, /*dfs=*/false, /*priority=*/5));
+  EXPECT_THAT(layout_assignment.ConsumeAddedConstraints(),
+              ElementsAre(constraint));
+  EXPECT_EQ(constraint->priority(), 5);
+  EXPECT_TRUE(constraint->mandatory());
+  EXPECT_FALSE(constraint->dfs());
+  EXPECT_THAT(constraint->shape_layout().layout().minor_to_major(),
+              ElementsAre(0, 1));
+}
+
+// A buffer that an add, a wide concatenate and a tuple consume. p1 sits at
+// three operand positions of the concatenate, p0 at all others.
+class WideUserTest : public LayoutAssignmentTest {
+ protected:
+  static constexpr int64_t kWidth =
+      LayoutAssignmentPeer::kMinOperandsForIndexMemo + 2;
+
+  void SetUp() override {
+    std::vector<std::string> operands(kWidth, "p0");
+    for (int64_t position : p1_positions_) {
+      operands[position] = "p1";
+    }
+    const std::string module_str =
+        absl::StrCat(R"hlo(
+HloModule m
+
+ENTRY e {
+  p0 = f32[2,8] parameter(0)
+  p1 = f32[2,8] parameter(1)
+  narrow = f32[2,8] add(p0, p1)
+  wide = f32[)hlo",
+                     2 * kWidth, R"hlo(,8] concatenate()hlo",
+                     absl::StrJoin(operands, ", "), R"hlo(), dimensions={0}
+  ROOT t = (f32[2,8], f32[2,8]) tuple(p1, narrow)
+}
+)hlo");
+    ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(module_str));
+    wide_ = FindInstruction(m_.get(), "wide");
+    narrow_ = FindInstruction(m_.get(), "narrow");
+    p0_ = FindInstruction(m_.get(), "p0");
+    p1_ = FindInstruction(m_.get(), "p1");
+    ASSERT_EQ(wide_->operand_count(), kWidth);
+  }
+
+  std::unique_ptr<HloModule> m_;
+  HloInstruction* wide_ = nullptr;
+  HloInstruction* narrow_ = nullptr;
+  HloInstruction* p0_ = nullptr;
+  HloInstruction* p1_ = nullptr;
+  const std::vector<int64_t> p1_positions_ = {1, kWidth / 2, kWidth - 1};
+};
+
+// OperandIndicesInUser must agree with HloInstruction::OperandIndices on the
+// scanning path, on the memoized path and after the memo is dropped. The
+// memoized path hands out a view of the memo entry, without a copy.
+TEST_F(WideUserTest, OperandIndicesInUserMatchesOperandIndices) {
+  LayoutAssignmentPeer layout_assignment(
+      m_->mutable_entry_computation_layout());
+  absl::InlinedVector<int64_t, 4> scratch;
+  for (const HloInstruction* user : {wide_, narrow_}) {
+    for (const HloInstruction* operand : {p1_, p0_}) {
+      // Twice: the second call of a wide user is served from the memo.
+      for (int round = 0; round < 2; ++round) {
+        EXPECT_THAT(
+            layout_assignment.OperandIndicesInUser(user, operand, &scratch),
+            ::testing::ElementsAreArray(user->OperandIndices(operand)))
+            << user->name() << " " << operand->name();
+      }
+    }
+  }
+  const absl::Span<const int64_t> wide_p1 =
+      layout_assignment.OperandIndicesInUser(wide_, p1_, &scratch);
+  EXPECT_THAT(wide_p1, ::testing::ElementsAreArray(p1_positions_));
+  EXPECT_EQ(layout_assignment.OperandIndicesInUser(wide_, p1_, &scratch).data(),
+            wide_p1.data());
+  EXPECT_THAT(layout_assignment.OperandIndicesInUser(wide_, narrow_, &scratch),
+              ::testing::IsEmpty());
+  // The scratch buffer is only the narrow path's storage.
+  const absl::Span<const int64_t> narrow_p1 =
+      layout_assignment.OperandIndicesInUser(narrow_, p1_, &scratch);
+  EXPECT_EQ(narrow_p1.data(), scratch.data());
+  EXPECT_THAT(scratch, ElementsAre(1));
+
+  // A new points-to analysis stands for a new graph: the memo must be dropped.
+  ASSERT_OK(wide_->ReplaceOperandWith(p1_positions_[1], p0_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TuplePointsToAnalysis> analysis,
+                       TuplePointsToAnalysis::Run(m_.get()));
+  layout_assignment.SetPointsToAnalysis(std::move(analysis));
+  EXPECT_THAT(layout_assignment.OperandIndicesInUser(wide_, p1_, &scratch),
+              ElementsAre(p1_positions_[0], p1_positions_[2]));
+}
+
+// PropagateBufferConstraintToUses constrains the uses of p1 in user order,
+// the add and then the three concatenate positions, and none of the
+// others: the tuple forwards p1, the other positions hold p0.
+TEST_F(WideUserTest, PropagateBufferConstraintToUsesSkipsTupleUsers) {
+  LayoutAssignmentPeer layout_assignment(
+      m_->mutable_entry_computation_layout());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TuplePointsToAnalysis> analysis,
+                       TuplePointsToAnalysis::Run(m_.get()));
+  const TuplePointsToAnalysis& points_to = *analysis;
+  layout_assignment.SetPointsToAnalysis(std::move(analysis));
+  ASSERT_OK_AND_ASSIGN(const LogicalBuffer* p1_buffer,
+                       points_to.GetBufferDefinedAt(p1_, {}));
+  LayoutAssignment::LayoutConstraints* constraints =
+      layout_assignment.mutable_computation_constraints(
+          m_->entry_computation());
+
+  const Layout column_major = LayoutUtil::MakeLayout({0, 1});
+  ASSERT_OK(layout_assignment.PropagateBufferConstraintToUses(
+      BufferLayoutConstraint(column_major, *p1_buffer, /*mandatory=*/false,
+                             /*dfs=*/true, /*priority=*/1),
+      constraints));
+
+  std::vector<const OperandLayoutConstraint*> constrained = {
+      constraints->GetOperandLayoutConstraint(narrow_, 1)};
+  for (int64_t position : p1_positions_) {
+    constrained.push_back(
+        constraints->GetOperandLayoutConstraint(wide_, position));
+  }
+  for (const OperandLayoutConstraint* constraint : constrained) {
+    ASSERT_NE(constraint, nullptr);
+    EXPECT_TRUE(
+        LayoutUtil::Equal(constraint->shape_layout().layout(), column_major));
+  }
+  EXPECT_THAT(layout_assignment.ConsumeAddedConstraints(),
+              ::testing::ElementsAreArray(constrained));
+  EXPECT_EQ(constraints->GetOperandLayoutConstraint(narrow_, 0), nullptr);
+  EXPECT_EQ(constraints->GetOperandLayoutConstraint(wide_, 0), nullptr);
+  EXPECT_EQ(constraints->GetOperandLayoutConstraint(
+                m_->entry_computation()->root_instruction(), 0),
+            nullptr);
 }
 
 }  // namespace
