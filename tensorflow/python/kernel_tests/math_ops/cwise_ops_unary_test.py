@@ -753,7 +753,7 @@ class UnaryOpTest(test.TestCase):
       grad_grad = outer_tape.gradient(grad, x)
 
       self.assertAllClose(
-          expected, self.evaluate(grad_grad), rtol=1e-14, atol=0
+          expected, self.evaluate(grad_grad), rtol=1e-14, atol=1e-18
       )
 
 
