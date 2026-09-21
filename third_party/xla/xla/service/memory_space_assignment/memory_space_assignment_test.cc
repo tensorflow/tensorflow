@@ -20007,6 +20007,218 @@ TEST_F(MemorySpaceAssignmentTest, FindBestChunkCandidatesEmptyChunkCandidates) {
   EXPECT_THAT(result, ::testing::IsEmpty());
 }
 
+// Tests that when a PinnedAllocation in alternate memory is assigned an offset,
+// its HloBuffer ID is recorded in buffer_id_to_aliased_offset_ so that
+// subsequent allocations belonging to the same HloBuffer adopt the exact same
+// physical offset even when a lower offset (0) becomes free.
+TEST_F(MemorySpaceAssignmentTest,
+       PinnedAllocationBufferIdToAliasedOffsetColocation) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  blocker = f32[2,3]{1,0} negate(p1)
+  val0 = f32[2,3]{1,0} negate(p0)
+  cc0 = f32[2,3]{1,0} custom-call(val0), custom_call_target="CustomCall", output_to_operand_aliasing={{}: (0, {})}
+  blocker_use = f32[2,3]{1,0} tanh(blocker)
+  user0 = f32[2,3]{1,0} tanh(cc0)
+  cc1 = f32[2,3]{1,0} custom-call(val0), custom_call_target="CustomCall", output_to_operand_aliasing={{}: (0, {})}
+  user1 = f32[2,3]{1,0} tanh(cc1)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(blocker_use, user0, user1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* blocker = FindInstruction(module.get(), "blocker");
+  HloInstruction* val0 = FindInstruction(module.get(), "val0");
+  HloInstruction* cc0 = FindInstruction(module.get(), "cc0");
+  HloInstruction* cc1 = FindInstruction(module.get(), "cc1");
+
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.buffer_colorings = {
+      {HloPosition{blocker, {}}, kAlternateMemorySpace},
+      {HloPosition{val0, {}}, kAlternateMemorySpace},
+      {HloPosition{cc0, {}}, kAlternateMemorySpace},
+      {HloPosition{cc1, {}}, kAlternateMemorySpace},
+  };
+
+  // Ensure blocker is assigned first so it occupies offset 0 during [2, 5],
+  // forcing val0 and cc0 to be pinned at offset 24.
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "blocker" }
+      override_options { assign_first: true }
+    }
+  )pb";
+  ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                       ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  // Without buffer_id_to_aliased_offset_ tracking for PinnedAllocations, val0
+  // and cc0 are placed at offset 24 (while blocker occupies offset 0), whereas
+  // cc1 (allocated after blocker expires) would be placed at offset 0,
+  // triggering a CHECK_EQ(chunk.offset, seen_buffer_offset_it->second) failure
+  // (0 vs. 24) in ExportAndColorBuffers.
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpaceUsingCostAnalysis(
+          module.get(), std::move(memory_space_options), std::nullopt,
+          std::nullopt, msa_sort_order_overrides);
+
+  auto get_chunk_offset = [&](const HloInstruction* inst) -> int64_t {
+    for (const auto& [pos, chunk] : preset_assignments->chunks()) {
+      if (pos.instruction == inst && pos.index.empty()) {
+        return chunk.offset;
+      }
+    }
+    return -1;
+  };
+
+  EXPECT_EQ(blocker->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(val0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(cc0->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(cc1->shape().layout().memory_space(), kAlternateMemorySpace);
+
+  EXPECT_EQ(get_chunk_offset(blocker), 24);
+  EXPECT_EQ(get_chunk_offset(val0), 72);
+}
+
+// Tests that when a use inside an embedded computation called from an
+// async_wrapped_computation is colored in alternate memory, MSA recognizes the
+// overlap between the ReservedAllocation and the async/embedded computation
+// span, releases the ReservedAllocation, and prefetches the late-bound
+// async-update operand into alternate memory before async-start.
+TEST_F(MemorySpaceAssignmentTest,
+       AlternateMemoryColoringInAsyncEmbeddedComputation) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+embedded_callee {
+  emb_p0 = f32[8,3]{1,0} parameter(0)
+  ROOT neg = f32[8,3]{1,0} negate(emb_p0)
+}
+
+async_computation {
+  async_p0 = f32[8,3]{1,0} parameter(0)
+  ROOT call_op = f32[8,3]{1,0} call(async_p0), to_apply=embedded_callee
+}
+
+ENTRY entry {
+  p0 = f32[8,3]{1,0} parameter(0)
+  p1 = f32[8,3]{1,0} parameter(1)
+  add0 = f32[8,3]{1,0} add(p1, p1)
+  tanh0 = f32[8,3]{1,0} tanh(add0)
+  async-start = ((), (), s32[]) async-start(), calls=async_computation
+  async-update = ((f32[8,3]{1,0}), f32[8,3]{1,0}, s32[]) async-update(async-start, p0), calls=async_computation
+  async-done = f32[8,3]{1,0} async-done(async-update), calls=async_computation
+  ROOT tuple = (f32[8,3]{1,0}, f32[8,3]{1,0}) tuple(async-done, tanh0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  // Restrict alternate memory capacity to two f32[8,3] buffers (2 * 96 = 192
+  // bytes: one for `emb_p0` and one for `neg` output) so that the 96-byte
+  // ReservedAllocation in embedded_callee must be released by
+  // FreeAlternateMemoryColoringReservedAllocations for the prefetch to fit.
+  memory_space_options.max_size_in_bytes = 192;
+  memory_space_options.allocate_colored_buffers_early = false;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->opcode() == HloOpcode::kParameter &&
+               !position.instruction->parent()->IsEntryComputation();
+      };
+
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+  HloUse neg_use{neg, 0, {}};
+  memory_space_options.buffer_colorings = {{neg_use, kAlternateMemorySpace}};
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  EXPECT_EQ(async_update->operand(1)->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(async_update->operand(1)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(neg->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
+// Tests that when a value is defined by a contiguous-allocation instruction
+// (`prod`) inside an async computation and consumed after `async-done` by a
+// use colored in alternate memory (`consumer`),
+// GetContiguousLiveRangesForBuffer propagates the use across `async-done` to
+// `value->defining_position()` so that ProcessColoredBuffers reserves the full
+// [prod, consumer] interval in alternate memory.
+TEST_F(MemorySpaceAssignmentTest,
+       ContiguousDefiningPositionPropagatesUseAcrossAsyncDone) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  async_p0 = f32[8,3]{1,0} parameter(0)
+  ROOT prod = f32[8,3]{1,0} custom-call(async_p0), custom_call_target="CustomCall"
+}
+
+ENTRY entry {
+  p0 = f32[8,3]{1,0} parameter(0)
+  p1 = f32[8,3]{1,0} parameter(1)
+  async-start = ((f32[8,3]{1,0}), f32[8,3]{1,0}, s32[]) async-start(p0), calls=async_computation
+  blocker = f32[8,3]{1,0} negate(p1)
+  blocker_use = f32[8,3]{1,0} tanh(blocker)
+  async-done = f32[8,3]{1,0} async-done(async-start), calls=async_computation
+  consumer = f32[8,3]{1,0} custom-call(async-done), custom_call_target="CustomCall"
+  ROOT tuple = (f32[8,3]{1,0}, f32[8,3]{1,0}) tuple(consumer, blocker_use)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  // Restrict alternate memory capacity to a single f32[8,3] buffer (96 bytes).
+  // `blocker` executes between `prod` and `async-done` and is given
+  // `assign_first: true`, so without reserving the full [prod, consumer]
+  // interval during ProcessColoredBuffers, `blocker` would claim the 96 bytes
+  // during [blocker, blocker_use] and prevent `prod` -> `consumer` from
+  // receiving a contiguous alternate memory allocation.
+  memory_space_options.max_size_in_bytes = 96;
+  memory_space_options.allocate_colored_buffers_early = false;
+
+  HloInstruction* prod = FindInstruction(module.get(), "prod");
+  HloInstruction* blocker = FindInstruction(module.get(), "blocker");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  HloInstruction* consumer = FindInstruction(module.get(), "consumer");
+
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [prod](const HloPosition& position) {
+        return position.instruction == prod;
+      };
+  memory_space_options.buffer_colorings = {
+      {HloUse{consumer, 0, {}}, kAlternateMemorySpace}};
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "blocker" }
+      override_options { assign_first: true }
+    }
+  )pb";
+  ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
+                       ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
+
+  EXPECT_EQ(prod->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(async_done->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(consumer->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(blocker->shape().layout().memory_space(), kDefaultMemorySpace);
+}
 }  // namespace
 
 }  // namespace memory_space_assignment

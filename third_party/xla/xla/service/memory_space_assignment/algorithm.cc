@@ -2683,6 +2683,9 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
     if (!value->shape().IsArray()) {
       continue;
     }
+    const bool defining_pos_requires_contiguous =
+        options_.position_requires_contiguous_allocation_fn(
+            value->defining_position());
     for (const HloUse& use : value->GetUses()) {
       HloInstruction* operand =
           use.instruction->mutable_operand(use.operand_number);
@@ -2701,6 +2704,13 @@ MsaAlgorithm::GetContiguousLiveRangesForBuffer(const HloBuffer* buffer) const {
         VLOG(3) << "Adding use " << use.ToString() << " to contiguous position "
                 << source_position.ToString();
         contiguous_positions_to_uses[source_position].push_back(use);
+      }
+      if (defining_pos_requires_contiguous &&
+          value->defining_position() != source_position) {
+        VLOG(3) << "Adding use " << use.ToString()
+                << " to contiguous defining position "
+                << value->defining_position().ToString();
+        contiguous_positions_to_uses[value->defining_position()].push_back(use);
       }
     }
     for (const HloPosition& position : value->positions()) {
@@ -5940,12 +5950,27 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       if (!preferred_offset_for_allocation_value.contains(
               &allocation_value_to_update)) {
         // Resolve the preferred alternate memory offset for this allocation
-        // value by inspecting the canonical HloBuffer alias set. This
-        // guarantees that all aliased positions across while loop boundaries
-        // (including loop input operands, loop parameters, and loop body root
-        // tuple elements) adopt identical starting offsets in alternate memory.
+        // value using the following precedence:
+        // 1. An explicit required memory assignment at the definition time.
+        // 2. The canonical HloBuffer alias set for async pipelined while loops,
+        //    which guarantees that all aliased positions across while loop
+        //    boundaries (including loop input operands, loop parameters, and
+        //    loop body root tuple elements) adopt identical starting offsets in
+        //    alternate memory.
+        // 3. Previously recorded preferred offsets for the computation.
+        // 4. Fallback to any pinned allocation offset recorded for the same
+        //    logical HloBuffer in buffer_id_to_aliased_offset_.
         AliasedOffset* preferred_offset = nullptr;
-        if (has_async_pipelined_while_loops_) {
+        std::optional<RequiredMemoryAssignment> req_at_def =
+            RequiredMemoryAssignmentAt(allocation_value_to_update.value(),
+                                       definition_time_for_allocation_value.at(
+                                           &allocation_value_to_update));
+        if (req_at_def.has_value() &&
+            req_at_def->memory_space == MemorySpace::kAlternate &&
+            req_at_def->offset != nullptr) {
+          preferred_offset = req_at_def->offset;
+        }
+        if (preferred_offset == nullptr && has_async_pipelined_while_loops_) {
           const HloBuffer& hlo_buffer = alias_analysis_.GetUniqueBufferAt(
               allocation_value_to_update.position().instruction,
               allocation_value_to_update.position().index);
@@ -5989,6 +6014,25 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
                   allocation_value_to_update.position().index);
               if (index_it != comp_it->second.end()) {
                 preferred_offset = index_it->second;
+              }
+            }
+          }
+        }
+        // Fallback: check if any pinned allocation belonging to this HloBuffer
+        // was already assigned an offset. Pinned allocations (e.g. for custom
+        // calls or aliased parameters) must share the exact physical alternate
+        // memory offset across all defining positions of the same logical
+        // buffer when not superseded by a loop or copy assignment.
+        if (preferred_offset == nullptr) {
+          const HloPosition& def_pos = allocation_value_to_update.position();
+          if (def_pos.instruction != nullptr) {
+            std::vector<const HloBuffer*> buffers =
+                alias_analysis_.ComputeBuffersAt(def_pos.instruction,
+                                                 def_pos.index);
+            if (buffers.size() == 1) {
+              auto buf_it = buffer_id_to_aliased_offset_.find(buffers[0]->id());
+              if (buf_it != buffer_id_to_aliased_offset_.end()) {
+                preferred_offset = buf_it->second;
               }
             }
           }
@@ -6376,8 +6420,29 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
       (GetInstructionCallContext(hlo_use.instruction->opcode()) ==
        CallContext::kControlFlow);
   if (is_sequential_call) {
-    for (const HloComputation* called_computation :
-         hlo_use.instruction->called_computations()) {
+    // For asynchronous call instructions (e.g. async-start or async-update),
+    // the sub-computation executed asynchronously is stored in
+    // async_wrapped_computation() rather than called_computations().
+    // Include both the async wrapped computation and any embedded
+    // computations to ensure latest_prefetch_time precedes their execution.
+    std::vector<const HloComputation*> called_computations(
+        hlo_use.instruction->called_computations().begin(),
+        hlo_use.instruction->called_computations().end());
+    if (hlo_use.instruction->IsAsynchronous()) {
+      HloComputation* async_comp =
+          hlo_use.instruction->async_wrapped_computation();
+      if (async_comp != nullptr) {
+        called_computations.push_back(async_comp);
+        for (const HloComputation* embedded :
+             async_comp->MakeEmbeddedComputationsList()) {
+          called_computations.push_back(embedded);
+        }
+      }
+    }
+    for (const HloComputation* called_computation : called_computations) {
+      if (called_computation == nullptr) {
+        continue;
+      }
       auto called_computation_span_it =
           hlo_live_range_.computation_span_times().find(called_computation);
       if (called_computation_span_it !=
@@ -7547,6 +7612,19 @@ void MsaAlgorithm::MaybeCreateOrAddToAliasedOffset(
   CHECK_EQ(allocation.chunk().offset, aliased_offset->offset);
   CHECK(aliased_offset->allocations.insert(&allocation).second);
   aliased_offset_map_[&allocation] = aliased_offset;
+  // For pinned allocations, record the buffer ID to its assigned AliasedOffset
+  // so that subsequent allocations belonging to the same HloBuffer will reuse
+  // this exact offset, ensuring colocation in alternate memory.
+  if (allocation.is_pinned_allocation()) {
+    const HloPosition& def_pos = allocation.defining_position();
+    if (def_pos.instruction != nullptr) {
+      std::vector<const HloBuffer*> buffers =
+          alias_analysis_.ComputeBuffersAt(def_pos.instruction, def_pos.index);
+      if (buffers.size() == 1) {
+        buffer_id_to_aliased_offset_[buffers[0]->id()] = aliased_offset;
+      }
+    }
+  }
 }
 
 void MsaAlgorithm::RecordAliasedOffsetForAsyncPipelinedWhileLoop(
@@ -8651,10 +8729,12 @@ void MsaAlgorithm::ClearPendingChunks() {
   aliased_offset_map_.clear();
   aliased_offsets_.clear();
   // Ensure auxiliary maps referencing raw AliasedOffset* pointers owned by
-  // aliased_offsets_ are cleared during uncommits to prevent dangling pointer
+  // aliased_offsets_ (such as buffer_id_to_aliased_offset_ and pipelined while
+  // maps) are cleared during uncommits to prevent dangling pointer
   // segmentation faults upon subsequent allocation retries.
   pipelined_while_preferred_offset_for_computation_.clear();
   pipelined_while_buffer_id_to_aliased_offset_.clear();
+  buffer_id_to_aliased_offset_.clear();
   pending_deallocated_reserved_allocations_.clear();
 }
 
@@ -8835,15 +8915,55 @@ void MsaAlgorithm::FreeAlternateMemoryColoringReservedAllocations(
   int64_t use_time = request.end_time;
   for (std::unique_ptr<ReservedAllocation>& reserved_allocation_ptr :
        reserved_allocations_it->second) {
+    bool should_release = false;
     if (request.require_start_colored_in_alternate_memory &&
         reserved_allocation_ptr->start_time() <= inclusive_start_time &&
         inclusive_start_time <= reserved_allocation_ptr->end_time()) {
-      ReleaseReservedAllocationForAlternateMemoryColorings(
-          reserved_allocation_ptr.get());
+      should_release = true;
     }
     if (request.require_end_colored_in_alternate_memory &&
         reserved_allocation_ptr->start_time() <= use_time &&
         use_time <= reserved_allocation_ptr->end_time()) {
+      should_release = true;
+    }
+    // For asynchronous operations or calls with embedded computations, the
+    // reserved allocation might reside inside the callee computation span
+    // rather than overlapping directly with the caller's schedule point in the
+    // outer computation. Check if the reserved allocation overlaps with the
+    // span of any called, async-wrapped, or embedded computation.
+    if (!should_release && request.require_end_colored_in_alternate_memory &&
+        request.use != nullptr) {
+      const HloUse& hlo_use = request.use->hlo_use;
+      std::vector<const HloComputation*> called_computations(
+          hlo_use.instruction->called_computations().begin(),
+          hlo_use.instruction->called_computations().end());
+      if (hlo_use.instruction->IsAsynchronous()) {
+        HloComputation* async_comp =
+            hlo_use.instruction->async_wrapped_computation();
+        if (async_comp != nullptr) {
+          called_computations.push_back(async_comp);
+          for (const HloComputation* embedded :
+               async_comp->MakeEmbeddedComputationsList()) {
+            called_computations.push_back(embedded);
+          }
+        }
+      }
+      for (const HloComputation* called_computation : called_computations) {
+        if (called_computation == nullptr) {
+          continue;
+        }
+        auto it =
+            hlo_live_range_.computation_span_times().find(called_computation);
+        if (it != hlo_live_range_.computation_span_times().end()) {
+          if (reserved_allocation_ptr->start_time() <= it->second.end &&
+              it->second.start <= reserved_allocation_ptr->end_time()) {
+            should_release = true;
+            break;
+          }
+        }
+      }
+    }
+    if (should_release) {
       ReleaseReservedAllocationForAlternateMemoryColorings(
           reserved_allocation_ptr.get());
     }
@@ -8876,6 +8996,43 @@ void MsaAlgorithm::UpdateRequestWithAlternateMemoryColoringRequirements(
       if (reserved_allocation_ptr->start_time() <= use_time &&
           use_time <= reserved_allocation_ptr->end_time()) {
         request.require_end_colored_in_alternate_memory = true;
+      }
+      // For asynchronous operations or calls with embedded computations, the
+      // caller instruction's use time in the outer computation may not directly
+      // fall within the reserved allocation window if the reservation spans the
+      // callee's execution. Check if the reserved allocation interval overlaps
+      // with any called, async-wrapped, or embedded computation span.
+      if (!request.require_end_colored_in_alternate_memory &&
+          request.use != nullptr) {
+        const HloUse& hlo_use = request.use->hlo_use;
+        std::vector<const HloComputation*> called_computations(
+            hlo_use.instruction->called_computations().begin(),
+            hlo_use.instruction->called_computations().end());
+        if (hlo_use.instruction->IsAsynchronous()) {
+          HloComputation* async_comp =
+              hlo_use.instruction->async_wrapped_computation();
+          if (async_comp != nullptr) {
+            called_computations.push_back(async_comp);
+            for (const HloComputation* embedded :
+                 async_comp->MakeEmbeddedComputationsList()) {
+              called_computations.push_back(embedded);
+            }
+          }
+        }
+        for (const HloComputation* called_computation : called_computations) {
+          if (called_computation == nullptr) {
+            continue;
+          }
+          auto it =
+              hlo_live_range_.computation_span_times().find(called_computation);
+          if (it != hlo_live_range_.computation_span_times().end()) {
+            if (reserved_allocation_ptr->start_time() <= it->second.end &&
+                it->second.start <= reserved_allocation_ptr->end_time()) {
+              request.require_end_colored_in_alternate_memory = true;
+              break;
+            }
+          }
+        }
       }
     }
   }
