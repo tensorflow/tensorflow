@@ -16,10 +16,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_format.h"
+#include "third_party/re2/re2.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_log.pb.h"
 
 namespace tensorflow {
 namespace tfprof {

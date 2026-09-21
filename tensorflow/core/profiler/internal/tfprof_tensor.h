@@ -27,6 +27,7 @@ limitations under the License.
 #include <typeinfo>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
