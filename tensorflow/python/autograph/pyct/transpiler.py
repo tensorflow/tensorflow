@@ -189,9 +189,16 @@ def _remove_unresolvable_annotations(nodes, fn):
   resolvable.update(fn.__code__.co_freevars)
   resolvable.update(fn.__code__.co_varnames)
 
-  for node in gast.walk(nodes):
-    if not isinstance(node, gast.FunctionDef):
-      continue
+  if isinstance(nodes, gast.FunctionDef):
+    top_level_funcs = [nodes]
+  elif isinstance(nodes, gast.Module):
+    top_level_funcs = [n for n in nodes.body if isinstance(n, gast.FunctionDef)]
+  elif isinstance(nodes, (list, tuple)):
+    top_level_funcs = [n for n in nodes if isinstance(n, gast.FunctionDef)]
+  else:
+    top_level_funcs = []
+
+  for node in top_level_funcs:
     if node.returns is not None and (_annotation_names(node.returns) -
                                      resolvable):
       node.returns = None
