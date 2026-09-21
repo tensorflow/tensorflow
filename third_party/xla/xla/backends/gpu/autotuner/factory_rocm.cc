@@ -67,7 +67,8 @@ std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
       device_description.gpu_compute_capability(),
       device_description.runtime_version(),
       GemmRewriterOptions{DType::kFp8Only}));
-  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
+  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>(
+      device_description.gpu_compute_capability()));
   pipeline->AddPass(std::make_unique<GemmRewriter>(
       device_description.gpu_compute_capability(),
       device_description.runtime_version(),
