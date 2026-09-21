@@ -356,6 +356,18 @@ py_library(
     ],
 )
 
+py_test(
+    name = "regularizers_test",
+    size = "small",
+    srcs = ["regularizers_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":regularizers",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 # Internally urllib.request.urlretrieve library requires Google
 # SSL context to be provided to work in python 3. This isn't needed in OSS.
 # copybara:uncomment_begin(google-only)
