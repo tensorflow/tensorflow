@@ -2807,6 +2807,379 @@ ENTRY main {
   EXPECT_THAT(p1_value.ToString(), HasSubstr(" uses:\n"));
 }
 
+// One line per value in values() order: id, defining position, phi flag,
+// liveness, then the positions and the uses in their stored order. The
+// leading newline lets an expected literal start on its own line.
+std::string DumpValues(const HloDataflowAnalysis& analysis) {
+  std::string dump = "\n";
+  for (const HloValue* value : analysis.values()) {
+    absl::StrAppend(
+        &dump, value->id(), " ", value->defining_position().ToString(),
+        value->is_phi() ? " phi" : "",
+        value->live_out_of_module() ? " live_out" : "", " pos[",
+        absl::StrJoin(value->positions(), ",",
+                      [](std::string* out, const HloPosition& position) {
+                        absl::StrAppend(out, position.ToString());
+                      }),
+        "] uses[",
+        absl::StrJoin(value->GetUses(), ",",
+                      [](std::string* out, const HloUse& use) {
+                        absl::StrAppend(out, use.instruction->name(), ":",
+                                        use.operand_number,
+                                        use.operand_index.ToString());
+                      }),
+        "]\n");
+  }
+  return dump;
+}
+
+// Value ids, the order of values(), the positions of each value and its uses
+// on a module with nested while loops, a conditional, a call, nested tuples
+// and a fusion. Phi ids depend on the order in which the analysis propagates,
+// so this pins that order, not only the fixpoint.
+TEST_P(HloDataflowAnalysisTest, ValueNumberingAndOrderAreStable) {
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(R"(
+HloModule ValueNumbering
+
+fused_add {
+  fp0 = f32[] parameter(0)
+  fp1 = f32[] parameter(1)
+  ROOT fadd = f32[] add(fp0, fp1)
+}
+
+inner_cond {
+  icp = (f32[], (f32[], f32[])) parameter(0)
+  ROOT ic = pred[] constant(true)
+}
+
+inner_body {
+  ibp = (f32[], (f32[], f32[])) parameter(0)
+  a = f32[] get-tuple-element(ibp), index=0
+  bc = (f32[], f32[]) get-tuple-element(ibp), index=1
+  b = f32[] get-tuple-element(bc), index=0
+  c = f32[] get-tuple-element(bc), index=1
+  sum = f32[] fusion(a, b), kind=kLoop, calls=fused_add
+  swapped = (f32[], f32[]) tuple(c, b)
+  ROOT ibr = (f32[], (f32[], f32[])) tuple(sum, swapped)
+}
+
+outer_cond {
+  ocp = ((f32[], (f32[], f32[])), f32[], f32[]) parameter(0)
+  ROOT oc = pred[] constant(false)
+}
+
+true_branch {
+  tp = f32[] parameter(0)
+  ROOT neg = f32[] negate(tp)
+}
+
+false_branch {
+  fbp = f32[] parameter(0)
+  ROOT fcopy = f32[] copy(fbp)
+}
+
+square {
+  sp = f32[] parameter(0)
+  ROOT sq = f32[] multiply(sp, sp)
+}
+
+outer_body {
+  obp = ((f32[], (f32[], f32[])), f32[], f32[]) parameter(0)
+  inner_state = (f32[], (f32[], f32[])) get-tuple-element(obp), index=0
+  k = f32[] get-tuple-element(obp), index=1
+  inv = f32[] get-tuple-element(obp), index=2
+  inner = (f32[], (f32[], f32[])) while(inner_state), condition=inner_cond, body=inner_body
+  k2 = f32[] call(k), to_apply=square
+  p = pred[] constant(true)
+  cond = f32[] conditional(p, k2, inv), true_computation=true_branch, false_computation=false_branch
+  ROOT obr = ((f32[], (f32[], f32[])), f32[], f32[]) tuple(inner, cond, inv)
+}
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  pair = (f32[], f32[]) tuple(x, y)
+  inner_init = (f32[], (f32[], f32[])) tuple(x, pair)
+  init = ((f32[], (f32[], f32[])), f32[], f32[]) tuple(inner_init, y, x)
+  w = ((f32[], (f32[], f32[])), f32[], f32[]) while(init), condition=outer_cond, body=outer_body
+  ROOT out = (f32[], (f32[], f32[])) get-tuple-element(w), index=0
+}
+)"));
+  const bool ssa_form = GetParam();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, ssa_form, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue&) { return true; }));
+  for (int64_t i = 1; i < analysis->values().size(); ++i) {
+    EXPECT_LT(analysis->values()[i - 1]->id(), analysis->values()[i]->id());
+  }
+  EXPECT_EQ(DumpValues(*analysis), ssa_form ? R"(
+0 fp0 pos[fp0] uses[fadd:0{}]
+1 fp1 pos[fp1] uses[fadd:1{}]
+2 fadd pos[fadd] uses[]
+3 ic pos[ic] uses[]
+4 sum pos[sum,ibr {0}] uses[ibr:0{}]
+5 swapped {} pos[swapped {},ibr {1}] uses[ibr:1{}]
+6 ibr {} pos[ibr {}] uses[]
+7 oc pos[oc] uses[]
+8 neg pos[neg] uses[]
+9 fcopy pos[fcopy] uses[]
+10 sq pos[sq,tp,k2] uses[neg:0{},cond:1{}]
+11 p pos[p] uses[cond:0{}]
+12 obr {} pos[obr {}] uses[]
+13 x pos[x,ocp {2},fbp,obp {2},inv,obr {2},pair {0},inner_init {0},inner_init {1,0},init {0,0},init {0,1,0},init {2},w {2}] uses[fcopy:0{},cond:2{},obr:2{},w:0{0,0},w:0{0,1,0},w:0{2}]
+14 y pos[y,pair {1},inner_init {1,1},init {0,1,1},init {1}] uses[w:0{0,1,1},w:0{1}]
+15 pair {} pos[pair {},inner_init {1},init {0,1}] uses[w:0{0,1}]
+16 inner_init {} pos[inner_init {},init {0}] uses[w:0{0}]
+17 init {} pos[init {}] uses[w:0{}]
+18 ocp {} phi pos[ocp {}] uses[]
+19 obp {} phi pos[obp {}] uses[inner_state:0{},k:0{},inv:0{}]
+20 icp {} phi pos[icp {}] uses[]
+21 ibp {} phi pos[ibp {}] uses[a:0{},bc:0{}]
+22 icp {0} phi pos[icp {0}] uses[]
+23 icp {1} phi pos[icp {1}] uses[]
+24 icp {1,0} phi pos[icp {1,0}] uses[]
+25 icp {1,1} phi pos[icp {1,1}] uses[]
+26 ibp {0} phi pos[ibp {0},a] uses[sum:0{}]
+27 ibp {1} phi pos[ibp {1},bc {}] uses[b:0{},c:0{}]
+28 ibp {1,0} phi pos[ibp {1,0},bc {0},b,swapped {1},ibr {1,1}] uses[sum:1{},ibr:1{1}]
+29 ibp {1,1} phi pos[ibp {1,1},bc {1},c,swapped {0},ibr {1,0}] uses[ibr:1{0}]
+30 inner {} phi pos[inner {},obr {0}] uses[obr:0{}]
+31 inner {0} phi pos[inner {0},obr {0,0}] uses[obr:0{0}]
+32 inner {1} phi pos[inner {1},obr {0,1}] uses[obr:0{1}]
+33 inner {1,0} phi pos[inner {1,0},obr {0,1,0}] uses[obr:0{1,0}]
+34 inner {1,1} phi pos[inner {1,1},obr {0,1,1}] uses[obr:0{1,1}]
+35 cond phi pos[cond,obr {1}] uses[obr:1{}]
+36 ocp {0} phi pos[ocp {0}] uses[]
+37 ocp {0,0} phi pos[ocp {0,0}] uses[]
+38 ocp {0,1} phi pos[ocp {0,1}] uses[]
+39 ocp {0,1,0} phi pos[ocp {0,1,0}] uses[]
+40 ocp {0,1,1} phi pos[ocp {0,1,1}] uses[]
+41 ocp {1} phi pos[ocp {1}] uses[]
+43 obp {0} phi pos[obp {0},inner_state {}] uses[inner:0{}]
+44 obp {0,0} phi pos[obp {0,0},inner_state {0}] uses[inner:0{0}]
+45 obp {0,1} phi pos[obp {0,1},inner_state {1}] uses[inner:0{1}]
+46 obp {0,1,0} phi pos[obp {0,1,0},inner_state {1,0}] uses[inner:0{1,0}]
+47 obp {0,1,1} phi pos[obp {0,1,1},inner_state {1,1}] uses[inner:0{1,1}]
+48 obp {1} phi pos[obp {1},sp,k] uses[sq:0{},sq:1{},k2:0{}]
+50 w {} phi pos[w {}] uses[out:0{}]
+51 w {0} phi live_out pos[w {0},out {}] uses[out:0{0}]
+52 w {0,0} phi live_out pos[w {0,0},out {0}] uses[out:0{0,0}]
+53 w {0,1} phi live_out pos[w {0,1},out {1}] uses[out:0{0,1}]
+54 w {0,1,0} phi live_out pos[w {0,1,0},out {1,0}] uses[out:0{0,1,0}]
+55 w {0,1,1} phi live_out pos[w {0,1,1},out {1,1}] uses[out:0{0,1,1}]
+56 w {1} phi pos[w {1}] uses[]
+)"
+                                            : R"(
+0 fp0 pos[fp0] uses[fadd:0{}]
+1 fp1 pos[fp1] uses[fadd:1{}]
+2 fadd pos[fadd] uses[]
+3 ic pos[ic] uses[]
+4 sum live_out pos[sum,icp {0},ibp {0},a,ibr {0},ocp {0,0},obp {0,0},inner_state {0},inner {0},obr {0,0},w {0,0},out {0}] uses[ibr:0{},sum:0{},inner:0{0},obr:0{0},out:0{0,0}]
+5 swapped {} live_out pos[swapped {},icp {1},ibp {1},bc {},ibr {1},ocp {0,1},obp {0,1},inner_state {1},inner {1},obr {0,1},w {0,1},out {1}] uses[ibr:1{},b:0{},c:0{},inner:0{1},obr:0{1},out:0{0,1}]
+6 ibr {} live_out pos[ibr {},icp {},ibp {},ocp {0},obp {0},inner_state {},inner {},obr {0},w {0},out {}] uses[a:0{},bc:0{},inner:0{},obr:0{},out:0{0}]
+7 oc pos[oc] uses[]
+8 neg pos[neg,ocp {1},sp,obp {1},k,cond,obr {1},w {1}] uses[sq:0{},sq:1{},k2:0{},obr:1{}]
+9 fcopy pos[fcopy,ocp {1},sp,obp {1},k,cond,obr {1},w {1}] uses[sq:0{},sq:1{},k2:0{},obr:1{}]
+10 sq pos[sq,tp,k2] uses[neg:0{},cond:1{}]
+11 p pos[p] uses[cond:0{}]
+12 obr {} pos[obr {},ocp {},obp {},w {}] uses[inner_state:0{},k:0{},inv:0{},out:0{}]
+13 x live_out pos[x,icp {0},icp {1,0},icp {1,1},ibp {0},ibp {1,0},ibp {1,1},a,bc {0},bc {1},b,c,swapped {0},swapped {1},ibr {1,0},ibr {1,1},ocp {0,0},ocp {0,1,0},ocp {0,1,1},ocp {2},fbp,obp {0,0},obp {0,1,0},obp {0,1,1},obp {2},inner_state {0},inner_state {1,0},inner_state {1,1},inv,inner {0},inner {1,0},inner {1,1},obr {0,0},obr {0,1,0},obr {0,1,1},obr {2},pair {0},inner_init {0},inner_init {1,0},init {0,0},init {0,1,0},init {2},w {0,0},w {0,1,0},w {0,1,1},w {2},out {0},out {1,0},out {1,1}] uses[sum:0{},sum:1{},ibr:1{0},ibr:1{1},fcopy:0{},inner:0{0},inner:0{1,0},inner:0{1,1},cond:2{},obr:2{},obr:0{0},obr:0{1,0},obr:0{1,1},w:0{0,0},w:0{0,1,0},w:0{2},out:0{0,0},out:0{0,1,0},out:0{0,1,1},out:0{2}]
+14 y live_out pos[y,icp {1,0},icp {1,1},ibp {1,0},ibp {1,1},bc {0},bc {1},b,c,swapped {0},swapped {1},ibr {1,0},ibr {1,1},ocp {0,1,0},ocp {0,1,1},ocp {1},sp,obp {0,1,0},obp {0,1,1},obp {1},inner_state {1,0},inner_state {1,1},k,inner {1,0},inner {1,1},obr {0,1,0},obr {0,1,1},pair {1},inner_init {1,1},init {0,1,1},init {1},w {0,1,0},w {0,1,1},w {1},out {1,0},out {1,1}] uses[sum:1{},ibr:1{0},ibr:1{1},sq:0{},sq:1{},inner:0{1,0},inner:0{1,1},k2:0{},obr:0{1,0},obr:0{1,1},w:0{0,1,1},w:0{1},out:0{0,1,0},out:0{0,1,1},out:0{1}]
+15 pair {} live_out pos[pair {},icp {1},ibp {1},bc {},ocp {0,1},obp {0,1},inner_state {1},inner {1},obr {0,1},inner_init {1},init {0,1},w {0,1},out {1}] uses[b:0{},c:0{},inner:0{1},obr:0{1},w:0{0,1},out:0{0,1}]
+16 inner_init {} live_out pos[inner_init {},icp {},ibp {},ocp {0},obp {0},inner_state {},inner {},obr {0},init {0},w {0},out {}] uses[a:0{},bc:0{},inner:0{},obr:0{},w:0{0},out:0{0}]
+17 init {} pos[init {},ocp {},obp {},w {}] uses[w:0{},inner_state:0{},k:0{},inv:0{},out:0{}]
+)");
+}
+
+// Computations the propagation schedule does not reach from the entry through
+// call, while, conditional or async-start (here a computation nothing calls
+// and one a custom call names) are propagated first, in post order, so their
+// phi ids come before the reached phis and do not depend on instruction
+// addresses.
+TEST_P(HloDataflowAnalysisTest, UnreachedComputationsAreNumberedFirst) {
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(R"(
+HloModule UnreachedComputations
+
+swap_cond {
+  scp = (f32[], f32[]) parameter(0)
+  ROOT sc = pred[] constant(true)
+}
+
+swap_body {
+  sbp = (f32[], f32[]) parameter(0)
+  sa = f32[] get-tuple-element(sbp), index=0
+  sb = f32[] get-tuple-element(sbp), index=1
+  ROOT sbr = (f32[], f32[]) tuple(sb, sa)
+}
+
+embedded {
+  ex = f32[] parameter(0)
+  ey = f32[] parameter(1)
+  et = (f32[], f32[]) tuple(ex, ey)
+  ew = (f32[], f32[]) while(et), condition=swap_cond, body=swap_body
+  ROOT eg = f32[] get-tuple-element(ew), index=0
+}
+
+dead_cond {
+  dcp = (f32[], f32[]) parameter(0)
+  ROOT dc = pred[] constant(true)
+}
+
+dead_body {
+  dbp = (f32[], f32[]) parameter(0)
+  da = f32[] get-tuple-element(dbp), index=0
+  db = f32[] get-tuple-element(dbp), index=1
+  dsum = f32[] add(da, db)
+  ROOT dbr = (f32[], f32[]) tuple(dsum, da)
+}
+
+dead {
+  dp0 = f32[] parameter(0)
+  dp1 = f32[] parameter(1)
+  dinit = (f32[], f32[]) tuple(dp0, dp1)
+  ROOT dw = (f32[], f32[]) while(dinit), condition=dead_cond, body=dead_body
+}
+
+live_cond {
+  lcp = (f32[], f32[]) parameter(0)
+  ROOT lc = pred[] constant(true)
+}
+
+live_body {
+  lbp = (f32[], f32[]) parameter(0)
+  la = f32[] get-tuple-element(lbp), index=0
+  lb = f32[] get-tuple-element(lbp), index=1
+  ROOT lbr = (f32[], f32[]) tuple(lb, la)
+}
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  cc = f32[] custom-call(x, y), custom_call_target="foo", called_computations={embedded}
+  t = (f32[], f32[]) tuple(cc, y)
+  ROOT w = (f32[], f32[]) while(t), condition=live_cond, body=live_body
+}
+)"));
+  const bool ssa_form = GetParam();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> analysis,
+      HloDataflowAnalysis::Run(
+          *module_, ssa_form, /*bitcast_defines_value=*/false,
+          /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+          /*precompute_uses=*/[](const HloValue&) { return true; }));
+  EXPECT_EQ(DumpValues(*analysis), ssa_form ? R"(
+0 scp {} pos[scp {}] uses[]
+1 scp {0} pos[scp {0}] uses[]
+2 scp {1} pos[scp {1}] uses[]
+3 sc pos[sc] uses[]
+4 sbp {} pos[sbp {}] uses[sa:0{},sb:0{}]
+5 sbp {0} pos[sbp {0},sa,sbr {1}] uses[sbr:1{}]
+6 sbp {1} pos[sbp {1},sb,sbr {0}] uses[sbr:0{}]
+7 sbr {} pos[sbr {}] uses[]
+8 ex pos[ex,et {0}] uses[ew:0{0}]
+9 ey pos[ey,et {1}] uses[ew:0{1}]
+10 et {} pos[et {}] uses[ew:0{}]
+11 dc pos[dc] uses[]
+12 dsum pos[dsum,dbr {0}] uses[dbr:0{}]
+13 dbr {} pos[dbr {}] uses[]
+14 dp0 pos[dp0,dinit {0}] uses[dw:0{0}]
+15 dp1 pos[dp1,dinit {1}] uses[dw:0{1}]
+16 dinit {} pos[dinit {}] uses[dw:0{}]
+17 lc pos[lc] uses[]
+18 lbr {} pos[lbr {}] uses[]
+19 x pos[x] uses[cc:0{}]
+20 y pos[y,t {1}] uses[cc:1{},w:0{1}]
+21 cc pos[cc,t {0}] uses[w:0{0}]
+22 t {} pos[t {}] uses[w:0{}]
+23 ew {} phi pos[ew {}] uses[eg:0{}]
+24 ew {0} phi pos[ew {0},eg] uses[eg:0{0}]
+25 ew {1} phi pos[ew {1}] uses[]
+26 dcp {} phi pos[dcp {}] uses[]
+27 dbp {} phi pos[dbp {}] uses[da:0{},db:0{}]
+28 dcp {0} phi pos[dcp {0}] uses[]
+29 dcp {1} phi pos[dcp {1}] uses[]
+30 dbp {0} phi pos[dbp {0},da,dbr {1}] uses[dsum:0{},dbr:1{}]
+31 dbp {1} phi pos[dbp {1},db] uses[dsum:1{}]
+32 dw {} phi pos[dw {}] uses[]
+33 dw {0} phi pos[dw {0}] uses[]
+34 dw {1} phi pos[dw {1}] uses[]
+35 lcp {} phi pos[lcp {}] uses[]
+36 lbp {} phi pos[lbp {}] uses[la:0{},lb:0{}]
+37 lcp {0} phi pos[lcp {0}] uses[]
+38 lcp {1} phi pos[lcp {1}] uses[]
+39 lbp {0} phi pos[lbp {0},la,lbr {1}] uses[lbr:1{}]
+40 lbp {1} phi pos[lbp {1},lb,lbr {0}] uses[lbr:0{}]
+41 w {} phi live_out pos[w {}] uses[]
+42 w {0} phi live_out pos[w {0}] uses[]
+43 w {1} phi live_out pos[w {1}] uses[]
+)"
+                                            : R"(
+0 scp {} pos[scp {}] uses[]
+1 scp {0} pos[scp {0}] uses[]
+2 scp {1} pos[scp {1}] uses[]
+3 sc pos[sc] uses[]
+4 sbp {} pos[sbp {}] uses[sa:0{},sb:0{}]
+5 sbp {0} pos[sbp {0},sa,sbr {1},ew {1}] uses[sbr:1{}]
+6 sbp {1} pos[sbp {1},sb,sbr {0},ew {0},eg] uses[sbr:0{},eg:0{0}]
+7 sbr {} pos[sbr {},ew {}] uses[eg:0{}]
+8 ex pos[ex,et {0},ew {0},eg] uses[ew:0{0},eg:0{0}]
+9 ey pos[ey,et {1},ew {1}] uses[ew:0{1}]
+10 et {} pos[et {},ew {}] uses[ew:0{},eg:0{}]
+11 dc pos[dc] uses[]
+12 dsum pos[dsum,dcp {0},dcp {1},dbp {0},dbp {1},da,db,dbr {0},dbr {1},dw {0},dw {1}] uses[dbr:0{},dsum:0{},dbr:1{},dsum:1{}]
+13 dbr {} pos[dbr {},dcp {},dbp {},dw {}] uses[da:0{},db:0{}]
+14 dp0 pos[dp0,dcp {0},dcp {1},dbp {0},dbp {1},da,db,dbr {1},dinit {0},dw {0},dw {1}] uses[dsum:0{},dbr:1{},dsum:1{},dw:0{0}]
+15 dp1 pos[dp1,dcp {1},dbp {1},db,dinit {1},dw {1}] uses[dsum:1{},dw:0{1}]
+16 dinit {} pos[dinit {},dcp {},dbp {},dw {}] uses[dw:0{},da:0{},db:0{}]
+17 lc pos[lc] uses[]
+18 lbr {} live_out pos[lbr {},lcp {},lbp {},w {}] uses[la:0{},lb:0{}]
+19 x pos[x] uses[cc:0{}]
+20 y live_out pos[y,lcp {0},lcp {1},lbp {0},lbp {1},la,lb,lbr {0},lbr {1},t {1},w {0},w {1}] uses[cc:1{},lbr:1{},lbr:0{},w:0{1}]
+21 cc live_out pos[cc,lcp {0},lcp {1},lbp {0},lbp {1},la,lb,lbr {0},lbr {1},t {0},w {0},w {1}] uses[lbr:1{},lbr:0{},w:0{0}]
+22 t {} live_out pos[t {},lcp {},lbp {},w {}] uses[w:0{},la:0{},lb:0{}]
+)");
+}
+
+// A pass may remove instructions and compact a computation with
+// HloComputation::Cleanup while it still holds the analysis, which moves the
+// local ids of the instructions behind the removed one. Lookups must keep
+// resolving to the instruction they were made for.
+TEST_P(HloDataflowAnalysisTest, LookupsSurviveLocalIdCompaction) {
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(R"(
+HloModule LocalIdCompaction
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  a = f32[] negate(p0)
+  dead = f32[] exponential(p0)
+  c = f32[] negate(a)
+  ROOT t = (f32[], f32[]) tuple(a, c)
+}
+)"));
+  HloComputation* entry = module_->entry_computation();
+  HloInstruction* a = FindInstruction(module_.get(), "a");
+  HloInstruction* dead = FindInstruction(module_.get(), "dead");
+  HloInstruction* c = FindInstruction(module_.get(), "c");
+  HloInstruction* t = FindInstruction(module_.get(), "t");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                       HloDataflowAnalysis::Run(*module_, GetParam()));
+
+  const int32_t c_local_id = c->local_id();
+  ASSERT_OK(entry->RemoveInstruction(dead));
+  entry->Cleanup();
+  ASSERT_NE(c->local_id(), c_local_id);
+
+  EXPECT_EQ(analysis->GetValueDefinedAt(c).defining_instruction(), c);
+  EXPECT_EQ(analysis->GetValueDefinedAt(t).defining_instruction(), t);
+  EXPECT_EQ(analysis->GetUniqueValueAt(t, {0}).defining_instruction(), a);
+  EXPECT_EQ(analysis->GetUniqueValueAt(t, {1}).defining_instruction(), c);
+  EXPECT_THAT(analysis->GetValueDefinedAt(a).GetUses(),
+              UnorderedElementsAre(HloUse{c, 0, {}}, HloUse{t, 0, {}}));
+}
+
 INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
                          HloDataflowAnalysisTest,
                          ::testing::Values(false, true));
