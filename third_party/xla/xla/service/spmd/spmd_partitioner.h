@@ -241,6 +241,9 @@ struct SPMDCollectiveOpsCreator {
       const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
       int64_t all_gather_dimension)>
       create_all_gather;
+
+  ~SPMDCollectiveOpsCreator();
+  SPMDCollectiveOpsCreator& operator=(const SPMDCollectiveOpsCreator&);
 };
 
 // Create a default SPMDCollectiveOpsCreator.
@@ -460,6 +463,13 @@ class PartitionedHlo {
         groupd_caches;
   };
   struct PartitioningState {
+    PartitioningState();
+    ~PartitioningState();
+    PartitioningState(const PartitioningState&);
+    PartitioningState(PartitioningState&&) noexcept;
+    PartitioningState& operator=(const PartitioningState&);
+    PartitioningState& operator=(PartitioningState&&) noexcept;
+
     SpmdBuilder* b;
     HloModule* module;
     int64_t num_replicas;
@@ -469,23 +479,15 @@ class PartitionedHlo {
     ReshardCache* reshard_cache;
     SpmdPartitioner* partitioner;
   };
-  PartitionedHlo(HloInstruction* hlo, Shape base_shape, PartitioningState state)
-      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {}
+  PartitionedHlo(HloInstruction* hlo, Shape base_shape,
+                 PartitioningState state);
+  ~PartitionedHlo();
+  PartitionedHlo(PartitionedHlo&& other) noexcept;
+  PartitionedHlo(const PartitionedHlo& other);
+  PartitionedHlo& operator=(PartitionedHlo&& other) noexcept;
+  PartitionedHlo& operator=(const PartitionedHlo& other);
 
-  PartitionedHlo(PartitionedHlo&& other) = default;
-  PartitionedHlo(const PartitionedHlo& other) = default;
-
-  PartitionedHlo& operator=(PartitionedHlo&& other) = default;
-  PartitionedHlo& operator=(const PartitionedHlo& other) = default;
-
-  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
-    PartitionedHlo new_phlo = *this;
-    new_phlo.hlo_ = hlo;
-    if (!hlo->has_sharding() && hlo_->has_sharding()) {
-      hlo->copy_sharding(hlo_);
-    }
-    return new_phlo;
-  }
+  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const;
 
   // Reshards the current SPMD instruction to a new sharding with optional
   // specified pad value used during resharding. Could only modify the reshard
@@ -795,12 +797,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                          PartitionedHlo&& partitioned_hlo);
 
   // Convenient wrapper that creates PartitionedHlo from `new_hlo`.
-  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo) {
-    new_hlo->set_sharding(hlo->sharding());
-    SetPartitionedHlo(
-        hlo, PartitionedHlo(new_hlo, hlo->shape(), MakePartitioningState()));
-    changed_ = true;
-  }
+  void SetPartitionedHlo(const HloInstruction* hlo, HloInstruction* new_hlo);
 
   // Convenient wrapper that creates PartitionedHlo from the result of the func
   // and maps it to the given original hlo.
