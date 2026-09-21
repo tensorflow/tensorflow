@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
 
+#include <cstdint>
 #include <vector>
 
-// #include "gtest/gtest.h"
+#include "absl/base/casts.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -279,7 +280,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnLayerNormThunk) {
   OneDnnNormConfig ln_cfg;
   ln_cfg.set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
   float epsilon = 1e-5f;
-  int32_t epsilon_bits = *reinterpret_cast<int32_t*>(&epsilon);
+  int32_t epsilon_bits = absl::bit_cast<int32_t>(epsilon);
   ln_cfg.set_epsilon_typecast(epsilon_bits);
 
   OneDnnOpThunk::OneDnnOpConfig config = ln_cfg;
