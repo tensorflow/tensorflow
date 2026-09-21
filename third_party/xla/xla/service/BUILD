@@ -1636,6 +1636,7 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
+        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",
@@ -2155,6 +2156,21 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "multi_output_fusion_test",
+    srcs = ["multi_output_fusion_test.cc"],
+    deps = [
+        ":multi_output_fusion",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -70,7 +70,10 @@ class MultiOutputFusion : public HloModulePass {
   virtual bool ShapesCompatibleForFusion(HloInstruction* instr1,
                                          HloInstruction* instr2) = 0;
 
-  // Whether the instruction is a candidate for fusion.
+  // Whether the instruction is a candidate for fusion. Must be a function of
+  // the instruction and of the current state of its computation only:
+  // CreateFusionWorkListForCurrentComputation evaluates it once per
+  // instruction and reuses the result for every sibling visit.
   virtual bool IsFusible(HloInstruction* instr) = 0;
 
   // This function estimates the savings by merging instr1 and instr2 into one
@@ -82,6 +85,9 @@ class MultiOutputFusion : public HloModulePass {
   virtual bool IsProfitableOperand(HloInstruction* instr);
 
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
+  // Must be a function of the pair and of the current state of the
+  // computation only: CreateFusionWorkListForCurrentComputation evaluates it
+  // once per ordered pair, however many operands the two instructions share.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
 
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction
