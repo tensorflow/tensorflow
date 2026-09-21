@@ -153,7 +153,7 @@ OperandLayoutConstraint::OperandLayoutConstraint(
     : LayoutConstraint(mandatory, dfs, priority),
       instruction_(instruction),
       operand_no_(operand_no) {
-  CHECK(shape_layout.MinorToMajorInLayoutIsSet());
+  CHECK(shape_layout.LayoutIsSet());
   CHECK(ShapeUtil::CompatibleKind(shape_layout.shape(),
                                   instruction->operand(operand_no)->shape(),
                                   /*ignore_buffer=*/true))
@@ -298,10 +298,6 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
         "Layout of buffer %s cannot be constrained because buffer is not "
         "array-shaped, has shape: %s",
         buffer.ToString(), ShapeUtil::HumanString(buffer.shape()));
-  }
-  if (layout.minor_to_major().empty() && !buffer.shape().dimensions().empty()) {
-    // AUTO layout has no minor_to_major.
-    return absl::OkStatus();
   }
   ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
@@ -715,13 +711,13 @@ absl::Status LayoutAssignment::AddParameterConstraints(
   // there is one.
   if (reverse_computation_order_ ||
       (constraints->computation()->IsEntryComputation() &&
-       entry_computation_layout_->AnyMinorToMajorInLayoutIsSet()) ||
+       entry_computation_layout_->AnyLayoutSet()) ||
       (conditional_mismatch_.count(constraints->computation()) == 0 &&
        constraints->computation_constraint().parameter_layout_is_set())) {
     ShapeLayout parameter_layout =
         constraints->computation_layout().parameter_layout(
             instruction->parameter_number());
-    if (parameter_layout.AnyMinorToMajorInLayoutIsSet()) {
+    if (parameter_layout.AnyLayoutIsSet()) {
       // Clear out memory space in layout. Host offloader will do the analysis
       // later.
       ABSL_RETURN_IF_ERROR(ResetMemorySpaceInLayout(parameter_layout));
@@ -1335,7 +1331,7 @@ bool LayoutAssignment::PropagateOperandLayoutToAsyncParameter(
     const HloInstruction* instruction, int64_t param_idx,
     ComputationLayout* async_layout) {
   if (param_idx >= async_layout->parameter_count() ||
-      !async_layout->parameter_layout(param_idx).MinorToMajorInLayoutIsSet()) {
+      !async_layout->parameter_layout(param_idx).LayoutIsSet()) {
     return false;
   }
 
@@ -1390,7 +1386,7 @@ bool LayoutAssignment::PropagateResultLayoutToAsyncSubComputation(
     const HloInstruction* instruction, ComputationLayout* async_layout) {
   if (!instruction->shape().IsTuple() ||
       instruction->shape().tuple_shapes().size() <= 1 ||
-      !async_layout->result_layout().MinorToMajorInLayoutIsSet()) {
+      !async_layout->result_layout().LayoutIsSet()) {
     return false;
   }
   Shape result_shape = instruction->shape().tuple_shapes(1);
@@ -1456,13 +1452,13 @@ absl::Status LayoutAssignment::PropagateLayoutsFromAsyncSubComputation(
     HloInstruction* instruction, const ComputationLayout& async_layout,
     LayoutConstraints* async_constraint) {
   for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-    if (async_layout.parameter_layout(i).MinorToMajorInLayoutIsSet()) {
+    if (async_layout.parameter_layout(i).LayoutIsSet()) {
       ABSL_RETURN_IF_ERROR(SetOperandLayout(async_layout.parameter_layout(i).shape(),
                                        instruction, i, /*mandatory=*/true,
                                        /*dfs=*/true));
     }
   }
-  if (async_layout.result_layout().MinorToMajorInLayoutIsSet() &&
+  if (async_layout.result_layout().LayoutIsSet() &&
       instruction->shape().IsTuple() &&
       instruction->shape().tuple_shapes().size() > 1 &&
       ShapeUtil::Compatible(instruction->shape().tuple_shapes(1),
@@ -1516,8 +1512,7 @@ absl::Status LayoutAssignment::AddAsyncDoneConstraints(
   bool reset_needed = false;
   if (constraints->computation()->IsEntryComputation() &&
       instruction == constraints->computation()->root_instruction() &&
-      entry_computation_layout_->result_layout()
-          .AnyMinorToMajorInLayoutIsSet()) {
+      entry_computation_layout_->result_layout().AnyLayoutIsSet()) {
     if (!async_layout.result_layout().MatchesLayoutInShape(
             entry_computation_layout_->result_layout().shape(),
             /*minor_to_major_only=*/true)) {
@@ -1525,7 +1520,7 @@ absl::Status LayoutAssignment::AddAsyncDoneConstraints(
           entry_computation_layout_->result_layout();
       reset_needed = true;
     }
-  } else if (async_layout.result_layout().AnyMinorToMajorInLayoutIsSet()) {
+  } else if (async_layout.result_layout().LayoutIsSet()) {
     Shape s = instruction->shape();
     bool shape_reset = false;
     ShapeUtil::ForEachSubshape(
@@ -1554,7 +1549,7 @@ absl::Status LayoutAssignment::AddAsyncDoneConstraints(
         /*prop_result_layout=*/true,
         /*prop_parameter_layout=*/true);
   }
-  if (async_layout.result_layout().MinorToMajorInLayoutIsSet()) {
+  if (async_layout.result_layout().LayoutIsSet()) {
     ABSL_RETURN_IF_ERROR(SetInstructionLayout(
         async_layout.result_layout().shape(), instruction,
         /*mandatory=*/reset_needed ||
@@ -1603,9 +1598,8 @@ absl::Status LayoutAssignment::AddComputationResultLayoutConstraints(
         current_priority_ + kNumberOfPropagationRounds));
   } else if (reverse_computation_order_ ||
              (constraints->computation()->IsEntryComputation() &&
-              entry_computation_layout_->AnyMinorToMajorInLayoutIsSet() &&
-              entry_computation_layout_->result_layout()
-                  .AnyMinorToMajorInLayoutIsSet()) ||
+              entry_computation_layout_->AnyLayoutSet() &&
+              entry_computation_layout_->result_layout().AnyLayoutIsSet()) ||
              current_priority_ > LayoutConstraint::kBeginningPriority ||
              (copy_disabled_while_computations_.contains(
                   constraints->computation()) &&
@@ -1895,7 +1889,7 @@ absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
     const ShapeLayout& operand_layout, HloInstruction* instruction,
     int64_t operand_no) {
   HloInstruction* operand = instruction->mutable_operand(operand_no);
-  TF_RET_CHECK(operand_layout.MinorToMajorInLayoutIsSet());
+  TF_RET_CHECK(operand_layout.LayoutIsSet());
   TF_RET_CHECK(LayoutUtil::HasLayout(operand->shape()));
 
   if (Shape::Equal().MinorToMajorOnlyInLayout()(operand_layout.shape(),
@@ -2118,7 +2112,7 @@ absl::Status LayoutAssignment::CheckLayouts(
       FindOrDie(computation_layouts_, module->entry_computation())
           ->computation_layout()
           .result_layout();
-  if (result_layout.MinorToMajorInLayoutIsSet()) {
+  if (result_layout.LayoutIsSet()) {
     TF_RET_CHECK(
         Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
             module->result_shape(), result_layout.shape()));
@@ -3033,7 +3027,7 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   // Copy the root instruction's result if its layout does not match the result
   // layout constraint.
   if (constraints.ResultLayout() != nullptr &&
-      constraints.ResultLayout()->MinorToMajorInLayoutIsSet()) {
+      constraints.ResultLayout()->LayoutIsSet()) {
     ShapeLayout result_layout = *constraints.ResultLayout();
     // Clear out memory space in layout. Host offloader will do the
     // analysis later.
@@ -3059,7 +3053,7 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
         if (subshape->IsArray()) {
           const Shape& result_shape =
               ShapeUtil::GetSubshape(result_layout.shape(), index);
-          if (!result_shape.layout().tiles().empty()) {
+          if (result_shape.layout().tiles().size() != 0) {
             subshape->mutable_layout()->mutable_tiles()->assign(
                 result_shape.layout().tiles().begin(),
                 result_shape.layout().tiles().end());
@@ -3437,10 +3431,10 @@ absl::Status LayoutAssignment::PropagateComputationLayouts(
         param_layout->shape(),
         [&](const Shape& subshape,
             const ShapeIndex& shape_index) -> absl::Status {
-          if (!subshape.IsArray()) {
+          if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
             return absl::OkStatus();
           }
-          if (!LayoutUtil::HasMinorToMajorSetInLayout(subshape)) {
+          if (!subshape.has_layout()) {
             needs_assign = true;
             return absl::OkStatus();
           }
@@ -3465,7 +3459,7 @@ absl::Status LayoutAssignment::PropagateComputationLayouts(
     }
   }
   ShapeLayout* result_layout = computation_layout->mutable_result_layout();
-  if (!result_layout->MinorToMajorInLayoutIsSet()) {
+  if (!result_layout->LayoutIsSet()) {
     Shape new_shape = computed_computation_layout.result_shape();
     CopyMemorySpace(result_layout->shape(), &new_shape);
     *result_layout = ShapeLayout(new_shape);
@@ -3610,14 +3604,13 @@ absl::StatusOr<std::vector<HloComputation*>> LayoutAssignment::SetupPropagation(
   }
   HloComputation* entry = module->entry_computation();
   computation_layouts_.emplace(
-      entry, new LayoutConstraints(
-                 entry,
-                 entry_computation_layout_->AnyMinorToMajorInLayoutIsSet()
-                     ? entry_computation_layout_
-                     : nullptr,
-                 entry_computation_layout_->AnyMinorToMajorInLayoutIsSet()
-                     ? LayoutConstraint::kGivenPriority
-                     : LayoutConstraint::kDefaultPriority));
+      entry, new LayoutConstraints(entry,
+                                   entry_computation_layout_->AnyLayoutSet()
+                                       ? entry_computation_layout_
+                                       : nullptr,
+                                   entry_computation_layout_->AnyLayoutSet()
+                                       ? LayoutConstraint::kGivenPriority
+                                       : LayoutConstraint::kDefaultPriority));
   return computations_to_work;
 }
 
@@ -3892,9 +3885,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kGetDimensionSize:
       return true;
     case HloOpcode::kCustomCall:
-      return !instruction->IsCustomCall("LayoutConstraint") &&
-             !instruction->IsCustomCall("MoveToHost") &&
-             !instruction->IsCustomCall("MoveToDevice");
+      return !instruction->IsCustomCall("LayoutConstraint");
   }
 }
 
