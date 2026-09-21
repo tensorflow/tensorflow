@@ -21,6 +21,9 @@ import numpy as np
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -836,6 +839,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testSinc(self):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = constant_op.constant([0.0, -0.0, 0.5, 1.0, -1.5], dtype=dtype)
+      self.assertAllClose(np_math_ops.sinc(x), np.sinc(x.numpy()))
+
+  def testSincGradientAtZero(self):
+    # `sinc(0)` is 1 and its derivative there is 0. The unselected
+    # `sin(pi_x) / pi_x` branch evaluates to 0/0, which used to turn the
+    # gradient at zero into NaN through `where`.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x_np = np.array([0.0, -0.0, 0.5, 1.0, -1.5])
+      x = constant_op.constant(x_np, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_sum(np_math_ops.sinc(x))
+      pi_x = np.pi * x_np
+      expected = np.where(
+          x_np == 0,
+          0.0,
+          (pi_x * np.cos(pi_x) - np.sin(pi_x)) / (np.pi * x_np * x_np),
+      ).astype(dtype.as_numpy_dtype)
+      self.assertAllClose(tape.gradient(y, x), expected)
 
   def testConcatenateAxisNone(self):
     a = np_array_ops.array([1, 2])
