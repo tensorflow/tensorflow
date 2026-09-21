@@ -2050,14 +2050,18 @@ def _CumulativeLogsumexpGrad(op: ops.Operation, grad):
   # in order to take logs. This is required for stable results.
   finite_lse = math_ops.is_finite(cumulative_logsumexp)
   pos_mask = math_ops.logical_and(math_ops.greater(grad, 0), finite_lse)
-  safe_pos_grad = array_ops.where_v2(pos_mask, grad, array_ops.ones_like(grad))
+  safe_pos_grad = array_ops.where_v2(
+      pos_mask, grad, math_ops.cast(1.0, grad.dtype)
+  )
   log_grad_positive = array_ops.where_v2(
       pos_mask,
       math_ops.log(safe_pos_grad) - cumulative_logsumexp,
       grad.dtype.min)
 
   neg_mask = math_ops.logical_and(math_ops.less(grad, 0), finite_lse)
-  safe_neg_grad = array_ops.where_v2(neg_mask, -grad, array_ops.ones_like(grad))
+  safe_neg_grad = array_ops.where_v2(
+      neg_mask, -grad, math_ops.cast(1.0, grad.dtype)
+  )
   log_grad_negative = array_ops.where_v2(
       neg_mask,
       math_ops.log(safe_neg_grad) - cumulative_logsumexp,
