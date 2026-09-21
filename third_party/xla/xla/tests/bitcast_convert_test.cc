@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"

@@ -91,6 +91,16 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
       }
       return params.additional_compute_streams[idx];
     }
+    if (execution_stream_id_.is_memcpy()) {
+      bool is_d2h = execution_stream_id_.memcpy_id() == kMemcpyD2HStreamId;
+      se::Stream* stream =
+          is_d2h ? params.device_to_host_stream : params.host_to_device_stream;
+      if (stream == nullptr) {
+        return Internal("%s stream is not available for async execution",
+                        is_d2h ? "device_to_host" : "host_to_device");
+      }
+      return stream;
+    }
     return params.collective_params->async_streams.at(
         execution_stream_id_.communication_id().value());
   };
@@ -178,6 +188,8 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
   if (execution_stream_id_.is_computation()) {
     start_proto->set_computation_stream_id(
         execution_stream_id_.computation_id().value());
+  } else if (execution_stream_id_.is_memcpy()) {
+    start_proto->set_memcpy_stream_id(execution_stream_id_.memcpy_id().value());
   } else {
     start_proto->set_communication_stream_id(
         execution_stream_id_.communication_id().value());
@@ -200,6 +212,8 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
         return ComputationStreamId(proto.computation_stream_id());
       case AsyncStartThunkProto::kCommunicationStreamId:
         return CommunicationStreamId(proto.communication_stream_id());
+      case AsyncStartThunkProto::kMemcpyStreamId:
+        return MemcpyStreamId(proto.memcpy_stream_id());
       default:
         return Internal("Unknown execution stream id type in AsyncStartThunk");
     }

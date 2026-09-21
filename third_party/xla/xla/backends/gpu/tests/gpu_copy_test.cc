@@ -248,9 +248,9 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
 
 constexpr char kSliceMemcpyModuleUnfused[] = R"(
     body {
-      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
+      p0 = (s32[], s32[6,8,1000000], s32[1,1,1000000]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,1000000] get-tuple-element(p0), index=1
+      input = s32[6,8,1000000] get-tuple-element(p0), index=1
 
       ivar_copy = s32[] copy(ivar)
       c1 = s32[] constant(1)
@@ -258,7 +258,7 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
           dynamic_slice_sizes={1,1,1000000}
 
       next_ivar = s32[] add(ivar_copy, c1)
-      ROOT result = (s32[], s32[4,8,1000000], s32[1,1,1000000])
+      ROOT result = (s32[], s32[6,8,1000000], s32[1,1,1000000])
           tuple(next_ivar, input, slice)
     }
 
@@ -269,18 +269,18 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
     }
 
     condition {
-      p0 = (s32[], s32[4,8,1000000], s32[1,1,1000000]) parameter(0)
+      p0 = (s32[], s32[6,8,1000000], s32[1,1,1000000]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
       c6 = s32[] constant(6)
       ROOT cmp = pred[] compare(ivar, c6), direction=LT
     }
 
     ENTRY main {
-      p0 = s32[4,8,1000000] parameter(0)
+      p0 = s32[6,8,1000000] parameter(0)
       p1 = s32[1,1,1000000] parameter(1)
       c0 = s32[] constant(0)
-      tuple = (s32[], s32[4,8,1000000], s32[1,1,1000000]) tuple(c0, p0, p1)
-      ROOT while = (s32[], s32[4,8,1000000], s32[1,1,1000000]) while(tuple),
+      tuple = (s32[], s32[6,8,1000000], s32[1,1,1000000]) tuple(c0, p0, p1)
+      ROOT while = (s32[], s32[6,8,1000000], s32[1,1,1000000]) while(tuple),
           condition=condition, body=body
     })";
 
@@ -324,6 +324,29 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NOT: define {{.*}}@)",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/true));
+}
+
+constexpr char kDUSOutOfBoundsConstantOffsetsModule[] = R"(
+    ENTRY main {
+      p0 = s32[3,1,33] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      ROOT dus = s32[3,1,33] dynamic-update-slice(p0, p1, c1, c1, c31)
+    })";
+
+TEST_F(GpuCopyTest,
+       UseMemcpyForDynamicUpdateSliceWithOutOfBoundsConstantOffsets) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kDUSOutOfBoundsConstantOffsetsModule));
+
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               "; CHECK-NOT: define {{.*}}@",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/true));
+  EXPECT_TRUE(
+      RunAndCompare(kDUSOutOfBoundsConstantOffsetsModule, ErrorSpec{0, 0}));
 }
 
 }  // namespace

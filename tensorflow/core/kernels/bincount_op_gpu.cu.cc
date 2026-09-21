@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <type_traits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -118,7 +120,8 @@ __global__ void BincountReduceKernel(const Tidx* in, T* out, const int nthreads,
                                      const Tidx num_bins) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       out[bin] = T(1);
     }
   }
@@ -149,7 +152,8 @@ __global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
   const int nthreads = num_rows * num_cols;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int row = index / num_cols;
       int offset = row * num_bins + bin;
       if (binary_count) {
@@ -179,7 +183,8 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
   const int nthreads = num_rows * num_cols;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int row = index / num_cols;
       int offset = row * num_bins + bin;
       if (binary_count) {
