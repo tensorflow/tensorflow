@@ -27,12 +27,12 @@ def _flat_map(input_dataset, map_func, name=None):  # pylint: disable=unused-pri
 class _FlatMapDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
-  def __init__(self, input_dataset, map_func, name=None, _debug_mode=True):
+  def __init__(self, input_dataset, map_func, name=None, debug_mode_flag=True):
 
     self._input_dataset = input_dataset
     self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset,
-        _debug_mode=_debug_mode)
+        debug_mode_flag=debug_mode_flag)
     if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
       raise TypeError(
           "The `map_func` argument must return a `Dataset` object. Got "

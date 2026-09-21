@@ -78,7 +78,7 @@ class StructuredFunctionWrapper():
                add_to_graph=True,
                use_legacy_function=False,
                defun_kwargs=None,
-               _debug_mode=True):
+               debug_mode_flag=True):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -106,7 +106,7 @@ class StructuredFunctionWrapper():
         (legacy behavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
-      _debug_mode: (Optional.) Whether to use `py_function` wrapping when debug
+      debug_mode_flag: (Optional.) Whether to use `py_function` wrapping when debug
         mode is enabled. Does not affect synchronous execution.
 
     Raises:
@@ -254,7 +254,7 @@ class StructuredFunctionWrapper():
     else:
       defun_kwargs.update({"func_name": func_name})
       defun_kwargs.update({"_tf_data_function": True})
-      if debug_mode.DEBUG_MODE and _debug_mode:
+      if debug_mode.DEBUG_MODE and debug_mode_flag:
         fn_factory = trace_py_function(defun_kwargs)
       else:
         if not debug_mode.DEBUG_MODE and def_function.functions_run_eagerly():
