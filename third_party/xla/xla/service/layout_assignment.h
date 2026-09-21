@@ -187,12 +187,17 @@ class BufferLayoutConstraint : public LayoutConstraint {
 class OperandLayoutConstraint : public LayoutConstraint {
  public:
   // Constructs an OperandLayoutConstraint for the specified operand slot.
-  OperandLayoutConstraint(const ShapeLayout& shape_layout,
+  OperandLayoutConstraint(ShapeLayout shape_layout,
                           const HloInstruction* instruction, int64_t operand_no,
                           bool mandatory, bool dfs, int64_t priority);
 
   // Returns the expected ShapeLayout for the operand.
   const ShapeLayout& shape_layout() const { return shape_layout_[0]; }
+
+  // Returns true if UpdateLayout would find the constraint already satisfied
+  // by the array `shape` carrying `layout`: same element type and dimensions,
+  // and the same minor_to_major as the constrained layout.
+  bool IsSatisfiedBy(const Shape& shape, const Layout& layout) const;
 
   // Returns the consumer HloInstruction imposing this constraint.
   const HloInstruction* instruction() const { return instruction_; }
@@ -1023,8 +1028,8 @@ class LayoutAssignment : public HloModulePass {
   // Adds constraints related to host Send/Recv instructions.
   absl::Status BuildHostChannelConstraints(HloComputation* computation);
 
-  // Replaces points_to_analysis_ and drops the buffer sets memoized from the
-  // previous analysis.
+  // Replaces points_to_analysis_ and drops the buffer sets and operand indices
+  // memoized from the previous analysis.
   void SetPointsToAnalysis(std::unique_ptr<TuplePointsToAnalysis> analysis);
 
   // Module points to analysis that can be updated for cloned computations.
@@ -1041,6 +1046,8 @@ class LayoutAssignment : public HloModulePass {
   int64_t current_priority() const { return current_priority_; }
 
  private:
+  friend class LayoutAssignmentPeer;
+
   // Returns whether the given instruction is in a copy-disabled while loop.
   bool IsWhileLoopCopyDisabled(const HloInstruction& instruction) const;
 
@@ -1082,6 +1089,42 @@ class LayoutAssignment : public HloModulePass {
                               std::unique_ptr<PointsToSet::BufferSet>>
       buffer_sets_cache_;
   const TuplePointsToAnalysis* buffer_sets_cache_analysis_ = nullptr;
+
+  // Returns the array-shaped uses (user, operand number) of `buffer` and its
+  // aliases, in user order, without the uses by kTuple instructions.
+  std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
+      const LogicalBuffer& buffer) const;
+
+  // Returns user->OperandIndices(operand). A buffer's users are scanned once
+  // per instruction that aliases the buffer, so a user with N distinct
+  // operands is scanned N times per propagation round; users with at least
+  // kMinOperandsForIndexMemo operands are memoized in operand_indices_cache_
+  // instead.
+  absl::InlinedVector<int64_t, 4> OperandIndicesInUser(
+      const HloInstruction* user, const HloInstruction* operand) const;
+
+  // Two hash lookups cost about as much as scanning this many operand
+  // pointers. Building the memo of a user with N operands, D of them distinct,
+  // is D inserts and N appends, repaid by the D or more visits per round that
+  // each scanned N pointers.
+  static constexpr int64_t kMinOperandsForIndexMemo = 128;
+
+  // Operand indices of wide users by user, then operand. Propagation is the
+  // only reader, and it runs between SetPointsToAnalysis and the copy
+  // insertion of AssignLayouts, with no operand list changing in between, so
+  // SetPointsToAnalysis is the one place that clears the memo.
+  mutable absl::flat_hash_map<
+      const HloInstruction*,
+      absl::flat_hash_map<const HloInstruction*,
+                          absl::InlinedVector<int64_t, 4>>>
+      operand_indices_cache_;
+
+  // SetOperandLayout on the constraint slot of (instruction, operand_no),
+  // already looked up by the caller, which has excluded scalars.
+  absl::Status SetOperandLayout(
+      const Shape& shape_with_layout, const HloInstruction* instruction,
+      int64_t operand_no, bool mandatory, bool dfs, int64_t priority,
+      std::unique_ptr<OperandLayoutConstraint>& constraint_slot);
 
   // Buffer layout constraints stored densely by LogicalBuffer::Id, which the
   // points-to analysis assigns sequentially. Clear() invalidates every entry
