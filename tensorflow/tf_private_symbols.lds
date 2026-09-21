@@ -7,4 +7,5 @@ _jcopy_*
 _jsimd_*
 _hwloc_*
 *llvm*
+*LLVM*
 *mlir*

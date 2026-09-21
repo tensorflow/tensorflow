@@ -8,11 +8,17 @@ tensorflow {
   # and numba bring in, which resolve against TensorFlow's build and crash on
   # the mismatched layout.
   #
-  # These mirror the entries already hidden on macOS in tf_private_symbols.lds
-  # and are deliberately narrow: TensorFlow's own symbols stay exported,
+  # Matched by namespace rather than by substring so that TensorFlow's own
+  # symbols are not caught: a plain *mlir* would also hide names such as
+  # tensorflow::tf_xla_test_use_mlir. TensorFlow's symbols must stay exported,
   # because custom op libraries loaded through tf.load_op_library resolve
   # REGISTER_OP and REGISTER_KERNEL_BUILDER against this library.
+  #
+  # LLVM* covers the LLVM C API, whose symbols are not in the llvm namespace.
   local:
-    *llvm*;
-    *mlir*;
+    extern "C++" {
+      llvm::*;
+      mlir::*;
+    };
+    LLVM*;
 };
