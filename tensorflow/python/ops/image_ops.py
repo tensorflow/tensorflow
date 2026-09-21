@@ -244,6 +244,14 @@ def _trunc_div(a, b):
   `MapCoordinate` (tensorflow/core/kernels/image/image_ops.h); Python and
   TensorFlow's own integer division instead floor, which disagrees for
   negative inputs.
+
+  Args:
+    a: float32 tensor, the dividend.
+    b: float32 tensor broadcastable with `a`, the divisor. Must be nonzero
+      wherever the result is used.
+
+  Returns:
+    float32 tensor, `a / b` truncated toward zero.
   """
   return math_ops.cast(math_ops.cast(a / b, dtypes.int32), dtypes.float32)
 
@@ -305,6 +313,13 @@ def _round_half_away_from_zero(x):
 
   TensorFlow's own `round` breaks ties to even instead, which disagrees with
   the kernel at exact `.5` boundaries.
+
+  Args:
+    x: float tensor, arbitrary shape.
+
+  Returns:
+    Tensor of the same shape and dtype as `x`, with each element rounded to
+    the nearest integer value, ties away from zero.
   """
   return math_ops.sign(x) * math_ops.floor(math_ops.abs(x) + 0.5)
 

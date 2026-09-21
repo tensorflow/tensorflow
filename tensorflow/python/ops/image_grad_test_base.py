@@ -701,7 +701,7 @@ class ImageProjectiveTransformOpTestBase(test.TestCase, parameterized.TestCase):
   """
 
   def _transform(self, images, transforms, output_shape, interpolation,
-                fill_mode):
+                 fill_mode):
     return gen_image_ops.image_projective_transform_v3(
         images=images,
         transforms=transforms,
