@@ -1968,6 +1968,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:reshape_decomposer",
         "//xla/hlo/transforms/expanders:rng_bit_generator_expander",
         "//xla/hlo/transforms/expanders:rng_expander",
+        "//xla/hlo/transforms/expanders:shuffle_expander",
         "//xla/hlo/transforms/expanders:stable_sort_expander",
         "//xla/hlo/transforms/expanders:stochastic_convert_decomposer",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",

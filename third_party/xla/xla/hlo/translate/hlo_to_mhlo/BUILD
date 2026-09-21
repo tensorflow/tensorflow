@@ -123,6 +123,7 @@ cc_library(
         "//xla:literal",
         "//xla:protobuf_util",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",

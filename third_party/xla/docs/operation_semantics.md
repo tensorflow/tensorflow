@@ -5170,6 +5170,49 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - shift_right_logical](https://openxla.org/stablehlo/spec#shift_right_logical).
 
+## Shuffle
+
+See also
+[`XlaBuilder::Shuffle`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+**`Shuffle(operand, dimensions, mode)`**
+
+Arguments     | Type                | Semantics
+------------- | ------------------- | -------------------------------------
+`operand`     | `XlaOp`             | array of type T
+`dimensions`  | `ArraySlice<int64>` | dimensions to shuffle
+`mode`        | `ShuffleMode`       | the shuffle pattern to apply, together with the attributes of that pattern
+
+Shuffles the elements of the `operand` array along the specified `dimensions`,
+generating an output array of the same shape. Because a shuffle only moves
+elements around, it never changes the shape of the operand.
+
+The `mode` selects which pattern is applied, and carries the attributes of that
+pattern:
+
+Mode     | Attributes | Semantics
+-------- | ---------- | ---------------------------------------------------
+`rotate` | `shifts`   | Rotates the elements to the left by `shifts`
+
+### `rotate`
+
+Rotates the elements of the `operand` array along the specified `dimensions` to
+the left by the corresponding `shifts`, generating an output array of the same
+shape. Shifts outside of `[0, size(dimension))` are supported, and wrap around
+cyclically. Each element of the output array at a multidimensional index is
+retrieved from the operand array at a transformed index. The multidimensional
+index is transformed by rotating the index along each specified dimension (i.e.,
+for a dimension of size N with a corresponding shift S, the element at output
+index i is taken from operand index (i + S) % N).
+
+1-dimensional example:
+
+```cpp
+let a = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+Shuffle(a, {0}, shuffle::MakeRotateMode({4}))
+// Result: {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3}
+```
+
 ## Sign
 
 See also
