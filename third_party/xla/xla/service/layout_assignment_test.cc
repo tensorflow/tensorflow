@@ -43,8 +43,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -525,7 +525,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
   absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
-    const LogicalBuffer& buffer = buffer_constraint.buffer();
+    const HloValue& buffer = buffer_constraint.buffer();
     const HloInstruction* instruction = buffer.instruction();
 
     // Force the operands' layout to the output layout.
@@ -3080,6 +3080,317 @@ ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
   EXPECT_TRUE(LayoutUtil::Equal(
       ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
       LayoutUtil::MakeLayout({1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, PropagateCallerConstraintIntoUnconstrainedCallee) {
+  const char* module_str = R"hlo(
+HloModule PropagateCallerConstraintIntoUnconstrainedCallee
+
+%callee (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %add = f32[4,8] add(%p0, %p0)
+}
+
+ENTRY %main (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  ROOT %call = f32[4,8] call(%param), to_apply=%callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* callee_param = FindInstruction(m.get(), "p0");
+  ASSERT_NE(callee_param, nullptr);
+  ExpectLayoutIs(callee_param->shape(), {0, 1});
+
+  const HloInstruction* callee_add = FindInstruction(m.get(), "add");
+  ASSERT_NE(callee_add, nullptr);
+  ExpectLayoutIs(callee_add->shape(), {0, 1});
+
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+}
+
+TEST_F(LayoutAssignmentTest, PropagateCalleeConstraintIntoUnconstrainedCaller) {
+  const char* module_str = R"hlo(
+HloModule PropagateCalleeConstraintIntoUnconstrainedCaller
+
+%callee (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %custom = f32[4,8]{0,1} custom-call(%p0), custom_call_target="foo", operand_layout_constraints={f32[4,8]{0,1}}
+}
+
+ENTRY %main (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8] parameter(0)
+  %neg = f32[4,8] negate(%param)
+  ROOT %call = f32[4,8] call(%neg), to_apply=%callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  computation_layout.mutable_parameter_layout(0)->Clear();
+  computation_layout.mutable_result_layout()->Clear();
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* param = FindInstruction(m.get(), "param");
+  ASSERT_NE(param, nullptr);
+  ExpectLayoutIs(param->shape(), {0, 1});
+
+  const HloInstruction* neg = FindInstruction(m.get(), "neg");
+  ASSERT_NE(neg, nullptr);
+  ExpectLayoutIs(neg->shape(), {0, 1});
+
+  const HloInstruction* call = FindInstruction(m.get(), "call");
+  ASSERT_NE(call, nullptr);
+  ExpectLayoutIs(call->shape(), {0, 1});
+
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+}
+
+TEST_F(LayoutAssignmentTest,
+       PropagateConditionalParameterBeforeRootAndLargestBranch) {
+  const char* module_str = R"hlo(
+HloModule PropagateConditionalParameterBeforeRootAndLargestBranch
+
+%true_branch (p_true: f32[8,64]) -> f32[8,64] {
+  %p_true = f32[8,64] parameter(0)
+  %a0 = f32[8,64] add(%p_true, %p_true)
+  %a1 = f32[8,64] multiply(%a0, %p_true)
+  ROOT %custom_true = f32[8,64]{0,1} custom-call(%a1), custom_call_target="foo", operand_layout_constraints={f32[8,64]{0,1}}
+}
+
+%false_branch (p_false: f32[8,64]) -> f32[8,64] {
+  %p_false = f32[8,64] parameter(0)
+  ROOT %neg_false = f32[8,64] negate(%p_false)
+}
+
+ENTRY %main (branch_pred: pred[], x: f32[8,64], y: f32[8,64]) -> f32[8,64] {
+  %branch_pred = pred[] parameter(0)
+  %x = f32[8,64] parameter(1)
+  %y = f32[8,64]{1,0} parameter(2)
+  ROOT %cond = f32[8,64] conditional(%branch_pred, %x, %y), true_computation=%true_branch, false_computation=%false_branch
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  computation_layout.mutable_parameter_layout(1)->Clear();
+  *computation_layout.mutable_parameter_layout(2) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 64}, {1, 0}));
+  computation_layout.mutable_result_layout()->Clear();
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* p_true = FindInstruction(m.get(), "p_true");
+  ASSERT_NE(p_true, nullptr);
+  ExpectLayoutIs(p_true->shape(), {0, 1});
+
+  const HloInstruction* x = FindInstruction(m.get(), "x");
+  ASSERT_NE(x, nullptr);
+  ExpectLayoutIs(x->shape(), {0, 1});
+
+  const HloInstruction* p_false = FindInstruction(m.get(), "p_false");
+  ASSERT_NE(p_false, nullptr);
+  ExpectLayoutIs(p_false->shape(), {1, 0});
+
+  const HloInstruction* cond = FindInstruction(m.get(), "cond");
+  ASSERT_NE(cond, nullptr);
+  ExpectLayoutIs(cond->shape(), {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest,
+       WhileLoopInvariantSliceOverridesStaleBodyConstraint) {
+  const char* module_str = R"hlo(
+HloModule WhileLoopInvariantSliceOverridesStaleBodyConstraint
+
+%body (state: (s32[], f32[4,64], f32[1,64])) -> (s32[], f32[4,64], f32[1,64]) {
+  %state = (s32[], f32[4,64], f32[1,64]) parameter(0)
+  %i = s32[] get-tuple-element(%state), index=0
+  %table = f32[4,64] get-tuple-element(%state), index=1
+  %acc = f32[1,64] get-tuple-element(%state), index=2
+  %one = s32[] constant(1)
+  %next_i = s32[] add(%i, %one)
+  %slice = f32[1,64] slice(%table), slice={[0:1], [0:64]}
+  %next_acc = f32[1,64] add(%acc, %slice)
+  ROOT %tuple = (s32[], f32[4,64], f32[1,64]) tuple(%next_i, %table, %next_acc)
+}
+
+%cond (state: (s32[], f32[4,64], f32[1,64])) -> pred[] {
+  %state = (s32[], f32[4,64], f32[1,64]) parameter(0)
+  %i = s32[] get-tuple-element(%state), index=0
+  %limit = s32[] constant(4)
+  ROOT %cmp = pred[] compare(%i, %limit), direction=LT
+}
+
+ENTRY %main (init_table: f32[4,64], init_acc: f32[1,64]) -> f32[1,64] {
+  %c0 = s32[] constant(0)
+  %init_table = f32[4,64]{0,1} parameter(0)
+  %init_acc = f32[1,64]{1,0} parameter(1)
+  %init = (s32[], f32[4,64], f32[1,64]) tuple(%c0, %init_table, %init_acc)
+  %while = (s32[], f32[4,64], f32[1,64]) while(%init), condition=%cond, body=%body
+  ROOT %out = f32[1,64] get-tuple-element(%while), index=2
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 64}, {0, 1}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 64}, {1, 0}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 64}, {1, 0}));
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* while_inst = FindInstruction(m.get(), "while");
+  ASSERT_NE(while_inst, nullptr);
+  ExpectLayoutIs(ShapeUtil::GetSubshape(while_inst->shape(), {1}), {0, 1});
+  ExpectLayoutIs(
+      ShapeUtil::GetSubshape(
+          while_inst->while_body()->parameter_instruction(0)->shape(), {1}),
+      {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest,
+       ShouldPropagateCallerToWhileBodyBlocksNonBatchDotMinorDim) {
+  const char* module_str = R"hlo(
+HloModule ShouldPropagateCallerToWhileBodyBlocksNonBatchDotMinorDim
+
+%body (state: (s32[], f32[8,64])) -> (s32[], f32[8,64]) {
+  %state = (s32[], f32[8,64]) parameter(0)
+  %i = s32[] get-tuple-element(%state), index=0
+  %x = f32[8,64] get-tuple-element(%state), index=1
+  %one = s32[] constant(1)
+  %next_i = s32[] add(%i, %one)
+  %d0 = f32[8,64] add(%x, %x)
+  %d1 = f32[8,64] multiply(%d0, %x)
+  %d2 = f32[8,64] add(%d0, %d1)
+  %w = f32[64,64]{1,0} constant(0)
+  %dot = f32[8,64] dot(%d2, %w), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT %tuple = (s32[], f32[8,64]) tuple(%next_i, %dot)
+}
+
+%cond (state: (s32[], f32[8,64])) -> pred[] {
+  %state = (s32[], f32[8,64]) parameter(0)
+  %i = s32[] get-tuple-element(%state), index=0
+  %limit = s32[] constant(4)
+  ROOT %cmp = pred[] compare(%i, %limit), direction=LT
+}
+
+ENTRY %main (init_x: f32[8,64]) -> f32[8,64] {
+  %c0 = s32[] constant(0)
+  %init_x = f32[8,64]{0,1} parameter(0)
+  %init = (s32[], f32[8,64]) tuple(%c0, %init_x)
+  %while = (s32[], f32[8,64]) while(%init), condition=%cond, body=%body
+  ROOT %out = f32[8,64] get-tuple-element(%while), index=1
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 64}, {0, 1}));
+  computation_layout.mutable_result_layout()->Clear();
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* while_inst = FindInstruction(m.get(), "while");
+  ASSERT_NE(while_inst, nullptr);
+  ExpectLayoutIs(
+      ShapeUtil::GetSubshape(
+          while_inst->while_body()->parameter_instruction(0)->shape(), {1}),
+      {1, 0});
+}
+
+TEST_F(LayoutAssignmentTest,
+       PropagateAsyncStartConstraintIntoUnconstrainedWrappedComputation) {
+  const char* module_str = R"hlo(
+HloModule PropagateAsyncStartConstraintIntoUnconstrainedWrappedComputation
+
+%async_comp (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %neg = f32[4,8] negate(%p0)
+}
+
+ENTRY %main (param: f32[4,8]) -> f32[4,8] {
+  %param = f32[4,8]{0,1} parameter(0)
+  %async_start = ((f32[4,8]), f32[4,8], u32[]) async-start(%param), calls=%async_comp
+  ROOT %async_done = f32[4,8] async-done(%async_start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* async_param = FindInstruction(m.get(), "p0");
+  ASSERT_NE(async_param, nullptr);
+  ExpectLayoutIs(async_param->shape(), {0, 1});
+
+  const HloInstruction* async_neg = FindInstruction(m.get(), "neg");
+  ASSERT_NE(async_neg, nullptr);
+  ExpectLayoutIs(async_neg->shape(), {0, 1});
+}
+
+TEST_F(LayoutAssignmentTest,
+       PropagateDefaultConstantLayoutAcrossCallDuringUnconstrainedAssignment) {
+  const char* module_str = R"hlo(
+HloModule PropagateDefaultConstantLayoutAcrossCallDuringUnconstrainedAssignment
+
+%callee (p0: f32[4,8]) -> f32[8,4] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %t = f32[8,4] transpose(%p0), dimensions={1,0}
+}
+
+ENTRY %main (in: f32[4,8]) -> f32[8,4] {
+  %in = f32[4,8] parameter(0)
+  ROOT %call = f32[8,4] call(%in), to_apply=%callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  computation_layout.mutable_parameter_layout(0)->Clear();
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 4}, {1, 0}));
+
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* callee_param = FindInstruction(m.get(), "p0");
+  ASSERT_NE(callee_param, nullptr);
+  ExpectLayoutIs(callee_param->shape(), {0, 1});
+
+  const HloInstruction* in = FindInstruction(m.get(), "in");
+  ASSERT_NE(in, nullptr);
+  ExpectLayoutIs(in->shape(), {0, 1});
 }
 
 }  // namespace
