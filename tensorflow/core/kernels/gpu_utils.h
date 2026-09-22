@@ -210,7 +210,7 @@ class AutotuneMap {
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
     if (threshold_str != nullptr) {
       VLOG(1) << "TF_AUTOTUNE_THRESHOLD = " << threshold_str;
-      strings::safe_strto32(threshold_str, &min_score_threshold_);
+      absl::SimpleAtoi(threshold_str, &min_score_threshold_);
     }
     const char* min_warmup_iteration_str =
         getenv("TF_AUTOTUNE_MIN_WARMUP_ITERATIONS");
