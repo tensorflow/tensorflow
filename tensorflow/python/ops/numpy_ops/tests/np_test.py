@@ -2964,11 +2964,11 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
     # insertion position, so rank itself is in bounds.
     a = onp.ones((2, 3))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
       tnp.stack([a, a], axis=3)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
       tnp.stack([a, a], axis=-4)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
       tnp.stack([a, a], axis=4)
     # In-bounds boundaries still work.
     self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
