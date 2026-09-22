@@ -578,21 +578,56 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     leafShardings = hloSharding.tuple_elements();
   }
 
+  // `convertToSdyShardingAttr` returns a null attribute for a replicated
+  // HloShardingV1/V2 placeholder sharding, which Shardy import ignores. A null
+  // element is not a valid `TensorShardingAttr`, and consumers of
+  // `TensorShardingPerValueAttr` dereference every element unconditionally
+  // (e.g. when exporting back to HLO shardings), so return a null attribute for
+  // the whole value instead, and let the caller skip setting it.
+
   // An op can carry a sharding without having any values, e.g. a custom call
   // whose only result is an empty tuple. Such a sharding is maximal, so its
   // rank is irrelevant, but we still need to keep it.
   if (types.empty()) {
-    return TensorShardingPerValueAttr::get(
-        context,
-        convertToSdyShardingAttr(leafShardings.front(), /*rank=*/0, context));
+    TensorShardingAttr sdySharding =
+        convertToSdyShardingAttr(leafShardings.front(), /*rank=*/0, context);
+    if (!sdySharding) {
+      return nullptr;
+    }
+    return TensorShardingPerValueAttr::get(context, sdySharding);
   }
 
   SmallVector<TensorShardingAttr> sdyShardings;
   sdyShardings.reserve(types.size());
+
+  // Convert all elements and try to find a valid mesh.
+  mlir::Attribute meshOrRef = nullptr;
   for (auto [leafSharding, type] : llvm::zip_equal(leafShardings, types)) {
-    sdyShardings.push_back(convertToSdyShardingAttr(
-        leafSharding, mlir::sdy::getTensorRank(type), context));
+    TensorShardingAttr sdySharding = convertToSdyShardingAttr(
+        leafSharding, mlir::sdy::getTensorRank(type), context);
+
+    sdyShardings.push_back(sdySharding);
+
+    // If we found a valid sharding, extract its mesh so we can use it later.
+    if (sdySharding && !meshOrRef) {
+      meshOrRef = sdySharding.getMeshOrRef();
+    }
   }
+
+  // If EVERY element was a placeholder, we have no mesh information at all.
+  // In this case, we must still return nullptr for the entire tuple.
+  if (!meshOrRef) {
+    return nullptr;
+  }
+
+  // Fill in the gaps. Replace any null placeholders with a fully open sharding.
+  for (auto [i, type] : llvm::enumerate(types)) {
+    if (!sdyShardings[i]) {
+      sdyShardings[i] = mlir::sdy::TensorShardingAttr::getFullyOpen(
+          context, mlir::sdy::getTensorRank(type), meshOrRef);
+    }
+  }
+
   return TensorShardingPerValueAttr::get(context, sdyShardings);
 }
 
