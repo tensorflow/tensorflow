@@ -506,16 +506,67 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
                            "Blockwise quantization details are missing.");
       return kTfLiteError;
     }
-    quantization->type = kTfLiteBlockwiseQuantization;
-    auto* blockwise_quantization =
+    // `block_shape` supersedes `block_size`. It is only meaningful if it has
+    // exactly one entry per dimension of the tensor, so reject anything else
+    // rather than silently falling back to `block_size`, which would produce
+    // wrong values.
+    const auto* block_shape = src_quant->block_shape();
+    if (block_shape && !block_shape->empty()) {
+      if (!dims.empty() &&
+          static_cast<size_t>(block_shape->size()) != dims.size()) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "BlockwiseQuantization block_shape must have one entry per "
+            "dimension. Expected %d entries, got %d.",
+            static_cast<int>(dims.size()), block_shape->size());
+        return kTfLiteError;
+      }
+      for (int i = 0; i < block_shape->size(); ++i) {
+        if (block_shape->Get(i) <= 0) {
+          TF_LITE_REPORT_ERROR(error_reporter_,
+                               "BlockwiseQuantization block_shape entries must "
+                               "be positive. Value %d at index %d is invalid.",
+                               block_shape->Get(i), i);
+          return kTfLiteError;
+        }
+      }
+      auto* blockwise_quantization_v2 =
+          reinterpret_cast<TfLiteBlockwiseQuantizationV2*>(
+              malloc(sizeof(TfLiteBlockwiseQuantizationV2)));
+      if (!blockwise_quantization_v2) {
+        return kTfLiteError;
+      }
+      blockwise_quantization_v2->scale = src_quant->scales();
+      blockwise_quantization_v2->zero_point = src_quant->zero_points();
+      blockwise_quantization_v2->quantized_dimension =
+          src_quantization->quantized_dimension();
+      blockwise_quantization_v2->blocksize = src_quant->block_size();
+      blockwise_quantization_v2->block_shape =
+          TfLiteIntArrayCreate(static_cast<int>(block_shape->size()));
+      if (!blockwise_quantization_v2->block_shape) {
+        free(blockwise_quantization_v2);
+        return kTfLiteError;
+      }
+      for (int i = 0; i < block_shape->size(); ++i) {
+        blockwise_quantization_v2->block_shape->data[i] = block_shape->Get(i);
+      }
+      quantization->type = kTfLiteBlockwiseQuantizationV2;
+      quantization->params = reinterpret_cast<void*>(blockwise_quantization_v2);
+      return kTfLiteOk;
+    }
+    auto* blockwise_quantization_v1 =
         reinterpret_cast<TfLiteBlockwiseQuantization*>(
             malloc(sizeof(TfLiteBlockwiseQuantization)));
-    blockwise_quantization->scale = src_quant->scales();
-    blockwise_quantization->zero_point = src_quant->zero_points();
-    blockwise_quantization->quantized_dimension =
+    if (!blockwise_quantization_v1) {
+      return kTfLiteError;
+    }
+    blockwise_quantization_v1->scale = src_quant->scales();
+    blockwise_quantization_v1->zero_point = src_quant->zero_points();
+    blockwise_quantization_v1->quantized_dimension =
         src_quantization->quantized_dimension();
-    blockwise_quantization->blocksize = src_quant->block_size();
-    quantization->params = reinterpret_cast<void*>(blockwise_quantization);
+    blockwise_quantization_v1->blocksize = src_quant->block_size();
+    quantization->type = kTfLiteBlockwiseQuantization;
+    quantization->params = reinterpret_cast<void*>(blockwise_quantization_v1);
     return kTfLiteOk;
   }
   if (!src_quantization->scale() || src_quantization->scale()->empty()) {
