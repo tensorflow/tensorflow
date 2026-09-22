@@ -525,6 +525,13 @@ message DebugOptions {
     reserved 2;
   }
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point.
+  enum EarlyExitPoint {
+    EARLY_EXIT_POINT_UNSET = 0;
+    EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT = 1;
+  }
+
   // Filter which allows enabling NCCL symmetric buffers for a subset of
   // collectives based on their type and size.
   message CollectiveFilter {
@@ -1769,6 +1776,11 @@ message DebugOptions {
   // layouts.
   optional bool xla_early_exit_with_layouts = 397;
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point. This flag is mutually exclusive with
+  // xla_early_exit_with_layouts.
+  optional EarlyExitPoint xla_gpu_experimental_early_exit = 549;
+
   // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
@@ -1863,7 +1875,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 548
+  // Next id: 550
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
