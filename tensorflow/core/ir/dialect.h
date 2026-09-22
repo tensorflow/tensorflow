@@ -37,6 +37,7 @@ using mlir::tf_type::Float8E4M3FNRefType;       // NOLINT
 using mlir::tf_type::Float8E4M3FNUZRefType;     // NOLINT
 using mlir::tf_type::Float8E5M2FNUZRefType;     // NOLINT
 using mlir::tf_type::Float8E5M2RefType;         // NOLINT
+using mlir::tf_type::Float8E8M0FNURefType;      // NOLINT
 using mlir::tf_type::FloatRefType;              // NOLINT
 using mlir::tf_type::FuncAttr;                  // NOLINT
 using mlir::tf_type::HalfRefType;               // NOLINT
