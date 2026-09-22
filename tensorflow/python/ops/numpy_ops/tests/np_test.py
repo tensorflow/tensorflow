@@ -39,7 +39,9 @@ from tensorflow.python.util.numpy_compat import np_where
 config.parse_flags_with_absl()
 
 
-nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
+nonempty_nonscalar_array_shapes = [
+    (4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)
+]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
 empty_array_shapes = [(0,), (0, 4), (3, 0),]
 
