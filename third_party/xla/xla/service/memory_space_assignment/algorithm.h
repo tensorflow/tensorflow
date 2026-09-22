@@ -1927,6 +1927,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_map<int64_t, AliasedOffset*>
       pipelined_while_buffer_id_to_aliased_offset_;
 
+  // Mapping from HloBuffer ID to assigned alternate memory offset for pinned
+  // allocations involving SparseCore computations. Ensures subsequent pinned
+  // allocations belonging to the same logical buffer colocate at the exact same
+  // alternate memory offset across async-start/update/done boundaries.
+  // Maintained only during the current allocation attempt and cleared in
+  // ClearPendingChunks().
+  absl::flat_hash_map<int64_t, AliasedOffset*> buffer_id_to_aliased_offset_;
+
   // We have released the chunks corresponding to the allocations in the list.
   // When we uncommit the current pending state following a
   // kFailRequiresUncommit, we need to re-reserve those chunks.

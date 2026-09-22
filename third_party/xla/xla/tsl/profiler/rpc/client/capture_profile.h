@@ -44,18 +44,15 @@ absl::Status ExportToTensorBoard(const tensorflow::profiler::XSpace& xspace,
 
 // Exports multiple XSpace chunks sequentially into a single Riegeli file
 // at <logdir>/plugins/profile/<run>/<host>.xplane.riegeli.
-// As each XSpace chunk is written, it is cleared from `xspaces` to conserve
-// memory.
 absl::Status ExportToTensorBoard(
     absl::string_view logdir, absl::string_view run,
-    std::vector<tensorflow::profiler::XSpace>& xspaces);
+    const std::vector<tensorflow::profiler::XSpace>& xspaces);
 
 // Exports multiple XSpace chunks to a run directory named after the current
-// timestamp. As each XSpace chunk is written, it is cleared from `xspaces` to
-// conserve memory.
+// timestamp.
 absl::Status ExportToTensorBoard(
     absl::string_view logdir,
-    std::vector<tensorflow::profiler::XSpace>& xspaces);
+    const std::vector<tensorflow::profiler::XSpace>& xspaces);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
