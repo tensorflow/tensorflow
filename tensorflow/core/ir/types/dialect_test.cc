@@ -117,6 +117,42 @@ TEST(TFTypesDialect, ParsesDimensionListWithNegativeOne) {
   EXPECT_THAT(shape_attr.getShape(), testing::ElementsAre(0, -1, 2));
 }
 
+TEST(TFTypesDialect, TestFloat8RemoveRef) {
+  MLIRContext context;
+  context.getOrLoadDialect<tf_type::TFTypeDialect>();
+
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E4M3FNRefType::get(&context))
+                .RemoveRef(),
+            Float8E4M3FNType::get(&context));
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E5M2RefType::get(&context))
+                .RemoveRef(),
+            Float8E5M2Type::get(&context));
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E4M3FNUZRefType::get(&context))
+                .RemoveRef(),
+            Float8E4M3FNUZType::get(&context));
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E4M3B11FNUZRefType::get(&context))
+                .RemoveRef(),
+            Float8E4M3B11FNUZType::get(&context));
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E5M2FNUZRefType::get(&context))
+                .RemoveRef(),
+            Float8E5M2FNUZType::get(&context));
+  EXPECT_EQ(mlir::cast<tf_type::TensorFlowRefType>(
+                tf_type::Float8E8M0FNURefType::get(&context))
+                .RemoveRef(),
+            Float8E8M0FNUType::get(&context));
+
+  EXPECT_EQ(tf_type::DropRefType(tf_type::Float8E8M0FNURefType::get(&context)),
+            Float8E8M0FNUType::get(&context));
+
+  EXPECT_EQ(tf_type::TensorFlowRefType::get(Float8E8M0FNUType::get(&context)),
+            tf_type::Float8E8M0FNURefType::get(&context));
+}
+
 }  // namespace
 }  // namespace tfg
 }  // namespace mlir

@@ -151,8 +151,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_image_ops import *
@@ -236,70 +237,231 @@ def matrices_to_flat_transforms(transform_matrices):
     return transforms[:, :8]
 
 
+def _trunc_div(a, b):
+  """Integer division that truncates toward zero, like C++'s `/` on ints.
+
+  `a / b` followed by a cast matches `static_cast<DenseIndex>(a / b)` in
+  `MapCoordinate` (tensorflow/core/kernels/image/image_ops.h); Python and
+  TensorFlow's own integer division instead floor, which disagrees for
+  negative inputs.
+
+  Args:
+    a: float32 tensor, the dividend.
+    b: float32 tensor broadcastable with `a`, the divisor. Must be nonzero
+      wherever the result is used.
+
+  Returns:
+    float32 tensor, `a / b` truncated toward zero.
+  """
+  return math_ops.cast(math_ops.cast(a / b, dtypes.int32), dtypes.float32)
+
+
+def _map_coordinate(coord, length, fill_mode):
+  """Maps an output-space coordinate to an input-space one, per `fill_mode`.
+
+  Mirrors `MapCoordinate<Mode>` in
+  tensorflow/core/kernels/image/image_ops.h exactly, so that the adjoint
+  below reads from (in the forward op, sense) or writes to (here) the same
+  pixel the forward kernel does.
+
+  Args:
+    coord: float32 tensor, arbitrary shape.
+    length: scalar int32 tensor, the input extent along this axis.
+    fill_mode: Python str, one of "CONSTANT", "NEAREST", "REFLECT", "WRAP".
+
+  Returns:
+    float32 tensor, same shape as `coord`.
+  """
+  if fill_mode == "CONSTANT":
+    return coord
+
+  length_f = math_ops.cast(length, dtypes.float32)
+  last = length_f - 1.0
+
+  if fill_mode == "NEAREST":
+    return clip_ops.clip_by_value(coord, 0.0, last)
+
+  # `length <= 1` makes `last`/`sz2` 0, which would divide by zero below;
+  # the result is discarded by the `length <= 1` select further down, but
+  # an intermediate inf/nan cast to int32 is platform-dependent undefined
+  # behavior, so avoid it rather than merely discard it.
+  safe_last = array_ops.where_v2(length <= 1, 1.0, last)
+  if fill_mode == "WRAP":
+    below = coord + length_f * (_trunc_div(-coord, safe_last) + 1.0)
+    above = coord - length_f * _trunc_div(coord, safe_last)
+  elif fill_mode == "REFLECT":
+    sz2 = 2.0 * length_f
+    safe_sz2 = array_ops.where_v2(length <= 1, 2.0, sz2)
+    folded_low = sz2 * _trunc_div(-coord, safe_sz2) + coord
+    below = array_ops.where_v2(folded_low < -length_f, folded_low + sz2,
+                               -folded_low - 1.0)
+    folded_high = coord - sz2 * _trunc_div(coord, safe_sz2)
+    above = array_ops.where_v2(folded_high >= length_f,
+                               sz2 - folded_high - 1.0, folded_high)
+  else:
+    raise ValueError("Unknown fill_mode %r" % (fill_mode,))
+
+  mapped = array_ops.where_v2(coord < 0.0, below,
+                              array_ops.where_v2(coord > last, above, coord))
+  # `length <= 1` collapses every coordinate to 0, matching the kernel.
+  mapped = array_ops.where_v2(length <= 1, array_ops.zeros_like(coord), mapped)
+  return clip_ops.clip_by_value(mapped, 0.0, last)
+
+
+def _round_half_away_from_zero(x):
+  """Matches C++ `std::round`, used by the forward kernel's NEAREST tap.
+
+  TensorFlow's own `round` breaks ties to even instead, which disagrees with
+  the kernel at exact `.5` boundaries.
+
+  Args:
+    x: float tensor, arbitrary shape.
+
+  Returns:
+    Tensor of the same shape and dtype as `x`, with each element rounded to
+    the nearest integer value, ties away from zero.
+  """
+  return math_ops.sign(x) * math_ops.floor(math_ops.abs(x) + 0.5)
+
+
+def _image_projective_transform_grad_impl(images, transforms, grad,
+                                          interpolation, fill_mode):
+  """Shared adjoint for ImageProjectiveTransformV2/V3.
+
+  The forward op resamples `images` at a coordinate that `transforms` maps
+  each output pixel to, optionally blending up to 4 input pixels
+  (BILINEAR) or reading exactly 1 (NEAREST). Its true gradient scatter-adds
+  each output pixel's incoming gradient onto the same input pixel(s), with
+  the same weights. (The previous implementation instead re-ran the forward
+  *resampling* op on `grad` through the inverted transform, which is only
+  correct when the forward coordinate map is a bijection on the pixel grid
+  -- never true once `fill_mode` clamps or folds an out-of-range coordinate,
+  or the transform downscales.)
+
+  Args:
+    images: the forward op's `images` input; only its shape/dtype are used.
+    transforms: the forward op's `transforms` input, rank 1 `[8]` or rank 2
+      `[N, 8]` with `N` equal to 1 (broadcast) or to the batch size.
+    grad: gradient w.r.t. the forward op's output, `[B, out_H, out_W, C]`.
+    interpolation: Python str, "NEAREST" or "BILINEAR".
+    fill_mode: Python str, "CONSTANT", "NEAREST", "REFLECT", or "WRAP".
+
+  Returns:
+    Gradient w.r.t. `images`, shape `[B, in_H, in_W, C]`, dtype `grad.dtype`.
+  """
+  if images.dtype.base_dtype not in _IMAGE_DTYPES:
+    raise TypeError("Invalid dtype %s." % images.dtype)
+
+  transforms = ops.convert_to_tensor(
+      transforms, name="transforms", dtype=dtypes.float32)
+  if transforms.shape.ndims == 1:
+    transforms = transforms[None]
+  elif transforms.shape.ndims != 2:
+    raise TypeError("Transforms should have rank 1 or 2.")
+
+  image_shape = array_ops.shape(images)
+  batch, in_h, in_w, channels = (image_shape[0], image_shape[1],
+                                 image_shape[2], image_shape[3])
+  grad_shape = array_ops.shape(grad)
+  out_h, out_w = grad_shape[1], grad_shape[2]
+
+  # `transforms` may carry one row (broadcast to the whole batch) or one row
+  # per batch element, decided by its actual leading dimension at runtime --
+  # gather a `[batch, 8]` view either way rather than branching on shape.
+  num_transforms = array_ops.shape(transforms)[0]
+  transform_row = array_ops.where_v2(
+      math_ops.equal(num_transforms, 1),
+      array_ops.zeros([batch], dtype=dtypes.int32), math_ops.range(batch))
+  t = array_ops.gather(transforms, transform_row, axis=0)  # [batch, 8]
+
+  oy, ox = array_ops.meshgrid(
+      math_ops.range(out_h), math_ops.range(out_w), indexing="ij")
+  oy = math_ops.cast(oy, dtypes.float32)  # [out_H, out_W]
+  ox = math_ops.cast(ox, dtypes.float32)
+
+  def _coef(i):
+    return t[:, i, None, None]  # [batch, 1, 1], broadcasts against ox/oy.
+
+  proj = _coef(6) * ox + _coef(7) * oy + 1.0  # [batch, out_H, out_W]
+  valid_proj = math_ops.not_equal(proj, 0.0)
+  safe_proj = array_ops.where_v2(valid_proj, proj, array_ops.ones_like(proj))
+  input_x = (_coef(0) * ox + _coef(1) * oy + _coef(2)) / safe_proj
+  input_y = (_coef(3) * ox + _coef(4) * oy + _coef(5)) / safe_proj
+
+  x = _map_coordinate(input_x, in_w, fill_mode)
+  y = _map_coordinate(input_y, in_h, fill_mode)
+
+  batch_idx = array_ops.broadcast_to(
+      array_ops.reshape(math_ops.range(batch), [-1, 1, 1]),
+      array_ops.shape(x))  # int32, [batch, out_H, out_W]
+
+  grad = ops.convert_to_tensor(grad)
+  compute_dtype = grad.dtype.base_dtype  # accumulate at the tape's precision
+  grad_flat = array_ops.reshape(grad, [-1, channels])
+
+  def _scatter_tap(iy, ix, weight):
+    """One interpolation tap's indices/updates, out-of-range taps zeroed."""
+    in_bounds = math_ops.logical_and(
+        math_ops.logical_and(iy >= 0.0, iy < math_ops.cast(in_h, iy.dtype)),
+        math_ops.logical_and(ix >= 0.0, ix < math_ops.cast(in_w, ix.dtype)))
+    keep = math_ops.logical_and(in_bounds, valid_proj)
+    zero_i = array_ops.zeros_like(iy)
+    safe_iy = math_ops.cast(array_ops.where_v2(keep, iy, zero_i), dtypes.int32)
+    safe_ix = math_ops.cast(array_ops.where_v2(keep, ix, zero_i), dtypes.int32)
+    indices = array_ops_stack.stack([batch_idx, safe_iy, safe_ix], axis=-1)
+    weight = array_ops.where_v2(keep, weight, array_ops.zeros_like(weight))
+    weight = math_ops.cast(array_ops.reshape(weight, [-1, 1]), compute_dtype)
+    return array_ops.reshape(indices, [-1, 3]), weight * grad_flat
+
+  if interpolation == "NEAREST":
+    iy = _round_half_away_from_zero(y)
+    ix = _round_half_away_from_zero(x)
+    taps = [(iy, ix, array_ops.ones_like(x))]
+  elif interpolation == "BILINEAR":
+    y_floor, x_floor = math_ops.floor(y), math_ops.floor(x)
+    y_ceil, x_ceil = y_floor + 1.0, x_floor + 1.0
+    wy_floor, wy_ceil = y_ceil - y, y - y_floor
+    wx_floor, wx_ceil = x_ceil - x, x - x_floor
+    taps = [
+        (y_floor, x_floor, wy_floor * wx_floor),
+        (y_floor, x_ceil, wy_floor * wx_ceil),
+        (y_ceil, x_floor, wy_ceil * wx_floor),
+        (y_ceil, x_ceil, wy_ceil * wx_ceil),
+    ]
+  else:
+    raise ValueError("Unknown interpolation %r" % (interpolation,))
+
+  all_indices, all_updates = [], []
+  for iy, ix, weight in taps:
+    indices, updates = _scatter_tap(iy, ix, weight)
+    all_indices.append(indices)
+    all_updates.append(updates)
+
+  return array_ops.scatter_nd(
+      array_ops.concat(all_indices, axis=0),
+      array_ops.concat(all_updates, axis=0),
+      array_ops_stack.stack([batch, in_h, in_w, channels]))
+
+
 @ops.RegisterGradient("ImageProjectiveTransformV2")
 def _image_projective_transform_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
-  images = op.inputs[0]
-  transforms = op.inputs[1]
-  interpolation = op.get_attr("interpolation")
-  fill_mode = op.get_attr("fill_mode")
-
-  image_or_images = ops.convert_to_tensor(images, name="images")
-  transform_or_transforms = ops.convert_to_tensor(
-      transforms, name="transforms", dtype=dtypes.float32)
-
-  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
-    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(transform_or_transforms.get_shape()) == 1:
-    transforms = transform_or_transforms[None]
-  elif len(transform_or_transforms.get_shape()) == 2:
-    transforms = transform_or_transforms
-  else:
-    raise TypeError("Transforms should have rank 1 or 2.")
-
-  # Invert transformations
-  transforms = flat_transforms_to_matrices(transforms=transforms)
-  inverse = linalg_ops.matrix_inverse(transforms)
-  transforms = matrices_to_flat_transforms(inverse)
-  output = gen_image_ops.image_projective_transform_v2(
-      images=grad,
-      transforms=transforms,
-      output_shape=array_ops.shape(image_or_images)[1:3],
-      interpolation=interpolation,
-      fill_mode=fill_mode)
+  output = _image_projective_transform_grad_impl(
+      images=op.inputs[0],
+      transforms=op.inputs[1],
+      grad=grad,
+      interpolation=op.get_attr("interpolation").decode(),
+      fill_mode=op.get_attr("fill_mode").decode())
   return [output, None, None]
 
 
 @ops.RegisterGradient("ImageProjectiveTransformV3")
 def _image_projective_transform_v3_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
-  images = op.inputs[0]
-  transforms = op.inputs[1]
-  interpolation = op.get_attr("interpolation")
-  fill_mode = op.get_attr("fill_mode")
-
-  image_or_images = ops.convert_to_tensor(images, name="images")
-  transform_or_transforms = ops.convert_to_tensor(
-      transforms, name="transforms", dtype=dtypes.float32)
-
-  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
-    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(transform_or_transforms.get_shape()) == 1:
-    transforms = transform_or_transforms[None]
-  elif len(transform_or_transforms.get_shape()) == 2:
-    transforms = transform_or_transforms
-  else:
-    raise TypeError("Transforms should have rank 1 or 2.")
-
-  # Invert transformations
-  transforms = flat_transforms_to_matrices(transforms=transforms)
-  inverse = linalg_ops.matrix_inverse(transforms)
-  transforms = matrices_to_flat_transforms(inverse)
-  output = gen_image_ops.image_projective_transform_v3(
-      images=grad,
-      transforms=transforms,
-      output_shape=array_ops.shape(image_or_images)[1:3],
-      interpolation=interpolation,
-      fill_mode=fill_mode,
-      fill_value=0.0)
+  output = _image_projective_transform_grad_impl(
+      images=op.inputs[0],
+      transforms=op.inputs[1],
+      grad=grad,
+      interpolation=op.get_attr("interpolation").decode(),
+      fill_mode=op.get_attr("fill_mode").decode())
   return [output, None, None, None]
