@@ -758,12 +758,6 @@ class ResourceGatherOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
     OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
@@ -771,6 +765,12 @@ class ResourceGatherOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
+    OP_REQUIRES(
+        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+            " but got ", DataTypeString(v->tensor()->dtype()),
+            " (resource variable dtype)")));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
     OP_REQUIRES(
@@ -944,12 +944,6 @@ class ResourceGatherNdOp : public OpKernel {
     ResourceHandle handle;
     OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
     OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
@@ -957,6 +951,12 @@ class ResourceGatherNdOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
+    OP_REQUIRES(
+        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
+            " but got ", DataTypeString(v->tensor()->dtype()),
+            " (resource variable dtype)")));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
 
@@ -1175,21 +1175,23 @@ class ResourceScatterUpdateOp : public OpKernel {
     OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
     OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
 
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // Check data type of update and resource to scatter.
     const DataType update_dtype = c->input(2).dtype();
-    OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
-                absl::InvalidArgumentError(
-                    "DType of scatter resource and updates does not match."));
-
-    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     const bool is_non_pod_dtype =
         update_dtype == DT_STRING || update_dtype == DT_VARIANT;
     if (is_non_pod_dtype || use_exclusive_lock_) {
       mutex_lock ml(*v->mu());
+      OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                  absl::InvalidArgumentError(
+                      "DType of scatter resource and updates does not match."));
       DoCompute(c, v.get());
     } else {
       // For POD dtypes, we can safely run the update without the mutex.
       tf_shared_lock ml(*v->mu());
+      OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                  absl::InvalidArgumentError(
+                      "DType of scatter resource and updates does not match."));
       DoCompute(c, v.get());
     }
   }

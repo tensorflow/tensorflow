@@ -132,9 +132,32 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
       Parameter(b, 3, ShapeUtil::MakeShape(index_type, {}), "rhs_index");
 
   XlaOp cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
+  XlaOp eq = Eq(lhs_value, rhs_value);
+  if (primitive_util::HasNaN(value_type)) {
+    // IEEE-754 comparisons involving a NaN are always false, so `cmp` on its
+    // own makes the selections below fall through to the right-hand operand
+    // whenever either side is NaN. That lets a NaN win the reduction and be
+    // reported as the extremum's index. Order NaNs strictly after every
+    // non-NaN value instead, so a NaN can only win when every reduced value is
+    // NaN. This matches the Eigen reducers that back eager execution.
+    //
+    // `Ne(x, x)` is used instead of `IsNan()` from math.h because that library
+    // depends on this one, so the reverse dependency would be circular.
+    XlaOp lhs_is_nan = Ne(lhs_value, lhs_value);
+    XlaOp rhs_is_nan = Ne(rhs_value, rhs_value);
+    // When `rhs` is NaN, keep `lhs` unless it is NaN as well. Otherwise `cmp`
+    // is already correct: it is false when only `lhs` is NaN, which discards
+    // it in favor of `rhs`.
+    cmp = Select(rhs_is_nan, Not(lhs_is_nan), cmp);
+    // Treat two NaNs as equal so the tie-break below returns the lowest index.
+    // This is required for correctness, not just determinism: `Reduce` applies
+    // this computation in an unspecified order, so it must be commutative, and
+    // without this the result would depend on which operand happened to be on
+    // the right-hand side.
+    eq = Or(eq, And(lhs_is_nan, rhs_is_nan));
+  }
   XlaOp max = Select(cmp, lhs_value, rhs_value);
   XlaOp arg_max = Select(cmp, lhs_index, rhs_index);
-  XlaOp eq = Eq(lhs_value, rhs_value);
   XlaOp tie_id = Min(lhs_index, rhs_index);
   arg_max = Select(eq, tie_id, arg_max);
   Tuple(b, {max, arg_max});
