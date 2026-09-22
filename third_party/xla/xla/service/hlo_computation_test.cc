@@ -693,7 +693,7 @@ TEST_F(HloComputationTest, Stringification) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
@@ -729,7 +729,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
@@ -766,7 +766,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
