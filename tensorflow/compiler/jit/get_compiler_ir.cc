@@ -19,31 +19,40 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/compilability_check_util.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/executable_build_options.h"
-#include "xla/client/local_client.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/portable_api.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -54,49 +63,27 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 
-static absl::StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
-    xla::LocalClient* local_client,
-    const XlaCompiler::CompilationResult& result,
-    const XlaCompiler::Options& options,
-    const bool xla_embed_ir_in_executable = false) {
-  std::vector<const xla::Shape*> argument_layouts(
-      result.xla_input_shapes.size());
-  for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
-    argument_layouts[i] = &result.xla_input_shapes[i];
-  }
-  xla::ExecutableBuildOptions build_options;
-  if (result.collective_info) {
-    build_options.set_num_replicas(result.collective_info->group_size);
-  }
-  build_options.set_device_ordinal(
-      options.device_ordinal != -1 ? options.device_ordinal
-                                   : local_client->default_device_ordinal());
-  build_options.set_result_layout(result.xla_output_shape);
-  build_options.set_device_allocator(options.device_allocator.get());
-  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging(
-      options.detailed_logging);
-  // If the embed_ir_in_executable is set, hlo_proto will be dumped in
-  // executable. The hlo_proto contains HLO modules and buffer assignment.
-  build_options.mutable_debug_options()->set_xla_embed_ir_in_executable(
-      xla_embed_ir_in_executable);
+static absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
+BuildExecutable(xla::PjRtClient* pjrt_client,
+                const XlaCompiler::CompilationResult& result,
+                const XlaCompiler::Options& options,
+                const bool xla_embed_ir_in_executable = false) {
+  xla::CompileOptions compile_options = GetPjRtCompileOptions(options, result);
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_embed_ir_in_executable(xla_embed_ir_in_executable);
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<xla::LocalExecutable>> executables,
-      local_client->Compile(*result.computation, argument_layouts,
-                            build_options));
-  TF_RET_CHECK(executables.size() == 1);
-  return std::move(executables[0]);
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      pjrt_client->CompileAndLoad(*result.computation, compile_options));
+  return executable;
 }
 
 static absl::StatusOr<std::string> BuildHLOString(
     IrExportStage stage, const XlaCompiler::CompilationResult& result,
-    xla::LocalClient* local_client, const XlaCompiler::Options& options) {
+    xla::PjRtClient* pjrt_client, const XlaCompiler::Options& options) {
   switch (stage) {
     case IrExportStage::STABLEHLO:
     case IrExportStage::STABLEHLO_SERIALIZED:
@@ -135,32 +122,40 @@ static absl::StatusOr<std::string> BuildHLOString(
       return new_module->ToString(opts);
     }
     case IrExportStage::OPTIMIZED_HLO:
-    case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
-                          BuildExecutable(local_client, result, options));
-      xla::Executable* new_executable = executable->executable();
-      if (stage == IrExportStage::OPTIMIZED_HLO_SERIALIZED) {
-        return new_executable->module().ToProto().SerializeAsString();
-      } else {
-        return new_executable->module().ToString();
-      }
-    }
-    case IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED: {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
-                          BuildExecutable(local_client, result, options,
-                                          /*xla_embed_ir_in_executable=*/true));
-      return executable->executable()->hlo_proto()->SerializeAsString();
-    }
+    case IrExportStage::OPTIMIZED_HLO_SERIALIZED:
+    case IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED:
     case IrExportStage::OPTIMIZED_HLO_DOT: {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
-                          BuildExecutable(local_client, result, options));
-      absl::StatusOr<std::string> graph = xla::RenderGraph(
-          *executable->executable()->module().entry_computation(),
-          "Visualization",
-          /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
-          /*hlo_render_options=*/{});
-      TF_RETURN_IF_ERROR(graph.status());
-      return *graph;
+      TF_RET_CHECK(pjrt_client != nullptr);
+      bool xla_embed_ir_in_executable =
+          (stage == IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED);
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                          BuildExecutable(pjrt_client, result, options,
+                                          xla_embed_ir_in_executable));
+      TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> modules,
+                          executable->GetHloModules());
+      TF_RET_CHECK(!modules.empty());
+      if (stage == IrExportStage::OPTIMIZED_HLO_SERIALIZED) {
+        return modules[0]->ToProto().SerializeAsString();
+      } else if (stage == IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED) {
+        xla::HloProto hlo_proto = xla::MakeHloProto(*modules[0]);
+        absl::StatusOr<xla::CompiledMemoryStats> memory_stats =
+            executable->GetCompiledMemoryStats();
+        if (memory_stats.ok() &&
+            !memory_stats->serialized_buffer_assignment.empty()) {
+          hlo_proto.mutable_buffer_assignment()->ParseFromString(
+              memory_stats->serialized_buffer_assignment);
+        }
+        return hlo_proto.SerializeAsString();
+      } else if (stage == IrExportStage::OPTIMIZED_HLO_DOT) {
+        absl::StatusOr<std::string> graph = xla::RenderGraph(
+            *modules[0]->entry_computation(), "Visualization",
+            /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
+            /*hlo_render_options=*/{});
+        TF_RETURN_IF_ERROR(graph.status());
+        return *graph;
+      } else {
+        return modules[0]->ToString();
+      }
     }
   }
 }
@@ -318,7 +313,7 @@ absl::StatusOr<std::vector<XlaCompiler::Argument>> PrepareXlaCompilerArgs(
 
 absl::StatusOr<std::string> CompileAndBuildHLOString(
     IrExportStage stage, const XlaCompiler::Options& options,
-    xla::LocalClient* local_client, const NameAttrList& function,
+    xla::PjRtClient* pjrt_client, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args) {
   XlaCompiler::CompileOptions compile_options;
   compile_options.always_return_tuple = false;
@@ -329,7 +324,7 @@ absl::StatusOr<std::string> CompileAndBuildHLOString(
   TF_RETURN_IF_ERROR(
       compiler.CompileFunction(compile_options, function, args, &result));
 
-  return BuildHLOString(stage, result, local_client, options);
+  return BuildHLOString(stage, result, pjrt_client, options);
 }
 
 /**
@@ -352,8 +347,8 @@ absl::StatusOr<std::string> GetCompilerIr(
     absl::Span<const ArgShapeAndDType> input_arg_shape_and_dtype,
     absl::Span<const TensorHandle* const> input_handles,
     CompilerArgSource compiler_arg_source) {
-  using XlaDeviceCompiler =
-      DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+  using PjRtDeviceCompiler =
+      DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
   se::Stream* stream = nullptr;
   if (const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
@@ -375,33 +370,32 @@ absl::StatusOr<std::string> GetCompilerIr(
                              compiler_arg_source));
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(dev);
-  auto compilation_device_type = platform_info.device_type();
-  if (platform_info.device_type() != DEVICE_TPU) {
+  DeviceType compilation_device_type = platform_info.device_type();
+  if (platform_info.device_type() == DEVICE_TPU) {
+    compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
+  } else {
     TF_ASSIGN_OR_RETURN(compilation_device_type,
                         GetCompilationDeviceType(platform_info.device_type()));
   }
 
-  XlaDeviceCompiler* xla_device_compiler;
-  TF_RETURN_IF_ERROR(dev->resource_manager()->LookupOrCreate<XlaDeviceCompiler>(
-      dev->resource_manager()->default_container(), "xla_device_compiler",
-      &xla_device_compiler, [&](XlaDeviceCompiler** xla_device_compiler) {
-        return BuildXlaDeviceCompiler(dev, flr, platform_info,
-                                      compilation_device_type,
-                                      xla_device_compiler);
-      }));
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+  PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
+  DeviceCompilationProfiler* profiler = nullptr;
+  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, dev->resource_manager(), flr, &pjrt_device_compiler,
+      &profiler));
+  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+  core::ScopedUnref profiler_ref(profiler);
 
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU && stream == nullptr) {
-    options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
+    options = GenerateCompilerOptionsForTfrtTpu(compilation_device_type, *flr);
   } else {
-    options = GenerateCompilerOptions(*xla_device_compiler, *flr, dev, stream,
-                                      platform_info,
-                                      /*has_ref_vars=*/false);
+    options = GenerateCompilerOptionsForPjRt(*flr, dev, platform_info,
+                                             pjrt_device_compiler);
   }
 
-  return CompileAndBuildHLOString(stage, options, xla_device_compiler->client(),
-                                  function, args);
+  return CompileAndBuildHLOString(
+      stage, options, pjrt_device_compiler->client(), function, args);
 }
 
 absl::StatusOr<std::string> GetCompilerIr(
@@ -411,9 +405,6 @@ absl::StatusOr<std::string> GetCompilerIr(
     absl::Span<const ArgShapeAndDType> input_arg_shape_and_dtype,
     absl::Span<const TensorHandle* const> input_handles,
     CompilerArgSource compiler_arg_source) {
-  using XlaDeviceCompiler =
-      DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
-
   TF_RETURN_IF_ERROR(
       ValidateGetCompilerIrTfrtTpu(platform_name, /*stream=*/nullptr, stage));
 
@@ -445,27 +436,16 @@ absl::StatusOr<std::string> GetCompilerIr(
                                 /*pjrt_device_metadata=*/nullptr,
                                 /*device_allocator=*/nullptr);
   DeviceType compilation_device_type = platform_info.device_type();
-  if (platform_info.device_type() != DEVICE_TPU) {
+  if (platform_info.device_type() == DEVICE_TPU) {
+    compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
+  } else {
     TF_ASSIGN_OR_RETURN(compilation_device_type,
                         GetCompilationDeviceType(platform_info.device_type()));
   }
-  XlaDeviceCompiler* xla_device_compiler;
-  const std::string xla_device_compiler_name = absl::StrCat(
-      absl::AsciiStrToLower(platform_name), "_xla_device_compiler");
-  TF_RETURN_IF_ERROR(
-      context->HostCPU()->resource_manager()->LookupOrCreate<XlaDeviceCompiler>(
-          context->HostCPU()->resource_manager()->default_container(),
-          xla_device_compiler_name, &xla_device_compiler,
-          [&](XlaDeviceCompiler** xla_device_compiler) {
-            return BuildXlaDeviceCompiler(/*dev=*/nullptr, flr, platform_info,
-                                          compilation_device_type,
-                                          xla_device_compiler);
-          }));
-  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
 
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU) {
-    options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
+    options = GenerateCompilerOptionsForTfrtTpu(compilation_device_type, *flr);
   } else {
     options.device_type = compilation_device_type;
     options.flib_def = flr->GetFunctionLibraryDefinition();
@@ -475,7 +455,7 @@ absl::StatusOr<std::string> GetCompilerIr(
     options.alias_passthrough_params = !platform_info.is_on_xla_device();
   }
 
-  return CompileAndBuildHLOString(stage, options, /*local_client=*/nullptr,
+  return CompileAndBuildHLOString(stage, options, /*pjrt_client=*/nullptr,
                                   function, args);
 }
 

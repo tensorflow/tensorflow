@@ -78,22 +78,19 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #endif  // !IS_MOBILE_PLATFORM
 
-#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
-#define TF_GPU_USE_PJRT
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu_topology.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -113,7 +110,8 @@ namespace {
     }                                           \
   } while (0);
 
-#ifdef TF_GPU_USE_PJRT
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Provide a KeyValue interface to the coordination service agent for use by
 // BuildDistributedDevices.
 class XlaKeyValueStore : public xla::KeyValueStoreInterface {
@@ -320,19 +318,20 @@ absl::Status CreateClientOnce(
     return absl::OkStatus();
   }
 }
-#endif  // TF_GPU_USE_PJRT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 absl::Status CreatePjRtGpuClientWithDistributedDevices(
     int node_id, int num_nodes,
     tsl::CoordinationServiceAgent* coordination_service_agent) {
-#ifdef TF_GPU_USE_PJRT
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   if (num_nodes <= 1) {
     return absl::OkStatus();
   }
   return CreateClientOnce(node_id, num_nodes, coordination_service_agent);
-#else   // TF_GPU_USE_PJRT
+#else
   return absl::OkStatus();
-#endif  // TF_GPU_USE_PJRT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 bool AreLocalDevicesCompatible(const EagerContext* context,
