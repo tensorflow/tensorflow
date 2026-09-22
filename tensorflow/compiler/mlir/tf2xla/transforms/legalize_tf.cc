@@ -5568,7 +5568,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
   LogicalResult matchAndRewrite(TF::UnpackOp op,
                                 PatternRewriter &rewriter) const override {
     auto value_type = mlir::dyn_cast<RankedTensorType>(op.getValue().getType());
-    if (!value_type) return failure();
+    if (!value_type || !value_type.hasStaticShape()) return failure();
 
     int64_t value_rank = value_type.getRank();
     int64_t axis = op.getAxis();
@@ -5635,6 +5635,7 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     shape_values.reserve(value_rank - 1);
     // slice shape before reshape, should be like{?, 1, ?, ?} if axis = 1
     SmallVector<int64_t, 4> slice_shape(value_rank, ShapedType::kDynamic);
+    slice_shape[axis] = 1;
     for (int64_t dim_idx = 0; dim_idx < value_rank; ++dim_idx) {
       int64_t dim_size = value_type.getDimSize(dim_idx);
       if (dim_size == ShapedType::kDynamic) {
@@ -5653,8 +5654,6 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
         if (dim_idx != axis) {
           shape_values.push_back(dim_i);
           slice_shape[dim_idx] = dim_size;
-        } else {
-          slice_shape[dim_idx] = 1;
         }
       }
       begin_indices.push_back(
