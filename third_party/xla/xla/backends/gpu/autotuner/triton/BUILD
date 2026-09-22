@@ -39,7 +39,6 @@ cc_library(
     name = "dot_search_space",
     srcs = ["dot_search_space.cc"],
     hdrs = ["dot_search_space.h"],
-    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
