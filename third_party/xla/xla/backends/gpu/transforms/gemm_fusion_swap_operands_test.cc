@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/gemm_fusion_swap_operands.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
@@ -26,6 +31,8 @@ namespace gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
 
 class SwapOperandsTest : public HloHardwareIndependentTestBase {};
 
@@ -267,6 +274,72 @@ ENTRY main {
     backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })"));
   ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+}
+
+std::string HloWithOperandPrecision(absl::string_view operand_precision) {
+  return absl::StrFormat(R"(
+HloModule SwapOperandPrecision
+
+fcomp {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT dot = f32[32,128]{1,0} dot(lhs, rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      operand_precision={%s}
+}
+
+ENTRY main {
+  lhs = f32[32,64]{1,0} parameter(0)
+  rhs = f32[128,64]{1,0} parameter(1)
+  ROOT fusion = f32[32,128]{1,0} fusion(lhs, rhs), kind=kCustom,
+      calls=fcomp,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+}
+)",
+                         operand_precision);
+}
+
+TEST_F(SwapOperandsTest, SwapsPerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(HloWithOperandPrecision("high,highest")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={highest,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsSinglePerOperandPrecision) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        HloWithOperandPrecision("high")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, operand_precision={default,high}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, SwapsOperandsWithEmptyPrecisionConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(HloWithOperandPrecision("")));
+  ASSERT_THAT(GemmFusionSwapOperands().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK: dot(%rhs, %lhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}{{$}}
+)"),
+              IsOkAndHolds(true));
+}
+
+TEST_F(SwapOperandsTest, RejectsTooManyOperandPrecisionEntries) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(
+                           HloWithOperandPrecision("high,default,high")));
+  EXPECT_THAT(
+      GemmFusionSwapOperands().Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Dot has 3 operand precision entries; expected at most 2.")));
 }
 
 }  // namespace
