@@ -369,7 +369,7 @@ func.func @lower_dot_with_warp_specialization_to_triton(
   %res = scf.for %iv = %c0 to %c4 step %c1 iter_args(%accum = %arg2) -> tensor<2x8xf32> {
     %dot = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xf32>, tensor<4x8xf32>) -> tensor<2x8xf32>
     %add = arith.addf %dot, %accum : tensor<2x8xf32>
-    // CHECK-NOT : tt.warp_specialize
+    // CHECK-NOT: tt.warp_specialize
     // WARP: scf.yield
     // WARP-NEXT: tt.warp_specialize = true
     scf.yield %add : tensor<2x8xf32>

@@ -482,6 +482,7 @@ cc_library(
         ":xla_ifrt",
         ":xla_sharding_serdes",
         ":xla_sharding_spec_serdes",
+        "//xla:custom_options",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
