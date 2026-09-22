@@ -101,6 +101,8 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
   device_description.shared_memory_per_block_optin_ =
       proto.shared_memory_per_block_optin();
+  device_description.oversized_shared_memory_per_block_ =
+      proto.oversized_shared_memory_per_block();
   device_description.reserved_shared_memory_per_block_ =
       proto.reserved_shared_memory_per_block();
   device_description.max_blocks_per_multiprocessor_ =
@@ -193,6 +195,8 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   proto.set_threads_per_warp(threads_per_warp_);
   proto.set_shared_memory_per_block(shared_memory_per_block_);
   proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_oversized_shared_memory_per_block(
+      oversized_shared_memory_per_block_);
   proto.set_reserved_shared_memory_per_block(reserved_shared_memory_per_block_);
   proto.set_max_blocks_per_multiprocessor(max_blocks_per_multiprocessor_);
   proto.set_shared_memory_per_core(shared_memory_per_core_);
@@ -333,6 +337,8 @@ bool DeviceDescription::EqualsTo(
          shared_memory_per_block_ == other.shared_memory_per_block_ &&
          shared_memory_per_block_optin_ ==
              other.shared_memory_per_block_optin_ &&
+         oversized_shared_memory_per_block_ ==
+             other.oversized_shared_memory_per_block_ &&
          scalar_unit_description_ == other.scalar_unit_description_ &&
          matrix_unit_description_ == other.matrix_unit_description_ &&
          interconnect_info_.active_links ==
