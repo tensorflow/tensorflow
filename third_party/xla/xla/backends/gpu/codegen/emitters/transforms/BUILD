@@ -53,6 +53,7 @@ cc_library(
         "peel_loops.cc",
         "promote_shuffle_to_dpp.cc",
         "recover_exp2.cc",
+        "simplify_atan2.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

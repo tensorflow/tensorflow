@@ -36,7 +36,9 @@ def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "
     Option<"enable_asin_", "enable-asin", "bool", /*default=*/"false",
            "Enable chlo.asin to mhlo.asin lowering.">,
     Option<"enable_asinh_", "enable-asinh", "bool", /*default=*/"false",
-           "Enable chlo.asinh to mhlo.asinh lowering.">
+           "Enable chlo.asinh to mhlo.asinh lowering.">,
+    Option<"enable_atan_", "enable-atan", "bool", /*default=*/"false",
+           "Enable chlo.atan to mhlo.atan lowering.">
   ];
   let dependentDialects = ["mhlo::MhloDialect"];
 }

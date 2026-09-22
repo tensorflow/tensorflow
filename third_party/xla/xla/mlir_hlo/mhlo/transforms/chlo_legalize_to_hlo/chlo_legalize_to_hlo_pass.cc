@@ -53,7 +53,7 @@ namespace {
 
 ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(
     bool enableAcosh, bool enableAcos, bool enableAsin, bool enableAsinh,
-    bool enableAtanh, bool enableCosh, bool enableSinh) {
+    bool enableAtanh, bool enableCosh, bool enableSinh, bool enableAtan) {
   ChloLegalizeToHighLevelMhloPassOptions options;
   options.enable_acosh_ = enableAcosh;
   options.enable_acos_ = enableAcos;
@@ -62,6 +62,7 @@ ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(
   options.enable_sinh_ = enableSinh;
   options.enable_asin_ = enableAsin;
   options.enable_asinh_ = enableAsinh;
+  options.enable_atan_ = enableAtan;
   return options;
 }
 
@@ -93,6 +94,10 @@ static bool qualifiesForDirectMhloLoweringAsinh(chlo::AsinhOp op) {
   return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
+static bool qualifiesForDirectMhloLoweringAtan(chlo::AtanOp op) {
+  return llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
 struct ChloLegalizeToHighLevelMhloPass
     : public impl::ChloLegalizeToHighLevelMhloPassBase<
           ChloLegalizeToHighLevelMhloPass> {
@@ -111,7 +116,7 @@ struct ChloLegalizeToHighLevelMhloPass
         &context, &conversionPatterns,
         FromPassOptions(enable_acosh_, enable_acos_, enable_asin_,
                         enable_asinh_, enable_atanh_, enable_cosh_,
-                        enable_sinh_));
+                        enable_sinh_, enable_atan_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
@@ -153,6 +158,11 @@ struct ChloLegalizeToHighLevelMhloPass
           [](chlo::AsinhOp op) {
             return !qualifiesForDirectMhloLoweringAsinh(op);
           });
+    }
+    if (enable_atan_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::AtanOp>([](chlo::AtanOp op) {
+        return !qualifiesForDirectMhloLoweringAtan(op);
+      });
     }
     conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp,
                                   chlo::ScanOp, chlo::MulhiOp>();
@@ -303,6 +313,15 @@ LogicalResult convertAcosChloToMhlo(chlo::AcosOp op,
   return success();
 }
 
+LogicalResult convertAtanChloToMhlo(chlo::AtanOp op,
+                                    PatternRewriter& rewriter) {
+  if (!mhlo::qualifiesForDirectMhloLoweringAtan(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::AtanOp>(op, op->getOperands());
+  return success();
+}
+
 LogicalResult convertAtanhChloToMhlo(chlo::AtanhOp op,
                                      PatternRewriter& rewriter) {
   if (!mhlo::qualifiesForDirectMhloLoweringAtanh(op)) {
@@ -402,6 +421,9 @@ void populateChloToHighLevelMhloOpPatterns(
   }
   if (options.enable_asinh_) {
     patterns->add(mhlo::convertAsinhChloToMhlo, kBenefit);
+  }
+  if (options.enable_atan_) {
+    patterns->add(mhlo::convertAtanChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   patterns->add(mhlo::convertScanChloToMhlo, kBenefit);
