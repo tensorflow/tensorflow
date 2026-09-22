@@ -651,7 +651,10 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
     state = it->second.get();
   }
 
-  state->invocation_count += kernel_spec_.codegen_config.sync_count_increment;
+  // Backward-compatibility fallback for legacy AOT-compiled kernels.
+  if (!kernel_spec_.codegen_config.device_sync_count) {
+    state->invocation_count += kernel_spec_.codegen_config.sync_count_increment;
+  }
   TF_RET_CHECK(state->kernel != nullptr)
       << "Kernel is not initialized for collective kernel thunk.";
 
@@ -781,6 +784,8 @@ CollectiveKernelThunk::FromProto(
         proto_spec.invocation_count_increment();
     kernel_spec.codegen_config.copy_input_to_scratch =
         proto_spec.copy_input_to_scratch();
+    kernel_spec.codegen_config.device_sync_count =
+        proto_spec.device_sync_count();
   } else {
     // Backward-compatibility fallback for legacy AOT-compiled kernels without
     // an explicit CollectiveKernelSpec.
@@ -828,6 +833,8 @@ CollectiveKernelThunk::FromProto(
     kernel_spec.codegen_config.sync_count_increment =
         1 + static_cast<uint32_t>(GetAllReduceStrategy(
                 input_size_bytes, /*is_multimem_enabled=*/false));
+    // Legacy kernels read the host-provided invocation count.
+    kernel_spec.codegen_config.device_sync_count = false;
   }
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
@@ -900,6 +907,8 @@ absl::StatusOr<ThunkProto> CollectiveKernelThunk::ToProto() const {
       kernel_spec_.codegen_config.sync_count_increment);
   proto_spec->set_copy_input_to_scratch(
       kernel_spec_.codegen_config.copy_input_to_scratch);
+  proto_spec->set_device_sync_count(
+      kernel_spec_.codegen_config.device_sync_count);
 
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
     ABSL_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
