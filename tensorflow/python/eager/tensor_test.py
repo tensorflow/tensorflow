@@ -105,8 +105,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     ctx = context.context()
     # Bad dtype value.
     with self.assertRaisesRegex(TypeError, "Invalid dtype argument value"):
-      # The max value of TF_DataType is 33, so using 34 for the dtype fails.
-      ops.EagerTensor(values, device=ctx.device_name, dtype=34)
+      # The max value of TF_DataType is 34, so using 35 for the dtype fails.
+      ops.EagerTensor(values, device=ctx.device_name, dtype=35)
 
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
