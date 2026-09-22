@@ -553,6 +553,8 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return Float8E4M3B11FNUZRefType::get(ctx);
   } else if (llvm::isa<mlir::Float8E5M2FNUZType>(type)) {
     return Float8E5M2FNUZRefType::get(ctx);
+  } else if (llvm::isa<mlir::Float8E8M0FNUType>(type)) {
+    return Float8E8M0FNURefType::get(ctx);
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
     Type etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -600,15 +602,16 @@ Type TensorFlowRefType::RemoveRef() {
   if (mlir::isa<FloatRefType>(*this)) return Float32Type::get(ctx);
   if (mlir::isa<DoubleRefType>(*this)) return Float64Type::get(ctx);
   if (mlir::isa<Bfloat16RefType>(*this)) return BFloat16Type::get(ctx);
-  if (mlir::isa<Float8E4M3FNType>(*this))
-    return Float8E4M3FNType::get(ctx);
-  if (mlir::isa<Float8E5M2Type>(*this)) return Float8E5M2Type::get(ctx);
-  if (mlir::isa<Float8E4M3FNUZType>(*this))
+  if (mlir::isa<Float8E4M3FNRefType>(*this)) return Float8E4M3FNType::get(ctx);
+  if (mlir::isa<Float8E5M2RefType>(*this)) return Float8E5M2Type::get(ctx);
+  if (mlir::isa<Float8E4M3FNUZRefType>(*this))
     return Float8E4M3FNUZType::get(ctx);
-  if (mlir::isa<Float8E4M3B11FNUZType>(*this))
+  if (mlir::isa<Float8E4M3B11FNUZRefType>(*this))
     return Float8E4M3B11FNUZType::get(ctx);
-  if (mlir::isa<Float8E5M2FNUZType>(*this))
+  if (mlir::isa<Float8E5M2FNUZRefType>(*this))
     return Float8E5M2FNUZType::get(ctx);
+  if (mlir::isa<Float8E8M0FNURefType>(*this))
+    return Float8E8M0FNUType::get(ctx);
   if (mlir::isa<BoolRefType>(*this)) return IntegerType::get(ctx, 1);
   if (mlir::isa<Int4RefType>(*this))
     return IntegerType::get(ctx, 4, IntegerType::Signed);
