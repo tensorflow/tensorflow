@@ -897,6 +897,12 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
   config.convert_all_reduce = HloPredicateTrue;
   config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
+  config.convert_collective_reduce =
+      module->config()
+              .debug_options()
+              .xla_gpu_experimental_emit_collective_reduce()
+          ? HloPredicateTrue
+          : HloPredicateFalse;
   config.convert_collective_permute = HloPredicateTrue;
   config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
@@ -943,6 +949,8 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
           case HloOpcode::kCollectiveBroadcast:
             return !disabled_async_ops.contains(
                 DebugOptions::COLLECTIVEBROADCAST);
+          case HloOpcode::kCollectiveReduce:
+            return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
           case HloOpcode::kReduceScatter:
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
