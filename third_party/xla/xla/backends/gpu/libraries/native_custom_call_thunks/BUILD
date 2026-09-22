@@ -95,6 +95,32 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "native_custom_call_handler_utils",
+    srcs = ["native_custom_call_handler_utils.cc"],
+    hdrs = ["native_custom_call_handler_utils.h"],
+    visibility = [":handler_allowlist"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        "//xla:shape_util",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel",
+        "//xla/backends/gpu/runtime:custom_kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:shaped_slice",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:kernel_args_packing_spec",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "native_custom_call_handler_registry_test",
     srcs = ["native_custom_call_handler_registry_test.cc"],

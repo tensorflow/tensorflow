@@ -5035,6 +5035,11 @@ class WebpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 class JxlTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    if test_util.is_xla_enabled():
+      self.skipTest("JXL ops do not have XLA JIT kernels")
+
   def _path(self, name):
     base = "tensorflow/core/lib/jxl/testdata/"
     return os.path.join(base, name)
@@ -5093,18 +5098,322 @@ class JxlTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               image_ops.decode_jxl(jxl_file, channels=channels))
           self.assertEqual(image.shape, (96, 128, channels or jxl_channels))
 
-  @parameterized.named_parameters(
-      [("_int8", np.int8), ("_int16", np.int16), ("_float32", np.float32)]
-  )
+  @parameterized.named_parameters([("_int8", np.int8), ("_int16", np.int16)])
   def testUnsupportedDtypeArgument(self, dtype):
     with self.cached_session():
       jxl_file = io_ops.read_file(self._path("random_128x96_rbga_q50.jxl"))
-      message = "JXL only supports uint8 for dtype"
-      with self.assertRaisesRegex(
-          (errors.InvalidArgumentError, ValueError), message
+      with self.assertRaises(
+          (errors.InvalidArgumentError, TypeError, ValueError)
       ):
-        # decode_jxl statically does not support anything other than uint8.
-        self.evaluate(image_ops.decode_image(jxl_file, dtype=dtype))
+        self.evaluate(image_ops.decode_jxl(jxl_file, dtype=dtype))
+
+  def testDecodeUint16(self):
+    with self.cached_session():
+      jxl_file = io_ops.read_file(self._path("random_128x96_rbg_q100.jxl"))
+      jxl_image_u16 = self.evaluate(
+          image_ops.decode_image(jxl_file, dtype=dtypes.uint16)
+      )
+      self.assertEqual(jxl_image_u16.dtype, np.uint16)
+      self.assertEqual(jxl_image_u16.shape, (96, 128, 3))
+
+      jxl_op_u16 = self.evaluate(
+          image_ops.decode_jxl(jxl_file, dtype=dtypes.uint16)
+      )
+      self.assertEqual(jxl_op_u16.dtype, np.uint16)
+      self.assertAllEqual(jxl_image_u16, jxl_op_u16)
+
+  def testEncodeDecodeLosslessRoundtripUint8(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(32, 48, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded = image_ops.decode_jxl(encoded, dtype=dtypes.uint8)
+      self.assertAllEqual(self.evaluate(decoded), img_np)
+
+  @parameterized.named_parameters([
+      ("_rgb", 3),
+      ("_rgba", 4),
+      ("_gray", 1),
+  ])
+  def testEncodeDecodeLosslessRoundtripUint16(self, channels):
+    np.random.seed(42)
+    img_np = np.random.randint(
+        0, 65536, size=(16, 24, channels), dtype=np.uint16
+    )
+    # Set explicit edge-case values to verify no 8-bit truncation or clamping:
+    edge_values = [0, 1, 255, 256, 1000, 32768, 65534, 65535]
+    for idx, val in enumerate(edge_values):
+      r, c = divmod(idx, 24)
+      img_np[r, c, :] = val
+
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_jxl = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.uint16)
+      )
+      self.assertEqual(decoded_jxl.dtype, np.uint16)
+      self.assertAllEqual(decoded_jxl, img_np)
+
+      decoded_image = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.uint16)
+      )
+      self.assertEqual(decoded_image.dtype, np.uint16)
+      self.assertAllEqual(decoded_image, img_np)
+
+      # Requesting the channel count explicitly must work too.
+      decoded_explicit = self.evaluate(
+          image_ops.decode_jxl(encoded, channels=channels, dtype=dtypes.uint16)
+      )
+      self.assertAllEqual(decoded_explicit, img_np)
+      decoded_image_explicit = self.evaluate(
+          image_ops.decode_image(
+              encoded, channels=channels, dtype=dtypes.uint16
+          )
+      )
+      self.assertAllEqual(decoded_image_explicit, img_np)
+
+  def testDecodeChannelsMismatch(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(8, 8, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = self.evaluate(image_ops.encode_jxl(img_np))
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "does not match input"
+      ):
+        self.evaluate(image_ops.decode_jxl(encoded, channels=1))
+
+  @parameterized.named_parameters([
+      ("_rgb", 3),
+      ("_rgba", 4),
+      ("_gray", 1),
+  ])
+  def testEncodeDecodeLosslessRoundtripFloat32(self, channels):
+    np.random.seed(42)
+    img_np = np.random.uniform(0.0, 1.0, size=(16, 24, channels)).astype(
+        np.float32
+    )
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_jxl = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_jxl.dtype, np.float32)
+      self.assertAllClose(decoded_jxl, img_np, atol=1e-4)
+
+      decoded_image = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_image.dtype, np.float32)
+      self.assertAllClose(decoded_image, img_np, atol=1e-4)
+
+      decoded_explicit = self.evaluate(
+          image_ops.decode_jxl(encoded, channels=channels, dtype=dtypes.float32)
+      )
+      self.assertAllClose(decoded_explicit, img_np, atol=1e-4)
+
+  @parameterized.named_parameters([
+      ("_rgb", 3),
+      ("_rgba", 4),
+      ("_gray", 1),
+  ])
+  def testEncodeDecodeLosslessRoundtripFloat16(self, channels):
+    np.random.seed(42)
+    img_np = np.random.uniform(0.0, 1.0, size=(16, 24, channels)).astype(
+        np.float16
+    )
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_jxl = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_jxl.dtype, np.float16)
+      self.assertAllClose(decoded_jxl, img_np, atol=1e-3)
+
+      decoded_image = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_image.dtype, np.float16)
+      self.assertAllClose(decoded_image, img_np, atol=1e-3)
+
+      decoded_explicit = self.evaluate(
+          image_ops.decode_jxl(encoded, channels=channels, dtype=dtypes.float16)
+      )
+      self.assertAllClose(decoded_explicit, img_np, atol=1e-3)
+
+  def testEncodeDecodeLosslessFloat16Hdr(self):
+    img_np = np.array([[[0.0, 0.5, 1.0], [2.5, 10.0, 64.0]]], dtype=np.float16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_jxl = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_jxl.dtype, np.float16)
+      self.assertAllEqual(decoded_jxl, img_np)
+
+  def testDecodeUint8ToFloat16(self):
+    img_np = np.array([[[0, 128, 255]]], dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_float.dtype, np.float16)
+      expected = np.array([[[0.0, 128.0 / 255.0, 1.0]]], dtype=np.float16)
+      self.assertAllClose(decoded_float, expected, atol=1e-2)
+
+      decoded_jxl_float = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_jxl_float.dtype, np.float16)
+      self.assertAllClose(decoded_jxl_float, expected, atol=1e-2)
+
+  def testDecodeUint16ToFloat16(self):
+    img_np = np.array([[[0, 32767, 65535]]], dtype=np.uint16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_float.dtype, np.float16)
+      expected = np.array([[[0.0, 32767.0 / 65535.0, 1.0]]], dtype=np.float16)
+      self.assertAllClose(decoded_float, expected, atol=1e-3)
+
+      decoded_jxl_float = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float16)
+      )
+      self.assertEqual(decoded_jxl_float.dtype, np.float16)
+      self.assertAllClose(decoded_jxl_float, expected, atol=1e-3)
+
+  def testDecodeUint8ToFloat(self):
+    img_np = np.array([[[0, 128, 255]]], dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_float.dtype, np.float32)
+      expected = np.array([[[0.0, 128.0 / 255.0, 1.0]]], dtype=np.float32)
+      self.assertAllClose(decoded_float, expected, atol=1e-2)
+
+      decoded_jxl_float = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_jxl_float.dtype, np.float32)
+      self.assertAllClose(decoded_jxl_float, expected, atol=1e-2)
+
+  def testDecodeUint16ToFloat(self):
+    img_np = np.array([[[0, 32767, 65535]]], dtype=np.uint16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_float = self.evaluate(
+          image_ops.decode_image(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_float.dtype, np.float32)
+      expected = np.array([[[0.0, 32767.0 / 65535.0, 1.0]]], dtype=np.float32)
+      self.assertAllClose(decoded_float, expected, atol=1e-4)
+
+      decoded_jxl_float = self.evaluate(
+          image_ops.decode_jxl(encoded, dtype=dtypes.float32)
+      )
+      self.assertEqual(decoded_jxl_float.dtype, np.float32)
+      self.assertAllClose(decoded_jxl_float, expected, atol=1e-4)
+
+  def testEncodeLossy(self):
+    x = np.linspace(10, 240, 48, dtype=np.uint8)
+    y = np.linspace(10, 240, 32, dtype=np.uint8)
+    xx, yy = np.meshgrid(x, y)
+    img_np = np.stack([xx, yy, (xx // 2 + yy // 2)], axis=-1).astype(np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=90.0)
+      decoded = image_ops.decode_jxl(encoded, dtype=dtypes.uint8)
+      decoded_val = self.evaluate(decoded)
+      self.assertEqual(decoded_val.shape, img_np.shape)
+      self.assertLess(
+          np.mean(np.abs(decoded_val.astype(float) - img_np.astype(float))), 2.0
+      )
+
+  def testEncodeDefaultQualityIsLossy(self):
+    x = np.linspace(10, 240, 48, dtype=np.uint8)
+    y = np.linspace(10, 240, 32, dtype=np.uint8)
+    xx, yy = np.meshgrid(x, y)
+    img_np = np.stack([xx, yy, (xx // 2 + yy // 2)], axis=-1).astype(np.uint8)
+    with self.cached_session():
+      # The default `quality` of 95.0 selects high-quality lossy compression,
+      # matching the default in `encode_jpeg`.
+      encoded_default = image_ops.encode_jxl(img_np)
+      decoded_default = image_ops.decode_jxl(
+          encoded_default, dtype=dtypes.uint8
+      )
+      decoded_default_val = self.evaluate(decoded_default)
+      self.assertEqual(decoded_default_val.shape, img_np.shape)
+      diff = np.abs(decoded_default_val.astype(float) - img_np.astype(float))
+      self.assertLess(np.mean(diff), 2.0)
+
+      # Explicit quality=95.0 produces the same output as default quality.
+      encoded_95 = image_ops.encode_jxl(img_np, quality=95.0)
+      self.assertEqual(
+          self.evaluate(encoded_default), self.evaluate(encoded_95)
+      )
+
+      # Explicit quality=100.0 selects lossless compression.
+      encoded_100 = image_ops.encode_jxl(img_np, quality=100.0)
+      decoded_100 = image_ops.decode_jxl(encoded_100, dtype=dtypes.uint8)
+      self.assertAllEqual(self.evaluate(decoded_100), img_np)
+
+  def testEncodeQualityControlsSize(self):
+    # Noise is used rather than a smooth gradient: gradients compress better in
+    # lossless modular mode than in lossy VarDCT mode, which inverts the
+    # expected size ordering.
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(64, 64, 3), dtype=np.uint8)
+    with self.cached_session():
+      sizes = [
+          len(self.evaluate(image_ops.encode_jxl(img_np, quality=quality)))
+          for quality in (100.0, 90.0, 50.0)
+      ]
+    # Lower quality means a larger butteraugli distance, hence a smaller file.
+    self.assertGreater(sizes[0], sizes[1])
+    self.assertGreater(sizes[1], sizes[2])
+
+  def testEncodeQualityOutOfRange(self):
+    img_np = np.zeros((8, 8, 3), dtype=np.uint8)
+    with self.cached_session():
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "quality should be in .0.0, 100.0."
+      ):
+        self.evaluate(image_ops.encode_jxl(img_np, quality=101.0))
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, "quality should be in .0.0, 100.0."
+      ):
+        self.evaluate(image_ops.encode_jxl(img_np, quality=-1.0))
+
+  def testEncodeBatched(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 256, size=(2, 32, 48, 3), dtype=np.uint8)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      encoded_val = self.evaluate(encoded)
+      self.assertEqual(encoded_val.shape, (2,))
+      decoded0 = self.evaluate(image_ops.decode_jxl(encoded_val[0]))
+      decoded1 = self.evaluate(image_ops.decode_jxl(encoded_val[1]))
+      self.assertAllEqual(decoded0, img_np[0])
+      self.assertAllEqual(decoded1, img_np[1])
+
+  def testEncodeBatchedUint16(self):
+    np.random.seed(42)
+    img_np = np.random.randint(0, 65536, size=(2, 16, 24, 3), dtype=np.uint16)
+    with self.cached_session():
+      encoded = image_ops.encode_jxl(img_np, quality=100.0)
+      encoded_val = self.evaluate(encoded)
+      self.assertEqual(encoded_val.shape, (2,))
+      decoded0 = self.evaluate(
+          image_ops.decode_jxl(encoded_val[0], dtype=dtypes.uint16)
+      )
+      decoded1 = self.evaluate(
+          image_ops.decode_jxl(encoded_val[1], dtype=dtypes.uint16)
+      )
+      self.assertAllEqual(decoded0, img_np[0])
+      self.assertAllEqual(decoded1, img_np[1])
 
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
