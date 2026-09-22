@@ -762,6 +762,13 @@ def _assert_dilated_depthwise_fits(input, filter, rate, padding, data_format):
   Returns:
     `input`, with a control dependency on the shape assertion.
   """
+  # A rank other than 4 is invalid for the op itself; leave it to the op to
+  # report, rather than slicing `array_ops.shape` below on a rank we cannot
+  # interpret.
+  if ((input.shape.rank is not None and input.shape.rank != 4) or
+      (filter.shape.rank is not None and filter.shape.rank != 4)):
+    return input
+
   channels_first = (data_format or "").startswith("NC")
   if isinstance(padding, str):
     pads = [0, 0]
@@ -780,11 +787,9 @@ def _assert_dilated_depthwise_fits(input, filter, rate, padding, data_format):
   f_spatial = f_shape[0:2]
 
   pads_tensor = ops.convert_to_tensor(pads, dtype=in_spatial.dtype)
-  available = math_ops.add(in_spatial, pads_tensor)
-  dilated = math_ops.add(
-      math_ops.multiply(
-          math_ops.subtract(f_spatial, 1),
-          ops.convert_to_tensor(rate, dtype=f_spatial.dtype)), 1)
+  available = in_spatial + pads_tensor
+  dilated = (f_spatial - 1) * ops.convert_to_tensor(
+      rate, dtype=f_spatial.dtype) + 1
   check = check_ops.assert_greater_equal(
       available,
       dilated,
