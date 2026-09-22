@@ -866,6 +866,99 @@ ENTRY %module {
   }
 }
 
+// Counts the send to send-done latency queries per send-done.
+class SendDoneQueryCountingLatencyEstimator
+    : public ApproximateLatencyEstimator {
+ public:
+  TimeCost GetLatencyBetween(const HloGraphNode& from,
+                             const HloGraphNode& target) const override {
+    if (from.GetOpcode() == HloOpcode::kSend &&
+        target.GetOpcode() == HloOpcode::kSendDone) {
+      ++queries_[&target.GetInstr()];
+    }
+    return ApproximateLatencyEstimator::GetLatencyBetween(from, target);
+  }
+  int Queries(const HloInstruction* send_done) const {
+    auto it = queries_.find(send_done);
+    return it == queries_.end() ? 0 : it->second;
+  }
+
+ private:
+  mutable absl::flat_hash_map<const HloInstruction*, int> queries_;
+};
+
+TEST_F(LatencyHidingSchedulerTest, HostSendLatencyIsEstimatedWhenGraphIsBuilt) {
+  // Three host send-dones sit in the ready set together, so the comparator
+  // asks ShouldDelaySendHostDone about each of them many times per search.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  p0 = f32[8,256,256]{2,1,0} parameter(0)
+  after-all.1 = token[] after-all()
+  after-all.2 = token[] after-all()
+  after-all.3 = token[] after-all()
+  send.1 = (f32[8,256,256]{2,1,0}, u32[], token[]) send(p0, after-all.1), channel_id=1, is_host_transfer=true
+  send-done.1 = token[] send-done(send.1), channel_id=1, is_host_transfer=true
+  send.2 = (f32[8,256,256]{2,1,0}, u32[], token[]) send(p0, after-all.2), channel_id=2, is_host_transfer=true
+  send-done.2 = token[] send-done(send.2), channel_id=2, is_host_transfer=true
+  send.3 = (f32[8,256,256]{2,1,0}, u32[], token[]) send(p0, after-all.3), channel_id=3, is_host_transfer=true
+  send-done.3 = token[] send-done(send.3), channel_id=3, is_host_transfer=true
+  ROOT root = (token[], token[], token[]) tuple(send-done.1, send-done.2, send-done.3)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseHloText(hlo_string));
+  auto counting_estimator =
+      std::make_unique<SendDoneQueryCountingLatencyEstimator>();
+  const SendDoneQueryCountingLatencyEstimator* estimator =
+      counting_estimator.get();
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.schedule_send_recvs = true;
+  ASSERT_OK_AND_ASSIGN(auto setup,
+                       SetupScheduler(module.get(), sched_config,
+                                      std::move(counting_estimator)));
+  std::shared_ptr<SchedulerCore> scheduler_core = std::move(setup.second);
+  ASSERT_OK(scheduler_core->InitializeScheduler(module.get()));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<SchedulerCore::SchedulingState> state,
+      scheduler_core->MakeSchedulingState(module->entry_computation()));
+  const DefaultSchedulerCore::SchedulingState* default_state =
+      dynamic_cast<DefaultSchedulerCore::SchedulingState*>(state.get());
+  ASSERT_NE(default_state, nullptr);
+  const HloScheduleGraph& graph = *default_state->sched_graph;
+
+  const std::vector<const HloInstruction*> send_dones = {
+      FindInstruction(module.get(), "send-done.1"),
+      FindInstruction(module.get(), "send-done.2"),
+      FindInstruction(module.get(), "send-done.3")};
+  absl::flat_hash_map<const HloInstruction*, int> queries_after_build;
+  for (const HloInstruction* send_done : send_dones) {
+    ASSERT_NE(send_done, nullptr);
+    queries_after_build[send_done] = estimator->Queries(send_done);
+    EXPECT_GE(queries_after_build[send_done], 1) << send_done->name();
+    const HloGraphNode& node = graph.GetNode(send_done);
+    const HloGraphNode& send = graph.GetNode(send_done->operand(0));
+    EXPECT_EQ(node.GetHostSend(), &send) << send_done->name();
+    EXPECT_EQ(node.GetHostSendLatency(),
+              ApproximateLatencyEstimator().GetLatencyBetween(send, node))
+        << send_done->name();
+  }
+
+  // Scheduling, and scheduling again on the same state, make no further
+  // queries for the pairs.
+  for (int round = 0; round < 2; ++round) {
+    ASSERT_OK_AND_ASSIGN(std::vector<HloInstruction*> sequence,
+                         scheduler_core->ScheduleComputation(
+                             module->entry_computation(), state));
+    ASSERT_EQ(sequence.size(),
+              module->entry_computation()->instruction_count());
+    for (const HloInstruction* send_done : send_dones) {
+      EXPECT_EQ(estimator->Queries(send_done), queries_after_build[send_done])
+          << send_done->name() << " round " << round;
+    }
+  }
+}
+
 TEST_F(LatencyHidingSchedulerTest, AllReduceAsyncBalance) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
