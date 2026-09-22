@@ -1150,7 +1150,7 @@ cuda_py_strict_test(
     srcs = ["remote_test.py"],
     exec_properties = select({
         # copybara:uncomment_begin(google-only)
-        # "//tools/cpp:msan_build": {"mem": "30g"},
+        # "//tools/cpp:msan_build": {"mem": "28g"},
         # copybara:uncomment_end
         "//conditions:default": None,
     }),
