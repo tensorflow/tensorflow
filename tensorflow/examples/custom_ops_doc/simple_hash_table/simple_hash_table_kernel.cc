@@ -333,19 +333,19 @@ class SimpleHashTableImportOpKernel : public OpKernel {
           .TypeConstraint<value_dtype>("value_dtype"),        \
       SimpleHashTableImportOpKernel<key_dtype, value_dtype>);
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int32, tstring);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
+REGISTER_KERNEL(int32_t, tstring);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, tstring);
 #undef REGISTER_KERNEL
