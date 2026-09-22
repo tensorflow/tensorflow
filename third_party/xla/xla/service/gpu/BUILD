@@ -507,6 +507,7 @@ cc_library(
         "//xla/backends/gpu/codegen/llvm:llvm_emitter",
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:xtile_compiler",
+        "//xla/backends/gpu/ffi:ffi_attributes_from_backend_config",
         "//xla/backends/gpu/libraries/native_custom_call_thunks:native_custom_call_emitter_context",
         "//xla/backends/gpu/libraries/native_custom_call_thunks:native_custom_call_handler_registry",
         "//xla/backends/gpu/runtime:all_gather_thunk",
