@@ -12,7 +12,7 @@ fusion {
 // CHECK-LABEL:  xtile.entry_func @triton_fn(
 // CHECK-SAME:     %[[ARG0:.*]]: memref<64x16xf32>,
 // CHECK-SAME:     %[[ARG1:.*]]: memref<1x16x64xf32, #xtile.layout<[1, 0, 2]>>,
-// CHECK-SAME:     %[[ARG2:.*]]: index)
+// CHECK-SAME:     %[[ARG2:.*]]: index {xla.range = [0 : index, 63 : index]})
 // CHECK:          %[[C0:.*]] = arith.constant 0 : index
 // CHECK:          %[[INDEX0:.*]] = xla.apply_indexing #indexing_map(%[[ARG2]])
 // CHECK:          %[[INDEX1:.*]] = xla.apply_indexing #indexing_map1(%[[ARG2]])

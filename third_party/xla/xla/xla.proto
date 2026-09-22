@@ -925,19 +925,39 @@ message DebugOptions {
   // Default is 0 (disabled).
   optional int32 xla_gpu_execution_progress_tracking = 457;
 
-  // Timeout to terminate XLA:GPU execution if it doesn't complete successfully.
+  // Timeout to terminate XLA:GPU execution if host execution gets stuck.
   //
-  // If XLA:GPU executable doesn't complete it's execution within some
-  // reasonable time frame it probably means that it deadlocked in one of the
-  // GPU kernels or collective communication. It is nearly impossible to recover
-  // from such deadlock, and it is typically better to kill the current process
-  // and let the higher level job scheduling to retry the run.
+  // If host-side execution of an XLA:GPU executable does not complete within a
+  // reasonable time, it may be deadlocked. Recovering from such a deadlock is
+  // difficult, so it is typically better to terminate the current process and
+  // let the higher-level job scheduler retry the run.
   //
   // Parses a duration string consisting of a possibly signed sequence of
   // decimal numbers, each with an optional fractional part and a unit
-  // suffix. The valid suffixes are "ns", "us" "ms", "s", "m", and "h".
+  // suffix. The valid suffixes are "ns", "us", "ms", "s", "m", and "h".
   // Simple examples include "300ms", "-1.5h", and "2h45m". Default is "inf".
+  //
+  // IMPORTANT: This timeout covers only the host side of XLA:GPU execution,
+  // including thunk execution, work submission to GPU streams, and any
+  // synchronization required by host execution. The host typically runs far
+  // ahead of the device, so this does not guarantee that the GPU itself
+  // finishes execution within the configured timeout.
   optional string xla_gpu_execution_terminate_timeout = 451;
+
+  // Timeout to terminate XLA:GPU execution if device work does not complete.
+  //
+  // Similar in spirit to xla_gpu_execution_terminate_timeout, but covers device
+  // work after host dispatch. It remains active after host execution finishes
+  // and does not require the host thread to wait for device completion.
+  //
+  // Uses the same duration string format as
+  // xla_gpu_execution_terminate_timeout. Default is "inf" (disabled).
+  //
+  // IMPORTANT: The timeout measures wall time from guard creation on the host.
+  // Because the host can run ahead of the device, this includes time waiting
+  // behind previously queued work. It is not a limit on the executable's actual
+  // time running on the device.
+  optional string xla_gpu_device_execution_terminate_timeout = 550;
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
@@ -1875,7 +1895,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 550
+  // Next id: 551
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
