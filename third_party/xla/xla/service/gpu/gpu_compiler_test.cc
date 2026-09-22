@@ -92,15 +92,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
-#include "xla/tsl/lib/monitoring/collected_metrics.h"
-#include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
@@ -108,7 +104,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/regexp.h"
 
 namespace xla {
@@ -118,10 +113,7 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::AssertionResult;
-using ::testing::AtLeast;
-using ::testing::EndsWith;
 using ::testing::HasSubstr;
-using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
@@ -1909,7 +1901,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
       p_multimem = s32[1] parameter(0)
       p_non_coll = s32[1] parameter(1)
 
-      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_symmetric_memory_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", frontend_attributes={operands_memory_spaces="{0:1}",results_memory_spaces="{0:1}"}, api_version=API_VERSION_TYPED_FFI
       res_multimem = s32[1] get-tuple-element(cc_multimem), index=0
 
       cc_non_coll = (s32[1]{0}) custom-call(p_non_coll), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
@@ -1933,7 +1925,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // Multimem input parameters are copied to S1
     // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_MULTI]])
 
-    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}backend_config={xla_symmetric_memory_parameters = "0"}
+    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}results_memory_spaces={0:1}
     // CHECK-DAG: [[CC_NON:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NON]])
 
     // Extracting from the 1-element tuples returned by custom calls (all index=0)
@@ -3609,6 +3601,42 @@ ENTRY main {
   auto it = extra_options.find("xla_is_host_offload");
   ASSERT_NE(it, extra_options.end());
   EXPECT_EQ(it->second, "true");
+}
+
+TEST_F(GpuCompilerTest, EarlyExitAfterConfigAssignment) {
+  absl::string_view hlo_text = R"hlo(
+    HloModule gemm
+
+    ENTRY main {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)hlo";
+
+  AotCompilationOptions aot_options(compiler()->PlatformId());
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config()));
+  aot_options.set_early_exit_point(
+      AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
+
+  ASSERT_EQ(aot_results.size(), 1);
+  const HloModule* optimized_module =
+      absl::down_cast<CompiledModule*>(aot_results[0].get())
+          ->optimized_module();
+  ASSERT_NE(optimized_module, nullptr);
+
+  // Make sure both the pre-autotune and autotuner passes are run.
+  EXPECT_THAT(optimized_module, HasExpectedPasses(std::vector<std::string>{
+                                    "layout-assignment", "cublas-gemm-rewriter",
+                                    "config-assigner"}));
 }
 
 }  // namespace gpu

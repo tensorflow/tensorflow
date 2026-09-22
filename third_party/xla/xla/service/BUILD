@@ -1112,6 +1112,8 @@ cc_library(
         ":backend",
         ":channel_tracker",
         ":compilation_cache",
+        ":compiled_module",
+        ":compiled_module_base",
         ":compiler",
         ":computation_layout",
         ":computation_placer",
@@ -1144,8 +1146,7 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1389,22 +1390,24 @@ cc_library(
     srcs = ["compile_only_service.cc"],
     hdrs = ["compile_only_service.h"],
     deps = [
-        ":backend",
+        ":compiled_module",
         ":compiler",
-        ":computation_layout",
+        ":compiler_base",
         ":dump",
+        ":hlo_module_config",
         ":platform_util",
         ":service",
-        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:status_macros",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:platform",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -1530,6 +1533,28 @@ cc_library(
 )
 
 cc_library(
+    name = "executable_base",
+    srcs = ["executable_base.cc"],
+    hdrs = [
+        "executable_base.h",
+    ],
+    deps = [
+        ":computation_layout",
+        ":hlo_module_config",
+        ":hlo_proto_cc",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/client:executable_build_options",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = [
@@ -1538,8 +1563,7 @@ cc_library(
     ],
     deps = [
         ":buffer_assignment",
-        ":computation_layout",
-        ":hlo_module_config",
+        ":executable_base",
         ":hlo_proto_cc",
         ":maybe_owning_device_address",
         ":service_executable_run_options",
@@ -1561,9 +1585,7 @@ cc_library(
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1571,8 +1593,6 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -1594,12 +1614,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "compiled_module_base",
+    hdrs = ["compiled_module_base.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "compiled_module",
     hdrs = ["compiled_module.h"],
     deps = [
+        ":compiled_module_base",
         ":executable",
         "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/pjrt:compiled_memory_stats",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/abi:executable_abi_version",
@@ -1625,6 +1654,34 @@ cc_library(
 )
 
 cc_library(
+    name = "compiler_base",
+    srcs = ["compiler_base.cc"],
+    hdrs = ["compiler_base.h"],
+    visibility = internal_visibility([
+        "//xla/internal:hwi_internal",
+        "//xla/backends/gpu/ffi:__pkg__",
+        "//xla/backends/gpu/runtime:__subpackages__",
+        "//xla/backends/gpu/tests:__pkg__",
+        "//xla/backends/gpu/transforms:__subpackages__",
+        "//third_party/pathways/configuration:__subpackages__",
+        "//learning/brain/google/xla:__pkg__",
+    ]),
+    deps = [
+        ":compiled_module_base",
+        ":computation_placer",
+        ":executable_base",
+        ":hlo_module_config",
+        "//xla:debug_options_flags",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
@@ -1636,20 +1693,21 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
+        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",
         ":compiled_module",
-        ":computation_placer",
+        ":compiler_base",
         ":executable",
+        ":executable_base",
         ":gpu_topology",
         ":hlo_cost_analysis",
-        ":hlo_module_config",
         ":metrics_hook_interface",
-        "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor:device_address_allocator",
@@ -1664,6 +1722,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1708,8 +1767,9 @@ cc_library(
     testonly = True,
     hdrs = ["mock_compiler.h"],
     deps = [
-        ":compiled_module",
+        ":compiled_module_base",
         ":compiler",
+        ":compiler_base",
         ":executable",
         ":hlo_cost_analysis",
         "//xla/client:executable_build_options",
@@ -1988,8 +2048,9 @@ cc_library(
     srcs = ["hlo_module_util.cc"],
     hdrs = ["hlo_module_util.h"],
     deps = [
-        ":compiler",
+        ":compiler_base",
         ":computation_layout",
+        ":device_assignment",
         ":hlo_module_config",
         ":hlo_verifier",
         "//xla:debug_options_flags",
@@ -1999,8 +2060,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

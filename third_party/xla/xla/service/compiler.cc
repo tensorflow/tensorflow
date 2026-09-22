@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/debug_options_flags.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -47,19 +47,6 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
     const HloInstruction& hlo, se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return nullptr;
-}
-
-// Define a default version where metadata is not used.
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-Compiler::CompileAheadOfTime(
-    std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
-    std::unique_ptr<AotCompilationMetadata>* metadata) {
-  if (metadata != nullptr) {
-    return Unimplemented(
-        "Populating AotCompilationMetadata is not implemented on this "
-        "compiler.");
-  }
-  return CompileAheadOfTime(std::move(hlo_module), options);
 }
 
 /* static */ absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>*
@@ -109,8 +96,5 @@ std::unique_ptr<MetricsHookInterface> Compiler::CreateMetricsHook(
     absl::string_view hlo_module_name) const {
   return nullptr;
 }
-
-AotCompilationOptions::AotCompilationOptions()
-    : debug_options_(GetDebugOptionsFromFlags()) {}
 
 }  // namespace xla

@@ -37,7 +37,10 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/literal.h"
 #include "xla/service/batchnorm_expander.h"
+#include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/dynamic_dimension_inference.h"
@@ -49,8 +52,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -159,10 +160,10 @@ InterpreterCompiler::Compile(std::unique_ptr<HloModule> hlo_module,
   return std::move(ret);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>
 InterpreterCompiler::CompileAheadOfTime(
     std::unique_ptr<HloModule> hlo_module,
-    const AotCompilationOptions& aot_options) {
+    const AotCompilationOptionsBase& aot_options) {
   return absl::InvalidArgumentError(
       "AOT compilation not supported on Interpreter");
 }

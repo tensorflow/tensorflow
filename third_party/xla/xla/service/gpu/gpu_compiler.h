@@ -41,7 +41,9 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -87,9 +89,9 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                     AotCompilationOptions const& options) override;
+                     AotCompilationOptionsBase const& options) override;
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 

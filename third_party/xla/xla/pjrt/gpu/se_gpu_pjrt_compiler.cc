@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu_topology.h"
@@ -68,8 +71,6 @@ limitations under the License.
 #include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -261,9 +262,9 @@ StreamExecutorGpuCompiler::Compile(
   }
 
   if (IsEarlyExitCompilation(options)) {
-    LOG_EVERY_N(INFO, 60)
-        << "Early exit compilation is enabled. Note that this is always "
-           "a deviceless compilation.";
+    LOG_EVERY_N(INFO, 60) << "Early exit after layout assignment is enabled. "
+                             "Note that this is always "
+                             "a deviceless compilation.";
   } else if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
@@ -324,21 +325,47 @@ StreamExecutorGpuCompiler::Compile(
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
-  if (IsEarlyExitCompilation(options)) {
-    aot_options.set_early_exit_point(
-        AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
-    aot_options.set_executor(nullptr);
-  } else if (client != nullptr) {
+  if (client != nullptr) {
     ABSL_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                      GetStreamExecutor(client));
     aot_options.set_executor(stream_executor);
+  }
+  if (IsEarlyExitCompilation(options)) {
+    // debug_options are always set if IsEarlyExitCompilation is true, either
+    // because the debug_options were explicitly set in the input
+    // CompileOptions, or because we set them in the input options in the
+    // previous call to ApplyAllOptionOverrides.
+    TF_RET_CHECK(options.executable_build_options.has_debug_options());
+    bool early_exit_with_layouts =
+        options.executable_build_options.debug_options()
+            .xla_early_exit_with_layouts();
+    DebugOptions::EarlyExitPoint early_exit =
+        options.executable_build_options.debug_options()
+            .xla_gpu_experimental_early_exit();
+    if (early_exit_with_layouts &&
+        early_exit != DebugOptions::EARLY_EXIT_POINT_UNSET) {
+      return absl::InvalidArgumentError(
+          "xla_early_exit_with_layouts and xla_gpu_experimental_early_exit are "
+          "mutually exclusive.");
+    }
+
+    if (early_exit_with_layouts) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+      // Early exit after layout assignment is a deviceless compilation.
+      aot_options.set_executor(nullptr);
+    } else if (early_exit ==
+               DebugOptions::EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT) {
+      aot_options.set_early_exit_point(
+          AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+    }
   }
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
   ABSL_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   if (aot_results.size() > 1) {
     return absl::UnimplementedError(
@@ -347,8 +374,10 @@ StreamExecutorGpuCompiler::Compile(
   }
   return std::make_unique<StreamExecutorExecutable>(
       pjrt_platform_id_, std::move(input_options),
-      aot_results.empty() ? nullptr : std::move(aot_results[0]), num_replicas,
-      num_partitions, name, fingerprint,
+      aot_results.empty() ? nullptr
+                          : absl::WrapUnique(absl::down_cast<CompiledModule*>(
+                                aot_results[0].release())),
+      num_replicas, num_partitions, name, fingerprint,
       /*default_memory_kind=*/StreamExecutorGpuHbmMemorySpace::kKind);
 }
 

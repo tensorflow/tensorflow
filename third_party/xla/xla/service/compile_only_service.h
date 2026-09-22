@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 #define XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/service/backend.h"
+#include "xla/literal.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/service.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

@@ -15,24 +15,26 @@ limitations under the License.
 
 #include "xla/service/compile_only_service.h"
 
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/status/status_macros.h"
-#include "absl/strings/str_cat.h"
-#include "xla/debug_options_flags.h"
-#include "xla/service/backend.h"
+#include "absl/status/statusor.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/computation_layout.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/dump.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -133,8 +135,16 @@ CompileOnlyService::CompileAheadOfTime(
       HloModule::CreateFromProto(computation.computation, *module_config));
   DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_module), options,
-                                       metadata);
+  ABSL_ASSIGN_OR_RETURN(
+      auto compiled_module_bases,
+      compiler_->CompileAheadOfTime(std::move(hlo_module), options, metadata));
+  std::vector<std::unique_ptr<CompiledModule>> compiled_modules;
+  compiled_modules.reserve(compiled_module_bases.size());
+  for (auto& compiled_module : compiled_module_bases) {
+    compiled_modules.emplace_back(
+        absl::down_cast<CompiledModule*>(compiled_module.release()));
+  }
+  return compiled_modules;
 }
 
 }  // namespace xla

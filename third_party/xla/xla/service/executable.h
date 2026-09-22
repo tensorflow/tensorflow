@@ -22,21 +22,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/computation_layout.h"
+#include "xla/service/executable_base.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -260,13 +255,12 @@ class ExecutionOutput {
 
 // A given platform's compiler will produce an Executable -- this is a uniform
 // interface that is used for launching compiled programs across platforms.
-class Executable {
+class Executable : public ExecutableBase {
  public:
   // The hlo_module parameter may be nullptr, if the given executable type
   // doesn't need it for execution.
   explicit Executable(std::shared_ptr<HloModule> hlo_module)
-      : hlo_module_(std::move(hlo_module)) {}
-  virtual ~Executable() = default;
+      : ExecutableBase(std::move(hlo_module)) {}
 
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
@@ -331,74 +325,11 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
-  HloModule& module() const {
-    CHECK(hlo_module_ != nullptr);
-    return *hlo_module_;
-  }
-  std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
-
-  bool has_module() const { return hlo_module_ != nullptr; }
-
-  const HloModuleConfig& module_config() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->config();
-  }
-
-  // The shape (including layout) that results from this execution. This is the
-  // shape of the DeviceAddressBase result value in ExecuteOnStream above.
-  virtual Shape result_shape() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->config().entry_computation_layout().result_shape();
-  }
-
-  virtual ComputationLayout compute_computation_layout() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->compute_computation_layout();
-  }
-
-  virtual absl::string_view name() const {
-    if (has_module()) {
-      return module().name();
-    }
-    return "<unknown executable>";
-  }
-
   // Returns the size of the executable in bytes. Returns -1 if this query is
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
   virtual int64_t SizeOfGeneratedCodeInBytes() const;
-
-  // Dumping helpers.
-  void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
-    // Despite the mutex lock, this function is NOT thread-safe.
-    // The mutex is needed for the lazy HLO module loading in `hlo_proto()`.
-    // Since both `hlo_proto()` and `buffer_assignment_proto()` return a
-    // pointer to hlo_proto_, having the mutex is not enough to make this
-    // function thread-safe.
-    absl::MutexLock lock(hlo_proto_mutex_);
-    hlo_proto_ = std::move(hlo_proto);
-  }
-  bool dumping_snapshot() const {
-    return has_module()
-               ? module_config().debug_options().xla_dump_hlo_snapshots()
-               : false;
-  }
-
-  HloProto const* hlo_proto() const {
-    absl::MutexLock lock(hlo_proto_mutex_);
-    if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
-      *hlo_proto_->mutable_hlo_module() = module().ToProto();
-    }
-    return hlo_proto_.get();
-  }
-
-  const BufferAssignmentProto* buffer_assignment_proto() const {
-    absl::MutexLock lock(hlo_proto_mutex_);
-    return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
-               ? &hlo_proto_->buffer_assignment()
-               : nullptr;
-  }
 
   // Returns a map of kernel name to relevant kernel stats.
   const ModuleStats& module_stats() { return module_stats_; }
@@ -441,28 +372,12 @@ class Executable {
   }
 
  private:
-  // HloModule this was compiled from. BufferAssignment keeps pointers to
-  // HloInstructions owned by the HloModule so we need to keep the HloModule
-  // around if we keep the BufferAssignment around.
-  //
-  // This member may be nullptr, if the given executable type doesn't need it
-  // for execution.
-  std::shared_ptr<HloModule> hlo_module_;
-
   // Execution count, used to generate a unique filename for each dumped
   // execution.
   int64_t execution_count_ = 0;
 
   // A map from kernel name to relevant kernel stats.
   ModuleStats module_stats_;
-
-  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
-  // This field may also be only partially set: if only
-  // hlo_proto_->buffer_assignment is set and hlo_proto_->hlo_module isn't, the
-  // hlo_module proto will be computed on the fly when requested with
-  // hlo_proto(). This avoids wasting CPU and memory if the proto isn't needed.
-  std::unique_ptr<HloProto> hlo_proto_ ABSL_GUARDED_BY(hlo_proto_mutex_);
-  mutable absl::Mutex hlo_proto_mutex_;
 };
 
 }  // namespace xla

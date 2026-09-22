@@ -766,6 +766,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         &collective_memory,
+        run_options->run_options().custom_options(),
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};

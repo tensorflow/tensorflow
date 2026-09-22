@@ -24,8 +24,9 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/platform.h"
@@ -50,10 +51,10 @@ class MockCompiler : public Compiler {
                std::vector<se::StreamExecutor*> stream_exec,
                const CompileOptions& options),
               (override));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>,
               CompileAheadOfTime,
               (std::unique_ptr<HloModule> module,
-               const AotCompilationOptions& options),
+               const AotCompilationOptionsBase& options),
               (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
               (const, override));

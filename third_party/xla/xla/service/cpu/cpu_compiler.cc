@@ -174,7 +174,9 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/change_op_data_type.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/conditional_to_select.h"
 #include "xla/service/control_dep_rewriter.h"
@@ -526,11 +528,10 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // - Improving numerical properties by hierarchically performing reductions.
     // - Improving performance by allowing parallelism.
     // YNNPACK doesn't need TreeReductionRewriter to do either of these.
-    pipeline->AddPass<TreeReductionRewriter>(
-        [](const HloInstruction* hlo) {
-          return !(IsInstructionPreferredByYnn(hlo) &&
-                   IsReduceLikeOpSupportedByYnn(hlo));
-        });
+    pipeline->AddPass<TreeReductionRewriter>([](const HloInstruction* hlo) {
+      return !(IsInstructionPreferredByYnn(hlo) &&
+               IsReduceLikeOpSupportedByYnn(hlo));
+    });
   } else {
     pipeline->AddPass<TreeReductionRewriter>();
   }
@@ -1187,9 +1188,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   return pipeline.Run(module).status();
 }
 
-absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
-                                       llvm::TargetMachine* target_machine,
-                                       const CompileOptions& compile_options) {
+absl::Status CpuCompiler::RunHloPassesInternal(
+    HloModule* module, bool is_aot_compile, llvm::TargetMachine* target_machine,
+    const CompileOptions& compile_options) {
   TargetMachineFeatures target_machine_features(target_machine);
 
   const bool has_uploader =
@@ -1373,9 +1374,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
                                        target_machine_options));
   }
 
-  ABSL_RETURN_IF_ERROR(RunHloPasses(module.get(), options.is_aot_compile,
-                               jit_target_machine.get(),
-                               /*compile_options=*/options));
+  ABSL_RETURN_IF_ERROR(RunHloPassesInternal(module.get(), options.is_aot_compile,
+                                       jit_target_machine.get(),
+                                       /*compile_options=*/options));
   return std::move(module);
 }
 
@@ -2219,9 +2220,12 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                                const AotCompilationOptions& aot_options) {
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModuleBase>>>
+CpuCompiler::CompileAheadOfTime(
+    std::unique_ptr<HloModule> hlo_module,
+    const AotCompilationOptionsBase& aot_options_base) {
+  auto& aot_options =
+      absl::down_cast<const CpuAotCompilationOptions&>(aot_options_base);
   auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
       hlo_module->config().debug_options().xla_backend_extra_options());
   VlogMaxIsa(hlo_module->config().debug_options().xla_cpu_max_isa());
@@ -2283,15 +2287,15 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   std::unique_ptr<llvm::TargetMachine> target_machine =
       target_machine_builder();
 
-  std::vector<std::unique_ptr<CompiledModule>> results;
+  std::vector<std::unique_ptr<CompiledModuleBase>> results;
   VLOG(1) << "Compiling ahead-of-time: " << hlo_module->name();
   if (hlo_module->has_schedule()) {
     return results;
   }
 
-  ABSL_RETURN_IF_ERROR(RunHloPasses(hlo_module.get(), /*is_aot_compile=*/true,
-                               target_machine.get(),
-                               /*dummy*/ CompileOptions{}));
+  ABSL_RETURN_IF_ERROR(RunHloPassesInternal(
+      hlo_module.get(), /*is_aot_compile=*/true, target_machine.get(),
+      /*dummy*/ CompileOptions{}));
 
   ABSL_ASSIGN_OR_RETURN(
       results.emplace_back(),

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -79,12 +81,13 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
       GetSingleDeviceGpuTopology("", gpu_target_config()));
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                       aot_results[0]->SerializeAsString());
+                       absl::down_cast<CompiledModule*>(aot_results[0].get())
+                           ->SerializeAsString());
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompiledModule> aot_result,
       compiler()->LoadAotCompilationResult(serialized_aot_result));
@@ -120,12 +123,13 @@ TEST_F(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
       GetSingleDeviceGpuTopology("", gpu_target_config()));
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                       aot_results[0]->SerializeAsString());
+                       absl::down_cast<CompiledModule*>(aot_results[0].get())
+                           ->SerializeAsString());
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompiledModule> aot_result,
       compiler()->LoadAotCompilationResult(serialized_aot_result));
@@ -225,12 +229,13 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
       GetSingleDeviceGpuTopology("", gpu_target_config()));
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                       aot_results[0]->SerializeAsString());
+                       absl::down_cast<CompiledModule*>(aot_results[0].get())
+                           ->SerializeAsString());
 
   // Load and execute via PjRt test runner.
   ExecutableAndOptionsProto proto;

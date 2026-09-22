@@ -32,16 +32,15 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/compiler.h"
+#include "xla/service/compiler_base.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -124,8 +123,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
     absl::string_view hlo_file, const DebugOptions& debug_options) {
   HloProto proto;
-  ABSL_RETURN_IF_ERROR(
-      tsl::ReadTextProto(tsl::Env::Default(), std::string(hlo_file), &proto));
+  ABSL_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), hlo_file, &proto));
   return CreateModuleFromProto(proto.hlo_module(), debug_options);
 }
 
@@ -147,8 +145,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleBinaryProtofile(
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
     absl::string_view hlo_file, const DebugOptions& debug_options) {
   HloModuleProto module_proto;
-  ABSL_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), std::string(hlo_file),
-                                     &module_proto));
+  ABSL_RETURN_IF_ERROR(
+      tsl::ReadTextProto(tsl::Env::Default(), hlo_file, &module_proto));
 
   ABSL_ASSIGN_OR_RETURN(
       HloModuleConfig module_config,
@@ -163,7 +161,8 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options, int default_num_replicas,
-    std::optional<int> num_threads, const AotCompilationOptions* aot_options) {
+    std::optional<int> num_threads,
+    const AotCompilationOptionsBase* aot_options) {
   auto config = std::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();

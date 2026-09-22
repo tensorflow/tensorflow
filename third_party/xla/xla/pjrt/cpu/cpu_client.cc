@@ -21,8 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -67,7 +65,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
@@ -81,7 +78,7 @@ limitations under the License.
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
-#include "xla/pjrt/host_to_device_transfer_manager.h"
+#include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -96,13 +93,15 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/utils.h"
-#include "xla/primitive_util.h"
+#include "xla/runtime/chip_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -121,7 +120,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/shape.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -135,7 +133,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/setround.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -372,7 +369,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
       std::move(allocator), std::move(options.collectives), num_threads,
       options.asynchronous, options.max_transpose_threads,
       std::move(options.customize_hlo_module_config), cpu_device_count,
-      options.max_inflight_computations_per_device);
+      options.max_inflight_computations_per_device, options.intra_op_device);
 
   return CreatePjRtCpuClient(std::move(raw_client), std::move(topology),
                              options.process_id);
@@ -441,7 +438,8 @@ PjRtCpuRawClient::PjRtCpuRawClient(
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
     bool asynchronous, int max_transpose_threads,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-    int cpu_device_count, int max_inflight_computations)
+    int cpu_device_count, int max_inflight_computations,
+    const Eigen::ThreadPoolDevice* intra_op_device)
     : local_device_states_(
           MakeLocalDeviceStates(cpu_device_count, max_inflight_computations)),
       allocator_(std::move(allocator)),
@@ -451,12 +449,18 @@ PjRtCpuRawClient::PjRtCpuRawClient(
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       customize_hlo_module_config_(std::move(customize_hlo_module_config)),
-      eigen_intraop_pool_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), GetThreadOptions(), "XLAEigen",
-          std::min(num_threads, kMaxIntraOpThreads))),
-      eigen_intraop_device_(
-          new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
-                                      eigen_intraop_pool_->NumThreads())),
+      eigen_intraop_pool_(intra_op_device == nullptr
+                              ? std::make_unique<tsl::thread::ThreadPool>(
+                                    tsl::Env::Default(), GetThreadOptions(),
+                                    "XLAEigen",
+                                    std::min(num_threads, kMaxIntraOpThreads))
+                              : std::unique_ptr<tsl::thread::ThreadPool>()),
+      eigen_intraop_device_(intra_op_device == nullptr
+                                ? std::make_unique<Eigen::ThreadPoolDevice>(
+                                      eigen_intraop_pool_->AsEigenThreadPool(),
+                                      eigen_intraop_pool_->NumThreads())
+                                : std::unique_ptr<Eigen::ThreadPoolDevice>()),
+      custom_intraop_device_(intra_op_device),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           tsl::Env::Default(), "XLAPjRtCpuClient", num_threads)) {}
 
@@ -732,7 +736,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   // TODO (basioli): honor build_options.run_backend_only() for AOT.
   // Compile AOT.
   ABSL_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler.CompileAheadOfTime(std::move(hlo_module), compile_options));
 
   if (aot_results.size() != 1) {
@@ -743,7 +747,8 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   // Technically not needed, but it makes sense so that we know serialization
   // and deserialization works.
   ABSL_ASSIGN_OR_RETURN(std::string serialized_aot_result,
-                   aot_results[0]->SerializeAsString());
+                   absl::down_cast<CompiledModule*>(aot_results[0].get())
+                       ->SerializeAsString());
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                    compiler.LoadAotCompilationResult(serialized_aot_result));
 
@@ -1501,7 +1506,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   run_options.set_run_id(run_id_);
   // Need to keep device_assignment alive until execution completes.
   run_options.set_device_assignment(device_assignment_.get());
-  run_options.set_intra_op_thread_pool(raw_client->eigen_intraop_device());
   run_options.set_rng_seed(options.seed);
 
   auto cpu_run_options = std::make_unique<cpu::CpuExecutableRunOptions>();
@@ -1511,6 +1515,14 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
       options.context == nullptr
           ? nullptr
           : dynamic_cast<const CpuExecuteContext*>(options.context);
+
+  const Eigen::ThreadPoolDevice* intra_op_device =
+      (cpu_execute_context != nullptr &&
+       cpu_execute_context->intra_op_thread_pool() != nullptr)
+          ? cpu_execute_context->intra_op_thread_pool()
+          : raw_client->eigen_intraop_device();
+  run_options.set_intra_op_thread_pool(intra_op_device);
+
   if (cpu_execute_context != nullptr &&
       cpu_execute_context->process_index().has_value()) {
     run_options.set_device_ordinal(
@@ -1559,6 +1571,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   if (options.context != nullptr) {
     run_options.set_ffi_execution_context(&options.context->ffi_context());
   }
+  run_options.set_custom_options(options.custom_options);
 
   bool execute_inline = executable_->cheap_computation_ ||
                         !raw_client->asynchronous() ||
@@ -1573,7 +1586,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   }
 
   auto execute_thunks = [cpu_executable, buffer_table = std::move(buffer_table),
-                         eigen_device = raw_client->eigen_intraop_device(),
                          run_options = std::move(run_options)]()
       -> absl::StatusOr<tsl::AsyncValueRef<cpu::Thunk::ExecuteEvent>> {
     // Set denormal and rounding behavior to match the default TF
@@ -1633,6 +1645,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         cpu::Thunk::ExecuteSession(cpu::Thunk::ExecuteSession::kMaxWorkers,
                                    cpu::Thunk::ExecuteSession::kSplitThreshold),
         static_cast<uint64_t>(static_cast<uint32_t>(run_options.rng_seed())),
+        run_options.custom_options(),
     };
 
     auto thunks_execute_event =

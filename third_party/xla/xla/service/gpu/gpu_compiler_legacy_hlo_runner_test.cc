@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiled_module.h"
+#include "xla/service/compiled_module_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
@@ -110,12 +111,14 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
                                                     GetModuleConfigForTest()));
 
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler()->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
   ASSERT_THAT(aot_results, SizeIs(1));
 
-  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                       std::move(aot_results[0])->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
+      std::string serialized_aot_result,
+      std::move(*absl::down_cast<CompiledModule*>(aot_results[0].get()))
+          .SerializeAsString());
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompiledModule> aot_result,
       compiler()->LoadAotCompilationResult(serialized_aot_result));
@@ -199,7 +202,7 @@ TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
   aot_options_->set_early_exit_point(
       AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
   ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
       compiler()->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
   EXPECT_THAT(aot_results, ElementsAre(Pointee(Property(
                                &CompiledModule::optimized_module, NotNull()))));
@@ -343,11 +346,12 @@ ENTRY e {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnVerifiedModule(hlo));
     ASSERT_OK_AND_ASSIGN(
-        std::vector<std::unique_ptr<CompiledModule>> aot_results,
+        std::vector<std::unique_ptr<CompiledModuleBase>> aot_results,
         compiler()->CompileAheadOfTime(std::move(module), aot_options));
 
     ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                         aot_results[0]->SerializeAsString());
+                         absl::down_cast<CompiledModule*>(aot_results[0].get())
+                             ->SerializeAsString());
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<CompiledModule> aot_result,
         compiler()->LoadAotCompilationResult(serialized_aot_result));
