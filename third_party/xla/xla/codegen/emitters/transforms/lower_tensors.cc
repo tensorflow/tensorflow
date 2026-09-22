@@ -1230,12 +1230,18 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   // values from the memory. This can avoid out of bound memory accesses if
   // tensor buffers are 4 byte aligned and have a size of 4N, an assumption
   // that the runtime can guarantee.
+  //
+  // On CPUs, 8-bit and 16-bit atomic compare-and-swap operations are supported
+  // natively, and runtime buffers are not guaranteed to have a size of 4N. We
+  // therefore use a minimum atomic width of 8 bits on CPU and only widen
+  // sub-byte types to i8 without rounding the byte address down.
   void rewriteAsAtomicCAS(AtomicRMWOp op,
                           mlir::PatternRewriter& rewriter) const {
     Location loc = op.getLoc();
     auto input = op.getInput();
 
-    // Use 32-bit atomic type for small input types.
+    // Use 32-bit atomic type for small input types on GPU, and 8-bit minimum
+    // atomic type on CPU.
     Type result_ty = op.getResult().getType().getElementType();
     int result_size;
     if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(result_ty)) {
@@ -1244,9 +1250,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       result_size = result_ty.getIntOrFloatBitWidth();
     }
 
-    bool small_type = result_size < 32;
-    Type atomic_ty =
-        mlir::IntegerType::get(op.getContext(), small_type ? 32 : result_size);
+    int min_atomic_size = device_spec_.IsCpu() ? 8 : 32;
+    bool small_type = result_size < min_atomic_size;
+    Type atomic_ty = mlir::IntegerType::get(
+        op.getContext(), small_type ? min_atomic_size : result_size);
 
     // Calculate load address for the input.
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -1261,29 +1268,37 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     Value addr = CreateGep(input, linear_index, b);
     Value shift, mask;
     if (small_type) {
-      // Update input pointer by discarding the last two bits - i.e. align to
-      // 32-bit boundary for small input types (will not result in OOB, as the
-      // input alignment is at least 32 bits).
-      Type addr_int_ty = rewriter.getI64Type();
-      Value addr_int = ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
-      Value addr_offset = ml::AndOp::create(
-          rewriter, loc, addr_int,
-          ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
-      Value index = ml::MulOp::create(
-          rewriter, loc, addr_offset,
-          ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
-      addr =
-          ml::GEPOp::create(rewriter, loc, addr.getType(), rewriter.getI8Type(),
-                            addr, index, mlir::LLVM::GEPNoWrapFlags::inbounds);
+      if (min_atomic_size > 8) {
+        // Update input pointer by discarding the last two bits - i.e. align to
+        // 32-bit boundary for small input types (will not result in OOB, as the
+        // input alignment is at least 32 bits).
+        Type addr_int_ty = rewriter.getI64Type();
+        Value addr_int =
+            ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
+        Value addr_offset = ml::AndOp::create(
+            rewriter, loc, addr_int,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
+        Value index = ml::MulOp::create(
+            rewriter, loc, addr_offset,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
+        addr = ml::GEPOp::create(rewriter, loc, addr.getType(),
+                                 rewriter.getI8Type(), addr, index,
+                                 mlir::LLVM::GEPNoWrapFlags::inbounds);
 
-      Value offset = ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
-      shift = ml::MulOp::create(
-          rewriter, loc, offset,
-          ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
-      if (sub_byte_bit_width) {
-        sub_byte_shift =
-            ml::ZExtOp::create(rewriter, loc, shift.getType(), sub_byte_shift);
-        shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
+        Value offset =
+            ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
+        shift = ml::MulOp::create(
+            rewriter, loc, offset,
+            ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
+        if (sub_byte_bit_width) {
+          sub_byte_shift = ml::ZExtOp::create(rewriter, loc, shift.getType(),
+                                              sub_byte_shift);
+          shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
+        }
+      } else {
+        shift = sub_byte_bit_width
+                    ? sub_byte_shift
+                    : ml::ConstantOp::create(rewriter, loc, atomic_ty, 0);
       }
 
       // Compose the update mask.

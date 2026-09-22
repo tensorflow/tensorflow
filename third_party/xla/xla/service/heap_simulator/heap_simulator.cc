@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "third_party/ortools/ortools/algorithms/multikey_radix_sort.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2055,6 +2056,69 @@ std::string RenderTimeByFreeChunks(
 
 }  // namespace
 
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive sort
+// strategy.
+//
+// Optimizations:
+// 1. Tuned cutoff: For small arrays (N < 3000), elements fit entirely
+//    within L1/L2 cache (<48 KB). `absl::c_sort` is faster than radix sort.
+// 2. Single pass to check sortedness, inversion profiling, diff_bits:
+//    - If `inversions == 0` or `diff_bits == 0`, chunks are already in order;
+//      returns immediately.
+//    - If nearly sorted (`inversions <= n / 10`), introsort does almost zero
+//      swaps and beats radix sort by >2x.
+// 3. AutoRadixSort:
+//    For high-entropy inputs with N >= 3000, dispatches to zero-allocation
+//    `operations_research::AutoRadixSort`, reusing the caller-provided scratch
+//    buffer without heap reallocations.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch) {
+  using Chunk = HeapSimulator::Chunk;
+  const size_t n = chunks.size();
+
+  // Small lists fit in L1/L2 cache and sort fastest with introsort.
+  if (n < 3000) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Single pass for sortedness, inversion count, and bitmask.
+  int64_t prev = chunks[0].offset;
+  const uint64_t first_key = static_cast<uint64_t>(prev);
+  uint64_t diff_bits = 0;
+  size_t inversions = 0;
+  const size_t max_inversions_for_stdsort = n / 10;
+
+  for (size_t i = 1; i < n; ++i) {
+    const int64_t curr = chunks[i].offset;
+    diff_bits |= (static_cast<uint64_t>(curr) ^ first_key);
+    if (curr < prev) {
+      ++inversions;
+    }
+    prev = curr;
+  }
+
+  // Immediate early exit for already-sorted or uniform arrays.
+  if (inversions == 0 || diff_bits == 0) {
+    return;
+  }
+
+  // For nearly-sorted data, introsort does almost no swaps and beats radix
+  // sort.
+  if (inversions <= max_inversions_for_stdsort) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Use zero-allocation AutoRadixSort.
+  operations_research::AutoRadixSort(
+      chunks, scratch, [](const Chunk& chunk) { return chunk.offset; });
+}
+
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     SlicedAllocationFinder(
@@ -2588,9 +2652,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
         });
   }
 
-  // Sort used chunks by offset ascending.
-  std::sort(used_chunks_.begin(), used_chunks_.end(),
-            [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
+  // Sort used chunks by offset ascending using adaptive hybrid sort.
+  AdaptiveHybridSortChunks(used_chunks_, radix_scratch_);
 
   free_chunks_list_.clear();
   if (used_chunks_.empty()) {

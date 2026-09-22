@@ -1,0 +1,115 @@
+HloModule jit_loss, entry_computation_layout={(f32[2048,3]{1,0}, f32[2048,3]{1,0}, f32[2048]{0})->(f32[2048,3]{1,0}, f32[2048,3]{1,0})}
+
+region_0.1 {
+  reduce_sum.3 = f32[] parameter(0)
+  reduce_sum.4 = f32[] parameter(1)
+  ROOT reduce_sum.5 = f32[] add(reduce_sum.3, reduce_sum.4)
+}
+
+region_1.2 {
+  reduce_sum.10 = f32[] parameter(0)
+  reduce_sum.11 = f32[] parameter(1)
+  ROOT reduce_sum.12 = f32[] add(reduce_sum.10, reduce_sum.11)
+}
+
+region_2.3 {
+  reduce_sum.17 = f32[] parameter(0)
+  reduce_sum.18 = f32[] parameter(1)
+  ROOT reduce_sum.19 = f32[] add(reduce_sum.17, reduce_sum.18)
+}
+
+region_3.4 {
+  reduce_sum.24 = f32[] parameter(0)
+  reduce_sum.25 = f32[] parameter(1)
+  ROOT reduce_sum.26 = f32[] add(reduce_sum.24, reduce_sum.25)
+}
+
+region_4.5 {
+  reduce_sum.31 = f32[] parameter(0)
+  reduce_sum.32 = f32[] parameter(1)
+  ROOT reduce_sum.33 = f32[] add(reduce_sum.31, reduce_sum.32)
+}
+
+region_5.6 {
+  reduce_sum.38 = f32[] parameter(0)
+  reduce_sum.39 = f32[] parameter(1)
+  ROOT reduce_sum.40 = f32[] add(reduce_sum.38, reduce_sum.39)
+}
+
+region_6.7 {
+  reduce_sum.45 = f32[] parameter(0)
+  reduce_sum.46 = f32[] parameter(1)
+  ROOT reduce_sum.47 = f32[] add(reduce_sum.45, reduce_sum.46)
+}
+
+region_7.8 {
+  reduce_sum.52 = f32[] parameter(0)
+  reduce_sum.53 = f32[] parameter(1)
+  ROOT reduce_sum.54 = f32[] add(reduce_sum.52, reduce_sum.53)
+}
+
+ENTRY main.9 {
+  a_2_.1 = f32[2048]{0} parameter(2)
+  broadcast_in_dim.9 = f32[1,2048,1]{2,1,0} reshape(a_2_.1)
+  mul.28 = f32[1,2048,1]{2,1,0} broadcast(broadcast_in_dim.9), dimensions={0,1,2}
+  mul.29 = f32[2048,1]{1,0} reshape(mul.28)
+  mul.30 = f32[2048,2048,1]{2,1,0} broadcast(mul.29), dimensions={1,2}
+  a_0_.1 = f32[2048,3]{1,0} parameter(0)
+  broadcast_in_dim.6 = f32[2048,1,3]{2,1,0} reshape(a_0_.1)
+  sub.7 = f32[2048,1,3]{2,1,0} broadcast(broadcast_in_dim.6), dimensions={0,1,2}
+  sub.8 = f32[2048,3]{1,0} reshape(sub.7)
+  sub.9 = f32[2048,2048,3]{2,1,0} broadcast(sub.8), dimensions={0,2}
+  a_1_.1 = f32[2048,3]{1,0} parameter(1)
+  broadcast_in_dim.7 = f32[1,2048,3]{2,1,0} reshape(a_1_.1)
+  sub.10 = f32[1,2048,3]{2,1,0} broadcast(broadcast_in_dim.7), dimensions={0,1,2}
+  sub.11 = f32[2048,3]{1,0} reshape(sub.10)
+  sub.12 = f32[2048,2048,3]{2,1,0} broadcast(sub.11), dimensions={1,2}
+  sub.13 = f32[2048,2048,3]{2,1,0} subtract(sub.9, sub.12)
+  mul.26 = f32[2048,2048,3]{2,1,0} multiply(sub.13, sub.13)
+  constant.5 = f32[] constant(0)
+  reduce_sum.56 = f32[2048,2048]{1,0} reduce(mul.26, constant.5), dimensions={2}, to_apply=region_0.1
+  broadcast_in_dim.8 = f32[2048,2048,1]{2,1,0} reshape(reduce_sum.56)
+  constant.4 = f32[] constant(-0.5)
+  broadcast.1 = f32[2048,2048,1]{2,1,0} broadcast(constant.4), dimensions={}
+  mul.27 = f32[2048,2048,1]{2,1,0} multiply(broadcast_in_dim.8, broadcast.1)
+  exp.1 = f32[2048,2048,1]{2,1,0} exponential(mul.27)
+  mul.31 = f32[2048,2048,1]{2,1,0} multiply(mul.30, exp.1)
+  mul.37 = f32[2048,2048,1]{2,1,0} broadcast(mul.31), dimensions={0,1,2}
+  mul.38 = f32[2048,2048]{1,0} reshape(mul.37)
+  mul.39 = f32[2048,2048,3]{2,1,0} broadcast(mul.38), dimensions={0,1}
+  mul.32 = f32[2048,2048,1]{2,1,0} broadcast(mul.31), dimensions={0,1,2}
+  mul.33 = f32[2048,2048]{1,0} reshape(mul.32)
+  mul.34 = f32[2048,2048,3]{2,1,0} broadcast(mul.33), dimensions={0,1}
+  mul.35 = f32[2048,2048,3]{2,1,0} multiply(mul.34, sub.13)
+  reduce_sum.57 = f32[2048,3]{1,0} reduce(mul.35, constant.5), dimensions={1}, to_apply=region_1.2
+  constant.3 = f32[] constant(2)
+  mul.25 = f32[2048,3]{1,0} broadcast(constant.3), dimensions={}
+  mul.36 = f32[2048,3]{1,0} multiply(reduce_sum.57, mul.25)
+  broadcast_in_dim.10 = f32[2048,2048,3]{2,1,0} broadcast(mul.36), dimensions={0,2}
+  mul.40 = f32[2048,2048,3]{2,1,0} multiply(mul.39, broadcast_in_dim.10)
+  mul.42 = f32[1,2048,1]{2,1,0} broadcast(broadcast_in_dim.9), dimensions={0,1,2}
+  mul.43 = f32[2048,1]{1,0} reshape(mul.42)
+  mul.44 = f32[2048,2048,1]{2,1,0} broadcast(mul.43), dimensions={1,2}
+  mul.41 = f32[2048,2048,3]{2,1,0} multiply(broadcast_in_dim.10, sub.13)
+  reduce_sum.58 = f32[2048,2048]{1,0} reduce(mul.41, constant.5), dimensions={2}, to_apply=region_2.3
+  reshape.3 = f32[2048,2048,1]{2,1,0} reshape(reduce_sum.58)
+  mul.45 = f32[2048,2048,1]{2,1,0} multiply(mul.44, reshape.3)
+  mul.46 = f32[2048,2048,1]{2,1,0} multiply(mul.45, exp.1)
+  mul.47 = f32[2048,2048,1]{2,1,0} multiply(mul.46, broadcast.1)
+  reduce_sum.59 = f32[2048,2048]{1,0} reduce(mul.47, constant.5), dimensions={2}, to_apply=region_3.4
+  broadcast_in_dim.11 = f32[2048,2048,3]{2,1,0} broadcast(reduce_sum.59), dimensions={0,1}
+  mul.48 = f32[2048,2048,3]{2,1,0} multiply(sub.13, broadcast_in_dim.11)
+  add_any.2 = f32[2048,2048,3]{2,1,0} add(mul.40, mul.48)
+  mul.49 = f32[2048,2048,3]{2,1,0} multiply(broadcast_in_dim.11, sub.13)
+  add_any.3 = f32[2048,2048,3]{2,1,0} add(add_any.2, mul.49)
+  reduce_sum.60 = f32[2048,3]{1,0} reduce(add_any.3, constant.5), dimensions={1}, to_apply=region_4.5
+  reshape.4 = f32[2048,1,3]{2,1,0} reshape(reduce_sum.60)
+  reduce_sum.63 = f32[2048,3]{1,0} reduce(reshape.4, constant.5), dimensions={1}, to_apply=region_7.8
+  neg.1 = f32[2048,2048,3]{2,1,0} negate(add_any.3)
+  reduce_sum.61 = f32[2048,3]{1,0} reduce(neg.1, constant.5), dimensions={0}, to_apply=region_5.6
+  reshape.5 = f32[1,2048,3]{2,1,0} reshape(reduce_sum.61)
+  reduce_sum.62 = f32[2048,3]{1,0} reduce(reshape.5, constant.5), dimensions={0}, to_apply=region_6.7
+  ROOT tuple.1 = (f32[2048,3]{1,0}, f32[2048,3]{1,0}) tuple(reduce_sum.63, reduce_sum.62)
+}
+
+
