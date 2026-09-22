@@ -295,6 +295,29 @@ ENTRY %test_all_gather_start_mesh {
   ROOT ag-done = f32[128,128] all-gather-done(ag-start)
 }
 
+// -----
+
+HloModule main
+
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:  (%[[ARG0:.*]]: tensor<1024x1024xf32>, %[[ARG1:.*]]: tensor<4096xf32>)
+// CHECK:       %[[START:.*]] = stablehlo.custom_call @"collective-permute-start"(%[[ARG1]])
+// CHECK-SAME{LITERAL}: mhlo.frontend_attributes = {async_collective_config = "{\22channel_id\22:1,\22permutation\22:[[0,1],[1,0]]}"}
+// CHECK:       %[[BARRIER:.*]]:2 = stablehlo.optimization_barrier %[[ARG0]], %[[START]]
+// CHECK:       %[[DONE:.*]] = stablehlo.custom_call @"collective-permute-done"(%[[BARRIER]]#1)
+// CHECK:       return %[[BARRIER]]#0, %[[DONE]]
+ENTRY %test_async_collective_permute_opt_barrier (dot_general.1: f32[1024,1024], shard_map.5: f32[4096]) -> (f32[1024,1024], f32[4096]) {
+  %dot_general.1 = f32[1024,1024]{1,0} parameter(0)
+  %shard_map.5 = f32[4096]{0} parameter(1)
+  %collective-permute-start = f32[4096]{0} custom-call(%shard_map.5), custom_call_target="collective-permute-start", frontend_attributes={async_collective_config="{\"channel_id\":1,\"permutation\":[[0,1],[1,0]]}"}
+  %optimization_barrier.4 = (f32[1024,1024]{1,0}, f32[4096]{0}) tuple(%dot_general.1, %collective-permute-start)
+  %optimization_barrier.5 = (f32[1024,1024]{1,0}, f32[4096]{0}) opt-barrier(%optimization_barrier.4)
+  %get-tuple-element.0 = f32[1024,1024]{1,0} get-tuple-element(%optimization_barrier.5), index=0
+  %get-tuple-element.1 = f32[4096]{0} get-tuple-element(%optimization_barrier.5), index=1
+  %collective-permute-done = f32[4096]{0} custom-call(%get-tuple-element.1), custom_call_target="collective-permute-done"
+  ROOT %root = (f32[1024,1024]{1,0}, f32[4096]{0}) tuple(%get-tuple-element.0, %collective-permute-done)
+}
+
 // BROKEN: b/TODO: support roundtrip of async custom calls?
 
 // HloModule main, entry_computation_layout={(f32[10]{0})->(f32[20]{0})}
