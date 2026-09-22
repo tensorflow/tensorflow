@@ -1680,7 +1680,9 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     self.assertIsInstance(r, list)
     self.assertLen(r, 1)
     self.assertEqual(r[0].shape.as_list(), [1, 28, 28, 1])
-    self.assertAllClose(self.evaluate(r[0]), array_ops.ones([1, 28, 28, 1]) * 4.0)
+    self.assertAllClose(
+        self.evaluate(r[0]), array_ops.ones([1, 28, 28, 1]) * 4.0
+    )
 
     shapes_seen.clear()
     r_max = while_loop.while_loop(
@@ -1701,6 +1703,14 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
             lambda a, b: array_ops.shape(a)[0] < 10,
             lambda a, b: array_ops.ones([2, 28, 28, 1]),
             [x, x],
+            return_same_structure=True,
+            maximum_iterations=max_iters,
+        )
+      with self.assertRaises(ValueError):
+        while_loop.while_loop(
+            lambda d: d["a"] < 3,
+            lambda d: {"a": d["a"] + 1},
+            [{"a": constant_op.constant(0)}],
             return_same_structure=True,
             maximum_iterations=max_iters,
         )

@@ -452,7 +452,12 @@ def while_loop(cond,
     if not loop_vars:
       raise ValueError("'loop_vars' must be provided.")
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
-    if executing_eagerly and len(loop_vars) == 1 and not try_to_pack:
+    if (
+        executing_eagerly
+        and isinstance(loop_vars, (list, tuple))
+        and len(loop_vars) == 1
+        and not try_to_pack
+    ):
       orig_loop_vars_type = (
           type(loop_vars) if type(loop_vars) in (list, tuple) else list
       )
@@ -460,7 +465,7 @@ def while_loop(cond,
 
       def _pack_body(*args):
         res = unpacked_body(*args)
-        if not isinstance(res, (list, tuple)):
+        if not nest.is_nested(res):
           return orig_loop_vars_type((res,))
         return res
 
