@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
@@ -927,6 +928,427 @@ std::map<std::string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
 
 }  // end namespace
 
+CompactNodeDef::CompactNodeDef(const CompactNodeDef& other)
+    : name(other.name),
+      op(other.op),
+      input(other.input),
+      device(other.device),
+      attr(other.attr),
+      experimental_debug_info(
+          other.experimental_debug_info != nullptr
+              ? std::make_unique<NodeDef::ExperimentalDebugInfo>(
+                    *other.experimental_debug_info)
+              : nullptr),
+      experimental_type(
+          other.experimental_type != nullptr
+              ? std::make_unique<FullTypeDef>(*other.experimental_type)
+              : nullptr) {}
+
+CompactNodeDef& CompactNodeDef::operator=(const CompactNodeDef& other) {
+  if (this == &other) return *this;
+  name = other.name;
+  op = other.op;
+  input = other.input;
+  device = other.device;
+  attr = other.attr;
+  experimental_debug_info =
+      other.experimental_debug_info != nullptr
+          ? std::make_unique<NodeDef::ExperimentalDebugInfo>(
+                *other.experimental_debug_info)
+          : nullptr;
+  experimental_type =
+      other.experimental_type != nullptr
+          ? std::make_unique<FullTypeDef>(*other.experimental_type)
+          : nullptr;
+  return *this;
+}
+
+namespace {
+
+bool EqualCompactAttrs(
+    const absl::flat_hash_map<const std::string*, const AttrValue*>& a1,
+    const absl::flat_hash_map<const std::string*, const AttrValue*>& a2) {
+  if (a1.size() != a2.size()) return false;
+  for (const auto& [k1, v1] : a1) {
+    auto it = a2.find(k1);
+    if (it == a2.end()) return false;
+    if (v1 != it->second && (v1 == nullptr || it->second == nullptr ||
+                             !AreAttrValuesEqual(*v1, *it->second))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool EqualCompactInputs(
+    const absl::InlinedVector<const std::string*, 4>& inp1,
+    const absl::InlinedVector<const std::string*, 4>& inp2) {
+  if (inp1.size() != inp2.size()) return false;
+
+  // Fast path: all pointers match identically
+  bool all_ptr_equal = true;
+  for (size_t i = 0; i < inp1.size(); ++i) {
+    if (inp1[i] != inp2[i]) {
+      all_ptr_equal = false;
+      break;
+    }
+  }
+  if (all_ptr_equal) return true;
+
+  // Find where control inputs begin (starting with '^')
+  size_t first_control1 = inp1.size();
+  size_t first_control2 = inp2.size();
+
+  for (size_t i = 0; i < inp1.size(); ++i) {
+    if (inp1[i] != nullptr && !inp1[i]->empty() && (*inp1[i])[0] == '^') {
+      first_control1 = i;
+      break;
+    }
+  }
+  for (size_t i = 0; i < inp2.size(); ++i) {
+    if (inp2[i] != nullptr && !inp2[i]->empty() && (*inp2[i])[0] == '^') {
+      first_control2 = i;
+      break;
+    }
+  }
+  if (first_control1 != first_control2) return false;
+
+  // Check regular inputs in order with "tensor" vs "tensor:0" equivalence
+  for (size_t i = 0; i < first_control1; ++i) {
+    if (inp1[i] == inp2[i]) continue;
+    const std::string& s1 = inp1[i] ? *inp1[i] : "";
+    const std::string& s2 = inp2[i] ? *inp2[i] : "";
+    if (s1 != s2 && s1 != absl::StrCat(s2, ":0") &&
+        absl::StrCat(s1, ":0") != s2) {
+      return false;
+    }
+  }
+
+  // Check control inputs as an unordered set
+  if (first_control1 < inp1.size()) {
+    absl::flat_hash_set<const std::string*> actual_control;
+    for (size_t i = first_control1; i < inp1.size(); ++i) {
+      actual_control.insert(inp1[i]);
+    }
+    for (size_t i = first_control2; i < inp2.size(); ++i) {
+      if (actual_control.erase(inp2[i]) == 0) {
+        return false;
+      }
+    }
+    if (!actual_control.empty()) return false;
+  }
+
+  return true;
+}
+
+bool EqualCompactNodeDef(const CompactNodeDef& actual,
+                         const CompactNodeDef& expected) {
+  if (actual.name != expected.name &&
+      (actual.name == nullptr || expected.name == nullptr ||
+       *actual.name != *expected.name)) {
+    return false;
+  }
+  if (actual.op != expected.op &&
+      (actual.op == nullptr || expected.op == nullptr ||
+       *actual.op != *expected.op)) {
+    return false;
+  }
+  if (actual.device != expected.device &&
+      (actual.device == nullptr || expected.device == nullptr ||
+       *actual.device != *expected.device)) {
+    return false;
+  }
+  if (!EqualCompactAttrs(actual.attr, expected.attr)) {
+    return false;
+  }
+  if (!EqualCompactInputs(actual.input, expected.input)) {
+    return false;
+  }
+  if ((actual.experimental_debug_info != nullptr) !=
+      (expected.experimental_debug_info != nullptr)) {
+    return false;
+  }
+  if (actual.experimental_debug_info != nullptr) {
+    if (actual.experimental_debug_info->original_node_names_size() !=
+            expected.experimental_debug_info->original_node_names_size() ||
+        actual.experimental_debug_info->original_func_names_size() !=
+            expected.experimental_debug_info->original_func_names_size()) {
+      return false;
+    }
+    for (int i = 0;
+         i < actual.experimental_debug_info->original_node_names_size(); ++i) {
+      if (actual.experimental_debug_info->original_node_names(i) !=
+          expected.experimental_debug_info->original_node_names(i)) {
+        return false;
+      }
+    }
+    for (int i = 0;
+         i < actual.experimental_debug_info->original_func_names_size(); ++i) {
+      if (actual.experimental_debug_info->original_func_names(i) !=
+          expected.experimental_debug_info->original_func_names(i)) {
+        return false;
+      }
+    }
+  }
+  if ((actual.experimental_type != nullptr) !=
+      (expected.experimental_type != nullptr)) {
+    return false;
+  }
+  if (actual.experimental_type != nullptr) {
+    if (!full_type::IsEqual(*actual.experimental_type,
+                            *expected.experimental_type)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool EqualRepeatedCompactNodeDef(const std::vector<CompactNodeDef>& actual,
+                                 const std::vector<CompactNodeDef>& expected) {
+  if (actual.size() != expected.size()) return false;
+
+  // Fast path: check in-order match first
+  bool in_order_match = true;
+  for (size_t i = 0; i < actual.size(); ++i) {
+    if (!EqualCompactNodeDef(actual[i], expected[i])) {
+      in_order_match = false;
+      break;
+    }
+  }
+  if (in_order_match) return true;
+
+  // Slow path: match nodes by name
+  absl::flat_hash_map<const std::string*, const CompactNodeDef*> actual_index;
+  actual_index.reserve(actual.size());
+  for (const auto& node : actual) {
+    actual_index[node.name] = &node;
+  }
+  for (const auto& expected_node : expected) {
+    auto iter = actual_index.find(expected_node.name);
+    if (iter == actual_index.end()) {
+      return false;
+    }
+    if (!EqualCompactNodeDef(*iter->second, expected_node)) {
+      return false;
+    }
+    actual_index.erase(iter);
+  }
+  return actual_index.empty();
+}
+
+bool EqualCompactStringMap(
+    const absl::flat_hash_map<const std::string*, const std::string*>& m1,
+    const absl::flat_hash_map<const std::string*, const std::string*>& m2) {
+  if (m1.size() != m2.size()) return false;
+  for (const auto& [k1, v1] : m1) {
+    auto it = m2.find(k1);
+    if (it == m2.end()) return false;
+    if (v1 != it->second &&
+        (v1 == nullptr || it->second == nullptr || *v1 != *it->second)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+bool CompactNodeDef::operator==(const CompactNodeDef& other) const {
+  return EqualCompactNodeDef(*this, other);
+}
+
+bool CompactArgAttrs::operator==(const CompactArgAttrs& other) const {
+  return EqualCompactAttrs(attr, other.attr);
+}
+
+const std::string* CompactFunctionDef::Intern(absl::string_view s) {
+  if (s.empty()) {
+    static const std::string* const kEmpty = new std::string();
+    return kEmpty;
+  }
+  static absl::Mutex* mu = new absl::Mutex();
+  using MapType =
+      absl::flat_hash_map<absl::string_view, std::unique_ptr<std::string>>;
+  static auto* pool = new MapType();
+  absl::MutexLock l(mu);
+  auto it = pool->find(s);
+  if (it != pool->end()) {
+    return it->second.get();
+  }
+  auto str = std::make_unique<std::string>(s);
+  absl::string_view sv(*str);
+  const std::string* ptr = str.get();
+  (*pool)[sv] = std::move(str);
+  return ptr;
+}
+
+const AttrValue* CompactFunctionDef::Intern(const AttrValue& val) {
+  struct AttrValueHasher {
+    using is_transparent = void;
+    size_t operator()(const std::unique_ptr<AttrValue>& v) const {
+      return FastAttrValueHash(*v);
+    }
+    size_t operator()(const AttrValue* v) const {
+      return FastAttrValueHash(*v);
+    }
+    size_t operator()(const AttrValue& v) const { return FastAttrValueHash(v); }
+  };
+  struct AttrValueEq {
+    using is_transparent = void;
+    bool operator()(const std::unique_ptr<AttrValue>& a,
+                    const std::unique_ptr<AttrValue>& b) const {
+      return a == b || (a && b && AreAttrValuesEqual(*a, *b));
+    }
+    bool operator()(const std::unique_ptr<AttrValue>& a,
+                    const AttrValue* b) const {
+      return a.get() == b || (a && b && AreAttrValuesEqual(*a, *b));
+    }
+    bool operator()(const std::unique_ptr<AttrValue>& a,
+                    const AttrValue& b) const {
+      return a && AreAttrValuesEqual(*a, b);
+    }
+  };
+
+  static absl::Mutex* mu = new absl::Mutex();
+  using PoolType = absl::flat_hash_set<std::unique_ptr<AttrValue>,
+                                       AttrValueHasher, AttrValueEq>;
+  static auto* pool = new PoolType();
+  absl::MutexLock l(mu);
+  auto it = pool->find(val);
+  if (it != pool->end()) {
+    return it->get();
+  }
+  auto attr = std::make_unique<AttrValue>(val);
+  const AttrValue* ptr = attr.get();
+  pool->insert(std::move(attr));
+  return ptr;
+}
+
+CompactFunctionDef::CompactFunctionDef(const FunctionDef& fdef) {
+  *this = FromProto(fdef);
+}
+
+CompactFunctionDef CompactFunctionDef::FromProto(const FunctionDef& fdef) {
+  return FromProto(FunctionDef(fdef));
+}
+
+CompactFunctionDef CompactFunctionDef::FromProto(FunctionDef&& fdef) {
+  CompactFunctionDef compact;
+  compact.signature_ = std::move(*fdef.mutable_signature());
+  for (const auto& pair : fdef.attr()) {
+    compact.attr_[Intern(pair.first)] = Intern(pair.second);
+  }
+  for (const auto& pair : fdef.arg_attr()) {
+    CompactArgAttrs c_arg_attrs;
+    for (const auto& attr_pair : pair.second.attr()) {
+      c_arg_attrs.attr[Intern(attr_pair.first)] = Intern(attr_pair.second);
+    }
+    compact.arg_attr_[pair.first] = std::move(c_arg_attrs);
+  }
+  compact.resource_arg_unique_id_.insert(fdef.resource_arg_unique_id().begin(),
+                                         fdef.resource_arg_unique_id().end());
+  compact.node_def_.reserve(fdef.node_def_size());
+  for (int i = 0; i < fdef.node_def_size(); ++i) {
+    NodeDef* node_proto = fdef.mutable_node_def(i);
+    CompactNodeDef cnode;
+    if (node_proto != nullptr) {
+      cnode.name = Intern(node_proto->name());
+      cnode.op = Intern(node_proto->op());
+      cnode.input.reserve(node_proto->input_size());
+      for (int j = 0; j < node_proto->input_size(); ++j) {
+        cnode.input.push_back(Intern(node_proto->input(j)));
+      }
+      cnode.device = Intern(node_proto->device());
+      for (const auto& attr_pair : node_proto->attr()) {
+        cnode.attr[Intern(attr_pair.first)] = Intern(attr_pair.second);
+      }
+      if (node_proto->has_experimental_debug_info()) {
+        cnode.experimental_debug_info =
+            std::make_unique<NodeDef::ExperimentalDebugInfo>(
+                std::move(*node_proto->mutable_experimental_debug_info()));
+      }
+      if (node_proto->has_experimental_type()) {
+        cnode.experimental_type = std::make_unique<FullTypeDef>(
+            std::move(*node_proto->mutable_experimental_type()));
+      }
+    }
+    compact.node_def_.push_back(std::move(cnode));
+  }
+  for (const auto& pair : fdef.ret()) {
+    compact.ret_[Intern(pair.first)] = Intern(pair.second);
+  }
+  for (const auto& pair : fdef.control_ret()) {
+    compact.control_ret_[Intern(pair.first)] = Intern(pair.second);
+  }
+  fdef.Clear();
+  return compact;
+}
+
+FunctionDef CompactFunctionDef::ToProto() const {
+  FunctionDef fdef;
+  *fdef.mutable_signature() = signature_;
+  for (const auto& pair : attr_) {
+    if (pair.first != nullptr && pair.second != nullptr) {
+      (*fdef.mutable_attr())[*pair.first] = *pair.second;
+    }
+  }
+  FunctionDef::ArgAttrs arg_attrs_proto;
+  for (const auto& pair : arg_attr_) {
+    arg_attrs_proto.Clear();
+    for (const auto& attr_pair : pair.second.attr) {
+      if (attr_pair.first != nullptr && attr_pair.second != nullptr) {
+        (*arg_attrs_proto.mutable_attr())[*attr_pair.first] = *attr_pair.second;
+      }
+    }
+    (*fdef.mutable_arg_attr())[pair.first] = std::move(arg_attrs_proto);
+  }
+  for (const auto& pair : resource_arg_unique_id_) {
+    (*fdef.mutable_resource_arg_unique_id())[pair.first] = pair.second;
+  }
+  for (const CompactNodeDef& cnode : node_def_) {
+    NodeDef* node_proto = fdef.add_node_def();
+    if (node_proto != nullptr) {
+      if (cnode.name != nullptr) {
+        node_proto->set_name(*cnode.name);
+      }
+      if (cnode.op != nullptr) {
+        node_proto->set_op(*cnode.op);
+      }
+      for (const std::string* inp : cnode.input) {
+        if (inp != nullptr) {
+          node_proto->add_input(*inp);
+        }
+      }
+      if (cnode.device != nullptr) {
+        node_proto->set_device(*cnode.device);
+      }
+      for (const auto& attr_pair : cnode.attr) {
+        if (attr_pair.first != nullptr && attr_pair.second != nullptr) {
+          (*node_proto->mutable_attr())[*attr_pair.first] = *attr_pair.second;
+        }
+      }
+      if (cnode.experimental_debug_info != nullptr) {
+        *node_proto->mutable_experimental_debug_info() =
+            *cnode.experimental_debug_info;
+      }
+      if (cnode.experimental_type != nullptr) {
+        *node_proto->mutable_experimental_type() = *cnode.experimental_type;
+      }
+    }
+  }
+  for (const auto& pair : ret_) {
+    if (pair.first != nullptr && pair.second != nullptr) {
+      (*fdef.mutable_ret())[*pair.first] = *pair.second;
+    }
+  }
+  for (const auto& pair : control_ret_) {
+    if (pair.first != nullptr && pair.second != nullptr) {
+      (*fdef.mutable_control_ret())[*pair.first] = *pair.second;
+    }
+  }
+  return fdef;
+}
+
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   if (!OpDefEqual(f1.signature(), f2.signature())) return false;
 
@@ -986,6 +1408,34 @@ uint64_t FunctionDefHash(const FunctionDef& fdef) {
   }
 
   return h;
+}
+
+bool FunctionDefsEqual(const CompactFunctionDef& f1,
+                       const CompactFunctionDef& f2) {
+  if (!OpDefEqual(f1.signature(), f2.signature())) return false;
+
+  if (!EqualCompactAttrs(f1.attr(), f2.attr())) return false;
+
+  if (!EqualRepeatedCompactNodeDef(f1.node_def(), f2.node_def())) {
+    return false;
+  }
+
+  if (!EqualCompactStringMap(f1.ret(), f2.ret())) return false;
+  if (!EqualCompactStringMap(f1.control_ret(), f2.control_ret())) return false;
+
+  return true;
+}
+
+bool FunctionDefsEqual(const CompactFunctionDef& f1, const FunctionDef& f2) {
+  return FunctionDefsEqual(f1, CompactFunctionDef::FromProto(f2));
+}
+
+bool FunctionDefsEqual(const FunctionDef& f1, const CompactFunctionDef& f2) {
+  return FunctionDefsEqual(CompactFunctionDef::FromProto(f1), f2);
+}
+
+uint64_t FunctionDefHash(const CompactFunctionDef& fdef) {
+  return FunctionDefHash(fdef.ToProto());
 }
 
 static constexpr const char* const kExecutorAttr = "_executor";
@@ -1064,7 +1514,7 @@ class AttrKeyAndValue {
 }  // namespace
 
 std::string GetFunctionResourceInputDevice(
-    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    const Tensor& input, int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<std::string, std::vector<std::string>>*
         composite_devices) {
   const auto& handles = input.flat<ResourceHandle>();
@@ -1253,45 +1703,82 @@ absl::Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
-    : FunctionRecord(FunctionDef(fdef), StackTracesMap(stack_traces),
-                     finalized) {}
+    : finalized_(finalized),
+      compact_fdef_(finalized ? CompactFunctionDef::FromProto(fdef)
+                              : CompactFunctionDef()),
+      unfinalized_fdef_(finalized ? FunctionDef() : fdef),
+      stack_traces_(stack_traces),
+      op_registration_data_(
+          finalized ? compact_fdef_.signature() : unfinalized_fdef_.signature(),
+          shape_inference::UnknownShape, true /* is_function */) {}
 
 FunctionRecord::FunctionRecord(FunctionDef&& fdef,
                                StackTracesMap&& stack_traces, bool finalized)
     : finalized_(finalized),
-      fdef_(std::move(fdef)),
+      compact_fdef_(finalized ? CompactFunctionDef::FromProto(std::move(fdef))
+                              : CompactFunctionDef()),
+      unfinalized_fdef_(finalized ? FunctionDef() : std::move(fdef)),
       stack_traces_(std::move(stack_traces)),
-      // Exact shape inference for functions is handled by ShapeRefiner.
-      // Here we pass a dummy shape inference function for legacy code paths.
-      op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
-                            true /* is_function */) {}
+      op_registration_data_(
+          finalized ? compact_fdef_.signature() : unfinalized_fdef_.signature(),
+          shape_inference::UnknownShape, true /* is_function */) {}
 
 void FunctionRecord::finalize() {
-  if (!finalized_) {
-    finalized_ = true;
+  absl::MutexLock l(&mu_);
+  if (!finalized_.load(std::memory_order_relaxed)) {
+    op_registration_data_.op_def = unfinalized_fdef_.signature();
+    if (cached_fdef_ != nullptr) {
+      *cached_fdef_ = unfinalized_fdef_;
+    }
+    compact_fdef_ = CompactFunctionDef::FromProto(std::move(unfinalized_fdef_));
+    unfinalized_fdef_.Clear();
+    finalized_.store(true, std::memory_order_release);
   }
 }
 
 absl::StatusOr<FunctionDef*> FunctionRecord::mutable_fdef() {
-  if (finalized_) {
+  absl::MutexLock l(&mu_);
+  if (finalized_.load(std::memory_order_relaxed)) {
     return absl::Status(absl::StatusCode::kPermissionDenied,
                         "Can not mutate FunctionDef after finalization.");
   }
-
-  return &fdef_;
+  return &unfinalized_fdef_;
 }
 
-const FunctionDef& FunctionRecord::fdef() const { return fdef_; }
+const FunctionDef& FunctionRecord::fdef() const {
+  absl::MutexLock l(&mu_);
+  if (cached_fdef_ == nullptr) {
+    if (finalized_.load(std::memory_order_relaxed)) {
+      cached_fdef_ = std::make_unique<FunctionDef>(compact_fdef_.ToProto());
+    } else {
+      cached_fdef_ = std::make_unique<FunctionDef>(unfinalized_fdef_);
+    }
+  } else if (!finalized_.load(std::memory_order_relaxed)) {
+    *cached_fdef_ = unfinalized_fdef_;
+  }
+  return *cached_fdef_;
+}
 
 const StackTracesMap& FunctionRecord::stack_traces() const {
   return stack_traces_;
 }
 
 const OpRegistrationData& FunctionRecord::op_registration_data() const {
+  absl::MutexLock l(&mu_);
+  if (!finalized_.load(std::memory_order_relaxed)) {
+    op_registration_data_.op_def = unfinalized_fdef_.signature();
+  }
   return op_registration_data_;
 }
 
-bool FunctionRecord::finalized() const { return finalized_; }
+bool FunctionRecord::finalized() const {
+  return finalized_.load(std::memory_order_acquire);
+}
+
+const CompactFunctionDef& FunctionRecord::compact_fdef() const {
+  absl::MutexLock l(&mu_);
+  return compact_fdef_;
+}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1500,11 +1987,13 @@ absl::Status FunctionLibraryDefinition::AddFunctionRecord(
 absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
                                                   bool* added) {
   *added = false;
-  auto iter = records_.find(registration->fdef().signature().name());
+  const std::string& name = registration->op_registration_data().op_def.name();
+  auto iter = records_.find(name);
   if (iter != records_.end()) {
-    if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
+    if (!FunctionDefsEqual(iter->second->compact_fdef(),
+                           registration->compact_fdef())) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Cannot add function '", registration->fdef().signature().name(),
+          "Cannot add function '", name,
           "' because a different function with the same name already "
           "exists."));
     }
@@ -1512,16 +2001,14 @@ absl::Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
     return absl::OkStatus();
   }
   const OpDef* op_def;
-  if (default_registry_
-          ->LookUpOpDef(registration->fdef().signature().name(), &op_def)
-          .ok()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Cannot add function '", registration->fdef().signature().name(),
-        "' because an op with the same name already exists."));
+  if (default_registry_->LookUpOpDef(name, &op_def).ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot add function '", name,
+                     "' because an op with the same name already exists."));
   }
   registration->Ref();
   registration->finalize();
-  records_.insert({registration->fdef().signature().name(), registration});
+  records_.insert({name, registration});
   *added = true;
   return absl::OkStatus();
 }
@@ -1542,7 +2029,8 @@ absl::Status FunctionLibraryDefinition::CopyFunctionDefFrom(
   }
   core::RefCountPtr<FunctionRecord> self_record = FindRecord(name);
   if (self_record) {
-    if (!FunctionDefsEqual(self_record->fdef(), other_record->fdef())) {
+    if (!FunctionDefsEqual(self_record->compact_fdef(),
+                           other_record->compact_fdef())) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Cannot copy function '", name,
           "' because a different function with the same name already "
