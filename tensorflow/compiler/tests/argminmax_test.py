@@ -90,6 +90,49 @@ class ArgMinMaxTest(xla_test.XLATestCase):
             op_input=np.array([[4, 1], [3, 2]], dtype=dtype),
             expected=np.array([1, 1], dtype=output_type))
 
+  def testArgMinMaxNaN(self):
+    # IEEE-754 comparisons against NaN are always false, which used to make XLA
+    # report the index of a NaN instead of the index of the finite extremum.
+    # Eager execution ignores NaNs whenever a finite value is present, and
+    # returns the lowest index when every value is NaN.
+    cases = [
+        # A NaN must not mask a finite extremum, wherever it appears.
+        (math_ops.argmax, [4.0, 5.5, np.nan], 1),
+        (math_ops.argmax, [np.nan, 4.0, 5.5], 2),
+        (math_ops.argmax, [4.0, np.nan, 5.5], 2),
+        (math_ops.argmin, [4.0, 5.5, np.nan], 0),
+        (math_ops.argmin, [np.nan, 4.0, 5.5], 1),
+        (math_ops.argmin, [4.0, np.nan, 5.5], 0),
+        # With no finite value to select, the lowest index wins.
+        (math_ops.argmax, [np.nan, np.nan], 0),
+        (math_ops.argmin, [np.nan, np.nan], 0),
+        # The reduction is seeded with -inf for argmax and +inf for argmin, so
+        # an infinity in the data ties with the init value. The NaN must still
+        # lose, and the lowest tied index must win.
+        (math_ops.argmax, [-np.inf, np.nan, -np.inf], 0),
+        (math_ops.argmin, [np.inf, np.nan, np.inf], 0),
+    ]
+    for dtype in self.float_types:
+      for op, op_input, expected in cases:
+        self._assertOpOutputMatchesExpected(
+            op,
+            axis=0,
+            output_type=np.int32,
+            op_input=np.array(op_input, dtype=dtype),
+            expected=np.int32(expected),
+        )
+      # Reducing along an axis of a 2-D input exercises several independent
+      # reduction lanes, including one that is entirely NaN.
+      self._assertOpOutputMatchesExpected(
+          math_ops.argmax,
+          axis=1,
+          output_type=np.int32,
+          op_input=np.array(
+              [[1.0, np.nan, 3.0], [np.nan, np.nan, np.nan]], dtype=dtype
+          ),
+          expected=np.array([2, 0], dtype=np.int32),
+      )
+
 
 if __name__ == "__main__":
   test.main()

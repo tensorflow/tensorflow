@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -86,10 +87,21 @@ absl::StatusOr<HloDotInstruction*> MakeDotWithSwappedOperands(
       DotDimensionNumbers new_dot_dims,
       DotOperandDims::CreateDotDimensionNumbers(rhs_dims, lhs_dims));
 
+  PrecisionConfig new_precision_config = dot->precision_config();
+  const int precision_count = new_precision_config.operand_precision_size();
+  TF_RET_CHECK(precision_count <= 2)
+      << "Dot has " << precision_count
+      << " operand precision entries; expected at most 2.";
+  if (precision_count != 0) {
+    new_precision_config.mutable_operand_precision()->Resize(
+        2, PrecisionConfig::DEFAULT);
+    new_precision_config.mutable_operand_precision()->SwapElements(0, 1);
+  }
+
   return DynCast<HloDotInstruction>(computation->AddInstruction(
       HloInstruction::CreateDot(new_dot_shape, dot->mutable_operand(1),
                                 dot->mutable_operand(0), new_dot_dims,
-                                dot->precision_config()),
+                                new_precision_config),
       &dot->metadata()));
 }
 
