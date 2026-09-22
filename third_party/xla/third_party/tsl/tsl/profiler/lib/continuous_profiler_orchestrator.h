@@ -53,6 +53,11 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(2);
   static constexpr absl::Duration kMinPollingInterval = absl::Seconds(2);
   static constexpr absl::Duration kMaxPollingInterval = absl::Seconds(5);
+  // Upper bound on how long Flush() will block waiting for the ingestion
+  // thread. Generous relative to kMaxPollingInterval (which bounds how long
+  // the ingestion thread sleeps) but small enough that a wedged Consume()
+  // cannot hold an RPC handler hostage.
+  static constexpr absl::Duration kFlushTimeout = absl::Seconds(30);
 
   explicit ContinuousProfilerOrchestrator(
       std::unique_ptr<ProfilerType> profiler,
@@ -116,6 +121,7 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   }
 
   std::vector<tensorflow::profiler::XSpace> SerializeChunks() {
+    Flush();
     std::vector<std::any> chunks = PopBuffer();
     std::vector<tensorflow::profiler::XSpace> spaces;
     spaces.reserve(chunks.size());
@@ -225,9 +231,11 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   void IngestionLoop() {
     LOG(INFO) << "ContinuousProfilerOrchestrator::IngestionLoop started";
     while (true) {
+      uint64_t seq_before_consume = 0;
       {
         absl::MutexLock lock(mutex_);
         if (!is_running_) break;
+        seq_before_consume = flush_requested_seq_;
       }
       absl::StatusOr<ConsumeResult> result = profiler_->Consume();
 
@@ -238,11 +246,45 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
         AdjustIntervalLocked(chunk_size);
       }
 
+      if (seq_before_consume > flush_completed_seq_) {
+        flush_completed_seq_ = seq_before_consume;
+        cv_.SignalAll();
+      }
       if (!is_running_) break;
-
-      // Wait using absl::CondVar on absl::Mutex
+      if (flush_requested_seq_ > flush_completed_seq_) {
+        continue;  // Immediate consume requested while Consume() was in flight.
+      }
       cv_.WaitWithTimeout(&mutex_, polling_interval_);
       if (!is_running_) break;
+    }
+  }
+
+  // Asks the ingestion thread to run a Consume() cycle now and waits for it to
+  // finish, so that everything recorded before this call is in the buffer.
+  //
+  // The wait is bounded by `kFlushTimeout`: a Consume() implementation that
+  // wedges must not be able to block the caller (typically an RPC handler)
+  // indefinitely. On timeout we simply return, and the caller sees whatever
+  // was already buffered.
+  //
+  // Note this can cost up to two Consume() cycles in the worst case: a
+  // Consume() that was already in flight when the flush was requested cannot
+  // be credited against it, because it may have started before the data the
+  // caller cares about was recorded.
+  void Flush() {
+    absl::MutexLock lock(mutex_);
+    if (!is_running_) return;
+    uint64_t target_seq = ++flush_requested_seq_;
+    cv_.SignalAll();
+    const absl::Time deadline = absl::Now() + kFlushTimeout;
+    while (is_running_ && flush_completed_seq_ < target_seq) {
+      if (cv_.WaitWithDeadline(&mutex_, deadline)) {
+        LOG_EVERY_N_SEC(WARNING, 30)
+            << "ContinuousProfilerOrchestrator::Flush timed out after "
+            << kFlushTimeout
+            << " waiting for the ingestion thread; returning partial data.";
+        return;
+      }
     }
   }
 
@@ -284,6 +326,8 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   size_t total_buffered_bytes_ ABSL_GUARDED_BY(mutex_) = 0;
   uint64_t dropped_chunks_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint64_t dropped_bytes_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t flush_requested_seq_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t flush_completed_seq_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace profiler
