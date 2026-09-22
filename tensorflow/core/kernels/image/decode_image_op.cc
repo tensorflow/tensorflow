@@ -109,6 +109,8 @@ absl::string_view GetImageFormatName(FileFormat format) {
       return "BMP";
     case kWebpFormat:
       return "WebP";
+    case kJxlFormat:
+      return "JPEG XL";
     default:
       return "UNKNOWN";
   }
@@ -176,28 +178,33 @@ class DecodeImageV2Op : public OpKernel {
       flags_.dct_method = JDCT_IFAST;
     }
 
-    // Get `dtype` attribute from `DecodePng` or `DecodeImage` op invocations.
-    if (op_type_ == "DecodePng" || op_type_ == "DecodeImage") {
+    // Get `dtype` attribute from `DecodePng`, `DecodeJxl` or `DecodeImage` op
+    // invocations.
+    if (op_type_ == "DecodePng" || op_type_ == "DecodeJxl" ||
+        op_type_ == "DecodeImage") {
       OP_REQUIRES_OK(context, context->GetAttr("dtype", &data_type_));
       if (op_type_ == "DecodePng") {
-        OP_REQUIRES(
-            context,
-            data_type_ == DataType::DT_UINT8 ||
-                data_type_ == DataType::DT_UINT16,
-            absl::InvalidArgumentError(absl::StrCat(
-                "`dtype` for `DecodePng` must be unit8, unit16 but got: ",
-                data_type_)));
+        OP_REQUIRES(context,
+                    data_type_ == DataType::DT_UINT8 ||
+                        data_type_ == DataType::DT_UINT16,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "`dtype` for `", op_type_,
+                        "` must be uint8, uint16 but got: ", data_type_)));
       } else {
         OP_REQUIRES(context,
                     data_type_ == DataType::DT_UINT8 ||
                         data_type_ == DataType::DT_UINT16 ||
+                        data_type_ == DataType::DT_HALF ||
                         data_type_ == DataType::DT_FLOAT,
                     absl::InvalidArgumentError(
-                        absl::StrCat("`dtype` for `DecodeImage` must be "
-                                     "unit8, unit16, float but got: ",
+                        absl::StrCat("`dtype` for `", op_type_,
+                                     "` must be "
+                                     "uint8, uint16, half, float but got: ",
                                      data_type_)));
-        OP_REQUIRES_OK(context, context->GetAttr("expand_animations",
-                                                 &expand_animations_));
+        if (op_type_ == "DecodeImage") {
+          OP_REQUIRES_OK(context, context->GetAttr("expand_animations",
+                                                   &expand_animations_));
+        }
       }
     }
 
@@ -379,6 +386,12 @@ class DecodeImageV2Op : public OpKernel {
       // Fill output tensor with desired dtype.
       output->flat<uint16_t>().device(device) =
           buffer_view.cast<uint16_t>() * scale;
+    } else if (data_type_ == DataType::DT_HALF) {
+      Eigen::half scale =
+          static_cast<Eigen::half>(1. / std::numeric_limits<uint8_t>::max());
+      // Fill output tensor with desired dtype.
+      output->flat<Eigen::half>().device(device) =
+          buffer_view.cast<Eigen::half>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
       float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
@@ -469,6 +482,23 @@ class DecodeImageV2Op : public OpKernel {
               decode.channels * width * sizeof(uint16_t), &decode),
           absl::InvalidArgumentError(
               absl::StrCat("Invalid PNG data, size ", input.size())));
+    } else if (data_type_ == DataType::DT_HALF) {
+      std::unique_ptr<uint16_t[]> buffer(
+          new uint16_t[height * width * decode.channels]);
+      OP_REQUIRES(context,
+                  png::CommonFinishDecode(
+                      reinterpret_cast<png_bytep>(buffer.get()),
+                      decode.channels * width * sizeof(uint16_t), &decode),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Invalid PNG data, size ", input.size())));
+
+      const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
+      TTypes<uint16_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
+                                                    decode.channels);
+      Eigen::half scale =
+          static_cast<Eigen::half>(1. / std::numeric_limits<uint16_t>::max());
+      output->tensor<Eigen::half, 3>().device(device) =
+          buf.cast<Eigen::half>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
       // `png::CommonFinishDecode` does not support `float`. First allocate
       // uint16 buffer for the image and decode in uint16 (lossless). Wrap the
@@ -590,6 +620,12 @@ class DecodeImageV2Op : public OpKernel {
       // Fill output tensor with desired dtype.
       output->flat<uint16_t>().device(device) =
           buffer_view.cast<uint16_t>() * scale;
+    } else if (data_type_ == DataType::DT_HALF) {
+      Eigen::half scale =
+          static_cast<Eigen::half>(1. / std::numeric_limits<uint8_t>::max());
+      // Fill output tensor with desired dtype.
+      output->flat<Eigen::half>().device(device) =
+          buffer_view.cast<Eigen::half>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
       float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
@@ -726,6 +762,12 @@ class DecodeImageV2Op : public OpKernel {
         // Fill output tensor with desired dtype.
         output->tensor<uint16_t, 3>().device(device) =
             buf.cast<uint16_t>() * scale;
+      } else if (data_type_ == DataType::DT_HALF) {
+        Eigen::half scale =
+            static_cast<Eigen::half>(1. / std::numeric_limits<uint8_t>::max());
+        // Fill output tensor with desired dtype.
+        output->tensor<Eigen::half, 3>().device(device) =
+            buf.cast<Eigen::half>() * scale;
       } else if (data_type_ == DataType::DT_FLOAT) {
         float scale = 1. / std::numeric_limits<uint8_t>::max();
         // Fill output tensor with desired dtype.
@@ -851,16 +893,22 @@ class DecodeImageV2Op : public OpKernel {
   void DecodeJxl(OpKernelContext* context, absl::string_view input) {
     OP_REQUIRES(
         context,
-        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
-        absl::InvalidArgumentError("JXL only supports 1, 3, or 4 channels"));
-
-    OP_REQUIRES(
-        context, data_type_ == DataType::DT_UINT8,
-        absl::InvalidArgumentError("JXL only supports uint8 for dtype"));
+        data_type_ == DataType::DT_UINT8 || data_type_ == DataType::DT_UINT16 ||
+            data_type_ == DataType::DT_HALF || data_type_ == DataType::DT_FLOAT,
+        absl::InvalidArgumentError(absl::StrCat(
+            "`dtype` for `", op_type_,
+            "` on JXL input must be uint8, uint16, half, float but got: ",
+            data_type_)));
 
     int width = 0, height = 0, channels = 0;
     OP_REQUIRES(context, jxl::DecodeHeader(input, &width, &height, &channels),
                 absl::InvalidArgumentError("Failed to decode JXL header"));
+    OP_REQUIRES(
+        context, width > 0 && height > 0,
+        absl::InvalidArgumentError("Invalid image dimensions in JXL header"));
+    OP_REQUIRES(context, channels == 1 || channels == 3 || channels == 4,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "JXL only supports 1, 3, or 4 channels, got ", channels)));
 
     OP_REQUIRES(context, channels_ == 0 || channels_ == channels,
                 absl::InvalidArgumentError(
@@ -871,11 +919,31 @@ class DecodeImageV2Op : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({height, width, channels}), &output));
 
-    OP_REQUIRES(
-        context,
-        jxl::DecodeImage(input, channels, output->flat<uint8_t>().data(),
-                         output->flat<uint8_t>().size()),
-        absl::InvalidArgumentError("Failed to decode JXL image"));
+    if (data_type_ == DataType::DT_UINT8) {
+      OP_REQUIRES(
+          context,
+          jxl::DecodeImage(input, channels, output->flat<uint8_t>().data(),
+                           output->TotalBytes()),
+          absl::InvalidArgumentError("Failed to decode JXL image"));
+    } else if (data_type_ == DataType::DT_UINT16) {
+      OP_REQUIRES(
+          context,
+          jxl::DecodeImage16(input, channels, output->flat<uint16_t>().data(),
+                             output->TotalBytes()),
+          absl::InvalidArgumentError("Failed to decode JXL image"));
+    } else if (data_type_ == DataType::DT_HALF) {
+      OP_REQUIRES(context,
+                  jxl::DecodeImageFloat16(input, channels,
+                                          output->flat<Eigen::half>().data(),
+                                          output->TotalBytes()),
+                  absl::InvalidArgumentError("Failed to decode JXL image"));
+    } else if (data_type_ == DataType::DT_FLOAT) {
+      OP_REQUIRES(
+          context,
+          jxl::DecodeImageFloat(input, channels, output->flat<float>().data(),
+                                output->TotalBytes()),
+          absl::InvalidArgumentError("Failed to decode JXL image"));
+    }
   }
 
  private:

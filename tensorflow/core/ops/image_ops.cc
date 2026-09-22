@@ -465,7 +465,7 @@ REGISTER_OP("DecodeImage")
     // Setting `channels` to 0 means using the inherent number of channels in
     // the image.
     .Attr("channels: int = 0")
-    .Attr("dtype: {uint8, uint16, float32} = DT_UINT8")
+    .Attr("dtype: {uint8, uint16, half, float32} = DT_UINT8")
     .Output("image: dtype")
     .Attr("expand_animations: bool = true")
     .SetShapeFn(DecodeImageV2ShapeFn);
@@ -670,9 +670,18 @@ REGISTER_OP("DecodeWebP")
 REGISTER_OP("DecodeJxl")
     .Input("contents: string")
     .Attr("channels: int = 0")
-    .Attr("dtype: {uint8} = DT_UINT8")
+    .Attr("dtype: {uint8, uint16, half, float} = DT_UINT8")
     .Output("image: dtype")
     .SetShapeFn(DecodeImageShapeFn);
+
+// --------------------------------------------------------------------------
+REGISTER_OP("EncodeJxl")
+    .Attr("quality: float = 95.0")
+    .Attr("effort: int = 7")
+    .Attr("T: {uint8, uint16, half, float} = DT_UINT8")
+    .Input("image: T")
+    .Output("contents: string")
+    .SetShapeFn(BatchedEncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")
