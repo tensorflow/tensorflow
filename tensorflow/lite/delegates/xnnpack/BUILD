@@ -1324,12 +1324,34 @@ cc_library(
 )
 
 cc_library(
+    name = "moe_block_scale",
+    hdrs = ["moe_block_scale.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
+cc_test(
+    name = "moe_block_scale_test",
+    srcs = ["moe_block_scale_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":moe_block_scale",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "moe_delegate_kernel",
     srcs = ["moe_delegate_kernel.cc"],
     hdrs = ["moe_delegate_kernel.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     deps = [
+        ":moe_block_scale",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
@@ -1338,6 +1360,25 @@ cc_library(
         "@XNNPACK",
         "@flatbuffers//:runtime_cc",
         "@pthreadpool",
+    ],
+)
+
+cc_test(
+    name = "moe_delegate_kernel_test",
+    srcs = ["moe_delegate_kernel_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":moe_delegate_kernel",
+        ":test_main",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
