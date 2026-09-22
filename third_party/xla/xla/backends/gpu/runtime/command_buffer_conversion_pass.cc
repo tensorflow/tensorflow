@@ -29,7 +29,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -219,7 +223,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kConvolution:
       return DebugOptions::CONVOLUTION;
     case Thunk::kCustomCall:
-    case Thunk::kSelectK:
       return DebugOptions::CUSTOM_CALL;
     case Thunk::kCublasLtMatmul:
       return DebugOptions::CUBLASLT;
@@ -459,19 +462,23 @@ bool ThunkSequenceIsConvertible(const ThunkSequence& thunks,
         return false;
       }
       i += region_size - 1;
+    } else if (thunk->kind() == Thunk::kAsyncDone) {
+      // Every done that belongs to a start in this sequence was consumed above
+      // as part of its region. This done joins an operation started outside
+      // the sequence; capturing it would drop the join (the top-level loop in
+      // `RunImpl` keeps such thunks in place for the same reason).
+      return false;
     }
   }
   return true;
 }
 
 // Collects and returns the size of the shortest non-empty sequence of thunks
-// that form a valid async region.
-// The sequence considered as a valid async region if each start thunk has a
-// corresponding done thunk and vice versa, and all thunks in between are
-// convertible. If there is another start thunk between the original start and
-// done, we may potentially extend the sequence to include its corresponding
-// done thunk. For example, if we call this function on async-start_a in the
-// following sequence:
+// that form a closed async region: each start thunk has a corresponding done
+// thunk and vice versa. If there is another start thunk between the original
+// start and done, we may potentially extend the sequence to include its
+// corresponding done thunk. For example, if we call this function on
+// async-start_a in the following sequence:
 //
 // async_start_a
 // async_start_b
@@ -480,48 +487,113 @@ bool ThunkSequenceIsConvertible(const ThunkSequence& thunks,
 //
 // The returned sequence will contain async_done_b. So that all async pairs
 // are captured by the same command buffer.
-size_t CheckAsyncRegion(absl::Span<const std::unique_ptr<Thunk>> thunks,
-                        const CommandBufferConfig& config) {
-  absl::flat_hash_set<uint64_t> unpaired_ids;
+// Find the boundary independently of command-buffer eligibility. If any thunk
+// is unsupported, the whole region must remain outside the command buffer:
+// capturing an inner region could lose ordering with an outstanding operation
+// on the same async stream.
+//
+// Returns 0 when no closed region starts here: either a start in the scanned
+// range has no done in this sequence, or a done in the range joins a start
+// from outside it. The caller handles both the same way, by leaving the start
+// as a thunk and keeping its stream open until it is joined.
+size_t AsyncRegionSize(absl::Span<const std::unique_ptr<Thunk>> thunks) {
+  absl::flat_hash_set<const AsyncExecution*> unpaired_executions;
 
   for (size_t i = 0; i < thunks.size(); ++i) {
     auto& thunk = thunks[i];
 
-    // Check if thunk is convertible
-    if (!IsConvertible(*thunk, config)) {
-      return 0;  // All thunks in the region must be convertible.
-    }
-
-    // Track AsyncStartThunk/AsyncDoneThunk pairs via AsyncExecutionId.
     if (thunk->kind() == Thunk::kAsyncStart) {
-      unpaired_ids.insert(static_cast<const AsyncStartThunk&>(*thunk)
-                              .async_execution_id()
-                              .value());
+      // Pipelined starts can share the canonical start's execution state, but
+      // AsyncExecution::Start rejects a second start before the matching done,
+      // so a valid sequence never inserts the same execution twice. Optimized
+      // builds fall back to leaving such a region uncaptured.
+      bool inserted = unpaired_executions
+                          .insert(static_cast<const AsyncStartThunk&>(*thunk)
+                                      .async_execution()
+                                      .get())
+                          .second;
+      DCHECK(inserted) << "Async execution started twice before its done: "
+                       << thunk->profile_annotation();
+      if (!inserted) {
+        return 0;
+      }
     }
     if (thunk->kind() == Thunk::kAsyncDone) {
-      auto id = static_cast<const AsyncDoneThunk&>(*thunk)
-                    .async_execution_id()
-                    .value();
-      auto it = unpaired_ids.find(id);
-      if (it == unpaired_ids.end()) {
+      auto* execution =
+          static_cast<const AsyncDoneThunk&>(*thunk).async_execution().get();
+      auto it = unpaired_executions.find(execution);
+      if (it == unpaired_executions.end()) {
         return 0;  // Done without matching start in the region.
       }
-      unpaired_ids.erase(it);
+      unpaired_executions.erase(it);
     }
 
-    if (unpaired_ids.empty()) {
+    if (unpaired_executions.empty()) {
       return i + 1;  // All start/done pairs are matched.
     }
   }
-  return 0;  // error didn't find an end for some start
+  return 0;  // At least one start has no matching done in this sequence.
 }
 
-// Returns the shortest non-empty sequence of thunks that form a valid async
-// region as a span. If no such region is found, an empty span is returned.
-absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
-    absl::Span<std::unique_ptr<Thunk>> thunks,
-    const CommandBufferConfig& config) {
-  return thunks.subspan(0, CheckAsyncRegion(thunks, config));
+// Returns the size of a closed region only if every thunk can be converted.
+size_t CheckAsyncRegion(absl::Span<const std::unique_ptr<Thunk>> thunks,
+                        const CommandBufferConfig& config) {
+  size_t size = AsyncRegionSize(thunks);
+  for (const std::unique_ptr<Thunk>& thunk : thunks.first(size)) {
+    if (!IsConvertible(*thunk, config)) {
+      return 0;
+    }
+  }
+  return size;
+}
+
+// Returns true if `thunk` or any thunk nested in it starts an async region on
+// one of `streams`. DynamicSliceFusionV2Thunk hides its embedded thunks from
+// Thunk::Walk, so they are inspected explicitly.
+bool ContainsAsyncStartOnStreams(
+    const Thunk& thunk, const absl::flat_hash_set<ExecutionStreamId>& streams) {
+  if (streams.empty()) {
+    return false;
+  }
+  // A non-OK status stops the walk at the first match.
+  absl::Status walk = thunk.Walk([&](const Thunk* nested) -> absl::Status {
+    if (nested->kind() == Thunk::kAsyncStart) {
+      if (streams.contains(static_cast<const AsyncStartThunk&>(*nested)
+                               .execution_stream_id())) {
+        return absl::CancelledError();
+      }
+    } else if (nested->kind() == Thunk::kDynamicSliceFusion) {
+      const auto& fusion =
+          static_cast<const DynamicSliceFusionV2Thunk&>(*nested);
+      for (const std::unique_ptr<Thunk>& embedded : fusion.thunks()) {
+        if (ContainsAsyncStartOnStreams(*embedded, streams)) {
+          return absl::CancelledError();
+        }
+      }
+    }
+    return absl::OkStatus();
+  });
+  return !walk.ok();
+}
+
+// Returns the index one past the done that joins the start at
+// `thunks[start_index]`, or `thunks.size()` if no thunk in this sequence joins
+// it. Until that index, work started on the start's stream is outstanding.
+size_t AsyncJoinEnd(absl::Span<const std::unique_ptr<Thunk>> thunks,
+                    size_t start_index) {
+  const AsyncExecution* execution =
+      static_cast<const AsyncStartThunk&>(*thunks[start_index])
+          .async_execution()
+          .get();
+  for (size_t i = start_index + 1; i < thunks.size(); ++i) {
+    if (thunks[i]->kind() == Thunk::kAsyncDone &&
+        static_cast<const AsyncDoneThunk&>(*thunks[i])
+                .async_execution()
+                .get() == execution) {
+      return i + 1;
+    }
+  }
+  return thunks.size();
 }
 
 absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
@@ -671,6 +743,16 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
     const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
+  return RunImpl(thunk_sequence, debug_options, hlo_module, device_info,
+                 allocator, /*open_async_streams=*/{});
+}
+
+absl::StatusOr<bool> CommandBufferConversionPass::RunImpl(
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
+    const HloModule* absl_nullable hlo_module,
+    const se::DeviceDescription& device_info,
+    ThunkPassBufferAllocator& allocator,
+    const absl::flat_hash_set<ExecutionStreamId>& open_async_streams) {
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
@@ -694,54 +776,103 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
 
   auto& original_thunks = *thunk_sequence;
 
+  // An async region is "open" when it cannot be captured as a whole: some
+  // thunk in it is not convertible, or its start has no matching done in this
+  // sequence. Its start stays a thunk and enqueues work on its async stream
+  // that a command buffer launched on the main stream cannot observe. That
+  // stream is "open" until the done that joins it, so while it is open:
+  //  * plain commands still execute on the main stream and can be captured,
+  //    exactly as their thunks never observed the async stream either;
+  //  * async regions on other streams can still be captured: their bodies
+  //    only ever waited on the main stream, so a graph loses no ordering;
+  //  * async starts on the open stream stay in place, because capturing them
+  //    would move their bodies into a graph on the main stream and lose
+  //    stream order with the outstanding operation;
+  //  * control flow containing such starts is not captured whole; its bodies
+  //    are converted recursively with the same streams open throughout.
+  // `open_stream_ends` maps each open stream to the index one past the thunk
+  // that joins it, or the end of the sequence for an unmatched start.
+  absl::flat_hash_map<ExecutionStreamId, size_t> open_stream_ends;
+  for (ExecutionStreamId stream : open_async_streams) {
+    open_stream_ends[stream] = original_thunks.size();
+  }
+  auto open_streams_at = [&](size_t index) {
+    absl::flat_hash_set<ExecutionStreamId> streams;
+    for (const auto& [stream, end] : open_stream_ends) {
+      if (index < end) {
+        streams.insert(stream);
+      }
+    }
+    return streams;
+  };
+
   for (size_t i = 0; i < original_thunks.size(); ++i) {
     auto& thunk = original_thunks[i];
+    const absl::flat_hash_set<ExecutionStreamId> open_streams =
+        open_streams_at(i);
 
-    // We always have to capture both corresponding start and done events in the
-    // same command buffer.
     if (thunk->kind() == Thunk::kAsyncStart) {
-      // Collect and check async region
-      absl::Span<std::unique_ptr<Thunk>> region = CollectAndCheckAsyncRegion(
-          absl::MakeSpan(original_thunks).subspan(i), config);
-
-      if (!region.empty()) {
-        // If a valid region is found, add the whole region to the current
-        // sequence and continue processing.
-        i += region.size() - 1;
-        absl::c_move(region, std::back_inserter(current_command_buffer_thunks));
-        continue;
+      const auto& start = static_cast<const AsyncStartThunk&>(*thunk);
+      // We always have to capture both corresponding start and done events in
+      // the same command buffer.
+      if (!open_streams.contains(start.execution_stream_id())) {
+        absl::Span<std::unique_ptr<Thunk>> tail =
+            absl::MakeSpan(original_thunks).subspan(i);
+        absl::Span<std::unique_ptr<Thunk>> region =
+            tail.first(CheckAsyncRegion(tail, config));
+        if (!region.empty() &&
+            absl::c_none_of(region, [&](const std::unique_ptr<Thunk>& nested) {
+              return ContainsAsyncStartOnStreams(*nested, open_streams);
+            })) {
+          // If a valid region is found, add the whole region to the current
+          // sequence and continue processing.
+          i += region.size() - 1;
+          absl::c_move(region,
+                       std::back_inserter(current_command_buffer_thunks));
+          continue;
+        }
       }
-    } else if (IsConvertible(*thunk.get(), config) &&
-               thunk->kind() != Thunk::kAsyncDone) {
-      // Check if thunk is convertible and not an async done: async done thunks
-      // can be only added to the current_command_buffer_thunks as part of a
-      // valid async regions.
+      // This start stays a thunk so that its body keeps executing on its async
+      // stream; the stream is open until the done that joins it.
+      size_t& end = open_stream_ends[start.execution_stream_id()];
+      end = std::max(end, AsyncJoinEnd(original_thunks, i));
+    }
+
+    // Async start and done thunks are only captured as part of a valid async
+    // region above; on their own they stay in place.
+    const bool is_async_boundary = thunk->kind() == Thunk::kAsyncStart ||
+                                   thunk->kind() == Thunk::kAsyncDone;
+    if (!is_async_boundary && IsConvertible(*thunk, config) &&
+        !ContainsAsyncStartOnStreams(*thunk, open_streams)) {
       current_command_buffer_thunks.push_back(std::move(thunk));
       continue;
     }
+
     if (thunk->kind() == Thunk::kWhile) {
-      // If a `WhileThunk` itself is not eligible for conversion into a
-      // command buffer, we attempt to convert thunks within its body
+      // If a `WhileThunk` itself is not captured into a command buffer, we
+      // attempt to convert thunks within its body.
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
-      ABSL_ASSIGN_OR_RETURN(bool changed_in_body,
-                       Run(&while_thunk->body_executor().thunks(),
-                           debug_options, hlo_module, device_info, allocator));
+      ABSL_ASSIGN_OR_RETURN(
+          bool changed_in_body,
+          RunImpl(&while_thunk->body_executor().thunks(), debug_options,
+                  hlo_module, device_info, allocator, open_streams));
       changed |= changed_in_body;
     } else if (thunk->kind() == Thunk::kConditional) {
-      // If a `ConditionalThunk` itself is not eligible for conversion into a
-      // command buffer, we attempt to convert thunks within its branches.
+      // If a `ConditionalThunk` itself is not captured into a command buffer,
+      // we attempt to convert thunks within its branches.
       auto conditional_thunk = static_cast<ConditionalThunk*>(thunk.get());
       for (auto& branch_executor : conditional_thunk->branch_executors()) {
-        ABSL_ASSIGN_OR_RETURN(bool changed_in_branch,
-                         Run(&branch_executor.thunks(), debug_options,
-                             hlo_module, device_info, allocator));
+        ABSL_ASSIGN_OR_RETURN(
+            bool changed_in_branch,
+            RunImpl(&branch_executor.thunks(), debug_options, hlo_module,
+                    device_info, allocator, open_streams));
         changed |= changed_in_branch;
       }
     }
 
-    // If the current thunk is not convertible, flush collected eligible thunk
+    // If the current thunk is not captured, flush collected eligible thunks
     // to a command buffer thunk and add it to the processed sequence. Then add
-    // non-convertible thunk to the sequence.
+    // the thunk itself to the sequence.
     ABSL_RETURN_IF_ERROR(flush_command_buffer());
     new_thunks.push_back(std::move(thunk));
   }

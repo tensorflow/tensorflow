@@ -39,19 +39,18 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,6 +61,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -351,7 +351,7 @@ std::unique_ptr<PartitionIdThunk> CreatePartitionIdThunk(
   return std::make_unique<PartitionIdThunk>(Thunk::ThunkInfo(), slice0);
 }
 
-std::unique_ptr<SelectKThunk> CreateSelectKThunk(
+std::unique_ptr<CustomCallThunk> CreateSelectKThunk(
     const BufferAllocation& alloc_in, const BufferAllocation& alloc_out_val,
     const BufferAllocation& alloc_out_idx,
     const BufferAllocation& alloc_scratch, int64_t batch_size = 1,
@@ -364,19 +364,23 @@ std::unique_ptr<SelectKThunk> CreateSelectKThunk(
   BufferAllocation::Slice slice_scratch(&alloc_scratch, 0,
                                         alloc_scratch.size());
 
-  emitters::KernelArgument arg0(
-      ShapeUtil::MakeShape(F32, {batch_size, num_elements}), slice_in);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {batch_size, k}),
-                                slice_out_val);
-  emitters::KernelArgument arg2(ShapeUtil::MakeShape(S32, {batch_size, k}),
-                                slice_out_idx);
-  emitters::KernelArgument arg3(
-      ShapeUtil::MakeShape(U8, {alloc_scratch.size()}), slice_scratch);
+  std::vector<NullableShapedSlice> operands = {
+      ShapedSlice{slice_in,
+                  ShapeUtil::MakeShape(F32, {batch_size, num_elements})},
+  };
+  std::vector<NullableShapedSlice> results = {
+      ShapedSlice{slice_out_val, ShapeUtil::MakeShape(F32, {batch_size, k})},
+      ShapedSlice{slice_out_idx, ShapeUtil::MakeShape(S32, {batch_size, k})},
+      ShapedSlice{slice_scratch,
+                  ShapeUtil::MakeShape(U8, {alloc_scratch.size()})},
+  };
 
-  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2, arg3});
-
-  return std::make_unique<SelectKThunk>(Thunk::ThunkInfo(), batch_size,
-                                        num_elements, k, F32, kernel_arguments);
+  auto thunk = CustomCallThunk::Create(
+      Thunk::ThunkInfo(), std::string(kTopKCustomCallTarget),
+      std::move(operands), std::move(results), /*attributes=*/{},
+      /*called_computation=*/nullptr, "CUDA", se::GpuComputeCapability());
+  CHECK_OK(thunk.status());
+  return std::move(*thunk);
 }
 
 class FakeErrorAllocator : public ThunkPassBufferAllocator {
@@ -459,7 +463,7 @@ TEST(CommandBufferConversionPassTest,
       static_cast<const CommandBufferThunk*>(thunks[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kSelectK));
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCustomCall));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -495,7 +499,7 @@ TEST(CommandBufferConversionPassTest,
                        device_info, allocator),
               IsOkAndHolds(false));
 
-  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kSelectK));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCustomCall));
 }
 
 TEST(CommandBufferConversionPassTest,

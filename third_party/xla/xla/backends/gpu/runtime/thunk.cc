@@ -81,6 +81,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
+                       run_options.run_options().custom_options(),
                        run_options.run_options().ffi_execution_context(),
                        additional_compute_streams, execution_scoped_state,
                        enable_mock_collectives,
@@ -98,13 +99,9 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
 
 Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
     se::Stream* stream) const {
-  return ExecuteParams(buffer_allocations, stream, command_buffer_trace_stream,
-                       collective_params, collective_cliques, collective_memory,
-                       device_to_host_stream, host_to_device_stream,
-                       send_device_memory_function, recv_device_memory_function,
-                       ffi_execution_context, additional_compute_streams,
-                       execution_scoped_state, mock_collectives, execution_id,
-                       rng_seed, persistent_alloc_indices);
+  ExecuteParams params = *this;
+  params.stream = stream;
+  return params;
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -115,6 +112,7 @@ Thunk::ExecuteParams::ExecuteParams(
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
+    const CustomOptions* custom_options,
     const ffi::ExecutionContext* ffi_execution_context,
     std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
@@ -131,6 +129,7 @@ Thunk::ExecuteParams::ExecuteParams(
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
+      custom_options(custom_options),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
       execution_scoped_state(execution_scoped_state),
@@ -229,8 +228,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_REPLICA_ID;
     case kRngSeed:
       return THUNK_KIND_RNG_SEED;
-    case kSelectK:
-      return THUNK_KIND_SELECT_K;
     case kSend:
       return THUNK_KIND_SEND;
     case kSequential:
@@ -328,8 +325,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kReplicaId;
     case THUNK_KIND_RNG_SEED:
       return kRngSeed;
-    case THUNK_KIND_SELECT_K:
-      return kSelectK;
     case THUNK_KIND_SEND:
       return kSend;
     case THUNK_KIND_SEQUENTIAL:
@@ -392,7 +387,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kReduceScatter);
     CASE(kReplicaId);
     CASE(kRngSeed);
-    CASE(kSelectK);
     CASE(kSend);
     CASE(kSequential);
     CASE(kTriangularSolve);

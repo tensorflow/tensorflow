@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -1576,6 +1578,41 @@ TEST(ThunkProtoDeserializationTest, ConcurrentRegionIdPreserved) {
 
   EXPECT_TRUE(deserialized->concurrent_region_id().has_value());
   EXPECT_EQ(*deserialized->concurrent_region_id(), 42);
+}
+
+TEST(ThunkProtoDeserializationTest, SelectKThunkBackwardCompatibility) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
+    thunk_info { profile_annotation: "select_k" thunk_id: 7 }
+    select_k_thunk {
+      args { buffer_allocation_index: 0 offset: 0 size: 16384 }
+      args { buffer_allocation_index: 1 offset: 0 size: 128 }
+      args { buffer_allocation_index: 2 offset: 0 size: 128 }
+      args { buffer_allocation_index: 3 offset: 0 size: 33554432 }
+      batch_size: 1
+      num_elements: 4096
+      k: 32
+      dtype: F32
+    }
+  )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/16384, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/128, /*color=*/0),
+      BufferAllocation(/*index=*/2, /*size=*/128, /*color=*/0),
+      BufferAllocation(/*index=*/3, /*size=*/33554432, /*color=*/0),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> deserialized,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            "CUDA", se::GpuComputeCapability()));
+  EXPECT_EQ(deserialized->kind(), Thunk::kCustomCall);
+  const auto* custom_call_thunk =
+      dynamic_cast<const CustomCallThunk*>(deserialized.get());
+  ASSERT_NE(custom_call_thunk, nullptr);
+  EXPECT_EQ(custom_call_thunk->target_name(), kTopKCustomCallTarget);
+  EXPECT_EQ(custom_call_thunk->operands().size(), 1);
+  EXPECT_EQ(custom_call_thunk->results().size(), 3);
 }
 
 }  // namespace
