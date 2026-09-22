@@ -23,10 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
-#include <variant>
-#include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
@@ -36,9 +33,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cudart_kernel_registry.h"
@@ -58,31 +54,23 @@ absl::StatusOr<ThunkSequence> WriteValueThunkFoldedHandler(
   const Shape& out_shape = instr.shape();
   int64_t num_elements = ShapeUtil::ElementsIn(out_shape);
 
-  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
-                   ctx.GetResultAllocationSlice(/*index=*/{}));
+  ABSL_ASSIGN_OR_RETURN(xla::ffi::Attributes attrs, ctx.GetFfiAttributes());
+  ABSL_ASSIGN_OR_RETURN(int32_t val, attrs.Get<int32_t>("val"));
 
-  ABSL_ASSIGN_OR_RETURN(xla::ffi::AttributesMap attrs, ctx.GetFfiAttributes());
-  auto it = attrs.find("val");
-  if (it == attrs.end()) {
-    return absl::InvalidArgumentError(
-        "Expected 'val' attribute in backend_config");
-  }
-  if (!std::holds_alternative<xla::ffi::Scalar>(it->second.AsVariant())) {
-    return absl::InvalidArgumentError("'val' attribute must be a scalar");
-  }
-  const xla::ffi::Scalar& scalar =
-      std::get<xla::ffi::Scalar>(it->second.AsVariant());
-  if (!std::holds_alternative<int32_t>(scalar.AsVariant())) {
-    return absl::InvalidArgumentError("'val' attribute must be an int32_t");
-  }
-  int32_t val = std::get<int32_t>(scalar.AsVariant());
+  // The conventional argument list for this custom call, which here is just the
+  // result buffer. Letting the context build it keeps alignment, aliasing and
+  // the `written` flags consistent with the rest of XLA's kernel emitters.
+  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_args,
+                   ctx.CreateKernelArguments());
+  ABSL_ASSIGN_OR_RETURN(int64_t result_position,
+                   kernel_args.PositionOfResult(/*index=*/{}));
 
   ABSL_ASSIGN_OR_RETURN(stream_executor::KernelLoaderSpec kernel_spec,
                    stream_executor::cuda::FindCudaRuntimeKernel(
                        stream_executor::cuda::GetWriteValueFoldedKernel()));
 
   stream_executor::KernelArgsPackingSpec packing_spec;
-  packing_spec.AddAddressArgument(0);
+  packing_spec.AddAddressArgument(result_position);
   packing_spec.AddConstantArgument<int32_t>(val);
   kernel_spec.set_kernel_args_packing(std::move(packing_spec));
 
@@ -93,11 +81,6 @@ absl::StatusOr<ThunkSequence> WriteValueThunkFoldedHandler(
       /*block_dims=*/stream_executor::BlockDim(num_elements),
       /*thread_dims=*/stream_executor::ThreadDim(),
       /*shared_memory_bytes=*/0);
-
-  emitters::KernelArgument out_arg(out_shape, out_slice);
-  out_arg.set_written(true);
-  emitters::KernelArguments kernel_args(
-      std::vector<emitters::KernelArgument>{out_arg});
 
   return ThunkSequence::Of<CustomKernelThunk>(
       ctx.GenerateThunkInfo(), std::move(custom_kernel), kernel_args);

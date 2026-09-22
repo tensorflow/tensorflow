@@ -142,9 +142,12 @@ constexpr char kSPMDOpMultiSlice[] = "_SPMDInternalOp_MultiSlice";
 constexpr char kSPMDOpWrap[] = "_SPMDInternalOp_Wrap";
 
 bool IsTopKIndexOutputUsed(HloInstruction* hlo) {
+  if (hlo->IsRoot()) {
+    return true;
+  }
   for (const HloInstruction* user : hlo->users()) {
     if (user->opcode() == HloOpcode::kGetTupleElement) {
-      if (user->tuple_index() > 0 && !user->users().empty()) {
+      if (user->tuple_index() > 0 && !user->IsDead()) {
         return true;
       }
     } else {

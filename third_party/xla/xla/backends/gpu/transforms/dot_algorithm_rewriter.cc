@@ -330,6 +330,14 @@ void RewriteF32ToTF32X3(HloInstruction* instr) {
 absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Pre-Ampere architectures (e.g. Volta SM70, Turing SM75) do not have BF16
+  // Tensor Cores or TF32 hardware support. On pre-Ampere GPUs, BF16 matmuls are
+  // explicitly upcast to F32 for performance, so we do not rewrite them here.
+  const auto* cuda_cc = gpu_version_.cuda_compute_capability();
+  if (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) {
+    return false;
+  }
+
   bool changed = false;
   bool default_to_bf16 = module->config()
                              .debug_options()

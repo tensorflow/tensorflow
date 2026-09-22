@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/LLVM.h"
+#include "riegeli/bytes/writer.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -90,6 +91,12 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
                                       absl::string_view sdy_version,
                                       bool inplace = false);
 
+// Serializes an MLIR module to a portable artifact, directing bytes directly
+// into a riegeli::Writer.
+absl::Status Serialize(mlir::ModuleOp mlir_module, absl::string_view target,
+                       absl::string_view sdy_version, riegeli::Writer* writer,
+                       bool inplace = false);
+
 // Temporary legacy version of Serialize. Will use the default SDY version.
 // TODO(hyeontaek): Delete once all users are migrated.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
@@ -125,6 +132,15 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
     absl::string_view sdy_version, bool inplace = false,
     bool allow_mixed_serialization = false);
+
+// Serializes an MLIR module to a portable artifact directing bytes directly
+// into the provided riegeli::Writer, avoiding std::string contiguous
+// allocation.
+absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
+                                absl::string_view requested_target,
+                                absl::string_view sdy_version, bool inplace,
+                                bool allow_mixed_serialization,
+                                riegeli::Writer* writer);
 
 // Temporary legacy version of SerializeUsingVersionedStablehlo. Will use
 // the default SDY version.

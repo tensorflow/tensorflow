@@ -53,6 +53,7 @@ pytype_strict_binary(
         ":clang_apply_replacements_bin",
     ]),
     main = "clang_tidy_diff.py",
+    tags = ["manual"],
     deps = [
         ":clang_tidy_diff_lib",
     ],

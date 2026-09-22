@@ -572,7 +572,8 @@ ConvertThunksToCommandBuffer(
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
   }
-  VLOG(2) << "Creating command buffer thunk with the following thunks: "
+  VLOG(2) << "Creating command buffer thunk "
+          << command_buffer_profile_annotation << " with the following thunks: "
           << absl::StrJoin(
                  thunks_to_convert, ", ",
                  [](std::string* out, const std::unique_ptr<Thunk>& thunk) {
