@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir {
 namespace odml {
@@ -86,12 +85,10 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   }
 }
 
-void AddMhloOptimizationPasses(OpPassManager& pm,
-                               const bool add_fold_broadcast_pass) {
+void AddStablehloOptimizationPasses(OpPassManager& pm,
+                                    const bool add_fold_broadcast_pass) {
   pm.addNestedPass<func::FuncOp>(createStablehloUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createStablehloFuseConvolutionPass());
-  // StableHLO -> MHLO legalization.
-  pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   // Rewrites some patterns for better performance.
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
   // Conditionally enable below pass because this causes unfused convolutions
@@ -101,28 +98,14 @@ void AddMhloOptimizationPasses(OpPassManager& pm,
     pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
   }
 
-  // Rewrites legacy StableHLO ops.
-  pm.addNestedPass<func::FuncOp>(mhlo::createLegalizeEinsumToDotGeneralPass());
-  pm.addNestedPass<func::FuncOp>(
-      mhlo::createLegalizeTorchIndexSelectToGatherPass());
-
   pm.addPass(mlir::createCanonicalizerPass());
 }
 
 void AddStablehloOptimizationPasses(OpPassManager& pm) {
-  // The current plan of record is to avoid doing optimization passes
-  // on StableHLO, treating StableHLO purely as an input format, and do all
-  // optimizations via MHLO passes that can be shared with the OpenXLA compiler.
-  // Therefore, this function inserts a StableHLO <=> MHLO roundtrip to make
-  // this happen.
-
-  AddMhloOptimizationPasses(pm, /*enable_stablehlo_quantizer=*/false);
+  AddStablehloOptimizationPasses(pm, /*add_fold_broadcast_pass=*/false);
   // TODO: b/293149194 - Add `createFoldBroadcastPass` back to
-  // `AddMhloOptimizationPasses`
+  // `AddStablehloOptimizationPasses`
   pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
-
-  // MHLO -> StableHLO legalization.
-  pm.addPass(mhlo::createHloLegalizeToStablehloPass());
 }
 
 }  // namespace odml

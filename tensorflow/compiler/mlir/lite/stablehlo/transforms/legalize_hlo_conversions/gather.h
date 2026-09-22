@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace mlir::odml {
 
-// Patterns to legalize mhlo.gather to TFL
+// Patterns to legalize stablehlo.gather to TFL
 //
 // Emits: tfl.gather_nd or a combination of tfl.slice, tfl.squeeze, tfl.concat
 void PopulateGatherPatterns(MLIRContext* ctx, RewritePatternSet& patterns,

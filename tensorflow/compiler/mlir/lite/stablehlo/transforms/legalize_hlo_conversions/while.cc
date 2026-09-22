@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
@@ -40,14 +40,14 @@ void TFLReplaceReturnOp(Region& region, PatternRewriter& rewriter) {
   }
 }
 
-class LeagalizeWhileOp : public OpConversionPattern<mhlo::WhileOp> {
+class LeagalizeWhileOp : public OpConversionPattern<stablehlo::WhileOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::WhileOp while_op, OpAdaptor adaptor,
+      stablehlo::WhileOp while_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    // Creates a TFL::WhileOp to replace the mhlo::WhileOp. HLO WhileOp
+    // Creates a TFL::WhileOp to replace the stablehlo::WhileOp. HLO WhileOp
     // currently doesn't support stateless, so this
     // parameters are set to the default values.
     auto is_stateless = rewriter.getBoolAttr(false);
@@ -64,7 +64,7 @@ class LeagalizeWhileOp : public OpConversionPattern<mhlo::WhileOp> {
   }
 };
 
-bool IsWhileLegal(mhlo::WhileOp while_op) {
+bool IsWhileLegal(stablehlo::WhileOp while_op) {
   for (auto type : while_op->getOperandTypes()) {
     if (mlir::isa<TupleType>(type)) return true;
   }
@@ -75,7 +75,7 @@ bool IsWhileLegal(mhlo::WhileOp while_op) {
 
 void PopulateWhilePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                            ConversionTarget& target) {
-  target.addDynamicallyLegalOp<mhlo::WhileOp>(IsWhileLegal);
+  target.addDynamicallyLegalOp<stablehlo::WhileOp>(IsWhileLegal);
   patterns.add<LeagalizeWhileOp>(ctx);
 }
 

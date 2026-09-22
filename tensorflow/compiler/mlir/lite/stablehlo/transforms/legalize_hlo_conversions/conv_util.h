@@ -23,13 +23,14 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
-// Helpers for working with mhlo.convolution attrs in the mlir api as
+// Helpers for working with stablehlo.convolution attrs in the mlir api as
 // native cc types.
 
 namespace mlir::odml {
@@ -69,7 +70,7 @@ class ConvView {
 
   mlir::Type ElementType() const { return element_type_; }
 
-  explicit ConvView(mhlo::ConvolutionOp op);
+  explicit ConvView(stablehlo::ConvolutionOp op);
 
  private:
   llvm::SmallVector<int64_t, 2> strides_;
@@ -122,12 +123,12 @@ inline bool MatchWithResizeBilinearOp(const ConvView& data) {
   return MatchWithResizeBilinearOp(data, align_corners);
 }
 
-bool IsTransposeConvPaddingValid(mhlo::ConvolutionOp conv_op,
+bool IsTransposeConvPaddingValid(stablehlo::ConvolutionOp conv_op,
                                  size_t num_spatial_dims,
                                  const ArrayRef<int64_t>& strides,
                                  const ArrayRef<int64_t>& padding);
 
-bool IsTransposeConvPaddingSame(mhlo::ConvolutionOp conv_op,
+bool IsTransposeConvPaddingSame(stablehlo::ConvolutionOp conv_op,
                                 size_t num_spatial_dims,
                                 const ArrayRef<int64_t>& strides,
                                 const ArrayRef<int64_t>& padding);
@@ -144,7 +145,7 @@ inline bool IsSupportedNonTrivialConv(const ConvView& data) {
   return (valid_rank && !IsTrivialConv(data) && !has_nagative_padding);
 }
 
-inline bool IsSupportedNonTrivialConv(mhlo::ConvolutionOp op) {
+inline bool IsSupportedNonTrivialConv(stablehlo::ConvolutionOp op) {
   const ConvView data(op);
   return IsSupportedNonTrivialConv(data);
 }
@@ -173,7 +174,7 @@ inline bool IsStandardConv(const ConvView& data) {
 
 // Does this convolution map to a standard conv_2d or conv_3d
 // (not depthwise or transpose conv)?
-inline bool IsStandardConv(mhlo::ConvolutionOp op) {
+inline bool IsStandardConv(stablehlo::ConvolutionOp op) {
   const ConvView data(op);
   return IsStandardConv(data);
 }
@@ -194,7 +195,7 @@ inline bool IsDepthwiseConv(const ConvView& data) {
 }
 
 // Does this convolution map to depthwise conv?
-inline bool IsDepthwiseConv(mhlo::ConvolutionOp op) {
+inline bool IsDepthwiseConv(stablehlo::ConvolutionOp op) {
   const ConvView data(op);
   return IsDepthwiseConv(data);
 }
@@ -203,7 +204,7 @@ inline bool IsDepthwiseConv(mhlo::ConvolutionOp op) {
 // Tfl native layouts
 //=-----
 
-inline int64_t DnumRank(mhlo::ConvDimensionNumbersAttr dnums) {
+inline int64_t DnumRank(stablehlo::ConvDimensionNumbersAttr dnums) {
   return dnums.getInputSpatialDimensions().size() + 2;
 }
 
@@ -213,7 +214,7 @@ inline Layout GetTFLNativeInputOrOutputLayout(int64_t rank) {
 }
 
 inline Layout GetTFLNativeInputOrOutputLayout(
-    mhlo::ConvDimensionNumbersAttr dnums) {
+    stablehlo::ConvDimensionNumbersAttr dnums) {
   return GetTFLNativeInputOrOutputLayout((DnumRank(dnums)));
 }
 
@@ -231,7 +232,7 @@ inline Layout GetTFLNativeDepthwiseConvKernelLayout() {
 }
 
 inline Layout GetTFLNativeStandardConvKernelLayout(
-    mhlo::ConvDimensionNumbersAttr dnums) {
+    stablehlo::ConvDimensionNumbersAttr dnums) {
   return GetTFLNativeStandardConvKernelLayout(DnumRank(dnums));
 }
 
@@ -258,9 +259,10 @@ inline bool IsTFLNativeLayout(const ConvView& data) {
 // ConvDimensionNumbers utils
 //=-----
 
-inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithInputLayout(
-    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
-  return mhlo::ConvDimensionNumbersAttr::get(
+inline stablehlo::ConvDimensionNumbersAttr CloneDnumsWithInputLayout(
+    OpBuilder& b, stablehlo::ConvDimensionNumbersAttr dnums,
+    const Layout& layout) {
+  return stablehlo::ConvDimensionNumbersAttr::get(
       b.getContext(), layout.SpecialDim1(), layout.SpecialDim2(),
       layout.Spatials(), dnums.getKernelInputFeatureDimension(),
       dnums.getKernelOutputFeatureDimension(),
@@ -268,9 +270,10 @@ inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithInputLayout(
       dnums.getOutputFeatureDimension(), dnums.getOutputSpatialDimensions());
 }
 
-inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithKernelLayout(
-    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
-  return mhlo::ConvDimensionNumbersAttr::get(
+inline stablehlo::ConvDimensionNumbersAttr CloneDnumsWithKernelLayout(
+    OpBuilder& b, stablehlo::ConvDimensionNumbersAttr dnums,
+    const Layout& layout) {
+  return stablehlo::ConvDimensionNumbersAttr::get(
       b.getContext(), dnums.getInputBatchDimension(),
       dnums.getInputFeatureDimension(), dnums.getInputSpatialDimensions(),
       layout.SpecialDim1(), layout.SpecialDim2(), layout.Spatials(),
@@ -278,9 +281,10 @@ inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithKernelLayout(
       dnums.getOutputSpatialDimensions());
 }
 
-inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithOutputLayout(
-    OpBuilder& b, mhlo::ConvDimensionNumbersAttr dnums, const Layout& layout) {
-  return mhlo::ConvDimensionNumbersAttr::get(
+inline stablehlo::ConvDimensionNumbersAttr CloneDnumsWithOutputLayout(
+    OpBuilder& b, stablehlo::ConvDimensionNumbersAttr dnums,
+    const Layout& layout) {
+  return stablehlo::ConvDimensionNumbersAttr::get(
       b.getContext(), dnums.getInputBatchDimension(),
       dnums.getInputFeatureDimension(), dnums.getInputSpatialDimensions(),
       dnums.getKernelInputFeatureDimension(),
@@ -291,7 +295,7 @@ inline mhlo::ConvDimensionNumbersAttr CloneDnumsWithOutputLayout(
 
 // Wraps the lhs of given conv op in an explicit pad op matching the same
 // behavior implicit in the paddings attribute. Gets result of new pad op.
-Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op);
+Value CreatePadOpFromConvPadding(OpBuilder& b, stablehlo::ConvolutionOp op);
 
 }  // namespace mlir::odml
 
