@@ -96,6 +96,13 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
+  // Prune provably unobservable variable self-update cycles (e.g. Keras
+  // metric accumulators) so that the affected variables become read-only and
+  // no longer prevent SinkVariableAsNamedArrayPass from lowering their reads
+  // to IfrtLoadVariableOp. This must run after resource ops are decomposed so
+  // that AssignAddVariableOp and friends are in read-modify-write form.
+  pm.addPass(CreateTfPruneUnobservedVariableUpdatesPass());
+
   // Sink variable tensor as named array in IFRT.
   pm.addPass(CreateSinkVariableAsNamedArrayPass());
 }
