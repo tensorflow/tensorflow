@@ -3240,12 +3240,15 @@ class TensorFlowTestCase(googletest.TestCase):
     # extension types when type promotions are involved, so we first cast any
     # arrays of such types to float32.
     a_dtype = a.dtype
-    custom_dtypes = (dtypes.bfloat16.as_numpy_dtype,
-                     dtypes.float8_e5m2.as_numpy_dtype,
-                     dtypes.float8_e4m3fn.as_numpy_dtype,
-                     dtypes.float8_e4m3fnuz.as_numpy_dtype,
-                     dtypes.float8_e4m3b11fnuz.as_numpy_dtype,
-                     dtypes.float8_e5m2fnuz.as_numpy_dtype)
+    custom_dtypes = (
+        dtypes.bfloat16.as_numpy_dtype,
+        dtypes.float8_e5m2.as_numpy_dtype,
+        dtypes.float8_e4m3fn.as_numpy_dtype,
+        dtypes.float8_e4m3fnuz.as_numpy_dtype,
+        dtypes.float8_e4m3b11fnuz.as_numpy_dtype,
+        dtypes.float8_e5m2fnuz.as_numpy_dtype,
+        dtypes.float8_e8m0fnu.as_numpy_dtype,
+    )
     a = a.astype(np.float32) if a.dtype in custom_dtypes else a
     b = b.astype(np.float32) if b.dtype in custom_dtypes else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
