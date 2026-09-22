@@ -1311,6 +1311,7 @@ _DTYPE_TO_STR = {
     dtypes.float8_e4m3fnuz: "f8e4m3fnuz",
     dtypes.float8_e4m3b11fnuz: "f8e4m3b11fnuz",
     dtypes.float8_e5m2fnuz: "f8e5m2fnuz",
+    dtypes.float8_e8m0fnu: "f8e8m0fnu",
     dtypes.float4_e2m1fn: "f4e2m1fn",
     dtypes.int4: "i4",
     dtypes.uint4: "u4",
