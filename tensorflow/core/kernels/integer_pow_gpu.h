@@ -19,7 +19,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -98,15 +97,11 @@ class IntegerPowGpuOp : public AsyncOpKernel {
     kernel_.Compute(context);
 
     TensorReference flag_ref(found_negative);
-    auto check = [stream, flag_ref, host_flag, context, done]() {
-      {
-        std::unique_ptr<se::ActivateContext> activation =
-            stream->parent()->Activate();
-        flag_ref.Unref();
-        if (context->status().ok() && host_flag.scalar<int32_t>()() != 0) {
-          context->SetStatus(absl::InvalidArgumentError(
-              "Integers to negative integer powers are not allowed"));
-        }
+    auto check = [flag_ref, host_flag, context, done]() {
+      flag_ref.Unref();
+      if (context->status().ok() && host_flag.scalar<int32_t>()() != 0) {
+        context->SetStatus(absl::InvalidArgumentError(
+            "Integers to negative integer powers are not allowed"));
       }
       done();
     };

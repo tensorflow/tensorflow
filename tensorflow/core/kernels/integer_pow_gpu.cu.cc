@@ -43,7 +43,8 @@ absl::Status CheckNegativeExponentGpu<T>::operator()(
     const Eigen::GpuDevice& device, const T* exponents, int64_t size,
     int32_t* found_negative) {
   constexpr int kThreads = 256;
-  const int blocks = std::min<int64_t>(1 + (size - 1) / kThreads, 1024);
+  const int blocks = static_cast<int>(
+      std::min<int64_t>((size + kThreads - 1) / kThreads, 1024));
   return GpuLaunchKernel(CheckNegativeExponentKernel<T>, blocks, kThreads, 0,
                          device.stream(), exponents, size, found_negative);
 }
