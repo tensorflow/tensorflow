@@ -268,9 +268,10 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
 
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_runtime_data_or_error,
-      indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
+  ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
+                   indexing_performance_model
+                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
