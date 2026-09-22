@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -2964,6 +2965,401 @@ ENTRY main {
   EXPECT_EQ(false_root->original_value()->ToString(), R"(({"mul_false"}))");
 
   EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+// Branches of a conditional with four outputs, the shape of the hero's MoE
+// conditional: elements 0 and 2 come from custom calls (the statistics and,
+// behind a layout changing copy, the rows of a kernel; uninitialized buffers
+// in the branch that skips it), elements 1 and 3 from fusible instructions.
+constexpr absl::string_view kMultiOutputBranches = R"(
+HloModule MultiOutputConditional
+
+on_true {
+  arg_tuple.1 = (bf16[8,128]) parameter(0)
+  get-tuple-element.1 = bf16[8,128] get-tuple-element(arg_tuple.1), index=0
+  stats.1 = f32[8,1] custom-call(), custom_call_target="AllocateBuffer"
+  other.1 = bf16[8,128] add(get-tuple-element.1, get-tuple-element.1)
+  rows.1 = bf16[8,128] custom-call(), custom_call_target="AllocateBuffer"
+  scale.1 = bf16[8,128] negate(get-tuple-element.1)
+  ROOT tuple.3 = (f32[8,1], bf16[8,128], bf16[8,128], bf16[8,128]) tuple(stats.1, other.1, rows.1, scale.1)
+}
+
+on_false {
+  arg_tuple.2 = (bf16[8,128]) parameter(0)
+  get-tuple-element.2 = bf16[8,128] get-tuple-element(arg_tuple.2), index=0
+  norm = (bf16[8,128]{0,1}, f32[8,1]) custom-call(get-tuple-element.2), custom_call_target="tpu_custom_call"
+  stats.2 = f32[8,1] get-tuple-element(norm), index=1
+  other.2 = bf16[8,128] multiply(get-tuple-element.2, get-tuple-element.2)
+  rows.norm = bf16[8,128]{0,1} get-tuple-element(norm), index=0
+  rows.2 = bf16[8,128] copy(rows.norm)
+  scale.2 = bf16[8,128] abs(get-tuple-element.2)
+  ROOT tuple.4 = (f32[8,1], bf16[8,128], bf16[8,128], bf16[8,128]) tuple(stats.2, other.2, rows.2, scale.2)
+}
+)";
+
+// The reuse estimate pairs the widening convert of the rows (element 2) with
+// the buffer allocation of `on_true` and would move it in; it stays out.
+TEST_F(ConditionalCodeMotionTest,
+       WideningConvertOfCustomCallElementOfMultiOutputConditionalStaysOut) {
+  const std::string hlo_string = absl::StrCat(kMultiOutputBranches, R"(
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (bf16[8,128]) parameter(1)
+  gate = f32[8,128] parameter(2)
+  conditional = (f32[8,1], bf16[8,128], bf16[8,128], bf16[8,128]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  stats.out = f32[8,1] get-tuple-element(conditional), index=0
+  other.out = bf16[8,128] get-tuple-element(conditional), index=1
+  rows.out = bf16[8,128] get-tuple-element(conditional), index=2
+  scale.out = bf16[8,128] get-tuple-element(conditional), index=3
+  residual = f32[8,128] convert(rows.out)
+  gated = f32[8,128] multiply(gate, residual)
+  ROOT out = (f32[8,128], f32[8,1], bf16[8,128], bf16[8,128], bf16[8,128]) tuple(gated, stats.out, other.out, rows.out, scale.out)
+}
+)");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gated"),
+              op::Multiply(op::Parameter(2), op::Convert(op::GetTupleElement(
+                                                 op::Conditional(), 2))));
+}
+
+// The convert of the fusible element (index 1) moves in; the pass replaces
+// that element and appends the converted value as the last output.
+TEST_F(ConditionalCodeMotionTest,
+       WideningConvertOfFusibleElementOfMultiOutputConditionalMovesIn) {
+  const std::string hlo_string = absl::StrCat(kMultiOutputBranches, R"(
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (bf16[8,128]) parameter(1)
+  gate = f32[8,128] parameter(2)
+  conditional = (f32[8,1], bf16[8,128], bf16[8,128], bf16[8,128]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  stats.out = f32[8,1] get-tuple-element(conditional), index=0
+  other.out = bf16[8,128] get-tuple-element(conditional), index=1
+  rows.out = bf16[8,128] get-tuple-element(conditional), index=2
+  scale.out = bf16[8,128] get-tuple-element(conditional), index=3
+  residual = f32[8,128] convert(other.out)
+  gated = f32[8,128] multiply(gate, residual)
+  ROOT out = (f32[8,128], f32[8,1], bf16[8,128], bf16[8,128]) tuple(gated, stats.out, rows.out, scale.out)
+}
+)");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Multiply(op::Parameter(2),
+                                     op::GetTupleElement(op::Conditional(), 3)),
+                        op::GetTupleElement(op::Conditional(), 0),
+                        op::GetTupleElement(op::Conditional(), 1),
+                        op::GetTupleElement(op::Conditional(), 2)));
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  EXPECT_THAT(conditional->branch_computation(1)->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::CustomCall()),
+                        op::Copy(op::GetTupleElement(op::CustomCall())),
+                        op::Abs(), op::Convert(op::Multiply())));
+}
+
+// A pred occupies a byte, so its convert to an 8 bit type does not widen the
+// storage width: the convert keeps the estimate's decision and moves in.
+TEST_F(ConditionalCodeMotionTest,
+       SameStorageWidthConvertOfCustomCallOutputMovesIn) {
+  absl::string_view hlo_string = R"(
+HloModule SameStorageWidthConvertOfCustomCallOutput
+
+on_true {
+  arg_tuple.1 = (pred[8,128]) parameter(0)
+  uninitialized = pred[8,128] custom-call(), custom_call_target="AllocateBuffer"
+  ROOT tuple.3 = (pred[8,128]) tuple(uninitialized)
+}
+
+on_false {
+  arg_tuple.2 = (pred[8,128]) parameter(0)
+  get-tuple-element.2 = pred[8,128] get-tuple-element(arg_tuple.2), index=0
+  mask = (pred[8,128], f32[8,1]) custom-call(get-tuple-element.2), custom_call_target="tpu_custom_call"
+  rows = pred[8,128] get-tuple-element(mask), index=0
+  ROOT tuple.4 = (pred[8,128]) tuple(rows)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (pred[8,128]) parameter(1)
+  gate = s8[8,128] parameter(2)
+  conditional = (pred[8,128]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  rows.out = pred[8,128] get-tuple-element(conditional), index=0
+  residual = s8[8,128] convert(rows.out)
+  gated = s8[8,128] multiply(gate, residual)
+  ROOT out = (s8[8,128], pred[8,128]) tuple(gated, rows.out)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  EXPECT_THAT(conditional->branch_computation(1)->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::CustomCall()),
+                        op::Convert(op::GetTupleElement(op::CustomCall()))));
+}
+
+// Users other than widening converts keep the estimate's decision, and the
+// vetoed convert does not stop a sibling user of the same output from forming
+// its own group: the negate moves in beside it.
+TEST_F(ConditionalCodeMotionTest, SiblingUserOfVetoedConvertMovesIn) {
+  absl::string_view hlo_string = R"(
+HloModule SiblingUserOfVetoedConvert
+
+on_true {
+  arg_tuple.1 = (bf16[8,128]) parameter(0)
+  uninitialized = bf16[8,128] custom-call(), custom_call_target="AllocateBuffer"
+  ROOT tuple.3 = (bf16[8,128]) tuple(uninitialized)
+}
+
+on_false {
+  arg_tuple.2 = (bf16[8,128]) parameter(0)
+  get-tuple-element.2 = bf16[8,128] get-tuple-element(arg_tuple.2), index=0
+  norm = (bf16[8,128], f32[8,1]) custom-call(get-tuple-element.2), custom_call_target="tpu_custom_call"
+  rows = bf16[8,128] get-tuple-element(norm), index=0
+  ROOT tuple.4 = (bf16[8,128]) tuple(rows)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (bf16[8,128]) parameter(1)
+  gate = f32[8,128] parameter(2)
+  conditional = (bf16[8,128]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  rows.out = bf16[8,128] get-tuple-element(conditional), index=0
+  residual = f32[8,128] convert(rows.out)
+  gated = f32[8,128] multiply(gate, residual)
+  neg = bf16[8,128] negate(rows.out)
+  ROOT out = (f32[8,128], bf16[8,128]) tuple(gated, neg)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "residual"),
+              op::Convert(op::GetTupleElement(op::Conditional(), 0)));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Multiply(), op::GetTupleElement(op::Conditional(), 1)));
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  EXPECT_THAT(conditional->branch_computation(1)->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::CustomCall()),
+                        op::Negate(op::GetTupleElement(op::CustomCall()))));
+}
+
+// Only the middle branch of three produces the rows with a custom call, behind
+// a get-tuple-element, a reshape, a layout changing copy and a bitcast; the
+// convert reads the rows through a layout changing copy and a reshape. The
+// lookup must walk every one of these and every branch: dropping any of them
+// lets the estimate move the convert in (branch 0 scores its add as reuse).
+TEST_F(ConditionalCodeMotionTest,
+       WideningConvertOfForwardedCustomCallOutputInMiddleBranchStaysOut) {
+  absl::string_view hlo_string = R"(
+HloModule ForwardedCustomCallOutputInMiddleBranch
+
+add_branch {
+  arg_tuple.1 = (bf16[1,8,128]{2,1,0}) parameter(0)
+  get-tuple-element.1 = bf16[1,8,128]{2,1,0} get-tuple-element(arg_tuple.1), index=0
+  rows.1 = bf16[1,8,128]{2,1,0} add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (bf16[1,8,128]{2,1,0}) tuple(rows.1)
+}
+
+custom_call_branch {
+  arg_tuple.2 = (bf16[1,8,128]{2,1,0}) parameter(0)
+  get-tuple-element.2 = bf16[1,8,128]{2,1,0} get-tuple-element(arg_tuple.2), index=0
+  norm = (bf16[1024]{0}, f32[8,1]{1,0}) custom-call(get-tuple-element.2), custom_call_target="tpu_custom_call"
+  flat.2 = bf16[1024]{0} get-tuple-element(norm), index=0
+  rows.reshaped = bf16[8,128]{0,1} reshape(flat.2)
+  rows.copy.2 = bf16[8,128]{1,0} copy(rows.reshaped)
+  rows.2 = bf16[1,8,128]{2,1,0} bitcast(rows.copy.2)
+  ROOT tuple.4 = (bf16[1,8,128]{2,1,0}) tuple(rows.2)
+}
+
+multiply_branch {
+  arg_tuple.3 = (bf16[1,8,128]{2,1,0}) parameter(0)
+  get-tuple-element.3 = bf16[1,8,128]{2,1,0} get-tuple-element(arg_tuple.3), index=0
+  rows.3 = bf16[1,8,128]{2,1,0} multiply(get-tuple-element.3, get-tuple-element.3)
+  ROOT tuple.5 = (bf16[1,8,128]{2,1,0}) tuple(rows.3)
+}
+
+ENTRY main {
+  index = s32[] parameter(0)
+  tuple.1 = (bf16[1,8,128]{2,1,0}) parameter(1)
+  gate = f32[1024]{0} parameter(2)
+  conditional = (bf16[1,8,128]{2,1,0}) conditional(index, tuple.1, tuple.1, tuple.1), branch_computations={add_branch, custom_call_branch, multiply_branch}
+  rows.out = bf16[1,8,128]{2,1,0} get-tuple-element(conditional), index=0
+  rows.copy = bf16[1,8,128]{1,2,0} copy(rows.out)
+  flat = bf16[1024]{0} reshape(rows.copy)
+  residual = f32[1024]{0} convert(flat)
+  gated = f32[1024]{0} multiply(gate, residual)
+  ROOT out = (f32[1024]{0}, bf16[1,8,128]{2,1,0}) tuple(gated, rows.out)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gated"),
+              op::Multiply(op::Parameter(2),
+                           op::Convert(op::Reshape(op::Copy(
+                               op::GetTupleElement(op::Conditional()))))));
+}
+
+// The branch roots are the custom calls themselves.
+TEST_F(ConditionalCodeMotionTest, WideningConvertOfCustomCallRootStaysOut) {
+  absl::string_view hlo_string = R"(
+HloModule CustomCallRoot
+
+on_true {
+  arg_tuple.1 = (bf16[8,128]) parameter(0)
+  get-tuple-element.1 = bf16[8,128] get-tuple-element(arg_tuple.1), index=0
+  ROOT norm.1 = (bf16[8,128], f32[8,1]) custom-call(get-tuple-element.1), custom_call_target="tpu_custom_call"
+}
+
+on_false {
+  arg_tuple.2 = (bf16[8,128]) parameter(0)
+  get-tuple-element.2 = bf16[8,128] get-tuple-element(arg_tuple.2), index=0
+  ROOT norm.2 = (bf16[8,128], f32[8,1]) custom-call(get-tuple-element.2), custom_call_target="other_custom_call"
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (bf16[8,128]) parameter(1)
+  gate = f32[8,128] parameter(2)
+  conditional = (bf16[8,128], f32[8,1]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  rows.out = bf16[8,128] get-tuple-element(conditional), index=0
+  residual = f32[8,128] convert(rows.out)
+  gated = f32[8,128] multiply(gate, residual)
+  ROOT out = (f32[8,128], bf16[8,128]) tuple(gated, rows.out)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "gated"),
+      op::Multiply(op::Parameter(2),
+                   op::Convert(op::GetTupleElement(op::Conditional()))));
+}
+
+// An array shaped conditional: the convert reads it through a reshape.
+TEST_F(ConditionalCodeMotionTest,
+       WideningConvertOfArrayCustomCallOutputStaysOut) {
+  absl::string_view hlo_string = R"(
+HloModule WideningConvertOfArrayCustomCallOutput
+
+on_true {
+  arg.1 = bf16[8,128] parameter(0)
+  ROOT rows.1 = bf16[8,128] add(arg.1, arg.1)
+}
+
+on_false {
+  arg.2 = bf16[8,128] parameter(0)
+  norm = (bf16[8,128], f32[8,1]) custom-call(arg.2), custom_call_target="tpu_custom_call"
+  ROOT rows.2 = bf16[8,128] get-tuple-element(norm), index=0
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  rows.in = bf16[8,128] parameter(1)
+  gate = f32[1024] parameter(2)
+  conditional = bf16[8,128] conditional(pred.1, rows.in, rows.in), true_computation=on_true, false_computation=on_false
+  flat = bf16[1024] reshape(conditional)
+  residual = f32[1024] convert(flat)
+  ROOT gated = f32[1024] multiply(gate, residual)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gated"),
+              op::Multiply(op::Parameter(2),
+                           op::Convert(op::Reshape(op::Conditional()))));
+}
+
+// The special convert hoist (ConvertSpecialMove) still pulls identical
+// widening converts of custom call outputs out of the branches. A second run
+// then sees a convert of a custom call output and leaves it outside; without
+// the veto it moved the convert back in, so successive runs of the pass ping
+// ponged the convert.
+TEST_F(ConditionalCodeMotionTest,
+       WideningConvertOfCustomCallOutputHoistsOutAndStaysOut) {
+  absl::string_view hlo_string = R"(
+HloModule HoistedWideningConvertOfCustomCallOutput
+
+on_true {
+  arg_tuple.1 = (bf16[8,128]) parameter(0)
+  get-tuple-element.1 = bf16[8,128] get-tuple-element(arg_tuple.1), index=0
+  rows.1 = bf16[8,128] custom-call(get-tuple-element.1), custom_call_target="tpu_custom_call"
+  residual.1 = f32[8,128] convert(rows.1)
+  ROOT tuple.3 = (f32[8,128]) tuple(residual.1)
+}
+
+on_false {
+  arg_tuple.2 = (bf16[8,128]) parameter(0)
+  get-tuple-element.2 = bf16[8,128] get-tuple-element(arg_tuple.2), index=0
+  rows.2 = bf16[8,128] custom-call(get-tuple-element.2), custom_call_target="other_custom_call"
+  residual.2 = f32[8,128] convert(rows.2)
+  ROOT tuple.4 = (f32[8,128]) tuple(residual.2)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (bf16[8,128]) parameter(1)
+  gate = f32[8,128] parameter(2)
+  conditional = (f32[8,128]) conditional(pred.1, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  residual = f32[8,128] get-tuple-element(conditional), index=0
+  ROOT gated = f32[8,128] multiply(gate, residual)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/true,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* gated = FindInstruction(module.get(), "gated");
+  ASSERT_THAT(
+      gated, op::Multiply(op::Parameter(2),
+                          op::Convert(op::GetTupleElement(op::Conditional()))));
+  // The hoist replaces the conditional instruction: reach the new one through
+  // its user.
+  const HloInstruction* conditional = gated->operand(1)->operand(0)->operand(0);
+  EXPECT_THAT(conditional->branch_computation(1)->root_instruction(),
+              op::Tuple(op::CustomCall()));
+
+  ConditionalCodeMotion second_pass(
+      /*is_layout_sensitive=*/true,
+      /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(changed, second_pass.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "gated"),
+      op::Multiply(op::Parameter(2),
+                   op::Convert(op::GetTupleElement(op::Conditional()))));
 }
 
 }  // namespace conditional_opt
