@@ -403,9 +403,9 @@ TEST_F(CommandExecutorRendererTest, RenderUsesStoredExtraResourcesLHSMode) {
   ASSERT_EQ(fake_renderer_->captured().size(), 2);
   // cmd0: Write(cmd0->token()) + Write(shared_resource) = 2.
   EXPECT_EQ(fake_renderer_->captured()[0].resource_use_count, 2);
-  // cmd1: Write(cmd1->token()) + Read(shared_resource) [extra]
-  //       + Read(cmd0->token()) [lhs_extras: sequential dependency] = 3.
-  EXPECT_EQ(fake_renderer_->captured()[1].resource_use_count, 3);
+  // cmd1: Write(cmd1->token()) + Read(shared_resource) = 2. The executor adds
+  // no LHS-specific dependencies; schedule order comes from `extra_resources`.
+  EXPECT_EQ(fake_renderer_->captured()[1].resource_use_count, 2);
 }
 
 // Calling RenderExecutionGraph twice produces consistent results.
