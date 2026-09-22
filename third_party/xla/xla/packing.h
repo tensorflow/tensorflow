@@ -47,21 +47,34 @@ void PackIntNHwy(int bits_per_element, absl::Span<const char> input,
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
 // ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
-// 1, 2, or 4. The high-order bits in each output are zero.
-template <size_t kBitsPerElement>
+// 1, 2, or 4. If `kSigned` is true, the values are sign-extended to 8 bits;
+// otherwise, the high-order bits in each output are zero.
+template <size_t kBitsPerElement, bool kSigned = false>
 void UnpackIntNHwy(absl::Span<const char> input, absl::Span<char> output);
 
 template <>
-void UnpackIntNHwy<1>(absl::Span<const char> input, absl::Span<char> output);
+void UnpackIntNHwy<1, false>(absl::Span<const char> input,
+                             absl::Span<char> output);
 template <>
-void UnpackIntNHwy<2>(absl::Span<const char> input, absl::Span<char> output);
+void UnpackIntNHwy<1, true>(absl::Span<const char> input,
+                            absl::Span<char> output);
 template <>
-void UnpackIntNHwy<4>(absl::Span<const char> input, absl::Span<char> output);
+void UnpackIntNHwy<2, false>(absl::Span<const char> input,
+                             absl::Span<char> output);
+template <>
+void UnpackIntNHwy<2, true>(absl::Span<const char> input,
+                            absl::Span<char> output);
+template <>
+void UnpackIntNHwy<4, false>(absl::Span<const char> input,
+                             absl::Span<char> output);
+template <>
+void UnpackIntNHwy<4, true>(absl::Span<const char> input,
+                            absl::Span<char> output);
 
 // Same as above, but takes the number of bits per element as an argument.
 // `bits_per_element` must be 1, 2, or 4, or this function will crash.
 void UnpackIntNHwy(int bits_per_element, absl::Span<const char> input,
-                   absl::Span<char> output);
+                   absl::Span<char> output, bool is_signed = false);
 
 }  // namespace xla
 
