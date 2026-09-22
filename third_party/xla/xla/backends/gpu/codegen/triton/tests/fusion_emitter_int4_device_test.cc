@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
@@ -441,7 +442,11 @@ TEST_P(TritonTest, NonstandardLayoutInt4) {
     }
   )";
 
-  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  // TODO(b/446870267): Disable autotuning once we can provide better default
+  // configs for transposed int4.
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_autotune_level(4);
+  ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText, config));
   EXPECT_THAT(RunFileCheck(module->ToString(), "CHECK: __triton"),
               absl_testing::IsOkAndHolds(true));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
