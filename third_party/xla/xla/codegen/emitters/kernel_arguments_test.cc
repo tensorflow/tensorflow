@@ -589,21 +589,21 @@ TEST_F(KernelArgumentsTest, OperandAndResultIndices) {
                               root));
 
   // Operands come first, then the array leaves of the result shape.
-  EXPECT_THAT(kernel_arguments.OperandIndex(0), IsOkAndHolds(0));
-  EXPECT_THAT(kernel_arguments.OperandIndex(1), IsOkAndHolds(1));
-  EXPECT_THAT(kernel_arguments.ResultIndex({0}), IsOkAndHolds(2));
-  EXPECT_THAT(kernel_arguments.ResultIndex({1}), IsOkAndHolds(3));
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(0), IsOkAndHolds(0));
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(1), IsOkAndHolds(1));
+  EXPECT_THAT(kernel_arguments.PositionOfResult({0}), IsOkAndHolds(2));
+  EXPECT_THAT(kernel_arguments.PositionOfResult({1}), IsOkAndHolds(3));
 
-  EXPECT_THAT(kernel_arguments.OperandIndex(2),
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(2),
               StatusIs(absl::StatusCode::kOutOfRange));
-  EXPECT_THAT(kernel_arguments.OperandIndex(-1),
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(-1),
               StatusIs(absl::StatusCode::kOutOfRange));
   // The root is a tuple, so there is no array leaf at the top level.
-  EXPECT_THAT(kernel_arguments.ResultIndex({}),
+  EXPECT_THAT(kernel_arguments.PositionOfResult({}),
               StatusIs(absl::StatusCode::kOutOfRange));
 }
 
-TEST_F(KernelArgumentsTest, OperandAndResultIndicesFollowInterleaving) {
+TEST_F(KernelArgumentsTest, OperandAndResultPositionsFollowInterleaving) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
     ENTRY main {
@@ -629,13 +629,13 @@ TEST_F(KernelArgumentsTest, OperandAndResultIndicesFollowInterleaving) {
       KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
                               root, interleaved_indices));
 
-  EXPECT_THAT(kernel_arguments.OperandIndex(0), IsOkAndHolds(0));
-  EXPECT_THAT(kernel_arguments.ResultIndex({0}), IsOkAndHolds(1));
-  EXPECT_THAT(kernel_arguments.OperandIndex(1), IsOkAndHolds(2));
-  EXPECT_THAT(kernel_arguments.ResultIndex({1}), IsOkAndHolds(3));
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(0), IsOkAndHolds(0));
+  EXPECT_THAT(kernel_arguments.PositionOfResult({0}), IsOkAndHolds(1));
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(1), IsOkAndHolds(2));
+  EXPECT_THAT(kernel_arguments.PositionOfResult({1}), IsOkAndHolds(3));
 }
 
-TEST_F(KernelArgumentsTest, ResultIndexOfNonTupleResult) {
+TEST_F(KernelArgumentsTest, PositionOfResultOfNonTupleResult) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
     ENTRY main {
@@ -658,8 +658,8 @@ TEST_F(KernelArgumentsTest, ResultIndexOfNonTupleResult) {
       KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
                               root));
 
-  EXPECT_THAT(kernel_arguments.ResultIndex({}), IsOkAndHolds(2));
-  EXPECT_THAT(kernel_arguments.ResultIndex({0}),
+  EXPECT_THAT(kernel_arguments.PositionOfResult({}), IsOkAndHolds(2));
+  EXPECT_THAT(kernel_arguments.PositionOfResult({0}),
               StatusIs(absl::StatusCode::kOutOfRange));
 }
 
@@ -667,9 +667,9 @@ TEST_F(KernelArgumentsTest, HandBuiltArgumentsHaveNoKnownPositions) {
   KernelArguments kernel_arguments(std::vector<KernelArgument>{KernelArgument(
       ShapeUtil::MakeShape(F32, {4}), BufferAllocation::Slice())});
 
-  EXPECT_THAT(kernel_arguments.OperandIndex(0),
+  EXPECT_THAT(kernel_arguments.PositionOfOperand(0),
               StatusIs(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(kernel_arguments.ResultIndex({}),
+  EXPECT_THAT(kernel_arguments.PositionOfResult({}),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 

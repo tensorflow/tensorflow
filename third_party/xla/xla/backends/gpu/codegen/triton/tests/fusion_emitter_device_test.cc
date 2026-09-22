@@ -3606,6 +3606,277 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Bool(), ::testing::Bool(), ::testing::Bool()),
     ScaledDotCoverageTestParamToString);
 
+// Scans are only emitted with the experimental tiling propagation enabled.
+class ScanTritonEmitterTest : public TritonEmitterTest {
+ public:
+  bool EnableTilingPropagation() const override { return true; }
+
+ protected:
+  // Returns arguments for the entry computation of `module` filled with small
+  // integers. All intermediate scan results are then exactly representable in
+  // f32, so that the results match the interpreter reference bit-exactly,
+  // independently of the order in which the scan combines the elements.
+  absl::StatusOr<std::vector<Literal>> MakeSmallIntegerArguments(
+      const HloModule& module) {
+    std::vector<Literal> arguments;
+    for (const HloInstruction* parameter :
+         module.entry_computation()->parameter_instructions()) {
+      Literal literal(parameter->shape());
+      ABSL_RETURN_IF_ERROR(
+          literal.Populate<float>([](absl::Span<const int64_t> indices) {
+            int64_t value = 0;
+            for (int64_t index : indices) {
+              value += index;
+            }
+            return static_cast<float>(value % 7 - 3);
+          }));
+      arguments.push_back(std::move(literal));
+    }
+    return arguments;
+  }
+
+  void RunAndCompareScan(absl::string_view hlo_text) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
+                         MakeSmallIntegerArguments(*module));
+    EXPECT_TRUE(RunAndCompareNoHloPasses(
+        std::move(module), LiteralUtil::MakePointers(arguments), kExactMatch));
+  }
+};
+
+TEST_F(ScanTritonEmitterTest, SingleTileScan) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, num_carries=1,
+    is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, TiledScan) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, num_carries=1,
+    is_associative=true, to_apply=add_computation, backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+// The scan dimension is not divisible by the tile size, so the input tile of
+// the last loop iteration extends past the dimension bound and must be masked
+// before it is fed to the scan.
+TEST_F(ScanTritonEmitterTest, TiledScanWithPartialTile) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1000], f32[]) scan(p0, p1), dimensions={0}, num_carries=1,
+    is_associative=true, to_apply=add_computation, backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[1000] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1000] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, TiledScanOfMinorDimension) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16], f32[16]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[16,1024] parameter(0)
+  p1 = f32[16] parameter(1)
+  scan = (f32[16,1024], f32[16]) scan(p0, p1), dimensions={1}, num_carries=1,
+    is_associative=true, to_apply=add_computation, backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[16,1024] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[16,1024] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT fusion = f32[16,1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[16]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+// Scanning the major dimension distributes the scan dimension across warps
+// differently than the minor one, which changes how the carry reduction is
+// lowered.
+TEST_F(ScanTritonEmitterTest, TiledScanOfMajorDimension) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  add = f32[16] add(p0, p1)
+  ROOT tuple = (f32[16], f32[16]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024,16] parameter(0)
+  p1 = f32[16] parameter(1)
+  scan = (f32[1024,16], f32[16]) scan(p0, p1), dimensions={0}, num_carries=1,
+    is_associative=true, to_apply=add_computation, backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[1024,16] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024,16] parameter(0)
+  p1 = f32[16] parameter(1)
+  ROOT fusion = f32[1024,16] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[16]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, SingleTileReverseScan) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, is_reverse=true,
+    num_carries=1, is_associative=true, to_apply=add_computation
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, TiledReverseScan) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1), dimensions={0}, is_reverse=true,
+    num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+TEST_F(ScanTritonEmitterTest, TiledReverseScanWithPartialTile) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1000], f32[]) scan(p0, p1), dimensions={0}, is_reverse=true,
+    num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[256]}
+  ROOT get-tuple-element = f32[1000] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = f32[1000] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[1000] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

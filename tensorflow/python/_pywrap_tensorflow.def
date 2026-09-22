@@ -92,6 +92,7 @@ EXPORTS
  ??0MetaGraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
  ??0MetaOptimizer@grappler@tensorflow@@QEAA@PEAVDeviceBase@2@AEBVConfigProto@2@@Z
  ??0ModelAnalyzer@grappler@tensorflow@@QEAA@AEBUGrapplerItem@12@@Z
+ ??0ModelProto_Node@model@data@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV0123@@Z
  ??0Name@register_kernel@tensorflow@@QEAA@PEBD@Z
  ??0NamedDevice@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
  ??0NamedDevice@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
@@ -163,6 +164,7 @@ EXPORTS
  ??1MeshProto@dtensor@tensorflow@@UEAA@XZ
  ??1MessageDifferencer@util@protobuf@google@@QEAA@XZ
  ??1MetaGraphDef@tensorflow@@UEAA@XZ
+ ??1ModelProto_Node@model@data@tensorflow@@UEAA@XZ
  ??1NamedDevice@tensorflow@@UEAA@XZ
  ??1NodeDef@tensorflow@@UEAA@XZ
  ??1OpDef@tensorflow@@UEAA@XZ
