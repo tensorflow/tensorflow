@@ -1179,8 +1179,9 @@ struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
   static constexpr bool has_errors = true;
 };
 
-// Version of safe_pow for integers which returns 0 if RHS is negative and LHS
-// is not 1 or -1. For use on GPUs, where we cannot raise an error.
+// Version of safe_pow for GPU computation. The integer Pow GPU kernel checks
+// negative exponents separately and reports an error after the device work
+// completes; this functor must still produce a defined result on the device.
 template <typename T>
 struct safe_pow_ignore_error_op {
   static_assert(std::is_integral<T>::value, "Integer type expected");

@@ -848,7 +848,7 @@ class BinaryOpTest(test.TestCase):
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
   def testPowNegativeExponentCpu(self):
-    for dtype in [np.int32, np.int64]:
+    for dtype in [np.int8, np.int16, np.int32, np.int64]:
       with test_util.force_cpu():
         with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
@@ -876,12 +876,34 @@ class BinaryOpTest(test.TestCase):
   def testPowNegativeExponentGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("Requires GPU")
-    # Negative integer powers return zero on GPUs for abs(LHS) > 1. Negative
-    # integer powers for 1 and -1 will return the correct result.
-    x = np.array([2, 3, 1, -1, -1]).astype(np.int64)
-    y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
-    z = math_ops.pow(x, y)
-    self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
+    for dtype in [np.int8, np.int16, np.int64]:
+      x = np.array([2, 3, 1, -1, -1], dtype=dtype)
+      y = np.array([-1, 0, -2, -2, -3], dtype=dtype)
+      with test_util.force_gpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          self.evaluate(math_ops.pow(x, y))
+
+        # Check both scalar and broadcasted exponents, including -1 bases.
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          self.evaluate(math_ops.pow(np.array([-1, 1], dtype=dtype),
+                                     np.array(-1, dtype=dtype)))
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          self.evaluate(math_ops.pow(np.array([[2], [3]], dtype=dtype),
+                                     np.array([[1, -1]], dtype=dtype)))
+        self.assertAllEqual(
+            self.evaluate(math_ops.pow(np.array([[2], [3]], dtype=dtype),
+                                       np.array([[0, 2]], dtype=dtype))),
+            [[1, 4], [1, 9]])
+        self.assertAllEqual(
+            self.evaluate(math_ops.pow(np.empty((0, 1), dtype=dtype),
+                                       np.array([[1, -1]], dtype=dtype))),
+            np.empty((0, 2), dtype=dtype))
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails"
