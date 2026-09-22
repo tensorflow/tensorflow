@@ -1156,6 +1156,17 @@ def take(a, indices, axis=None, out=None, mode='clip'):
   if axis is None:
     a = array_ops.reshape(a, [-1])
     axis = 0
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
 
   axis_size = array_ops.shape(a, out_type=indices.dtype)[axis]
   if mode == 'clip':
