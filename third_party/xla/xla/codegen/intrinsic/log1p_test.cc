@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/log1p.h"
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -96,6 +98,28 @@ TEST(Log1pTest, F32) {
       EXPECT_TRUE(std::isnan(result));
     } else {
       EXPECT_THAT(result, NearUlps<float>(expected, 1));
+    }
+  }
+}
+
+TEST(Log1pTest, F32Vector16) {
+  constexpr size_t kN = 16;
+  Type type = Type::V(F32, kN);
+  JitRunner runner = CreateJitRunnerWithLog1p(type);
+  auto fn = runner.GetVectorizedFn<kN, float, float>(Log1p::Name(type));
+
+  std::vector<float> test_values = GetTestValues<float>();
+  std::array<float, kN> vals;
+  for (size_t i = 0; i < kN; ++i) {
+    vals[i] = test_values[i % test_values.size()];
+  }
+  std::array<float, kN> results = fn(vals);
+  for (size_t i = 0; i < kN; ++i) {
+    float expected = std::log1pf(vals[i]);
+    if (std::isnan(expected)) {
+      EXPECT_TRUE(std::isnan(results[i]));
+    } else {
+      EXPECT_THAT(results[i], NearUlps<float>(expected, 1));
     }
   }
 }
