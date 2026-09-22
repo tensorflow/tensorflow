@@ -2111,7 +2111,10 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
     for value in values:
       for side in ("left", "right"):
         with self.subTest(value=value, side=side):
-          result = np.searchsorted(cdf, value.numpy() if isinstance(value, ops.Tensor) else value, side=side)
+          expected_value = value
+          if isinstance(value, ops.Tensor):
+            expected_value = self.evaluate(value)
+          result = np.searchsorted(cdf, expected_value, side=side)
           tf_result = self.evaluate(
               array_ops.searchsorted(cdf, value, side=side))
           self.assertAllEqual(result, tf_result)
