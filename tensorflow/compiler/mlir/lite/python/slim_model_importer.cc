@@ -27,6 +27,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(__linux__)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -68,8 +73,8 @@ using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
 using ::mlir::func::FuncOp;
 
-absl::Status ReadFileSlice(std::ifstream& file, char* dst, size_t count,
-                           uint64_t offset) {
+absl::Status ReadFileSlice(std::ifstream& file, int fadvise_fd, char* dst,
+                           size_t count, uint64_t offset) {
   file.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
   if (!file) {
     return absl::InternalError(
@@ -88,11 +93,25 @@ absl::Status ReadFileSlice(std::ifstream& file, char* dst, size_t count,
     }
     total_read += chunk_size;
   }
+#if defined(__linux__)
+  if (fadvise_fd >= 0 && count >= (1ULL << 20)) {
+    uint64_t page_start = offset & ~4095ULL;
+    uint64_t page_end = (offset + count) & ~4095ULL;
+    if (page_end > page_start) {
+      (void)posix_fadvise(fadvise_fd, static_cast<off_t>(page_start),
+                          static_cast<off_t>(page_end - page_start),
+                          POSIX_FADV_DONTNEED);
+    }
+  }
+#else
+  (void)fadvise_fd;
+#endif
   return absl::OkStatus();
 }
 
 absl::Status InjectMappedArg(FuncOp func, int arg_idx, size_t offset,
-                             std::ifstream& weights_file, uint64_t file_size,
+                             std::ifstream& weights_file, int fadvise_fd,
+                             uint64_t file_size,
                              llvm::DenseMap<uint64_t, mlir::Attribute>& cache) {
   if (arg_idx < 0 || arg_idx >= (int)func.getNumArguments()) {
     return absl::InvalidArgumentError(
@@ -123,17 +142,17 @@ absl::Status InjectMappedArg(FuncOp func, int arg_idx, size_t offset,
     if (num_elements > 64) {
       auto blob = mlir::HeapAsmResourceBlob::allocate(
           packed_bytes, /*align=*/64, /*dataIsMutable=*/true);
-      auto status =
-          ReadFileSlice(weights_file, const_cast<char*>(blob.getData().data()),
-                        packed_bytes, offset);
+      auto status = ReadFileSlice(weights_file, fadvise_fd,
+                                  const_cast<char*>(blob.getData().data()),
+                                  packed_bytes, offset);
       if (!status.ok()) return status;
       std::string blob_name = absl::StrCat("dense_resource_off_", offset);
       attr = mlir::DenseResourceElementsAttr::get(shaped_type, blob_name,
                                                   std::move(blob));
     } else {
       std::vector<char> small_buf(packed_bytes);
-      auto status =
-          ReadFileSlice(weights_file, small_buf.data(), packed_bytes, offset);
+      auto status = ReadFileSlice(weights_file, fadvise_fd, small_buf.data(),
+                                  packed_bytes, offset);
       if (!status.ok()) return status;
       attr = mlir::DenseElementsAttr::getFromRawBuffer(
           shaped_type, llvm::ArrayRef<char>(small_buf.data(), packed_bytes));
@@ -150,7 +169,7 @@ absl::Status InjectMappedArg(FuncOp func, int arg_idx, size_t offset,
 }
 
 absl::Status InjectWeights(ModuleOp module, std::ifstream& weights_file,
-                           uint64_t file_size,
+                           int fadvise_fd, uint64_t file_size,
                            const llvm::json::Object& metadata) {
   llvm::DenseMap<uint64_t, mlir::Attribute> cache;
 
@@ -181,7 +200,7 @@ absl::Status InjectWeights(ModuleOp module, std::ifstream& weights_file,
       if (arg_index && offset) {
         auto status =
             InjectMappedArg(func, *arg_index, static_cast<size_t>(*offset),
-                            weights_file, file_size, cache);
+                            weights_file, fadvise_fd, file_size, cache);
         if (!status.ok()) return status;
         args_to_erase.push_back(*arg_index);
       }
@@ -317,8 +336,18 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadSlimModel(
           "Failed to determine size of weights file '", weights_path, "'"));
     }
     uint64_t file_size = static_cast<uint64_t>(end_pos);
-    auto status =
-        InjectWeights(*combined_module, weights_file, file_size, *metadata_obj);
+    int fadvise_fd = -1;
+#if defined(__linux__)
+    fadvise_fd = open(weights_path.c_str(), O_RDONLY);
+#endif
+    auto status = InjectWeights(*combined_module, weights_file, fadvise_fd,
+                                file_size, *metadata_obj);
+#if defined(__linux__)
+    if (fadvise_fd >= 0) {
+      (void)posix_fadvise(fadvise_fd, 0, 0, POSIX_FADV_DONTNEED);
+      close(fadvise_fd);
+    }
+#endif
     if (!status.ok()) return status;
   }
 
