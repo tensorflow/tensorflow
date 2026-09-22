@@ -280,13 +280,16 @@ UNARY_TEST(Cosh, {
 UNARY_TEST(Sinh, {
   SinhOp<kT>(this)
       .Error(GetDefaultSpecGenerator())
-      .CpuError(+[](NativeT x) {
-        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
-          return ErrorSpec::Builder().distance_err(3).build();
-        } else if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
-          return ErrorSpec::Builder().distance_err(4).build();
+      .CpuError(+[](NativeT) {
+        if constexpr (std::is_same_v<NativeT, bfloat16> ||
+                      std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(0).build();
+        } else if constexpr (std::is_same_v<NativeT, double>) {
+          return ErrorSpec::Builder().distance_err(2).build();
+        } else {
+          return ErrorSpec::Builder().distance_err(1).build();
         }
-        return GetDefaultSpecGenerator()(x);
       })
       .GpuError(+[](NativeT x) {
         if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {

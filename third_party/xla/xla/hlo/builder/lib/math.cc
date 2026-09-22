@@ -1406,51 +1406,9 @@ XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
   });
 }
 
-// Sinh(x) = (e^x - e^-x) / 2
-//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
-//
-// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
-// inf.
-//
-// This incorrectly overflows to +/-inf for two f32 input values, namely
-// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
-// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
-// we deem this acceptable.
-XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
-           bool expand) {
-  if (!expand) {
-    return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
-  }
-  XlaBuilder* b = x.builder();
-  auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
-    ABSL_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-    auto one_half = ScalarLike(x, 0.5);
-    auto log_one_half = Log(ScalarLike(x, 0.5));
-    auto large_sinh_result = Exp(x + log_one_half) - Exp(-x + log_one_half);
-
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return large_sinh_result;
-    }
-
-    // Here we use e^x = e^(x / 2) * e^(x / 2). This avoids overflow for large
-    // values of x.
-
-    // For smaller x, we get unwanted cancellations of e^x - e^-x, resulting in
-    // 0.
-    // Rewrite this to avoid that. We use expm1(x) because that preserves the
-    // first order term of the taylor series of e^x.
-    // (e^(x) - e^(-x)) / 2. =
-    // (e^(x) - 1 + 1 - e^(-x)) / 2.
-    // (expm1(x) + (e^(x) - 1) / e^x) / 2.
-    // (expm1(x) + expm1(x) / (expm1(x) + 1)) / 2.
-    auto expm1 = Expm1(x);
-    auto one = ScalarLike(x, 1.);
-    auto small_sinh_result = one_half * (expm1 + expm1 / (expm1 + one));
-    return Select(Lt(Abs(x), one), small_sinh_result, large_sinh_result);
-  };
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+// Computes the hyperbolic sine of 'x'.
+XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy) {
+  return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
 }
 
 XlaOp MaybeConjugate(XlaOp x, bool conjugate) {

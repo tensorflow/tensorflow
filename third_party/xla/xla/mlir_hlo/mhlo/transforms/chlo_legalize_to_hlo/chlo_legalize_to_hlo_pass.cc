@@ -359,6 +359,18 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
   return ChloLegalizeToHighLevelMhloPassOptions();
 }
 
+ChloLegalizeToHighLevelMhloPassOptions getCpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
+ChloLegalizeToHighLevelMhloPassOptions getTpuChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_sinh_ = true;
+  return opts;
+}
+
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
   opts.enable_acosh_ = true;

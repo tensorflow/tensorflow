@@ -121,8 +121,7 @@ XlaOp Cosh(XlaOp x,
 
 // Computes the hyperbolic sine of 'x'.
 XlaOp Sinh(XlaOp x,
-           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
-           bool expand = true);
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Applies a complex conjugation operation if 'a' is complex and 'conjugate'
 // is true, otherwise returns its argument.

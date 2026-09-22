@@ -340,6 +340,7 @@ class LowerXlaIntrinsicLibPass
     patterns.add(LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>);
     patterns.add(LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>);
     patterns.add(LowerIntrinsicPattern<ci::Erf, mm::ErfOp>);
+    patterns.add(LowerIntrinsicPattern<ci::Sinh, mm::SinhOp>);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();

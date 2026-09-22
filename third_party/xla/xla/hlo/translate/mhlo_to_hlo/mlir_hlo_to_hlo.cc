@@ -4899,8 +4899,7 @@ LogicalResult ExportXlaOp(SinhOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
     return failure();
   }
-  value_map[op] =
-      xla::Sinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  value_map[op] = xla::Sinh(operand, /*result_accuracy=*/std::nullopt);
   return success();
 }
 
