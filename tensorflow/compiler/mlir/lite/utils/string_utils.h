@@ -93,6 +93,10 @@ inline int GetStringCount(const void* raw_buffer) {
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
 inline StringRef GetString(const void* raw_buffer, int string_index) {
+  if (!raw_buffer || string_index < 0 ||
+      string_index >= GetStringCount(raw_buffer)) {
+    return StringRef{nullptr, 0};
+  }
   // NOTE: The string buffer is accessed here as if it's native endian (instead
   // of small endian, as documented in the header). This will protentially break
   // when TFLite is ported to big endian platforms.
