@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -95,6 +96,57 @@ TEST(ProfilerFactoryTest, FactoryClassCapturedByLambda) {
   });
   auto profilers = CreateProfilers(tensorflow::ProfileOptions());
   EXPECT_EQ(profilers.size(), 1);
+}
+
+class TestMultiPassProfiler : public MultiPassProfilerInterface {
+ public:
+  bool NeedMorePasses() override { return false; }
+  absl::Status StartPass() override { return absl::OkStatus(); }
+  absl::Status PushRange(absl::string_view name) override {
+    return absl::OkStatus();
+  }
+  absl::Status PopRange() override { return absl::OkStatus(); }
+  absl::Status StopPass() override { return absl::OkStatus(); }
+
+  absl::Status Start() override { return absl::OkStatus(); }
+  absl::Status Stop() override { return absl::OkStatus(); }
+  absl::Status CollectData(tensorflow::profiler::XSpace*) override {
+    return absl::OkStatus();
+  }
+};
+
+std::unique_ptr<MultiPassProfilerInterface> TestMultiPassFactoryFunction(
+    const tensorflow::ProfileOptions& options) {
+  return absl::make_unique<TestMultiPassProfiler>();
+}
+
+TEST(ProfilerFactoryTest, MultiPassFactoryFunctionPointer) {
+  ClearRegisteredMultiPassProfilersForTest();
+  RegisterMultiPassProfilerFactory(&TestMultiPassFactoryFunction);
+  auto profilers = CreateMultiPassProfilers(tensorflow::ProfileOptions());
+  EXPECT_EQ(profilers.size(), 1);
+}
+
+TEST(ProfilerFactoryTest, MultiPassFactoryLambda) {
+  ClearRegisteredMultiPassProfilersForTest();
+  RegisterMultiPassProfilerFactory(
+      [](const tensorflow::ProfileOptions& options) {
+        return absl::make_unique<TestMultiPassProfiler>();
+      });
+  auto profilers = CreateMultiPassProfilers(tensorflow::ProfileOptions());
+  EXPECT_EQ(profilers.size(), 1);
+}
+
+std::unique_ptr<MultiPassProfilerInterface> NullMultiPassFactoryFunction(
+    const tensorflow::ProfileOptions& options) {
+  return nullptr;
+}
+
+TEST(ProfilerFactoryTest, MultiPassFactoryReturnsNull) {
+  ClearRegisteredMultiPassProfilersForTest();
+  RegisterMultiPassProfilerFactory(&NullMultiPassFactoryFunction);
+  auto profilers = CreateMultiPassProfilers(tensorflow::ProfileOptions());
+  EXPECT_TRUE(profilers.empty());
 }
 
 }  // namespace

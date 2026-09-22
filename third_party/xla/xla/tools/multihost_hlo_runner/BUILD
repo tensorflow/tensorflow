@@ -43,9 +43,7 @@ build_test(
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
-    deps = [
-        "@com_google_absl//absl/status:statusor",
-    ],
+    deps = ["@com_google_absl//absl/strings"],
 )
 
 cc_library(
@@ -242,6 +240,7 @@ cc_library(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@tsl//tsl/profiler/lib:profiler_passes",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -332,6 +331,58 @@ xla_test(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
     ] + if_cuda(["//xla/tsl/cuda:nvml"]),
+)
+
+xla_test(
+    name = "multipass_functional_hlo_runner_test",
+    srcs = ["multipass_functional_hlo_runner_test.cc"],
+    backend_args = if_google(
+        {
+            "gpu": ["--heap_check="],
+            "a100": ["--heap_check="],
+        },
+        {},
+    ),
+    backend_tags = {
+        "gpu": [
+            "nomsan",
+            "requires-gpu-sm80-only",
+        ],
+        "nvgpu_any": [
+            "broken",
+            "no_oss",
+        ],
+        "amdgpu_any": [
+            "broken",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    data = [":hlo_files"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":create_client",
+        ":functional_hlo_runner",
+        ":hlo_input_output_format",
+        "//xla/backends/profiler:simple_multipass_tracer",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",
+        "//xla/tests:xla_test_backend_predicates",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 tsl_pybind_extension(
