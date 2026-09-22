@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,8 +42,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -147,22 +146,13 @@ struct CseKey {
     if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
       CHECK_EQ(instruction->operand_count(), 2);
       auto id0 = instruction->operand(0)->unique_id();
-      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
-        id0 = 0;
-      }
       auto id1 = instruction->operand(1)->unique_id();
-      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
-        id1 = 0;
-      }
       if (id0 > id1) {
         std::swap(id0, id1);
       }
       h = H::combine(std::move(h), id0, id1);
     } else {
       for (auto operand : instruction->operands()) {
-        if (operand->opcode() == HloOpcode::kIota) {
-          continue;
-        }
         h = H::combine(std::move(h), operand->unique_id());
       }
     }
@@ -216,6 +206,7 @@ struct CseKey {
       case HloOpcode::kBroadcast:
       case HloOpcode::kTranspose:
       case HloOpcode::kReduce:
+      case HloOpcode::kIota:
         return H::combine(std::move(h), instruction->dimensions());
       case HloOpcode::kGetTupleElement:
         return H::combine(std::move(h), instruction->tuple_index());
@@ -242,6 +233,7 @@ bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
       instruction->opcode() != HloOpcode::kReplicaId &&
+      instruction->opcode() != HloOpcode::kIota &&
       (!frontend_attributes.IsInitialized() ||
        !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
@@ -274,19 +266,7 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
                        : CombineConstants<false>(
                              computation, std::move(should_combine_constant_)));
 
-  const auto eq_instructions = [&](const HloInstruction* a,
-                                   const HloInstruction* b) {
-    if (a == b) {
-      return true;
-    }
-    if (a->opcode() != b->opcode() || a->opcode() != HloOpcode::kIota) {
-      return false;
-    }
-    return a->dimensions(0) == b->dimensions(0) &&
-           (is_layout_sensitive_
-                ? ShapeUtil::Equal(a->shape(), b->shape())
-                : ShapeUtil::Compatible(a->shape(), b->shape()));
-  };
+  const auto eq_instructions = std::equal_to<const HloInstruction*>();
   const auto eq_computations = [](const HloComputation* lhs,
                                   const HloComputation* rhs) {
     return *lhs == *rhs;
@@ -328,23 +308,6 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
               << equivalent_instruction->name();
       changed = true;
       continue;
-    }
-    for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-      HloInstruction* a = instruction->mutable_operand(i);
-      if (a->opcode() != HloOpcode::kIota) {
-        continue;
-      }
-      for (int64_t j = i + 1; j < instruction->operand_count(); ++j) {
-        HloInstruction* b = instruction->mutable_operand(j);
-        if (a == b || !eq_instructions(a, b)) {
-          continue;
-        }
-        ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
-        changed = true;
-        if (b->IsDead()) {
-          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(b));
-        }
-      }
     }
   }
   if (auto fusion = computation->FusionInstruction()) {
