@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -114,10 +116,11 @@ absl::StatusOr<bool> RunOptimizer(
     int64_t collective_size_threshold_to_delay_sinking = INT64_MAX,
     bool unique_channel_id = true,
     CollectivePipeliner::WhileLoopPostprocessor
-        postprocess_transformed_while_loop = {}) {
+        postprocess_transformed_while_loop = {},
+    int64_t max_pipelining_per_loop = INT64_MAX) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
-      /*max_pipelining_per_loop=*/INT64_MAX,
+      /*max_pipelining_per_loop=*/max_pipelining_per_loop,
       /*last_run=*/last_run,
       /*pipeline_use_tree=*/pipeline_use_tree,
       /*process_different_sized_ops=*/process_different_sized_ops,
@@ -7268,6 +7271,330 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string),
               absl_testing::IsOkAndHolds(true));
+}
+
+// A loop with two pipelinable all-reduces. The index of the first one is
+// clamp(i - 1, 0), which the range analysis cannot bound on the loop's own
+// range [0, 4) but can bound on the range of the peeled loop [1, 4). The
+// transformation must follow the analysis of the original loop and pipeline
+// only the second all-reduce.
+constexpr absl::string_view kClampedIndexNextToPlainIndexHlo = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  four = s32[] constant(4)
+  ROOT cmp = pred[] compare(i, four), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  buffer1 = f32[4,8] get-tuple-element(param), index=1
+  buffer2 = f32[4,8] get-tuple-element(param), index=2
+  x1 = f32[1,8] get-tuple-element(param), index=3
+  x2 = f32[1,8] get-tuple-element(param), index=4
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  i_minus_one = s32[] subtract(i, one)
+  first = pred[] compare(i, one), direction=LT
+  clamped = s32[] select(first, zero, i_minus_one)
+  ar1 = f32[1,8] all-reduce(x1), replica_groups={}, to_apply=add, channel_id=1
+  dus1 = f32[4,8] dynamic-update-slice(buffer1, ar1, clamped, zero)
+  ar2 = f32[1,8] all-reduce(x2), replica_groups={}, to_apply=add, channel_id=2
+  dus2 = f32[4,8] dynamic-update-slice(buffer2, ar2, i, zero)
+  i_plus_one = s32[] add(i, one)
+  ROOT tuple = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8]) tuple(i_plus_one, dus1, dus2, x1, x2)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  p2 = f32[1,8] parameter(2)
+  p3 = f32[1,8] parameter(3)
+  init = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8]) tuple(c0, p0, p1, p2, p3)
+  while = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8]) while(init), condition=while_cond, body=while_body
+  gte1 = f32[4,8] get-tuple-element(while), index=1
+  gte2 = f32[4,8] get-tuple-element(while), index=2
+  ROOT out = (f32[4,8], f32[4,8]) tuple(gte1, gte2)
+}
+)";
+
+// Checks that only the plainly indexed all-reduce of
+// kClampedIndexNextToPlainIndexHlo was pipelined: the loop body reduces the
+// previous iteration's slice of buffer2 at the carried index (tuple index 5)
+// and stores the raw x2 at i, while ar1 is untouched.
+void ExpectOnlyPlainIndexPipelined(const HloModule& module) {
+  const HloInstruction* while_instr =
+      hlo_query::FindInstruction(module.entry_computation(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+  const HloInstruction* root = while_instr->while_body()->root_instruction();
+  EXPECT_THAT(root->operand(1),
+              op::DynamicUpdateSlice(
+                  op::GetTupleElement(op::Parameter(), 1),
+                  op::AllReduce(op::GetTupleElement(op::Parameter(), 3)),
+                  op::Select(), op::Constant()));
+  EXPECT_THAT(
+      root->operand(2),
+      op::DynamicUpdateSlice(
+          op::DynamicUpdateSlice(
+              op::GetTupleElement(op::Parameter(), 2),
+              op::AllReduce(op::DynamicSlice(
+                  op::GetTupleElement(op::Parameter(), 2),
+                  op::GetTupleElement(op::Parameter(), 5), op::Constant())),
+              op::GetTupleElement(op::Parameter(), 5), op::Constant()),
+          op::GetTupleElement(op::Parameter(), 4),
+          op::GetTupleElement(op::Parameter(), 0), op::Constant()));
+}
+
+TEST_F(CollectivePipelinerTest,
+       ForwardFollowsOriginalLoopAnalysisWithBoundedPipelining) {
+  auto module =
+      ParseAndReturnVerifiedModule(kClampedIndexNextToPlainIndexHlo, config_)
+          .value();
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunOptimizer(
+          module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+          /*pipeline_use_tree=*/false, /*process_different_sized_ops=*/false,
+          /*direction=*/
+          collective_pipeliner_utils::PipeliningDirection::kForward,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
+          /*acceptable_formatting=*/HloPredicateTrue,
+          /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+          /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
+          /*should_add_loop_invariant_op_in_chain=*/false,
+          /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
+          /*unique_channel_id=*/true,
+          /*postprocess_transformed_while_loop=*/{},
+          /*max_pipelining_per_loop=*/1));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  ExpectOnlyPlainIndexPipelined(*module);
+}
+
+TEST_F(CollectivePipelinerTest,
+       ForwardFollowsOriginalLoopAnalysisWithUnboundedPipelining) {
+  auto module =
+      ParseAndReturnVerifiedModule(kClampedIndexNextToPlainIndexHlo, config_)
+          .value();
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+                   /*pipeline_use_tree=*/false,
+                   /*process_different_sized_ops=*/false));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  ExpectOnlyPlainIndexPipelined(*module);
+}
+
+// The analysis of the peeled loop, whose induction range starts one step
+// later, can decide the index range checks differently from the analysis of
+// the original loop: here compare(-1, multiply(i, -1)) is a constant true on
+// [0, 4) and a constant false on [1, 4), which swaps the selected indices. The
+// transformation must pipeline what the original analysis accepted (ar1).
+TEST_F(CollectivePipelinerTest,
+       ForwardFollowsOriginalLoopAnalysisWhenCloneAnalysisSwapsMoves) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  four = s32[] constant(4)
+  ROOT cmp = pred[] compare(i, four), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  buffer1 = f32[4,8] get-tuple-element(param), index=1
+  buffer2 = f32[4,8] get-tuple-element(param), index=2
+  x1 = f32[1,8] get-tuple-element(param), index=3
+  x2 = f32[1,8] get-tuple-element(param), index=4
+  v = s32[] get-tuple-element(param), index=5
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  minus_one = s32[] constant(-1)
+  neg_i = s32[] multiply(i, minus_one)
+  cmp = pred[] compare(minus_one, neg_i), direction=LT
+  idx1 = s32[] select(cmp, i, v)
+  idx2 = s32[] select(cmp, v, i)
+  ar1 = f32[1,8] all-reduce(x1), replica_groups={}, to_apply=add, channel_id=1
+  dus1 = f32[4,8] dynamic-update-slice(buffer1, ar1, idx1, zero)
+  ar2 = f32[1,8] all-reduce(x2), replica_groups={}, to_apply=add, channel_id=2
+  dus2 = f32[4,8] dynamic-update-slice(buffer2, ar2, idx2, zero)
+  i_plus_one = s32[] add(i, one)
+  v_plus_one = s32[] add(v, one)
+  ROOT tuple = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) tuple(i_plus_one, dus1, dus2, x1, x2, v_plus_one)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  p2 = f32[1,8] parameter(2)
+  p3 = f32[1,8] parameter(3)
+  init = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) tuple(c0, p0, p1, p2, p3, c0)
+  while = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) while(init), condition=while_cond, body=while_body
+  gte1 = f32[4,8] get-tuple-element(while), index=1
+  gte2 = f32[4,8] get-tuple-element(while), index=2
+  ROOT out = (f32[4,8], f32[4,8]) tuple(gte1, gte2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string, config_).value();
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+                   /*pipeline_use_tree=*/false,
+                   /*process_different_sized_ops=*/false));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* while_instr = hlo_query::FindInstruction(
+      module->entry_computation(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+  const HloInstruction* root = while_instr->while_body()->root_instruction();
+  // ar1 is pipelined: buffer1 receives the reduced previous slice at the
+  // carried index (tuple index 6) and the raw x1 at idx1.
+  EXPECT_THAT(
+      root->operand(1),
+      op::DynamicUpdateSlice(
+          op::DynamicUpdateSlice(
+              op::GetTupleElement(op::Parameter(), 1),
+              op::AllReduce(op::DynamicSlice(
+                  op::GetTupleElement(op::Parameter(), 1),
+                  op::GetTupleElement(op::Parameter(), 6), op::Constant())),
+              op::GetTupleElement(op::Parameter(), 6), op::Constant()),
+          op::GetTupleElement(op::Parameter(), 3), op::Select(),
+          op::Constant()));
+  // ar2 is untouched.
+  EXPECT_THAT(root->operand(2),
+              op::DynamicUpdateSlice(
+                  op::GetTupleElement(op::Parameter(), 2),
+                  op::AllReduce(op::GetTupleElement(op::Parameter(), 4)),
+                  op::Select(), op::Constant()));
+}
+
+// The forward rewrite carries the runtime value of the dynamic-update-slice
+// index in the loop state; it does not depend on the index being the induction
+// variable. Here idx1 is i on the first iteration and the loop carried v
+// afterwards, the range analysis of the original loop still accepts it (it
+// misreads compare(-1, multiply(i, -1)) as a constant), and the data changes
+// every iteration, so a slice reduced at the wrong time or place would show in
+// the result. The pipelined op is a negate, which the HloEvaluator can run.
+TEST_F(CollectivePipelinerTest, ForwardRewriteComputesTheOriginalValues) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+while_cond {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  four = s32[] constant(4)
+  ROOT cmp = pred[] compare(i, four), direction=LT
+}
+
+while_body {
+  param = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) parameter(0)
+  i = s32[] get-tuple-element(param), index=0
+  buffer1 = f32[4,8] get-tuple-element(param), index=1
+  buffer2 = f32[4,8] get-tuple-element(param), index=2
+  x1 = f32[1,8] get-tuple-element(param), index=3
+  x2 = f32[1,8] get-tuple-element(param), index=4
+  v = s32[] get-tuple-element(param), index=5
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  minus_one = s32[] constant(-1)
+  neg_i = s32[] multiply(i, minus_one)
+  cmp = pred[] compare(minus_one, neg_i), direction=LT
+  idx1 = s32[] select(cmp, i, v)
+  idx2 = s32[] select(cmp, v, i)
+  neg1 = f32[1,8] negate(x1)
+  dus1 = f32[4,8] dynamic-update-slice(buffer1, neg1, idx1, zero)
+  neg2 = f32[1,8] negate(x2)
+  dus2 = f32[4,8] dynamic-update-slice(buffer2, neg2, idx2, zero)
+  one_f = f32[] constant(1)
+  ones = f32[1,8] broadcast(one_f), dimensions={}
+  x1_next = f32[1,8] add(x1, ones)
+  x2_next = f32[1,8] add(x2, ones)
+  i_plus_one = s32[] add(i, one)
+  v_plus_one = s32[] add(v, one)
+  ROOT tuple = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) tuple(i_plus_one, dus1, dus2, x1_next, x2_next, v_plus_one)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = f32[4,8] parameter(0)
+  p1 = f32[4,8] parameter(1)
+  p2 = f32[1,8] parameter(2)
+  p3 = f32[1,8] parameter(3)
+  init = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) tuple(c0, p0, p1, p2, p3, c0)
+  while = (s32[], f32[4,8], f32[4,8], f32[1,8], f32[1,8], s32[]) while(init), condition=while_cond, body=while_body
+  gte1 = f32[4,8] get-tuple-element(while), index=1
+  gte2 = f32[4,8] get-tuple-element(while), index=2
+  ROOT out = (f32[4,8], f32[4,8]) tuple(gte1, gte2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string, config_).value();
+  std::unique_ptr<HloModule> original = module->Clone();
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunOptimizer(module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+                   /*pipeline_use_tree=*/false,
+                   /*process_different_sized_ops=*/false,
+                   collective_pipeliner_utils::PipeliningDirection::kForward,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  // neg1 is pipelined: the loop reduces the previous slice at the carried
+  // index (tuple index 6) and stores the raw x1 at idx1.
+  const HloInstruction* while_instr = hlo_query::FindInstruction(
+      module->entry_computation(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+  EXPECT_THAT(
+      while_instr->while_body()->root_instruction()->operand(1),
+      op::DynamicUpdateSlice(
+          op::DynamicUpdateSlice(
+              op::GetTupleElement(op::Parameter(), 1),
+              op::Negate(op::DynamicSlice(
+                  op::GetTupleElement(op::Parameter(), 1),
+                  op::GetTupleElement(op::Parameter(), 6), op::Constant())),
+              op::GetTupleElement(op::Parameter(), 6), op::Constant()),
+          op::GetTupleElement(op::Parameter(), 3), op::Select(),
+          op::Constant()));
+  Literal p0 =
+      LiteralUtil::CreateR2<float>({{100, 101, 102, 103, 104, 105, 106, 107},
+                                    {110, 111, 112, 113, 114, 115, 116, 117},
+                                    {120, 121, 122, 123, 124, 125, 126, 127},
+                                    {130, 131, 132, 133, 134, 135, 136, 137}});
+  Literal p1 =
+      LiteralUtil::CreateR2<float>({{200, 201, 202, 203, 204, 205, 206, 207},
+                                    {210, 211, 212, 213, 214, 215, 216, 217},
+                                    {220, 221, 222, 223, 224, 225, 226, 227},
+                                    {230, 231, 232, 233, 234, 235, 236, 237}});
+  Literal p2 = LiteralUtil::CreateR2<float>({{1, 2, 3, 4, 5, 6, 7, 8}});
+  Literal p3 = LiteralUtil::CreateR2<float>({{10, 20, 30, 40, 50, 60, 70, 80}});
+  ASSERT_OK_AND_ASSIGN(Literal expected, HloEvaluator().Evaluate(
+                                             *original, {&p0, &p1, &p2, &p3}));
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*module, {&p0, &p1, &p2, &p3}));
+  EXPECT_EQ(actual, expected);
 }
 
 }  // namespace
