@@ -88,6 +88,9 @@ cc_library(
         "//learning/brain/tfrc/executor/api:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
         "//third_party/py/torch_tpu:__subpackages__",
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
@@ -145,6 +148,9 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
         "//third_party/py/torch_tpu:__subpackages__",
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -161,6 +167,8 @@ cc_library(
     visibility = internal_visibility([
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_internal",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
     ]),
     deps = [
         "@com_google_absl//absl/status",
@@ -207,6 +215,9 @@ cc_library(
         "@xla//xla/tsl:internal",
         "//third_party/py/jax:__subpackages__",
         "@xla//xla/tsl/profiler:friends",
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+        "//learning/brain/tpu/runtime/hal/xos/server:__pkg__",
     ]),
     deps = [
         "//tsl/platform",
@@ -399,6 +410,7 @@ cc_library(
     srcs = ["profiler_collection.cc"],
     hdrs = ["profiler_collection.h"],
     visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
         "@xla//xla/backends/profiler/plugin:__pkg__",
         "//learning/brain/tfrc/executor/api:__pkg__",
         "@xla//xla/backends/profiler/cpu:__pkg__",

@@ -17,6 +17,7 @@ limitations under the License.
 #include <any>
 #include <atomic>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
 
@@ -492,6 +493,140 @@ TEST(ContinuousProfilerOrchestratorTest, StopDrainAccounting) {
   ASSERT_EQ(chunks.size(), 2);
   EXPECT_EQ(std::any_cast<int>(chunks[0]), 1);
   EXPECT_EQ(std::any_cast<int>(chunks[1]), 2);
+}
+
+TEST(ContinuousProfilerOrchestratorTest,
+     SerializeChunksForcesAnImmediateConsume) {
+  // The polling interval is >= 2s. SerializeChunks() must not wait for it: it
+  // calls Flush(), which asks the ingestion thread for a Consume() now.
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        return ConsumeResult{.data = std::any(++consume_count),
+                             .estimated_size_bytes = 10 * 1024 * 1024};
+      });
+  EXPECT_CALL(*mock, SerializeMock(::testing::_, ::testing::_))
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  ASSERT_OK(orchestrator.Start());
+
+  absl::Time start = absl::Now();
+  std::vector<tensorflow::profiler::XSpace> spaces =
+      orchestrator.SerializeChunks();
+  absl::Duration elapsed = absl::Now() - start;
+
+  EXPECT_FALSE(spaces.empty());
+  // Two Consume() cycles is the documented worst case (an in-flight Consume()
+  // cannot be credited against the flush), so allow for it but not for a full
+  // polling interval of idling on top.
+  EXPECT_LT(elapsed, absl::Seconds(5)) << "SerializeChunks() should not have "
+                                          "waited out the polling interval";
+  EXPECT_GT(consume_count.load(), 0);
+
+  ASSERT_OK(orchestrator.Stop());
+}
+
+TEST(ContinuousProfilerOrchestratorTest, FlushIsBoundedWhenConsumeWedges) {
+  // A Consume() that never returns must not hold SerializeChunks() (and hence
+  // the calling RPC handler) forever.
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  absl::Notification release_consume;
+  absl::Notification consume_entered;
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        if (!consume_entered.HasBeenNotified()) consume_entered.Notify();
+        release_consume.WaitForNotification();
+        return absl::OutOfRangeError("End of stream");
+      });
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+  ASSERT_OK(orchestrator.Start());
+  consume_entered.WaitForNotification();
+
+  // kFlushTimeout is 30s; assert Flush() gives up rather than blocking forever.
+  // Cap the test at a little over the timeout.
+  absl::Time start = absl::Now();
+  std::vector<tensorflow::profiler::XSpace> spaces =
+      orchestrator.SerializeChunks();
+  absl::Duration elapsed = absl::Now() - start;
+
+  EXPECT_TRUE(spaces.empty());
+  EXPECT_GE(elapsed,
+            ContinuousProfilerOrchestrator<ProfilerInterface>::kFlushTimeout -
+                absl::Seconds(1));
+  EXPECT_LT(elapsed,
+            ContinuousProfilerOrchestrator<ProfilerInterface>::kFlushTimeout +
+                absl::Seconds(30));
+
+  release_consume.Notify();
+  ASSERT_OK(orchestrator.Stop());
+}
+
+TEST(ContinuousProfilerOrchestratorTest, FlushOnAStoppedOrchestratorReturns) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly(Return(absl::OutOfRangeError("End of stream")));
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+
+  // Never started: Flush() must be a no-op rather than waiting for an ingestion
+  // thread that does not exist.
+  absl::Time start = absl::Now();
+  EXPECT_TRUE(orchestrator.SerializeChunks().empty());
+  EXPECT_LT(absl::Now() - start, absl::Seconds(5));
+}
+
+TEST(ContinuousProfilerOrchestratorTest, ConcurrentFlushesAllComplete) {
+  auto mock_profiler = std::make_unique<MockProfiler>();
+  MockProfiler* mock = mock_profiler.get();
+
+  EXPECT_CALL(*mock, Start()).WillOnce(Return(absl::OkStatus()));
+  EXPECT_CALL(*mock, Stop()).WillOnce(Return(absl::OkStatus()));
+
+  std::atomic<int> consume_count(0);
+  EXPECT_CALL(*mock, Consume())
+      .WillRepeatedly([&]() -> absl::StatusOr<ConsumeResult> {
+        return ConsumeResult{.data = std::any(++consume_count),
+                             .estimated_size_bytes = 1024};
+      });
+  EXPECT_CALL(*mock, SerializeMock(::testing::_, ::testing::_))
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  ContinuousProfilerOrchestrator<ProfilerInterface> orchestrator(
+      std::move(mock_profiler));
+  ASSERT_OK(orchestrator.Start());
+
+  // The flush sequence counters are shared; several waiters must all be woken.
+  std::atomic<int> completed(0);
+  std::vector<std::thread> threads;
+  threads.reserve(4);
+  for (int i = 0; i < 4; ++i) {
+    threads.emplace_back([&] {
+      orchestrator.SerializeChunks();
+      completed.fetch_add(1);
+    });
+  }
+  for (auto& t : threads) t.join();
+  EXPECT_EQ(completed.load(), 4);
+
+  ASSERT_OK(orchestrator.Stop());
 }
 
 }  // namespace
