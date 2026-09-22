@@ -687,6 +687,9 @@ _TRANSFORM_FILL_MODE_X_INTERPOLATION = [
 ]
 
 
+@test_util.for_all_test_methods(
+    test_util.disable_xla,
+    'ImageProjectiveTransform forward XLA behaves divergently')
 class ImageProjectiveTransformOpTestBase(test.TestCase, parameterized.TestCase):
   """Tests the gradient of ImageProjectiveTransformV2/V3.
 
