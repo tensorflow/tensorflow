@@ -8724,15 +8724,12 @@ TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
 
   const HloComputation* comp_b = m_->GetComputationWithName("comp_b");
   ASSERT_NE(comp_b, nullptr);
-  int comp_b_entries = 0;
-  for (const auto& [key, val] : *evaluator.specialization_cache()) {
-    if (key.computation == comp_b) {
-      ++comp_b_entries;
-      EXPECT_TRUE(
-          LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), val));
-    }
-  }
-  EXPECT_EQ(comp_b_entries, 1);
+  Literal arg_5 = LiteralUtil::CreateR0<float>(5.0f);
+  std::optional<Literal> cached_b =
+      evaluator.specialization_cache()->Find(comp_b, {&arg_5});
+  ASSERT_TRUE(cached_b.has_value());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), *cached_b));
 }
 
 TEST_F(HloEvaluatorTest, ClearSpecializationCache) {

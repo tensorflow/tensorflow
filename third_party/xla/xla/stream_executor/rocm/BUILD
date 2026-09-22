@@ -783,6 +783,30 @@ cc_library(
     alwayslink = True,
 )
 
+xla_test(
+    name = "rocm_blas_lt_test",
+    srcs = ["rocm_blas_lt_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":amdhipblaslt_plugin",  # buildcleaner: keep
+        ":rocblas_plugin",  # buildcleaner: keep
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_handle",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+    ],
+)
+
 cc_library(
     name = "hipblas_lt_header",
     hdrs = [
@@ -1209,6 +1233,7 @@ cc_library(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",

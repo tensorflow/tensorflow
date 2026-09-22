@@ -79,17 +79,36 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
                        xla::PlatformUtil::GetStreamExecutors(platform));
   ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
+  auto alloc0 = std::make_shared<TestAllocator>(0x1000);
+  auto alloc1 = std::make_shared<TestAllocator>(0x2000);
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
-  infos.push_back({std::make_shared<TestAllocator>(0x1000), stream.get(),
+  infos.push_back({alloc0, stream.get(),
                    /*memory_space=*/0, /*device_ordinal=*/0});
-  infos.push_back({std::make_shared<TestAllocator>(0x2000), stream.get(),
+  infos.push_back({alloc1, stream.get(),
                    /*memory_space=*/0, /*device_ordinal=*/1});
   infos.push_back({std::make_shared<TestAllocator>(0x3000), stream.get(),
                    /*memory_space=*/1, /*device_ordinal=*/0});
   infos.push_back({std::make_shared<TestAllocator>(0x4000), stream.get(),
                    /*memory_space=*/1, /*device_ordinal=*/1});
-  std::unique_ptr<DeviceAddressAllocator> allocator =
+  auto multi_device_adapter =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
+  DeviceAddressAllocator* allocator = multi_device_adapter.get();
+
+  ASSERT_OK_AND_ASSIGN(Stream * stream0,
+                       allocator->GetStream(/*device_ordinal=*/0));
+  EXPECT_EQ(stream0, stream.get());
+  ASSERT_OK_AND_ASSIGN(Stream * stream1,
+                       allocator->GetStream(/*device_ordinal=*/1));
+  EXPECT_EQ(stream1, stream.get());
+
+  ASSERT_OK_AND_ASSIGN(
+      tsl::Allocator * underlying0,
+      multi_device_adapter->GetAllocator(/*device_ordinal=*/0));
+  EXPECT_EQ(underlying0, alloc0.get());
+  ASSERT_OK_AND_ASSIGN(
+      tsl::Allocator * underlying1,
+      multi_device_adapter->GetAllocator(/*device_ordinal=*/1));
+  EXPECT_EQ(underlying1, alloc1.get());
 
   ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff0,

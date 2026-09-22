@@ -120,13 +120,13 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:statusor",
         "@xla//xla/client:local_client",
         "@xla//xla/pjrt:host_memory_allocator",
         "@xla//xla/pjrt:local_device_state",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt:tf_pjrt_client",
         "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -190,11 +190,10 @@ tf_cc_test(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:status_matchers",
-        "@tsl//tsl/platform:statusor",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@xla//xla/tsl/platform:statusor",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

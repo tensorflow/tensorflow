@@ -4452,8 +4452,23 @@ absl::StatusOr<PjRtMemorySpace*> CommonPjRtDevice::memory_space_by_kind_id(
   return it->second;
 }
 
+std::unique_ptr<ScopedAsyncTrackingEvent>
+CommonPjRtDevice::CreateAsyncTrackingEvent(
+    absl::string_view description) const {
+  if (!IsAddressable()) {
+    return nullptr;
+  }
+  CHECK(client_ != nullptr);
+  return client_->raw_client()->CreateAsyncTrackingEvent(local_device_id(),
+                                                         description);
+}
+
 absl::StatusOr<bool> CommonPjRtDevice::PoisonExecution(int32_t launch_id,
                                                        absl::Status error) {
+  if (!IsAddressable()) {
+    return FailedPrecondition(
+        "PoisonExecution() is allowed only for addressable devices");
+  }
   CHECK(client_ != nullptr);
   return client_->raw_client()->PoisonExecution(local_device_id(), launch_id,
                                                 std::move(error));

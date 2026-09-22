@@ -282,3 +282,36 @@ func.func @memref_layout_shape_size_mismatch(%arg0: memref<1024xf32, #xtile.layo
 func.func @memref_layout_is_not_a_permutation(%arg0: memref<1024xf32, #xtile.layout<[1]>>) {
   return
 }
+
+// -----
+
+func.func @memref_bitcast(%arg0: memref<4x16xbf16, #xtile.layout<[0, 1]>>)
+    -> memref<4x16xi16, #xtile.layout<[0, 1]>> {
+  %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16, #xtile.layout<[0, 1]>> -> memref<4x16xi16, #xtile.layout<[0, 1]>>
+  return %0 : memref<4x16xi16, #xtile.layout<[0, 1]>>
+}
+
+// -----
+
+func.func @memref_bitcast_shape_mismatch(%arg0: memref<4x16xbf16>) -> memref<16x4xi16> {
+  // expected-error@+1 {{requires the same shape for all operands and results}}
+  %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16> -> memref<16x4xi16>
+  return %0 : memref<16x4xi16>
+}
+
+// -----
+
+func.func @memref_bitcast_layout_mismatch(%arg0: memref<4x16xbf16, #xtile.layout<[0, 1]>>)
+    -> memref<4x16xi16, #xtile.layout<[1, 0]>> {
+  // expected-error@+1 {{does not match result layout}}
+  %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16, #xtile.layout<[0, 1]>> -> memref<4x16xi16, #xtile.layout<[1, 0]>>
+  return %0 : memref<4x16xi16, #xtile.layout<[1, 0]>>
+}
+
+// -----
+
+func.func @memref_bitcast_width_mismatch(%arg0: memref<16xbf16>) -> memref<16xi32> {
+  // expected-error@+1 {{element bit widths differ: 'bf16' vs 'i32'}}
+  %0 = xtile.memref_bitcast %arg0 : memref<16xbf16> -> memref<16xi32>
+  return %0 : memref<16xi32>
+}

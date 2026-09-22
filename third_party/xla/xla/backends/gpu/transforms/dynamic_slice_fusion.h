@@ -153,7 +153,8 @@ struct DynamicSliceFusion {
     // (the DS source or direct parameter).
     int64_t parameter_number;
 
-    // Shape of the fusion parameter (the full, unsliced buffer).
+    // Shape of the unsliced source buffer fed into the slice (after any
+    // bitcast/reshape on the fusion parameter, matching `slice_shape` rank).
     Shape parameter_shape;
 
     // Shape of the slice fed to the hero (DS output shape, or same as
@@ -182,7 +183,8 @@ struct DynamicSliceFusion {
     // the leaves are numbered 0, 1, 2.
     int64_t result_number = 0;
 
-    // Shape of the DUS target buffer (the full output buffer).
+    // Shape of the unsliced DUS target buffer (after any bitcast/reshape on the
+    // fusion parameter, matching `update_shape` rank).
     Shape result_shape;
 
     // Shape of the DUS update (the hero output slice inserted into the

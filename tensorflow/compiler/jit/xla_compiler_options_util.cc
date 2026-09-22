@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
@@ -79,6 +80,10 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const XlaPlatformInfo& platform_info,
     const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
+  se::Stream* stream =
+      device_base->tensorflow_accelerator_device_info()
+          ? device_base->tensorflow_accelerator_device_info()->stream
+          : nullptr;
   absl::StatusOr<int> platform_device_id =
       tsl::GetPlatformDeviceIdFromDeviceParsedName(
           device_base->parsed_name(),
@@ -86,11 +91,17 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
               absl::down_cast<const Device*>(device_base)->device_type()));
   if (platform_device_id.ok()) {
     options.device_ordinal = *platform_device_id;
+  } else if (stream != nullptr) {
+    options.device_ordinal = stream->parent()->device_ordinal();
   } else {
     options.device_ordinal = device_base->parsed_name().id;
   }
   options.flib_def = function_library_def;
   options.graph_def_version = graph_def_version;
+  if (stream != nullptr) {
+    options.device_allocator = GetAllocator(
+        const_cast<DeviceBase*>(device_base), stream, platform_info);
+  }
   if (const auto* metadata = platform_info.xla_device_metadata();
       metadata != nullptr) {
     options.device_type = metadata->jit_device_type();
