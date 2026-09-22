@@ -1147,6 +1147,49 @@ LogicalResult CompressStoreVregOp::verify() {
   return success();
 }
 
+LogicalResult VectorCompressStoreOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  const int64_t rank = ref_ty.getRank();
+  VectorType value_ty = getValueToStore().getType();
+  if (value_ty.getRank() != rank) {
+    return emitOpError("Expected valueToStore to have the same rank as base (")
+           << rank << "). Got: " << value_ty.getRank() << ".";
+  }
+  if (llvm::size(getIndices()) != rank) {
+    return emitOpError("Expected ") << rank << " indices.";
+  }
+  const int32_t compress_dim = getCompressDim();
+  if (compress_dim < 0 || compress_dim >= rank) {
+    return emitOpError("Expected compress_dim to be in [0, ")
+           << rank << "). Got: " << compress_dim << ".";
+  }
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == compress_dim || ref_ty.isDynamicDim(i)) {
+      continue;
+    }
+    if (value_ty.getDimSize(i) > ref_ty.getDimSize(i)) {
+      return emitOpError("Non-compressed dimension ")
+             << i << " of valueToStore goes out of bounds of base ("
+             << value_ty.getDimSize(i) << " > " << ref_ty.getDimSize(i) << ").";
+    }
+  }
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  if (value_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and valueToStore element type to match");
+  }
+  // Note: We deliberately do not go through verifyStoreOp, which rejects masked
+  // stores of non-32-bit element types. The mask here is mandatory and narrow
+  // element types are allowed.
+  if (value_ty.getShape() != getMask().getType().getShape()) {
+    return emitOpError("Expected mask shape to match value shape: (")
+           << value_ty.getShape() << "). Got: ("
+           << getMask().getType().getShape() << ").";
+  }
+  return success();
+}
+
 template <typename Op>
 LogicalResult verifyLoadOp(Op op) {
   MemRefType ref_ty = op.getBase().getType();
