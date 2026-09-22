@@ -134,8 +134,18 @@ class TilingSpace {
       const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
 
   // Creates an independent deep copy of the TilingSpace, with all internal
-  // pointer maps and root tiles re-bound to the new instance.
+  // pointer maps and root tiles re-bound to the new instance. The copy stays
+  // bound to this space's MLIRContext.
   std::unique_ptr<TilingSpace> Clone() const;
+
+  // Same as Clone, but binds the copy to `target_context`: the symbolic
+  // expressions of the root tiles are rebuilt in `target_context` instead of
+  // being shared with this space's context. The copy is then fully independent
+  // of this space's context and can be tiled concurrently with it.
+  //
+  // REQUIRES: IsSymbolic().
+  std::unique_ptr<TilingSpace> CloneSymbolicIntoContext(
+      mlir::MLIRContext* target_context) const;
 
   std::string ToString() const;
 

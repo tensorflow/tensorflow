@@ -154,24 +154,6 @@ std::optional<AccumulationContext> FindScatterPattern(
                              origin.dynamic_slice, std::nullopt};
 }
 
-bool IsScatterBufferUsed(const AccumulationContext& accumulation) {
-  HloInstruction* buffer = accumulation.accumulation_buffer;
-  HloInstruction* accumulation_instruction =
-      accumulation.accumulation_instruction;
-  for (HloInstruction* user : buffer->users()) {
-    if (user->opcode() == HloOpcode::kGetTupleElement) continue;
-    if (user->opcode() == HloOpcode::kSelect &&
-        ((user->operand_index(buffer) == 1 && IsZero(user->operand(2))) ||
-         (user->operand_index(buffer) == 2 && IsZero(user->operand(1)))))
-      continue;
-    if (user->opcode() == HloOpcode::kScatter &&
-        user == accumulation_instruction)
-      continue;
-    return true;
-  }
-  return false;
-}
-
 bool IsValueReplicatedWithinEachAllReduceGroup(
     const HloInstruction& instruction, const ShapeIndex& index,
     CollectiveOpGroupMode all_reduce_group_mode,
@@ -795,9 +777,11 @@ MovableAllReduceContext IsAllReduceMovable(
 
   if (auto scatter_context =
           FindScatterPattern(all_reduce, while_body, get_origin_tuple_index,
-                             get_output_tuple_index);
-      scatter_context && !IsScatterBufferUsed(*scatter_context)) {
+                             get_output_tuple_index)) {
     accumulation_contexts.push_back(*scatter_context);
+    if (is_buffer_used(accumulation_contexts, while_body)) {
+      return MovableAllReduceContext{};
+    }
     return MovableAllReduceContext{true, accumulation_contexts};
   }
 

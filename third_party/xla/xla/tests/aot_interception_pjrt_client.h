@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/device_assignment.h"
 #include "xla/util/split_proto/human_readable_aot_executable.pb.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,6 +44,7 @@ namespace xla {
 enum class AOTTestMode {
   kGoldenVerification,
   kBackwardsCompatibility,
+  kUpdateGolden,
 };
 
 enum class AOTTestPlatform {
@@ -82,6 +84,14 @@ class AOTInterceptionPjrtClient : public PjRtClient {
   // Unpacks a serialized PjRtExecutable into the human-readable proto form.
   static absl::StatusOr<HumanReadableAotExecutable> DeserializeToHumanReadable(
       absl::string_view serialized, AOTTestPlatform platform);
+
+  static absl::Status WriteGoldenTextProto(
+      const HumanReadableAotExecutable& unpacked, absl::string_view path);
+
+  // Modifies `debug_options` to configure deterministic AOT compilation for
+  // golden generation and verification.
+  static void ApplyAotDeterminismDebugOptions(DebugOptions& debug_options);
+
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
 
@@ -161,9 +171,9 @@ class AOTInterceptionPjrtClient : public PjRtClient {
 
  private:
   absl::Status VerifyAgainstGolden(const PjRtExecutable& fresh_executable);
+  absl::Status DumpGolden(const PjRtExecutable& fresh_executable);
 
-  // Loads the artifact at artifact_path_ and parses it into its human-readable
-  // proto form. Used internally by the compile and verification paths.
+  // Loads the artifact at artifact_path_ into its human-readable proto form.
   absl::StatusOr<HumanReadableAotExecutable> LoadHumanReadableArtifact();
 
   std::unique_ptr<PjRtClient> inner_client_;

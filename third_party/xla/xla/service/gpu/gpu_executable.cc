@@ -615,7 +615,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   if (execution_watchdog != nullptr) {
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
-      pre_abort = [&tracker, progress_tracking_n,
+      pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
                    device_ordinal = executor->device_ordinal()] {
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
@@ -766,6 +766,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         &collective_memory,
+        run_options->run_options().custom_options(),
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};
