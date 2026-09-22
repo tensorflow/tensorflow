@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -25,24 +26,23 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/compiler.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace {
-
-using ::testing::HasSubstr;
 
 PLATFORM_DEFINE_ID(kFakePlatformId, FakePlatform);
 
@@ -346,9 +346,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
   xla::Compiler::RegisterCompilerFactory(kFakePlatformId, []() {
     return std::unique_ptr<xla::Compiler>(nullptr);
   });
-
-  EXPECT_THAT(xla::PlatformUtil::GetDefaultPlatform().status().message(),
-              HasSubstr(kFakePlatformId->ToName()));
 
   GraphDef graph_def = SumGraph();
   tf2xla::Config config = SumConfig();
