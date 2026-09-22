@@ -168,6 +168,7 @@ xla_cc_test(
     deps = [
         ":hlo_inf_nan_intent_analyzer",
         ":hlo_isolation_api",
+        ":hlo_isolation_proto_cc",
         "//xla:literal",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
