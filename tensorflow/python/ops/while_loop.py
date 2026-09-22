@@ -452,6 +452,20 @@ def while_loop(cond,
     if not loop_vars:
       raise ValueError("'loop_vars' must be provided.")
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
+    if executing_eagerly and len(loop_vars) == 1 and not try_to_pack:
+      orig_loop_vars_type = (
+          type(loop_vars) if type(loop_vars) in (list, tuple) else list
+      )
+      unpacked_body = body
+
+      def _pack_body(*args):
+        res = unpacked_body(*args)
+        if not isinstance(res, (list, tuple)):
+          return orig_loop_vars_type((res,))
+        return res
+
+      body = _pack_body
+
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
           maximum_iterations, name="maximum_iterations")
@@ -482,19 +496,17 @@ def while_loop(cond,
     if executing_eagerly:
       packed = False  # whether the body result was packed into a 1-item tuple
 
-      orig_loop_vars_type = (
-          type(loop_vars) if type(loop_vars) in (list, tuple) else list
+      loop_var_structure = nest.map_structure(
+          type_spec.type_spec_from_value, loop_vars
       )
-
-      loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,
-                                              list(loop_vars))
       while cond(*loop_vars):
         loop_vars = body(*loop_vars)
-        if not isinstance(loop_vars, (list, tuple)):
-          if try_to_pack:
-            packed = True
-          loop_vars = orig_loop_vars_type((loop_vars,))
-        nest.assert_same_structure(loop_var_structure, list(loop_vars))
+        if try_to_pack and not isinstance(loop_vars, (list, tuple)):
+          packed = True
+          loop_vars = (loop_vars,)
+        nest.assert_same_structure(
+            loop_var_structure, loop_vars, check_types=False
+        )
 
       def convert(x):
         if isinstance(x, tensor_array_ops.TensorArray):
