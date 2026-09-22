@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
+#include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
