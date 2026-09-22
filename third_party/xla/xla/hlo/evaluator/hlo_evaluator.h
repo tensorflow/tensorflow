@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +30,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/array2d.h"
@@ -369,13 +372,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // See the description on SpecializationKey for more details.
   struct SpecializationCache {
     using EntryMap = absl::flat_hash_map<SpecializationKey, Literal>;
-    using iterator = EntryMap::iterator;
-    using const_iterator = EntryMap::const_iterator;
+
+    mutable absl::Mutex mu;
     // A deque never relocates existing elements. It means all existing pointers
     // and references to previously stored Literals remain valid for the
     // lifetime of the SpecializationCache.
-    std::deque<Literal> arg_storage;
-    EntryMap entries;
+    std::deque<Literal> arg_storage ABSL_GUARDED_BY(mu);
+    EntryMap entries ABSL_GUARDED_BY(mu);
 
     SpecializationCache() = default;
     SpecializationCache(const SpecializationCache&) = delete;
@@ -384,31 +387,39 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     SpecializationCache& operator=(SpecializationCache&&) = delete;
 
     void Clear() {
+      absl::MutexLock lock(&mu);
       entries.clear();
       arg_storage.clear();
     }
-    size_t size() const { return entries.size(); }
-    bool empty() const { return entries.empty(); }
-    iterator begin() { return entries.begin(); }
-    iterator end() { return entries.end(); }
-    const_iterator begin() const { return entries.begin(); }
-    const_iterator end() const { return entries.end(); }
-
-    const Literal* Find(const SpecializationKey& key) const {
-      auto it = entries.find(key);
-      if (it != entries.end()) {
-        return &it->second;
-      }
-      return nullptr;
+    size_t size() const {
+      absl::MutexLock lock(&mu);
+      return entries.size();
+    }
+    bool empty() const {
+      absl::MutexLock lock(&mu);
+      return entries.empty();
     }
 
-    const Literal* Find(const HloComputation* computation,
-                        absl::Span<const Literal* const> args) const {
+    std::optional<Literal> Find(const SpecializationKey& key) const {
+      absl::ReaderMutexLock lock(&mu);
+      auto it = entries.find(key);
+      if (it != entries.end()) {
+        return it->second.Clone();
+      }
+      return std::nullopt;
+    }
+
+    std::optional<Literal> Find(const HloComputation* computation,
+                                absl::Span<const Literal* const> args) const {
       return Find(SpecializationKey(computation, args));
     }
 
     void Insert(const HloComputation* computation,
                 absl::Span<const Literal* const> args, Literal result) {
+      absl::MutexLock lock(&mu);
+      if (entries.contains(SpecializationKey(computation, args))) {
+        return;
+      }
       std::vector<LiteralSlice> slices;
       slices.reserve(args.size());
       for (const Literal* arg : args) {
@@ -801,7 +812,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
-
 
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the
