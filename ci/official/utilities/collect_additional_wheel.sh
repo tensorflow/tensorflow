@@ -34,6 +34,12 @@ wheel_name="$1"
 # do the sorting instead and take the newest match.
 built_wheel=$("$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package \
   -iname "${wheel_name}*.whl" -exec ls -t {} + | head -n 1)
+# find exits 0 when it matches nothing, so say what went wrong rather than
+# leaving `cp` to report an empty path.
+if [[ -z "$built_wheel" ]]; then
+  echo "Error: the ${wheel_name} build produced no wheel under bazel-bin" >&2
+  exit 1
+fi
 cp "$built_wheel" "$TFCI_OUTPUT_DIR"
 
 # Repair the wheel with auditwheel, the same way the primary wheel was
