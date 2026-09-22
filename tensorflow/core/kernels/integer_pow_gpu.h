@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/bcast.h"
@@ -96,9 +95,9 @@ class IntegerPowGpuOp : public AsyncOpKernel {
 
     kernel_.Compute(context);
 
-    TensorReference flag_ref(found_negative);
-    auto check = [flag_ref, host_flag, context, done]() {
-      flag_ref.Unref();
+    auto check = [found_negative, host_flag, context, done]() {
+      // Keep the device flag alive until the queued GPU work has completed.
+      (void)found_negative;
       if (context->status().ok() && host_flag.scalar<int32_t>()() != 0) {
         context->SetStatus(absl::InvalidArgumentError(
             "Integers to negative integer powers are not allowed"));

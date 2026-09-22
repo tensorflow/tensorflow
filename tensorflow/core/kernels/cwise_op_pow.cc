@@ -25,11 +25,10 @@ REGISTER4(BinaryOp, CPU, "Pow", functor::safe_pow, int8_t, int16_t, int32_t,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double);
-using Int64GpuPowOp =
-    IntegerPowGpuOp<int64,
-                    BinaryOp<GPUDevice, functor::safe_pow_ignore_error<int64>>>;
+using Int64GpuPowOp = IntegerPowGpuOp<
+    int64_t, BinaryOp<GPUDevice, functor::safe_pow_ignore_error<int64_t>>>;
 REGISTER_KERNEL_BUILDER(
-    Name("Pow").Device(DEVICE_GPU).TypeConstraint<int64>("T"), Int64GpuPowOp);
+    Name("Pow").Device(DEVICE_GPU).TypeConstraint<int64_t>("T"), Int64GpuPowOp);
 #endif
 REGISTER(BinaryOp, GPU, "Pow", functor::pow, bfloat16);
 #endif
