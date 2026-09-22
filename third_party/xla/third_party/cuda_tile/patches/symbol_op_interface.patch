@@ -1,0 +1,163 @@
+Fix SymbolOpInterface usages for LLVM r632326.
+
+diff --git a/include/cuda_tile/Dialect/CudaTile/IR/Ops.td b/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
+--- a/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
++++ b/include/cuda_tile/Dialect/CudaTile/IR/Ops.td
+@@ -2178,7 +2178,7 @@ def CudaTile_FToIOp : CudaTileConversion
+ //===----------------------------------------------------------------------===//
+ 
+ def CudaTile_EntryOp : CudaTileCoreOpDef<"entry", "13.1", [
+-  FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface, SingleBlock,
++  SymbolName, FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface, SingleBlock,
+   SingleBlockImplicitTerminator<"ReturnOp">
+ ]> {
+   let summary = "Define a tile kernel";
+@@ -2217,6 +2217,12 @@ def CudaTile_EntryOp : CudaTileCoreOpDef
+     /// Returns the result types of this function.
+     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+ 
++    // SymbolOpInterface Methods
++    mlir::SymbolTable::Visibility getVisibility() {
++      return mlir::SymbolTable::Visibility::Public;
++    }
++    void setVisibility(mlir::SymbolTable::Visibility vis) {}
++
+     static void build(::mlir::OpBuilder &odsBuilder,
+                       ::mlir::OperationState &odsState,
+                       ::mlir::StringAttr sym_name,
+@@ -2350,7 +2356,7 @@ def CudaTile_GetGlobalOp  : CudaTileCore
+ // GlobalOp
+ //===----------------------------------------------------------------------===//
+ 
+-def CudaTile_GlobalOp : CudaTileCoreOpDef<"global", "13.1", [Symbol]> {
++def CudaTile_GlobalOp : CudaTileCoreOpDef<"global", "13.1", [Symbol, SymbolName]> {
+   let summary = "Allocate static global memory";
+ 
+   let description = [{
+@@ -2404,6 +2410,23 @@ def CudaTile_GlobalOp : CudaTileCoreOpDe
+ 
+   let assemblyFormat = "custom<SymbolVisibility>($symbol_visibility) (`constant` $constant^)? $sym_name (`alignment` `=` $alignment^)? attr-dict custom<DenseTypedElementsAttrNoResult>($value)";
+   let hasVerifier = 1;
++
++  let extraClassDeclaration = [{
++    // SymbolOpInterface Methods
++    mlir::SymbolTable::Visibility getVisibility() {
++      if (getSymbolVisibility() == SymbolVisibility::Public) {
++        return mlir::SymbolTable::Visibility::Public;
++      }
++      return mlir::SymbolTable::Visibility::Private;
++    }
++    void setVisibility(mlir::SymbolTable::Visibility vis) {
++      if (vis == mlir::SymbolTable::Visibility::Public) {
++        setSymbolVisibility(SymbolVisibility::Public);
++      } else {
++        setSymbolVisibility(SymbolVisibility::Private);
++      }
++    }
++  }];
+ }
+ 
+ //===----------------------------------------------------------------------===//
+diff --git a/include/cuda_tile/Dialect/CudaTile/IR/SharedFuncParserAndPrinter.h b/include/cuda_tile/Dialect/CudaTile/IR/SharedFuncParserAndPrinter.h
+--- a/include/cuda_tile/Dialect/CudaTile/IR/SharedFuncParserAndPrinter.h
++++ b/include/cuda_tile/Dialect/CudaTile/IR/SharedFuncParserAndPrinter.h
+@@ -24,9 +24,9 @@ template <typename OpTy>
+ ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
+   // Parse the name as a symbol.
+   StringAttr nameAttr;
+-  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+-                             result.attributes))
++  if (parser.parseSymbolName(nameAttr, "sym_name", result.attributes)) {
+     return failure();
++  }
+ 
+   // Parse the function signature using custom parsing that supports both
+   // short form (tile<ptr<f32>>) and long form (!cuda_tile.tile<ptr<f32>>) types
+@@ -80,10 +80,9 @@ ParseResult parseFuncOp(OpAsmParser &par
+ template <typename OpTy>
+ void printFuncOp(OpTy op, OpAsmPrinter &printer) {
+   // Print the operation and the function name.
+-  auto funcName =
+-      op.getOperation()
+-          ->template getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
+-          .getValue();
++  auto funcName = op.getOperation()
++                      ->template getAttrOfType<StringAttr>("sym_name")
++                      .getValue();
+   printer << ' ';
+   printer.printSymbolName(funcName);
+   auto fnType = op.getFunctionType();
+@@ -95,8 +94,8 @@ void printFuncOp(OpTy op, OpAsmPrinter &
+                       /*printEmptyBlock=*/false);
+   printer.printOptionalAttrDict(
+       op.getOperation()->getAttrs(),
+-      {op.getArgAttrsAttrName(), op.getFunctionTypeAttrName(),
+-       SymbolTable::getSymbolAttrName(), op.getResAttrsAttrName()});
++      {op.getArgAttrsAttrName(), op.getFunctionTypeAttrName(), "sym_name",
++       op.getResAttrsAttrName()});
+ }
+ 
+ } // end namespace mlir::cuda_tile.
+diff --git a/include/cuda_tile/Dialect/CudaTile/IR/TestingOps.td b/include/cuda_tile/Dialect/CudaTile/IR/TestingOps.td
+--- a/include/cuda_tile/Dialect/CudaTile/IR/TestingOps.td
++++ b/include/cuda_tile/Dialect/CudaTile/IR/TestingOps.td
+@@ -31,7 +31,7 @@ include "cuda_tile/Dialect/CudaTile/IR/T
+ //===----------------------------------------------------------------------===//
+ 
+ def CudaTile_Test_FuncOp : CudaTileTestingOpDef<"func", "250.0", [
+-  IsolatedFromAbove, FunctionOpInterface, SingleBlock, OpAsmOpInterface, 
++  IsolatedFromAbove, SymbolName, FunctionOpInterface, SingleBlock, OpAsmOpInterface, 
+   SingleBlockImplicitTerminator<"ReturnOp">
+ ]> {
+ 
+@@ -56,6 +56,12 @@ def CudaTile_Test_FuncOp : CudaTileTesti
+ 
+     /// Returns the result types of this function.
+     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
++
++    // SymbolOpInterface Methods
++    mlir::SymbolTable::Visibility getVisibility() {
++      return mlir::SymbolTable::Visibility::Public;
++    }
++    void setVisibility(mlir::SymbolTable::Visibility vis) {}
+   }];
+ }
+ 
+diff --git a/lib/Dialect/CudaTile/IR/CudaTile.cpp b/lib/Dialect/CudaTile/IR/CudaTile.cpp
+--- a/lib/Dialect/CudaTile/IR/CudaTile.cpp
++++ b/lib/Dialect/CudaTile/IR/CudaTile.cpp
+@@ -2669,9 +2669,9 @@ constexpr char kOptimizationHintsAttr[] 
+ ParseResult EntryOp::parse(OpAsmParser &parser, OperationState &result) {
+   // Parse the name as a symbol.
+   StringAttr nameAttr;
+-  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+-                             result.attributes))
++  if (parser.parseSymbolName(nameAttr, "sym_name", result.attributes)) {
+     return failure();
++  }
+ 
+   // Parse the function signature using custom parsing that supports both
+   // short form (tile<ptr<f32>>) and long form (!cuda_tile.tile<ptr<f32>>) types
+@@ -2736,9 +2736,7 @@ ParseResult EntryOp::parse(OpAsmParser &
+ void EntryOp::print(OpAsmPrinter &printer) {
+   // Print the operation and the function name.
+   auto funcName =
+-      getOperation()
+-          ->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
+-          .getValue();
++      getOperation()->getAttrOfType<StringAttr>("sym_name").getValue();
+   printer << ' ';
+   printer.printSymbolName(funcName);
+   auto fnType = getFunctionType();
+@@ -2754,9 +2752,8 @@ void EntryOp::print(OpAsmPrinter &printe
+                       /*printEmptyBlock=*/false);
+   printer.printOptionalAttrDict(
+       getOperation()->getAttrs(),
+-      {getArgAttrsAttrName(), getFunctionTypeAttrName(),
+-       SymbolTable::getSymbolAttrName(), getResAttrsAttrName(),
+-       kOptimizationHintsAttr});
++      {getArgAttrsAttrName(), getFunctionTypeAttrName(), "sym_name",
++       getResAttrsAttrName(), kOptimizationHintsAttr});
+ }
+ 
+ LogicalResult EntryOp::verify() {

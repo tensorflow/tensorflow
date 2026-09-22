@@ -89,6 +89,7 @@ cc_library(
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",

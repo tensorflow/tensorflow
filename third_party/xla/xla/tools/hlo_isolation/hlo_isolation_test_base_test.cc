@@ -28,16 +28,16 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest-spi.h>
 #include "absl/base/nullability.h"
-#include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
-#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
@@ -62,10 +63,6 @@ limitations under the License.
 namespace xla {
 namespace hlo_isolation {
 namespace {
-
-using ::absl_testing::StatusIs;
-using ::testing::Contains;
-using ::testing::IsEmpty;
 
 class HloIsolationTest
     : public HloIsolationTestMixin<HloInterpreterReferenceMixin<HloTestBase>> {
@@ -513,23 +510,17 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
 }
 )"));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        [](const HloInstruction* use,
-                           int64_t sliced_dim) -> std::optional<uint64_t> {
-                          if (use->opcode() == HloOpcode::kDynamicSlice &&
-                              sliced_dim == 0) {
-                            return 131071;
-                          }
-                          return std::nullopt;
-                        }));
+  FakeArgumentsOptions options;
+  options.get_index_known_zeroes =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() == HloOpcode::kDynamicSlice && sliced_dim == 0) {
+      return 131071;
+    }
+    return std::nullopt;
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get(), options));
   ASSERT_EQ(args.size(), 2);
 
   int32_t index = args[1].Get<int32_t>({});
@@ -551,23 +542,17 @@ ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[])
 }
 )"));
 
-  ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> args,
-      MakeFakeArguments(module.get(),
-                        /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/std::nullopt,
-                        /*engine=*/nullptr,
-                        /*generate_aligned_ds_indices=*/false,
-                        [](const HloInstruction* use,
-                           int64_t sliced_dim) -> std::optional<uint64_t> {
-                          if (use->opcode() == HloOpcode::kDynamicUpdateSlice &&
-                              sliced_dim == 0) {
-                            return 131071;
-                          }
-                          return std::nullopt;
-                        }));
+  FakeArgumentsOptions options_dus;
+  options_dus.get_index_known_zeroes =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() == HloOpcode::kDynamicUpdateSlice && sliced_dim == 0) {
+      return 131071;
+    }
+    return std::nullopt;
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get(), options_dus));
   ASSERT_EQ(args.size(), 3);
 
   int32_t index = args[2].Get<int32_t>({});
@@ -777,10 +762,10 @@ ENTRY main.1 {
                          RunIsolationPipeline(*module, &test_runner,
                                               &reference_runner, options));
   }
-  // We expect 2 failures:
-  // 1. TPU_VS_DEFUSED_TPU mismatch.
-  // 2. TPU_VS_INTERPRETER mismatch.
-  EXPECT_EQ(failures.size(), 2);
+  // Both TPU_VS_DEFUSED_TPU and TPU_VS_INTERPRETER mismatch, but they are
+  // reported together in a single failure at the final verdict rather than one
+  // failure per check.
+  EXPECT_EQ(failures.size(), 1);
   EXPECT_GT(test_runner.last_hlo_output_callbacks_size_, 0);
 
   // Check the pipeline results contains our mismatch results.
@@ -860,6 +845,78 @@ ENTRY main {
   EXPECT_TRUE(test_runner.last_run_hlo_passes_);
 }
 
+TEST_F(
+    HloIsolationTest,
+    TestRunIsolationTestOnModule_FusionDebuggerRetryPassWithExpectedLiterals) {
+  DelegatingRunner test_runner(&this->test_runner());
+  DelegatingRunner reference_runner(&this->reference_runner());
+
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  add = f32[] add(a, b)
+  ROOT mul = f32[] multiply(add, b)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  bool saw_reference_with_expected_literals = false;
+  bool saw_retry_with_expected_literals = false;
+
+  ModuleIsolationOptions options;
+  options.run_module_fn =
+      [&](std::unique_ptr<HloModule> m, HloRunnerInterface* r,
+          absl::Span<const Literal> input_data,
+          const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
+    if (run_opts.use_fusion_debugger && run_opts.expected_literals != nullptr) {
+      if (run_opts.hlo_output_callbacks.empty()) {
+        saw_reference_with_expected_literals = true;
+      } else {
+        saw_retry_with_expected_literals = true;
+      }
+    }
+
+    std::string module_name = std::string(m->name());
+    ABSL_ASSIGN_OR_RETURN(Literal output,
+                     RunModule(std::move(m), r, input_data, run_opts));
+
+    // Inject mismatch on main test runner run to trigger stage 1 and stage 2
+    // failures
+    if (r == &test_runner && run_opts.hlo_output_callbacks.empty() &&
+        !absl::StrContains(module_name, "defused")) {
+      *static_cast<float*>(output.untyped_data()) += 100.0f;
+    }
+
+    return output;
+  };
+
+  std::vector<Literal> args;
+  args.push_back(LiteralUtil::CreateR0<float>(2.0f));
+  args.push_back(LiteralUtil::CreateR0<float>(3.0f));
+
+  ::testing::TestPartResultArray failures;
+  absl::StatusOr<HloIsolationTestResult> result_or;
+  {
+    ::testing::ScopedFakeTestPartResultReporter reporter(
+        ::testing::ScopedFakeTestPartResultReporter::INTERCEPT_ALL_THREADS,
+        &failures);
+    result_or = RunIsolationTestOnModule(*module, &test_runner,
+                                         &reference_runner, options, args);
+  }
+
+  ASSERT_OK(result_or.status());
+  EXPECT_EQ(result_or->state(), State::FAILURE);
+  EXPECT_EQ(result_or->reason(), "NUMERIC_MISMATCH");
+
+  EXPECT_TRUE(saw_reference_with_expected_literals);
+  EXPECT_TRUE(saw_retry_with_expected_literals);
+}
+
 TEST_F(HloIsolationTest, TestRunModuleUseFusionDebuggerOption) {
   DelegatingRunner test_runner(&this->test_runner());
 
@@ -902,6 +959,217 @@ ENTRY main {
   }
 }
 
+TEST_F(HloIsolationTest, TestDumpHloOutputCallbacks) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  add = f32[] add(a, b)
+  ROOT mul = f32[] multiply(add, b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  // 1. Normal execution with eval_literal_mutator
+  auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
+  auto mutator = [](absl::string_view hlo_name, Literal* literal) {
+    if (hlo_name == "add") {
+      *static_cast<float*>(literal->untyped_data()) += 10.0f;
+    }
+  };
+
+  std::vector<HloOutputCallback> callbacks =
+      CreateDumpHloOutputCallbacks(module.get(), expected_literals, mutator);
+
+  for (const auto& cb : callbacks) {
+    Literal dummy = LiteralUtil::CreateR0<float>(5.0f);
+    std::vector<std::shared_ptr<const Literal>> lits = {
+        std::make_shared<Literal>(std::move(dummy))};
+    cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+  }
+
+  EXPECT_TRUE(expected_literals->contains("add"));
+  EXPECT_TRUE(expected_literals->contains("mul"));
+  EXPECT_FLOAT_EQ(expected_literals->at("add")->Get<float>({}), 15.0f);
+  EXPECT_FLOAT_EQ(expected_literals->at("mul")->Get<float>({}), 5.0f);
+
+  // 2. Edge cases: empty/null literals and null expected_literals map
+  expected_literals->clear();
+  std::vector<std::shared_ptr<const Literal>> empty_lits;
+  callbacks[0].callback(/*replica_id=*/0, /*partition_id=*/0, empty_lits);
+  std::vector<std::shared_ptr<const Literal>> null_lits = {nullptr};
+  callbacks[0].callback(/*replica_id=*/0, /*partition_id=*/0, null_lits);
+  EXPECT_TRUE(expected_literals->empty());
+
+  std::vector<HloOutputCallback> null_map_callbacks =
+      CreateDumpHloOutputCallbacks(module.get(), /*expected_literals=*/nullptr,
+                                   nullptr);
+  Literal valid_lit = LiteralUtil::CreateR0<float>(1.0f);
+  std::vector<std::shared_ptr<const Literal>> valid_lits = {
+      std::make_shared<Literal>(std::move(valid_lit))};
+  null_map_callbacks[0].callback(/*replica_id=*/0, /*partition_id=*/0,
+                                 valid_lits);
+}
+
+TEST_F(HloIsolationTest, TestComparisonHloOutputCallbacks) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+ENTRY main {
+  a = f32[2,2] parameter(0)
+  ROOT add = f32[2,2] add(a, a)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  absl::flat_hash_map<GroupKey, std::vector<std::string>> ref_groups;
+  for (const auto* computation : ref_module->computations()) {
+    for (const auto* instruction : computation->MakeInstructionPostOrder()) {
+      GroupKey key(instruction->opcode(), instruction->shape().ToString());
+      ref_groups[key].push_back(std::string(instruction->name()));
+    }
+  }
+
+  ModuleIsolationOptions options;
+  options.abs_error_bound = 1e-4;
+  options.rel_error_bound = 1e-4;
+  auto result_mutex = std::make_shared<absl::Mutex>();
+
+  // 1. Match & Eviction: matching literal removes expected literal and records
+  // no error
+  {
+    auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
+    (*expected_literals)["add"] = std::make_shared<Literal>(
+        LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
+    HloIsolationTestResult test_result;
+
+    std::unique_ptr<HloModule> clone = module->Clone();
+    std::vector<HloOutputCallback> callbacks =
+        CreateComparisonHloOutputCallbacks(clone.get(), ref_groups,
+                                           expected_literals, *module, options,
+                                           result_mutex, &test_result);
+
+    for (const auto& cb : callbacks) {
+      Literal actual =
+          LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+      std::vector<std::shared_ptr<const Literal>> lits = {
+          std::make_shared<Literal>(std::move(actual))};
+      cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+    }
+
+    EXPECT_FALSE(expected_literals->contains("add"));
+    EXPECT_EQ(test_result.numeric_checks_size(), 0);
+  }
+
+  // 2. Mismatch: differing literal records numeric check failure and evicts
+  {
+    auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
+    (*expected_literals)["add"] = std::make_shared<Literal>(
+        LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
+    HloIsolationTestResult test_result;
+
+    std::unique_ptr<HloModule> clone = module->Clone();
+    std::vector<HloOutputCallback> callbacks =
+        CreateComparisonHloOutputCallbacks(clone.get(), ref_groups,
+                                           expected_literals, *module, options,
+                                           result_mutex, &test_result);
+
+    ::testing::TestPartResultArray failures;
+    {
+      ::testing::ScopedFakeTestPartResultReporter reporter(
+          ::testing::ScopedFakeTestPartResultReporter::INTERCEPT_ALL_THREADS,
+          &failures);
+      for (const auto& cb : callbacks) {
+        Literal mismatch =
+            LiteralUtil::CreateR2<float>({{100.0f, 2.0f}, {3.0f, 4.0f}});
+        std::vector<std::shared_ptr<const Literal>> lits = {
+            std::make_shared<Literal>(std::move(mismatch))};
+        cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+      }
+    }
+
+    EXPECT_FALSE(expected_literals->contains("add"));
+    EXPECT_GT(failures.size(), 0);
+    ASSERT_EQ(test_result.numeric_checks_size(), 1);
+    EXPECT_EQ(test_result.numeric_checks(0).name(), "FusionDebugger:add");
+    EXPECT_TRUE(test_result.numeric_checks(0).has_top_mismatch());
+  }
+
+  // 3. Incompatible Shape: logs warning and returns early without recording
+  // mismatch
+  {
+    auto expected_literals = std::make_shared<ExpectedLiteralsMap>();
+    (*expected_literals)["add"] = std::make_shared<Literal>(
+        LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f}));
+    HloIsolationTestResult test_result;
+
+    std::unique_ptr<HloModule> clone = module->Clone();
+    std::vector<HloOutputCallback> callbacks =
+        CreateComparisonHloOutputCallbacks(clone.get(), ref_groups,
+                                           expected_literals, *module, options,
+                                           result_mutex, &test_result);
+
+    for (const auto& cb : callbacks) {
+      Literal actual =
+          LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+      std::vector<std::shared_ptr<const Literal>> lits = {
+          std::make_shared<Literal>(std::move(actual))};
+      cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+    }
+
+    EXPECT_EQ(test_result.numeric_checks_size(), 0);
+  }
+
+  // 4. Edge cases: missing key, null map, empty/null literals
+  {
+    HloIsolationTestResult test_result;
+    auto empty_expected_literals = std::make_shared<ExpectedLiteralsMap>();
+    std::unique_ptr<HloModule> clone = module->Clone();
+    std::vector<HloOutputCallback> callbacks =
+        CreateComparisonHloOutputCallbacks(clone.get(), ref_groups,
+                                           empty_expected_literals, *module,
+                                           options, result_mutex, &test_result);
+
+    for (const auto& cb : callbacks) {
+      Literal actual =
+          LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+      std::vector<std::shared_ptr<const Literal>> lits = {
+          std::make_shared<Literal>(std::move(actual))};
+      cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+    }
+    EXPECT_EQ(test_result.numeric_checks_size(), 0);
+
+    // Null expected_literals map
+    std::unique_ptr<HloModule> clone_null = module->Clone();
+    std::vector<HloOutputCallback> callbacks_null =
+        CreateComparisonHloOutputCallbacks(clone_null.get(), ref_groups,
+                                           /*expected_literals=*/nullptr,
+                                           *module, options, result_mutex,
+                                           &test_result);
+    for (const auto& cb : callbacks_null) {
+      Literal actual =
+          LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}});
+      std::vector<std::shared_ptr<const Literal>> lits = {
+          std::make_shared<Literal>(std::move(actual))};
+      cb.callback(/*replica_id=*/0, /*partition_id=*/0, lits);
+    }
+
+    // Null / empty literals in callback
+    std::vector<std::shared_ptr<const Literal>> empty_lits;
+    callbacks_null[0].callback(/*replica_id=*/0, /*partition_id=*/0,
+                               empty_lits);
+    std::vector<std::shared_ptr<const Literal>> null_lits = {nullptr};
+    callbacks_null[0].callback(/*replica_id=*/0, /*partition_id=*/0, null_lits);
+    EXPECT_EQ(test_result.numeric_checks_size(), 0);
+  }
+}
+
 TEST_F(HloIsolationTest, TestPopulateNumericCheckMismatches) {
   NumericCheck numeric_check;
 
@@ -940,97 +1208,6 @@ TEST_F(HloIsolationTest, TestPopulateNumericCheckMismatches) {
   EXPECT_EQ(numeric_check.top_mismatches_size(), 1);
   ASSERT_TRUE(numeric_check.has_top_mismatch());
   EXPECT_DOUBLE_EQ(numeric_check.top_mismatch().rel_error(), 2.5);
-}
-
-TEST(FusionDebuggerTest, DirUsesUndeclaredOutputsDir) {
-  // Save environment variable
-  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  std::string original_val = original_env ? original_env : "";
-
-  // Set custom undeclared outputs dir
-  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
-  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
-              /*overwrite=*/1);
-
-  EXPECT_EQ(GetFusionDebuggerDir(), custom_dir);
-
-  // Restore environment variable
-  if (!original_val.empty()) {
-    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
-                /*overwrite=*/1);
-  } else {
-    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  }
-}
-
-TEST(FusionDebuggerTest, FilePathUsesUndeclaredOutputsDir) {
-  // Save environment variable
-  const char* original_env = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  std::string original_val = original_env ? original_env : "";
-
-  // Set custom undeclared outputs dir
-  std::string custom_dir = "/some/custom/undeclared/outputs/dir";
-  tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", custom_dir.c_str(),
-              /*overwrite=*/1);
-
-  EXPECT_EQ(
-      GetFusionDebuggerFilePath("my_op"),
-      tsl::io::JoinPath(custom_dir, "fusion-debugger-reference-my_op.bin"));
-
-  // Restore environment variable
-  if (!original_val.empty()) {
-    tsl::setenv("TEST_UNDECLARED_OUTPUTS_DIR", original_val.c_str(),
-                /*overwrite=*/1);
-  } else {
-    tsl::unsetenv("TEST_UNDECLARED_OUTPUTS_DIR");
-  }
-}
-
-TEST(FusionDebuggerTest, CleanUpAndGetLeftoverFiles) {
-  // We can write to the directory from GetFusionDebuggerDir().
-  std::string debugger_dir = GetFusionDebuggerDir();
-
-  // Make sure it is cleaned up before starting
-  CleanUpAllFusionDebuggerFiles();
-  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
-
-  // Create a debug file
-  std::string file_path = GetFusionDebuggerFilePath("test_cleanup_op");
-
-  // Write a dummy string to file
-  tsl::Env* env = tsl::Env::Default();
-  ASSERT_OK(tsl::WriteStringToFile(env, file_path, "dummy data"));
-
-  // Verify it exists in leftover files and via filesystem
-  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), Contains(file_path));
-
-  // Clean up
-  CleanUpAllFusionDebuggerFiles();
-
-  // Verify it no longer exists
-  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
-  EXPECT_THAT(env->FileExists(file_path),
-              StatusIs(absl::StatusCode::kNotFound));
-}
-
-TEST(FusionDebuggerTest, DestructorCleansUpAllFiles) {
-  // Clear any existing leftover files first
-  CleanUpAllFusionDebuggerFiles();
-  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
-
-  std::string file_path = GetFusionDebuggerFilePath("cleanup_destructor_test");
-  tsl::Env* env = tsl::Env::Default();
-
-  {
-    absl::Cleanup cleanup = [] { CleanUpAllFusionDebuggerFiles(); };
-    ASSERT_OK(tsl::WriteStringToFile(env, file_path, "test data"));
-    EXPECT_OK(env->FileExists(file_path));
-  }
-
-  // Destruction of cleanup should delete the file
-  EXPECT_THAT(env->FileExists(file_path),
-              StatusIs(absl::StatusCode::kNotFound));
-  EXPECT_THAT(GetLeftoverFusionDebuggerFiles(), IsEmpty());
 }
 
 TEST_F(HloIsolationTest, PopulateMismatchAnnotations_Basic) {
@@ -1238,6 +1415,60 @@ ENTRY main {
   EXPECT_TRUE(found_fusion);
   EXPECT_TRUE(found_add1);
   EXPECT_TRUE(found_sin);
+}
+
+TEST_F(HloIsolationTest, ResNet50SoftmaxCrossEntropyFusionNoInfOrNan) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule ResNet50SoftmaxCrossEntropyFusion
+
+%add_bf16 (x: bf16[], y: bf16[]) -> bf16[] {
+  %x = bf16[] parameter(0)
+  %y = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%x, %y)
+}
+
+ENTRY %fusion.660 (parameter.0: bf16[2], parameter.1: bf16[2], parameter.2: bf16[2],
+                   parameter.3: bf16[2,4], parameter.4: bf16[4], parameter.5: f32[2,4],
+                   parameter.6: bf16[], parameter.7: bf16[2]) -> (bf16[2,4], bf16[4], bf16[2]) {
+  %parameter.1 = bf16[2]{0} parameter(1)
+  %broadcast.1 = bf16[2,4]{1,0} broadcast(%parameter.1), dimensions={0}
+  %parameter.3 = bf16[2,4]{1,0} parameter(3)
+  %parameter.4 = bf16[4]{0} parameter(4)
+  %broadcast.4 = bf16[2,4]{1,0} broadcast(%parameter.4), dimensions={1}
+  %add.logits = bf16[2,4]{1,0} add(%parameter.3, %broadcast.4)
+  %parameter.2 = bf16[2]{0} parameter(2)
+  %broadcast.2 = bf16[2,4]{1,0} broadcast(%parameter.2), dimensions={0}
+  %subtract.max = bf16[2,4]{1,0} subtract(%add.logits, %broadcast.2)
+  %exponential = bf16[2,4]{1,0} exponential(%subtract.max)
+  %parameter.0 = bf16[2]{0} parameter(0)
+  %broadcast.0 = bf16[2,4]{1,0} broadcast(%parameter.0), dimensions={0}
+  %divide.norm = bf16[2,4]{1,0} divide(%exponential, %broadcast.0)
+  %parameter.5 = f32[2,4]{1,0} parameter(5)
+  %convert.labels = bf16[2,4]{1,0} convert(%parameter.5)
+  %subtract.probs = bf16[2,4]{1,0} subtract(%divide.norm, %convert.labels)
+  %multiply.grad = bf16[2,4]{1,0} multiply(%broadcast.1, %subtract.probs)
+  %parameter.6 = bf16[] parameter(6)
+  %reduce.bias = bf16[4]{0} reduce(%multiply.grad, %parameter.6), dimensions={0}, to_apply=%add_bf16
+  %negate = bf16[2,4]{1,0} negate(%convert.labels)
+  %parameter.7 = bf16[2]{0} parameter(7)
+  %broadcast.7 = bf16[2,4]{1,0} broadcast(%parameter.7), dimensions={0}
+  %subtract.logprobs = bf16[2,4]{1,0} subtract(%subtract.max, %broadcast.7)
+  %multiply.loss = bf16[2,4]{1,0} multiply(%negate, %subtract.logprobs)
+  %reduce.loss = bf16[2]{0} reduce(%multiply.loss, %parameter.6), dimensions={1}, to_apply=%add_bf16
+  ROOT %tuple = (bf16[2,4]{1,0}, bf16[4]{0}, bf16[2]{0}) tuple(%multiply.grad, %reduce.bias, %reduce.loss)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                       MakeFakeArguments(module.get()));
+  std::vector<const Literal*> arg_ptrs;
+  arg_ptrs.reserve(args.size());
+  for (const auto& arg : args) {
+    arg_ptrs.push_back(&arg);
+  }
+  ASSERT_OK_AND_ASSIGN(Literal output, Execute(std::move(module), arg_ptrs));
+  EXPECT_FALSE(LiteralContainsInfOrNan(output));
 }
 
 }  // namespace

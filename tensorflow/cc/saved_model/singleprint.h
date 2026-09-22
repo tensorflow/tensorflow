@@ -19,8 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow::saved_model::fingerprinting {
@@ -31,7 +29,6 @@ std::string Singleprint(uint64_t graph_def_program_hash,
                         uint64_t saved_object_graph_hash,
                         uint64_t checkpoint_hash);
 std::string Singleprint(const FingerprintDef& fingerprint);
-absl::StatusOr<std::string> Singleprint(absl::string_view export_dir);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

@@ -1,3 +1,4 @@
+// RUN: fusion_to_xtile %s | FileCheck %s
 // RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
 // RUN:   | FileCheck %s --check-prefix=CHECK-VECTOR
 // RUN: test_correctness %s
@@ -27,20 +28,37 @@ ENTRY main {
       }
     }
 }
+// CHECK-LABEL: xtile.entry_func @wrapped_fusion
+// CHECK-SAME:    %[[ARG0:[^:]+]]: memref<10xf32>,
+// CHECK-SAME:    %[[ARG1:[^:]+]]: memref<3xf32>,
+// CHECK-SAME:    %[[PID:[^:]+]]: index)
+// CHECK:         %[[C1:.*]] = arith.constant 1 : index
+// CHECK:         %[[EXT:.*]] = xtile.extract %[[ARG0]][%[[C1]]] [16] [2] : memref<10xf32> -> tensor<16xf32>
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         xtile.insert %[[EXT]] into %[[ARG1]][%[[C0]]] [16] [1] : tensor<16xf32> -> memref<3xf32>
+// CHECK:       xtile.return
+
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // CHECK-VECTOR:         memref.subview %{{.*}}[1] [5] [2]
 // CHECK-VECTOR:         memref.copy
 // CHECK-VECTOR:         memref.copy
 
+// NEW-VECTOR:       #indexing_map = #xla.indexing_map<"(d0) -> (d0 * 2 + 1)
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
-// NEW-VECTOR:           %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<16xf32>
-// NEW-VECTOR-COUNT-5:   memref.load {{.*}} : memref<10xf32>
-// NEW-VECTOR-NOT:       memref.load
+// NEW-VECTOR-DAG:       %[[C0:.*]] = arith.constant 0 : index
+// NEW-VECTOR-DAG:       %[[C1:.*]] = arith.constant 1 : index
+// NEW-VECTOR-DAG:       %[[C5:.*]] = arith.constant 5 : index
+// NEW-VECTOR:           %[[ALLOCA:.*]] = memref.alloca() : memref<16xf32>
+// NEW-VECTOR:           scf.for %[[IV:.*]] = %[[C0]] to %[[C5]] step %[[C1]]
+// NEW-VECTOR:             %[[INDEX:.*]] = xla.apply_indexing #indexing_map(%[[IV]])
+// NEW-VECTOR:             %[[VAL:.*]] = memref.load %arg0[%[[INDEX]]] : memref<10xf32>
+// NEW-VECTOR:             memref.store %[[VAL]], %[[ALLOCA]][%[[IV]]]
+// NEW-VECTOR:           %[[READ_MASK:.*]] = vector.constant_mask [5] : vector<16xi1>
+// NEW-VECTOR:           %[[READ:.*]] = vector.transfer_read %[[ALLOCA]][%{{.*}}], %{{.*}}, %[[READ_MASK]] {in_bounds = [true]} : memref<16xf32>, vector<16xf32>
 // NEW-VECTOR:           %[[MASK:.*]] = vector.constant_mask [3] : vector<16xi1>
-// NEW-VECTOR:           vector.transfer_write 
-// NEW-VECTOR-SAME:        %[[MASK]] : vector<16xf32>, memref<3xf32>
+// NEW-VECTOR:           vector.transfer_write %[[READ]], %arg1[%{{.*}}], %[[MASK]] : vector<16xf32>, memref<3xf32>
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
-// NEW-VECTOR-LLVM-NOT:   llvm.alloca
+// NEW-VECTOR-LLVM:       llvm.alloca
 // NEW-VECTOR-LLVM:       llvm.intr.masked.store
 

@@ -73,40 +73,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
-    se::GpuComputeCapability compute_capability) {
-  if (compute_capability.IsRocm()) {
-    const auto* rocm_cc = compute_capability.rocm_compute_capability();
-    if (rocm_cc->gfx9_mi300()) {
-      return GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI300);
-    }
-    if (rocm_cc->gfx9_mi350()) {
-      return GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI350);
-    }
-    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultRocm);
-  }
-
-  CHECK(compute_capability.IsCuda());
-  auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
-  std::vector<TritonGemmConfig> configs;
-
-  if (cuda_compute_capability->IsBlackwell()) {
-    // SM 10.0 (datacenter: B200, B100)
-    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
-  } else if (cuda_compute_capability->IsAtLeastBlackwell()) {
-    // SM 11.0+ / 12.0+ (consumer: RTX 5090, etc.)
-    configs =
-        GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwellConsumer);
-  } else if (cuda_compute_capability->IsHopper()) {
-    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
-  } else if (cuda_compute_capability->IsAmpere()) {
-    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kAmpere);
-  } else {
-    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda);
-  }
-
-  return configs;
-}
 
 bool IsWarpSpecializationAvailable(
     se::GpuComputeCapability compute_capability) {
@@ -204,28 +170,31 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
 
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
-  // We don't need to consider small_dot here. The new search space will
-  // already generate a unique config for small problems.
-  std::vector<TritonGemmConfig> gemm_configs = search_space.GenerateConfigs(
-      /*autotune_warp_specialization=*/autotune_warp_specialization);
 
-  if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
-    VLOG(1) << "Restricting configs to the default set.";
-    std::vector<TritonGemmConfig> all_configs = gemm_configs;
-    gemm_configs = search_space.OptimizeConfigSet(
-        gemm_configs, /*hints=*/GetDefaultTritonConfigs(
-            target_config().device_description.gpu_compute_capability()));
-
-    if (!debug_options()
-             .xla_gpu_experimental_cost_model_gemm_tiling_options()
-             .empty()) {
-      ABSL_ASSIGN_OR_RETURN(gemm_configs, OptimizeConfigsWithCostModel(
-                                         dot, all_configs, gemm_configs,
-                                         target_config().device_description,
-                                         debug_options(), mlir_context_));
-    }
+  if (debug_options().xla_gpu_exhaustive_tiling_search()) {
+    return search_space.GenerateConfigs(autotune_warp_specialization);
   }
-  return gemm_configs;
+
+  const std::vector<TritonGemmConfig>& default_configs =
+      GetDefaultTritonConfigs(
+          target_config().device_description.gpu_compute_capability());
+
+  if (!debug_options()
+           .xla_gpu_experimental_cost_model_gemm_tiling_options()
+           .empty()) {
+    VLOG(1) << "Optimizing configs with the cost model.";
+    std::vector<TritonGemmConfig> all_configs =
+        search_space.GenerateConfigs(autotune_warp_specialization);
+    std::vector<TritonGemmConfig> candidate_configs =
+        search_space.OptimizeConfigSet(all_configs, default_configs);
+    return OptimizeConfigsWithCostModel(dot, all_configs, candidate_configs,
+                                        target_config().device_description,
+                                        debug_options(), mlir_context_);
+  }
+
+  VLOG(1) << "Restricting configs to the default set.";
+  return search_space.GenerateAndOptimizeConfigs(default_configs,
+                                                 autotune_warp_specialization);
 }
 
 absl::StatusOr<std::vector<TritonGemmConfig>>

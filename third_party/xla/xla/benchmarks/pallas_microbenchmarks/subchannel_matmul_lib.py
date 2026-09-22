@@ -23,11 +23,11 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import flag_utils  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import memory_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import flag_utils
+from xla.benchmarks.core import platform_info
+from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
+from xla.benchmarks.pallas_microbenchmarks import memory_utils
 
 InputSpec = benchmark.InputSpec
 
@@ -85,7 +85,7 @@ def select_window(
     lhs_dtype: jnp.dtype,
     rhs_dtype: jnp.dtype,
     out_dtype: jnp.dtype,
-    acc_dtype: jnp.dtype,
+    outer_acc_dtype: jnp.dtype,
     lhs_quantized_dtype: jnp.dtype,
     rhs_quantized_dtype: jnp.dtype,
     pre_quantize_lhs: bool = False,
@@ -116,7 +116,7 @@ def select_window(
       cost_lhs_dtype,
       cost_rhs_dtype,
       out_dtype,
-      acc_dtype,
+      outer_acc_dtype,
       chip_version=chip_version,
   ).select_window(
       vmem_limit_bytes,
@@ -125,7 +125,7 @@ def select_window(
   return int(block_m), int(block_k), int(block_n)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True, repr=False)
 class SubchannelMatmulConfig(benchmark.BenchmarkConfig):
   """Config for Pallas subchannel quantized matmul benchmark.
 
@@ -143,7 +143,8 @@ class SubchannelMatmulConfig(benchmark.BenchmarkConfig):
     lhs_dtype: The unquantized dtype of the first operand.
     rhs_dtype: The unquantized dtype of the second operand.
     out_dtype: The dtype of the output.
-    acc_dtype: The dtype of the accumulator.
+    inner_acc_dtype: The dtype of the accumulator for the subchannel blocks.
+    outer_acc_dtype: The dtype of the accumulator for the output tiles.
     lhs_quantized_dtype: Quantized dtype of LHS.
     rhs_quantized_dtype: Quantized dtype of RHS.
     pre_quantize_lhs: Whether quantization of LHS happens outside kernel.
@@ -162,7 +163,8 @@ class SubchannelMatmulConfig(benchmark.BenchmarkConfig):
   lhs_dtype: jnp.dtype
   rhs_dtype: jnp.dtype
   out_dtype: jnp.dtype
-  acc_dtype: jnp.dtype
+  inner_acc_dtype: jnp.dtype
+  outer_acc_dtype: jnp.dtype
   lhs_quantized_dtype: jnp.dtype
   rhs_quantized_dtype: jnp.dtype
   pre_quantize_lhs: bool = False
@@ -180,7 +182,8 @@ def subchannel_matmul_kernel(
   block_m, block_k, block_n = cfg.block_m, cfg.block_k, cfg.block_n
   subchannel_size = cfg.subchannel_size
   lhs_mem, rhs_mem, out_mem = cfg.lhs_mem, cfg.rhs_mem, cfg.out_mem
-  acc_dtype = cfg.acc_dtype
+  inner_acc_dtype = cfg.inner_acc_dtype
+  outer_acc_dtype = cfg.outer_acc_dtype
 
   grid_m = math.ceil(m / block_m)
   grid_n = math.ceil(n / block_n)
@@ -219,14 +222,14 @@ def subchannel_matmul_kernel(
         y_q_slice = rhs_ref[k_start:k_end, n_start:n_end]
 
         result = jnp.dot(
-            x_q_block, y_q_slice, preferred_element_type=jnp.float32
-        ).astype(acc_dtype)
+            x_q_block, y_q_slice, preferred_element_type=inner_acc_dtype
+        ).astype(outer_acc_dtype)
 
         y_safe_scales = rhs_scales_ref[sub_idx : sub_idx + 1, n_start:n_end]
         acc_ref[:, n_start:n_end] += (
             result
-            * x_safe_scales.astype(acc_dtype)
-            * y_safe_scales.astype(acc_dtype)
+            * x_safe_scales.astype(outer_acc_dtype)
+            * y_safe_scales.astype(outer_acc_dtype)
         )
 
     @pl.when(pl.program_id(2) == grid_k - 1)
@@ -291,7 +294,7 @@ def subchannel_matmul_kernel(
           in_specs=in_specs,
           out_specs=out_specs,
           grid=(grid_m, grid_n, grid_k),
-          scratch_shapes=[pltpu.VMEM((block_m, block_n), acc_dtype)],
+          scratch_shapes=[pltpu.VMEM((block_m, block_n), outer_acc_dtype)],
       ),
       compiler_params=pltpu.CompilerParams(
           dimension_semantics=("parallel", "parallel", "arbitrary"),

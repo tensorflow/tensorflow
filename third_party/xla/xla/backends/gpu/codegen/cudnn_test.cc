@@ -44,18 +44,15 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -216,17 +213,17 @@ CHECK:  "tensors": [
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p0",
-CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "stride": [{{[[:space:]]*4096,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "uid": 1
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "p1",
-CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "stride": [{{[[:space:]]*4096,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "uid": 2
 CHECK:   "data_type": "FLOAT",
 CHECK:   "dim": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*64[[:space:]]*}}],
 CHECK:   "name": "d",
-CHECK:   "stride": [{{[[:space:]]*1,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
+CHECK:   "stride": [{{[[:space:]]*4096,[[:space:]]*64,[[:space:]]*1[[:space:]]*}}],
 CHECK:   "uid": 3
 )"));
 }
@@ -439,13 +436,13 @@ ENTRY e {
 CHECK: "tensors"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
 CHECK: "name": "p0"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}64,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}128{{[[:space:]]*}}]
 CHECK: "name": "p1"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}8192,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}128{{[[:space:]]*}}]
 CHECK: "name": "out"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}128,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -472,13 +469,45 @@ ENTRY e {
 CHECK: "tensors"
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}64{{[[:space:]]*}}]
 CHECK: "name": "p0"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}16384,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "name": "p1"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}64,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "name": "out"
-CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}256,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionFileCheckTest, DotImplicitBatchStrideIsSetToTotalPackedSize) {
+  const std::string kHloText = R"(
+f {
+  p0 = f32[32,64] parameter(0)
+  p1 = f32[64,128]{0,1} parameter(1)
+  ROOT out = f32[32,128] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[32,64] parameter(0)
+  p1 = f32[64,128]{0,1} parameter(1)
+  ROOT r = f32[32,128] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+})";
+
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "tensors"
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}32,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "name": "p0"
+CHECK: "stride": [{{[[:space:]]*}}2048,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "name": "p1"
+CHECK: "stride": [{{[[:space:]]*}}8192,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}32,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "name": "out"
+CHECK: "stride": [{{[[:space:]]*}}4096,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1407,13 +1436,20 @@ TEST_F(CuDnnFusionRewriteTest,
   // With other backends disabled, compilation must fail.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
-e {
+triton_gemm_dot {
   p0 = f64[20,40,64] parameter(0)
   p0n = f64[20,40,64] negate(p0)
   p1 = f64[20,80,64] parameter(1)
-  r = f64[20,40,80] dot(p0n, p1),
+  ROOT r = f64[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
+}
+
+e {
+  p0 = f64[20,40,64] parameter(0)
+  p1 = f64[20,80,64] parameter(1)
+  ROOT fusion = f64[20,40,80] fusion(p0, p1), kind=kCustom, calls=triton_gemm_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
 })"));
   auto status =
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true).status();
@@ -1500,21 +1536,21 @@ CHECK: "tag": "MATMUL"
 CHECK: "tensors"
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*128[[:space:]]*}}]
 CHECK: "name": "lhs"
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*1[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*32768,[[:space:]]*128,[[:space:]]*1[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*384[[:space:]]*}}]
 CHECK: "name": "rhs"
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*128[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*49152,[[:space:]]*1,[[:space:]]*128[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*4[[:space:]]*}}]
 CHECK: "name": "lhs_scale"
 CHECK: "reordering_type": "F8_128x4"
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*1[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*1024,[[:space:]]*4,[[:space:]]*1[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*384[[:space:]]*}}]
 CHECK: "name": "rhs_scale"
 CHECK: "reordering_type": "F8_128x4"
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*4[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*1536,[[:space:]]*1,[[:space:]]*4[[:space:]]*}}]
 CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*384[[:space:]]*}}]
 CHECK: "name": "result"
-CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*98304,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
 CHECK: "is_virtual": true
 CHECK: "name": "result_lhs_dq"
 CHECK: "uid": 6

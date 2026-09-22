@@ -99,6 +99,7 @@ cc_library(
     name = "onednn_threadpool",
     hdrs = ["onednn_threadpool.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    copts = tsl_copts(),
     deps = [
         "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
@@ -184,6 +185,7 @@ onednn_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],

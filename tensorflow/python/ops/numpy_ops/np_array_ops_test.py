@@ -21,6 +21,7 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -34,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -229,6 +231,13 @@ class ArrayCreationTest(test.TestCase):
             self.match(
                 np_array_ops.eye(n, m, k, dtype=dtype),
                 np.eye(n, m, k, dtype=dtype))
+
+    # Test M=0 and N=0 zero-dimension edge cases
+    for n in (0, 1, 3):
+      for m in (0, 1, 3):
+        self.match(np_array_ops.eye(n, m), np.eye(n, m))
+        for k in range(-n - 1, m + 2):
+          self.match(np_array_ops.eye(n, m, k), np.eye(n, m, k))
 
   def testIdentity(self):
     n_max = 3
@@ -523,6 +532,28 @@ class ArrayCreationTest(test.TestCase):
     # 3-d arrays
     run_test(np.arange(8).reshape((2, 2, 2)).tolist())
 
+  def testDiagInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diag(v, k=k)
+
+  def testDiagFlatInvalidK(self):
+    v = [1, 2]
+    invalid_ks = [
+        [1, 2],
+        np.array([1, 2]),
+        constant_op.constant([1, 2]),
+    ]
+    for k in invalid_ks:
+      with self.assertRaises(ValueError):
+        np_array_ops.diagflat(v, k=k)
+
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
@@ -569,6 +600,41 @@ class ArrayCreationTest(test.TestCase):
     tf_res = np_array_ops.vander([-1.0, 1.0], N=0, increasing=False)
     np_res = np.vander(np.array([-1.0, 1.0]), N=0)
     self.assertAllEqual(tf_res, np_res)
+
+  def testVanderGradientZeroInput(self):
+    # Regression test for GitHub issue #127227:
+    # vander produces NaN gradient when an input element is 0.0.
+    def target(t):
+      x = np_array_ops.stack([t + 1, -t + 2, 2 * t - 1, t / 2 + 3])
+      y = np_array_ops.vander(x, N=None, increasing=False)
+      return sum((4 * i + j + 1) * y[i, j] for i in range(4) for j in range(4))
+
+    t = constant_op.constant(2.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(t)
+      loss = target(t)
+    grad = tape.gradient(loss, t)
+    self.assertAllClose(loss, 1576.0)
+    self.assertAllClose(grad, 1038.5)
+
+    # Direct zero input elements with increasing=False and increasing=True.
+    for increasing in [False, True]:
+      x = constant_op.constant([0.0, 2.0, -1.0], dtype=dtypes.float64)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_sum(
+            np_array_ops.vander(x, N=4, increasing=increasing)
+        )
+      grad_x = tape.gradient(y, x)
+      # d/dx (1 + x + x^2 + x^3) = 1 + 2x + 3x^2 -> [1.0, 17.0, 2.0]
+      self.assertAllClose(grad_x, [1.0, 17.0, 2.0])
+
+    # N=1 edge case (only x^0 column).
+    x_n1 = constant_op.constant([0.0, 3.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x_n1)
+      y_n1 = math_ops.reduce_sum(np_array_ops.vander(x_n1, N=1))
+    self.assertAllClose(tape.gradient(y_n1, x_n1), [0.0, 0.0])
 
 
 class ArrayMethodsTest(test.TestCase):
@@ -640,6 +706,13 @@ class ArrayMethodsTest(test.TestCase):
     run_test([True], [1, 2, 3])
     run_test([True, False], [[1, 2, 3], [4, 5, 6]], axis=1)
     run_test([True], [[1, 2], [3, 4], [5, 6]], axis=0)
+
+  def testCompressOutOfBoundsAxis(self):
+    x = np_array_ops.array([[1, 2], [3, 4]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.compress([True, False], x, axis=2)
 
   def testCompressJitCompile(self):
     # Regression test for #122055: `compress` produced a dynamic size bounded by
@@ -743,6 +816,17 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[1, 2], [3, 4]], axis=0)
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
+
+  def testCumProdAndSumOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumsum(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.cumprod(a, axis=-3)
 
   def testImag(self):
 
@@ -1191,6 +1275,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(out, out_expected)
 
   def testTakeAlongAxisJitCompile(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # Regression test for GitHub issue 62391: the axis-swapping branch was
     # emitted as a real conditional whose branches have different shapes, so
     # the result shape XLA computed disagreed with the shape set on the
@@ -1211,6 +1297,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllClose(expected, actual)
 
   def testTakeAlongAxisUnknownRank(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # The tensor predicate is still used when the rank is not known
     # statically.
     @def_function.function(
@@ -1314,6 +1402,11 @@ class ArrayMethodsTest(test.TestCase):
     _test(a, tuple(range(6)), tuple(reversed(range(6))))
     _test(a, (), ())
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, -8, 0)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.moveaxis(a, 0, 8)
+
   def testFlip(self):
     np.random.seed(0)
     random_seed.set_seed(0)
@@ -1385,6 +1478,11 @@ class ArrayMethodsTest(test.TestCase):
         else:
           arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
         self.match(np_array_ops.sign(arr), np.sign(arr))
+
+    with self.assertRaisesRegex(ValueError, "doesn't support setting out"):
+      np_array_ops.sign([1], out=[])
+    with self.assertRaisesRegex(ValueError, "doesn't support setting where"):
+      np_array_ops.sign([1], where=False)
 
 
 class ArrayManipulationTest(test.TestCase):

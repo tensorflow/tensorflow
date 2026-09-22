@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1179,6 +1180,11 @@ class NativeCustomCallEmitterContextImpl
     return emitter_.ir_emitter_context_->gpu_topology();
   }
 
+  const stream_executor::DeviceDescription& GetDeviceDescription()
+      const override {
+    return emitter_.ir_emitter_context_->gpu_device_info();
+  }
+
   const DebugOptions& GetDebugOptions() const override {
     return emitter_.ir_emitter_context_->debug_options();
   }
@@ -1195,11 +1201,36 @@ class NativeCustomCallEmitterContextImpl
 
   absl::StatusOr<BufferAllocation::Slice> GetOperandAllocationSlice(
       int64_t operand_index, const ShapeIndex& index) const override {
-    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
-    return emitter_.GetAllocationSlice(instr_.operand(operand_index), index);
+    ABSL_ASSIGN_OR_RETURN(const HloInstruction* operand, GetOperand(operand_index));
+    return emitter_.GetAllocationSlice(operand, index);
   }
 
-  absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const override {
+  absl::StatusOr<ShapedSlice> GetResultShapedSlice(
+      const ShapeIndex& index) const override {
+    return emitter_.GetShapedSliceForHlo(&instr_, index);
+  }
+
+  absl::StatusOr<ShapedSlice> GetOperandShapedSlice(
+      int64_t operand_index, const ShapeIndex& index) const override {
+    ABSL_ASSIGN_OR_RETURN(const HloInstruction* operand, GetOperand(operand_index));
+    return emitter_.GetShapedSliceForHlo(operand, index);
+  }
+
+  absl::StatusOr<emitters::KernelArguments> CreateKernelArguments(
+      absl::Span<const Shape> unmanaged_arguments) const override {
+    // Resolve slices through the emitter rather than through the buffer
+    // assignment, so that allocation overrides installed for this instruction
+    // are applied.
+    auto slice_provider = [this](const HloInstruction& instruction,
+                                 const ShapeIndex& index) {
+      return emitter_.GetAllocationSlice(&instruction, index);
+    };
+    return emitters::KernelArguments::Create(slice_provider,
+                                             GetDefaultBufferAlignment(),
+                                             &instr_, unmanaged_arguments);
+  }
+
+  absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const override {
     // Decode the opaque backend config into an FFI attributes map, mirroring
     // EmitGenericCustomCall. For FFI handlers the backend config must be a
     // string parsable into an MLIR dictionary attribute.
@@ -1210,7 +1241,7 @@ class NativeCustomCallEmitterContextImpl
             ? backend_config->custom_call_backend_config().attributes()
             : instr_.raw_backend_config_string();
     if (backend_config_str.empty()) {
-      return xla::ffi::AttributesMap();
+      return xla::ffi::Attributes::Create(xla::ffi::AttributesMap());
     }
     mlir::Attribute attr = mlir::parseAttribute(
         backend_config_str, emitter_.ir_emitter_context_->mlir_context());
@@ -1218,10 +1249,18 @@ class NativeCustomCallEmitterContextImpl
     TF_RET_CHECK(dict != nullptr)
         << "Unsupported backend config. Expected a string parsable into a "
            "dictionary attribute.";
-    return xla::ffi::BuildAttributesMap(dict);
+    ABSL_ASSIGN_OR_RETURN(xla::ffi::AttributesMap attributes,
+                     xla::ffi::BuildAttributesMap(dict));
+    return xla::ffi::Attributes::Create(std::move(attributes));
   }
 
  private:
+  absl::StatusOr<const HloInstruction*> GetOperand(
+      int64_t operand_index) const {
+    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
+    return instr_.operand(operand_index);
+  }
+
   const ThunkEmitter& emitter_;
   const HloCustomCallInstruction& instr_;
 };
@@ -1453,9 +1492,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
       << "Expect only 1 operand for TopK custom call.";
   TF_RET_CHECK(shape.IsTuple())
       << "Expect TopK custom call to have tuple shape.";
-  TF_RET_CHECK(shape.tuple_shapes().size() == 2)
-      << "Expect TopK custom call shape to have exactly 2 "
-         "sub-shapes.";
+  TF_RET_CHECK(shape.tuple_shapes().size() == 2 ||
+               shape.tuple_shapes().size() == 3)
+      << "Expect TopK custom call shape to have 2 or 3 sub-shapes.";
 
   auto data_shape = operands[0]->shape();
   auto top_elements_shape = shape.tuple_shapes()[0];
@@ -1601,13 +1640,14 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                     tma_metadata = result.tma_metadata,
                     kernel_name = std::move(kernel_name)](
                        const std::vector<uint8_t>& cubin) mutable {
-                return KernelReuseCache::Entry{std::move(kernel_name),
-                                               launch_dimensions,
-                                               /*cluster_dim=*/std::nullopt,
-                                               shmem_bytes,
-                                               cubin,
-                                               tma_metadata,
-                                               use_pdl};
+                return KernelReuseCache::Entry{
+                    std::move(kernel_name),
+                    launch_dimensions,
+                    /*cluster_dim=*/std::nullopt,
+                    shmem_bytes,
+                    std::make_shared<const std::vector<uint8_t>>(cubin),
+                    tma_metadata,
+                    use_pdl};
               });
         });
   };
@@ -1626,19 +1666,19 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
   return status_or_entry.Map(
       [info = std::move(info), kernel_arguments = std::move(kernel_arguments),
        call_zeroed_outputs = std::move(call_zeroed_outputs)](
-          const KernelReuseCache::Entry* entry) mutable
+          const KernelReuseCache::Entry& entry) mutable
           -> absl::StatusOr<ThunkSequence> {
-        ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                         kernel::CreateOwnedCubinCustomKernel(
-                             entry->kernel_name, entry->binary,
-                             kernel_arguments.args().size(),
-                             entry->launch_dimensions.block_counts(),
-                             entry->launch_dimensions.thread_counts_per_block(),
-                             entry->shmem_bytes));
+        ABSL_ASSIGN_OR_RETURN(
+            CustomKernel custom_kernel,
+            kernel::CreateSharedCubinCustomKernel(
+                entry.kernel_name, entry.binary, kernel_arguments.args().size(),
+                entry.launch_dimensions.block_counts(),
+                entry.launch_dimensions.thread_counts_per_block(),
+                entry.shmem_bytes));
         return ThunkSequence::Of<CustomKernelThunk>(
             std::move(info), std::move(custom_kernel),
-            std::move(kernel_arguments), entry->use_pdl, call_zeroed_outputs,
-            entry->tma_metadata);
+            std::move(kernel_arguments), entry.use_pdl, call_zeroed_outputs,
+            entry.tma_metadata);
       });
 }
 
@@ -2614,10 +2654,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostExecuteDone(
   auto it = GetInstructionToHostExecuteAsyncEvents().find(host_execute);
   TF_RET_CHECK(it != GetInstructionToHostExecuteAsyncEvents().end())
       << "could not find async events for host execute operation";
+
+  absl::InlinedVector<ShapedSlice, 4> result_slices;
+  for (auto& indexed : ShapeUtil::GetLeafShapes(host_execute->shape())) {
+    ABSL_ASSIGN_OR_RETURN(auto slice,
+                     ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                         host_execute, indexed.index));
+    result_slices.push_back({slice, indexed.shape});
+  }
+
   return ThunkSequence::Of<HostExecuteDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           async_done, ir_emitter_context_->GetNextThunkId()),
-      it->second);
+      it->second, std::move(result_slices));
 }
 
 Future<ThunkSequence> ThunkEmitter::EmitAsyncStart(

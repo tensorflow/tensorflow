@@ -23,8 +23,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 InputSpec = benchmark.InputSpec
 

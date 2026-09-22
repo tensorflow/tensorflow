@@ -110,5 +110,82 @@ TEST_F(ConvCanonicalizerTest, SimplifiesRedundantConverts) {
   EXPECT_TRUE(filecheck_matched);
 }
 
+TEST_F(ConvCanonicalizerTest, PadsOddInputChannelsForBf16) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = bf16[1024,96,96,1] parameter(0)
+      w0 = bf16[1,5,5,64] parameter(1)
+      ROOT conv = bf16[1024,96,96,64] convolution(p0, w0), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_i01o->b01f, convolution_kind=dgrad
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(ConvCanonicalizer(), module.get()));
+  EXPECT_TRUE(pass_result);
+
+  const char* expected = R"(
+      CHECK: %[[P0:.*]] = bf16[1024,96,96,1]{{.*}} parameter(0)
+      CHECK: %[[PAD_IN:.*]] = bf16[1024,96,96,2]{{.*}} pad(%[[P0]], %c{{.*}}), padding=0_0x0_0x0_0x0_1
+      CHECK: %[[W0:.*]] = bf16[1,5,5,64]{{.*}} parameter(1)
+      CHECK: %[[PAD_FILTER:.*]] = bf16[2,5,5,64]{{.*}} pad(%[[W0]], %c{{.*}}), padding=0_1x0_0x0_0x0_0
+      CHECK: ROOT %[[CONV:.*]] = bf16[1024,96,96,64]{{.*}} convolution(%[[PAD_IN]], %[[PAD_FILTER]]), window={size=5x5 pad=2_2x2_2}, dim_labels=b01f_i01o->b01f, convolution_kind=dgrad
+  )";
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), expected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(ConvCanonicalizerTest, PadsOddOutputChannelsForF16WithSlice) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = f16[8,14,14,4] parameter(0)
+      w0 = f16[3,3,4,3] parameter(1)
+      ROOT conv = f16[8,12,12,3] convolution(p0, w0), window={size=3x3}, dim_labels=b01f_01io->b01f
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(ConvCanonicalizer(), module.get()));
+  EXPECT_TRUE(pass_result);
+
+  const char* expected = R"(
+      CHECK: %[[P0:.*]] = f16[8,14,14,4]{{.*}} parameter(0)
+      CHECK: %[[W0:.*]] = f16[3,3,4,3]{{.*}} parameter(1)
+      CHECK: %[[PAD_FILTER:.*]] = f16[3,3,4,4]{{.*}} pad(%[[W0]], %c{{.*}}), padding=0_0x0_0x0_0x0_1
+      CHECK: %[[NEW_CONV:.*]] = f16[8,12,12,4]{{.*}} convolution(%[[P0]], %[[PAD_FILTER]]), window={size=3x3}, dim_labels=b01f_01io->b01f
+      CHECK: ROOT %[[SLICE:.*]] = f16[8,12,12,3]{{.*}} slice(%[[NEW_CONV]]), slice={[0:8], [0:12], [0:12], [0:3]}
+  )";
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), expected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(ConvCanonicalizerTest, NoPaddingForEvenChannelsOrF32) {
+  const char* hlo_text = R"hlo(
+    HloModule test
+
+    ENTRY test {
+      p0 = bf16[8,14,14,4] parameter(0)
+      w0 = bf16[3,3,4,8] parameter(1)
+      p1 = f32[8,14,14,1] parameter(2)
+      w1 = f32[3,3,1,3] parameter(3)
+      c0 = bf16[8,12,12,8] convolution(p0, w0), window={size=3x3}, dim_labels=b01f_01io->b01f
+      c1 = f32[8,12,12,3] convolution(p1, w1), window={size=3x3}, dim_labels=b01f_01io->b01f
+      ROOT tuple = (bf16[8,12,12,8], f32[8,12,12,3]) tuple(c0, c1)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto pass_result,
+                       RunHloPass(ConvCanonicalizer(), module.get()));
+  EXPECT_FALSE(pass_result);
+}
+
 }  // namespace
 }  // namespace xla::gpu

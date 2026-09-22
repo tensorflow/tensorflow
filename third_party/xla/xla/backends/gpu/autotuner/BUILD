@@ -590,6 +590,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -630,6 +631,7 @@ xla_test(
         "gpu",
         "rocm-only",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":hipblaslt",
         "//xla:autotuning_proto_cc",
@@ -933,6 +935,7 @@ xla_cc_binary(
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotune_cache_store",
         "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:codegen_orchestrator",
         "//xla/backends/autotuner:config_assigner",
@@ -1012,6 +1015,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:codegen_orchestrator",
         "//xla/backends/autotuner:directory_store",
@@ -1060,6 +1064,7 @@ xla_test(
     tags = [
         "rocm-only",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":miopen",
         "//xla:autotuning_proto_cc",

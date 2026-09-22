@@ -24,12 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/device_assignment.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_id.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/util.h"
 
 namespace xla {
 
@@ -62,6 +57,11 @@ PlacerFactoryMap& GetPlatformComputationPlacers() {
   static PlacerFactoryMap* const r = new PlacerFactoryMap;
   return *r;
 }
+
+ComputationPlacer* GetDefaultComputationPlacer() {
+  static auto* const default_placer = new ComputationPlacer;
+  return default_placer;
+}
 }  // namespace
 
 /* static */
@@ -77,16 +77,14 @@ void ComputationPlacer::RegisterComputationPlacer(
 }
 
 /* static */
-absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
+ComputationPlacer* ComputationPlacer::GetForPlatform(
     se::PlatformId platform_id) {
   absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
   auto it = placers.find(platform_id);
   if (it == placers.end()) {
-    return NotFound(
-        "Could not find registered computation placer for platform %s",
-        platform_id->ToName());
+    return GetDefaultComputationPlacer();
   }
 
   PlacerState& state = it->second;
@@ -94,28 +92,7 @@ absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
     // Lazily create the computation placer the first time it is needed.
     state.placer = state.creation_function();
   }
-  return state.placer.get();
+  return state.placer ? state.placer.get() : GetDefaultComputationPlacer();
 }
 
 }  // namespace xla
-
-namespace {
-// registering default computation placer factory for common platforms.
-std::unique_ptr<xla::ComputationPlacer> DefaultComputationPlacer() {
-  return std::make_unique<xla::ComputationPlacer>();
-}
-
-bool InitModule() {
-  xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::host::kHostPlatformId, DefaultComputationPlacer);
-  xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::cuda::kCudaPlatformId, DefaultComputationPlacer);
-  xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::rocm::kROCmPlatformId, DefaultComputationPlacer);
-  xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::sycl::kSyclPlatformId, DefaultComputationPlacer);
-  return true;
-}
-
-bool module_initialized = InitModule();
-}  // namespace

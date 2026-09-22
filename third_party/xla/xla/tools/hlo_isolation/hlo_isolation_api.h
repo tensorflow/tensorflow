@@ -22,28 +22,38 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 
 namespace xla {
 namespace hlo_isolation {
 
+using ExpectedLiteralsMap =
+    absl::flat_hash_map<std::string, std::shared_ptr<const Literal>>;
+
+using GroupKey = std::pair<HloOpcode, std::string>;
+
 struct RunModuleOptions {
   bool run_hlo_passes = false;
   bool use_fusion_debugger = false;
-  absl::Span<const HloOutputCallback> hlo_output_callbacks = {};
+  absl::Span<const HloOutputCallback> hlo_output_callbacks;
   std::function<void(absl::string_view, Literal*)> eval_literal_mutator =
       nullptr;
+  std::shared_ptr<ExpectedLiteralsMap> expected_literals = nullptr;
 };
 
 struct ModuleIsolationOptions {
@@ -51,6 +61,22 @@ struct ModuleIsolationOptions {
   double rel_error_bound = 0.1;
   bool run_hlo_passes = false;
   int64_t max_module_size_bytes = 0;
+  bool reject_unconstrained_ops = false;
+  bool use_dataflow_based_input_generation = true;
+
+  // XLA allows a backend to compute an instruction in a wider type than the
+  // one declared by the HLO (see DebugOptions::xla_allow_excess_precision).
+  // A fusion can therefore keep intermediates in f32 where the defused
+  // reference is forced to round to bf16 at every instruction boundary, which
+  // shows up as a numeric mismatch even though both results are correct. When
+  // this is true, a mismatch against the defused reference is re-checked with
+  // excess precision disabled on both sides before it is reported.
+  //
+  // Off by default: the re-check recompiles the module under test, so a
+  // genuine miscompile that only reproduces with excess precision enabled
+  // would be silently accepted. Enable it only for fuzzing-style runs where
+  // the false positive rate matters more than the miss rate.
+  bool retry_without_excess_precision = false;
 
   std::function<absl::StatusOr<Literal>(
       std::unique_ptr<HloModule> module, HloRunnerInterface* runner,
@@ -86,6 +112,19 @@ absl::StatusOr<Literal> RunModule(std::unique_ptr<HloModule> module,
                                   HloRunnerInterface* runner,
                                   absl::Span<const Literal> input_data,
                                   const RunModuleOptions& options = {});
+
+std::vector<HloOutputCallback> CreateDumpHloOutputCallbacks(
+    HloModule* module, std::shared_ptr<ExpectedLiteralsMap> expected_literals,
+    const std::function<void(absl::string_view, Literal*)>&
+        eval_literal_mutator = nullptr);
+
+std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
+    HloModule* test_module_clone,
+    const absl::flat_hash_map<GroupKey, std::vector<std::string>>& ref_groups,
+    std::shared_ptr<ExpectedLiteralsMap> expected_literals,
+    const HloModule& original_module, const ModuleIsolationOptions& options,
+    std::shared_ptr<absl::Mutex> result_mutex,
+    HloIsolationTestResult* test_result);
 
 void PopulateNumericCheckMismatches(
     NumericCheck* numeric_check,
@@ -130,13 +169,6 @@ int64_t GetFusionCountInNestedFusion(const HloInstruction* fusion_instr);
 bool ModuleContainsLargeKeyValueSort(const HloModule& module);
 bool ModuleTestsFloatsForEquality(const HloModule& module);
 bool ComputationHasRng(const HloComputation* computation);
-bool LiteralContainsInfOrNan(const LiteralSlice& literal);
-bool ModuleContainsConstantInfOrNan(const HloModule& module);
-
-std::string GetFusionDebuggerDir();
-std::string GetFusionDebuggerFilePath(absl::string_view op_name);
-void CleanUpAllFusionDebuggerFiles();
-std::vector<std::string> GetLeftoverFusionDebuggerFiles();
 
 }  // namespace hlo_isolation
 }  // namespace xla

@@ -238,6 +238,10 @@ mlir::Type GetSignlessType(mlir::Type t);
 // operand to tt.dot_scaled.
 bool IsTritonDotScaledOperandType(PrimitiveType type);
 
+// Returns true if `scale` is provably all ones. Looks through value-preserving
+// ops and fusion parameters, as the scale may be defined outside the fusion.
+bool IsAllOnesScale(const HloInstruction& scale);
+
 // Some Triton dot-scaled value dtypes are smaller than one byte. XTile stores
 // those logical elements inside byte-sized carrier elements, so storage shapes
 // and offsets are expressed in carrier elements rather than logical elements.
@@ -467,6 +471,19 @@ absl::Status CheckConcatenateOperands(
 absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              llvm::ArrayRef<int64_t> tile_sizes,
                                              TensorValue input);
+
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input);
 
 TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                llvm::ArrayRef<int64_t> tile_sizes,

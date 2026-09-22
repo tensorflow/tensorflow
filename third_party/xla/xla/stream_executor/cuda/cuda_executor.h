@@ -178,6 +178,9 @@ class CudaExecutor : public GpuExecutor {
 
   int GetGpuStreamPriority(StreamPriority priority) override;
 
+  void EnterStreamCapture() { CudaDeviceAllocator::EnterStreamCapture(this); }
+  void ExitStreamCapture() { CudaDeviceAllocator::ExitStreamCapture(this); }
+
   // RAII wrapper for a VMM memory handle.
   class VmmMemoryHandle {
    public:

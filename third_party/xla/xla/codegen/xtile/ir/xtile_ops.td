@@ -78,6 +78,8 @@ def TiledBufferInterface : OpInterface<"TiledBufferInterface",
 
 // Define your custom entry operation
 def EntryFuncOp : XTile_Op<"entry_func", [
+    SymbolName,
+    SymbolVisibility,
     Symbol,
     IsolatedFromAbove,
     AutomaticAllocationScope,
@@ -99,7 +101,8 @@ def EntryFuncOp : XTile_Op<"entry_func", [
                        // The number of arguments that are opaque to tiling
                        // infrastructure and hence do not correspond to a memref
                        // argument.
-                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args
+                       DefaultValuedAttr<I32Attr, "0">:$num_opaque_args,
+                       OptionalAttr<StrAttr>:$sym_visibility
   );
 
   // The entry function has no return values.
@@ -293,6 +296,14 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let summary = "scan operation";
   let description = [{
     Mirrors HLO's kScan operation.
+
+    Unlike HLO, the inits and carries keep the scan dimension as a unit
+    dimension, i.e. they have the same rank as the inputs and outputs. This
+    avoids rank-zero carries for 1D scans, which Triton does not support, and
+    allows broadcasting a carry across a tile without changing its rank.
+
+    Example: for inputs of type `tensor<16x1024xf32>` and `dimension = 1`, the
+    inits and carries have type `tensor<16x1xf32>`.
   }];
 
   let arguments = (
@@ -318,6 +329,8 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
   }];
+
+  let hasVerifier = 1;
 }
 
 //

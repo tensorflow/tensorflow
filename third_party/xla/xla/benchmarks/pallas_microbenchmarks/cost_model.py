@@ -22,7 +22,7 @@ from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import platform_info
 
 
 def _vmem_usage_bytes(
@@ -349,21 +349,28 @@ class CostModel:
         sp_n,
         sp_m,
     )
-    # If the LHS is emulated as a different dtype, then the compiler may spill
+    # If the LHS requires any VPU processing, then the compiler may spill
     # the converted LHS operand to VMEM, so we account for this below.
+    spill_bits = None
     emulated_lhs = (
         lhs_dtype not in self._platform_info.matmul_cadence_cycles_by_dtype
     )
     if emulated_lhs:
+      # Emulated dtypes need VPU for unpacking and conversion.
       emulated_dtype = self._platform_info.get_emulated_dtype(
           lhs_dtype,
           self._platform_info.matmul_cadence_cycles_by_dtype,
       )
-      emulated_bits = jax.dtypes.itemsize_bits(emulated_dtype)
+      spill_bits = jax.dtypes.itemsize_bits(emulated_dtype)
+    elif lhs_dtype == jnp.int4 and self._platform_info.generation < 8:
+      # Prior to generation 8, int4 LHS requires VPU for unpacking from
+      # compressed format and repacking to interleaved format.
+      spill_bits = 4
+    if spill_bits is not None:
       block_m = self._block_m
       if subblock_m is not None:
         block_m = np.minimum(self._block_m, subblock_m)
-      self._vmem_usage_bytes += block_m * self._block_k * emulated_bits // 8
+      self._vmem_usage_bytes += block_m * self._block_k * spill_bits // 8
 
   def _compute_matmul_latency_ns_per_iteration(
       self, p_state: int | None

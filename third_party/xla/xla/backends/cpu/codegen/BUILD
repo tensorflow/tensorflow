@@ -171,7 +171,6 @@ xla_cc_test(
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
@@ -228,7 +227,6 @@ cc_library(
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -476,6 +474,7 @@ cc_library(
     hdrs = ["kernel_api_ir_builder.h"],
     deps = [
         ":symbol_name_util",
+        ":target_machine_features",
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:alignment",

@@ -91,6 +91,11 @@ void GroupGemmUpdateArgs(
     int8_t bias_type, bool has_matrix_bias);
 namespace {
 
+// Upper bound for the heuristic query only, never allocated. Generous on
+// purpose: a low ceiling would hide complex kernels that need scratch and
+// divert the matmul to rocBLAS.
+constexpr size_t kComplexProbeMaxWorkspaceBytes = 64 * 1024 * 1024;
+
 template <typename T>
 absl::Status SetAttr(hipblasLtMatrixLayout_t handle,
                      hipblasLtMatrixLayoutAttribute_t attr, T value) {
@@ -311,21 +316,8 @@ auto BlasLt::RegularMatmulPlan::GetAlgorithms(size_t max_algorithm_count,
   return algorithms;
 }
 
-absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetHipBlasLtMatmulPlan(
     const gpu::GemmConfig& cfg, Epilogue epilogue) const {
-  // hipBLASLt has no complex GEMM kernels; redirect C64/C128 to rocBLAS while
-  // still consuming the cublasLt matmul custom call emitted by GemmRewriter.
-  // TODO(magaonka-amd): Once we get a hipBLASLt that supports complex GEMMs,
-  // clean up this routing code.
-  if (cfg.output_layout.dtype == xla::C64 ||
-      cfg.output_layout.dtype == xla::C128) {
-    TF_RET_CHECK(epilogue == Epilogue::kDefault)
-        << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
-           "etc.); got epilogue="
-        << static_cast<int>(epilogue);
-    return std::make_unique<RocBlasGemmPlan>(*this, cfg);
-  }
-
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -564,6 +556,36 @@ absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
   }
 #undef TYPED_MATMUL
   return plan;
+}
+
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
+    const gpu::GemmConfig& cfg, Epilogue epilogue) const {
+  if (cfg.output_layout.dtype != xla::C64 &&
+      cfg.output_layout.dtype != xla::C128) {
+    return GetHipBlasLtMatmulPlan(cfg, epilogue);
+  }
+
+  // Older hipBLASLt rejects the complex matmul descriptor outright, and a newer
+  // one can still have no kernels for this device, so test both rather than the
+  // ROCm version XLA was built against.
+  auto plan = GetHipBlasLtMatmulPlan(cfg, epilogue);
+  if (plan.ok()) {
+    auto algorithms = (*plan)->GetAlgorithms(/*max_algorithm_count=*/1,
+                                             kComplexProbeMaxWorkspaceBytes);
+    if (algorithms.ok() && !algorithms->empty()) {
+      return plan;
+    }
+  }
+
+  TF_RET_CHECK(epilogue == Epilogue::kDefault)
+      << "rocBLAS complex fallback does not support epilogues (bias, GELU, "
+         "etc.); got epilogue="
+      << static_cast<int>(epilogue);
+  VLOG(1) << "hipBLASLt offers no complex GEMM algorithm here; routing "
+          << xla::primitive_util::LowercasePrimitiveTypeName(
+                 cfg.output_layout.dtype)
+          << " matmul to rocBLAS";
+  return std::make_unique<RocBlasGemmPlan>(*this, cfg);
 }
 
 absl::Status BlasLt::RocBlasGemmPlan::ExecuteOnStream(

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
@@ -54,7 +53,12 @@ absl::StatusOr<std::vector<autotuner::AutotuneEntry>> DirectoryStore::Read(
   }
 
   std::string content;
-  ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(env, path, &content));
+  absl::Status read_status = tsl::ReadFileToString(env, path, &content);
+  if (!read_status.ok()) {
+    LOG(WARNING) << "Failed to read cache entry from file: " << path << ": "
+                 << read_status;
+    return std::vector<autotuner::AutotuneEntry>{};
+  }
 
   autotuner::AutotuneEntry entry;
   if (!entry.ParseFromString(content)) {
@@ -74,11 +78,17 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
   tsl::Env* env = tsl::Env::Default();
 
   std::string dir(tsl::io::Dirname(path));
-  ABSL_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
+  absl::Status dir_status = env->RecursivelyCreateDir(dir);
+  if (!dir_status.ok()) {
+    LOG(WARNING) << "Failed to create directory for autotune cache: " << dir
+                 << ": " << dir_status;
+    return absl::OkStatus();
+  }
 
   std::string content;
   if (!entry.SerializeToString(&content)) {
-    return absl::InternalError("Failed to serialize autotune entry.");
+    LOG(WARNING) << "Failed to serialize autotune entry.";
+    return absl::OkStatus();
   }
 
   // Rename trick: Write to a temporary file, then rename it to the final file
@@ -89,14 +99,18 @@ absl::Status DirectoryStore::Write(const autotuner::AutotuneEntry& entry) {
 
   absl::Status status = tsl::WriteStringToFile(env, tmp_path, content);
   if (!status.ok()) {
+    LOG(WARNING) << "Failed to write temporary autotune cache file: "
+                 << tmp_path << ": " << status;
     env->DeleteFile(tmp_path).IgnoreError();
-    return status;
+    return absl::OkStatus();
   }
 
   status = env->RenameFile(tmp_path, path);
   if (!status.ok()) {
+    LOG(WARNING) << "Failed to rename temporary autotune cache file to " << path
+                 << ": " << status;
     env->DeleteFile(tmp_path).IgnoreError();
-    return status;
+    return absl::OkStatus();
   }
 
   return absl::OkStatus();

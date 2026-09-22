@@ -109,12 +109,22 @@ class CollectiveCliqueRequests {
 
     // Requirements for barriers.
     bool use_cross_device_barrier_requested = false;
+
+    // Requirements for GXL.
+    bool use_gxl_requested = false;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
   // acquires collective cliques (see `collective_cliques.h`), it will satisfy
   // all of the requirements, or will return an error.
   struct CliqueRequirements {
+    CliqueRequirements(
+        std::optional<GpuDeviceCommunicator::Requirements> dev_comm =
+            std::nullopt,
+        std::optional<BarrierRequirements> barrier_reqs = std::nullopt,
+        bool use_gxl = false)
+        : dev_comm(dev_comm), barrier_reqs(barrier_reqs), use_gxl(use_gxl) {}
+
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const CliqueRequirements& reqs) {
       if (reqs.dev_comm) {
@@ -124,15 +134,17 @@ class CollectiveCliqueRequests {
       }
 
       if (reqs.barrier_reqs) {
-        absl::Format(&sink, "barrier_req: %v}", *reqs.barrier_reqs);
+        absl::Format(&sink, "barrier_req: %v, use_gxl: %v}", *reqs.barrier_reqs,
+                     reqs.use_gxl);
       } else {
-        absl::Format(&sink, "barrier_req: n/a}");
+        absl::Format(&sink, "barrier_req: n/a, use_gxl: %v}", reqs.use_gxl);
       }
     }
 
     // Create a device communicator for the given collective clique.
     std::optional<GpuDeviceCommunicator::Requirements> dev_comm;
     std::optional<BarrierRequirements> barrier_reqs;
+    bool use_gxl;
   };
 
   // Adds a clique key to the list of requested cliques. Callers must pass
@@ -144,7 +156,7 @@ class CollectiveCliqueRequests {
   absl::Status RequestClique(
       const GpuCliqueKey& clique_key,
       absl::Span<const std::vector<GlobalDeviceId>> device_groups,
-      const CliqueRequirements& requirements = {});
+      const CliqueRequirements& requirements = CliqueRequirements());
 
   // Returns all requested cliques in undefined order.
   std::vector<GpuCliqueKey> RequestedCliques() const;

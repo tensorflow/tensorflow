@@ -97,6 +97,22 @@ namespace spmd {
 
 namespace {
 using hlo_sharding_util::GroupedSharding;
+
+void MergeMemorySpace(const Shape& old_shape, Shape* new_shape) {
+  if (old_shape.IsTuple() && new_shape->IsTuple()) {
+    CHECK_EQ(ShapeUtil::TupleElementCount(old_shape),
+             ShapeUtil::TupleElementCount(*new_shape));
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(old_shape); ++i) {
+      MergeMemorySpace(old_shape.tuple_shapes(i),
+                       new_shape->mutable_tuple_shapes(i));
+    }
+  } else if (old_shape.IsArray() && new_shape->IsArray()) {
+    if (old_shape.has_layout()) {
+      new_shape->mutable_layout()->set_memory_space(
+          old_shape.layout().memory_space());
+    }
+  }
+}
 }  // namespace
 
 std::string SpmdLogger::MakeReport() {
@@ -5825,6 +5841,9 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    local_reduce->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
@@ -6587,6 +6606,9 @@ absl::Status SpmdPartitioningVisitor::HandleRaggedDot(HloInstruction* hlo) {
     phlo = b_.AddInstruction(hlo->CloneWithNewOperands(
         pshape, {lhs.hlo(), rhs.hlo(), group_sizes.hlo()}));
   }
+  if (hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+    phlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+  }
 
   if (!sharded_lhs_contracting_dims.empty()) {
     phlo = lhs.state().partitioner->AllReduceAlongShardingDims(
@@ -7320,6 +7342,9 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
       ShapeUtil::ForEachMutableSubshape(
           new_local_shape, [&](Shape* subshape, const xla::ShapeIndex& index) {
             if (subshape->IsArray() && subshape->has_layout() &&
+                // AUTO layout may have memory space but no minor_to_major.
+                (subshape->layout().minor_to_major().size() ==
+                 subshape->dimensions().size()) &&
                 (options_.allow_module_layout_signature_change ||
                  !Shape::Equal().IgnoreLayout()(
                      *subshape,
@@ -7339,6 +7364,13 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     ABSL_RETURN_IF_ERROR(
         update_layout(new_program_shape.mutable_result(),
                       module->entry_computation_layout().result_shape()));
+
+    for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
+      MergeMemorySpace(module->entry_computation_layout().parameter_shape(i),
+                       new_program_shape.mutable_parameters(i));
+    }
+    MergeMemorySpace(module->entry_computation_layout().result_shape(),
+                     new_program_shape.mutable_result());
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =
@@ -7398,14 +7430,11 @@ absl::Status SpmdPartitioner::PreprocessSharding(
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
           (hlo->opcode() != HloOpcode::kCustomCall ||
            GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
-        // TODO: b/432201708 - Remove this error once Shardy is stable in JAX.
         if (hlo->opcode() == HloOpcode::kCustomCall) {
           TF_RET_CHECK(hlo->custom_call_target().rfind("xla.sdy", 0) != 0)
-              << "This is a custom call named 'xla.sdy.*' which shouldn't "
-              << "appear in the XLA partitioner, please file a bug against the "
-              << "OpenXLA Shardy team. One of the possible bugs is your model "
-              << "was lowered targeting Shardy, but Shardy was then disabled "
-              << "in XLA.";
+              << "Unexpected custom call named 'xla.sdy.*' in the XLA "
+                 "partitioner: "
+              << hlo->ToString();
         }
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();

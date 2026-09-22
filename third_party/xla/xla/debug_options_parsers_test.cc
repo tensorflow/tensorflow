@@ -210,6 +210,39 @@ TEST(ParsingDebugOptionsTest, ParsingRepeatedFields) {
             DebugOptions::ALLTOALL);
 }
 
+TEST(ParsingDebugOptionsTest, ParsingCrossHostOneShotKernel) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_TRUE(debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel()
+                  .empty());
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::ALLGATHER);
+  debug_options.add_xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+      DebugOptions::REDUCESCATTER);
+
+  ResetFlagValues();
+  std::string contents;
+  ASSERT_TRUE(ParseFlagsFromDebugOptionsFile(
+      WriteDebugOptionsToTempFile(debug_options, &contents)));
+  DebugOptions parsed_debug_options = GetDebugOptionsFromFlags();
+  EXPECT_TRUE(absl::StrContains(
+      contents,
+      "xla_gpu_unsupported_use_cross_host_one_shot_kernel: ALLGATHER"));
+  EXPECT_TRUE(absl::StrContains(
+      contents,
+      "xla_gpu_unsupported_use_cross_host_one_shot_kernel: REDUCESCATTER"));
+  EXPECT_EQ(parsed_debug_options
+                .xla_gpu_unsupported_use_cross_host_one_shot_kernel_size(),
+            2);
+  EXPECT_EQ(
+      parsed_debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          0),
+      DebugOptions::ALLGATHER);
+  EXPECT_EQ(
+      parsed_debug_options.xla_gpu_unsupported_use_cross_host_one_shot_kernel(
+          1),
+      DebugOptions::REDUCESCATTER);
+}
+
 TEST(ParsingDebugOptionsTest, ParseFromDebugOptionsFile) {
   // Sanity checks: The test needs to use two flags that have false and true
   // default values.
@@ -587,6 +620,35 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
   // It should still contain CUDNN (which was in defaults).
   EXPECT_THAT(debug_options.xla_gpu_experimental_autotune_backends(),
               Contains(autotuner::Backend::CUDNN));
+}
+
+TEST(PreferredBackendParsingTest, CaseInsensitive) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  EXPECT_EQ(debug_options.xla_autotuner_preferred_backend(),
+            autotuner::Backend::UNSPECIFIED_BACKEND);
+
+  SetXlaFlagsEnvVar("--xla_autotuner_preferred_backend=cudnn");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_autotuner_preferred_backend(),
+            autotuner::Backend::CUDNN);
+
+  SetXlaFlagsEnvVar("--xla_autotuner_preferred_backend=TRITON");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_autotuner_preferred_backend(),
+            autotuner::Backend::TRITON);
+
+  SetXlaFlagsEnvVar("--xla_autotuner_preferred_backend=block_level_emitter");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_autotuner_preferred_backend(),
+            autotuner::Backend::BLOCK_LEVEL_EMITTER);
+
+  SetXlaFlagsEnvVar("--xla_autotuner_preferred_backend=none");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_autotuner_preferred_backend(),
+            autotuner::Backend::UNSPECIFIED_BACKEND);
 }
 
 TEST(CollectivesModeParsingTest, CaseInsensitive) {

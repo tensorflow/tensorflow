@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -1081,9 +1082,57 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
+TEST(DefaultCollectivePerfTableTest, EstimatesGfx942DefaultProfile) {
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveInterpolator> interpolator,
+      CollectiveInterpolator::Create(kNumGpusPerHost, device_info));
+
+  absl::string_view kAllReduceHlo = R"(
+    HloModule m, num_partitions=8
+
+    wrapped_add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT _ = f32[] add(a,b)
+    }
+
+    ENTRY main {
+      p = f32[256] parameter(0)
+      ROOT _ = f32[256] all-reduce(p), to_apply=wrapped_add,
+          replica_groups=[1,8]<=[8], use_global_device_ids=true, channel_id=1
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto all_reduce_module,
+                       ParseAndReturnUnverifiedModule(kAllReduceHlo));
+  HloInstruction* all_reduce =
+      all_reduce_module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(absl::Duration all_reduce_runtime,
+                       interpolator->EstimatedRuntime(*all_reduce));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(all_reduce_runtime),
+              1e6 * 1024.0 / 18206710.0, 0.01);
+
+  absl::string_view kCollectivePermuteHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY main {
+      p = f32[256] parameter(0)
+      ROOT _ = f32[256] collective-permute(p),
+          source_target_pairs={{0,4},{1,5},{2,6},{3,7}}, channel_id=1
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto collective_permute_module,
+                       ParseAndReturnUnverifiedModule(kCollectivePermuteHlo));
+  HloInstruction* collective_permute =
+      collective_permute_module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(absl::Duration collective_permute_runtime,
+                       interpolator->EstimatedRuntime(*collective_permute));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(collective_permute_runtime),
+              1e6 * 1024.0 / 6772889.0, 0.01);
+}
+
 TEST(DefaultCollectivePerfTableTest, EstimatesGfx950DefaultProfile) {
-  se::DeviceDescription device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  device_info.set_rocm_compute_capability("gfx950");
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(kNumGpusPerHost, device_info));

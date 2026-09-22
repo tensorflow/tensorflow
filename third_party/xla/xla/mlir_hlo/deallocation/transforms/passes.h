@@ -29,11 +29,6 @@ namespace deallocation {
 #define GEN_PASS_DECL
 #include "deallocation/transforms/passes.h.inc"
 
-// TODO(b/397167511): Remove legacy wrapper once callers are migrated.
-inline std::unique_ptr<mlir::Pass> createBufferDeallocationPass() {
-  return createBufferDeallocation();
-}
-
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"
 

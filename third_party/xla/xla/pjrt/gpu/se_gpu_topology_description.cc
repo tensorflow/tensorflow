@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -169,8 +170,27 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
 
 absl::StatusOr<uint64_t> StreamExecutorGpuTopologyDescription::Fingerprint()
     const {
+  GpuTopologyProto proto = gpu_topology_->ToProto();
+
+  stream_executor::GpuDeviceInfoProto* device_info =
+      proto.mutable_gpu_target_config()->mutable_gpu_device_info();
+  if (device_info->device_memory_size() > 0) {
+    // Round `device_memory_size` to the nearest GiB to produce deterministic
+    // fingerprint even if the memory size is slightly different.
+    //
+    // TODO(b/563487743): Fix `device_memory_size` to return a stable lower
+    // bound instead and get rid of this logic.
+    static constexpr int64_t kGiB = 1 << 30;
+    device_info->set_device_memory_size(
+        (device_info->device_memory_size() + kGiB / 2) / kGiB * kGiB);
+  }
+  // Exclude `model_str` from the fingerprint as the rest of the proto already
+  // contains the same info and the device memory size in model str can make the
+  // fingerprint non-portable across GPUs.
+  device_info->clear_model_str();
+
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
     return absl::InternalError("Failed to serialize gpu_topology");
   }
   return tsl::Fingerprint64(result);
@@ -295,8 +315,13 @@ absl::Span<const int>
 StreamExecutorGpuTopologyDescription::GetMemorySpaceKindIds() const {
   static const int kGpuMemorySpaceKindIds[] = {
       static_cast<int>(tsl::Fingerprint32("device")),
-      static_cast<int>(tsl::Fingerprint32("pinned_host"))};
+      PinnedHostMemorySpace::kKindId};
   return absl::MakeConstSpan(kGpuMemorySpaceKindIds);
+}
+
+bool StreamExecutorGpuTopologyDescription::IsMemorySpaceOnCpu(
+    int memory_space_kind_id) const {
+  return memory_space_kind_id == PinnedHostMemorySpace::kKindId;
 }
 
 absl::StatusOr<PjRtDeviceDimensions>
@@ -337,9 +362,8 @@ StreamExecutorGpuTopologyDescription::GetDefaultDeviceAssignment(
       stream_executor::PlatformId se_platform_id,
       StreamExecutorPlatformIdMapping::Global().GetStreamExecutorPlatformId(
           platform_id()));
-  ABSL_ASSIGN_OR_RETURN(auto* placer,
-                   ComputationPlacer::GetForPlatform(se_platform_id));
-  return placer->AssignDevices(num_replicas, num_partitions);
+  return ComputationPlacer::GetForPlatform(se_platform_id)
+      ->AssignDevices(num_replicas, num_partitions);
 }
 
 absl::StatusOr<xla::PjRtTopologyDescriptionProto>
@@ -389,6 +413,26 @@ StreamExecutorGpuTopologyDescription::FromProto(
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
       attributes, std::move(target_config));
+}
+
+absl::StatusOr<int>
+StreamExecutorGpuTopologyDescription::GetMemorySpaceKindForShape(
+    const xla::Shape& shape) const {
+  int kind = GetMemorySpaceKindIds()[0];
+  if (shape.has_layout()) {
+    switch (shape.layout().memory_space()) {
+      case Layout::kHostMemorySpace:
+        return GetMemorySpaceKindIds()[1];
+        break;
+      case Layout::kGenericFastMemorySpace:
+      case Layout::kDefaultMemorySpace:
+        break;
+      default:
+        return InvalidArgument("Unexpected memory space %d in output layout",
+                               shape.layout().memory_space());
+    }
+  }
+  return kind;
 }
 
 }  // namespace xla

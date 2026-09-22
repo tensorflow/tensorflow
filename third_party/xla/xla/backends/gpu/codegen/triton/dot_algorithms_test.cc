@@ -465,18 +465,19 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       break;
     case CudaComputeCapabilities::kHopper: {
       DebugOptions debug_options = GetDebugOptionsForTest();
-      std::string dot_kernel_name = "tf32f32";
+      ::testing::Matcher<const std::string&> dot_kernel_matcher =
+          ::testing::HasSubstr("tf32f32");
       if (debug_options.xla_gpu_enable_cublaslt()) {
-        // CublasLt uses cutlass for TF32.
-        dot_kernel_name = "cutlass_80";
+        dot_kernel_matcher =
+            ::testing::AnyOf(::testing::HasSubstr("cutlass_80"),
+                             ::testing::HasSubstr("sm90_xmma_gemm"));
       }
       EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
                                     ::testing::HasSubstr("loop_and_subtract"),
                                     ::testing::HasSubstr("loop_and_subtract"),
                                     ::testing::HasSubstr("loop_select_fusion"),
-                                    ::testing::HasSubstr(dot_kernel_name),
-                                    ::testing::HasSubstr(dot_kernel_name),
-                                    ::testing::HasSubstr(dot_kernel_name)));
+                                    dot_kernel_matcher, dot_kernel_matcher,
+                                    dot_kernel_matcher));
       break;
     }
     default:
@@ -1142,6 +1143,11 @@ class NumericTestsForTriton : public TritonAlgorithmTest,
 };
 
 TEST_P(NumericTestsForBlas, Infinity) {
+  // hipBLASLt emulates TF32 on gfx950 and returns NaN for inf*1.
+  if (GetParam() == PC::ALG_DOT_TF32_TF32_F32_X3 && GpuComputeComp().IsRocm() &&
+      GpuComputeComp().rocm_compute_capability()->gfx9_mi350()) {
+    GTEST_SKIP() << "hipBLASLt FAST_TF32 inf*1 returns NaN on MI350 ";
+  }
   std::string hlo_text = HloText();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
@@ -1960,12 +1966,10 @@ TEST_P(PrecisionTests, PrecisionCheck) {
       std::unique_ptr<HloModule> test_module,
       GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim, algorithm,
                          backend));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> fake_arguments,
-      MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
-                        /*use_large_range=*/false,
-                        /*treat_gte_as_data_formatting=*/false,
-                        /*max_bits_of_precision=*/23));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 23;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_arguments,
+                       MakeFakeArguments(test_module.get(), options));
   // Ensure there are no negative arguments to avoid unbounded relative errors
   // due to subtracting two similarly large numbers.
   MakeNonNegative(fake_arguments);
@@ -2030,13 +2034,10 @@ TEST_P(PrecisionTests, CheckPrecisionDegradationAlongKDimension) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloModule> test_module,
         GetSimpleDotModule(kMSize, kNSize, k, algorithm, backend));
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> fake_arguments,
-        MakeFakeArguments(test_module.get(), /*pseudo_random=*/
-                          true,
-                          /*use_large_range=*/false,
-                          /*treat_gte_as_data_formatting=*/false,
-                          /*max_bits_of_precision=*/23));
+    FakeArgumentsOptions options;
+    options.max_bits_of_precision = 23;
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> fake_arguments,
+                         MakeFakeArguments(test_module.get(), options));
     // Ensure there are no negative arguments to avoid unbounded relative errors
     // due to subtracting two similarly large numbers.
     MakeNonNegative(fake_arguments);

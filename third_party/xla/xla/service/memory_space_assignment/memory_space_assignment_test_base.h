@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -57,8 +58,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -261,7 +260,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     auto status_or = AssignMemorySpaceAndReturnStatus(
         module, std::move(options_override), std::move(buffer_interval_compare),
         prefetch_interval_picker);
-    TF_EXPECT_OK(status_or.status());
+    EXPECT_OK(status_or.status());
     return std::move(status_or.value());
   }
 
@@ -303,6 +302,12 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     Options options = DefaultMemorySpaceOptions();
     if (options_override) {
       options = *std::move(options_override);
+    }
+    for (const auto& override : options.msa_tensor_overrides.overrides()) {
+      if (override.has_pin_in_alternate_memory()) {
+        check_parameters_in_default_memory = false;
+        break;
+      }
     }
     std::unique_ptr<TestBufferIntervalComparator> test_comparator;
     if (buffer_interval_compare.has_value()) {

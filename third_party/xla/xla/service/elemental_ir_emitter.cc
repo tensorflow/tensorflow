@@ -1376,16 +1376,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       ABSL_ASSIGN_OR_RETURN(llvm::Value * sin_b, EmitSin(component_type, b));
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
-      // About "x^2 is a better approximation than Expm1(x) + Expm1(x)
-      // for small values of x": this statement is not
-      // accurate. Previously, Expm1(x) implementation had accuracy
-      // issues for small x (where it was supposed to stand out in
-      // accuracy!), but after resolving these issues (see
-      // openxla/xla#10376), using precomputed exp_2a_m1 and
-      // exp_neg_2a_m1 is accurate enough and we'll save a few
-      // instructions.
-
-      auto exp_sum_m2 = FAdd(exp_2a_m1, exp_neg_2a_m1);
+      // Computing the denominator's exponential term as expm1(2a) + expm1(-2a)
+      // suffers from catastrophic cancellation as a -> 0. Instead, use the
+      // identity (e^(2a) - 1)(e^(-2a) - 1) = 2 - 2*cosh(2a), which gives
+      // 2*(cosh(2a) - 1) = -expm1(2a) * expm1(-2a) to avoid cancellation
+      // and reuse exp_2a_m1 and exp_neg_2a_m1.
+      llvm::Value* exp_product = FMul(exp_2a_m1, exp_neg_2a_m1);
+      llvm::Value* exp_sum_m2 = FMul(neg_one, exp_product);
       llvm::Value* denom = FAdd(exp_sum_m2, two_cos_2b_p2);
 
       // As `a` grows toward +inf and -inf, the real numerator will grow towards
@@ -2440,31 +2437,47 @@ llvm::Value* ElementalIrEmitter::EmitIntegerRemainder(llvm::Value* lhs,
       Select(has_int_min_overflow, GetZero(lhs->getType()), safe_rem));
 }
 
-llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
-                                                llvm::Value* exponent,
+llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* lhs,
+                                                llvm::Value* rhs,
                                                 bool is_signed) {
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
   int bits = 6;  // Everything else would overflow for any exponent > 1, as 2^64
                  // is the larget possible exponent for a 64-bit integer, and
                  // that's 1 << 6.
-  llvm::Value* accumulator = llvm::ConstantInt::get(base->getType(), 1);
-  llvm::Value* one = llvm::ConstantInt::get(exponent->getType(), 1);
-  llvm::Value* zero = llvm::ConstantInt::get(exponent->getType(), 0);
+  llvm::Value* base = lhs;
+  llvm::Value* exponent = rhs;
+  llvm::Value* exp_one = llvm::ConstantInt::get(exponent->getType(), 1);
+  llvm::Value* exp_zero = llvm::ConstantInt::get(exponent->getType(), 0);
+  llvm::Value* base_one = llvm::ConstantInt::get(base->getType(), 1);
+  llvm::Value* base_zero = llvm::ConstantInt::get(base->getType(), 0);
+  llvm::Value* base_neg_one = llvm::ConstantInt::get(base->getType(), -1, true);
+  llvm::Value* accumulator = base_one;
   llvm::Value* original_base = base;
   llvm::Value* original_exponent = exponent;
 
   // Unroll the loop at compile time.
   for (int i = 0; i < bits; i++) {
-    accumulator =
-        b_->CreateSelect(b_->CreateICmpEQ(b_->CreateAnd(exponent, one), one),
-                         b_->CreateMul(accumulator, base), accumulator);
+    accumulator = b_->CreateSelect(
+        b_->CreateICmpEQ(b_->CreateAnd(exponent, exp_one), exp_one),
+        b_->CreateMul(accumulator, base), accumulator);
     base = b_->CreateMul(base, base);
     exponent = b_->CreateLShr(exponent, 1);
   }
+  if (!is_signed) {
+    return accumulator;
+  }
+
+  llvm::Value* neg_one_base_result = b_->CreateSelect(
+      b_->CreateICmpEQ(b_->CreateAnd(original_exponent, exp_one), exp_one),
+      base_neg_one, base_one);
+  llvm::Value* neg_exp_res =
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, base_neg_one),
+                       neg_one_base_result, base_zero);
   return b_->CreateSelect(
-      b_->CreateICmpSGE(original_exponent, zero), accumulator,
-      b_->CreateSelect(b_->CreateICmpEQ(original_base, one), one, zero));
+      b_->CreateICmpSGE(original_exponent, exp_zero), accumulator,
+      b_->CreateSelect(b_->CreateICmpEQ(original_base, base_one), base_one,
+                       neg_exp_res));
 }
 
 llvm::Value* ElementalIrEmitter::EmitIntegerMulhi(llvm::Value* lhs,

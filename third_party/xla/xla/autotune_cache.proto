@@ -28,6 +28,10 @@ message Config {
   BackendConfig backend_config = 2;
 }
 
+message CandidateConfigs {
+  repeated Config configs = 1;
+}
+
 message AutotuneTargetKey {
   string device = 1;
   // Optional and user specified version, example: xla/jax release version.

@@ -34,7 +34,7 @@ bool GlobalRegisterFiles(const char* absl_nonnull name,
 }  // namespace tsl::memfile
 
 #define REGISTER_BUILTIN_FILES_WITH_DIRECTORY_HELPER(ctr, name, directory) \
-  static bool memfile_register_##ctr ABSL_ATTRIBUTE_UNUSED =               \
+  static bool memfile_register_##ctr [[maybe_unused]] =                    \
       tsl::memfile::GlobalRegisterFiles(directory, name##_create());
 
 #define REGISTER_BUILTIN_FILES_WITH_DIRECTORY(name, directory) \

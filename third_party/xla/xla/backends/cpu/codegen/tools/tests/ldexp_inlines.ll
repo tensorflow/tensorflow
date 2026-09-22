@@ -29,11 +29,11 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
 ; Check that we have vectorized and inlined the call to ldexp.
 ; CHECK: vector.body:
 ; The following line is a result of inlining ldexp(x, 3) + constant folding + vectorization.
-; CHECK: fmul <{{[0-9]+}} x double> %wide.load{{[0-9]?}}, splat (double 8.0
+; CHECK: fmul contract <{{[0-9]+}} x double> %wide.load{{[0-9]?}}, splat (double 8.0
 
 ; Check that the loop epilogue still does unvectorized fmul
 ; CHECK: scalar.ph:
-; CHECK: fmul double {{.*}}8.0
+; CHECK: fmul contract double {{.*}}8.0
 
 declare double @xla.ldexp.f64.i32(double, i32) #1
 

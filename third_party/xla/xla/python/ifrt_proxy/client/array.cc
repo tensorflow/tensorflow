@@ -541,18 +541,6 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     req->add_array_handles(handle.handle);
   }
 
-  std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts(
-      plan.output_specs().size());
-  for (const auto& mapping : plan.mappings()) {
-    if (output_layouts[mapping.out_array] == nullptr) {
-      const xla::ifrt::ArrayRef& rcref = arrays[mapping.in_array];
-      Array* array = cast<Array>(rcref.get());
-      ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
-                       array->pjrt_layout());
-      output_layouts[mapping.out_array] = std::move(layout);
-    }
-  }
-
   std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(plan.output_specs().size());
   for (int i = 0; i < plan.output_specs().size(); ++i) {
@@ -561,7 +549,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
         client, rpc_helper, plan.output_specs()[i].dtype,
         plan.output_specs()[i].shape, plan.output_specs()[i].sharding,
-        ArrayHandle{h}, std::move(output_layouts[i]))));
+        ArrayHandle{h}, plan.output_specs()[i].layout)));
   }
   rpc_helper->RemapArrays(std::move(req));
   return result;

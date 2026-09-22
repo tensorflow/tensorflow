@@ -1,3 +1,31 @@
+# Release 2.23.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+*   <BREAKING CHANGES GO HERE>
+
+### Known Caveats
+
+*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+
+### Major Features and Improvements
+
+*   <MAJOR FEATURES GO HERE>
+
+### Bug Fixes and Other Changes
+
+*   <BUG FIXES GO HERE>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.22.0
 
 ## TensorFlow
@@ -24,6 +52,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
     * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+*   `tf.experimental.fold`: Adds support for folding/reconstructing image
+    tensors from extracted spatial patches as an inverse operation to
+    `tf.image.extract_patches`.
 
 ### Bug Fixes and Other Changes
 
@@ -34,6 +65,27 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Exports `__new__` in public API golden files for subclasses of `tuple` (like `tf.io.FixedLenFeature`) to fix false positives during static type checking.>
 * `tf.data`
     * Fixes a bug in `tf.data.Dataset.scan` where the shape of the state returned by `scan_func` was not strictly validated against the initial state.
+*   `tf.image.adjust_contrast`
+
+    *   Registers the missing Python gradient for the `AdjustContrastv2` op, so
+        `tf.image.adjust_contrast` can now be differentiated with
+        `GradientTape`. Fixes
+        [#126083](https://github.com/tensorflow/tensorflow/issues/126083).
+*   `tf.nn.softsign`
+
+    *   Fixes second-order gradients of `tf.nn.softsign`. Differentiating twice
+        previously failed with a lookup error because the `SoftsignGrad`
+        backward op had no registered Python gradient.
+
+*   `tf.math.reciprocal`
+
+    *   Constrains the XLA registration of `Reciprocal` and `Inv` to the types
+        that have a device kernel, so `jit_compile=True` no longer silently
+        accepts the integer inputs that eager execution and autoclustering
+        reject. Fixes
+        [#126414](https://github.com/tensorflow/tensorflow/issues/126414).
+
+
 *   `tf.experimental.numpy`
 
     *   `tf.experimental.numpy.isclose` and `tf.experimental.numpy.allclose` now
@@ -42,6 +94,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         arithmetic; combining integer inputs with floating-point tolerances
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   `tf.nn.elu`
+
+    *   Fixes the second derivative computed by automatic differentiation for
+        small negative inputs. There `elu(x)` rounds to `0.0`, which made the
+        backward pass of the gradient take the positive branch and return `0`
+        instead of a value close to `1`. Fixes
+        [#124830](https://github.com/tensorflow/tensorflow/issues/124830).
 
 *   oneDNN (MKL) convolution and transpose kernels
 

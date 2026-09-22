@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
-#include "xla/backends/gpu/runtime/collective_kernel_api.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/multi_gpu_barrier.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
@@ -213,7 +213,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                          params.clique_id_callback ? *params.clique_id_callback
                                                    : default_clique_id_callback,
                          *rank, cliques_map, max_channels,
-                         params.collective_use_minimal_resource));
+                         params.collective_use_minimal_resource,
+                         r.use_gxl_requested));
 
     cliques_map[r.key] = std::move(clique);
   }

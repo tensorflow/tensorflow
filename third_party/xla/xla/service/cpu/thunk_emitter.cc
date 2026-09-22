@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -72,7 +73,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/transforms/library_fusion_kinds.h"
 #include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -458,15 +458,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kConvolution:
       return EmitConvolutionThunk(instruction);
 
-    case HloOpcode::kCopy: {
-      // The copy thunk does not support sub-byte data types.
-      bool has_byte_strides =
-          ShapeUtil::ByteStrides(instruction->shape()).has_value();
-      if (!has_byte_strides || options_.compile_copy_as_llvm_kernel) {
-        return EmitElementalKernelThunk(instruction);
-      }
+    case HloOpcode::kCopy:
       return EmitCopyThunk(instruction);
-    }
 
     case HloOpcode::kDot:
       return EmitDotThunk(instruction);
@@ -1241,9 +1234,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   ABSL_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<CustomCallThunk::OpBuffers>(
                                         instruction, buffer_assignment_));
 
-  return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
-                                            custom_call_target, op_buffers,
-                                            backend_config_str, version);
+  absl::StatusOr<std::unique_ptr<CustomCallThunk>> custom_call_thunk =
+      CustomCallThunk::Create(ThunkInfo(instruction), custom_call_target,
+                              op_buffers, backend_config_str, version);
+
+  if (custom_call_thunk.ok()) {
+    ThunkSequence thunks;
+    thunks.push_back(std::move(*custom_call_thunk));
+    return thunks;
+  }
+  if (hlo_module_config_.debug_options().xla_cpu_mock_custom_calls()) {
+    // xla_cpu_mock_custom_calls=true means we won't emit thunks for custom
+    // call targets that couldn't be found.
+    return ThunkSequence::Empty();
+  }
+  return custom_call_thunk.status();
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(

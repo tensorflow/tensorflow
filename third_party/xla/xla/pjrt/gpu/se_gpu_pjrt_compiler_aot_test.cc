@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "riegeli/bytes/string_reader.h"
+#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -95,21 +96,25 @@ void ValidateResult(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
 
+xla::LocalClient* GetLocalClient(PjRtClient* client) {
+  return absl::down_cast<PjRtStreamExecutorRawClient*>(
+             absl::down_cast<CommonPjRtClient*>(client)->raw_client())
+      ->client();
+}
+
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::GpuTargetConfig gpu_target_config = xla::Compiler::GpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+      GetLocalClient(client.get())->backend().default_stream_executor());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
 
   auto context = std::make_unique<mlir::MLIRContext>();
   context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   xla::CompileOptions opts;
   opts.gpu_target_config = gpu_target_config;
 
@@ -120,9 +125,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
           MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
           *topology, /*client=*/nullptr));
   EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          client->Load(std::move(executable), LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -133,18 +137,16 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
 TEST(StreamExecutorGpuCompilerTest, AotCompileDeserializeRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::GpuTargetConfig gpu_target_config = xla::Compiler::GpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+      GetLocalClient(client.get())->backend().default_stream_executor());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
 
   auto context = std::make_unique<mlir::MLIRContext>();
   context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   xla::CompileOptions opts;
   opts.gpu_target_config = gpu_target_config;
 
@@ -171,17 +173,15 @@ TEST(StreamExecutorGpuCompilerTest, AotCompileDeserializeRoundTrip) {
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::GpuTargetConfig gpu_target_config{
-      se_client->client()->backend().default_stream_executor()};
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+      GetLocalClient(client.get())->backend().default_stream_executor()};
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+                          client->GetTopologyDescription());
   xla::CompileOptions opts;
   opts.gpu_target_config = gpu_target_config;
 
@@ -191,7 +191,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      client->Load(std::move(executable), LoadOptions()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -201,18 +201,16 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
 TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
   xla::CompileOptions opts;
   opts.gpu_target_config = Compiler::GpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
+      GetLocalClient(client.get())->backend().default_stream_executor());
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+                          client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
@@ -223,8 +221,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
                           executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
-      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
-                                          LoadOptions()));
+      client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                       LoadOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -240,33 +238,31 @@ ENTRY main {
 TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
   xla::CompileOptions opts;
   opts.gpu_target_config = Compiler::GpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
+      GetLocalClient(client.get())->backend().default_stream_executor());
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kProgramIdentity));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+                          client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      client->Load(std::move(executable), LoadOptions()));
 
   // Serialize the executable and deserialize it without failure.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
                           loaded_executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
-      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
-                                          LoadOptions()));
+      client->LoadSerializedExecutable(serialized_executable, std::nullopt,
+                                       LoadOptions()));
 
   EXPECT_EQ(deserialized_executable->GetExecutable()->name(), "Identity");
 }
@@ -285,13 +281,11 @@ constexpr char const* kD2HProgramTupleOutput = R"(
 TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
   xla::CompileOptions options;
   options.gpu_target_config = Compiler::GpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
+      GetLocalClient(client.get())->backend().default_stream_executor());
 
   // Build the output shape with the correct memory space set.
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
@@ -303,7 +297,7 @@ TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
                           GetXlaComputation(kD2HProgramTupleOutput));
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+                          client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(options, computation, *topology, /*client=*/nullptr));
@@ -337,12 +331,10 @@ TEST(StreamExecutorGpuCompilerTest, AutoLayoutIsSupported) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  auto se_client = absl::WrapUnique(
-      absl::down_cast<StreamExecutorGpuClient*>(client.release()));
-  StreamExecutorGpuCompiler compiler(se_client->platform_id(),
-                                     se_client->client()->platform()->id());
+  StreamExecutorGpuCompiler compiler(
+      client->platform_id(), GetLocalClient(client.get())->platform()->id());
   TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          se_client->GetTopologyDescription());
+                          client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(

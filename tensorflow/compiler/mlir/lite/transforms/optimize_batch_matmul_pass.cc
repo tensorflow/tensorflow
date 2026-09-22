@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/optimize_batch_matmul_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
@@ -49,7 +51,9 @@ bool NotFromFoldableChain(mlir::Value value) {
   mlir::Operation* defining_op = value.getDefiningOp();
 
   while (defining_op) {
-    if (mlir::isa<DequantizeOp>(defining_op)) {
+    if (mlir::isa<DequantizeOp>(defining_op) ||
+        defining_op->hasTrait<mlir::OpTrait::ConstantLike>() ||
+        matchPattern(defining_op, mlir::m_Constant())) {
       return false;
     }
 
@@ -58,8 +62,10 @@ bool NotFromFoldableChain(mlir::Value value) {
       defining_op = reshape_op.getInput().getDefiningOp();
     } else if (auto split_op = mlir::dyn_cast<SplitOp>(defining_op)) {
       defining_op = split_op.getValue().getDefiningOp();
+    } else if (auto transpose_op = mlir::dyn_cast<TransposeOp>(defining_op)) {
+      defining_op = transpose_op.getInput().getDefiningOp();
     } else {
-      // Stop if the op is not Dequantize, Reshape, or Split.
+      // Stop if the op does not preserve constant nature.
       break;
     }
   }
@@ -91,17 +97,21 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
       rhs = reshape.getInput();
     }
 
-    DenseElementsAttr dense_constant;
-    if (matchPattern(rhs, m_Constant(&dense_constant))) {
-      constant = dense_constant;
+    ElementsAttr elements_constant;
+    if (matchPattern(rhs, m_Constant(&elements_constant))) {
+      constant = elements_constant;
     } else if (auto dq = rhs.getDefiningOp<DequantizeOp>()) {
       Value q_input = dq.getInput();
-      if (auto q = q_input.getDefiningOp<QuantizeOp>()) {
-        if (matchPattern(q.getInput(), m_Constant(&dense_constant))) {
-          constant = dense_constant;
+      if (matchPattern(q_input, m_Constant(&elements_constant))) {
+        constant = elements_constant;
+      } else if (auto q = q_input.getDefiningOp<QuantizeOp>()) {
+        if (matchPattern(q.getInput(), m_Constant(&elements_constant))) {
+          constant = elements_constant;
         }
       } else if (auto pseudo_q = q_input.getDefiningOp<TFL::QConstOp>()) {
         constant = pseudo_q.getValue();
+      } else if (auto const_op = q_input.getDefiningOp<TFL::ConstOp>()) {
+        constant = const_op.getValue();
       }
     }
 

@@ -735,15 +735,6 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
   }
 }
 
-absl::string_view StringDeduper::Dedup(absl::string_view str,
-                                       size_t max_unique_count) {
-  if (str.empty()) return absl::string_view();
-  auto it = strings_.find(str);
-  if (it != strings_.end()) return *it;
-  if (max_unique_count == 0 || strings_.size() < max_unique_count)
-    return *strings_.emplace(str).first;
-  return absl::string_view();
-}
 
 absl::string_view AnnotationMap::Add(uint32_t device_id,
                                      uint32_t correlation_id,

@@ -600,7 +600,7 @@ TEST_F(NgramKernelTest, TestIntegerOverflow) {
 
   std::vector<tstring> data(21475, "a");
   AddInputFromArray<tstring>(TensorShape({21475}), data);
-  AddInputFromArray<int32>(TensorShape({2}), {0, 21475});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 21475});
 
   Status s = RunOpKernel();
   EXPECT_FALSE(s.ok());

@@ -24,11 +24,23 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {
 using Signature = DeviceCompilationClusterSignature;
 using TensorTypeAndShape = Signature::TensorTypeAndShape;
+
+// Returns bytes that can be hashed and compared for equality for any dtype.
+std::string HashableTensorBytes(const Tensor& t) {
+  if (DataTypeCanUseMemcpy(t.dtype())) {
+    return std::string(t.tensor_data());
+  }
+  TensorProto proto;
+  t.AsProtoTensorContent(&proto);
+  return proto.SerializeAsString();
+}
 
 // Functor that converts a Signature's arg to a human readable string.
 struct SignatureHumanStringAppender {
@@ -48,7 +60,7 @@ struct SignatureHumanStringAppender {
 struct SignatureNotEqual {
   bool operator()(const Tensor& arg, const Tensor& other) {
     return arg.dtype() != other.dtype() || arg.shape() != other.shape() ||
-           arg.tensor_data() != other.tensor_data();
+           HashableTensorBytes(arg) != HashableTensorBytes(other);
   }
   bool operator()(const TensorTypeAndShape& arg,
                   const TensorTypeAndShape& other) {
@@ -69,8 +81,8 @@ struct SignatureHashCombiner {
   uint64_t h;
   uint64_t operator()(const Tensor& arg) {
     h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.dtype())));
-    h = Hash64Combine(
-        h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
+    std::string bytes = HashableTensorBytes(arg);
+    h = Hash64Combine(h, Hash64(bytes.data(), bytes.size()));
     for (int dim = 0; dim < arg.dims(); ++dim) {
       h = Hash64Combine(h, std::hash<int>()(arg.dim_size(dim)));
     }

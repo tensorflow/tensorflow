@@ -17,10 +17,18 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::testing::Gt;
+using ::testing::Not;
 
 TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableEmpty) {
   EXPECT_EQ(FormatBandwidthTable({}),
@@ -29,7 +37,7 @@ TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableEmpty) {
 }
 
 TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableMultipleEntries) {
-  std::vector<BandwidthEntry> entries = {
+  const std::vector<BandwidthEntry> entries = {
       {8192, 0.00043418f},
       {16384, 0.00092645f},
       {32768, 0.00184066f},
@@ -42,6 +50,20 @@ TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableMultipleEntries) {
             "           16384            0.00092645\n"
             "           32768            0.00184066\n"
             "      8589934592            1.00000000\n");
+}
+
+TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthValidDevice) {
+  const absl::StatusOr<double> peak_bw =
+      GetPeakBandwidthBytesPerSec(/*device_id=*/0);
+  if (!peak_bw.ok()) {
+    GTEST_SKIP() << "No GPU device available: " << peak_bw.status();
+  }
+  EXPECT_THAT(peak_bw, IsOkAndHolds(Gt(0.0)));
+}
+
+TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthInvalidDevice) {
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/-1), Not(IsOk()));
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/9999), Not(IsOk()));
 }
 
 }  // namespace

@@ -17,6 +17,8 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -51,6 +53,11 @@ class XlaSvdOp : public XlaOpKernel {
     }
   }
   void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape input_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, input_shape.dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have rank >= 2, got shape ",
+                                 input_shape.DebugString())));
     auto result = xla::SVD(ctx->Input(0), max_iter_, epsilon_,
                            precision_config_.operand_precision(0));
     ctx->SetOutput(0, result.d);
@@ -71,7 +78,14 @@ class SvdOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
+    // The rank is only known at compile time when the graph-level shape
+    // inference saw an unknown rank, so it must be validated here before
+    // the trailing two dimensions are read.
     const TensorShape input_shape = ctx->InputShape("input");
+    OP_REQUIRES(ctx, input_shape.dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input must have rank >= 2, got shape ",
+                                 input_shape.DebugString())));
     int m = input_shape.dim_size(input_shape.dims() - 2);
     int n = input_shape.dim_size(input_shape.dims() - 1);
     // This is based on heuristics that approx log(n) sweep updates are needed.

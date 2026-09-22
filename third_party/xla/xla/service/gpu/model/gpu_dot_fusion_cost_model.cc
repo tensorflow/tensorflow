@@ -535,6 +535,22 @@ int64_t CalculateSharedMemoryPerBlockBytes(const DotProblemInfo& dot_info,
   return (lhs_tile_bytes + rhs_tile_bytes) * num_stages;
 }
 
+WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n) {
+  if (num_warps <= 1 || tile_m <= 0 || tile_n <= 0) {
+    return {1, 1};
+  }
+  int64_t warps_m = 1;
+  int64_t warps_n = 1;
+  while (warps_m * warps_n < num_warps) {
+    if (tile_m * warps_n >= 2 * tile_n * warps_m) {
+      warps_m *= 2;
+    } else {
+      warps_n *= 2;
+    }
+  }
+  return {warps_m, warps_n};
+}
+
 namespace {
 
 int CalculateAccumulatorRegisters(const DotProblemInfo& dot_info,

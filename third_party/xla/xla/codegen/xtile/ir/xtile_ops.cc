@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -96,8 +97,7 @@ void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
                         mlir::ArrayRef<mlir::Type> memref_arg_types,
                         mlir::ArrayRef<mlir::NamedAttribute> attrs,
                         mlir::ArrayRef<mlir::DictionaryAttr> memref_arg_attrs) {
-  state.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
-                     builder.getStringAttr(name));
+  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
   mlir::SmallVector<mlir::Type> arg_types(memref_arg_types.begin(),
                                           memref_arg_types.end());
   // Append the tile id index type.
@@ -240,6 +240,54 @@ mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
   }
 
   return {};
+}
+
+mlir::LogicalResult ScanOp::verify() {
+  mlir::ValueRange inputs = getInputs();
+  if (getInits().size() != inputs.size() ||
+      getOutputs().size() != inputs.size() ||
+      getCarries().size() != inputs.size()) {
+    return emitOpError() << "expects one init, output and carry per input, but "
+                            "got "
+                         << inputs.size() << " inputs, " << getInits().size()
+                         << " inits, " << getOutputs().size() << " outputs and "
+                         << getCarries().size() << " carries";
+  }
+
+  int64_t dimension = getDimension();
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    mlir::RankedTensorType input_type =
+        mlir::cast<mlir::RankedTensorType>(input.getType());
+    if (dimension < 0 || dimension >= input_type.getRank()) {
+      return emitOpError() << "scan dimension " << dimension
+                           << " is out of range for input #" << index
+                           << " of rank " << input_type.getRank();
+    }
+    if (getOutputs()[index].getType() != input_type) {
+      return emitOpError() << "output #" << index << " type "
+                           << getOutputs()[index].getType()
+                           << " does not match input type " << input_type;
+    }
+
+    // The inits and carries keep the scan dimension as a unit dimension, so
+    // that they have the same rank as the inputs and outputs.
+    llvm::SmallVector<int64_t> carry_shape(input_type.getShape());
+    carry_shape[dimension] = 1;
+    mlir::RankedTensorType carry_type =
+        mlir::RankedTensorType::get(carry_shape, input_type.getElementType());
+    if (getInits()[index].getType() != carry_type) {
+      return emitOpError() << "init #" << index << " type "
+                           << getInits()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+    if (getCarries()[index].getType() != carry_type) {
+      return emitOpError() << "carry #" << index << " type "
+                           << getCarries()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+  }
+
+  return mlir::success();
 }
 
 static bool IsSupportedScaleElementType(mlir::Type type) {

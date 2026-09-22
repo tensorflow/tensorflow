@@ -41,7 +41,7 @@ class TargetMachineFeatures {
   TargetMachineFeatures(TargetMachineFeatures&&) = delete;
   TargetMachineFeatures& operator=(TargetMachineFeatures&&) = delete;
 
-  const llvm::TargetMachine* target_machine() const;
+  virtual const llvm::TargetMachine* target_machine() const;
 
   // Return the vectorization factor, which is the number of bytes of data
   // explicitly vectorized routines will try to process at once.

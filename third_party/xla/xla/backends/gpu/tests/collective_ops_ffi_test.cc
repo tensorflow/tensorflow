@@ -47,6 +47,9 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/api/collectives_api.h"
+#include "xla/ffi/api/collectives_c_api.h"
+#include "xla/ffi/collectives_ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/future.h"
 #include "xla/literal.h"
@@ -65,6 +68,13 @@ limitations under the License.
 
 namespace xla::gpu {
 using ::testing::Values;
+
+// Defined in `collective_ops_ffi_communicator_{cuda,default}.cc` and selected
+// at link time. The default translation unit returns Unimplemented.
+absl::Status CommunicatorAllReduceU32(se::Stream* stream,
+                                      XLA_FFI_Communicator* communicator,
+                                      const void* send_buffer,
+                                      void* recv_buffer, int64_t count);
 
 struct SynchronizationSignals {
   absl::Mutex mutex;
@@ -319,6 +329,41 @@ static absl::Status PreparePeerAllReduce(
 
   return absl::OkStatus();
 }
+
+namespace {
+std::vector<std::vector<int64_t>> PublicApiReplicaGroups() {
+  std::vector<int64_t> ids;
+  ids.reserve(kNumReplicas);
+  for (int64_t i = 0; i < kNumReplicas; ++i) {
+    ids.push_back(i);
+  }
+  return {std::move(ids)};
+}
+
+// Prepare handler: requests the XLA-owned collective clique via the public
+// collectives FFI extension, using the C++ Communicator wrapper.
+absl::Status PreparePublicApiAllReduce(ffi::Communicator comm) {
+  return comm.RequestCommunicator(ffi::GroupMode::kFlattenedId,
+                                  PublicApiReplicaGroups(),
+                                  /*communication_id=*/0);
+}
+
+// Execute handler: gets the XLA-owned communicator via the public collectives
+// FFI extension and runs an all-reduce on it via the platform collective
+// library (see CommunicatorAllReduceU32).
+absl::Status PublicApiAllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
+                                ffi::Result<ffi::BufferR0<U32>> dst,
+                                ffi::Communicator comm) {
+  ABSL_ASSIGN_OR_RETURN(XLA_FFI_Communicator * communicator,
+                   comm.GetCommunicator(ffi::GroupMode::kFlattenedId,
+                                        PublicApiReplicaGroups(),
+                                        /*communication_id=*/0));
+  TF_RET_CHECK(communicator != nullptr);
+  return CommunicatorAllReduceU32(
+      stream, communicator, src.device_memory().opaque(),
+      dst->device_memory().opaque(), src.element_count());
+}
+}  // namespace
 
 // FFI handler that uses XLA:GPU collectives API to perform an all reduce. This
 // is just a test that demonstrates how to use XLA:GPU collectives API in an FFI
@@ -781,6 +826,17 @@ XLA_FFI_DEFINE_HANDLER(kPrepareAllReduce, PrepareAllReduce,
                            .Ctx<ffi::CollectiveParams>()
                            .Ctx<ffi::CollectiveCliqueRequests>());
 
+XLA_FFI_DEFINE_HANDLER(
+    kPreparePublicApiAllReduce, PreparePublicApiAllReduce,
+    ffi::Ffi::BindPrepare().Ctx<ffi::Extension<ffi::Collectives>>());
+
+XLA_FFI_DEFINE_HANDLER(kPublicApiAllReduce, PublicApiAllReduce,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::BufferR0<U32>>()  // src
+                           .Ret<ffi::BufferR0<U32>>()  // dst
+                           .Ctx<ffi::Extension<ffi::Collectives>>());
+
 // Preprocessor fails to parse comma inside macro call, introduce an alias to
 // request multiple comm streams for test.
 using CommunicationStreams = ffi::CommunicationStream<0, 1>;
@@ -941,6 +997,16 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$all_reduce", "gpu",
                              /*execute=*/kAllReduce,
                          });
 
+// Register handler bundle for the public collectives FFI all-reduce test.
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$public_api_all_reduce", "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/kPreparePublicApiAllReduce,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kPublicApiAllReduce,
+                         });
+
 // Register handler bundle for the custom all-reduce operation with
 // device-initiated collective kernels that use multimem addresses.
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
@@ -1097,6 +1163,45 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
   ASSERT_EQ(results.size(), kNumReplicas);
 
   // sum [0, num_devices)
+  const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
+  }
+}
+
+TEST_F(CollectiveOpsTestFFI, PublicApiAllReduce) {
+  if (!Capability().IsCuda()) {
+    GTEST_SKIP() << "Communicator all-reduce is not implemented for this "
+                    "platform";
+  }
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  constexpr absl::string_view hlo_string = R"hlo(
+      HloModule m, replica_count=2
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        ROOT all-reduce = u32[] custom-call(id),
+          custom_call_target="__xla_test$$public_api_all_reduce",
+          api_version=API_VERSION_TYPED_FFI
+      }
+    )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module),
+                                         /*arguments=*/std::vector<Literal*>(),
+                                         /*run_hlo_passes=*/false));
+
+  absl::Span<const Literal> results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  // Each replica contributes its replica id, so the all-reduce sum is
+  // sum [0, kNumReplicas).
   const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
   for (int i = 0; i < kNumReplicas; ++i) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);

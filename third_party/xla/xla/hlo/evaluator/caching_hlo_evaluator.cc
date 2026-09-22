@@ -43,7 +43,8 @@ absl::StatusOr<std::string> MakeCachingHloEvaluatorCacheKey(
   tsl::Fprint128 fingerprint =
       tsl::Fingerprint128(computation.ToString(HloPrintOptions::Default()));
   for (const Literal* arg : args) {
-    ABSL_ASSIGN_OR_RETURN(std::string serialized, arg->SerializeAsString());
+    ABSL_ASSIGN_OR_RETURN(std::string serialized,
+                     arg->SerializeAsString(/*pack_pred=*/false));
     fingerprint =
         tsl::FingerprintCat128(fingerprint, tsl::Fingerprint128(serialized));
   }
@@ -78,12 +79,13 @@ absl::StatusOr<Literal> CachingHloEvaluator::Evaluate(
             << status;
         return wrapped_->Evaluate(computation, args);
       }
-      return Literal::DeserializeFromString(serialized_literal);
+      return Literal::DeserializeFromString(serialized_literal,
+                                            /*pack_pred=*/false);
     }
     case Mode::kWrite: {
       ABSL_ASSIGN_OR_RETURN(Literal literal, wrapped_->Evaluate(computation, args));
       ABSL_ASSIGN_OR_RETURN(const std::string serialized_literal,
-                       literal.SerializeAsString());
+                       literal.SerializeAsString(/*pack_pred=*/false));
       ABSL_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), filename,
                                              serialized_literal));
       return std::move(literal);

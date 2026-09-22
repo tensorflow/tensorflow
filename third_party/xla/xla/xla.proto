@@ -93,6 +93,7 @@ message DebugOptions {
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
+    HOST_EXECUTE = 12;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
@@ -339,6 +340,9 @@ message DebugOptions {
   // the flag for more flexible control if necessary.
   optional string xla_cpu_max_isa = 333;
 
+  // Replace custom calls with noop operations on CPU.
+  optional bool xla_cpu_mock_custom_calls = 548;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
@@ -555,6 +559,12 @@ message DebugOptions {
   // fusion autuning pass, and are not affected by this flag, use
   // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
   repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
+
+  // Preferred autotuner backend. If set and the preferred backend generates
+  // valid configs for an instruction, the autotuner will pick a config from
+  // this backend even if another backend is faster. If no valid config from the
+  // preferred backend is available, the autotuner falls back to other backends.
+  optional autotuner.Backend xla_autotuner_preferred_backend = 547;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
@@ -1827,7 +1837,33 @@ message DebugOptions {
   // Gives more compilation test coverage but might increase compilation time.
   optional bool xla_compile_all_supported_configs = 539;
 
-  // Next id: 541
+  // Internal debug/testing flag to enable cross-host one-shot kernel for
+  // collective operations.
+  repeated CollectiveOpType xla_gpu_unsupported_use_cross_host_one_shot_kernel =
+      541;
+
+  // Minimum backend_config size (in bytes) to be eligible for deduplication
+  // into payloads during serialization. Configs smaller than this threshold are
+  // kept inline. Default is MAX_INT (deduplication disabled).
+  optional int64 xla_deduplicate_backend_configs_min_size = 542;
+
+  // Single serialized config to override config of all instructions, bypassing
+  // cache and autotuning. Accepts textproto of autotuner.Config.
+  optional string xla_force_config = 543;
+
+  // File containing a list of serialized configs to override candidate configs
+  // for all instructions. Accepts textproto of autotuner.CandidateConfigs.
+  optional string xla_candidate_configs_file = 544;
+
+  // If true, allows skipping defensive copy insertion for S(1) collective
+  // memory parameters that have input-output aliasing and execute on all
+  // available devices in the topology.
+  optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
+
+  // Enables Raft for stable TopK.
+  optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
+
+  // Next id: 548
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

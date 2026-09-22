@@ -165,22 +165,37 @@ NSURL* createTemporaryFile() {
 
 - (bool)cleanup {
   NSError* error = nil;
-  [[NSFileManager defaultManager] removeItemAtPath:_mlModelFilePath error:&error];
-  if (error != nil) {
-    NSLog(@"Failed cleaning up model: %@", [error localizedDescription]);
-    return NO;
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+  bool success = true;
+  if (_mlModelFilePath.length > 0 && [fileManager fileExistsAtPath:_mlModelFilePath]) {
+    if (![fileManager removeItemAtPath:_mlModelFilePath error:&error]) {
+      NSLog(@"Failed cleaning up model: %@", [error localizedDescription]);
+      success = false;
+    } else {
+      self.mlModelFilePath = nil;
+    }
+  } else {
+    self.mlModelFilePath = nil;
   }
-  [[NSFileManager defaultManager] removeItemAtPath:_compiledModelFilePath error:&error];
-  if (error != nil) {
-    NSLog(@"Failed cleaning up compiled model: %@", [error localizedDescription]);
-    return NO;
+
+  error = nil;
+  if (_compiledModelFilePath.length > 0 && [fileManager fileExistsAtPath:_compiledModelFilePath]) {
+    if (![fileManager removeItemAtPath:_compiledModelFilePath error:&error]) {
+      NSLog(@"Failed cleaning up compiled model: %@", [error localizedDescription]);
+      success = false;
+    } else {
+      self.compiledModelFilePath = nil;
+    }
+  } else {
+    self.compiledModelFilePath = nil;
   }
-  return YES;
+  return success;
 }
 
 - (NSURL*)saveModel:(CoreML::Specification::Model*)model {
   NSURL* modelUrl = createTemporaryFile();
   NSString* modelPath = [modelUrl path];
+  self.mlModelFilePath = modelPath;
   if (model->specificationversion() == 3) {
     _coreMlVersion = 2;
   } else if (model->specificationversion() == 4) {
@@ -203,8 +218,8 @@ NSURL* createTemporaryFile() {
     NSLog(@"Error compiling model %@", [error localizedDescription]);
     return NO;
   }
-  _mlModelFilePath = [modelUrl path];
-  _compiledModelFilePath = [compileUrl path];
+  self.mlModelFilePath = [modelUrl path];
+  self.compiledModelFilePath = [compileUrl path];
 
   if (@available(iOS 12.0, *)) {
     MLModelConfiguration* config = [[MLModelConfiguration alloc] init];

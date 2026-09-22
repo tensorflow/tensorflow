@@ -99,6 +99,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE(context, axis_value >= 0);
   TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis_value <= INT16_MAX);
   const int input_size = SizeOfDimension(input, axis_value);
 
   if (minus_one_index != -1) {
@@ -180,13 +181,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   int axis_value = GetTensorData<int>(op_context.axis)[0];
+  if (axis_value < 0) {
+    axis_value += NumDimensions(op_context.input);
+  }
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(op_context.input));
+  TF_LITE_ENSURE(context, axis_value <= INT16_MAX);
 
   // Use split function to build the outputs since they share the same logic.
 #define TF_LITE_SPLIT_V(scalar)                                     \
   VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
   tflite::SplitParams op_params;                                    \
   op_params.num_split = NumOutputs(node);                           \
-  op_params.axis = axis_value;                                      \
+  op_params.axis = static_cast<int16_t>(axis_value);                \
   reference_ops::Split(op_params, GetTensorShape(op_context.input), \
                        GetTensorData<scalar>(op_context.input),     \
                        all_outputs.shapes(), all_outputs.data());

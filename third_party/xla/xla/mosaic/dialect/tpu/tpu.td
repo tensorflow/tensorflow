@@ -25,12 +25,14 @@ def TPU_Dialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
   let extraClassDeclaration = [{
-    static StringRef GetCoreTypeKey() { return "tpu.core_type"; }
+    static constexpr StringRef GetMainKey() { return "tpu.main"; }
+    static constexpr StringRef GetCoreTypeKey() { return "tpu.core_type"; }
 
     static std::optional<CoreType> GetCoreTypeAttr(Operation *op);
   }];
   let hasConstantMaterializer = 1;
   let hasCanonicalizer = 1;
+  let hasOperationAttrVerify = 1;
 }
 
 class TPU_Attr<string name, string mnemonic_, list<Trait> traits = []>
@@ -65,23 +67,23 @@ def TPU_ConvDimensionNumbersAttr : TPU_Attr<"ConvDimensionNumbers", "conv_dimens
   let parameters = (ins
     "int64_t":$input_batch_dimension,
     "int64_t":$input_feature_dimension,
-    ArrayRefParameter<"int64_t", "">:$input_spatial_dimensions,
+    OptionalArrayRefParameter<"int64_t", "">:$input_spatial_dimensions,
     "int64_t":$kernel_input_feature_dimension,
     "int64_t":$kernel_output_feature_dimension,
-    ArrayRefParameter<"int64_t", "">:$kernel_spatial_dimensions,
+    OptionalArrayRefParameter<"int64_t", "">:$kernel_spatial_dimensions,
     "int64_t":$output_batch_dimension,
     "int64_t":$output_feature_dimension,
-    ArrayRefParameter<"int64_t", "">:$output_spatial_dimensions
+    OptionalArrayRefParameter<"int64_t", "">:$output_spatial_dimensions
   );
   let assemblyFormat = "`<` $input_batch_dimension `,` "
                        "$input_feature_dimension `,` "
-                       "`[` $input_spatial_dimensions `]` `,` "
+                       "`[` (`]`):($input_spatial_dimensions^ `]`)? `,` "
                        "$kernel_input_feature_dimension `,` "
                        "$kernel_output_feature_dimension `,` "
-                       "`[` $kernel_spatial_dimensions `]` `,` "
+                       "`[` (`]`):($kernel_spatial_dimensions^ `]`)? `,` "
                        "$output_batch_dimension `,` "
                        "$output_feature_dimension `,` "
-                       "`[` $output_spatial_dimensions `]` `>`";
+                       "`[` (`]`):($output_spatial_dimensions^ `]`)? `>`";
   let constBuilderCall = "::mlir::tpu::ConvDimensionNumbersAttr::get($_builder.getContext(), $0)";
 }
 

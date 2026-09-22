@@ -644,5 +644,38 @@ class RGBToHSVOpTestBase(test.TestCase):
     self.assertAllClose(numerical_dummy, numerical, atol=1e-4)
 
 
+class AdjustContrastOpTestBase(test.TestCase):
+  """Tests the gradient of tf.image.adjust_contrast.
+
+  The op is affine in the images and linear in the scalar factor, so
+  gradient_checker_v2 validates both slots against the real forward kernel,
+  which is what pins down the spatial reduction axes.
+  """
+
+  def testGradRank3(self):
+    self._check_gradient([4, 5, 3])
+
+  def testGradRank4(self):
+    self._check_gradient([2, 4, 5, 3])
+
+  def testGradRank5(self):
+    self._check_gradient([2, 3, 4, 5, 3])
+
+  def _check_gradient(self, shape):
+    x = np.linspace(0.05, 0.95, num=int(np.prod(shape))).reshape(shape)
+    x = x.astype(np.float32)
+    factor = constant_op.constant(1.3, dtype=dtypes.float32)
+
+    def f(image_tensor, factor_tensor):
+      return image_ops.adjust_contrast(image_tensor, factor_tensor)
+
+    with self.cached_session():
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [constant_op.constant(x), factor]
+      )
+    max_error = gradient_checker_v2.max_error(analytical, numerical)
+    self.assertLess(max_error, 1e-4)
+
+
 if __name__ == '__main__':
   test.main()

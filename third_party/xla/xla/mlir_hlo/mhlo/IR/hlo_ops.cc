@@ -1949,7 +1949,9 @@ void CollectiveBroadcastOp::build(OpBuilder& odsBuilder,
 }
 
 LogicalResult CollectiveBroadcastOp::verify() {
-  return hlo::verifyCollectiveBroadcastOp(getLoc(), getReplicaGroups());
+  return hlo::verifyCollectiveBroadcastOp(getLoc(), (*this)->getOperands(),
+                                          getReplicaGroups(),
+                                          /*hasDynamicRoot=*/false);
 }
 
 //===----------------------------------------------------------------------===//

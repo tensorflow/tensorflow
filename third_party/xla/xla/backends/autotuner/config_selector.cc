@@ -21,33 +21,66 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/config_runner.h"
 
 namespace xla {
 
 absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
     std::vector<ConfigRunner::ConfigProfile>& results,
-    int scratch_bytes_window_size_us) {
+    int scratch_bytes_window_size_us,
+    absl::Span<const autotuner::Backend> excluded_backends,
+    autotuner::Backend preferred_backend) {
+  auto is_excluded = [&](const ConfigRunner::ConfigProfile& result) {
+    return result.config.codegen_backend != nullptr &&
+           absl::c_linear_search(excluded_backends,
+                                 result.config.codegen_backend->backend());
+  };
+
+  auto is_preferred = [&](const ConfigRunner::ConfigProfile& result) {
+    return preferred_backend != autotuner::Backend::UNSPECIFIED_BACKEND &&
+           result.config.codegen_backend != nullptr &&
+           result.config.codegen_backend->backend() == preferred_backend;
+  };
+
+  bool has_preferred_configs =
+      absl::c_any_of(results, [&](const ConfigRunner::ConfigProfile& r) {
+        return !r.failure.has_value() && !is_excluded(r) && is_preferred(r);
+      });
+
+  auto is_eligible = [&](const ConfigRunner::ConfigProfile& r) {
+    return !r.failure.has_value() && !is_excluded(r) &&
+           (!has_preferred_configs || is_preferred(r));
+  };
+
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigRunner::ConfigProfile* best_result = nullptr;
   std::vector<std::string> failures;
   for (ConfigRunner::ConfigProfile& result : results) {
     if (result.failure.has_value()) {
       failures.push_back(result.failure->ToString());
-    } else if (result.duration < min_duration) {
+    } else if (is_excluded(result)) {
+      failures.push_back(absl::StrCat(
+          result.config.ToString(), ": Backend excluded from selection (",
+          autotuner::Backend_Name(result.config.codegen_backend->backend()),
+          ")"));
+    } else if (is_eligible(result) && result.duration < min_duration) {
       min_duration = result.duration;
       best_result = &result;
     }
   }
 
   if (best_result == nullptr) {
-    std::string message = "All configs failed during profiling.";
+    std::string message =
+        "All configs failed during profiling or were excluded from selection.";
     if (!failures.empty()) {
       absl::StrAppend(&message, "\nFailures (", failures.size(), "):\n",
                       absl::StrJoin(failures, "\n"));
@@ -62,7 +95,7 @@ absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
   absl::Duration min_duration_with_optimized_scratch_bytes =
       absl::InfiniteDuration();
   for (ConfigRunner::ConfigProfile& result : results) {
-    if (!result.failure.has_value() && result.duration <= duration_limit) {
+    if (is_eligible(result) && result.duration <= duration_limit) {
       bool current_result_is_better =
           result.scratch_bytes < min_scratch_bytes ||
           (result.scratch_bytes == min_scratch_bytes &&

@@ -290,6 +290,7 @@ ConfigAssigner::Options GetConfigAssignerOptions(
       debug_options.xla_gpu_use_new_autotune_cache_format();
   options.compile_all_supported_configs =
       debug_options.xla_compile_all_supported_configs();
+  options.force_config = debug_options.xla_force_config();
 
   return options;
 }
@@ -297,7 +298,6 @@ ConfigAssigner::Options GetConfigAssignerOptions(
 CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     const DebugOptions& debug_options) {
   CodegenOrchestrator::Options options;
-  options.exclude_cublas_config = !debug_options.xla_gpu_cublas_fallback();
   if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
     options.allow_reg_spills_fn = [](const HloInstruction& instr,
                                      autotuner::Backend backend) {
@@ -314,6 +314,7 @@ CodegenOrchestrator::Options GetCodegenOrchestratorOptions(
     options.allow_reg_spills_fn = [](const HloInstruction&,
                                      autotuner::Backend) { return false; };
   }
+  options.candidate_configs_file = debug_options.xla_candidate_configs_file();
   return options;
 }
 
@@ -335,6 +336,14 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
 Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
                                        bool is_buffer_check_supported) {
   Autotuner::Options autotuner_options;
+  if (!debug_options.xla_gpu_cublas_fallback()) {
+    autotuner_options.excluded_backends.push_back(
+        autotuner::Backend::CUBLASLT_FISSION);
+    autotuner_options.excluded_backends.push_back(
+        autotuner::Backend::HIPBLASLT_FISSION);
+  }
+  autotuner_options.preferred_backend =
+      debug_options.xla_autotuner_preferred_backend();
   autotuner_options.correctness_check_options.enable_correctness_check =
       is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
   autotuner_options.correctness_check_options.relative_tolerance =
@@ -352,8 +361,7 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version) {
   bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0;
+      debug_options.xla_gpu_experimental_disable_binary_libraries();
   bool do_not_autotune_cudnn =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       (do_not_autotune_cublas && !gpu_version.IsRocm());
@@ -365,7 +373,8 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
 
   return [do_not_autotune_cublas, do_not_autotune_cudnn,
-          enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
+          enable_fusion_autotuner,
+          gpu_version](const HloInstruction& instruction) -> bool {
     AutotuneDecision decision = ShouldAssignConfigToInstruction(
         do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
         instruction);
@@ -512,9 +521,8 @@ absl::StatusOr<bool> ConfigAssignerPass::RunImpl(
     ABSL_RETURN_IF_ERROR(
         config_assigner_->AssignConfigs(module, should_assign_config_to_));
   }
-  VLOG(1) << "Config assigner cache stats: hits="
-          << config_assigner_->GetCacheStats().hits
-          << ", misses=" << config_assigner_->GetCacheStats().misses;
+  VLOG(1) << "Config assigner cache stats: "
+          << config_assigner_->GetCacheStats().ToString();
   return true;
 }
 

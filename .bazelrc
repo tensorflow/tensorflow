@@ -76,7 +76,7 @@
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
-common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+common --repo_env=ML_WHEEL_VERSION_SUFFIX="-rc0"
 
 common --incompatible_default_to_explicit_init_py
 
@@ -293,13 +293,13 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 common:cuda12_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 common:cuda12_version --repo_env=HERMETIC_CUDNN_VERSION="9.10.0"
 common:cuda12_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
 common:cuda12_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
 
 common:cuda13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
 common:cuda13_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 common:cuda13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
-common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.29.7"
+common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.30.7"
 common:cuda13_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
 
 common:cuda_version --config=cuda12_version
@@ -578,6 +578,7 @@ common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/wi
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+common:windows_x86_cpu_2022 --features=with_wrapper
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior

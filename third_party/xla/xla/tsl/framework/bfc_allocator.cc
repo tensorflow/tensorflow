@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -526,6 +527,11 @@ void* BFCAllocator::AllocateRawInternal(size_t alignment, size_t num_bytes,
     VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
   }
+  if (ABSL_PREDICT_FALSE(num_bytes > std::numeric_limits<size_t>::max() -
+                                         (kMinAllocationSize - 1))) {
+    VLOG(2) << "allocation size cannot be safely rounded: " << num_bytes;
+    return nullptr;
+  }
   // First, always allocate memory of at least kMinAllocationSize
   // bytes, and always allocate multiples of kMinAllocationSize bytes
   // so all memory addresses are nicely byte aligned.
@@ -887,6 +893,8 @@ void BFCAllocator::FinishChunkAllocation(Chunk* chunk, size_t num_bytes) {
   }
   stats_.peak_bytes_in_use =
       std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+  stats_.peak_allocated_bytes = std::max(
+      stats_.peak_allocated_bytes, stats_.bytes_in_use + stats_.bytes_reserved);
   stats_.largest_alloc_size =
       std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
 
@@ -1609,6 +1617,7 @@ bool BFCAllocator::ClearStats() {
   absl::MutexLock l(mutex_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
+  stats_.peak_allocated_bytes = stats_.bytes_in_use + stats_.bytes_reserved;
   stats_.largest_alloc_size = 0;
   return true;
 }

@@ -20,7 +20,7 @@ import jax
 import jax.experimental.pallas as pl
 import jax.experimental.pallas.tpu as pltpu
 import jax.numpy as jnp
-from xla.benchmarks.dma_microbenchmarks import memory_base  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
 _VMEM_DMA_SIZE_KIB = flags.DEFINE_integer(
@@ -37,11 +37,6 @@ _NUMBER_OF_DMAS = flags.DEFINE_integer(
     "number_of_dmas",
     default=16,
     help="Number of overlapping DMAs running in parallel. Default: 16",
-)
-_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
-    "number_of_measurements",
-    default=5,
-    help="Number of measurements to take. Default: 5",
 )
 
 
@@ -77,7 +72,6 @@ class LocalDmaBenchmarks(memory_base.MemoryBenchmarks):
         )
 
     self.num_dmas = _NUMBER_OF_DMAS.value
-    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
 
   def _dma_bandwidth_test(
       self, kernel_fn, dma_size_kib, memory_space, num_dmas=1

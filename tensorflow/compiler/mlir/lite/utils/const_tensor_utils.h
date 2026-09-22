@@ -72,16 +72,12 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
 
 // Get the size of the type in bits. The type can be ComplexType, FloatType,
 // IntegerType, QuantizedType, or ShapeType of other supported types.
-//
-// Sub-byte types, e.g. qu4 and i2, are treated as a full i8.
 int64_t GetSizeInBits(mlir::ShapedType shaped_type);
 int64_t GetSizeInBits(mlir::Type type);
 int64_t GetSizeInBits(mlir::quant::QuantizedType quant_type);
 
-// Get the size of the type in bytes.
-//
-// Sub-byte element types, e.g. qu4 and i2, are treated as a full i8.
-// e.g. GetSizeInBytes(tensor<4xi2>) == 4, instead of 1.
+// Get the size of the type in bytes (rounded up for sub-byte types).
+// e.g. GetSizeInBytes(tensor<4xi2>) == 1.
 int64_t GetSizeInBytes(mlir::Type type);
 
 // Performs an integer divide and checks that the remainder is zero.

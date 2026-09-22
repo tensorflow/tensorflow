@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 
 _USE_PROFILER = flags.DEFINE_bool(
@@ -59,7 +59,7 @@ def str_to_dtype(dtype_str: str) -> jnp.dtype:
   """Converts a string to a JAX/NumPy dtype."""
   if dtype_str not in STR_TO_DTYPE_MAPPING:
     raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return STR_TO_DTYPE_MAPPING[dtype_str]
+  return STR_TO_DTYPE_MAPPING[dtype_str]  # pyrefly: ignore[bad-return]
 
 
 DTYPE_TO_STR_MAPPING = immutabledict.immutabledict(
@@ -238,8 +238,30 @@ class Benchmark(abc.ABC):
     return profiler_results
 
 
+@dataclasses.dataclass(frozen=True, repr=False)
 class BenchmarkConfig(abc.ABC):
   """Base class for benchmark configs."""
+
+  def as_dict(self) -> dict[str, Any]:
+    """Returns a dictionary representation of the config."""
+
+    def _is_dtype(val):
+      try:
+        jnp.dtype(val)
+        return True
+      except (TypeError, ValueError):
+        return False
+
+    return {
+        k: dtype_to_str(v) if _is_dtype(v) else v
+        for k, v in dataclasses.asdict(self).items()
+    }
+
+  def __repr__(self) -> str:
+    return (
+        f"{self.__class__.__name__}"
+        f"({', '.join(f'{k}={v!r}' for k, v in self.as_dict().items())})"
+    )
 
   @abc.abstractmethod
   def get_benchmark(self) -> Benchmark:

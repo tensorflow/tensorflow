@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
@@ -82,13 +83,10 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/testing_utils.h"
 #include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -104,8 +102,6 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 constexpr float kBytesPerSecond = 100;
-constexpr absl::string_view kTestModeLabel =
-    "xla::memory_space_assignment::test_mode";
 
 const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
@@ -710,6 +706,51 @@ TEST_F(MemorySpaceAssignmentTest, ViewExtendedUseTimeWalksTransitiveReaders) {
   EXPECT_EQ(
       ViewExtendedTransitiveUseTime(viewbc, /*view_color=*/5, only_viewbc),
       schedule.at(viewbc));
+}
+
+TEST_F(MemorySpaceAssignmentTest, ViewUsePrefetchDeadlineClampedToViewTime) {
+  // A view use extends the allocation end time through the view's transitive
+  // readers (`consumer` below), but a prefetched copy is materialized right
+  // before the view instruction itself. The prefetch deadline must therefore
+  // be the view's own time, not the extended reader time: with the extended
+  // deadline the picker may place the copy interval entirely after the
+  // c0/c1/c2 chain below has freed the heap, while the copy instructions
+  // actually run before `view`, inside the chain's live range, and the
+  // verifier fails with a chunk overlap.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[8]{0} parameter(0)
+    p1 = f32[32]{0} parameter(1)
+    c0 = f32[32]{0} negate(p1)
+    view = f32[8]{0:S(5)} custom-call(p0), custom_call_target="tpu_get_view"
+    viewbc = f32[8]{0:S(5)} bitcast(view)
+    c1 = f32[32]{0} negate(c0)
+    c2 = f32[32]{0} negate(c1)
+    cs = f32[8]{0} slice(c2), slice={[0:8]}
+    d0 = f32[8]{0} negate(cs)
+    d1 = f32[8]{0} negate(d0)
+    d2 = f32[8]{0} negate(d1)
+    consumer = f32[8]{0} add(viewbc, d2)
+    ROOT t = (f32[8]{0}, f32[8]{0}) tuple(consumer, d2)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.dus_view_color = 5;
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+      /*min_overlap_count=*/2, /*max_overlap_count=*/10);
+  ASSERT_OK(AssignMemorySpaceAndReturnStatus(module.get(), std::move(options),
+                                             /*buffer_interval_compare=*/{},
+                                             &prefetch_interval_picker)
+                .status());
+  // The c0/c1/c2 chain keeps the whole heap busy across `view`, so no legal
+  // prefetch window exists: the base must stay in default memory.
+  HloInstruction* view = FindInstruction(module.get(), "view");
+  ASSERT_NE(view, nullptr);
+  EXPECT_THAT(view->operand(0), op::Parameter(0));
 }
 
 TEST_F(MemorySpaceAssignmentTest,
@@ -1507,8 +1548,8 @@ ENTRY entry {
   options_result_modifier.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value_to_update->defining_instruction()
-                    ->name() == "p0" &&
+        if (request.allocation_value_to_update->position()
+                    .instruction->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
           result = AllocationResult::kFailRequiresUncommit;
         }
@@ -1530,7 +1571,7 @@ ENTRY entry {
   options_request_modifier.max_retries = 1;
   options_request_modifier
       .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
-    if (request.allocation_value_to_update->defining_instruction()->name() ==
+    if (request.allocation_value_to_update->position().instruction->name() ==
             "p0" &&
         request.use->hlo_use.instruction->name() == "add0") {
       // Schedule the copy-done before negate4 (scheduled at 6).
@@ -1604,7 +1645,7 @@ ENTRY entry {
   options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
           result = AllocationResult::kFailRequiresUncommit;
@@ -2434,6 +2475,529 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
   EXPECT_THAT(sequence.instructions()[2], op::CopyStart());
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchExactTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        after_instruction { instruction_name_regex: ".*negate.3.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+  // Ensure the CopyStart is scheduled after negate.3 (schedule index 6).
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[0], op::Parameter(0));
+  EXPECT_THAT(sequence.instructions()[1], op::Parameter(1));
+  EXPECT_THAT(sequence.instructions()[5], op::Negate());
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+  EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchLogicalTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 4 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[5], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchUnsatisfiableFails) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate1, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 0 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  InstructionHoister instruction_hoister;
+  CHECK_OK(instruction_hoister.Run(module.get()).status());
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  auto status_or = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::move(options), /*buffer_interval_compare=*/{},
+      &prefetch_interval_picker);
+  EXPECT_FALSE(status_or.ok());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPinInAlternateMemory) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate1, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p1.*" }
+      pin_in_alternate_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // p1 is pinned in alternate memory, so no copy allocation is created and
+  // add consumes p1 directly.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictKeepInDefaultMemory) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  // Strictly keep p1 in default memory, preventing prefetch.
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // Without override, p1 would be prefetched via AsyncCopy.
+  // With keep_in_default_memory, add consumes Parameter(1) directly.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictKeepInDefaultMemoryDefiningPosition) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p1.*" }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       PositionMatcherDoesNotMatchConsumerInstruction) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  // Matching ".*add.*" with HloPositionMatcher should ONLY match buffers
+  // PRODUCED by add, NOT buffers CONSUMED by add (like p1).
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*add.*" }
+      keep_in_default_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // Since p1's defining position is p1 (not add), it is NOT kept in default
+  // memory and gets prefetched into alternate memory space.
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchBeforeInstructionSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        before_instruction { instruction_name_regex: ".*negate.4.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchExactTimeWithStrictBool) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch { logical_time: 4 strict_timing: true }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[5], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPrefetchCostAnalysisExactTimeSuccess) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_operand_filter { instruction_name_regex: ".*add.*" operand_number: 1 }
+      prefetch {
+        after_instruction { instruction_name_regex: ".*negate.3.*" }
+        strict_timing: true
+      }
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
+
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(computation);
+  EXPECT_THAT(sequence.instructions()[6], op::CopyStart());
+}
+
+TEST_F(MemorySpaceAssignmentTest, StrictPinInAlternateMemoryFailsOnOom) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});  // 24 bytes
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, negate0});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 10;
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: ".*p0.*" }
+      pin_in_alternate_memory {}
+    })pb";
+  ASSERT_OK_AND_ASSIGN(options.msa_tensor_overrides,
+                       ParseTextProto<MsaTensorOverrides>(text_proto));
+
+  InstructionHoister instruction_hoister;
+  CHECK_OK(instruction_hoister.Run(module.get()).status());
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  auto status_or = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::move(options), /*buffer_interval_compare=*/{},
+      &prefetch_interval_picker);
+  EXPECT_FALSE(status_or.ok());
 }
 
 TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
@@ -7816,11 +8380,11 @@ TEST_F(MemorySpaceAssignmentTest,
   // default memory, and creates a new one which is wrong.
   bool marked_inefficient = false;
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
+    if (absl::c_find(positions,
                      HloPosition{FindInstruction(module.get(), "while1"),
-                                 {1}}) != defining_positions.end() &&
+                                 {1}}) != positions.end() &&
         !marked_inefficient) {
       LOG(INFO) << "Marking the use inefficient.";
       marked_inefficient = true;
@@ -7857,11 +8421,10 @@ TEST_F(MemorySpaceAssignmentTest, InefficientAllocationRetryWithoutProgress) {
   Options options = DefaultMemorySpaceOptions();
   // The hook flags the add instruction's use of p0 as inefficient.
   options.get_inefficient_allocation_sites_fn =
-      [&](absl::Span<HloPosition> defining_positions)
+      [&](absl::Span<HloPosition> positions)
       -> std::vector<std::variant<HloPosition, HloUse>> {
-    if (absl::c_find(defining_positions,
-                     HloPosition{FindInstruction(module.get(), "p0"), {}}) !=
-        defining_positions.end()) {
+    if (absl::c_find(positions, HloPosition{FindInstruction(module.get(), "p0"),
+                                            {}}) != positions.end()) {
       return {HloUse{FindInstruction(module.get(), "add"), 1}};
     }
     return {};
@@ -17285,7 +17848,7 @@ ENTRY entry {
   memory_space_options.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result,
          int64_t retry_number) {
-        if (request.allocation_value->defining_instruction()->name() ==
+        if (request.allocation_value->position().instruction->name() ==
                 "negate0" &&
             retry_number <= 0 && result == AllocationResult::kSuccess) {
           result = AllocationResult::kFailOutOfMemory;
@@ -18118,6 +18681,205 @@ ENTRY entry {
       module->entry_computation()->GetInstructionWithName("async-done");
   EXPECT_EQ(async_done->shape().tuple_shapes(0).layout().memory_space(),
             kDefaultMemorySpace);
+}
+
+// Tests that FindAliases correctly maps operands to parameters for async-start,
+// async-update, call, and conditional instructions:
+// 1. Operands bound with async-start map 1-to-1 to initial parameters.
+// 2. Operand 0 of async-update (the async context token) does not alias
+//    parameters.
+// 3. Operands bound with async-update map 1-to-1 to subsequent parameters,
+//    offset by the number of previously bound operands.
+// 4. Operands of synchronous call map 1-to-1 to callee parameters by operand
+//    index, and operands 1..N of conditional map to branch_computation(i - 1)
+//    parameter 0.
+TEST_F(MemorySpaceAssignmentTest, FindAliasesAsyncStartAndAsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  p2 = f32[4]{0} parameter(2)
+  p3 = f32[4]{0} parameter(3)
+  ROOT tuple = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(p0, p1, p2, p3)
+}
+
+call_computation {
+  cp0 = f32[4]{0} parameter(0)
+  cp1 = f32[4]{0} parameter(1)
+  ROOT call_tuple = (f32[4]{0}, f32[4]{0}) tuple(cp0, cp1)
+}
+
+branch0_computation {
+  ROOT bp0 = f32[4]{0} parameter(0)
+}
+
+branch1_computation {
+  ROOT bp1 = f32[4]{0} parameter(0)
+}
+
+ENTRY entry {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+  param2 = f32[4]{0} parameter(2)
+  param3 = f32[4]{0} parameter(3)
+  param_pred = pred[] parameter(4)
+  async-start = ((f32[4]{0}, f32[4]{0}), (), s32[]) async-start(param0, param1), calls=async_computation
+  async-update = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (), s32[]) async-update(async-start, param2, param3), calls=async_computation
+  async-done = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) async-done(async-update), calls=async_computation
+  sync-call = (f32[4]{0}, f32[4]{0}) call(param0, param1), to_apply=call_computation
+  cond = f32[4]{0} conditional(param_pred, param2, param3), true_computation=branch0_computation, false_computation=branch1_computation
+  ROOT root = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (f32[4]{0}, f32[4]{0}), f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(async-done, sync-call, cond, param0, param1, param2, param3)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  HloInstruction* param2 = FindInstruction(module.get(), "param2");
+  HloInstruction* param3 = FindInstruction(module.get(), "param3");
+  HloInstruction* pred = FindInstruction(module.get(), "param_pred");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  HloInstruction* sync_call = FindInstruction(module.get(), "sync-call");
+  HloInstruction* cond = FindInstruction(module.get(), "cond");
+
+  HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  HloInstruction* p0 = async_comp->parameter_instruction(0);
+  HloInstruction* p1 = async_comp->parameter_instruction(1);
+  HloInstruction* p2 = async_comp->parameter_instruction(2);
+  HloInstruction* p3 = async_comp->parameter_instruction(3);
+
+  HloComputation* call_comp =
+      module->GetComputationWithName("call_computation");
+  HloInstruction* cp0 = call_comp->parameter_instruction(0);
+  HloInstruction* cp1 = call_comp->parameter_instruction(1);
+
+  HloComputation* branch0_comp =
+      module->GetComputationWithName("branch0_computation");
+  HloInstruction* bp0 = branch0_comp->parameter_instruction(0);
+  HloComputation* branch1_comp =
+      module->GetComputationWithName("branch1_computation");
+  HloInstruction* bp1 = branch1_comp->parameter_instruction(0);
+
+  std::vector<AllocationValue> allocation_values;
+  // Allocation values for parameters of the async, call, and branch
+  // computations.
+  allocation_values.emplace_back(nullptr, HloPosition{p0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p2, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p3, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp1, {}}, 16);
+
+  // Allocation values for caller operands passed to async-start (operands 0 and
+  // 1) and sync-call (operands 0 and 1).
+  AllocationValue val_param0(nullptr, HloPosition{param0, {}}, 16);
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{async_start, 0}, 1});
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{sync_call, 0}, 4});
+  allocation_values.push_back(std::move(val_param0));
+
+  AllocationValue val_param1(nullptr, HloPosition{param1, {}}, 16);
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{async_start, 1}, 1});
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{sync_call, 1}, 4});
+  allocation_values.push_back(std::move(val_param1));
+
+  // Allocation values for async-start bound operand elements ({0, 0} and
+  // {0, 1}) consumed as operand 0 of async-update.
+  AllocationValue val_async_start_0(nullptr, HloPosition{async_start, {0, 0}},
+                                    16);
+  val_async_start_0.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 0}}, 2});
+  allocation_values.push_back(std::move(val_async_start_0));
+
+  AllocationValue val_async_start_1(nullptr, HloPosition{async_start, {0, 1}},
+                                    16);
+  val_async_start_1.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 1}}, 2});
+  allocation_values.push_back(std::move(val_async_start_1));
+
+  // Allocation values for caller operands passed to async-update (operands 1
+  // and 2) and conditional (operands 1 and 2).
+  AllocationValue val_param2(nullptr, HloPosition{param2, {}}, 16);
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{async_update, 1}, 2});
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{cond, 1}, 5});
+  allocation_values.push_back(std::move(val_param2));
+
+  AllocationValue val_param3(nullptr, HloPosition{param3, {}}, 16);
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{async_update, 2}, 2});
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{cond, 2}, 5});
+  allocation_values.push_back(std::move(val_param3));
+
+  AllocationValue val_pred(nullptr, HloPosition{pred, {}}, 1);
+  val_pred.uses().push_back(AllocationValue::Use{HloUse{cond, 0}, 5});
+  allocation_values.push_back(std::move(val_pred));
+
+  // Allocation values for async-update bound operand elements ({0, 0}, {0, 1},
+  // {0, 2}, and {0, 3}) consumed by async-done.
+  for (int64_t i = 0; i < 4; ++i) {
+    AllocationValue val_async_update(nullptr, HloPosition{async_update, {0, i}},
+                                     16);
+    val_async_update.uses().push_back(
+        AllocationValue::Use{HloUse{async_done, 0, {0, i}}, 3});
+    allocation_values.push_back(std::move(val_async_update));
+  }
+
+  MsaAlgorithm::FindAliasesForTesting(&allocation_values);
+
+  auto find_val = [&](const HloInstruction* inst,
+                      ShapeIndex index = {}) -> const AllocationValue& {
+    for (const auto& v : allocation_values) {
+      if (v.position().instruction == inst && v.position().index == index) {
+        return v;
+      }
+    }
+    LOG(FATAL) << "Not found: " << inst->name() << " " << index.ToString();
+  };
+
+  // 1. Verify 1-to-1 mapping for async-start operands:
+  // param0 (operand 0) aliases {async_start, {0, 0}} and callee parameter p0.
+  EXPECT_THAT(find_val(param0).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 0}},
+                                     HloPosition{p0, {}}));
+  // param1 (operand 1) aliases {async_start, {0, 1}} and callee parameter p1.
+  EXPECT_THAT(find_val(param1).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 1}},
+                                     HloPosition{p1, {}}));
+
+  // 2. Verify operand 0 of async-update (the async context tuple) aliases
+  // matching elements in async_update, and does not alias any callee parameter:
+  EXPECT_THAT(find_val(async_start, {0, 0}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 0}}));
+  EXPECT_THAT(find_val(async_start, {0, 1}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 1}}));
+
+  // 3. Verify late-bound parameter offset calculation for async-update
+  // operands: param2 (operand 1 of async-update) aliases {async_update, {0, 2}}
+  // and callee parameter p2 (1 - 1 + 2 = 2).
+  EXPECT_THAT(find_val(param2).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 2}},
+                                     HloPosition{p2, {}}));
+  // param3 (operand 2 of async-update) aliases {async_update, {0, 3}} and
+  // callee parameter p3 (2 - 1 + 2 = 3).
+  EXPECT_THAT(find_val(param3).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 3}},
+                                     HloPosition{p3, {}}));
+
+  // 4. Verify 1-to-1 mapping for synchronous call and conditional operands:
+  EXPECT_THAT(find_val(param0).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp0, {}}));
+  EXPECT_THAT(find_val(param1).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp1, {}}));
+  EXPECT_THAT(find_val(pred).uses()[0].aliases, ::testing::IsEmpty());
+  EXPECT_THAT(find_val(param2).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp0, {}}));
+  EXPECT_THAT(find_val(param3).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp1, {}}));
 }
 
 // Tests a case where some operands bound in async-start/update are allowed
@@ -18996,6 +19758,255 @@ ENTRY main {
       },
       preset_assignments.get(), alias_analysis.get()));
 }
+
+TEST_F(MemorySpaceAssignmentTest, AsyncBarrierAliasingCycle) {
+  absl::string_view hlo_string = R"hlo(
+HloModule sc_async_barrier_aliasing, is_scheduled=true
+
+  sc_custom_call_comp {
+    ROOT %custom_call = (f32[32,128,8]{1,2,0}, u32[], u32[]) custom-call(),
+      custom_call_target="SparseCoreBarrierStart",
+      custom_call_has_side_effect=true
+  }
+
+  sc_main {
+    %input = f32[32,128,8]{1,2,0} parameter(0)
+    %output = f32[32,128,8]{1,2,0} parameter(1)
+    %send_sflag = u32[] parameter(2)
+    %recv_sflag = u32[] parameter(3)
+    ROOT %a2a-result = f32[32,128,8]{1,2,0} custom-call(%input, %output, %send_sflag, %recv_sflag),
+      custom_call_target="SparseCoreBarrierDoneAndCollective",
+      output_to_operand_aliasing={{}: (1, {})}
+  }
+
+ENTRY %Comp_spmd {
+  %p0 = f32[32,128,8]{1,2,0} parameter(0)
+  %p1 = f32[32,128,8]{1,2,0} parameter(1)
+
+  %sc_custom_call_start = ((), (f32[32,128,8]{1,2,0}, u32[], u32[]), s32[]) call-start(),
+    to_apply=%sc_custom_call_comp
+  %sc_custom_call_done = (f32[32,128,8]{1,2,0}, u32[], u32[]) call-done(%sc_custom_call_start)
+  %send_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=1
+  %recv_sflag = u32[] get-tuple-element(%sc_custom_call_done), index=2
+
+  %sc_start = ((f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}, u32[], u32[]), f32[32,128,8]{1,2,0}, s32[])
+    call-start(%p0, %p1, %send_sflag, %recv_sflag),
+      to_apply=%sc_main,
+      output_to_operand_aliasing={
+        {0,1}: (1, {}), // update output buffer at {0,0}
+        {0,2}: (2, {}), // update send_sflag
+        {0,3}: (3, {}), // update recv_sflag
+        {1}: (1, {})}   // update output buffer at {1}
+  %sc_output = f32[32,128,8]{1,2,0} call-done(%sc_start)
+  %neg = f32[32,128,8]{1,2,0} negate(%sc_output)
+
+  ROOT %root = (f32[32,128,8]{1,2,0}, f32[32,128,8]{1,2,0}) tuple(%neg, %p0)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncPipelinedWhileAlternateMemoryPositionSplashAttention) {
+  // Realistic HLO pattern from Splash Attention forward pass with async
+  // pipelining enabled (xla_disable_while_loop_copies="true").
+  // DynamicSlice prefetches Key/Value slices from large HBM base buffers into
+  // alternate memory (VMEM).
+  // DynamicUpdateSlice writes Output accumulator slices from VMEM into a large
+  // HBM base buffer.
+  const absl::string_view hlo_string = R"hlo(
+HloModule SplashAttentionPipelinedWhile, is_scheduled=true
+
+%async_ds_comp (base: bf16[4,384,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[1,128,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %i0 = s32[] parameter(1)
+  %i1 = s32[] parameter(2)
+  %i2 = s32[] parameter(3)
+  ROOT %ds = bf16[1,128,128]{2,1,0} dynamic-slice(%base, %i0, %i1, %i2), dynamic_slice_sizes={1,128,128}
+}
+
+%async_dus_comp (base: bf16[4,384,128], update: bf16[1,128,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[4,384,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %update = bf16[1,128,128]{2,1,0} parameter(1)
+  %i0 = s32[] parameter(2)
+  %i1 = s32[] parameter(3)
+  %i2 = s32[] parameter(4)
+  ROOT %dus = bf16[4,384,128]{2,1,0} dynamic-update-slice(%base, %update, %i0, %i1, %i2)
+}
+
+%WhileBody (body_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[])) {
+  %body_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%body_param), index=0
+  %c1 = s32[] constant(1)
+  %next_iter = s32[] add(%iter, %c1)
+  %ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=1
+  %slice_data = bf16[1,128,128]{2,1,0} async-done(%ds_state), calls=%async_ds_comp
+  %dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=2
+  %dus_done = bf16[4,384,128]{2,1,0} async-done(%dus_state), calls=%async_dus_comp
+  %ds_contexts = (bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]) get-tuple-element(%ds_state), index=0
+  %k_base = bf16[4,384,128]{2,1,0} get-tuple-element(%ds_contexts), index=0
+  %c0 = s32[] constant(0)
+  %next_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %next_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%dus_done, %slice_data, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  ROOT %root_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%next_iter, %next_ds, %next_dus)
+}
+
+%WhileCond (cond_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> pred[] {
+  %cond_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%cond_param), index=0
+  %limit = s32[] constant(16)
+  ROOT %cmp = pred[] compare(%iter, %limit), direction=LT
+}
+
+ENTRY %Entry (k_base: bf16[4,384,128], o_base: bf16[4,384,128], update_slice: bf16[1,128,128]) -> (bf16[1,128,128], bf16[4,384,128]) {
+  %k_base = bf16[4,384,128]{2,1,0} parameter(0)
+  %o_base = bf16[4,384,128]{2,1,0} parameter(1)
+  %update_slice = bf16[1,128,128]{2,1,0} parameter(2)
+  %c0 = s32[] constant(0)
+  %init_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %init_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%o_base, %update_slice, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  %init_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%c0, %init_ds, %init_dus)
+  %while = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) while(%init_tuple), condition=%WhileCond, body=%WhileBody, frontend_attributes={xla_disable_while_loop_copies="true"}
+  %final_ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%while), index=1
+  %final_slice = bf16[1,128,128]{2,1,0} async-done(%final_ds_state), calls=%async_ds_comp
+  %final_dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%while), index=2
+  %final_dus = bf16[4,384,128]{2,1,0} async-done(%final_dus_state), calls=%async_dus_comp
+  ROOT %out_tuple = (bf16[1,128,128]{2,1,0}, bf16[4,384,128]{2,1,0}) tuple(%final_slice, %final_dus)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* while_inst =
+      module->entry_computation()->GetInstructionWithName("while");
+  ASSERT_NE(while_inst, nullptr);
+  HloInstruction* body_param =
+      while_inst->while_body()->parameter_instruction(0);
+  ASSERT_NE(body_param, nullptr);
+  HloInstruction* root_tuple = while_inst->while_body()->root_instruction();
+  ASSERT_NE(root_tuple, nullptr);
+
+  // 1. Verify wrapped opcode inspection for the pipelined while loop:
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/1,
+                                                *alias_analysis),
+            HloOpcode::kDynamicSlice);
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/2,
+                                                *alias_analysis),
+            HloOpcode::kDynamicUpdateSlice);
+
+  // 2. DynamicSlice tuple index 1:
+  // Base tensor {1, 0, 0} must remain in default memory (false).
+  // Prefetched slice output {1, 1} resides in alternate memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 1}}, *alias_analysis));
+
+  // 3. DynamicUpdateSlice tuple index 2:
+  // Base tensor {2, 0, 0} and dynamic-update-slice output {2, 1} must remain
+  // in default memory (false). Update slice {2, 0, 1} resides in alternate
+  // memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 1}}, *alias_analysis));
+}
+
+// Test subclass of MsaAlgorithm that simulates an empty candidate list from
+// FindChunkCandidates.
+class EmptyChunkCandidatesMsaAlgorithm : public MsaAlgorithm {
+ public:
+  using MsaAlgorithm::FindBestChunkCandidates;
+  using MsaAlgorithm::MsaAlgorithm;
+
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset) const override {
+    return {};
+  }
+};
+
+// Tests that FindBestChunkCandidates handles empty chunk candidates safely
+// without dereferencing past-the-end iterators (preventing ASAN container
+// overflows).
+TEST_F(MemorySpaceAssignmentTest, FindBestChunkCandidatesEmptyChunkCandidates) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0});
+  ASSERT_OK(module->set_schedule(schedule));
+
+  AllocationSequence allocations;
+  Options options = DefaultMemorySpaceOptions();
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                       HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                         module->entry_computation()));
+
+  EmptyChunkCandidatesMsaAlgorithm algorithm(module.get(), &allocations,
+                                             options, *alias_analysis,
+                                             &alias_info_, *hlo_live_range);
+
+  AllocationRequest request;
+  request.end_time = 10;
+  AliasedOffset preferred_offset{/*offset=*/16};
+
+  GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval buffer_interval;
+  buffer_interval.buffer = nullptr;
+  buffer_interval.size = 16;
+  buffer_interval.start = 0;
+  buffer_interval.end = 10;
+  buffer_interval.need_allocation = true;
+
+  using SlicedBufferInterval =
+      GlobalDecreasingSizeBestFitHeap<HloValue>::SlicedBufferInterval;
+  auto sliced_interval =
+      SlicedBufferInterval::CreateMutableInterval(buffer_interval);
+
+  // Without the bounds check in FindBestChunkCandidates, an empty
+  // chunk_candidates vector results in absl::c_min_element dereferencing an
+  // end() iterator, triggering an AddressSanitizer container-overflow/crash.
+  std::vector<Chunk> result = algorithm.FindBestChunkCandidates(
+      request, &preferred_offset, &sliced_interval);
+  EXPECT_THAT(result, ::testing::IsEmpty());
+}
+
 }  // namespace
 
 }  // namespace memory_space_assignment

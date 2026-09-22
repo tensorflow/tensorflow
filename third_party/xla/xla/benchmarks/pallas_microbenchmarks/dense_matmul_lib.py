@@ -24,17 +24,19 @@ from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import flag_utils  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.core import platform_info  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model  # pylint: disable=g-direct-tensorflow-import
-from xla.benchmarks.pallas_microbenchmarks import memory_utils  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import flag_utils
+from xla.benchmarks.core import platform_info
+from xla.benchmarks.pallas_microbenchmarks import cost_model as pallas_cost_model
+from xla.benchmarks.pallas_microbenchmarks import memory_utils
 
 Benchmark = benchmark.Benchmark
 InputSpec = benchmark.InputSpec
 
 
 _KERNEL_NAME_TEMPLATE = "matmul_{m}_{k}_{n}_{lhs_dtype}_{rhs_dtype}_{out_dtype}"
+
+_NO_ACCUMULATORS_DEFAULT_SUBBLOCK_M = 256
 
 
 def get_default_subblock_m(
@@ -46,7 +48,12 @@ def get_default_subblock_m(
   if num_accumulators > 0:
     num_sublanes, _ = pinfo.vreg_size
     return num_sublanes * num_accumulators
-  return None
+  else:
+    # Accumulation occurs in vregs + vmem, so there may be additional spills
+    # that the cost model doesn't account for if there are too many
+    # accumulations in-flight. So we set subblock_m to a relatively low value
+    # to avoid this.
+    return _NO_ACCUMULATORS_DEFAULT_SUBBLOCK_M
 
 
 def select_window(
@@ -94,7 +101,7 @@ def select_window(
   return int(block_m), int(block_k), int(block_n)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True, repr=False)
 class DenseMatmulConfig(benchmark.BenchmarkConfig):
   """Config for Pallas dense matmul benchmark.
 

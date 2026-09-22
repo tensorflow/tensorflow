@@ -1,0 +1,129 @@
+// RUN: fusion_to_tensorir --hlo-to-tensorir --split-input-file %s | FileCheck %s
+
+// CHECK-LABEL: @test_float_extend
+// CHECK: convert %{{.*}} : tensor<8x16xf32> -> tensor<8x16xf64>
+
+test_float_extend {
+  %p0 = f32[8,16] parameter(0)
+  %out = f64[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_truncate
+// CHECK: convert %{{.*}} : tensor<8x16xf32> -> tensor<8x16xf16>
+
+test_float_truncate {
+  %p0 = f32[8,16] parameter(0)
+  %out = f16[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_to_signed
+// CHECK: convert %{{.*}} : tensor<8x16xf32> -> tensor<8x16xsi32>
+
+test_float_to_signed {
+  %p0 = f32[8,16] parameter(0)
+  %out = s32[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_to_unsigned
+// CHECK: convert %{{.*}} : tensor<8x16xf32> -> tensor<8x16xui32>
+
+test_float_to_unsigned {
+  %p0 = f32[8,16] parameter(0)
+  %out = u32[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_float_to_pred
+// CHECK: convert %{{.*}} : tensor<8x16xf32> -> tensor<8x16xi1>
+
+test_float_to_pred {
+  %p0 = f32[8,16] parameter(0)
+  %out = pred[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_signed_extend
+// CHECK: convert %{{.*}} : tensor<8x16xsi16> -> tensor<8x16xsi64>
+
+test_signed_extend {
+  %p0 = s16[8,16] parameter(0)
+  %out = s64[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_signed_truncate
+// CHECK: convert %{{.*}} : tensor<8x16xsi16> -> tensor<8x16xsi8>
+
+test_signed_truncate {
+  %p0 = s16[8,16] parameter(0)
+  %out = s8[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_signed_to_float
+// CHECK: convert %{{.*}} : tensor<8x16xsi16> -> tensor<8x16xbf16>
+
+test_signed_to_float {
+  %p0 = s16[8,16] parameter(0)
+  %out = bf16[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_signed_to_pred
+// CHECK: convert %{{.*}} : tensor<8x16xsi16> -> tensor<8x16xi1>
+
+test_signed_to_pred {
+  %p0 = s16[8,16] parameter(0)
+  %out = pred[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_unsigned_extend
+// CHECK: convert %{{.*}} : tensor<8x16xui16> -> tensor<8x16xui64>
+
+test_unsigned_extend {
+  %p0 = u16[8,16] parameter(0)
+  %out = u64[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_unsigned_truncate
+// CHECK: convert %{{.*}} : tensor<8x16xui16> -> tensor<8x16xui8>
+
+test_unsigned_truncate {
+  %p0 = u16[8,16] parameter(0)
+  %out = u8[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_unsigned_to_float
+// CHECK: convert %{{.*}} : tensor<8x16xui16> -> tensor<8x16xbf16>
+
+test_unsigned_to_float {
+  %p0 = u16[8,16] parameter(0)
+  %out = bf16[8,16] convert(%p0)
+}
+
+// -----
+
+// CHECK-LABEL: @test_unsigned_to_pred
+// CHECK: convert %{{.*}} : tensor<8x16xui16> -> tensor<8x16xi1>
+
+test_unsigned_to_pred {
+  %p0 = u16[8,16] parameter(0)
+  %out = pred[8,16] convert(%p0)
+}

@@ -76,6 +76,7 @@ from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
@@ -422,11 +423,7 @@ class _EagerTensorBase(
       raise core._status_to_exception(e) from None
 
   def __array__(self, dtype=None) -> np.ndarray:
-    a = self._numpy()
-    if not dtype:
-      return cast(np.ndarray, a)
-
-    return np.array(a, dtype=dtype)
+    return numpy_compat.np_asarray(self._numpy(), dtype=dtype)
 
   def __dlpack__(
       self, *, stream=None, max_version=None, dl_device=None, copy=None  # pylint: disable=redefined-outer-name
@@ -696,6 +693,7 @@ class _EagerTensorBase(
   def __tf_tensor__(
       self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
       ) -> tensor_lib.Tensor:
+    tensor = super().__tf_tensor__(dtype, name)
     if not context.executing_eagerly():
       graph = get_default_graph()
       if not graph.building_function:
@@ -705,7 +703,7 @@ class _EagerTensorBase(
                 "building a function.",
                 name=name))
       return graph.capture(self, name=name)
-    return super().__tf_tensor__(dtype, name)
+    return tensor
 
   def _capture_as_const(self, name) -> Optional[tensor_lib.Tensor]:
     """Capture the EagerTensor to a graph constant tensor."""

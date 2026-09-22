@@ -20,10 +20,10 @@ func.func @elementwise_add_to_vector(
     %rhs : tensor<8x1024xf32>) -> tensor<8x1024xf32> {
   %out = tensor.empty() : tensor<8x1024xf32>
 
-  %intermediate = linalg.elementwise kind=#linalg.elementwise_kind<mul>
+  %intermediate = linalg.elementwise <mul>
     ins(%lhs, %rhs : tensor<8x1024xf32>, tensor<8x1024xf32>)
     outs(%out : tensor<8x1024xf32>) -> tensor<8x1024xf32>
-  %result = linalg.elementwise kind=#linalg.elementwise_kind<add>
+  %result = linalg.elementwise <add>
     ins(%intermediate, %rhs : tensor<8x1024xf32>, tensor<8x1024xf32>)
     outs(%out : tensor<8x1024xf32>) -> tensor<8x1024xf32>
   return %result : tensor<8x1024xf32>

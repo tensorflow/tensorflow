@@ -21,10 +21,10 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 
-from xla.benchmarks.core import benchmark  # pylint: disable=g-direct-tensorflow-import
+from xla.benchmarks.core import benchmark
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+@dataclasses.dataclass(frozen=True, kw_only=True, repr=False)
 class JaxMatmulConfig(benchmark.BenchmarkConfig):
   """Config for JAX matmul benchmark.
 
@@ -41,9 +41,9 @@ class JaxMatmulConfig(benchmark.BenchmarkConfig):
   m: int = 1024
   k: int = 1024
   n: int = 1024
-  lhs_dtype: jnp.dtype = jnp.bfloat16
-  rhs_dtype: jnp.dtype = jnp.bfloat16
-  out_dtype: jnp.dtype = jnp.bfloat16
+  lhs_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+  rhs_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+  out_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
 
   def get_benchmark(self) -> benchmark.Benchmark:
     return JaxMatmulBenchmark(self)

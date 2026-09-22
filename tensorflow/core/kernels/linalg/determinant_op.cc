@@ -377,7 +377,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     // input_copy by the Getrf{Batched} kernel.
     functor::LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
     functor(d, input_copy_reshaped_const, pivots_mat.data(), sign_reshaped,
-            log_abs_det_reshaped);
+            log_abs_det_reshaped, dev_info.back().mutable_data());
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done](
@@ -399,6 +399,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
+
     GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
                                                    std::move(info_checker));
   }

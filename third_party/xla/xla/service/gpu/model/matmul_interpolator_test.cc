@@ -333,10 +333,12 @@ class MatmulInterpolatorDefaultTableTest
     return GetMatmulInterpolator(TestGpuDeviceInfo::B200SXMDeviceInfo());
   }
 
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx942() {
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI300DeviceInfo());
+  }
+
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorGfx950() {
-    se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-    device_info.set_rocm_compute_capability("gfx950");
-    return GetMatmulInterpolator(device_info);
+    return GetMatmulInterpolator(TestGpuDeviceInfo::AMDMI350DeviceInfo());
   }
 };
 
@@ -648,6 +650,104 @@ INSTANTIATE_TEST_SUITE_P(
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
            info) { return info.param.test_name; });
 
+using Gfx942DefaultTableTest = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(Gfx942DefaultTableTest, EstimatesExactRuntime) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
+  std::unique_ptr<MatmulInterpolator> interpolator =
+      GetMatmulInterpolatorGfx942();
+  std::optional<absl::Duration> runtime =
+      interpolator->EstimatedRuntime(*context.dot);
+  ASSERT_TRUE(runtime.has_value());
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(*runtime),
+              absl::ToDoubleNanoseconds(expected_duration), 1.0);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationGfx942,
+    Gfx942DefaultTableTest,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"bf16_bf16_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"bf16",
+             /*rhs_type=*/"bf16",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(18387),
+        },
+        {
+            /*test_name=*/"f16_f16_f16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f16",
+             /*rhs_type=*/"f16",
+             /*result_type=*/"f16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(15724),
+        },
+        {
+            /*test_name=*/"f32_f32_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f32",
+             /*rhs_type=*/"f32",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(38197),
+        },
+        {
+            /*test_name=*/"f8e4m3fnuz_f8e4m3fnuz_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"bf16",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(19309),
+        },
+        {
+            /*test_name=*/"f8e4m3fnuz_f8e4m3fnuz_f8e4m3fnuz",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e4m3fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"f8e4m3fnuz",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(19169),
+        },
+        {
+            /*test_name=*/"f8e5m2fnuz_f8e4m3fnuz_f32",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512,
+             /*lhs_type=*/"f8e5m2fnuz",
+             /*rhs_type=*/"f8e4m3fnuz",
+             /*result_type=*/"f32",
+             /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Nanoseconds(10656),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+TEST(DefaultMatmulPerfTableTest, Gfx942InterpolatesBetweenGridPoints) {
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
+                       MatmulInterpolator::Create(device_info));
+  ASSERT_OK_AND_ASSIGN(
+      DotContext context,
+      Dot(/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/768, /*lhs_type=*/"bf16",
+          /*rhs_type=*/"bf16", /*result_type=*/"bf16"));
+  ASSERT_TRUE(interpolator->EstimatedRuntime(*context.dot).has_value());
+  absl::Duration runtime = *interpolator->EstimatedRuntime(*context.dot);
+  EXPECT_GT(runtime, absl::Nanoseconds(18387));
+  EXPECT_LT(runtime, absl::Nanoseconds(25497));
+}
+
 using Gfx950DefaultTableTest = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(Gfx950DefaultTableTest, EstimatesExactRuntime) {
@@ -733,8 +833,7 @@ INSTANTIATE_TEST_SUITE_P(
            info) { return info.param.test_name; });
 
 TEST(DefaultMatmulPerfTableTest, Gfx950InterpolatesBetweenGridPoints) {
-  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI210DeviceInfo();
-  device_info.set_rocm_compute_capability("gfx950");
+  se::DeviceDescription device_info = TestGpuDeviceInfo::AMDMI350DeviceInfo();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<MatmulInterpolator> interpolator,
                        MatmulInterpolator::Create(device_info));
   ASSERT_OK_AND_ASSIGN(

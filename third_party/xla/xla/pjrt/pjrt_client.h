@@ -558,6 +558,9 @@ class PjRtClient {
 
   virtual ~PjRtClient() = default;
 
+  // Whether this client uses the C API.
+  virtual bool IsCApi() const;
+
   // Return the process index of this client. Always 0 in single-process
   // settings.
   virtual int process_index() const = 0;

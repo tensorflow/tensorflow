@@ -2372,7 +2372,15 @@ absl::Status ParseContextDenseFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
+        const int num_added = ParseFeature(dtype, &stream, &out, &out_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
+        num_elements += num_added;
       }
       if (num_elements != data_max_elements) {
         return absl::InvalidArgumentError(
@@ -2422,10 +2430,17 @@ absl::Status ParseContextSparseFeatures(
           reinterpret_cast<const uint8_t*>(feature_proto.data()),
           feature_proto.size());
       EnableAliasing(&stream);
-      size_t num_added =
+      int num_added =
           ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+      if (num_added < 0) {
+        // This should be unreachable -- we already scanned the feature in
+        // GetContextFeatureLengths, and it hasn't changed since then.
+        return absl::InvalidArgumentError(
+            absl::StrCat("Error in context feature ", c.feature_name,
+                         " in example ", ExampleName(example_names, e)));
+      }
       num_elements += num_added;
-      max_num_cols = std::max(max_num_cols, num_added);
+      max_num_cols = std::max(max_num_cols, static_cast<size_t>(num_added));
       for (int i = 0; i < num_added; i++) {
         if (is_batch) *out_indices++ = e;
         *out_indices++ = i;
@@ -2492,8 +2507,15 @@ absl::Status ParseContextRaggedFeatures(
             reinterpret_cast<const uint8_t*>(feature_proto.data()),
             feature_proto.size());
         EnableAliasing(&stream);
-        size_t num_added =
+        int num_added =
             ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+        if (num_added < 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetContextFeatureLengths, and it hasn't changed since then.
+          return absl::InvalidArgumentError(
+              absl::StrCat("Error in context feature ", c.feature_name,
+                           " in example ", ExampleName(example_names, e)));
+        }
         split += num_added;
       }
       if (int32_splits) {

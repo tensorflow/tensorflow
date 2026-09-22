@@ -539,236 +539,6 @@ class SortIterator {
   difference_type stride_ = 1;
 };
 
-}  // namespace
-
-template <size_t n>
-static void Sort1DInplace(const SortDims& sort_dims, int64_t offset,
-                          absl::Span<std::byte* const> data,
-                          absl::Span<const size_t> primitive_sizes,
-                          bool is_stable, LessThan* less_than) {
-  DCHECK_EQ(n, data.size());
-  DCHECK_EQ(n, primitive_sizes.size());
-
-  std::array<std::byte*, n> ptrs;
-  for (size_t i = 0; i < n; ++i) {
-    ptrs[i] = data[i] + offset * primitive_sizes[i];
-  }
-
-  Inputs<n> inputs(ptrs, primitive_sizes);
-
-  auto compare = [&](const auto& a, const auto& b) {
-    std::array<const void*, 2 * n> values;
-    a.FillComparedValues(&values[0]);
-    b.FillComparedValues(&values[1]);
-    return (*less_than)(values.data());
-  };
-
-  SortIterator<Value<n>, Ref<n>, Ptr<n>> begin(
-      Ptr<n>(&inputs), /*stride=*/sort_dims.inner_dim_size);
-  if (is_stable) {
-    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
-  } else {
-    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
-  }
-}
-
-static void DSort1DInplace(const SortDims& sort_dims, int64_t offset,
-                           absl::Span<std::byte* const> data,
-                           absl::Span<const size_t> primitive_sizes,
-                           bool is_stable, LessThan* less_than) {
-  DCHECK_EQ(data.size(), primitive_sizes.size());
-
-  std::vector<std::byte*> ptrs(data.size());
-  for (size_t i = 0; i < data.size(); ++i) {
-    ptrs[i] = data[i] + offset * primitive_sizes[i];
-  }
-
-  DInputs inputs(std::move(ptrs), primitive_sizes);
-
-  // Allocate scratch space for sorted values outside of the lambda to avoid
-  // allocating it on every call to `compare`.
-  std::vector<const void*> values(2 * data.size());
-
-  auto compare = [&, values = values.data()](const auto& a, const auto& b) {
-    a.FillComparedValues(&values[0]);
-    b.FillComparedValues(&values[1]);
-    return (*less_than)(values);
-  };
-
-  SortIterator<DValue, DRef, DPtr> begin(DPtr(&inputs),
-                                         /*stride=*/sort_dims.inner_dim_size);
-  if (is_stable) {
-    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
-  } else {
-    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
-  }
-}
-
-// Sorts `data` using `less_than` comparator function for slices in
-// [start_slice, end_slice).
-void SortInplace(const SortDims& sort_dims, int64_t start_slice,
-                 int64_t end_slice, absl::Span<std::byte* const> data,
-                 absl::Span<const size_t> primitive_sizes, bool is_stable,
-                 LessThan* less_than) {
-  DCHECK_LE(0, start_slice);
-  DCHECK_LE(start_slice, end_slice);
-  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
-
-  for (int64_t i = start_slice; i < end_slice; ++i) {
-    int64_t inner_idx = i % sort_dims.inner_dim_size;
-    int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
-
-    // Use "sort" for statically known number of sorted inputs (expected to be
-    // faster) and "dsort" for dynamically known number of sorted inputs.
-    auto sort = [&](auto num_inputs) {
-      Sort1DInplace<decltype(num_inputs)::value>(
-          sort_dims, offset, data, primitive_sizes, is_stable, less_than);
-    };
-
-    switch (data.size()) {
-      case 1:
-        sort(std::integral_constant<size_t, 1>{});
-        break;
-      case 2:
-        sort(std::integral_constant<size_t, 2>{});
-        break;
-      case 3:
-        sort(std::integral_constant<size_t, 3>{});
-        break;
-      case 4:
-        sort(std::integral_constant<size_t, 4>{});
-        break;
-      case 5:
-        sort(std::integral_constant<size_t, 5>{});
-        break;
-      case 6:
-        sort(std::integral_constant<size_t, 6>{});
-        break;
-      case 7:
-        sort(std::integral_constant<size_t, 7>{});
-        break;
-      case 8:
-        sort(std::integral_constant<size_t, 8>{});
-        break;
-      case 9:
-        sort(std::integral_constant<size_t, 9>{});
-        break;
-      case 10:
-        sort(std::integral_constant<size_t, 10>{});
-        break;
-      case 11:
-        sort(std::integral_constant<size_t, 11>{});
-        break;
-      case 12:
-        sort(std::integral_constant<size_t, 12>{});
-        break;
-      case 13:
-        sort(std::integral_constant<size_t, 13>{});
-        break;
-      case 14:
-        sort(std::integral_constant<size_t, 14>{});
-        break;
-      case 15:
-        sort(std::integral_constant<size_t, 15>{});
-        break;
-      case 16:
-        sort(std::integral_constant<size_t, 16>{});
-        break;
-      default:
-        DSort1DInplace(sort_dims, offset, data, primitive_sizes, is_stable,
-                       less_than);
-        break;
-    }
-  }
-}
-
-template <class Iterator, class T>
-static void Sort1DInplace(Iterator begin, Iterator end, bool is_stable,
-                          SortDirection direction) {
-  if constexpr (std::is_integral_v<T>) {
-    if (direction == SortDirection::kAscending) {
-      if (is_stable) {
-        std::stable_sort(begin, end, std::less<T>());
-      } else {
-        std::sort(begin, end, std::less<T>());
-      }
-    } else {
-      if (is_stable) {
-        std::stable_sort(begin, end, std::greater<T>());
-      } else {
-        std::sort(begin, end, std::greater<T>());
-      }
-    }
-  } else {
-    if (direction == SortDirection::kAscending) {
-      if (is_stable) {
-        std::stable_sort(begin, end, SortComparatorLess<T>());
-      } else {
-        std::sort(begin, end, SortComparatorLess<T>());
-      }
-    } else {
-      if (is_stable) {
-        std::stable_sort(begin, end, SortComparatorGreater<T>());
-      } else {
-        std::sort(begin, end, SortComparatorGreater<T>());
-      }
-    }
-  }
-}
-
-template <typename T>
-static void Sort1DInplace(const SortDims& sort_dims, int64_t offset, T* data,
-                          bool is_stable, SortDirection direction) {
-  T* begin = data + offset;
-  T* end = begin + sort_dims.sort_dim_size;
-
-  if (sort_dims.inner_dim_size == 1) {
-    Sort1DInplace<T*, T>(begin, end, is_stable, direction);
-  } else {
-    using Iterator = internal::SortIterator<T, T&, T*>;
-    Iterator begin_it(begin, /*stride=*/sort_dims.inner_dim_size);
-    Iterator end_it = begin_it + sort_dims.sort_dim_size;
-    Sort1DInplace<Iterator, T>(begin_it, end_it, is_stable, direction);
-  }
-}
-
-template <typename T>
-void SortInplace(const SortDims& sort_dims, int64_t start_slice,
-                 int64_t end_slice, T* data, bool is_stable,
-                 SortDirection direction) {
-  DCHECK_LE(0, start_slice);
-  DCHECK_LE(start_slice, end_slice);
-  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
-
-  for (int64_t i = start_slice; i < end_slice; ++i) {
-    int64_t inner_idx = i % sort_dims.inner_dim_size;
-    int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
-
-    Sort1DInplace<T>(sort_dims, offset, data, is_stable, direction);
-  }
-}
-
-// Declare SortInplace for all supported types. Template is instantiated in
-// the .cc file.
-#define DEFINE_SORT_INPLACE(T)                                              \
-  template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, bool, \
-                               SortDirection)
-
-DEFINE_SORT_INPLACE(float);
-DEFINE_SORT_INPLACE(double);
-DEFINE_SORT_INPLACE(bfloat16);
-DEFINE_SORT_INPLACE(half);
-DEFINE_SORT_INPLACE(int8_t);
-DEFINE_SORT_INPLACE(int16_t);
-DEFINE_SORT_INPLACE(int32_t);
-DEFINE_SORT_INPLACE(int64_t);
-DEFINE_SORT_INPLACE(uint8_t);
-DEFINE_SORT_INPLACE(uint16_t);
-DEFINE_SORT_INPLACE(uint32_t);
-DEFINE_SORT_INPLACE(uint64_t);
-
-#undef DEFINE_SORT_INPLACE
-
 template <typename Key, typename Value>
 struct ZipRef {
   Key& key;
@@ -915,9 +685,251 @@ class ZipIterator {
   Value* val_ptr_;
 };
 
+template <typename Key, typename Value, typename SliceSorter>
+static void Sort2DSlices(const SortDims& sort_dims, int64_t start_slice,
+                         int64_t end_slice, Key* keys, Value* values,
+                         SliceSorter&& sort_slice) {
+  DCHECK_LE(0, start_slice);
+  DCHECK_LE(start_slice, end_slice);
+  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
+
+  int64_t n = sort_dims.sort_dim_size;
+  if (sort_dims.inner_dim_size == 1) {
+    for (int64_t i = start_slice; i < end_slice; ++i) {
+      int64_t offset = i * n;
+      sort_slice(n, keys + offset, values + offset);
+    }
+    return;
+  }
+
+  // Strided case (inner_dim_size > 1): Gather into contiguous arrays (SoA),
+  // sort with contiguous ZipIterator, and scatter back.
+  DCHECK_GT(sort_dims.inner_dim_size, 0);
+  int64_t stride = sort_dims.inner_dim_size;
+  auto sort_strided_slice = [&](int64_t offset, Key* key_buf, Value* val_buf) {
+    Key* key_ptr = keys + offset;
+    Value* val_ptr = values + offset;
+    for (int64_t i = 0; i < n; ++i) {
+      key_buf[i] = key_ptr[i * stride];
+      val_buf[i] = val_ptr[i * stride];
+    }
+    sort_slice(n, key_buf, val_buf);
+    for (int64_t i = 0; i < n; ++i) {
+      key_ptr[i * stride] = key_buf[i];
+      val_ptr[i * stride] = val_buf[i];
+    }
+  };
+
+  int64_t slice_stride = n * stride;
+  int64_t outer = start_slice / stride;
+  int64_t inner = start_slice % stride;
+  int64_t offset = outer * slice_stride + inner;
+
+  auto run_slices = [&](Key* key_buf, Value* val_buf) {
+    for (int64_t i = start_slice; i < end_slice; ++i) {
+      sort_strided_slice(offset, key_buf, val_buf);
+      if (++inner == stride) {
+        inner = 0;
+        offset += slice_stride - stride + 1;
+      } else {
+        ++offset;
+      }
+    }
+  };
+
+  if (n <= 1024) {
+    std::array<Key, 1024> key_buf;
+    std::array<Value, 1024> val_buf;
+    run_slices(key_buf.data(), val_buf.data());
+  } else {
+    std::vector<Key> key_buf(n);
+    std::vector<Value> val_buf(n);
+    run_slices(key_buf.data(), val_buf.data());
+  }
+}
+
 template <typename Key, typename Value>
-static void SortKeyValueSlice(int64_t n, Key* keys, Value* values,
-                              bool is_stable, SortDirection direction) {
+static void Sort2DSliceWithComparator(int64_t n, Key* keys, Value* values,
+                                      bool is_stable, LessThan* less_than) {
+  auto comp = [&](const auto& a, const auto& b) -> bool {
+    auto get_ptrs =
+        [](const auto& item) -> std::pair<const void*, const void*> {
+      using T = std::decay_t<decltype(item)>;
+      if constexpr (std::is_same_v<T, std::pair<Key, Value>>) {
+        return {&item.first, &item.second};
+      } else {
+        return {&item.key, &item.value};
+      }
+    };
+    auto [a0, a1] = get_ptrs(a);
+    auto [b0, b1] = get_ptrs(b);
+    const void* values_ptrs[4] = {a0, b0, a1, b1};
+    return (*less_than)(values_ptrs);
+  };
+
+  ZipIterator<Key, Value> begin(keys, values);
+  ZipIterator<Key, Value> end(keys + n, values + n);
+  if (is_stable) {
+    std::stable_sort(begin, end, comp);
+  } else {
+    std::sort(begin, end, comp);
+  }
+}
+
+template <typename Key, typename Value>
+static void Sort2DWithComparator(const SortDims& sort_dims, int64_t start_slice,
+                                 int64_t end_slice, Key* keys, Value* values,
+                                 bool is_stable, LessThan* less_than) {
+  Sort2DSlices(sort_dims, start_slice, end_slice, keys, values,
+               [is_stable, less_than](int64_t n, Key* k, Value* v) {
+                 Sort2DSliceWithComparator<Key, Value>(n, k, v, is_stable,
+                                                       less_than);
+               });
+}
+
+// Dispatches to a generic functor parameterized by an unsigned integer type
+// of matching byte size (uint8_t, uint16_t, uint32_t, uint64_t).
+//
+// When sorting with a non-inlined `less_than` comparator callback, comparisons
+// are delegated via `const void*` pointers, so the sort algorithm does not need
+// semantic type information (e.g. float vs int32_t). The types are only used
+// for pointer arithmetic and data movement (swapping and temporary pivot copies
+// on the stack). Because all trivially copyable types of the same byte width
+// share the same size, alignment, and copy semantics, unsigned integers are
+// binary-compatible stand-ins, avoiding the need to instantiate templates for
+// every semantic type combination.
+template <typename Fn>
+bool DispatchBySize(size_t size, Fn&& fn) {
+  switch (size) {
+    case 1:
+      return fn(uint8_t{});
+    case 2:
+      return fn(uint16_t{});
+    case 4:
+      return fn(uint32_t{});
+    case 8:
+      return fn(uint64_t{});
+    default:
+      return false;
+  }
+}
+
+template <size_t n>
+void Sort1DInplace(const SortDims& sort_dims, int64_t offset,
+                   absl::Span<std::byte* const> data,
+                   absl::Span<const size_t> primitive_sizes, bool is_stable,
+                   LessThan* less_than) {
+  DCHECK_EQ(n, data.size());
+  DCHECK_EQ(n, primitive_sizes.size());
+
+  std::array<std::byte*, n> ptrs;
+  for (size_t i = 0; i < n; ++i) {
+    ptrs[i] = data[i] + offset * primitive_sizes[i];
+  }
+
+  Inputs<n> inputs(ptrs, primitive_sizes);
+
+  auto compare = [&](const auto& a, const auto& b) {
+    std::array<const void*, 2 * n> values;
+    a.FillComparedValues(&values[0]);
+    b.FillComparedValues(&values[1]);
+    return (*less_than)(values.data());
+  };
+
+  SortIterator<Value<n>, Ref<n>, Ptr<n>> begin(
+      Ptr<n>(&inputs), /*stride=*/sort_dims.inner_dim_size);
+  if (is_stable) {
+    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
+  } else {
+    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
+  }
+}
+
+void DSort1DInplace(const SortDims& sort_dims, int64_t offset,
+                    absl::Span<std::byte* const> data,
+                    absl::Span<const size_t> primitive_sizes, bool is_stable,
+                    LessThan* less_than) {
+  DCHECK_EQ(data.size(), primitive_sizes.size());
+
+  std::vector<std::byte*> ptrs(data.size());
+  for (size_t i = 0; i < data.size(); ++i) {
+    ptrs[i] = data[i] + offset * primitive_sizes[i];
+  }
+
+  DInputs inputs(std::move(ptrs), primitive_sizes);
+
+  // Allocate scratch space for sorted values outside of the lambda to avoid
+  // allocating it on every call to `compare`.
+  std::vector<const void*> values(2 * data.size());
+
+  auto compare = [&, values = values.data()](const auto& a, const auto& b) {
+    a.FillComparedValues(&values[0]);
+    b.FillComparedValues(&values[1]);
+    return (*less_than)(values);
+  };
+
+  SortIterator<DValue, DRef, DPtr> begin(DPtr(&inputs),
+                                         /*stride=*/sort_dims.inner_dim_size);
+  if (is_stable) {
+    std::stable_sort(begin, begin + sort_dims.sort_dim_size, compare);
+  } else {
+    std::sort(begin, begin + sort_dims.sort_dim_size, compare);
+  }
+}
+
+template <class Iterator, class T>
+void Sort1DInplace(Iterator begin, Iterator end, bool is_stable,
+                   SortDirection direction) {
+  if constexpr (std::is_integral_v<T>) {
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, std::less<T>());
+      } else {
+        std::sort(begin, end, std::less<T>());
+      }
+    } else {
+      if (is_stable) {
+        std::stable_sort(begin, end, std::greater<T>());
+      } else {
+        std::sort(begin, end, std::greater<T>());
+      }
+    }
+  } else {
+    if (direction == SortDirection::kAscending) {
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorLess<T>());
+      } else {
+        std::sort(begin, end, SortComparatorLess<T>());
+      }
+    } else {
+      if (is_stable) {
+        std::stable_sort(begin, end, SortComparatorGreater<T>());
+      } else {
+        std::sort(begin, end, SortComparatorGreater<T>());
+      }
+    }
+  }
+}
+
+template <typename T>
+void Sort1DInplace(const SortDims& sort_dims, int64_t offset, T* data,
+                   bool is_stable, SortDirection direction) {
+  T* begin = data + offset;
+  T* end = begin + sort_dims.sort_dim_size;
+
+  if (sort_dims.inner_dim_size == 1) {
+    Sort1DInplace<T*, T>(begin, end, is_stable, direction);
+  } else {
+    using Iterator = internal::SortIterator<T, T&, T*>;
+    Iterator begin_it(begin, /*stride=*/sort_dims.inner_dim_size);
+    Iterator end_it = begin_it + sort_dims.sort_dim_size;
+    Sort1DInplace<Iterator, T>(begin_it, end_it, is_stable, direction);
+  }
+}
+
+template <typename Key, typename Value>
+void SortKeyValueSlice(int64_t n, Key* keys, Value* values, bool is_stable,
+                       SortDirection direction) {
   auto comp = [direction](const auto& a, const auto& b) -> bool {
     auto get_key = [](const auto& item) -> const Key& {
       using T = std::decay_t<decltype(item)>;
@@ -951,68 +963,149 @@ static void SortKeyValueSlice(int64_t n, Key* keys, Value* values,
   }
 }
 
-template <typename Key, typename Value>
-void Sort2DKeyValue(const SortDims& sort_dims, int64_t start_slice,
-                    int64_t end_slice, Key* keys, Value* values, bool is_stable,
-                    SortDirection direction) {
+}  // namespace
+
+// Sorts `data` using `less_than` comparator function for slices in
+// [start_slice, end_slice).
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, absl::Span<std::byte* const> data,
+                 absl::Span<const size_t> primitive_sizes, bool is_stable,
+                 LessThan* less_than) {
+  DCHECK_LE(0, start_slice);
+  DCHECK_LE(start_slice, end_slice);
+  DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
+  DCHECK_EQ(data.size(), primitive_sizes.size());
+
+  if (data.size() == 2 &&
+      (sort_dims.inner_dim_size == 1 || sort_dims.sort_dim_size <= 65536)) {
+    bool dispatched = DispatchBySize(primitive_sizes[0], [&](auto key_dummy) {
+      using Key = decltype(key_dummy);
+      return DispatchBySize(primitive_sizes[1], [&](auto val_dummy) {
+        using Value = decltype(val_dummy);
+        Sort2DWithComparator<Key, Value>(
+            sort_dims, start_slice, end_slice, reinterpret_cast<Key*>(data[0]),
+            reinterpret_cast<Value*>(data[1]), is_stable, less_than);
+        return true;
+      });
+    });
+    if (dispatched) {
+      return;
+    }
+  }
+
+  for (int64_t i = start_slice; i < end_slice; ++i) {
+    int64_t inner_idx = i % sort_dims.inner_dim_size;
+    int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
+
+    // Use "sort" for statically known number of sorted inputs (expected to be
+    // faster) and "dsort" for dynamically known number of sorted inputs.
+    auto sort = [&](auto num_inputs) {
+      Sort1DInplace<decltype(num_inputs)::value>(
+          sort_dims, offset, data, primitive_sizes, is_stable, less_than);
+    };
+
+    switch (data.size()) {
+      case 1:
+        sort(std::integral_constant<size_t, 1>{});
+        break;
+      case 2:
+        sort(std::integral_constant<size_t, 2>{});
+        break;
+      case 3:
+        sort(std::integral_constant<size_t, 3>{});
+        break;
+      case 4:
+        sort(std::integral_constant<size_t, 4>{});
+        break;
+      case 5:
+        sort(std::integral_constant<size_t, 5>{});
+        break;
+      case 6:
+        sort(std::integral_constant<size_t, 6>{});
+        break;
+      case 7:
+        sort(std::integral_constant<size_t, 7>{});
+        break;
+      case 8:
+        sort(std::integral_constant<size_t, 8>{});
+        break;
+      case 9:
+        sort(std::integral_constant<size_t, 9>{});
+        break;
+      case 10:
+        sort(std::integral_constant<size_t, 10>{});
+        break;
+      case 11:
+        sort(std::integral_constant<size_t, 11>{});
+        break;
+      case 12:
+        sort(std::integral_constant<size_t, 12>{});
+        break;
+      case 13:
+        sort(std::integral_constant<size_t, 13>{});
+        break;
+      case 14:
+        sort(std::integral_constant<size_t, 14>{});
+        break;
+      case 15:
+        sort(std::integral_constant<size_t, 15>{});
+        break;
+      case 16:
+        sort(std::integral_constant<size_t, 16>{});
+        break;
+      default:
+        DSort1DInplace(sort_dims, offset, data, primitive_sizes, is_stable,
+                       less_than);
+        break;
+    }
+  }
+}
+
+template <typename T>
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, T* data, bool is_stable,
+                 SortDirection direction) {
   DCHECK_LE(0, start_slice);
   DCHECK_LE(start_slice, end_slice);
   DCHECK_LE(end_slice, sort_dims.outer_dim_size * sort_dims.inner_dim_size);
 
-  int64_t n = sort_dims.sort_dim_size;
-  if (sort_dims.inner_dim_size == 1) {
-    for (int64_t i = start_slice; i < end_slice; ++i) {
-      int64_t offset = i * n;
-      SortKeyValueSlice<Key, Value>(n, keys + offset, values + offset,
-                                    is_stable, direction);
-    }
-    return;
+  for (int64_t i = start_slice; i < end_slice; ++i) {
+    int64_t inner_idx = i % sort_dims.inner_dim_size;
+    int64_t offset = inner_idx + (i - inner_idx) * sort_dims.sort_dim_size;
+
+    Sort1DInplace<T>(sort_dims, offset, data, is_stable, direction);
   }
+}
 
-  // Strided case (inner_dim_size > 1): Gather into contiguous arrays (SoA),
-  // sort with contiguous ZipIterator, and scatter back.
-  DCHECK_GT(sort_dims.inner_dim_size, 0);
-  int64_t stride = sort_dims.inner_dim_size;
-  auto sort_strided_slice = [&](int64_t offset, Key* key_buf, Value* val_buf) {
-    Key* key_ptr = keys + offset;
-    Value* val_ptr = values + offset;
-    for (int64_t i = 0; i < n; ++i) {
-      key_buf[i] = key_ptr[i * stride];
-      val_buf[i] = val_ptr[i * stride];
-    }
-    SortKeyValueSlice<Key, Value>(n, key_buf, val_buf, is_stable, direction);
-    for (int64_t i = 0; i < n; ++i) {
-      key_ptr[i * stride] = key_buf[i];
-      val_ptr[i * stride] = val_buf[i];
-    }
-  };
+// Declare SortInplace for all supported types. Template is instantiated in
+// the .cc file.
+#define DEFINE_SORT_INPLACE(T)                                              \
+  template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, bool, \
+                               SortDirection)
 
-  int64_t slice_stride = n * stride;
-  int64_t outer = start_slice / stride;
-  int64_t inner = start_slice % stride;
-  int64_t offset = outer * slice_stride + inner;
+DEFINE_SORT_INPLACE(float);
+DEFINE_SORT_INPLACE(double);
+DEFINE_SORT_INPLACE(bfloat16);
+DEFINE_SORT_INPLACE(half);
+DEFINE_SORT_INPLACE(int8_t);
+DEFINE_SORT_INPLACE(int16_t);
+DEFINE_SORT_INPLACE(int32_t);
+DEFINE_SORT_INPLACE(int64_t);
+DEFINE_SORT_INPLACE(uint8_t);
+DEFINE_SORT_INPLACE(uint16_t);
+DEFINE_SORT_INPLACE(uint32_t);
+DEFINE_SORT_INPLACE(uint64_t);
 
-  auto run_slices = [&](Key* key_buf, Value* val_buf) {
-    for (int64_t i = start_slice; i < end_slice; ++i) {
-      sort_strided_slice(offset, key_buf, val_buf);
-      if (++inner == stride) {
-        inner = 0;
-        offset += slice_stride - stride + 1;
-      } else {
-        ++offset;
-      }
-    }
-  };
+#undef DEFINE_SORT_INPLACE
 
-  if (n <= 1024) {
-    std::array<Key, 1024> key_buf;
-    std::array<Value, 1024> val_buf;
-    run_slices(key_buf.data(), val_buf.data());
-  } else {
-    std::vector<Key> key_buf(n);
-    std::vector<Value> val_buf(n);
-    run_slices(key_buf.data(), val_buf.data());
-  }
+template <typename Key, typename Value>
+void Sort2DKeyValue(const SortDims& sort_dims, int64_t start_slice,
+                    int64_t end_slice, Key* keys, Value* values, bool is_stable,
+                    SortDirection direction) {
+  Sort2DSlices(sort_dims, start_slice, end_slice, keys, values,
+               [is_stable, direction](int64_t n, Key* k, Value* v) {
+                 SortKeyValueSlice<Key, Value>(n, k, v, is_stable, direction);
+               });
 }
 
 #define DEFINE_SORT_2D_KEY_VALUE(Key, Value)                                  \

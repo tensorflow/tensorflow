@@ -15,19 +15,47 @@
 
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@grpc//bazel:grpc_deps.bzl", "grpc_deps")
+load("@llvm-raw//utils/bazel:linux_uapi.bzl", "linux_uapi_setup")
 load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/llvm:setup.bzl", "llvm_setup")
 
+_PYYAML_CONTENT = """\
+load("@rules_python//python:defs.bzl", "py_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    # BSD/MIT-like license (for PyYAML)
+    licenses = ["notice"],
+)
+
+py_library(
+    name = "yaml",
+    srcs = glob(["yaml/*.py"]),
+)
+"""
+
 # buildifier: disable=unnamed-macro
 def workspace():
     """Loads a set of TensorFlow dependencies in a WORKSPACE file."""
     llvm_setup(name = "llvm-project")
+    linux_uapi_setup(name = "linux_uapi")
+    http_archive(
+        name = "pyyaml",
+        urls = tf_mirror_urls(
+            "https://github.com/yaml/pyyaml/archive/refs/tags/5.1.zip",
+        ),
+        sha256 = "f0a35d7f282a6d6b1a4f3f3965ef5c124e30ed27a0088efb97c0977268fd671f",
+        strip_prefix = "pyyaml-5.1/lib3",
+        build_file_content = _PYYAML_CONTENT,
+    )
     native.register_toolchains("@local_config_python//:py_toolchain")
     rules_pkg_dependencies()
-    compatibility_proxy_repo()
+    if "cc_compatibility_proxy" not in native.existing_rules():
+        compatibility_proxy_repo()
 
     tf_http_archive(
         name = "bazel_toolchains",

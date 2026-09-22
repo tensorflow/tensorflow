@@ -913,8 +913,16 @@ def retrieve_clang_version(clang_executable):
                            stderr=stderr)
 
   curr_version_split = curr_version.lower().split('clang version ')
-  if len(curr_version_split) > 1:
-    curr_version = curr_version_split[1].split()[0].split('git')
+  if len(curr_version_split) <= 1:
+    sys.stdout.write('WARNING: current clang installation version unknown.\n')
+    return None
+
+  tokens = curr_version_split[1].split()
+  if not tokens:
+    sys.stdout.write('WARNING: current clang installation version unknown.\n')
+    return None
+
+  curr_version = tokens[0].split('git')
 
   if len(curr_version) > 1:
     print('WARNING: current clang installation is not a release version.\n')
@@ -937,7 +945,13 @@ def retrieve_clang_version(clang_executable):
 # offset of in the current version of ubp. See
 # https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 def disable_clang_offsetof_extension(clang_version):
-  if int(clang_version.split('.')[0]) in (16, 17):
+  if not clang_version:
+    return
+  try:
+    clang_major_version = int(clang_version.split('.')[0])
+  except ValueError:
+    return
+  if clang_major_version in (16, 17):
     write_to_bazelrc('build --copt=-Wno-gnu-offsetof-extensions')
 
 
@@ -1002,11 +1016,16 @@ def set_hermetic_cuda_compute_capabilities(environ_cp):
         hermetic_cuda_compute_capabilities.split()
     )
     for compute_capability in hermetic_cuda_compute_capabilities.split(','):
-      m = re.match('[0-9]+.[0-9]+', compute_capability)
+      # Anchored with fullmatch (rather than the previous unanchored
+      # re.match with an unescaped '.') so inputs like '7.0foo' or
+      # 'sm_70xyz' are correctly rejected instead of silently accepted,
+      # and malformed input like '3a5' no longer crashes float().
+      m = re.fullmatch(r'[0-9]+\.[0-9]+', compute_capability)
       if not m:
         # We now support sm_35,sm_50,sm_60,compute_70.
-        sm_compute_match = re.match('(sm|compute)_?([0-9]+[0-9]+)',
-                                    compute_capability)
+        sm_compute_match = re.fullmatch(
+            r'(sm|compute)_?([0-9]+)', compute_capability
+        )
         if not sm_compute_match:
           print('Invalid compute capability: %s' % compute_capability)
           all_valid = False

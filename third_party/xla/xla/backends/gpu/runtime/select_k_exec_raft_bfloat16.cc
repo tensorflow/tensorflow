@@ -194,7 +194,7 @@ SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
 template absl::Status select_k_exec<nv_bfloat16>(
     int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
-    std::uint32_t);
+    std::uint32_t, se::DeviceAddressBase);
 
 // Explicit specializations for xla::bfloat16
 template <>
@@ -202,14 +202,16 @@ absl::Status select_k_exec<::xla::bfloat16>(
     int device_ordinal, se::DeviceAddressAllocator* allocator,
     se::Stream* stream, se::DeviceAddressBase data_in,
     se::DeviceAddressBase data_out, se::DeviceAddressBase indices_out,
-    std::uint32_t batch, std::uint32_t n, std::uint32_t k) {
+    std::uint32_t batch, std::uint32_t n, std::uint32_t k,
+    se::DeviceAddressBase scratch_buffer) {
   // Sanity check: Eigen::bfloat16 and nv_bfloat16 must be binary-compatible
   static_assert(sizeof(::xla::bfloat16) == sizeof(nv_bfloat16),
                 "xla::bfloat16 and nv_bfloat16 must have the same size");
 
   // Just forward to the nv_bfloat16 instantiation
   return select_k_exec<nv_bfloat16>(device_ordinal, allocator, stream, data_in,
-                                    data_out, indices_out, batch, n, k);
+                                    data_out, indices_out, batch, n, k,
+                                    scratch_buffer);
 }
 
 }  // namespace xla::gpu

@@ -50,14 +50,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_xla_transform_internal.h"
 #include "xla/pjrt/extensions/abi_version/gpu_abi_version_extension.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -66,7 +65,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
@@ -86,7 +84,9 @@ namespace gpu_plugin {
 #if TENSORFLOW_USE_ROCM
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
 #elif TENSORFLOW_USE_SYCL
-#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ONEAPI"
+// TODO(Intel-tf)  this will be changed to ONEAPI
+// when the SYCL backend has been renamed to ONEAPI.
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "SYCL"
 #else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
@@ -239,8 +239,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
     }
     options.max_inflight_computations = static_cast<int>(v);
   }
+  if (options.use_tfrt_gpu_client) {
+    options.use_async_dispatch = true;
+  }
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetXlaPjrtGpuClient(options));
+                        xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(GetGpuPjrtApi(), std::move(client));
   return nullptr;
 }
@@ -336,7 +339,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   if (plugin_platform == "ROCM") {
     platform_id = xla::RocmId();
     platform_name = xla::RocmName();
-  } else if (plugin_platform == "ONEAPI") {
+  } else if (plugin_platform == "SYCL") {
     platform_id = xla::OneapiId();
     platform_name = xla::OneapiName();
   } else {
@@ -616,11 +619,9 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
       pjrt::CreateMemoryDescriptionsExtension(&ffi_extension.base);
 
-  static PJRT_Triton_Extension triton_extension =
-      pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
-
   static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
-      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
+      pjrt::CreateCrossHostTransfersExtension(
+          &memory_descriptions_extension.base);
 
   static PJRT_Shardings_Extension shardings_extension =
       pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);

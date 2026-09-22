@@ -20,9 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -41,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -235,15 +233,16 @@ class RewriteDequantizeCompositeOp
       Value operand = composite_op.getOperand(num_operands - 1);
       mlir::Operation* producer_op = operand.getDefiningOp();
 
-      // Check if the producer is an arith.constant
-      if (auto const_op =
-              llvm::dyn_cast_or_null<arith::ConstantOp>(producer_op)) {
-        // We found a constant (Int4/Int8).
+      // Check if the producer is a constant (arith.constant or
+      // stablehlo.constant)
+      if (producer_op && producer_op->hasAttr("value")) {
+        // We found a constant (Int4/Int8) with ElementsAttr (DenseElementsAttr
+        // or DenseResourceElementsAttr).
         // Instead of casting or hacking the constant, we create a valid
         // TFL::QConstOp. This op natively maps "Integer Data" -> "Quantized
         // Type".
 
-        auto value_attr = llvm::dyn_cast<ElementsAttr>(const_op.getValue());
+        auto value_attr = producer_op->getAttrOfType<ElementsAttr>("value");
         if (!value_attr) {
           return failure();  // Should not happen for tensor constants
         }
@@ -251,7 +250,7 @@ class RewriteDequantizeCompositeOp
         // Create tfl.qconst
         // Arguments: Type (Result), TypeAttr (qtype), ElementsAttr (value)
         auto qconst_op = rewriter.create<TFL::QConstOp>(
-            const_op.getLoc(),
+            producer_op->getLoc(),
             qtensor_type,                 // The Result Type (!quant.uniform...)
             TypeAttr::get(qtensor_type),  // The "qtype" attribute
             value_attr                    // The reuse of the i4/i8 data
@@ -260,7 +259,7 @@ class RewriteDequantizeCompositeOp
         // Use the output of this new constant
         tfl_quantize_input = qconst_op.getResult();
 
-        // Note: We leave the old arith.constant alone.
+        // Note: We leave the old constant alone.
         // If it has no other uses, the cleanup pass (DCE) will remove it
         // automatically.
 
@@ -439,9 +438,277 @@ void LowerQuantAnnotationsPass::runOnOperation() {
     signalPassFailure();
   }
 
+  class RewriteQuantizeCustomCallOp
+      : public OpRewritePattern<stablehlo::CustomCallOp> {
+    using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                  PatternRewriter& rewriter) const final {
+      if (op.getCallTargetName() != "quant.quantize") {
+        return failure();
+      }
+
+      SmallVector<double, 4> scales;
+      SmallVector<int64_t, 4> zero_points;
+      int num_bits;
+      bool is_signed;
+      bool is_narrow_range;
+
+      if (failed(FillCompositeParams(op, scales, zero_points, num_bits,
+                                     is_signed, is_narrow_range))) {
+        return op.emitError(
+            "quantize custom call does not contain the required attributes.");
+      }
+
+      ShapedType input_shaped_type =
+          cast<ShapedType>(op.getOperand(0).getType());
+      Type input_element_type = input_shaped_type.getElementType();
+
+      Type quantized_element_type;
+      if (scales.size() == 1) {
+        quantized_element_type = GetPerTensorQuantizedTensorType(
+            rewriter, scales[0], zero_points[0],
+            /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
+            is_narrow_range, is_signed);
+      } else {
+        int32_t quantized_dimension;
+        if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
+                op->getAttr("quantization_dimension"))) {
+          quantized_dimension =
+              quantized_dimension_attr.getValue().getSExtValue();
+        } else {
+          return op.emitError(
+              "quantization_dimension attribute is missing from the custom "
+              "call.");
+        }
+        quantized_element_type = GetPerAxisQuantizedTensorType(
+            rewriter, scales, zero_points, quantized_dimension,
+            /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
+            is_narrow_range, is_signed);
+      }
+
+      RankedTensorType output_type = RankedTensorType::get(
+          input_shaped_type.getShape(), quantized_element_type);
+      TFL::QuantizeOp tfl_quantize_op =
+          TFL::QuantizeOp::create(rewriter, op.getLoc(), output_type,
+                                  /*input=*/op.getOperand(0),
+                                  /*qtype=*/TypeAttr::get(output_type));
+
+      rewriter.replaceOp(op, tfl_quantize_op.getOutput());
+      return success();
+    }
+  };
+
+  class RewriteDequantizeCustomCallOp
+      : public OpRewritePattern<stablehlo::CustomCallOp> {
+    using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(stablehlo::CustomCallOp custom_call_op,
+                                  PatternRewriter& rewriter) const final {
+      if (custom_call_op.getCallTargetName() != "quant.dequantize") {
+        return failure();
+      }
+      Type output_type = custom_call_op.getType(0);
+
+      SmallVector<double, 4> scales;
+      SmallVector<int64_t, 4> zero_points;
+      int num_bits;
+      bool is_signed;
+      bool is_narrow_range;
+
+      if (failed(FillCompositeParams(custom_call_op, scales, zero_points,
+                                     num_bits, is_signed, is_narrow_range))) {
+        return failure();
+      }
+
+      ShapedType output_shaped_type = cast<ShapedType>(output_type);
+      Type output_element_type = output_shaped_type.getElementType();
+
+      Type quantized_element_type;
+      if (scales.size() == 1) {
+        quantized_element_type = GetPerTensorQuantizedTensorType(
+            rewriter, scales[0], zero_points[0],
+            /*expressed_type=*/output_element_type, num_bits,
+            custom_call_op->getLoc(), is_narrow_range, is_signed);
+      } else {
+        int32_t quantized_dimension;
+        if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
+                custom_call_op->getAttr("quantization_dimension"))) {
+          quantized_dimension =
+              quantized_dimension_attr.getValue().getSExtValue();
+        } else {
+          return failure();
+        }
+        quantized_element_type = GetPerAxisQuantizedTensorType(
+            rewriter, scales, zero_points, quantized_dimension,
+            /*expressed_type=*/output_element_type, num_bits,
+            custom_call_op->getLoc(), is_narrow_range, is_signed);
+      }
+
+      ShapedType input_shaped_type =
+          cast<ShapedType>(custom_call_op.getOperand(0).getType());
+      RankedTensorType qtensor_type = RankedTensorType::get(
+          input_shaped_type.getShape(), quantized_element_type);
+
+      auto custom_call_operand = custom_call_op.getOperand(0);
+
+      Value tfl_quantize_input;
+      if (mlir::dyn_cast<mlir::BlockArgument>(custom_call_operand)) {
+        // Find the function enclosing this custom call op.
+        func::FuncOp func_op = GetEnclosingFunction(custom_call_op);
+        if (func_op == nullptr) {
+          return failure();
+        }
+
+        // Find the operand index of the input of the custom call op.
+        int arg_idx = -1;
+        for (int i = 0; i < func_op.getNumArguments(); ++i) {
+          if (func_op.getBody().front().getArgument(i) == custom_call_operand) {
+            arg_idx = i;
+            break;
+          }
+        }
+        if (arg_idx == -1) {
+          return failure();
+        }
+
+        // create a new set of operand types for the function with the type of
+        // the operand that feeds the custom call op changed.
+        SmallVector<Type, 4> new_func_input_types;
+        auto func_input_types = func_op.getFunctionType().getInputs();
+        for (int i = 0; i < func_input_types.size(); ++i) {
+          if (i != arg_idx) {
+            new_func_input_types.push_back(func_input_types[i]);
+          } else {
+            new_func_input_types.push_back(qtensor_type);
+          }
+        }
+
+        auto new_func_type =
+            mlir::FunctionType::get(func_op.getContext(), new_func_input_types,
+                                    func_op.getFunctionType().getResults());
+
+        rewriter.startOpModification(func_op);
+        // Update the function type.
+        func_op.setType(new_func_type);
+
+        // Update the block argument type.
+        func_op.getBody().front().getArgument(arg_idx).setType(qtensor_type);
+        rewriter.finalizeOpModification(func_op);
+
+        tfl_quantize_input = func_op.getBody().front().getArgument(arg_idx);
+      } else {
+        // Get the producer of the input to dequantize
+        int num_operands = custom_call_op.getNumOperands();
+        Value operand = custom_call_op.getOperand(num_operands - 1);
+        mlir::Operation* producer_op = operand.getDefiningOp();
+
+        if (producer_op && producer_op->hasAttr("value")) {
+          auto value_attr = producer_op->getAttrOfType<ElementsAttr>("value");
+          if (!value_attr) {
+            return failure();
+          }
+
+          auto qconst_op = rewriter.create<TFL::QConstOp>(
+              producer_op->getLoc(), qtensor_type, TypeAttr::get(qtensor_type),
+              value_attr);
+
+          tfl_quantize_input = qconst_op.getResult();
+        } else if (producer_op) {
+          rewriter.startOpModification(producer_op);
+          for (OpResult result : producer_op->getResults()) {
+            if (result == custom_call_op.getOperand(num_operands - 1)) {
+              result.setType(qtensor_type);
+              break;
+            }
+          }
+          rewriter.finalizeOpModification(producer_op);
+
+          tfl_quantize_input = operand;
+        } else {
+          return failure();
+        }
+      }
+
+      TFL::DequantizeOp tfl_dequantize_op = TFL::DequantizeOp::create(
+          rewriter, custom_call_op.getLoc(), output_type,
+          /*input=*/tfl_quantize_input);
+      rewriter.replaceOp(custom_call_op, tfl_dequantize_op.getOutput());
+      return success();
+    }
+  };
+
+  class RewriteFakeQuantCustomCallOp
+      : public OpRewritePattern<stablehlo::CustomCallOp> {
+    using OpRewritePattern<stablehlo::CustomCallOp>::OpRewritePattern;
+
+   public:
+    LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                  PatternRewriter& rewriter) const final {
+      if (op.getCallTargetName() != "quant.fake_quant" || IsDrqFakeQuant(op)) {
+        return failure();
+      }
+
+      SmallVector<double, 4> scales;
+      SmallVector<int64_t, 4> zero_points;
+      int num_bits;
+      bool is_signed;
+      bool is_narrow_range;
+
+      if (failed(FillCompositeParams(op, scales, zero_points, num_bits,
+                                     is_signed, is_narrow_range))) {
+        return op.emitError(
+            "fake quant custom call does not contain the required attributes.");
+      }
+
+      ShapedType input_shaped_type =
+          cast<ShapedType>(op.getOperand(0).getType());
+      Type input_element_type = input_shaped_type.getElementType();
+
+      Type quantized_element_type;
+      if (scales.size() == 1) {
+        quantized_element_type = GetPerTensorQuantizedTensorType(
+            rewriter, scales[0], zero_points[0],
+            /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
+            is_narrow_range, is_signed);
+      } else {
+        int32_t quantized_dimension;
+        if (auto quantized_dimension_attr = llvm::dyn_cast_or_null<IntegerAttr>(
+                op->getAttr("quantization_dimension"))) {
+          quantized_dimension =
+              quantized_dimension_attr.getValue().getSExtValue();
+        } else {
+          return op.emitError(
+              "quantization_dimension attribute is missing from the custom "
+              "call.");
+        }
+        quantized_element_type = GetPerAxisQuantizedTensorType(
+            rewriter, scales, zero_points, quantized_dimension,
+            /*expressed_type=*/input_element_type, num_bits, op->getLoc(),
+            is_narrow_range, is_signed);
+      }
+
+      RankedTensorType output_type = RankedTensorType::get(
+          input_shaped_type.getShape(), quantized_element_type);
+      TFL::QuantizeOp tfl_quantize_op =
+          TFL::QuantizeOp::create(rewriter, op.getLoc(), output_type,
+                                  /*input=*/op.getOperand(0),
+                                  /*qtype=*/TypeAttr::get(output_type));
+
+      TFL::DequantizeOp tfl_dequantize_op =
+          TFL::DequantizeOp::create(rewriter, op.getLoc(), input_shaped_type,
+                                    tfl_quantize_op.getOutput());
+
+      rewriter.replaceOp(op, tfl_dequantize_op.getOutput());
+      return success();
+    }
+  };
+
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteQuantizeCompositeOp, RewriteDequantizeCompositeOp,
-               RewriteFakeQuantCompositeOp>(&ctx);
+               RewriteFakeQuantCompositeOp, RewriteQuantizeCustomCallOp,
+               RewriteDequantizeCustomCallOp, RewriteFakeQuantCustomCallOp>(
+      &ctx);
 
   if (failed(
           applyPatternsGreedily(module, std::move(patterns), greedy_config))) {

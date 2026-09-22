@@ -24,10 +24,14 @@ while `op` is still alive, and then calls `rewriter.replaceOp(op, newStore)`.
 
 --- a/lib/Dialect/Triton/Transforms/RewriteTensorDescriptorToPointer.cpp
 +++ b/lib/Dialect/Triton/Transforms/RewriteTensorDescriptorToPointer.cpp
-@@ -364,11 +364,12 @@
+@@ -364,15 +364,12 @@ struct RewriteStorePattern : OpConversionPattern<triton::DescriptorStoreOp> {
      auto desc = unpackDescriptor(descTy, adaptor.getDesc());
      auto offsets = castToI64(rewriter, op.getIndices());
  
+-    // Save attrs before replaceOpWithNewOp, which may erase op immediately
+-    // when allowPatternRollback is false.
+-    auto attrs = filterSegmentSizes(op->getAttrs());
+-
 -    auto newStore = rewriter.replaceOpWithNewOp<triton::StoreOp>(
 -        op, generatePtr(rewriter, loc, blockShape, desc, offsets), op.getSrc(),
 -        generateMask(rewriter, loc, blockShape, desc, offsets),
@@ -35,22 +39,30 @@ while `op` is still alive, and then calls `rewriter.replaceOp(op, newStore)`.
 +        rewriter, loc, generatePtr(rewriter, loc, blockShape, desc, offsets),
 +        op.getSrc(), generateMask(rewriter, loc, blockShape, desc, offsets),
          triton::CacheModifier::NONE, triton::EvictionPolicy::NORMAL);
-     newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
+-    newStore->setAttrs(attrs);
++    newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
 +    rewriter.replaceOp(op, newStore);
  
      return llvm::success();
    }
-@@ -440,10 +441,11 @@
+@@ -444,15 +441,11 @@ struct RewriteScatterPattern
      auto desc = unpackDescriptor(descTy, adaptor.getDesc());
      auto [ptr, mask] = generateGatherScatterPtrMask(
          rewriter, loc, blockShape, desc, op.getXOffsets(), op.getYOffset());
+-
+-    // Save attrs before replaceOpWithNewOp, which may erase op immediately
+-    // when allowPatternRollback is false.
+-    auto attrs = filterSegmentSizes(op->getAttrs());
+-
 -    auto newStore = rewriter.replaceOpWithNewOp<triton::StoreOp>(
 -        op, ptr, op.getSrc(), mask, triton::CacheModifier::NONE,
 +    auto newStore = triton::StoreOp::create(
 +        rewriter, loc, ptr, op.getSrc(), mask, triton::CacheModifier::NONE,
          triton::EvictionPolicy::NORMAL);
-     newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
+-    newStore->setAttrs(attrs);
++    newStore->setAttrs(filterSegmentSizes(op->getAttrs()));
 +    rewriter.replaceOp(op, newStore);
  
      return llvm::success();
    }
+
