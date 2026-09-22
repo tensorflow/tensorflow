@@ -105,7 +105,6 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/source_target_pairs.h"
@@ -4815,29 +4814,6 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
   xla::XlaOp bitcast = xla::internal::XlaBuilderFriend::BuildBitcast(
       ctx.builder, operand, xla::TypeToShape(op.getType()));
   value_map[op] = bitcast;
-  if (ctx.converter->GetOptions().propagate_bitcast_layouts_to_backend_config) {
-    // Encode the source and result layout of the bitcast into the XLA HLO
-    // backend config as a protobuf. Note that this is a temporary solution
-    // which will go away once XLA:GPU stops falling back to XLA HLO Elemental
-    // IR emitters.
-    xla::HloInstructionProto* bitcast_proto =
-        xla::internal::XlaBuilderFriend::GetInstruction(bitcast);
-    xla::HloInstructionProto* operand_proto =
-        xla::internal::XlaBuilderFriend::GetInstruction(operand);
-    xla::LayoutProto result_layout =
-        ExtractLayout(op, bitcast_proto->shape().dimensions_size(),
-                      xla::kBitcastResultLayout)
-            .ToProto();
-    xla::LayoutProto source_layout =
-        ExtractLayout(op, operand_proto->shape().dimensions_size(),
-                      xla::kBitcastSourceLayout)
-            .ToProto();
-    xla::gpu::BitcastBackendConfig bitcast_config;
-    *bitcast_config.mutable_source_layout() = source_layout;
-    *bitcast_config.mutable_result_layout() = result_layout;
-    *bitcast_proto->mutable_backend_config() =
-        bitcast_config.SerializeAsString();
-  }
   return success();
 }
 
