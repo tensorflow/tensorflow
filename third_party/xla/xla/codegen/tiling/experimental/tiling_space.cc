@@ -590,6 +590,46 @@ std::unique_ptr<TilingSpace> TilingSpace::Clone() const {
   return cloned;
 }
 
+std::unique_ptr<TilingSpace> TilingSpace::CloneSymbolicIntoContext(
+    mlir::MLIRContext* target_context) const {
+  CHECK(target_context != nullptr) << "target_context must not be null.";
+  CHECK(is_symbolic_) << "CloneSymbolicIntoContext is only supported for a "
+                         "symbolic TilingSpace.";
+  // Divisibility constraints are not expected on a symbolic tiling space.
+  CHECK(divisibility_constraints_.empty())
+      << "Cloning a TilingSpace with divisibility constraints into another "
+         "MLIRContext is not supported.";
+
+  std::unique_ptr<TilingSpace> cloned = Clone();
+  if (target_context == mlir_context_) {
+    return cloned;
+  }
+
+  RegisterSymbolicExprStorage(target_context);
+  cloned->mlir_context_ = target_context;
+
+  // Leaving the copied tiles alone would keep the clone holding expressions
+  // owned by this space's context, so every later mutation of them
+  // (AssignTileSizes) would allocate in that context instead of in
+  // `target_context`.
+  for (Tile& root_tile : cloned->tiled_roots_) {
+    llvm::SmallVector<DimTile> rebound_dim_tiles;
+    rebound_dim_tiles.reserve(root_tile.dim_tiles().size());
+    for (const DimTile& dim_tile : root_tile.dim_tiles()) {
+      int64_t global_dim_id = dim_tile.size.GetValue() - num_dimensions();
+      int64_t dim_size = dim_tile.upper_bound.GetValue();
+      rebound_dim_tiles.push_back(GetDefaultDimTile(
+          TiledDimId(global_dim_id),
+          CreateSymbolExpr(global_dim_id, cloned->num_dimensions(),
+                           target_context),
+          dim_size));
+    }
+    root_tile = Tile{*cloned, std::move(rebound_dim_tiles)};
+  }
+
+  return cloned;
+}
+
 int64_t TilingSpace::num_parallel_dimensions() const {
   return absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
     return dim.type == DimensionSemantics::kParallel;
