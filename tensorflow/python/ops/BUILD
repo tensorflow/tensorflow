@@ -4864,14 +4864,34 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
-    name = "fused_linear_cross_entropy_op",
-    srcs = ["fused_linear_cross_entropy_op.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/ops:fused_linear_cross_entropy_op"
-    ],
-)
+ py_library(
+     name = "nn_ops",
+     srcs = ["nn_ops.py"],
+     srcs_version = "PY3",
+     deps = [
+         ":array_ops",
+         ":candidate_sampling_ops",
+         ":check_ops",
+         ":control_flow_ops",
+         ":ctc_ops",
+         ":custom_gradient",
+         ":embedding_ops",
++        ":fused_linear_cross_entropy_op",
+         ":math_ops",
+         ":nn",
+         ":nn_grad",
+         ":nn_ops_gen",
+         ":sparse_ops",
+         ":variables",
+         "//tensorflow/python/framework:constant_op",
+         "//tensorflow/python/framework:dtypes",
+         "//tensorflow/python/framework:errors",
+         "//tensorflow/python/framework:graph_util",
+         "//tensorflow/python/framework:ops",
+         "//tensorflow/python/framework:random_seed",
+         "//tensorflow/python/framework:tensor",
+         "//tensorflow/python/framework:tensor_shape",
+         "//tensorflow/python/framework:tensor_util",
+         "//tensorflow/python/util:dispatch",
+     ],
+ )
