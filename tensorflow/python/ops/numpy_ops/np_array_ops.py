@@ -1585,9 +1585,9 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
   m = asarray(m)
 
   maybe_rank = m.shape.rank
-  if maybe_rank is not None:
-    if not isinstance(axes, (tuple, list, range, np.ndarray)):
-      axes = tuple(axes)
+  if maybe_rank is not None and isinstance(
+      axes, (tuple, list, range, np.ndarray)
+  ):
     if len(axes) != 2:
       raise ValueError('len(axes) must be 2.')
     if builtins.all(isinstance(axis, (int, np.integer)) for axis in axes):
