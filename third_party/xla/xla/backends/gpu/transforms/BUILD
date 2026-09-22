@@ -3258,7 +3258,6 @@ xla_cc_test(
     srcs = ["softmax_rewriter_triton_test.cc"],
     deps = [
         ":softmax_rewriter_triton",
-        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/analysis:symbolic_map",

@@ -205,8 +205,13 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
     : public BufferAllocationsManagerForComputationsWithoutOrdering {
  public:
   FastMergeBufferAllocationsManagerForComputationsWithoutOrdering(
-      BufferAssignment* assignment, BufferAssigner* assigner)
-      : assignment_(assignment), assigner_(assigner) {}
+      BufferAssignment* assignment, BufferAssigner* assigner,
+      std::optional<BufferAssignment::LiveRangeInterferenceOptions>
+          live_range_interference_options = std::nullopt)
+      : assignment_(assignment),
+        assigner_(assigner),
+        live_range_interference_options_(
+            std::move(live_range_interference_options)) {}
 
   void RegisterAliasedEntryParameterAllocation(
       BufferAllocation::Index index) override {
@@ -238,30 +243,84 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
       ABSL_ASSIGN_OR_RETURN(bool success, assigner_->MaybeAssignBuffer(
                                          allocation, *hlo_buffer, assignment_));
       if (success) {
-        active_allocations_.emplace(
-            ActiveAllocation({live_range.max_end, index}));
+        RecordAllocationUse(allocation, live_range.max_end);
         VLOG(3) << "Reusing allocation #" << allocation->index()
                 << " via "
                    "FastMergeBufferAllocationsManagerForComputationsWithout"
                    "Ordering "
                    "for: "
                 << *hlo_buffer;
-        pool.erase(it);
         return true;
       }
       ++it;
     }
+
+    if (live_range_interference_options_.has_value()) {
+      bool has_custom_interference = false;
+      for (const HloValue* hlo_value : hlo_buffer->values()) {
+        if (live_range_interference_options_->has_custom_interference(
+                assignment_->alias_analysis(), *hlo_value)) {
+          has_custom_interference = true;
+          break;
+        }
+      }
+      if (has_custom_interference) {
+        // Collect active allocations that are of the same color, have
+        // sufficient size, and are not in the free pool (which was already
+        // searched above).
+        std::vector<BufferAllocation*> candidates;
+        for (BufferAllocation::Index index : allocation_indices_) {
+          BufferAllocation* allocation =
+              assignment_->GetMutableAllocation(index);
+          if (allocation->color() == buffer_color &&
+              allocation->size() >= required_size &&
+              !pool.contains({allocation->size(), index})) {
+            candidates.push_back(allocation);
+          }
+        }
+        absl::c_sort(candidates,
+                     [](const BufferAllocation* a, const BufferAllocation* b) {
+                       if (a->size() != b->size()) {
+                         return a->size() < b->size();
+                       }
+                       return a->index() < b->index();
+                     });
+        for (BufferAllocation* allocation : candidates) {
+          ABSL_ASSIGN_OR_RETURN(bool success,
+                           assigner_->MaybeAssignBuffer(allocation, *hlo_buffer,
+                                                        assignment_));
+          if (success) {
+            RecordAllocationUse(allocation, live_range.max_end);
+            return true;
+          }
+        }
+      }
+    }
+
     return false;
   }
 
   // Registers a new standalone allocation to be tracked.
   void RegisterNewAllocation(const HloBuffer* hlo_buffer,
                              BufferAllocation::Index index) override {
+    allocation_indices_.push_back(index);
     BufferLiveRange live_range = GetBufferLiveRange(hlo_buffer);
+    allocation_max_end_time_[index] = live_range.max_end;
     active_allocations_.emplace(ActiveAllocation({live_range.max_end, index}));
   }
 
  private:
+  void RecordAllocationUse(BufferAllocation* allocation, int64_t max_end_time) {
+    BufferAllocation::Index index = allocation->index();
+    size_t erased =
+        free_pool_[allocation->color()].erase({allocation->size(), index});
+    int64_t& current_max_end = allocation_max_end_time_[index];
+    if (erased > 0 || max_end_time > current_max_end) {
+      current_max_end = std::max(current_max_end, max_end_time);
+      active_allocations_.emplace(ActiveAllocation({current_max_end, index}));
+    }
+  }
+
   BufferLiveRange GetBufferLiveRange(const HloBuffer* hlo_buffer) const {
     return GetHloBufferLiveRange(
         hlo_buffer, assignment_->hlo_live_range().buffer_live_ranges());
@@ -276,6 +335,11 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
            active_allocations_.top().max_end_time <= current_start_time) {
       auto top = active_allocations_.top();
       active_allocations_.pop();
+      auto it = allocation_max_end_time_.find(top.index);
+      if (it != allocation_max_end_time_.end() &&
+          top.max_end_time < it->second) {
+        continue;
+      }
       BufferAllocation* alloc = assignment_->GetMutableAllocation(top.index);
       free_pool_[alloc->color()].emplace(alloc->size(), top.index);
     }
@@ -294,10 +358,14 @@ class FastMergeBufferAllocationsManagerForComputationsWithoutOrdering
 
   BufferAssignment* const assignment_;
   BufferAssigner* const assigner_;
+  std::optional<BufferAssignment::LiveRangeInterferenceOptions>
+      live_range_interference_options_;
   int64_t prev_start_time_ = 0;
   std::priority_queue<ActiveAllocation, std::vector<ActiveAllocation>,
                       std::greater<ActiveAllocation>>
       active_allocations_;
+  absl::flat_hash_map<BufferAllocation::Index, int64_t>
+      allocation_max_end_time_;
   absl::flat_hash_map<
       LogicalBuffer::Color,
       absl::btree_set<std::pair<int64_t, BufferAllocation::Index>>>
@@ -1047,10 +1115,10 @@ BufferAllocation* BufferAssignment::NewEmptyAllocation(
 }
 
 absl::StatusOr<BufferAllocation*> BufferAssignment::NewAllocation(
-    const HloBuffer& buffer, int64_t size) {
+    const HloBuffer& buffer, int64_t size, int64_t offset) {
   ABSL_ASSIGN_OR_RETURN(auto color, buffer.color());
-  BufferAllocation* allocation = NewEmptyAllocation(size, color);
-  ABSL_RETURN_IF_ERROR(AddAssignment(allocation, buffer, /*offset=*/0, size));
+  BufferAllocation* allocation = NewEmptyAllocation(offset + size, color);
+  ABSL_RETURN_IF_ERROR(AddAssignment(allocation, buffer, offset, size));
   allocation->peak_buffers_.push_back(buffer.values()[0]);
   return allocation;
 }
@@ -1095,7 +1163,9 @@ absl::Status BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // Combines allocations of temporary buffers of the same color into one big
 // BufferAllocation.
 absl::Status BufferAssignment::CombineTempAllocations(
-    std::optional<BufferValue::Color> temp_buffer_color) {
+    std::optional<BufferValue::Color> temp_buffer_color,
+    std::optional<LiveRangeInterferenceOptions> live_range_interference_options,
+    std::optional<FixedOffset> fixed_offset) {
   VLOG(1) << "CombineTempAllocations()";
 
   // Move all temp allocations into a single run at the end of the allocations
@@ -1109,6 +1179,36 @@ absl::Status BufferAssignment::CombineTempAllocations(
   std::vector<BufferAllocation> combined_allocations;
   // Reserve the max possible size we'd need to ensure pointer stability.
   combined_allocations.reserve(allocations_.end() - first_temp_it);
+  // Prioritize temp allocations requiring a fixed offset of zero so that they
+  // are placed first at offset 0 within the combined allocation, allowing other
+  // temp allocations of the same color to be placed on top.
+  auto has_zero_fixed_offset_fn = [&](const BufferAllocation& alloc) {
+    if (!fixed_offset.has_value()) {
+      return false;
+    }
+    // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+    for (const auto& buffer_offset_size : alloc.assigned_buffers()) {
+      const HloValue* val = buffer_offset_size.first;
+      std::optional<int64_t> req_offset =
+          (*fixed_offset)(alias_analysis(), val->instruction(), val->index());
+      if (req_offset.has_value() && *req_offset == 0 &&
+          buffer_offset_size.second.offset == 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::stable_sort(first_temp_it, allocations_.end(),
+                   [&](const BufferAllocation& a, const BufferAllocation& b) {
+                     bool a_zero = has_zero_fixed_offset_fn(a);
+                     bool b_zero = has_zero_fixed_offset_fn(b);
+                     if (a_zero != b_zero) {
+                       return a_zero;
+                     }
+                     return false;
+                   });
+
   // Holds the pointer to a combined allocation of each (color, page), if any.
   absl::flat_hash_map<std::pair<BufferValue::Color, int64_t>, BufferAllocation*>
       combined_allocation_map;
@@ -1119,6 +1219,36 @@ absl::Status BufferAssignment::CombineTempAllocations(
     BufferAllocation& temp_allocation = *it;
     BufferValue::Color color = temp_allocation.color();
     int64_t page = temp_allocation.page_id();
+    bool has_fixed_offset = false;
+    bool all_fixed_offsets_are_zero = true;
+    if (fixed_offset.has_value()) {
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& buffer_offset_size :
+           temp_allocation.assigned_buffers()) {
+        const HloValue* val = buffer_offset_size.first;
+        std::optional<int64_t> offset =
+            (*fixed_offset)(alias_analysis(), val->instruction(), val->index());
+        if (offset.has_value()) {
+          has_fixed_offset = true;
+          if (*offset != 0 || buffer_offset_size.second.offset != 0) {
+            all_fixed_offsets_are_zero = false;
+          }
+        }
+      }
+    }
+    // An allocation with a non-zero fixed offset constraint cannot be merged
+    // into a combined allocation: placing it end-to-end at base > 0 would shift
+    // its buffer's absolute offset and violate its fixed offset requirement,
+    // and merging at base 0 is only valid if its fixed offset is 0. Therefore,
+    // allocations with non-zero fixed offset constraints remain separate.
+    // Conversely, allocations requiring fixed offset 0 are sorted first so they
+    // occupy offset 0 of the combined allocation, allowing subsequent
+    // allocations to be safely placed on top or merged if non-interfering.
+    if (has_fixed_offset && !all_fixed_offsets_are_zero) {
+      combined_allocations.push_back(std::move(temp_allocation));
+      continue;
+    }
+
     auto combined_it = combined_allocation_map.find({color, page});
     if (combined_it == combined_allocation_map.end()) {
       // We have found the first temp allocation of this color. Collect
@@ -1131,8 +1261,69 @@ absl::Status BufferAssignment::CombineTempAllocations(
                                       &combined_allocations.back());
       continue;
     }
-    if (combined_it->second->size() + temp_allocation.size() >=
-        multiheap_size_constraint_per_heap_) {
+
+    BufferAllocation* combined_allocation = combined_it->second;
+
+    const bool is_zero_base_merge = has_fixed_offset;
+    if (is_zero_base_merge) {
+      bool interferes = false;
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& [val1, _] : temp_allocation.assigned_buffers()) {
+        // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+        for (const auto& [val2, __] : combined_allocation->assigned_buffers()) {
+          if (live_range_interference_options.has_value()) {
+            std::optional<bool> custom =
+                live_range_interference_options->interferes(alias_analysis(),
+                                                            *val1, *val2);
+            if (custom.has_value()) {
+              if (*custom) {
+                interferes = true;
+                break;
+              }
+              continue;
+            }
+          }
+          if (has_fixed_offset) {
+            if (hlo_live_range().total_order_scheduled()) {
+              const auto& live_ranges = hlo_live_range().buffer_live_ranges();
+              auto it1 = live_ranges.find(val1);
+              auto it2 = live_ranges.find(val2);
+              if (it1 != live_ranges.end() && it2 != live_ranges.end()) {
+                if (!(it1->second.start > it2->second.end ||
+                      it2->second.start > it1->second.end)) {
+                  interferes = true;
+                  break;
+                }
+              } else {
+                // Conservatively assume interference if live ranges are
+                // missing.
+                interferes = true;
+                break;
+              }
+            } else {
+              // Non-total order scheduled module: conservatively assume
+              // interference.
+              interferes = true;
+              break;
+            }
+          }
+        }
+        if (interferes) {
+          break;
+        }
+      }
+      if (interferes) {
+        combined_allocations.push_back(std::move(temp_allocation));
+        continue;
+      }
+    }
+
+    const int64_t new_size =
+        is_zero_base_merge
+            ? std::max(combined_allocation->size(), temp_allocation.size())
+            : combined_allocation->size() + temp_allocation.size();
+
+    if (new_size >= multiheap_size_constraint_per_heap_) {
       // We cannot put more into the current combined_it. So, appoint a new
       // combined_it.
       VLOG(1) << "Due to size constraint, reset temp allocation for color "
@@ -1144,16 +1335,22 @@ absl::Status BufferAssignment::CombineTempAllocations(
 
     // If we got here, temp_allocation is still valid, since all the paths
     // that `std::move` it continue.
-    BufferAllocation* combined_allocation = combined_it->second;
     VLOG(1) << "Combined allocation absorbing temp allocation: "
             << temp_allocation;
 
     // Each temp allocation is placed end-to-end, accounting for alignment.
     // The offset of each buffer in the combined allocation is computed from
-    // the base offset of the allocation.
+    // the base offset of the allocation. For non-interfering fixed-offset
+    // allocations, base is 0.
     int64_t alignment = color_alignment_(color);
-    const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
-    combined_allocation->set_size(base + temp_allocation.size());
+    int64_t base;
+    if (is_zero_base_merge) {
+      base = 0;
+      combined_allocation->set_size(new_size);
+    } else {
+      base = RoundUpTo(combined_allocation->size(), alignment);
+      combined_allocation->set_size(base + temp_allocation.size());
+    }
     for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
       const HloValue* value = buffer_offset_size.first;
       const int64_t offset = buffer_offset_size.second.offset;
@@ -1166,10 +1363,16 @@ absl::Status BufferAssignment::CombineTempAllocations(
       combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
     }
 
-    combined_allocation->peak_buffers_.insert(
-        combined_allocation->peak_buffers_.end(),
-        temp_allocation.peak_buffers_.begin(),
-        temp_allocation.peak_buffers_.end());
+    if (is_zero_base_merge) {
+      if (temp_allocation.size() == combined_allocation->size()) {
+        combined_allocation->peak_buffers_ = temp_allocation.peak_buffers_;
+      }
+    } else {
+      combined_allocation->peak_buffers_.insert(
+          combined_allocation->peak_buffers_.end(),
+          temp_allocation.peak_buffers_.begin(),
+          temp_allocation.peak_buffers_.end());
+    }
 
     // Carry over the cross-color reuse reporting info from the absorbed
     // allocation so the combined allocation's dump still reflects it.
@@ -1856,6 +2059,15 @@ bool BufferAssigner::LiveRangeInterferes(
     const HloValue* buffer1, const HloLiveRange::LiveRangeBounds& live_range1,
     const HloValue* buffer2, const HloLiveRange::LiveRangeBounds& live_range2,
     BufferAssignment* assignment) {
+  if (opts_.live_range_interference_options.has_value()) {
+    std::optional<bool> custom_interference =
+        opts_.live_range_interference_options->interferes(
+            assignment->alias_analysis(), *buffer1, *buffer2);
+    if (custom_interference.has_value()) {
+      return *custom_interference;
+    }
+  }
+
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
@@ -1918,6 +2130,27 @@ bool BufferAssigner::LiveRangeInterferes(
   return false;
 }
 
+absl::StatusOr<std::optional<int64_t>> BufferAssigner::GetRequiredFixedOffset(
+    const HloBuffer& hlo_buffer, const HloAliasAnalysis& alias_analysis) const {
+  if (!opts_.fixed_offset.has_value()) {
+    return std::nullopt;
+  }
+  std::optional<int64_t> req_offset;
+  for (const HloValue* val : hlo_buffer.values()) {
+    std::optional<int64_t> offset =
+        (*opts_.fixed_offset)(alias_analysis, val->instruction(), val->index());
+    if (offset.has_value()) {
+      if (req_offset.has_value() && *req_offset != *offset) {
+        return Internal(
+            "Conflicting fixed offset requirements for buffer %s: %d vs %d",
+            hlo_buffer.ToString(), *req_offset, *offset);
+      }
+      req_offset = offset;
+    }
+  }
+  return req_offset;
+}
+
 absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     BufferAllocation* allocation, const HloBuffer& hlo_buffer,
     BufferAssignment* assignment) {
@@ -1927,6 +2160,11 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
   VLOG(4) << "Trying to assign " << hlo_buffer << " size "
           << assignment->HloBufferSize(hlo_buffer)
           << " to allocation: " << *allocation;
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::optional<int64_t> required_fixed_offset,
+      GetRequiredFixedOffset(hlo_buffer, assignment->alias_analysis()));
+  int64_t target_offset = required_fixed_offset.value_or(0);
 
   ABSL_ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer.color());
 
@@ -1949,10 +2187,11 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
-  if (assignment->HloBufferSize(hlo_buffer) > allocation->size()) {
-    VLOG(4) << "Can't assign: buffer is larger than allocation ("
-            << assignment->HloBufferSize(hlo_buffer) << " > "
-            << allocation->size() << ")";
+  if (target_offset + assignment->HloBufferSize(hlo_buffer) >
+      allocation->size()) {
+    VLOG(4) << "Can't assign: buffer with offset " << target_offset
+            << " and size " << assignment->HloBufferSize(hlo_buffer)
+            << " exceeds allocation size " << allocation->size();
     return false;
   }
 
@@ -2044,14 +2283,29 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
                   << new_value->ToShortString();
           return false;
         }
-      } else if (assignment->hlo_ordering().MayInterfere(
-                     assigned_buffer, *new_value,
-                     assignment->dataflow_analysis(), alias_info_)) {
-        // Fallback to partial order based interference detection (slower) when
-        // we don't have a total order scheduled module.
-        VLOG(4) << "Can't assign: assignee " << assigned_buffer
-                << " may interfere with " << new_value->ToShortString();
-        return false;
+      } else {
+        std::optional<bool> custom_interference;
+        if (opts_.live_range_interference_options.has_value()) {
+          custom_interference =
+              opts_.live_range_interference_options->interferes(
+                  assignment->alias_analysis(), *new_value, assigned_buffer);
+        }
+        if (custom_interference.has_value()) {
+          if (*custom_interference) {
+            VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                    << " custom interference with "
+                    << new_value->ToShortString();
+            return false;
+          }
+        } else if (assignment->hlo_ordering().MayInterfere(
+                       assigned_buffer, *new_value,
+                       assignment->dataflow_analysis(), alias_info_)) {
+          // Fallback to partial order based interference detection (slower)
+          // when we don't have a total order scheduled module.
+          VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                  << " may interfere with " << new_value->ToShortString();
+          return false;
+        }
       }
 
       // Copy instruction don't share a buffer with their input operand.
@@ -2070,6 +2324,33 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     }
   }
 
+  if (opts_.fixed_offset.has_value()) {
+    if (required_fixed_offset.has_value()) {
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
+        int64_t exist_offset = buffer_offset_size.second.offset;
+        if (exist_offset != target_offset) {
+          VLOG(4) << "Can't assign: allocation has buffer at offset "
+                  << exist_offset << ", but required fixed offset is "
+                  << target_offset;
+          return false;
+        }
+      }
+    } else {
+      // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+      for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
+        const HloValue* val = buffer_offset_size.first;
+        if ((*opts_.fixed_offset)(assignment->alias_analysis(),
+                                  val->instruction(), val->index())
+                .has_value()) {
+          VLOG(4) << "Can't assign: allocation contains fixed offset buffer, "
+                  << "non-fixed buffer " << hlo_buffer << " cannot reuse it.";
+          return false;
+        }
+      }
+    }
+  }
+
   // If the buffer is live out of the computation then it should only be
   // assigned a buffer which exactly fits the result to avoid wasting memory
   // (result buffers can have arbitrary lifetimes).
@@ -2081,7 +2362,7 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
   }
 
   ABSL_RETURN_IF_ERROR(
-      assignment->AddAssignment(allocation, hlo_buffer, /*offset=*/0,
+      assignment->AddAssignment(allocation, hlo_buffer, target_offset,
                                 assignment->HloBufferSize(hlo_buffer)));
   return true;
 }
@@ -2176,6 +2457,32 @@ bool BufferAssigner::DelayTemporaryBufferAssignment(
     return false;
   }
 
+  // Buffers with custom interference overrides must bypass heap simulation,
+  // which only checks interval overlap. Being pessimistic here by only
+  // checking if the buffer is subject to overrides is fine - bypassing delay
+  // simply falls back to standard sequential assignment, where exact pairwise
+  // interference is checked before any reuse and downstream buffers can still
+  // reuse this allocation.
+  if (opts_.live_range_interference_options.has_value()) {
+    for (const HloValue* hlo_value : hlo_buffer->values()) {
+      if (opts_.live_range_interference_options->has_custom_interference(
+              assignment->alias_analysis(), *hlo_value)) {
+        return false;
+      }
+    }
+  }
+
+  // Buffers requiring a fixed offset must not be delayed to heap simulation
+  // because the heap simulator packs temporary buffers into dynamic offsets
+  // based on live-range intervals without honoring fixed offset requirements.
+  if (opts_.fixed_offset.has_value()) {
+    auto req_offset =
+        GetRequiredFixedOffset(*hlo_buffer, assignment->alias_analysis());
+    if (req_offset.ok() && req_offset->has_value()) {
+      return false;
+    }
+  }
+
   bool all_computations_have_sequential_order = true;
   for (const HloValue* hlo_value : hlo_buffer->values()) {
     HloComputation* computation = hlo_value->instruction()->parent();
@@ -2235,10 +2542,15 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
     }
   }
 
+  ABSL_ASSIGN_OR_RETURN(
+      std::optional<int64_t> required_fixed_offset,
+      GetRequiredFixedOffset(*hlo_buffer, assignment->alias_analysis()));
+  int64_t target_offset = required_fixed_offset.value_or(0);
+
   // Attempt to reuse existing buffer according to the chosen algorithm.
   ABSL_ASSIGN_OR_RETURN(bool success,
                    allocation_manager->TryAssignToExistingAllocation(
-                       hlo_buffer, buffer_size));
+                       hlo_buffer, target_offset + buffer_size));
   if (success) {
     return absl::OkStatus();
   }
@@ -2249,8 +2561,9 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   }
 
   if (!assignment->HasAllocation(*hlo_buffer)) {
-    ABSL_ASSIGN_OR_RETURN(BufferAllocation * allocation,
-                     assignment->NewAllocation(*hlo_buffer, buffer_size));
+    ABSL_ASSIGN_OR_RETURN(
+        BufferAllocation * allocation,
+        assignment->NewAllocation(*hlo_buffer, buffer_size, target_offset));
     allocation_manager->RegisterNewAllocation(hlo_buffer, allocation->index());
     VLOG(3) << "New allocation #" << allocation->index()
             << " for: " << *hlo_buffer;
@@ -2381,7 +2694,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
                });
 
   FastMergeBufferAllocationsManagerForComputationsWithoutOrdering fast_manager(
-      assignment, this);
+      assignment, this, opts_.live_range_interference_options);
   DefaultBufferAllocationsManagerForComputationsWithoutOrdering default_manager(
       assignment, this);
 
@@ -3363,7 +3676,9 @@ absl::Status BufferAssigner::RunAssignBuffers(
   // performed after all buffers have been assigned, and after maybe_live_out
   // is marked, since it is used to determine whether an allocation contains
   // temporary buffers or not.
-  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(opts_.temp_buffer_color));
+  ABSL_RETURN_IF_ERROR(assignment->CombineTempAllocations(
+      opts_.temp_buffer_color, opts_.live_range_interference_options,
+      opts_.fixed_offset));
   return absl::OkStatus();
 }
 

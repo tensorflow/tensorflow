@@ -848,6 +848,7 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )
