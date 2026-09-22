@@ -100,7 +100,7 @@ def TPU_TiledLayoutAttr
     int64_t getUntiledRank() const;
 
     ::llvm::SmallVector<int64_t> getExpandedShape(::llvm::ArrayRef<int64_t> shape) const;
-    ::llvm::SmallVector<int64_t> getExpandedStrides() const;
+    ::llvm::SmallVector<int64_t> getExpandedStrides(::llvm::ArrayRef<int64_t> shape = {}) const;
 
     // Returns true if any of the tile strides are dynamic.
     bool hasDynamicStrides() const;
@@ -324,6 +324,50 @@ def TPU_CompressStoreVregOp : TPU_Op<"compress_store_vreg", [DefaultMemWrite]> {
     AnyMemRef:$base,
     Variadic<Index>:$indices,
     VectorOfRankAndType<[1], [I1]>:$mask,
+    DefaultValuedAttr<BoolAttr, "false">:$add
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_VectorCompressStoreOp : TPU_Op<"vector_compress_store", [DefaultMemWrite]> {
+  let summary = "Performs a masked, compressed store of a vector.";
+  let description = [{
+    In contrast to `tpu.vector_store`, which has non-compressed semantics
+    (masked-out elements leave gaps in memory), masked-out elements are skipped
+    entirely when striding along `compress_dim`: `valueToStore[i_0, i_1, ...]`,
+    if not masked, is stored at `base[j_0, j_1, ...]` where:
+    - For `n != compress_dim`, `j_n = indices_n + i_n` (same as a regular store)
+    - For `n == compress_dim`, `j_n = indices_n + c`, where `c` is the count of
+      enabled (true) values in `mask[i_0, i_1, ..., 0:i_n, ...]`
+
+    For example, for a rank-1 `valueToStore` (and hence `compress_dim` = 0),
+    storing [A, B, C, D] with mask [true, false, true, false] writes A to
+    `base[indices]` and C to `base[indices + 1]`.
+
+    valueToStore: The vector to store. Must be of the same rank as the base
+                  memref shape.
+    base        : Memref to store to.
+    indices     : Scalar indices into `base`, identifying the position of the
+                  first stored element. Must be of the same rank as the base
+                  memref shape.
+    mask        : Mask of the same shape as `valueToStore`. Masking has a
+                  granularity of 32 bits: elements that share a 32-bit word
+                  must have the same mask value.
+    compress_dim: The dimension along which the enabled elements are written
+                  consecutively.
+    add         : If true, the enabled elements are added to the values already
+                  in memory instead of overwriting them.
+  }];
+  let arguments = (ins
+    AnyVectorOfNonZeroRank:$valueToStore,
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfNonZeroRankOf<[I1]>:$mask,
+    I32Attr:$compress_dim,
     DefaultValuedAttr<BoolAttr, "false">:$add
   );
   let results = (outs);
@@ -1857,6 +1901,24 @@ def TPU_FetchAndAddSyncOp : TPU_Op<"fetch_and_add_sync", [DefaultMemRead, Defaul
   let assemblyFormat = [{
     $base `[` $indices `]` `,` $value `,` $core_id
     attr-dict `:` type($base) `,` type($value) `->` type($result)
+  }];
+
+  let hasVerifier = 1;
+}
+
+def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {
+  let summary = "Get the top level tile size of a given memref.";
+  let description = [{
+    Get the tile size of a memref at the given dimension index. This only
+    returns the first level of tiles. If the dimension is not tiled, the value
+    is always 1.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, I32Attr:$index);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = [{
+    attr-dict $source `,` $index `:` type($source)
   }];
 
   let hasVerifier = 1;
