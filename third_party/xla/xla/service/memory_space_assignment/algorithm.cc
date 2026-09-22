@@ -2964,11 +2964,8 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
           first_value->defining_position(), chunk_candidate, interval.start,
           interval.end));
       AddToPendingChunks(interval, chunk_candidate);
-      repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
-          interval.start, interval.end, chunk_candidate.size,
-          chunk_candidate.offset, reserved_allocations.back().get()));
-      repack_allocation_blocks_.back().next_colocated =
-          &(repack_allocation_blocks_.back());
+      AddRepackAllocationBlockForReservedAllocation(
+          reserved_allocations.back().get());
     }
   }
   ClearPendingChunks();
@@ -8561,11 +8558,7 @@ void MsaAlgorithm::UncommitPendingWork(
     CHECK_EQ(chunk_candidate.offset, allocation->chunk().offset);
     AddToPendingChunks(interval, chunk_candidate);
     allocation->mark_chunk_reserved_in_interval_tree();
-    repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
-        allocation->start_time(), allocation->end_time(), chunk_candidate.size,
-        chunk_candidate.offset, allocation));
-    repack_allocation_blocks_.back().next_colocated =
-        &(repack_allocation_blocks_.back());
+    AddRepackAllocationBlockForReservedAllocation(allocation);
   }
   ClearPendingChunks();
 }
@@ -8789,6 +8782,23 @@ void MsaAlgorithm::CheckAndUpdateForDualLiveAllocationValues(
           << chunk_start_time;
 }
 
+void MsaAlgorithm::AddRepackAllocationBlockForReservedAllocation(
+    ReservedAllocation* reserved_allocation) {
+  CHECK(!reserved_allocation->repack_block_it().has_value())
+      << "Reserved allocation already has a repack block: "
+      << reserved_allocation->ToString();
+  std::list<RepackAllocationBlock>::iterator block_it =
+      repack_allocation_blocks_.insert(
+          repack_allocation_blocks_.end(),
+          MakeRepackAllocationBlock(reserved_allocation->start_time(),
+                                    reserved_allocation->end_time(),
+                                    reserved_allocation->chunk().size,
+                                    reserved_allocation->chunk().offset,
+                                    reserved_allocation));
+  block_it->next_colocated = &*block_it;
+  reserved_allocation->set_repack_block_it(block_it);
+}
+
 void MsaAlgorithm::ReleaseReservedAllocationForAlternateMemoryColorings(
     ReservedAllocation* reserved_allocation) {
   if (!reserved_allocation->is_chunk_reserved_in_interval_tree()) {
@@ -8807,13 +8817,12 @@ void MsaAlgorithm::ReleaseReservedAllocationForAlternateMemoryColorings(
                                          reserved_allocation->chunk()));
   reserved_allocation->mark_chunk_freed_in_interval_tree();
   pending_deallocated_reserved_allocations_.push_back(reserved_allocation);
-  size_t original_size = repack_allocation_blocks_.size();
-  repack_allocation_blocks_.remove_if(
-      [reserved_allocation](
-          const RepackAllocationBlock& repack_allocation_block) {
-        return repack_allocation_block.allocation == reserved_allocation;
-      });
-  CHECK_EQ(original_size - repack_allocation_blocks_.size(), 1);
+  std::optional<std::list<RepackAllocationBlock>::iterator> block_it =
+      reserved_allocation->repack_block_it();
+  CHECK(block_it.has_value()) << "Reserved allocation has no repack block: "
+                              << reserved_allocation->ToString();
+  repack_allocation_blocks_.erase(*block_it);
+  reserved_allocation->clear_repack_block_it();
 }
 
 void MsaAlgorithm::FreeAlternateMemoryColoringReservedAllocations(
