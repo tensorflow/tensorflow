@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+
+class HloDataflowAnalysis;
 
 // This transformation peels off loop iterations of models with stacked layers
 // that perform data parallelism using reduce-scatter/all-reduce/all-gather.
@@ -178,6 +181,15 @@ class CollectivePipeliner : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  // Runs the pipeliner like the public RunPipeliner, with a caller owned
+  // dataflow analysis. The run takes the analysis, builds one when none is
+  // given, and hands it back only when it left the module unchanged, so
+  // consecutive runs on an unchanged module share one analysis.
+  absl::StatusOr<bool> RunPipeliner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      std::unique_ptr<HloDataflowAnalysis>& reusable_dataflow_analysis);
+
   Config config_;
 };
 
