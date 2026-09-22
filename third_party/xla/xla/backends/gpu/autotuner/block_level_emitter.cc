@@ -126,9 +126,11 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
                             ->config()
                             .debug_options()
                             .xla_gpu_fusion_autotune_top_k_configs();
-  ABSL_ASSIGN_OR_RETURN(TopKTiledRunTimeDataOrError tiled_runtime_data,
-                   indexing_performance_model_.TryFindTopKBestTilingsForFusion(
-                       *fusion_adaptor, num_configs));
+  ABSL_ASSIGN_OR_RETURN(
+      TopKTiledRunTimeDataOrError tiled_runtime_data,
+      indexing_performance_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, num_configs)
+          .Await());
 
   if (std::holds_alternative<FusionDecision>(tiled_runtime_data)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
@@ -155,9 +157,10 @@ BlockLevelEmitterBackend::GetCostModelConfig(const HloInstruction& instr) {
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));
 
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_runtime_data_or_error,
-      indexing_performance_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+  ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
+                   indexing_performance_model_
+                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
