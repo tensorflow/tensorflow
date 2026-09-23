@@ -626,6 +626,45 @@ absl::Status NcclCommunicator::LaunchBroadcast(
   return absl::OkStatus();
 }
 
+absl::Status NcclCommunicator::LaunchReduce(se::DeviceAddressBase send_buffer,
+                                            se::DeviceAddressBase recv_buffer,
+                                            PrimitiveType dtype, size_t count,
+                                            ReductionKind reduction_kind,
+                                            RankId root,
+                                            const Executor& executor) {
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  {
+    absl::MutexLock lock(comm_->mutex);
+    XLA_VLOG_DEVICE(3, stream->parent()->device_ordinal())
+        << absl::StreamFormat(
+               "Launch NCCL Reduce operation; send_buffer=%p; "
+               "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; "
+               "root=%d; comm=%p; stream=%p",
+               send_buffer.opaque(), recv_buffer.opaque(),
+               primitive_util::LowercasePrimitiveTypeName(dtype), count,
+               reduction_kind, root.value(), comm_->comm, stream);
+
+    ABSL_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype,
+                     ToNcclDataType(dtype, /*is_reduction_op=*/true,
+                                    stream->parent()
+                                        ->GetDeviceDescription()
+                                        .cuda_compute_capability()));
+
+    ABSL_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduce(
+        send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+        nccl_dtype, ToNcclReduction(reduction_kind), root.value(), comm_->comm,
+        AsCudaStream(stream))));
+  }
+  if (!IsInsideNcclGroupLaunch()) {
+    ABSL_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
 absl::Status NcclCommunicator::LaunchReduceScatter(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
