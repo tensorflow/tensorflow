@@ -80,6 +80,7 @@ namespace xla {
 class HloComputation;
 class HloModule;
 class HloInstruction;
+class BackendConfigRawStringCache;
 class BackendConfigWrapper;
 class HloPayloadDeduplicator;
 struct HloProtoOptions {
@@ -89,6 +90,9 @@ struct HloProtoOptions {
   // Configs smaller than this threshold are kept inline.
   int64_t min_backend_config_size = 0;
   HloPayloadDeduplicator* payload_deduplicator = nullptr;
+  // When set, instructions whose backend config protos are equal compute the
+  // raw string once and share it. HloModule::ToProto provides one per call.
+  BackendConfigRawStringCache* backend_config_raw_string_cache = nullptr;
 };
 
 // A small holder that is used to keep some immutable info alongside an
@@ -1720,13 +1724,11 @@ class HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const {
     HloInstructionProto proto;
-    ToProto(&proto);
+    ToProto(&proto, HloProtoOptions());
     return proto;
   }
 
-  virtual void ToProto(HloInstructionProto* proto) const;
-
-  // Non-virtual overload that handles payload deduplication options.
+  // Serializes this instruction, with the payload deduplication options.
   void ToProto(HloInstructionProto* proto, HloProtoOptions options) const;
 
   // Returns a category for the HLO. This could be something like "convolution"
@@ -2663,6 +2665,11 @@ class HloInstruction {
   // Internal constructor for a given opcode/shape, other fields must be
   // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
+
+  // Serializes everything except the backend config, which the public ToProto
+  // overloads write once, under one lock of the config's mutex. Overrides
+  // call the base version first.
+  virtual void ToProto(HloInstructionProto* proto) const;
 
   void RemoveOperandAt(int index) {
     operands_.erase(operands_.begin() + index);

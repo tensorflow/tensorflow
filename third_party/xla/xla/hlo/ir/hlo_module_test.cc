@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2480,6 +2481,102 @@ TEST(HloModuleTest, CombinedDeduplicationSharesPayloadId) {
   EXPECT_TRUE(inst_proto.has_metadata());
   EXPECT_TRUE(inst_proto.metadata().has_metadata_payload());
   EXPECT_EQ(inst_proto.metadata().metadata_payload().id(), 0);
+}
+
+TEST(HloModuleTest, ToProtoSharedRawStringsMatchDirectEncoding) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  OpMetadata shared_config;
+  shared_config.set_op_name("shared");
+  OpMetadata other_config;
+  other_config.set_op_name("other");
+  const std::vector<const OpMetadata*> configs = {&shared_config, &other_config,
+                                                  &shared_config};
+  const int64_t num_configs = configs.size();
+  for (int64_t i = 0; i < num_configs; ++i) {
+    HloInstruction* inst = builder.AddInstruction(
+        HloInstruction::CreateParameter(i, shape, absl::StrCat("p", i)));
+    ASSERT_OK(inst->set_backend_config(*configs[i]));
+  }
+  m.AddEntryComputation(builder.Build());
+
+  BackendConfigRawStringCache cache;
+  HloProtoOptions options;
+  options.backend_config_raw_string_cache = &cache;
+  HloModuleProto proto;
+  m.ToProto(&proto, options);
+
+  EXPECT_EQ(cache.size(), 2);
+  ASSERT_EQ(proto.computations(0).instructions_size(), num_configs);
+  for (int64_t i = 0; i < num_configs; ++i) {
+    ASSERT_OK_AND_ASSIGN(std::string expected,
+                         BackendConfigToRawString(*configs[i]));
+    EXPECT_EQ(proto.computations(0).instructions(i).backend_config(), expected)
+        << "instruction " << i;
+  }
+}
+
+TEST(HloModuleTest, ToProtoKeepsStringBackedConfigsVerbatim) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  OpMetadata config;
+  config.set_op_name("shared");
+  // The same content as config in a non canonical text form.
+  constexpr absl::string_view kText = R"({"op_name" : "shared"})";
+  HloInstruction* from_proto =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  ASSERT_OK(from_proto->set_backend_config(config));
+  HloInstruction* from_text =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  from_text->set_raw_backend_config_string(std::string(kText));
+  HloInstruction* text_and_proto =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "p2"));
+  text_and_proto->set_raw_backend_config_string(std::string(kText));
+  ASSERT_OK(text_and_proto->backend_config<OpMetadata>().status());
+  HloInstruction* custom_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          shape, {}, "target", std::string(kText)));
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto();
+
+  ASSERT_OK_AND_ASSIGN(std::string canonical, BackendConfigToRawString(config));
+  EXPECT_EQ(proto.computations(0).instructions(0).backend_config(), canonical);
+  EXPECT_EQ(proto.computations(0).instructions(1).backend_config(), kText);
+  EXPECT_EQ(proto.computations(0).instructions(2).backend_config(), kText);
+  EXPECT_EQ(proto.computations(0).instructions(3).backend_config(), kText);
+  // The per instruction ToProto() carries the config too, through the
+  // overrides of subclasses as well.
+  EXPECT_EQ(from_proto->ToProto().backend_config(), canonical);
+  EXPECT_EQ(custom_call->ToProto().backend_config(), kText);
+}
+
+TEST(HloModuleTest, ToProtoDeduplicatesSharedRawStringsIntoOnePayload) {
+  HloModule m("test_module", HloModuleConfig());
+  HloComputation::Builder builder("comp");
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  OpMetadata config;
+  config.set_op_name("shared");
+  for (int64_t i = 0; i < 2; ++i) {
+    HloInstruction* inst = builder.AddInstruction(
+        HloInstruction::CreateParameter(i, shape, absl::StrCat("p", i)));
+    ASSERT_OK(inst->set_backend_config(config));
+  }
+  m.AddEntryComputation(builder.Build());
+
+  HloModuleProto proto = m.ToProto(HloProtoOptions{
+      /*deduplicate_backend_config=*/true, /*deduplicate_metadata=*/false});
+
+  ASSERT_OK_AND_ASSIGN(std::string expected, BackendConfigToRawString(config));
+  ASSERT_EQ(proto.payloads_size(), 1);
+  EXPECT_EQ(proto.payloads(0), expected);
+  for (const HloInstructionProto& inst_proto :
+       proto.computations(0).instructions()) {
+    EXPECT_EQ(inst_proto.backend_config_payload().id(), 0);
+    EXPECT_TRUE(inst_proto.backend_config().empty());
+  }
 }
 
 TEST(HloModuleTest, RemoveComputationAndCleanupPreservesPostOrder) {

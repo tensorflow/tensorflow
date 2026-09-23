@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -64,6 +67,80 @@ absl::StatusOr<std::string> BackendConfigToRawString(
   return tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
 }
 
+namespace {
+
+// Without map fields the JSON printer's output is a function of the field
+// values alone, and the serialized bytes determine those.
+std::optional<std::string> SerializedBytes(
+    const tsl::protobuf::Message& proto) {
+  std::string bytes;
+  if (!proto.SerializePartialToString(&bytes)) {
+    return std::nullopt;
+  }
+  return bytes;
+}
+
+}  // namespace
+
+bool BackendConfigRawStringCache::IsCacheable(
+    const tsl::protobuf::Descriptor* descriptor) {
+  auto it = cacheable_types_.find(descriptor);
+  if (it != cacheable_types_.end()) {
+    return it->second;
+  }
+  // Map fields print in an order that depends on the map field's sync state,
+  // Any hides its content behind a type URL, and extension ranges admit both:
+  // the JSON of such messages is not a function of their serialized bytes.
+  std::vector<const tsl::protobuf::Descriptor*> pending = {descriptor};
+  absl::flat_hash_set<const tsl::protobuf::Descriptor*> visited = {descriptor};
+  bool cacheable = true;
+  while (cacheable && !pending.empty()) {
+    const tsl::protobuf::Descriptor* current = pending.back();
+    pending.pop_back();
+    if (current->full_name() == "google.protobuf.Any" ||
+        current->extension_range_count() > 0) {
+      cacheable = false;
+      break;
+    }
+    for (int i = 0; i < current->field_count(); ++i) {
+      const tsl::protobuf::FieldDescriptor* field = current->field(i);
+      if (field->is_map()) {
+        cacheable = false;
+        break;
+      }
+      if (field->message_type() != nullptr &&
+          visited.insert(field->message_type()).second) {
+        pending.push_back(field->message_type());
+      }
+    }
+  }
+  cacheable_types_.emplace(descriptor, cacheable);
+  return cacheable;
+}
+
+absl::StatusOr<std::string> BackendConfigRawStringCache::RawStringFor(
+    const tsl::protobuf::Message& proto) {
+  const tsl::protobuf::Descriptor* descriptor = proto.GetDescriptor();
+  std::optional<std::string> bytes;
+  if (IsCacheable(descriptor)) {
+    bytes = SerializedBytes(proto);
+  }
+  if (!bytes.has_value()) {
+    return BackendConfigToRawString(proto);
+  }
+  auto [it, inserted] =
+      raw_strings_.try_emplace(std::make_pair(descriptor, *std::move(bytes)));
+  if (inserted) {
+    absl::StatusOr<std::string> raw_string = BackendConfigToRawString(proto);
+    if (!raw_string.ok()) {
+      raw_strings_.erase(it);
+      return raw_string.status();
+    }
+    it->second = *std::move(raw_string);
+  }
+  return it->second;
+}
+
 BackendConfigWrapper::BackendConfigWrapper(std::string raw_string)
     : raw_string_(RemoveWaitOnOperationQueues(std::move(raw_string))) {}
 
@@ -74,6 +151,20 @@ const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
   }
   static const std::string* const kEmptyString = new std::string();
   return raw_string_.empty() ? *kEmptyString : raw_string_;
+}
+
+const std::string& BackendConfigWrapper::GetRawString(
+    BackendConfigRawStringCache* cache) const {
+  absl::WriterMutexLock lock{mutex_};
+  if (cache != nullptr && proto_ != nullptr && raw_string_.empty()) {
+    absl::StatusOr<std::string> raw_string = cache->RawStringFor(*proto_);
+    // An encoding error is left to the direct computation below, which fails
+    // on it as before.
+    if (raw_string.ok()) {
+      raw_string_ = *std::move(raw_string);
+    }
+  }
+  return GetRawStringWithoutMutex();
 }
 
 absl::Status BackendConfigWrapper::GetProto(

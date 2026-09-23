@@ -4743,7 +4743,6 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   }
 
   *proto->mutable_metadata() = metadata();
-  proto->set_backend_config(backend_config_->GetRawString());
   proto->clear_backend_config_payload();
 
   if (opcode() != HloOpcode::kFusion) {
@@ -4773,18 +4772,25 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
 void HloInstruction::ToProto(HloInstructionProto* proto,
                              HloProtoOptions options) const {
   ToProto(proto);
-  if (options.deduplicate_backend_config && !backend_config_->empty() &&
-      backend_config_->GetRawString().size() >=
-          options.min_backend_config_size) {
-    if (options.payload_deduplicator == nullptr) {
+  // One lock of the config's mutex per instruction: the raw string is computed
+  // if needed, through the cache when the caller provides one. A deduplicated
+  // config is never copied into the proto.
+  const std::string& backend_config =
+      backend_config_->GetRawString(options.backend_config_raw_string_cache);
+  const bool deduplicate =
+      options.deduplicate_backend_config && !backend_config.empty() &&
+      backend_config.size() >= options.min_backend_config_size;
+  if (deduplicate && options.payload_deduplicator != nullptr) {
+    proto->mutable_backend_config_payload()->set_id(
+        options.payload_deduplicator->Deduplicate(backend_config_.get(),
+                                                  backend_config));
+  } else {
+    if (deduplicate) {
       LOG_FIRST_N(WARNING, 1)
           << "Backend config deduplication requested without a payload "
              "deduplicator. Falling back to non-deduplicated serialization.";
-    } else {
-      proto->mutable_backend_config_payload()->set_id(
-          options.payload_deduplicator->Deduplicate(backend_config_.get()));
-      proto->clear_backend_config();
     }
+    proto->set_backend_config(backend_config);
   }
   if (metadata().has_metadata_payload()) {
     const Payload& payload = metadata().metadata_payload();
