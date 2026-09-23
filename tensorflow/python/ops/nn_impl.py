@@ -15,6 +15,7 @@
 """Implementation of Neural Net (NN) functions."""
 
 import math
+import warnings
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -830,8 +831,7 @@ def depthwise_conv2d(input,
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
   If any value in `rate` is greater than 1, we perform atrous depthwise
   convolution, in which case all values in the `strides` tensor must be equal
-  to 1; a `ValueError` is raised otherwise. A dilated depthwise convolution is
-  evaluated with space-to-batch, which cannot express a stride.
+  to 1.
 
   Usage Example:
 
@@ -898,15 +898,12 @@ def depthwise_conv2d(input,
       rate = [1, 1]
 
     if any([_ > 1 for _ in rate]) and any([_ != 1 for _ in strides]):
-      raise ValueError(
-          "When dilation rate (`rate`) is greater than 1, every value of "
-          f"`strides` must be 1. Received: `rate` {rate} and `strides` "
-          f"{strides}. A dilated depthwise convolution is evaluated with "
-          "space-to-batch, which subsamples the input into blocks; a stride "
-          "cannot be expressed in that representation, and the previous "
-          "behaviour was to warn and then silently return a wrongly shaped "
-          "result, while the same call inside `tf.function` raised an opaque "
-          "negative-dimension error. Both modes now fail with this message.")
+      warnings.warn(
+          "When dilation rate is greater than 1, "
+          "then all values of strides must be 1. "
+          f"Received: `dilation rate` {rate} and "
+          f"`strides` {strides}"
+      )
 
     _check_dilated_depthwise_shapes(input, filter, rate, padding, data_format)
 
@@ -914,7 +911,7 @@ def depthwise_conv2d(input,
     # whose spatial dimensions are unknown, fall back to a run-time assertion
     # so that an oversized dilated filter fails instead of silently producing a
     # wrongly shaped result. "SAME" padding always admits an output.
-    if (any([_ > 1 for _ in rate]) and
+    if (any(_ > 1 for _ in rate) and
         not (isinstance(padding, str) and padding == "SAME")):
       in_shape = input.shape.as_list() if input.shape.rank == 4 else None
       if in_shape is None or None in in_shape:

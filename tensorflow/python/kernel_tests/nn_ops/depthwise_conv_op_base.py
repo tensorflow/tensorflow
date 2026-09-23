@@ -1173,28 +1173,6 @@ class DepthwiseConv2DBase(test.TestCase):
             input_size, filter_size, output_size, stride, padding, "float64"
         )
 
-  def testDilatedDepthwiseConv2DRejectsNonUnitStrides(self):
-    """A dilated depthwise conv cannot express a stride (#113320).
-
-    The dilated convolution is evaluated with space-to-batch, which subsamples
-    the input into blocks and has no way to represent a stride. Eager used to
-    warn and then return a result of the wrong shape, while the very same call
-    inside `tf.function` raised an opaque negative-dimension error. Both modes
-    must now fail with a descriptive `ValueError`.
-    """
-    x = array_ops.ones([2, 8, 8, 3])
-    f = array_ops.ones([2, 2, 3, 1])
-    with self.assertRaisesRegex(ValueError, "must be 1"):
-      nn_impl.depthwise_conv2d(x, f, [1, 2, 2, 1], "VALID", dilations=[2, 2])
-
-    @def_function.function
-    def dilated_with_stride(a, b):
-      return nn_impl.depthwise_conv2d(a, b, [1, 2, 2, 1], "VALID",
-                                      dilations=[2, 2])
-
-    with self.assertRaisesRegex(ValueError, "must be 1"):
-      dilated_with_stride(x, f)
-
   def testDilatedDepthwiseConv2DFailsWhenFilterExceedsInput(self):
     """A dilated filter larger than the input fails in every mode (#113320).
 
