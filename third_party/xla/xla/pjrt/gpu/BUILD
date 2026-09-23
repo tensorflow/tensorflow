@@ -377,6 +377,11 @@ xla_test(
         # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
         "--threadmanager_use_executor_impl=false",
     ],
+    backend_tags = {
+        # Needed so StreamExecutorGpuClientTest.NumaNode can read
+        # /sys/bus/pci/devices/<bdf>/numa_node outside the test sandbox.
+        "amdgpu_any": ["local"],
+    },
     backends = ["gpu"],
     shard_count = 3,
     tags = ["nofixdeps"],

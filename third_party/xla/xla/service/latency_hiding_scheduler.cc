@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1051,6 +1052,34 @@ BufferInfoTracker::BufferInfoTracker(
         }
         const HloInstructionSequence& sequence =
             module->schedule().sequence(computation);
+        // Buffers of every instruction of this computation, over all of its
+        // shape indices, computed on first use. Operands precede their users
+        // in the sequence, so the operand walk below finds them cached.
+        struct BufferRange {
+          size_t start;
+          size_t count;
+        };
+        absl::flat_hash_map<const HloInstruction*, BufferRange> buffer_ranges;
+        std::vector<const HloBuffer*> buffers;
+        // The returned span is valid until the next call.
+        auto buffers_of = [&](const HloInstruction* instruction)
+            -> absl::Span<const HloBuffer* const> {
+          auto [it, inserted] = buffer_ranges.try_emplace(instruction);
+          if (inserted) {
+            const size_t start = buffers.size();
+            ShapeUtil::ForEachSubshape(
+                instruction->shape(),
+                [&](const Shape&, const ShapeIndex& index) {
+                  for (const HloBuffer* buffer :
+                       alias_analysis->ComputeBuffersAt(instruction, index)) {
+                    buffers.push_back(buffer);
+                  }
+                });
+            it->second = {start, buffers.size() - start};
+          }
+          return absl::MakeConstSpan(buffers).subspan(it->second.start,
+                                                      it->second.count);
+        };
         for (int idx = 0; idx < sequence.size(); ++idx) {
           const HloInstruction* instruction = sequence.instructions()[idx];
           for (auto* called_computation : instruction->called_computations()) {
@@ -1061,29 +1090,19 @@ BufferInfoTracker::BufferInfoTracker(
             next_call_stack.push_back(instruction);
             process_computation(called_computation, next_call_stack);
           }
-          ShapeUtil::ForEachSubshape(
-              instruction->shape(),
-              [&](const Shape& subshape, const ShapeIndex& index) {
-                for (const HloBuffer* buffer :
-                     alias_analysis->ComputeBuffersAt(instruction, index)) {
-                  if (buffer_infos_[buffer->id()].value == nullptr) {
-                    buffer_infos_[buffer->id()] = CreateBufferInfo(
-                        buffer, instruction, instruction, shape_size_bytes);
-                    buffer_infos_[buffer->id()].transitively_defining_calls =
-                        call_stack;
-                  }
-                }
-              });
+          for (const HloBuffer* buffer : buffers_of(instruction)) {
+            if (buffer_infos_[buffer->id()].value == nullptr) {
+              buffer_infos_[buffer->id()] = CreateBufferInfo(
+                  buffer, instruction, instruction, shape_size_bytes);
+              buffer_infos_[buffer->id()].transitively_defining_calls =
+                  call_stack;
+            }
+          }
           for (const HloInstruction* op : instruction->operands()) {
-            ShapeUtil::ForEachSubshape(
-                op->shape(),
-                [&](const Shape& subshape, const ShapeIndex& index) {
-                  for (const HloBuffer* buffer :
-                       alias_analysis->ComputeBuffersAt(op, index)) {
-                    CHECK(buffer_infos_[buffer->id()].value != nullptr);
-                    buffer_infos_[buffer->id()].last_use = instruction;
-                  }
-                });
+            for (const HloBuffer* buffer : buffers_of(op)) {
+              CHECK(buffer_infos_[buffer->id()].value != nullptr);
+              buffer_infos_[buffer->id()].last_use = instruction;
+            }
           }
         }
       };
@@ -1594,10 +1613,9 @@ bool ReadySetLt::ShouldDelaySendHostDone(
       !gn.UsesResourceType(ResourceType::kSendHost).has_value()) {
     return false;
   }
-  const HloGraphNode& start =
-      sched_state.sched_graph->GetNode(gn.GetInstr().operand(0));
-  const LatencyEstimator::TimeCost latency =
-      sched_state.latency_estimator->GetLatencyBetween(start, gn);
+  DCHECK_NE(gn.GetHostSend(), nullptr);
+  const HloGraphNode& start = *gn.GetHostSend();
+  const LatencyEstimator::TimeCost latency = gn.GetHostSendLatency();
   if (!gn_cand.has_estimated_connected_send_ready_time) {
     HloGraphNode::TimeCost start_ready_time = 0;
     for (const auto& succ : start.GetSuccessors()) {
@@ -1680,9 +1698,15 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
 
   // Update the resource_constrained of the candidate before any
   // target specific rule is applied so rules can access the
-  // up-to-date value.
-  UpdateCandidateResourceConstrained(sched_state, a, an);
-  UpdateCandidateResourceConstrained(sched_state, b, bn);
+  // up-to-date value. The resource maps only change when a node is scheduled,
+  // so a value cached on a candidate during this search of the ready set is
+  // still current.
+  if (!a.has_resource_constrained) {
+    UpdateCandidateResourceConstrained(sched_state, a, an);
+  }
+  if (!b.has_resource_constrained) {
+    UpdateCandidateResourceConstrained(sched_state, b, bn);
+  }
 
   const SchedulerConfig& config = sched_state.config;
   if (config.force_delay_over_memory_pressure) {
@@ -3376,6 +3400,19 @@ HloScheduleGraph::HloScheduleGraph(
   // Initialize ready_nodes_if_scheduled_ for all nodes.
   for (auto& node : node_storage_) {
     node.UpdateReadyNodesIfScheduled();
+  }
+
+  // ReadySetLt::ShouldDelaySendHostDone reads the send of a host send-done and
+  // the estimator's latency between the two on every comparison; store both
+  // once. A node with resources owns its Rare entry.
+  for (HloGraphNode& node : node_storage_) {
+    if (node.GetOpcode() == HloOpcode::kSendDone &&
+        node.UsesResourceType(ResourceType::kSendHost).has_value()) {
+      const HloGraphNode* send = GetNodePtr(node.GetInstr().operand(0));
+      node.rare_->host_send = send;
+      node.rare_->host_send_latency =
+          latency_estimator->GetLatencyBetween(*send, node);
+    }
   }
 
   // Post process the schedule graph based on the supplied async_tracker.
