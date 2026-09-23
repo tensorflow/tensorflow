@@ -1636,6 +1636,7 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
+        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",
@@ -1909,7 +1910,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service/heap_simulator",
-        "//xla/service/memory_space_assignment",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -1966,7 +1966,6 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/service/heap_simulator",
-        "//xla/service/memory_space_assignment",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/util/proto:proto_matchers",
