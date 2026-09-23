@@ -1136,6 +1136,18 @@ class XlogyTest(test_util.TensorFlowTestCase):
         self.assertAllClose(zeros_np, xlogy_tf_np[0])
         self.assertAllClose(xtimes_logy, xlogy_tf_np[1])
 
+  def testXlogyWithNegativeZero(self):
+    # A zero x gives +0 at every size. Tensors of at least one SIMD packet used
+    # to return x itself, which kept the sign of -0.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 2.), dtype=dtype)
+        with test_util.use_gpu():
+          xlogy = self.evaluate(math_ops.xlogy(x, y))
+          self.assertAllEqual(xlogy, np.zeros(size))
+          self.assertFalse(np.signbit(xlogy).any())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class Xlog1pyTest(test_util.TensorFlowTestCase):
@@ -1170,6 +1182,17 @@ class Xlog1pyTest(test_util.TensorFlowTestCase):
         self.assertAllClose(zeros_np, xlog1py_tf_np[0])
         self.assertAllClose(xtimes_log1py, xlog1py_tf_np[1])
 
+  def testXlog1pyWithNegativeZero(self):
+    # See XlogyTest.testXlogyWithNegativeZero.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 1.), dtype=dtype)
+        with test_util.use_gpu():
+          xlog1py = self.evaluate(math_ops.xlog1py(x, y))
+          self.assertAllEqual(xlog1py, np.zeros(size))
+          self.assertFalse(np.signbit(xlog1py).any())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class XdivyTest(test_util.TensorFlowTestCase):
@@ -1202,6 +1225,27 @@ class XdivyTest(test_util.TensorFlowTestCase):
         x_over_y = self.evaluate(1 / y[1])
         self.assertAllClose(zeros_np, xdivy_tf_np[0])
         self.assertAllClose(x_over_y, xdivy_tf_np[1])
+
+  def testXdivyWithNegativeZero(self):
+    # See XlogyTest.testXlogyWithNegativeZero.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for size in [1, 3, 4, 16, 1024]:
+        x = constant_op.constant(np.full((size,), -0.), dtype=dtype)
+        y = constant_op.constant(np.full((size,), 3.), dtype=dtype)
+        with test_util.use_gpu():
+          xdivy = self.evaluate(math_ops.xdivy(x, y))
+          self.assertAllEqual(xdivy, np.zeros(size))
+          self.assertFalse(np.signbit(xdivy).any())
+
+  def testXdivyWithSubnormal(self):
+    # Where denormals are flushed, a subnormal x compares equal to zero and the
+    # result is 0; where they are not, x / x is 1. It must never be x itself.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      tiny = np.finfo(dtype.as_numpy_dtype).tiny / 4
+      x = constant_op.constant(np.full((16,), tiny), dtype=dtype)
+      with test_util.use_gpu():
+        xdivy = self.evaluate(math_ops.xdivy(x, x))
+        self.assertTrue(np.isin(xdivy, [0., 1.]).all(), xdivy)
 
 
 @test_util.run_all_in_graph_and_eager_modes
