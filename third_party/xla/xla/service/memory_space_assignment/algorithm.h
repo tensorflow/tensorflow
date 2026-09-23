@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/linked_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -201,15 +202,8 @@ class AsynchronousCopyResource {
 
   AsynchronousCopyResource() = default;
 
-  // The constructor needs the initial resources.
-  explicit AsynchronousCopyResource(absl::Span<const float> initial_resources)
-      : initial_resources_(initial_resources.begin(), initial_resources.end()),
-        delay_(initial_resources.size(), 0) {
-    for (int i = 0; i < initial_resources.size(); ++i) {
-      initial_resources_scaled_.push_back(
-          GetScaledIntegerResource(initial_resources[i]));
-    }
-  }
+  // The constructor needs the initial resources, which must not be negative.
+  explicit AsynchronousCopyResource(absl::Span<const float> initial_resources);
 
   // Adds the given asynchronous copy and updates the current resources. CHECK
   // fails if there aren't enough resources to satisfy this copy (the caller
@@ -222,11 +216,11 @@ class AsynchronousCopyResource {
   // Returns true if a copy with the given start and end times and resource can
   // be satisfied.
   bool HasEnoughResource(int64_t exclusive_start_time, int64_t end_time,
-                         float resource);
+                         float resource) const;
 
   // Returns true if a set of copy specifications can be satisfied in the
   // order specified.
-  bool HasEnoughResourceMultiCheck(const std::vector<ResourceSpec>& specs);
+  bool HasEnoughResourceMultiCheck(absl::Span<const ResourceSpec> specs) const;
 
   int64_t GetScaledIntegerResource(float resource) const;
 
@@ -257,15 +251,11 @@ class AsynchronousCopyResource {
   static constexpr int64_t kCopyResourceIntScale = 1ULL << 40;
 
  private:
-  // Internal helper method to implement adding/removing/checking resources.
-  // ConsumeResource() may modify delay_. If delay_changes is not null,
-  // for any change to delay_[i], {i, delay_[i]} will be added to
-  // delay_changes, allowing callers to undo any modifications by iterating over
-  // the vector in reverse order.
-  bool ConsumeResource(
-      int64_t exclusive_start_time, int64_t end_time, int64_t resource,
-      std::vector<std::pair<int64_t, int64_t>>* delay_changes = nullptr,
-      int64_t resource_to_free = 0.0);
+  // Internal helper method to implement adding and removing resources. Walks
+  // the logical times the copy and the copies it pushes span and updates
+  // delay_ for each of them.
+  bool ConsumeResource(int64_t exclusive_start_time, int64_t end_time,
+                       int64_t resource, int64_t resource_to_free = 0);
 
   // Same as the public RemoveCopy except it works on the async_copies_
   // iterator. Assumes copy_it points to the last copy for its start time;
@@ -290,10 +280,12 @@ class AsynchronousCopyResource {
 #endif
   std::vector<float> initial_resources_;
   std::vector<int64_t> initial_resources_scaled_;
+  // cumulative_resources_scaled_[t] is the sum of initial_resources_scaled_
+  // over the logical times before t. It answers the resource checks without
+  // walking the logical times. Wide enough that the sum over a whole schedule
+  // cannot wrap; single values are clamped to the int64_t range.
+  std::vector<absl::int128> cumulative_resources_scaled_;
   std::vector<int64_t> delay_;
-  // A vector of pairs of (time, delay) used by
-  // HasEnoughResourceMultiCheck(), stored here to avoid reallocations.
-  std::vector<std::pair<int64_t, int64_t>> delay_changes_;
 };
 
 // Helper class to compute a minimal fingerprint of an HloInstruction and it's

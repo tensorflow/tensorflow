@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -7192,10 +7193,10 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t exclusive_start_time,
   return false;
 }
 
-bool AsynchronousCopyResource::ConsumeResource(
-    int64_t exclusive_start_time, int64_t end_time, int64_t resource,
-    std::vector<std::pair<int64_t, int64_t>>* delay_changes,
-    int64_t resource_to_free) {
+bool AsynchronousCopyResource::ConsumeResource(int64_t exclusive_start_time,
+                                               int64_t end_time,
+                                               int64_t resource,
+                                               int64_t resource_to_free) {
   // Cache the pointers to the arrays to avoid the overhead of `operator[]`
   // size checks in hardened libc++.
   //
@@ -7282,9 +7283,6 @@ bool AsynchronousCopyResource::ConsumeResource(
             std::max<int64_t>(0, initial_resource_scaled - new_delay);
         resource_freed += std::max<int64_t>(0, new_resource - old_resource);
         delay_ptr[time] = new_delay;
-        if (delay_changes) {
-          delay_changes->emplace_back(time, old_delay);
-        }
       }
       // Update the resource with the used amount in this logical time.
       resource -= used_resource;
@@ -7383,7 +7381,6 @@ void AsynchronousCopyResource::RemoveCopy(
   CHECK(ConsumeResource(
       copy_it->exclusive_start_time, copy_it->end_time,
       /*resource=*/0,
-      /*delay_changes=*/nullptr,
       /*resource_to_free=*/GetScaledIntegerResource(copy_it->resource)));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
   // make the next copy with the same start time to be pointed by
@@ -7402,43 +7399,137 @@ void AsynchronousCopyResource::RemoveCopy(
   async_copies_.erase(copy_it);
 }
 
+AsynchronousCopyResource::AsynchronousCopyResource(
+    absl::Span<const float> initial_resources)
+    : initial_resources_(initial_resources.begin(), initial_resources.end()),
+      delay_(initial_resources.size(), 0) {
+  initial_resources_scaled_.reserve(initial_resources.size());
+  cumulative_resources_scaled_.reserve(initial_resources.size() + 1);
+  cumulative_resources_scaled_.push_back(0);
+  for (float initial_resource : initial_resources) {
+    DCHECK_GE(initial_resource, 0);
+    initial_resources_scaled_.push_back(
+        GetScaledIntegerResource(initial_resource));
+    cumulative_resources_scaled_.push_back(cumulative_resources_scaled_.back() +
+                                           initial_resources_scaled_.back());
+  }
+}
+
 bool AsynchronousCopyResource::HasEnoughResource(int64_t exclusive_start_time,
                                                  int64_t end_time,
-                                                 float resource) {
-  std::vector<std::pair<int64_t, int64_t>> delay_changes;
-  delay_changes.reserve(delay_.size());
-  bool result =
-      ConsumeResource(exclusive_start_time, end_time,
-                      GetScaledIntegerResource(resource), &delay_changes);
-  // Apply the delay changes in reverse order. This ensures that the original
-  // value of each delay is restored.
-  if (!delay_changes.empty()) {
-    for (int64_t i = delay_changes.size() - 1; i >= 0; --i) {
-      const auto& [time, delay] = delay_changes[i];
-      delay_[time] = delay;
-    }
-  }
-  return result;
+                                                 float resource) const {
+  const ResourceSpec spec{exclusive_start_time, end_time, resource};
+  return HasEnoughResourceMultiCheck(absl::MakeConstSpan(&spec, 1));
 }
 
 bool AsynchronousCopyResource::HasEnoughResourceMultiCheck(
-    const std::vector<ResourceSpec>& specs) {
-  delay_changes_.resize(0);
-  delay_changes_.reserve(delay_.size());
-  bool result = absl::c_all_of(specs, [&](const ResourceSpec& spec) {
-    return ConsumeResource(spec.exclusive_start_time, spec.end_time,
-                           GetScaledIntegerResource(spec.resource),
-                           &delay_changes_);
-  });
-  // Apply the delay changes in reverse order. This ensures that the original
-  // value of each delay is restored.
-  if (!delay_changes_.empty()) {
-    for (int64_t i = delay_changes_.size() - 1; i >= 0; --i) {
-      const auto& [time, delay] = delay_changes_[i];
-      delay_[time] = delay;
+    absl::Span<const ResourceSpec> specs) const {
+  // ConsumeResource serves the copies in start time order: a new copy first
+  // waits for the work pending at its start time (delay_), then takes the whole
+  // initial resource of the following logical times until it is done, and
+  // every committed copy that starts before that is pushed back by the work
+  // pending at its own start. A copy is satisfied when it and every copy it
+  // pushes are done by their end times. The check of a copy reads delay_ only
+  // at the copy's start time, so instead of the transient delay_ updates of the
+  // earlier specs of this check we keep the value an earlier spec would have
+  // written at the start time of each later spec.
+  const int64_t num_times = delay_.size();
+  struct SpecState {
+    int64_t scaled_resource;
+    int64_t start_time;
+    // Set once an earlier spec of this check leaves pending work at start_time.
+    std::optional<int64_t> delay_at_start;
+  };
+  absl::InlinedVector<SpecState, 8> states;
+  states.reserve(specs.size());
+  for (const ResourceSpec& spec : specs) {
+    states.push_back({GetScaledIntegerResource(spec.resource),
+                      ExclusiveToInclusiveStartTime(spec.exclusive_start_time),
+                      std::nullopt});
+    // Only these specs read the logical times.
+    if (states.back().scaled_resource != 0 &&
+        spec.end_time > states.back().start_time) {
+      DCHECK_GE(states.back().start_time, 0);
+      DCHECK_LE(spec.end_time, num_times);
     }
   }
-  return result;
+  // The initial resource of the logical times [start_time, end_time).
+  auto initial_resource_in = [&](int64_t start_time,
+                                 int64_t end_time) -> absl::int128 {
+    return cumulative_resources_scaled_[end_time] -
+           cumulative_resources_scaled_[start_time];
+  };
+  for (int spec_index = 0; spec_index < specs.size(); ++spec_index) {
+    // ConsumeResource accepts a copy of zero resource without reading delay_.
+    // Any other copy with an empty window fails whatever delay_ holds (delay_
+    // is never negative), so that read is skipped too; Evict passes an
+    // exclusive start equal to the end, where it would be one past the end.
+    if (states[spec_index].scaled_resource == 0) {
+      continue;
+    }
+    int64_t start_time = states[spec_index].start_time;
+    int64_t end_time = specs[spec_index].end_time;
+    if (end_time <= start_time) {
+      return false;
+    }
+    // The work pending from the start of the current copy on: the copy itself
+    // and what it waits for.
+    absl::int128 pending =
+        absl::int128(states[spec_index].scaled_resource) +
+        states[spec_index].delay_at_start.value_or(delay_[start_time]);
+    auto next_copy_time_it = async_copy_time_map_.upper_bound(
+        specs[spec_index].exclusive_start_time);
+    auto next_copy = next_copy_time_it == async_copy_time_map_.end()
+                         ? async_copies_.end()
+                         : next_copy_time_it->second;
+    while (true) {
+      // The current copy must be done by its end time.
+      if (pending > initial_resource_in(start_time, end_time)) {
+        return false;
+      }
+      // The next copy is pushed when it starts before the current copy is done.
+      std::optional<int64_t> next_start_time;
+      if (next_copy != async_copies_.end()) {
+        const int64_t candidate_start_time =
+            ExclusiveToInclusiveStartTime(next_copy->exclusive_start_time);
+        DCHECK_GE(candidate_start_time, start_time);
+        if (candidate_start_time < end_time &&
+            pending > initial_resource_in(start_time, candidate_start_time)) {
+          next_start_time = candidate_start_time;
+        }
+      }
+      // The delay ConsumeResource would leave at the start times of the later
+      // specs that fall in the current stretch of pending work. Specs that
+      // skip or fail the delay_ read above need none.
+      for (int later = spec_index + 1; later < specs.size(); ++later) {
+        const int64_t later_start_time = states[later].start_time;
+        if (states[later].scaled_resource == 0 ||
+            specs[later].end_time <= later_start_time ||
+            later_start_time < start_time) {
+          continue;
+        }
+        if (next_start_time.has_value()
+                ? later_start_time >= *next_start_time
+                : pending <=
+                      initial_resource_in(start_time, later_start_time)) {
+          continue;
+        }
+        states[later].delay_at_start = static_cast<int64_t>(
+            pending - initial_resource_in(start_time, later_start_time));
+      }
+      if (!next_start_time.has_value()) {
+        break;
+      }
+      pending += GetScaledIntegerResource(next_copy->resource) -
+                 initial_resource_in(start_time, *next_start_time);
+      start_time = *next_start_time;
+      end_time = next_copy->end_time;
+      DCHECK_GE(end_time, 0);
+      DCHECK_LE(end_time, num_times);
+      ++next_copy;
+    }
+  }
+  return true;
 }
 
 namespace {
@@ -10542,7 +10633,7 @@ std::vector<float> GetCopyResourcesSortedDescending(
 bool DoWeHaveEnoughCopyResource(
     const std::vector<int64_t>& slice_start_times, int64_t prefetch_end_time,
     const std::vector<float>& copy_resource_per_slice,
-    AsynchronousCopyResource& async_copy_resource) {
+    const AsynchronousCopyResource& async_copy_resource) {
   CHECK_EQ(slice_start_times.size(), copy_resource_per_slice.size());
 
   std::vector<AsynchronousCopyResource::ResourceSpec> specs;
