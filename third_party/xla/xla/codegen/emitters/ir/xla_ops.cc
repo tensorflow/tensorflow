@@ -105,9 +105,14 @@ std::optional<Interval> GetRange(mlir::Value value) {
   };
 
   if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
-    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
-        apply.getIndexingMap().GetSymbolicMap().GetResult(
-            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+    Interval range =
+        apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
+            apply.getIndexingMap().GetSymbolicMap().GetResult(
+                mlir::cast<mlir::OpResult>(value).getResultNumber()));
+    if (auto attr_range = attr_to_range(apply->getAttr("xla.range"))) {
+      range = range.Intersect(*attr_range);
+    }
+    return range;
   } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
     return {{cst.value(), cst.value()}};
   } else if (value.getDefiningOp()) {
@@ -352,6 +357,17 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
 }
 }  // namespace
 
+void ReplaceApplyIndexingOp(PatternRewriter& rewriter,
+                            ApplyIndexingOp indexing_op, ValueRange operands,
+                            const IndexingMap& indexing_map) {
+  auto new_op = ApplyIndexingOp::create(rewriter, indexing_op.getLoc(),
+                                        operands, indexing_map);
+  if (auto range_attr = indexing_op->getAttr("xla.range")) {
+    new_op->setAttr("xla.range", range_attr);
+  }
+  rewriter.replaceOp(indexing_op, new_op.getResults());
+}
+
 namespace {
 
 // Simplifies the indexing map.
@@ -365,8 +381,8 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap is already simplified");
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op.getOperands(), indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, indexing_op.getOperands(),
+                           indexing_map);
     return success();
   }
 };
@@ -390,8 +406,7 @@ struct RemoveUnusedVariables : public mlir::OpRewritePattern<ApplyIndexingOp> {
         operands.push_back(indexing_op.getOperand(i));
       }
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
-                                                 indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, operands, indexing_map);
     return success();
   }
 };
@@ -405,9 +420,8 @@ struct MoveSymbolsToDims : public mlir::OpRewritePattern<ApplyIndexingOp> {
     if (indexing_map.GetSymbolCount() == 0) {
       return rewriter.notifyMatchFailure(indexing_op, "No symbols found");
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op->getOperands(),
-        indexing_map.ConvertSymbolsToDimensions());
+    ReplaceApplyIndexingOp(rewriter, indexing_op, indexing_op->getOperands(),
+                           indexing_map.ConvertSymbolsToDimensions());
     return success();
   }
 };
@@ -475,8 +489,8 @@ struct FoldApplyIndexingSequence
     new_operands.append(replacement->added_dim_args);
     new_operands.append(begin + num_dims, begin + num_dims + num_syms);
 
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, new_operands,
-                                                 replacement->indexing_map);
+    ReplaceApplyIndexingOp(rewriter, indexing_op, new_operands,
+                           replacement->indexing_map);
 
     return success();
   }
@@ -518,7 +532,7 @@ struct FoldApplyIndexingOperands
     unsigned new_num_operands = indexing_op->getNumOperands() - num_constants;
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(new_num_operands);
-    SmallVector<IndexingMap::Variable, 2> new_dim_vars;
+    std::vector<IndexingMap::Variable> new_dim_vars;
     new_dim_vars.reserve(num_dims);
 
     unsigned new_num_dims = 0;
@@ -540,11 +554,12 @@ struct FoldApplyIndexingOperands
         new_dim_vars.push_back(indexing_map.GetDimVar(operand_id));
       }
     }
-    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, new_operands,
-        symbolic_map.ReplaceDimsAndSymbols(dim_replacements, {}, new_num_dims,
-                                           0),
-        new_dim_vars, SmallVector<IndexingMap::Variable>());
+    IndexingMap new_indexing_map(symbolic_map.ReplaceDimsAndSymbols(
+                                     dim_replacements, {}, new_num_dims, 0),
+                                 std::move(new_dim_vars), /*range_vars=*/{},
+                                 /*rt_vars=*/{});
+    ReplaceApplyIndexingOp(rewriter, indexing_op, new_operands,
+                           new_indexing_map);
     return success();
   }
 };

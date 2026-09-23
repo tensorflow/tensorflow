@@ -711,6 +711,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":gpu_constants",
+        ":gpu_memory_space_assignment",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -742,6 +743,35 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_executable_buffer_allocator_test",
+    srcs = ["gpu_executable_buffer_allocator_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":gpu_constants",
+        ":gpu_executable_buffer_allocator",
+        ":gpu_memory_space_assignment",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service:service_executable_run_options",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:mock_platform",
+        "//xla/stream_executor:mock_stream",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

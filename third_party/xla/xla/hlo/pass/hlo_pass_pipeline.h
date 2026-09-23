@@ -37,7 +37,7 @@ namespace xla {
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const std::string& name,
+  explicit HloPassPipeline(absl::string_view name,
                            CompilationStats* compilation_stats = nullptr)
       : name_(name), compilation_stats_(compilation_stats) {
     if (compilation_stats == nullptr) {
