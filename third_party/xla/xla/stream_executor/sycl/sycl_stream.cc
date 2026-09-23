@@ -73,11 +73,8 @@ absl::Status LaunchSyclKernel(
     size_t num_args = num_args_ptr ? *num_args_ptr : 0;
 
     for (size_t arg_index = 0; arg_index < num_args; ++arg_index) {
-      if (arg_ptrs[arg_index] == nullptr) {
-        LOG(ERROR) << "LaunchSyclKernel: kernel argument " << arg_index
-                   << " is null, cannot set kernel argument.";
-        return;
-      }
+      // A kernel argument can be null for a zero-sized buffer (e.g. empty
+      // scatter indices).
       VLOG(2) << "Setting kernel argument " << arg_index
               << " at address: " << arg_ptrs[arg_index];
       cgh.set_arg(arg_index, arg_ptrs[arg_index]);
