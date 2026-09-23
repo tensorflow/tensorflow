@@ -4372,6 +4372,7 @@ py_library(
         ":array_ops",
         ":array_ops_stack",
         ":candidate_sampling_ops",
+        ":check_ops",
         ":cond",
         ":ctc_ops",
         ":custom_gradient",

@@ -1226,7 +1226,7 @@ class DepthwiseConv2DBase(test.TestCase):
       return nn_impl.depthwise_conv2d(a, b, [1, 1, 1, 1], "VALID",
                                       dilations=[4, 4])
 
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       dilated_dynamic(x, f)
 
   def testDilatedDepthwiseConv2DWithUnitStrides(self):
