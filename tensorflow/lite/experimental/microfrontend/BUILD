@@ -88,6 +88,7 @@ tf_custom_op_library(
         "ops/audio_microfrontend_op.cc",
     ],
     deps = [
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
     ],
 )

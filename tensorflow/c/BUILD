@@ -723,7 +723,6 @@ tf_cc_test(
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:status",
         "@xla//xla/tsl/platform:test",
-        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
