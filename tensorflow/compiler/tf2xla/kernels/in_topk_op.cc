@@ -83,11 +83,11 @@ class InTopKOp : public XlaOpKernel {
     // can otherwise produce a false hit. Check bounds per target, rather than
     // reducing the class-match matrix again.
     xla::XlaOp targets_s64 = xla::ConvertElementType(targets_r1, xla::S64);
+    xla::XlaOp num_classes_s64 = xla::ConvertElementType(
+        xla::GetDimensionSize(predictions_r2, 1), xla::S64);
     xla::XlaOp valid_target_r1 = xla::And(
         xla::Ge(targets_s64, xla::ConstantR0<int64_t>(xla_builder, 0)),
-        xla::Lt(targets_s64,
-                xla::ConstantR0<int64_t>(xla_builder,
-                                         predictions_shape.dim_size(1))));
+        xla::Lt(targets_s64, num_classes_s64));
     xla::XlaOp zero_r0_f32 = xla::Zero(xla_builder, xla::F32);
     xla::XlaOp zero_r2_f32 = xla::ZerosLike(predictions_r2);
     xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_f32);
