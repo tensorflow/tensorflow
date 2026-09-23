@@ -282,6 +282,8 @@ tf_kernel_library(
     ],
     deps = [
         ":loose_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
@@ -297,7 +299,11 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 tf_kernel_library(
