@@ -247,6 +247,7 @@ py_test(
 
 py_test(
     name = "np_indexing_test",
+    timeout = "long",
     srcs = ["np_indexing_test.py"],
     args = [
         "--num_generated_cases=90",

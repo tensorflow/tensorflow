@@ -563,6 +563,7 @@ xla_cc_test(
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:executable_metadata_proto_cc",
@@ -937,6 +938,7 @@ cc_library(
     hdrs = ["transpose_kernels.h"],
     deps = [
         "//xla:compiler_macros",
+        "@highway//:hwy",
     ],
 )
 
