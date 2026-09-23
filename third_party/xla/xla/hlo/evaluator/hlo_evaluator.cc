@@ -893,16 +893,17 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 // in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
 // type-agnostic evaluator will be able to accept Tuple primitive type, whereas
 // HloEvaluatorTypedVisitor cannot.
-HloEvaluator::HloEvaluator(int64_t max_loop_iterations,
-                           bool cache_call_computation_evals, bool is_embedded)
+HloEvaluator::HloEvaluator(
+    int64_t max_loop_iterations, bool cache_call_computation_evals,
+    std::shared_ptr<SpecializationCache> specialization_cache)
     : max_loop_iterations_(max_loop_iterations),
       cache_call_computation_evals_(cache_call_computation_evals),
-      is_embedded_(is_embedded) {
+      specialization_cache_(std::move(specialization_cache)) {
   // Each HandleCall creates its own child evaluator, and in order to have one
-  // shared cache for all call hierarchy, child evaluators need to borrow caches
-  // from their parents. Child evaluators has is_embedded true and the
-  // main/entry one false.
-  if (cache_call_computation_evals_ && !is_embedded_) {
+  // shared cache for all call hierarchy, child evaluators borrow the cache
+  // passed from their parents via CreateEmbedded. If no cache is passed and
+  // caching is enabled, create a new one.
+  if (cache_call_computation_evals_ && specialization_cache_ == nullptr) {
     specialization_cache_ = std::make_shared<SpecializationCache>();
   }
   for (int i = PrimitiveType_MIN; i < PrimitiveType_ARRAYSIZE; ++i) {
@@ -967,10 +968,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
   OnEvaluateComputation(computation);
 
-  if (!is_embedded_) {
-    ClearSpecializationCache();
-  }
-
   if (args.size() != computation.num_parameters()) {
     return InvalidArgument(
         "Expected %d argument%s, but got %d.", computation.num_parameters(),
@@ -1026,9 +1023,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     bool recursively_evaluate_nonconstant_operands,
     const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
         substitutions) {
-  if (!is_embedded_) {
-    ClearSpecializationCache();
-  }
   ScopedEvaluateState evaluate_state(&state_);
 
   // Use the substitutions to manually set instructions results to a specific
@@ -3676,9 +3670,7 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
     return absl::OkStatus();
   }
 
-  if (specialization_cache_ == nullptr) {
-    specialization_cache_ = std::make_shared<SpecializationCache>();
-  }
+  TF_RET_CHECK(specialization_cache_ != nullptr);
 
   const Literal* cached_result =
       specialization_cache_->Find(computation, arg_literals);

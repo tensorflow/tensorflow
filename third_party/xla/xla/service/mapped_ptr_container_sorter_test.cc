@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/mapped_ptr_container_sorter.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <list>
 #include <memory>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
@@ -270,6 +274,139 @@ TEST_F(MappedPtrContainerSorterTest,
           Pointee(std::string("m1")),  // Corresponds to 2nd m1 in ordered
           Pointee(std::string("m1")),  // Reuse position of 2nd m1 in ordered
           Pointee(std::string("m2")), Pointee(std::string("m3"))));
+}
+
+// Returns "m0", "m1", ... "m<size-1>".
+std::vector<std::string> Names(size_t size) {
+  std::vector<std::string> names;
+  names.reserve(size);
+  for (size_t i = 0; i < size; ++i) {
+    names.push_back(absl::StrCat("m", i));
+  }
+  return names;
+}
+
+std::vector<std::string> Values(
+    const std::vector<std::unique_ptr<std::string>>& container) {
+  std::vector<std::string> values;
+  for (const auto& element : container) {
+    values.push_back(*element);
+  }
+  return values;
+}
+
+// Maps an ordered element to the unordered element of the same value, "x" to
+// the outside pointer, and anything else to null. Counts its calls: the direct
+// path maps every ordered element once, and a fallback after a failed attempt
+// twice.
+class NameMapper {
+ public:
+  explicit NameMapper(
+      const std::vector<std::unique_ptr<std::string>>& unordered,
+      const std::string* outside = nullptr)
+      : unordered_(unordered), outside_(outside) {}
+
+  const std::string* operator()(const std::string* ordered) {
+    ++calls_;
+    if (*ordered == "x") {
+      return outside_;
+    }
+    for (const auto& u : unordered_) {
+      if (*u == *ordered) {
+        return u.get();
+      }
+    }
+    return nullptr;
+  }
+
+  size_t calls() const { return calls_; }
+
+ private:
+  const std::vector<std::unique_ptr<std::string>>& unordered_;
+  const std::string* outside_;
+  size_t calls_ = 0;
+};
+
+// Mapped containers are sorted without the partial order bookkeeping, and a
+// bijection never takes the fallback. This covers both lookups of the direct
+// path, ordered elements that map to nothing and the identity permutation.
+TEST_F(MappedPtrContainerSorterTest, BijectionsOfEverySmallSize) {
+  std::minstd_rand rng(20260923);
+  for (size_t size = 1; size <= 2 * Sorter::kLinearSearchLimit + 6; ++size) {
+    for (int trial = 0; trial < 3; ++trial) {
+      const std::vector<std::string> names = Names(size);
+      std::vector<std::unique_ptr<std::string>> unordered =
+          CreateUniquePtrContainer(names);
+      if (trial > 0) {
+        std::shuffle(unordered.begin(), unordered.end(), rng);
+      }
+      // The ordered container is m0, m1, ..., interleaved with pointers that
+      // map to no unordered element.
+      std::vector<std::unique_ptr<std::string>> ordered;
+      for (size_t i = 0; i < size; ++i) {
+        if (i % 3 == 1) {
+          ordered.push_back(std::make_unique<std::string>("not_in_unordered"));
+        }
+        ordered.push_back(std::make_unique<std::string>(names[i]));
+      }
+      NameMapper mapper(unordered);
+      ASSERT_OK(
+          Sorter::Sort(mapper, Sorter::InvalidIndexFn(), ordered, unordered));
+      EXPECT_EQ(Values(unordered), names)
+          << "size " << size << " trial " << trial;
+      EXPECT_EQ(mapper.calls(), ordered.size())
+          << "size " << size << " trial " << trial;
+    }
+  }
+}
+
+// An empty unordered container needs no mapping at all.
+TEST_F(MappedPtrContainerSorterTest, EmptyUnorderedContainer) {
+  std::vector<std::unique_ptr<std::string>> unordered;
+  NameMapper mapper(unordered);
+  EXPECT_OK(Sorter::Sort(mapper, Sorter::InvalidIndexFn(), ordered_unique_ptrs_,
+                         unordered));
+  EXPECT_TRUE(unordered.empty());
+  EXPECT_EQ(mapper.calls(), 0);
+}
+
+// An ordered element may map to a live pointer that is not in the unordered
+// container; it is skipped like a null mapping, on both lookup paths.
+TEST_F(MappedPtrContainerSorterTest, MappingOutsideTheUnorderedContainer) {
+  const std::string outside = "outside";
+  for (size_t size : {size_t{4}, 2 * Sorter::kLinearSearchLimit}) {
+    const std::vector<std::string> names = Names(size);
+    std::vector<std::unique_ptr<std::string>> unordered =
+        CreateUniquePtrContainer(names);
+    std::reverse(unordered.begin(), unordered.end());
+    std::vector<std::unique_ptr<std::string>> ordered =
+        CreateUniquePtrContainer(names);
+    ordered.insert(ordered.begin() + 1, std::make_unique<std::string>("x"));
+    NameMapper mapper(unordered, &outside);
+    ASSERT_OK(
+        Sorter::Sort(mapper, Sorter::InvalidIndexFn(), ordered, unordered));
+    EXPECT_EQ(Values(unordered), names) << "size " << size;
+    EXPECT_EQ(mapper.calls(), ordered.size()) << "size " << size;
+  }
+}
+
+// A container above the linear search limit with one unmapped element takes
+// the fallback, which places the element by the unmapped index policy.
+TEST_F(MappedPtrContainerSorterTest, LargeContainerWithUnmappedElement) {
+  const std::vector<std::string> names = Names(2 * Sorter::kLinearSearchLimit);
+  std::vector<std::unique_ptr<std::string>> unordered =
+      CreateUniquePtrContainer(names);
+  std::reverse(unordered.begin(), unordered.end());
+  unordered.insert(unordered.begin() + 7, std::make_unique<std::string>("u0"));
+  std::vector<std::unique_ptr<std::string>> ordered =
+      CreateUniquePtrContainer(names);
+  NameMapper mapper(unordered);
+  ASSERT_OK(Sorter::Sort(mapper, Sorter::IndexBeforeMappedElementsFn(), ordered,
+                         unordered));
+  std::vector<std::string> expected = {"u0"};
+  expected.insert(expected.end(), names.begin(), names.end());
+  EXPECT_EQ(Values(unordered), expected);
+  EXPECT_EQ(mapper.calls(), 2 * ordered.size());
 }
 
 TEST_F(MappedPtrContainerSorterTest, InvalidUnmappedIndex) {
