@@ -1538,16 +1538,26 @@ def _PowGrad(op: ops.Operation, grad):
   cy = math_ops.conj(y)
   try:
     skip_input_indices = op.skip_input_indices or ()
-    if 1 in skip_input_indices and _IsScalar(y):
-      return grad * cy * math_ops.pow(cx, cy - 1), None
   except AttributeError:
     # No gradient skipping, so do the full gradient computation
     skip_input_indices = ()
 
+  def _GradCxPow(w: tensor.Tensor) -> tensor.Tensor:
+    if x.dtype.is_floating:
+      w = array_ops.where_v2(
+          math_ops.logical_and(math_ops.is_inf(w), math_ops.equal(grad, 0)),
+          array_ops.zeros_like(w),
+          w,
+      )
+    return grad * cy * w
+
+  if 1 in skip_input_indices and _IsScalar(y):
+    return _GradCxPow(math_ops.pow(cx, cy - 1)), None
+
   if 0 in skip_input_indices:
     gx = None
   else:
-    gx = grad * cy * math_ops.pow(cx, cy - 1)
+    gx = _GradCxPow(math_ops.pow(cx, cy - 1))
 
   if 1 in skip_input_indices:
     gy = None
@@ -1559,9 +1569,45 @@ def _PowGrad(op: ops.Operation, grad):
     else:
       # There's no sensible real value to return if x < 0, so return 0
       mask = cx > 0
-    safe_x = array_ops.where(mask, cx, array_ops.ones_like(x))
-    log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-    gy = grad * math_ops.conj(op.outputs[0]) * log_x
+    safe_x = array_ops.where_v2(mask, cx, array_ops.ones_like(x))
+    log_x = array_ops.where_v2(
+        mask, math_ops.log(safe_x), array_ops.zeros_like(x)
+    )
+    z = op.outputs[0]
+    if x.dtype.is_floating:
+      # Split exponent into h = x**(y / 2) if z = x**y or z * ln(x) overflows
+      # while grad * x**y * ln(x) may still be finite. Note that single halving
+      # only extends the non-overflowing exponent range by a factor of 2
+      # (i.e., if y * ln(x) > 2 * max_exponent, h itself overflows to inf).
+      safe_z = array_ops.where_v2(
+          math_ops.is_inf(z), array_ops.zeros_like(z), z
+      )
+      z_log_x = safe_z * log_x
+      raw_overflow = math_ops.logical_and(
+          mask,
+          math_ops.logical_or(math_ops.is_inf(z), math_ops.is_inf(z_log_x)),
+      )
+      safe_z_log_x = array_ops.where_v2(
+          raw_overflow, array_ops.zeros_like(z_log_x), z_log_x
+      )
+      use_split = math_ops.logical_and(
+          raw_overflow, math_ops.not_equal(grad, 0)
+      )
+      safe_half_y = array_ops.where_v2(
+          use_split,
+          cy * math_ops.cast(0.5, cy.dtype),
+          array_ops.zeros_like(cy),
+      )
+      h = math_ops.pow(safe_x, safe_half_y)
+      grad_h = grad * h
+      gy_split = array_ops.where_v2(
+          math_ops.is_inf(grad_h),
+          (grad * (h * log_x)) * h,
+          (grad_h * log_x) * h,
+      )
+      gy = array_ops.where_v2(use_split, gy_split, grad * safe_z_log_x)
+    else:
+      gy = grad * (math_ops.conj(z) * log_x)
 
   return _ReduceGradientArgs(x, y, gx, gy)
 
