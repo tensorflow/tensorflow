@@ -244,6 +244,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:array_impl_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
