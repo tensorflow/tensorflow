@@ -146,6 +146,60 @@ HWY_INLINE void UnpackStepCPS(Cont&& cont, Vs&... in) {
       std::forward<Cont>(cont), std::make_index_sequence<N>{}, in...);
 }
 
+// CPS: InterleaveWithinBlocks (pack -> pack)
+template <size_t element_size, size_t step_size, size_t unpack_limit,
+          class Cont, class... Vs>
+HWY_INLINE void InterleaveWithinBlocksCPS(Cont&& cont, Vs... in) {
+  if constexpr (element_size * step_size < unpack_limit &&
+                element_size * step_size <= kMaxLaneBytes) {
+    UnpackStepCPS<element_size, step_size>(
+        [&](auto... out) {
+          // out... are by-value parameters; do not forward as rvalues.
+          InterleaveWithinBlocksCPS<element_size, step_size * 2, unpack_limit>(
+              std::forward<Cont>(cont), out...);
+        },
+        in...);  // lvalues inside this function
+  } else {
+    std::forward<Cont>(cont)(in...);
+  }
+}
+
+// Helper template that applies the pairwise interleaving reduction.
+template <size_t element_size, class Cont, size_t... I, class... Vs>
+HWY_INLINE void CombinePairsAccImpl(Cont&& cont, std::index_sequence<I...>,
+                                    Vs&&... vs) {
+  std::forward<Cont>(cont)(Unpack<element_size, Extract::kLo>(
+      GetFromPack<2 * I>(std::forward<Vs>(vs)...),
+      GetFromPack<2 * I + 1>(std::forward<Vs>(vs)...))...);
+}
+
+// Applies a pairwise interleaving reduction across an arbitrary sequence of
+// vectors. Adjacent vectors are combined using their lower halves, and the
+// resulting halved-length sequence is forwarded to the provided continuation.
+template <size_t element_size, class Cont, class... Vs>
+HWY_INLINE void CombinePairsAcc(Cont&& cont, Vs&&... in) {
+  CombinePairsAccImpl<element_size>(
+      std::forward<Cont>(cont), std::make_index_sequence<sizeof...(Vs) / 2>{},
+      std::forward<Vs>(in)...);
+}
+
+template <size_t element_size, size_t bs, size_t vector_bytes, class Cont,
+          class... Vs>
+HWY_INLINE void CombineRowsCPS(Cont&& cont, Vs... in) {
+  constexpr size_t N = sizeof...(Vs);
+  if constexpr (N > 1 && element_size * bs < vector_bytes) {
+    static_assert(N % 2 == 0);
+    CombinePairsAcc<element_size>(
+        [&](auto... paired) {
+          CombineRowsCPS<element_size * 2, bs, vector_bytes>(
+              std::forward<Cont>(cont), paired...);
+        },
+        in...);
+  } else {
+    std::forward<Cont>(cont)(in...);
+  }
+}
+
 }  // namespace HWY_NAMESPACE
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
