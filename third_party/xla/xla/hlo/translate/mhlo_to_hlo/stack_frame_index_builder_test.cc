@@ -109,5 +109,69 @@ TEST(StackFrameIndexBuilderTest, LinearChain) {
   EXPECT_EQ(names, expected);
 }
 
+TEST(StackFrameIndexBuilderTest, InlinedOpWithOpNameWrapperLocs) {
+  MLIRContext ctx;
+  Location a = MakeFrameLoc(&ctx, "A", "a.py", 1);
+  Location b = MakeFrameLoc(&ctx, "B", "b.py", 2);
+  Location c = MakeFrameLoc(&ctx, "C", "c.py", 3);
+  Location d = MakeFrameLoc(&ctx, "D", "d.py", 4);
+
+  // JAX wraps each op's CallSiteLoc in NameLoc("op_type:", NameLoc("op_name",
+  // ...)).
+  Location callee_op =
+      NameLoc::get(StringAttr::get(&ctx, "reduce_sum:"),
+                   NameLoc::get(StringAttr::get(&ctx, "jit(fn)/reduce_sum"),
+                                CallSiteLoc::get(a, b)));
+  Location caller_op =
+      NameLoc::get(StringAttr::get(&ctx, "call:"),
+                   NameLoc::get(StringAttr::get(&ctx, "jit(fn)/call"),
+                                CallSiteLoc::get(c, d)));
+  // MLIR's createInlinerPass wraps the inlined op's location in CallSiteLoc.
+  Location inlined = CallSiteLoc::get(callee_op, caller_op);
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(inlined);
+  auto proto = builder.Build();
+
+  std::vector<std::string> names = GetFrameNames(proto, result.last_frame_id);
+  std::vector<std::string> expected = {"A", "B", "C", "D"};
+  EXPECT_EQ(names, expected);
+}
+
+TEST(StackFrameIndexBuilderTest, FusedLocKeepsFirstCallStack) {
+  MLIRContext ctx;
+  Location a = MakeFrameLoc(&ctx, "A", "a.py", 1);
+  Location b = MakeFrameLoc(&ctx, "B", "b.py", 2);
+  Location c = MakeFrameLoc(&ctx, "C", "c.py", 3);
+
+  // Merging two ops fuses their unrelated call stacks.
+  Location fused = FusedLoc::get(&ctx, {CallSiteLoc::get(a, b), c});
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(fused);
+  auto proto = builder.Build();
+
+  std::vector<std::string> names = GetFrameNames(proto, result.last_frame_id);
+  std::vector<std::string> expected = {"A", "B"};
+  EXPECT_EQ(names, expected);
+}
+
+TEST(StackFrameIndexBuilderTest, FusedLocSkipsSubLocationsWithoutFrames) {
+  MLIRContext ctx;
+  Location a = MakeFrameLoc(&ctx, "A", "a.py", 1);
+
+  Location no_frames =
+      NameLoc::get(StringAttr::get(&ctx, "reduce_sum:"), UnknownLoc::get(&ctx));
+  Location fused = FusedLoc::get(&ctx, {no_frames, a});
+
+  StackFrameIndexBuilder builder;
+  auto result = builder.AddCallStackAndGetFirstFrameId(fused);
+  auto proto = builder.Build();
+
+  std::vector<std::string> names = GetFrameNames(proto, result.last_frame_id);
+  std::vector<std::string> expected = {"A"};
+  EXPECT_EQ(names, expected);
+}
+
 }  // namespace
 }  // namespace mlir
