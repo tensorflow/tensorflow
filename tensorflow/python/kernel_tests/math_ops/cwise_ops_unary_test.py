@@ -245,18 +245,21 @@ class UnaryOpTest(test.TestCase):
     bits = np.array([
         0x00000001, 0x80000001, 0x000116C2, 0x800116C2,
         0x00000000, 0x80000000, 0x3F800000, 0xBF800000,
-        0x7F800000, 0xFF800000,
+        0x7F800000, 0xFF800000, 0x7FC00000,
     ], dtype=np.uint32)
     values = np.tile(bits.view(np.float32), 32)
     expected = np.tile(
-        np.array([1, -1, 1, -1, 0, 0, 1, -1, 1, -1], dtype=np.float32), 32)
+        np.array([1, -1, 1, -1, 0, 0, 1, -1, 1, -1], dtype=np.float32),
+        (32, 1))
     for use_gpu in (False, True):
-      if use_gpu and not test.is_gpu_available():
+      if use_gpu and not test_util.is_gpu_available():
         continue
       with test_util.device(use_gpu=use_gpu):
         x = constant_op.constant(values)
         for sign in (math_ops.sign, gen_math_ops.sign):
-          self.assertAllEqual(self.evaluate(sign(x)), expected)
+          result = self.evaluate(sign(x)).reshape(32, 11)
+          self.assertAllEqual(result[:, :10], expected)
+          self.assertTrue(np.all(np.isnan(result[:, 10])))
 
   def testFloatErfinvNearOne(self):
     # Regression test for GitHub issue #121629: eager float32 erfinv used to
