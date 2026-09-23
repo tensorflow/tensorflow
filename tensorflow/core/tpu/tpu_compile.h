@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/compile_only_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -42,7 +42,7 @@ absl::Status CompileTFFunctionToHlo(
     const std::vector<TensorShape>& arg_shapes, const DeviceType& device_type,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
-    xla::CompileOnlyClient* client,
+    xla::PjRtCompiler* pjrt_compiler,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result);
