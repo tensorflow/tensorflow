@@ -73,14 +73,17 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       }
       if (c->ValueKnown(input_size) && c->ValueKnown(window_size) &&
           c->Value(input_size) < c->Value(window_size)) {
-        // A zero-sized output can require a negative intermediate dimension
-        // if the window is subtracted first.
-        TF_RETURN_IF_ERROR(c->Add(input_size, stride, &input_size));
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
-      } else {
-        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
-        TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
+        // Match GetWindowedOutputSizeVerbose, including truncation of a
+        // negative numerator toward zero. Larger windows still produce an
+        // invalid (negative) output size and must not be silently accepted.
+        const int64_t gap = c->Value(window_size) - c->Value(input_size);
+        if ((stride - gap) / stride == 0) {
+          *output_size = c->MakeDim(0);
+          break;
+        }
       }
+      TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
+      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
       break;
