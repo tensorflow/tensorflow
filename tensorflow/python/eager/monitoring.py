@@ -16,6 +16,7 @@
 
 import collections
 import functools
+import threading
 import time
 
 from tensorflow.core.framework import summary_pb2
@@ -465,8 +466,17 @@ class Sampler(Metric):
 
 
 # Keeping track of current MonitoredTimer sections to prevent repetitive
-# counting.
-MonitoredTimerSections = []
+# counting. Thread-local: avoid_repetitive_counting is meant to guard
+# against recursive re-entry within a single call stack, not to
+# coordinate independent, concurrently-running threads that happen to
+# monitor a section with the same name.
+_monitored_timer_local = threading.local()
+
+
+def _get_monitored_timer_sections():
+  if not hasattr(_monitored_timer_local, "sections"):
+    _monitored_timer_local.sections = []
+  return _monitored_timer_local.sections
 
 
 class MonitoredTimer(object):
@@ -497,17 +507,18 @@ class MonitoredTimer(object):
     self._counting = True
 
   def __enter__(self):
+    sections = _get_monitored_timer_sections()
     if (
         self._avoid_repetitive_counting
         and self.monitored_section_name
-        and self.monitored_section_name in MonitoredTimerSections
+        and self.monitored_section_name in sections
     ):
       self._counting = False
       return self
 
     self.t = time.time()
     if self.monitored_section_name:
-      MonitoredTimerSections.append(self.monitored_section_name)
+      sections.append(self.monitored_section_name)
 
     return self
 
@@ -517,7 +528,7 @@ class MonitoredTimer(object):
       micro_seconds = (time.time() - self.t) * 1000000
       self.cell.increase_by(int(micro_seconds))
       if self.monitored_section_name:
-        MonitoredTimerSections.remove(self.monitored_section_name)
+        _get_monitored_timer_sections().remove(self.monitored_section_name)
 
 
 def monitored_timer(cell):
