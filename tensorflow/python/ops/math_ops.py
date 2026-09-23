@@ -3578,6 +3578,15 @@ def matmul(
   This optimization is only available for plain matrices (rank-2 tensors) with
   datatypes `bfloat16` or `float32`.
 
+  Note: On NVIDIA GPUs of the Ampere generation and later, `float32` inputs are
+  rounded from 23 to 10 bits of mantissa (TensorFloat-32) before the
+  multiplication, and TPUs round to `bfloat16` similarly; accumulation stays in
+  `float32` in both cases. Results therefore differ from a CPU `float32` matmul
+  by considerably more than `float32` roundoff alone would suggest, and the gap
+  grows with the size of the contracted dimension. Use
+  `tf.config.experimental.enable_tensor_float_32_execution(False)` to run with
+  full `float32` precision instead.
+
   A simple 2-D tensor matrix multiplication:
 
   >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
@@ -4299,7 +4308,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Args:
-    x: A Tensor with type `float32` or `float64`.
+    x: A Tensor with type `float16`, `bfloat16`, `float32`, or `float64`.
     name: A name for the operation (optional).
 
   Returns:

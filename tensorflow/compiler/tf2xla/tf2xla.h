@@ -18,10 +18,14 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "xla/client/client.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/status.h"
+
+namespace xla {
+class PjRtClient;
+class PjRtCompiler;
+}  // namespace xla
 
 namespace tensorflow {
 
@@ -30,12 +34,14 @@ namespace tensorflow {
 // fetches. Each feed is a positional input argument for the generated
 // computation, while each fetch is a positional output argument.
 //
-// The computation is built in the context of the given `client`, which may
-// subsequently be used to compile or execute the computation.
+// The computation is built in the context of the given `compiler` (and optional
+// `client`), which may subsequently be used to compile or execute the
+// computation.
 absl::Status ConvertGraphDefToXla(GraphDef graph_def,
                                   const tf2xla::Config& config,
-                                  xla::Client* client,
-                                  xla::XlaComputation* computation);
+                                  xla::PjRtCompiler* compiler,
+                                  xla::XlaComputation* computation,
+                                  xla::PjRtClient* client = nullptr);
 
 // Similar to ConvertGraphDefToXla, but uses MLIR and handle debug information.
 //
