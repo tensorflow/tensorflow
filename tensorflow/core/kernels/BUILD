@@ -282,6 +282,8 @@ tf_kernel_library(
     ],
     deps = [
         ":loose_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
@@ -297,7 +299,11 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 tf_kernel_library(
@@ -1816,6 +1822,7 @@ tf_cc_test(
     size = "small",
     srcs = ["concat_op_test.cc"],
     deps = [
+        ":concat_lib",
         ":concat_op",
         ":ops_testutil",
         ":ops_util",
@@ -1832,6 +1839,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/base:prefetch",
         "@com_google_googletest//:gtest",
