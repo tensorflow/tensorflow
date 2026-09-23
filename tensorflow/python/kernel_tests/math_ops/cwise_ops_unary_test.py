@@ -247,9 +247,9 @@ class UnaryOpTest(test.TestCase):
         0x00000000, 0x80000000, 0x3F800000, 0xBF800000,
         0x7F800000, 0xFF800000,
     ], dtype=np.uint32)
-    values = bits.view(np.float32)
-    expected = np.array([1, -1, 1, -1, 0, 0, 1, -1, 1, -1],
-                        dtype=np.float32)
+    values = np.tile(bits.view(np.float32), 32)
+    expected = np.tile(
+        np.array([1, -1, 1, -1, 0, 0, 1, -1, 1, -1], dtype=np.float32), 32)
     for use_gpu in (False, True):
       if use_gpu and not test.is_gpu_available():
         continue

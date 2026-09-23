@@ -20,6 +20,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -41,13 +42,33 @@ struct scalar_sign_float_op {
     if (magnitude > 0x7f800000U) return x;  // NaN.
     return (bits & 0x80000000U) ? -1.0f : 1.0f;
   }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    using IntPacket = typename packet_traits<int32_t>::type;
+    static_assert(sizeof(Packet) == sizeof(IntPacket),
+                  "Float and integer packets must have equal width");
+    const IntPacket bits = preinterpret<IntPacket>(x);
+    const IntPacket magnitude = pand(bits, pset1<IntPacket>(0x7fffffff));
+    const IntPacket is_zero = pcmp_eq(magnitude, pzero(magnitude));
+    const IntPacket is_nan = pcmp_lt(pset1<IntPacket>(0x7f800000), magnitude);
+    const IntPacket sign_bit =
+        pand(bits, pset1<IntPacket>(std::numeric_limits<int32_t>::min()));
+    const IntPacket signed_one = por(sign_bit, pset1<IntPacket>(0x3f800000));
+    const IntPacket result =
+        pselect(is_zero, pzero(magnitude), pselect(is_nan, bits, signed_one));
+    return preinterpret<Packet>(result);
+  }
 };
 
 template <>
 struct functor_traits<scalar_sign_float_op> {
-  // Eigen's packet sign uses floating-point comparisons, which can flush
-  // subnormal inputs even when the scalar path is bit-safe.
-  enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
+  enum {
+    Cost = 10 * NumTraits<float>::AddCost,
+    // Fall back to scalar evaluation when integer packets have a different
+    // width, as on some targets without full integer SIMD support.
+    PacketAccess = packet_traits<float>::size == packet_traits<int32_t>::size
+  };
 };
 
 #if GOOGLE_CUDA
