@@ -42,7 +42,9 @@ cc_library(
     deps = [
         ":hlo_dump_assets",
         ":hlo_lexer",
+        "//xla:literal",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
@@ -81,14 +83,18 @@ xla_cc_test(
     srcs = ["hlo_dump_utils_test.cc"],
     deps = [
         ":hlo_dump_utils",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
