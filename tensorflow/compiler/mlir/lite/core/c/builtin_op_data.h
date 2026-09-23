@@ -208,6 +208,18 @@ typedef struct {
   // Parameters for FullyConnected version 10 or above.
   // Used to determine the default value for the quantized bias.
   TfLiteType quantized_bias_type;
+
+  // Parameters for FullyConnected version 15 or above.
+  //
+  // Opaque, flexbuffers-encoded description of a non-standard quantization
+  // contract; see `FullyConnectedOptions.quant_spec` in schema.fbs. Null when
+  // the op uses standard FullyConnected quantization semantics.
+  //
+  // This points into the model's buffer and is only valid for as long as the
+  // model is, in the same way as `TfLiteNode::custom_initial_data`. It is not
+  // owned by this struct.
+  const uint8_t* quant_spec;
+  int quant_spec_size;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
