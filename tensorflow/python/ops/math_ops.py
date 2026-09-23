@@ -575,6 +575,10 @@ if gen_math_ops.mul.__doc__ is not None:
 @dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
+  if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+    x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+  elif tensor_util.is_tf_type(x) and not tensor_util.is_tf_type(y):
+    y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
   return gen_math_ops.sub(x, y, name)
 
 
