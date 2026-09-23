@@ -528,7 +528,9 @@ class MonitoredTimer(object):
       micro_seconds = (time.time() - self.t) * 1000000
       self.cell.increase_by(int(micro_seconds))
       if self.monitored_section_name:
-        _get_monitored_timer_sections().remove(self.monitored_section_name)
+        sections = _get_monitored_timer_sections()
+        if self.monitored_section_name in sections:
+          sections.remove(self.monitored_section_name)
 
 
 def monitored_timer(cell):
