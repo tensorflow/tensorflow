@@ -33,8 +33,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
@@ -272,6 +274,152 @@ TEST(ConcatOnTStringTest, TestTStringsAreDeepCopied) {
   EXPECT_EQ(output.flat<tstring>()(3), tstring("jkl"));
 }
 
+TEST(ConcatOpTest, MultiThreadedDim0UnevenAndZeroSizedInputs) {
+  // Test multi-threaded dim0 == 1 fast-path with > 16 unevenly sized inputs,
+  // including zero-sized inputs (with data() == nullptr), exceeding the 64 KiB
+  // sharding threshold.
+  const int kNumInputs = 20;
+  const std::vector<int> input_sizes = {
+      1200, 0,    3400, 500,  2100, 800,  4500, 0,    1600, 2300,
+      700,  3100, 1900, 4200, 0,    2800, 1100, 3600, 900,  5200};
+  // Total elements = 39,900 floats * sizeof(float) = 159,600 bytes (> 64 KiB).
+
+  // 1. Direct ConcatCPU test with explicit multi-threaded DeviceBase.
+  // Exercises worker-thread slice loops, boundary conditions, heap fallback
+  // for > 16 inputs, and safe handling of zero-sized inputs with null data().
+  {
+    thread::ThreadPool pool(Env::Default(), "test_pool", 4);
+    DeviceBase::CpuWorkerThreads worker_threads;
+    worker_threads.num_threads = 4;
+    worker_threads.workers = &pool;
+    DeviceBase device(Env::Default());
+    device.set_tensorflow_cpu_worker_threads(&worker_threads);
+
+    int total_elements = 0;
+    for (int sz : input_sizes) {
+      total_elements += sz;
+    }
+
+    std::vector<Tensor> storage;
+    storage.reserve(kNumInputs);
+    std::vector<std::unique_ptr<typename TTypes<float, 2>::ConstMatrix>> inputs;
+    inputs.reserve(kNumInputs);
+
+    std::vector<float> expected;
+    expected.reserve(total_elements);
+    float current_val = 1.0f;
+
+    for (int i = 0; i < kNumInputs; ++i) {
+      int sz = input_sizes[i];
+      if (sz == 0) {
+        // Explicitly pass {1, 0} matrix with nullptr data pointer, exactly as
+        // callers like TensorListConcat can pass.
+        inputs.emplace_back(
+            new typename TTypes<float, 2>::ConstMatrix(nullptr, 1, 0));
+      } else {
+        storage.emplace_back(DT_FLOAT, TensorShape({1, sz}));
+        auto matrix = storage.back().matrix<float>();
+        for (int j = 0; j < sz; ++j) {
+          matrix(0, j) = current_val;
+          expected.push_back(current_val);
+          current_val += 1.0f;
+        }
+        // Use flat<float>().data() to correctly construct the read-only
+        // ConstMatrix from the tensor's raw pointer; matrix<float>() returns a
+        // non-const Eigen::TensorMap which is not implicitly convertible.
+        inputs.emplace_back(new typename TTypes<float, 2>::ConstMatrix(
+            storage.back().flat<float>().data(), 1, sz));
+      }
+    }
+
+    Tensor output_tensor(DT_FLOAT, TensorShape({1, total_elements}));
+    auto output_matrix = output_tensor.matrix<float>();
+
+    ConcatCPU<float>(&device, inputs, &output_matrix);
+
+    auto flat_out = output_tensor.flat<float>();
+    ASSERT_EQ(flat_out.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      ASSERT_EQ(flat_out(i), expected[i])
+          << "Direct ConcatCPU value mismatch at index " << i;
+    }
+  }  // inner scope
+}  // TEST(ConcatOpTest, MultiThreadedDim0UnevenAndZeroSizedInputs)
+
+
+// Test that the multi-row (dim0 > 1) sharded path correctly handles zero-sized
+// inputs (sizes[j] == 0 with data() == nullptr) without undefined behaviour.
+TEST(ConcatOpTest, MultiRowShardedZeroSizedInputs) {
+  const int kDim0 = 5;  // multiple rows to force multi-row code path
+  const int kNumInputs = 20;
+  const std::vector<int> input_sizes = {
+      1200, 0,    3400, 500,  2100, 800,  4500, 0,    1600, 2300,
+      700,  3100, 1900, 4200, 0,    2800, 1100, 3600, 900,  5200};
+  // Total = 39,900 floats * kDim0 rows * sizeof(float) = 798,000 bytes > 64KiB.
+
+  thread::ThreadPool pool(Env::Default(), "test_pool", 4);
+  DeviceBase::CpuWorkerThreads worker_threads;
+  worker_threads.num_threads = 4;
+  worker_threads.workers = &pool;
+  DeviceBase device(Env::Default());
+  device.set_tensorflow_cpu_worker_threads(&worker_threads);
+
+  int total_cols = 0;
+  for (int sz : input_sizes) total_cols += sz;
+
+  std::vector<Tensor> storage;
+  storage.reserve(kNumInputs);
+  std::vector<std::unique_ptr<typename TTypes<float, 2>::ConstMatrix>> inputs;
+  inputs.reserve(kNumInputs);
+
+  std::vector<float> expected;
+  expected.reserve(static_cast<size_t>(kDim0) * total_cols);
+  float current_val = 1.0f;
+
+  // Fill each row of each input tensor with sequential values.
+  for (int i = 0; i < kNumInputs; ++i) {
+    int sz = input_sizes[i];
+    if (sz == 0) {
+      // Zero-sized input: {kDim0, 0} — data() == nullptr.
+      inputs.emplace_back(
+          new typename TTypes<float, 2>::ConstMatrix(nullptr, kDim0, 0));
+    } else {
+      storage.emplace_back(DT_FLOAT, TensorShape({kDim0, sz}));
+      auto flat = storage.back().flat<float>();
+      for (int k = 0; k < kDim0 * sz; ++k) {
+        flat(k) = current_val++;
+      }
+      inputs.emplace_back(new typename TTypes<float, 2>::ConstMatrix(
+          storage.back().flat<float>().data(), kDim0, sz));
+    }
+  }
+
+  // Build expected output: for each row r, concatenate all inputs' row r.
+  for (int r = 0; r < kDim0; ++r) {
+    int storage_idx = 0;
+    for (int i = 0; i < kNumInputs; ++i) {
+      int sz = input_sizes[i];
+      if (sz == 0) continue;
+      const auto& t = storage[storage_idx++];
+      auto flat = t.flat<float>();
+      for (int k = 0; k < sz; ++k) {
+        expected.push_back(flat(r * sz + k));
+      }
+    }
+  }
+
+  Tensor output_tensor(DT_FLOAT, TensorShape({kDim0, total_cols}));
+  auto output_matrix = output_tensor.matrix<float>();
+  ConcatCPU<float>(&device, inputs, &output_matrix);
+
+  auto flat_out = output_tensor.flat<float>();
+  ASSERT_EQ(static_cast<size_t>(flat_out.size()), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(flat_out(i), expected[i])
+        << "MultiRow ConcatCPU value mismatch at index " << i;
+  }
+}
+
 void BM_ConcatManyDim1bfloat16(::testing::benchmark::State& state) {
   const int dim2 = state.range(0);
 
@@ -410,6 +558,31 @@ BENCHMARK(MemcpyManyAlternative2)
     ->Arg(60)
     ->Arg(64)
     ->Arg(65);
+
+// Verifies that the single-threaded dim0==1 fast-path safely skips zero-sized
+// inputs whose data() == nullptr without invoking copier.Copy on null pointers.
+TEST(ConcatOpTest, SingleThreadedDim0ZeroSizedInputs) {
+  DeviceBase device(Env::Default());
+
+  Tensor t1(DT_FLOAT, TensorShape({1, 10}));
+  t1.flat<float>().setConstant(42.0f);
+
+  // Build inputs: [empty, t1, empty] — the two empty tensors have null data().
+  std::vector<std::unique_ptr<typename TTypes<float, 2>::ConstMatrix>> inputs;
+  inputs.emplace_back(
+      new typename TTypes<float, 2>::ConstMatrix(nullptr, 1, 0));
+  inputs.emplace_back(new typename TTypes<float, 2>::ConstMatrix(
+      t1.flat<float>().data(), 1, 10));
+  inputs.emplace_back(
+      new typename TTypes<float, 2>::ConstMatrix(nullptr, 1, 0));
+
+  Tensor output(DT_FLOAT, TensorShape({1, 10}));
+  auto out_matrix = output.matrix<float>();
+  ConcatCPU<float>(&device, inputs, &out_matrix);
+
+  EXPECT_EQ(output.flat<float>()(0), 42.0f);
+  EXPECT_EQ(output.flat<float>()(9), 42.0f);
+}
 
 }  // namespace
 }  // namespace tensorflow
