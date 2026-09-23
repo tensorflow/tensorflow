@@ -105,6 +105,49 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param ? "TilingPropagation" : "SymbolicAnalysis";
     });
 
+TEST_P(PriorityFusionTest, ParallelTilingSearchMatchesSerialTilingSearch) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test_module
+
+    ENTRY main {
+      %p0 = f32[64,256] parameter(0)
+      %p1 = f32[64,256] parameter(1)
+      %log = f32[64,256] log(%p0)
+      %exp = f32[64,256] exponential(%p1)
+      %multiply = f32[64,256] multiply(%log, %exp)
+      %add = f32[64,256] add(%multiply, %p0)
+      ROOT %negate = f32[64,256] negate(%add)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> serial_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(bool serial_changed,
+                       priority_fusion_.Run(serial_module.get()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> parallel_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 8);
+  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
+  // cost model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(
+      [] {
+        return std::make_unique<mlir::MLIRContext>(
+            mlir::MLIRContext::Threading::DISABLED);
+      },
+      /*preallocate=*/8);
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion parallel_priority_fusion(&thread_pool, device_info_,
+                                          &alias_info_, options, &mlir_context_,
+                                          &mlir_context_pool);
+  ASSERT_OK_AND_ASSIGN(bool parallel_changed,
+                       parallel_priority_fusion.Run(parallel_module.get()));
+
+  EXPECT_EQ(parallel_changed, serial_changed);
+  EXPECT_EQ(parallel_module->ToString(HloPrintOptions::ShortParsable()),
+            serial_module->ToString(HloPrintOptions::ShortParsable()));
+}
+
 TEST_P(PriorityFusionTest, FuseWithSharedArgument) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
@@ -1329,7 +1372,7 @@ TEST_P(PriorityFusionTest, DoNotFuseInsideReducer) {
 }
 
 TEST_P(PriorityFusionTest, SkipsTilingsWithInfiniteRuntime) {
-  // This test verifies the fix in TryFindBestTilingForFusion that skips
+  // This test verifies the fix in TryFindBestTilingForFusionAsync that skips
   // tilings with infinite runtime estimates.
   //
   // The fix: After estimating runtime for each tiling candidate, check if

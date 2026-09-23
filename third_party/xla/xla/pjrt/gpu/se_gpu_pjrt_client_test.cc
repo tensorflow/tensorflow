@@ -344,7 +344,8 @@ TEST(StreamExecutorGpuClientTest, PlatformVersionIsDerivedAtRuntime) {
   const absl::string_view version = client->platform_version();
   EXPECT_NE(version, "<unknown>");
   EXPECT_TRUE(absl::StartsWith(version, "cuda ") ||
-              absl::StartsWith(version, "rocm "))
+              absl::StartsWith(version, "rocm ") ||
+              absl::StartsWith(version, "oneapi"))
       << "unexpected platform version: " << version;
 }
 

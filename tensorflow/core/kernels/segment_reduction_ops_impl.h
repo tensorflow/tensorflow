@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -1342,7 +1343,17 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, M));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
+    if (M == 0 || N == 0) {
+      // `allocate_output` does not initialize the buffer, and the functor below
+      // only runs when N > 0. Without this, an empty `indices` combined with
+      // `output_dim0` > 0 returns the freshly allocated output uninitialized.
+      // Zero is the correct gradient for a row that received no contribution.
+      if (output->NumElements() > 0) {
+        functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                             output->flat<T>());
+      }
+      return;
+    }
 
     OP_REQUIRES(context, input.dim_size(0) > 0,
                 absl::InvalidArgumentError("Invalid number of segments"));

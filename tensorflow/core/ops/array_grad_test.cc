@@ -675,6 +675,12 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0, 0}));
+    // dx[3] is the gradient w.r.t. `strides`; was previously fetched
+    // (StridedSliceGrad requests "dx:3" and CHECK_EQ(out.size(), 4)) but
+    // never asserted on in this test, unlike every sibling grad test in
+    // this file (SplitVGrad, ConcatGradV2, BroadcastToGrad), which check
+    // every non-data gradient output against an expected all-zero tensor.
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -702,6 +708,7 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -732,6 +739,8 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                                      test::AsTensor<int32_t>({0, 0, 0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2],
                                      test::AsTensor<int32_t>({0, 0, 0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3],
+                                     test::AsTensor<int32_t>({0, 0, 0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);
@@ -760,6 +769,7 @@ TEST(ArrayGradTest, StridedSliceGrad) {
                           {2, 3, 4}));
     test::ExpectTensorEqual<int32_t>(dx[1], test::AsTensor<int32_t>({0, 0}));
     test::ExpectTensorEqual<int32_t>(dx[2], test::AsTensor<int32_t>({0, 0}));
+    test::ExpectTensorEqual<int32_t>(dx[3], test::AsTensor<int32_t>({0, 0}));
     auto ddx = StridedSliceGradGrad(x_shape, start, stop, strides, dy, dx[0],
                                     begin_mask, end_mask, ellipsis_mask,
                                     new_axis_mask, shrink_axis_mask);

@@ -16,7 +16,6 @@
 
 import copy
 import re
-import sys
 
 import numpy as np
 
@@ -294,8 +293,6 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       self.assertIn("GPU", t.device)
 
   def testInvalidUTF8ProducesReasonableError(self):
-    if sys.version_info[0] < 3:
-      self.skipTest("Test is only valid in python3.")
     with self.assertRaises(UnicodeDecodeError):
       io_ops.read_file(b"\xff")
 

@@ -612,5 +612,41 @@ TEST_F(TilingSpaceTest, CloneAssignsIndependentTileSizes) {
   EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
 }
 
+TEST_F(TilingSpaceTest, CloneSymbolicIntoContextRebindsRootTiles) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  mlir::MLIRContext target_context;
+  std::unique_ptr<TilingSpace> cloned_space =
+      original_space->CloneSymbolicIntoContext(&target_context);
+  ASSERT_NE(cloned_space, nullptr);
+  EXPECT_EQ(cloned_space->mlir_context(), &target_context);
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+
+  for (const auto& root_tile : cloned_space->tiled_roots()) {
+    for (const auto& dim_tile : root_tile.dim_tiles()) {
+      EXPECT_EQ(dim_tile.size.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.offset.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.stride.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.upper_bound.GetContext(), &target_context);
+    }
+  }
+
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+  EXPECT_OK(cloned_space->AssignTileSizes({64, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 64);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+  EXPECT_TRUE(original_space->IsSymbolic());
+}
+
 }  // namespace
 }  // namespace xla::gpu::experimental
