@@ -1476,7 +1476,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
     self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
-
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt("b/179459136")
   def testWhileAutoControlDeps(self):
@@ -1667,7 +1666,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(op.inputs[0].op.type, "Shape")
         self.assertEqual(op.inputs[1].op.type, "Shape")
     xla_context.Exit()
-
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
@@ -2735,8 +2733,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def loop_iterator(j, _):
         return math_ops.less(j, 3)
 
-      def loop_body(j, _):
-        ns = state_ops.scatter_update(select, j, 10.0)
+      def loop_body(j, value):
+        with ops.control_dependencies([value]):
+          ns = state_ops.scatter_update(select, j, 10.0)
         nj = math_ops.add(j, 1)
         return [nj, ns]
 
@@ -4610,7 +4609,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
             len([op for op in x.graph.get_operations() if op.type == "StackV2"
                 ]), 1)
 
-
   @test_util.run_v1_only("b/120545219")
   def testQIntSwitchMerge(self):
     with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
@@ -4971,6 +4969,46 @@ class AssertTest(test.TestCase):
                         str(unguarded_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertRaisesWithRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[1], [2]])
+    cond = math_ops.reduce_all(math_ops.equal(rt.row_lengths(), 2))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[1\], \[2\]\]"):
+      self.evaluate(control_flow_assert.Assert(cond, [rt]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertPassesWithRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[1], [2]])
+    cond = math_ops.reduce_all(math_ops.equal(rt.row_lengths(), 1))
+    self.evaluate(control_flow_assert.Assert(cond, [rt]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertRaisesWithDenseAndRaggedTensorData(self):
+    dense = constant_op.constant([7.5, 8.5])
+    rt = ragged_factory_ops.constant([[1, 2, 3, 4], [5]])
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"(?s)7\.5.*\[\[1, 2, 3, 4\], \[5\]\]"):
+      self.evaluate(
+          control_flow_assert.Assert(False, [dense, rt], summarize=-1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertSummarizesRaggedTensorData(self):
+    rt = ragged_factory_ops.constant([[i] for i in range(8)])
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        r"\[\[0\], \[1\], \[2\], \.\.\., \[5\], \[6\], \[7\]\]"):
+      self.evaluate(control_flow_assert.Assert(False, [rt]))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[0\], \[1\], \[2\], \[3\], \[4\]"):
+      self.evaluate(control_flow_assert.Assert(False, [rt], summarize=-2))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"\[\[0\], \[1\], \.\.\., \[6\], \[7\]\]"):
+      self.evaluate(
+          control_flow_assert.Assert(False, [rt], summarize=np.int64(2)))
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(control_flow_assert.Assert(False, [rt], summarize=0))
 
 
 class WhileOpBenchmark(test.Benchmark):
