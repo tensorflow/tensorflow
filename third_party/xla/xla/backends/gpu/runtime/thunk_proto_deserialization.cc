@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
@@ -65,7 +68,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/rng_seed_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -74,15 +76,64 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 
 namespace {
+
+absl::StatusOr<std::unique_ptr<CustomCallThunk>> DeserializeSelectKThunkProto(
+    Thunk::ThunkInfo thunk_info, const SelectKThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    absl::string_view platform_name,
+    const se::GpuComputeCapability& gpu_compute_capability) {
+  if (proto.args_size() != 4) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "SelectKThunkProto expects exactly 4 buffer arguments, got %d",
+        proto.args_size()));
+  }
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice slice_in,
+      BufferAllocation::Slice::FromProto(proto.args(0), buffer_allocations));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice slice_out_val,
+      BufferAllocation::Slice::FromProto(proto.args(1), buffer_allocations));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice slice_out_idx,
+      BufferAllocation::Slice::FromProto(proto.args(2), buffer_allocations));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice slice_scratch,
+      BufferAllocation::Slice::FromProto(proto.args(3), buffer_allocations));
+
+  std::vector<NullableShapedSlice> operands = {
+      ShapedSlice{slice_in, ShapeUtil::MakeShape(
+                                proto.dtype(),
+                                {static_cast<int64_t>(proto.batch_size()),
+                                 static_cast<int64_t>(proto.num_elements())})},
+  };
+  std::vector<NullableShapedSlice> results = {
+      ShapedSlice{slice_out_val,
+                  ShapeUtil::MakeShape(
+                      proto.dtype(), {static_cast<int64_t>(proto.batch_size()),
+                                      static_cast<int64_t>(proto.k())})},
+      ShapedSlice{
+          slice_out_idx,
+          ShapeUtil::MakeShape(S32, {static_cast<int64_t>(proto.batch_size()),
+                                     static_cast<int64_t>(proto.k())})},
+      ShapedSlice{slice_scratch,
+                  ShapeUtil::MakeShape(U8, {slice_scratch.size()})},
+  };
+  return CustomCallThunk::Create(
+      std::move(thunk_info), std::string(kTopKCustomCallTarget),
+      std::move(operands), std::move(results), /*attributes=*/{},
+      /*called_computation=*/nullptr, platform_name, gpu_compute_capability);
+}
 
 static std::optional<absl::string_view> GetStoredThunkTypeName(
     const ThunkProto& proto) {
@@ -239,10 +290,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return HostExecuteDoneThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
           buffer_allocations, host_executable_async_events_map);
+    // TODO: Remove this case on Oct 9, 2026
     case ThunkProto::kSelectKThunk:
-      return SelectKThunk::FromProto(std::move(thunk_info),
-                                     thunk_proto.select_k_thunk(),
-                                     buffer_allocations);
+      return DeserializeSelectKThunkProto(
+          std::move(thunk_info), thunk_proto.select_k_thunk(),
+          buffer_allocations, platform_name, gpu_compute_capability);
     case ThunkProto::kHostSendThunk:
       return HostSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_send_thunk(),

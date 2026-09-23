@@ -58,6 +58,10 @@ limitations under the License.
 #include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 
+namespace xla {
+class CustomOptions;
+}  // namespace xla
+
 namespace xla::gpu {
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
@@ -136,7 +140,6 @@ class Thunk {
     kReduceScatter,
     kReplicaId,
     kRngSeed,
-    kSelectK,
     kSend,
     kSequential,
     kTriangularSolve,
@@ -255,6 +258,9 @@ class Thunk {
     // Collective memory acquired based on memory requests.
     CollectiveMemory* collective_memory = nullptr;
 
+    // Per-execution custom options.
+    const CustomOptions* custom_options = nullptr;
+
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
@@ -334,6 +340,9 @@ class Thunk {
     SendDeviceMemoryFunction* send_device_memory_function;
     RecvDeviceMemoryFunction* recv_device_memory_function;
 
+    // Per-execution custom options.
+    const CustomOptions* custom_options;
+
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context;
 
@@ -372,6 +381,7 @@ class Thunk {
                   se::Stream* host_to_device_stream,
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function,
+                  const CustomOptions* custom_options,
                   const ffi::ExecutionContext* ffi_execution_context,
                   std::vector<se::Stream*> additional_compute_streams = {},
                   ExecutionScopedState* execution_scoped_state = nullptr,

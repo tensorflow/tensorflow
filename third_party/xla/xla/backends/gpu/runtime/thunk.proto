@@ -265,6 +265,9 @@ message OutfeedThunkProto {
   repeated ShapedSliceProto source_slices = 1;
 }
 
+// Deprecated: Kept for AOT backward compatibility; deserialized into
+// CustomCallThunk targeting "__gpu$TopK".
+// TODO: Remove this thunk type on Oct 9, 2026
 message SelectKThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
   uint32 batch_size = 3;
@@ -487,7 +490,7 @@ message ThunkProto {
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
     MemzeroThunkProto memzero_thunk = 19;
-    SelectKThunkProto select_k_thunk = 20;
+    SelectKThunkProto select_k_thunk = 20 [deprecated = true];
     InfeedThunkProto infeed_thunk = 21;
     CublasLtMatmulThunkProto cublas_lt_matmul_thunk = 22;
     OutfeedThunkProto outfeed_thunk = 23;

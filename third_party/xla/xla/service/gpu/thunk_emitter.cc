@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -65,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/ffi/ffi_attributes_from_backend_config.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
@@ -100,7 +100,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/rng_seed_thunk.h"
-#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -237,6 +236,7 @@ bool IsInternalAotAllowlistedCustomCall(absl::string_view target_name) {
   static constexpr absl::string_view kInternalAotAllowlist[] = {
       kCubDeviceRadixSortPairsTarget,
       kCubDeviceRadixSortKeysTarget,
+      kTopKCustomCallTarget,
   };
   return absl::c_linear_search(kInternalAotAllowlist, target_name);
 }
@@ -1231,27 +1231,8 @@ class NativeCustomCallEmitterContextImpl
   }
 
   absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const override {
-    // Decode the opaque backend config into an FFI attributes map, mirroring
-    // EmitGenericCustomCall. For FFI handlers the backend config must be a
-    // string parsable into an MLIR dictionary attribute.
-    absl::StatusOr<GpuBackendConfig> backend_config =
-        instr_.backend_config<GpuBackendConfig>();
-    const std::string& backend_config_str =
-        backend_config.ok()
-            ? backend_config->custom_call_backend_config().attributes()
-            : instr_.raw_backend_config_string();
-    if (backend_config_str.empty()) {
-      return xla::ffi::Attributes::Create(xla::ffi::AttributesMap());
-    }
-    mlir::Attribute attr = mlir::parseAttribute(
-        backend_config_str, emitter_.ir_emitter_context_->mlir_context());
-    auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
-    TF_RET_CHECK(dict != nullptr)
-        << "Unsupported backend config. Expected a string parsable into a "
-           "dictionary attribute.";
-    ABSL_ASSIGN_OR_RETURN(xla::ffi::AttributesMap attributes,
-                     xla::ffi::BuildAttributesMap(dict));
-    return xla::ffi::Attributes::Create(std::move(attributes));
+    return FfiAttributesFromBackendConfig(
+        instr_, *emitter_.ir_emitter_context_->mlir_context());
   }
 
  private:
@@ -1513,12 +1494,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
           : std::tuple<size_t, size_t, size_t>{
                 1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
 
-  // Prepare kernel arguments.
-  ABSL_ASSIGN_OR_RETURN(auto kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-
   auto dtype = data_shape.element_type();
   bool is_cuda = ir_emitter_context_->gpu_compute_capability().IsCuda();
 
@@ -1543,13 +1518,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
     VLOG(3) << "EmitTopKCustomCall: dtype=" << dtype << ", n=" << n
             << ", k=" << k << ", use_raft_select_k=" << use_raft_select_k;
 
-    Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
-        instr, ir_emitter_context_->GetNextThunkId());
     if (use_raft_select_k) {
-      return ThunkSequence::Of<SelectKThunk>(std::move(info), batch_size, n, k,
-                                             dtype, kernel_arguments);
+      return EmitGenericCustomCall(instr);
     }
   }
+
+  // Prepare kernel arguments.
+  ABSL_ASSIGN_OR_RETURN(auto kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       ir_emitter_context_->buffer_assignment(),
+                       GetDefaultBufferAlignment(), instr));
 
   auto wavefront_size =
       ir_emitter_context_->gpu_device_info().threads_per_warp();
