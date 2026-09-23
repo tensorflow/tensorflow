@@ -1169,47 +1169,71 @@ LogicalResult CompressStoreVregOp::verify() {
   return success();
 }
 
-LogicalResult VectorCompressStoreOp::verify() {
-  MemRefType ref_ty = getBase().getType();
+template <typename Op>
+LogicalResult verifyCompressStoreExpandLoad(
+    Op op, VectorType ty, int32_t compress_expand_dim, StringRef vector_name,
+    StringRef compress_expand_dim_name) {
+  MemRefType ref_ty = op.getBase().getType();
   const int64_t rank = ref_ty.getRank();
-  VectorType value_ty = getValueToStore().getType();
-  if (value_ty.getRank() != rank) {
-    return emitOpError("Expected valueToStore to have the same rank as base (")
-           << rank << "). Got: " << value_ty.getRank() << ".";
+  if (ty.getRank() != rank) {
+    return op.emitOpError("Expected ")
+           << vector_name << " to have the same rank as base (" << rank
+           << "). Got: " << ty.getRank() << ".";
   }
-  if (llvm::size(getIndices()) != rank) {
-    return emitOpError("Expected ") << rank << " indices.";
+  if (llvm::size(op.getIndices()) != rank) {
+    return op.emitOpError("Expected ") << rank << " indices.";
   }
-  const int32_t compress_dim = getCompressDim();
-  if (compress_dim < 0 || compress_dim >= rank) {
-    return emitOpError("Expected compress_dim to be in [0, ")
-           << rank << "). Got: " << compress_dim << ".";
+  if (compress_expand_dim < 0 || compress_expand_dim >= rank) {
+    return op.emitOpError("Expected ")
+           << compress_expand_dim_name << " to be in [0, " << rank
+           << "). Got: " << compress_expand_dim << ".";
   }
+  const StringRef non_target_dim_adjective =
+      compress_expand_dim_name == "compress_dim" ? "Non-compressed"
+                                                 : "Non-expanded";
   for (int64_t i = 0; i < rank; ++i) {
-    if (i == compress_dim || ref_ty.isDynamicDim(i)) {
+    if (i == compress_expand_dim || ref_ty.isDynamicDim(i)) {
       continue;
     }
-    if (value_ty.getDimSize(i) > ref_ty.getDimSize(i)) {
-      return emitOpError("Non-compressed dimension ")
-             << i << " of valueToStore goes out of bounds of base ("
-             << value_ty.getDimSize(i) << " > " << ref_ty.getDimSize(i) << ").";
+    if (ty.getDimSize(i) > ref_ty.getDimSize(i)) {
+      return op.emitOpError(non_target_dim_adjective)
+             << " dimension " << i << " of " << vector_name
+             << " goes out of bounds of base (" << ty.getDimSize(i) << " > "
+             << ref_ty.getDimSize(i) << ").";
     }
   }
   if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
-    return emitOpError("Expected base memref to be in VMEM.");
+    return op.emitOpError("Expected base memref to be in VMEM.");
   }
-  if (value_ty.getElementType() != ref_ty.getElementType()) {
-    return emitOpError("Expected base and valueToStore element type to match");
+  if (ty.getElementType() != ref_ty.getElementType()) {
+    return op.emitOpError("Expected base and ")
+           << vector_name << " element type to match";
   }
-  // Note: We deliberately do not go through verifyStoreOp, which rejects masked
-  // stores of non-32-bit element types. The mask here is mandatory and narrow
-  // element types are allowed.
-  if (value_ty.getShape() != getMask().getType().getShape()) {
-    return emitOpError("Expected mask shape to match value shape: (")
-           << value_ty.getShape() << "). Got: ("
-           << getMask().getType().getShape() << ").";
+  // Note: We deliberately do not go through verifyStoreOp / verifyLoadOp, which
+  // reject masked stores/loads of non-32-bit element types. The mask here is
+  // mandatory and narrow element types are allowed. They are rejected later, in
+  // the vector layout passes.
+  if (ty.getShape() != op.getMask().getType().getShape()) {
+    return op.emitOpError("Expected mask shape to match ")
+           << (vector_name == "valueToStore" ? "value" : "result")
+           << " shape: (" << ty.getShape() << "). Got: ("
+           << op.getMask().getType().getShape() << ").";
   }
   return success();
+}
+
+LogicalResult VectorCompressStoreOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getValueToStore().getType(), getCompressDim(),
+      /*vector_name=*/"valueToStore",
+      /*compress_expand_dim_name=*/"compress_dim");
+}
+
+LogicalResult VectorExpandLoadOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getResult().getType(), getExpandDim(),
+      /*vector_name=*/"result",
+      /*compress_expand_dim_name=*/"expand_dim");
 }
 
 template <typename Op>
