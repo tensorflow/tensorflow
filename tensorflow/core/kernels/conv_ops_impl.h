@@ -1137,6 +1137,14 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                  context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                         &transformed_filter));
 
+  OP_REQUIRES(
+      context,
+      FastBoundsCheck(filter.NumElements(),
+                      std::numeric_limits<int32>::max()),
+      errors::InvalidArgument("Filter tensor num elements (",
+                              filter.NumElements(),
+                              ") exceeds 32-bit limit for GPU transformation"));
+
   // Filter: [(spatial_dims), in, out] (HWIO)
   // T_filter: [out, in, (spatial_dims)] (OIHW) or
   // T_filter: [out, (spatial_dims), in] (OHWI)

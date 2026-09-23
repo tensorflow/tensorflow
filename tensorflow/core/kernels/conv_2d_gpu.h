@@ -491,6 +491,9 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     }
     combined_dims[1] = in.dimension(NDIMS - 2);  // input filters
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
+    if (TF_PREDICT_FALSE(out.size() <= 0)) {
+      return;
+    }
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
 
     if (dst_filter_format == FORMAT_OIHW) {
@@ -521,6 +524,10 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
                   typename TTypes<T, NDIMS>::ConstTensor in,
                   typename TTypes<T, NDIMS>::Tensor out) {
     Dimension<3> combined_dims;
+
+    if (TF_PREDICT_FALSE(out.size() <= 0)) {
+      return;
+    }
 
     if (src_filter_format == FORMAT_OIHW) {
       combined_dims[0] = in.dimension(0);  // output filters
