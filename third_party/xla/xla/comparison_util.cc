@@ -223,42 +223,19 @@ Comparison::Order Comparison::DefaultOrdering(PrimitiveType type) {
   LOG(FATAL) << "Unsupported type: " << PrimitiveType_Name(type);
 }
 
-namespace {
-Comparison::Type ComparisonTypeFromPrimitiveTypeAndOrder(
-    PrimitiveType type, Comparison::Order order) {
-  if (primitive_util::IsFloatingPointType(type) ||
-      primitive_util::IsComplexType(type)) {
-    return order == Comparison::Order::kTotal
-               ? Comparison::Type::kFloatTotalOrder
-               : Comparison::Type::kFloat;
-  }
-  if (primitive_util::IsSignedIntegralType(type)) {
-    return Comparison::Type::kSigned;
-  }
-  if (primitive_util::IsUnsignedIntegralType(type) || type == PRED) {
-    return Comparison::Type::kUnsigned;
-  }
-  LOG(FATAL) << "Unexpected: " << PrimitiveType_Name(type);
-}
-}  // namespace
-
 Comparison::Comparison(Direction dir, PrimitiveType type, Order order)
-    : dir_(dir),
-      primitive_type_(type),
-      order_(order),
-      type_(ComparisonTypeFromPrimitiveTypeAndOrder(type, order)) {}
+    : dir_(dir), primitive_type_(type), order_(order) {
+  CHECK(primitive_util::IsArrayType(type))
+      << "Unsupported type: " << PrimitiveType_Name(type);
+}
 
 Comparison::Comparison(Direction dir, PrimitiveType type)
-    : dir_(dir),
-      primitive_type_(type),
-      order_(DefaultOrdering(type)),
-      type_(DefaultComparisonType(type)) {}
+    : dir_(dir), primitive_type_(type), order_(DefaultOrdering(type)) {}
 
 Comparison::Comparison(Direction dir, Type type)
     : dir_(dir),
       primitive_type_(DefaultPrimitiveType(type)),
-      order_(DefaultOrdering(type)),
-      type_(type) {}
+      order_(DefaultOrdering(type)) {}
 
 Comparison Comparison::Converse() const {
   return Comparison(xla::Converse(dir_), primitive_type_, order_);
