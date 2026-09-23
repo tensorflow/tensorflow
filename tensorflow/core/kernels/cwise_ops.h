@@ -65,9 +65,10 @@ template <>
 struct functor_traits<scalar_sign_float_op> {
   enum {
     Cost = 10 * NumTraits<float>::AddCost,
-    // Fall back to scalar evaluation when integer packets have a different
-    // width, as on some targets without full integer SIMD support.
-    PacketAccess = packet_traits<float>::size == packet_traits<int32_t>::size
+    // The bitwise packet path needs equal-width integer packets with
+    // comparisons; otherwise, use the scalar path.
+    PacketAccess = packet_traits<float>::size == packet_traits<int32_t>::size &&
+                   packet_traits<int32_t>::HasCmp
   };
 };
 
