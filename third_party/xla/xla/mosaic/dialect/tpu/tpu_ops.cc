@@ -1214,6 +1214,31 @@ LogicalResult verifyLoadOp(Op op) {
   return success();
 }
 
+LogicalResult ExpandLoadVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType result_ty = getResult().getType();
+  if (result_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and result element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  // Note: We deliberately do not go through verifyLoadOp, which rejects masked
+  // loads of non-32-bit element types. The mask here is mandatory and narrow
+  // element types are allowed. They are rejected later, in the vector layout
+  // passes.
+  VectorType mask_ty = getMask().getType();
+  if (result_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected result dimension 0 to match mask dimension 0: ")
+           << result_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
+  }
+  return success();
+}
+
 LogicalResult VectorLoadOp::verify() {
   const MemRefType ref_ty = getBase().getType();
   if (llvm::size(getIndices()) != ref_ty.getRank()) {
