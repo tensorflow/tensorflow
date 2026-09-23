@@ -44,17 +44,19 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-// Checks whether the producer of `value` is part of a chain that can be folded
-// into a constant. This includes DequantizeOp, or chains involving ReshapeOp
-// and SplitOp originating from a DequantizeOp.
-bool NotFromFoldableChain(mlir::Value value) {
+// Checks whether `value` is, or can be folded into, a constant. This covers a
+// plain constant, the dequantize wrappers a quantized constant weight hides
+// behind, and chains of ops that only rearrange one of those.
+bool IsFromFoldableChain(mlir::Value value) {
   mlir::Operation* defining_op = value.getDefiningOp();
 
   while (defining_op) {
-    if (mlir::isa<DequantizeOp>(defining_op) ||
+    // `QConstOp` carries its value in an attribute but is neither ConstantLike
+    // nor foldable, so it has to be named rather than left to `m_Constant`.
+    if (mlir::isa<DequantizeOp, QConstOp>(defining_op) ||
         defining_op->hasTrait<mlir::OpTrait::ConstantLike>() ||
         matchPattern(defining_op, mlir::m_Constant())) {
-      return false;
+      return true;
     }
 
     // Look through ops that don't change the constant nature.
@@ -69,7 +71,35 @@ bool NotFromFoldableChain(mlir::Value value) {
       break;
     }
   }
-  return true;
+  return false;
+}
+
+// Checks whether a batch_matmul whose rhs is `value` can be rewritten into a
+// fully_connected, i.e. whether `value` can become that op's filter.
+//
+// This is the single gate shared by both directions of the
+// batch_matmul/fully_connected rewrite, and the two have to agree on it:
+// `ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs` converts a matmul
+// over such a value into a fully_connected, while the
+// `NotFoldableIntoFullyConnected` constraint in `optimize_batch_matmul.td`
+// stops `FuseTransposeFCRhsToBatchMatmul` converting it straight back.
+bool IsRhsFoldableIntoFullyConnected(mlir::Value value) {
+  auto ranked_type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!ranked_type || ranked_type.getRank() != 2) {
+    return false;
+  }
+
+  if (IsFromFoldableChain(value)) {
+    return true;
+  }
+
+  // A signed int4/int8 quantized rhs becomes the filter as-is, so unlike the
+  // case above it does not have to be constant.
+  auto quantized_type =
+      mlir::dyn_cast<quant::QuantizedType>(ranked_type.getElementType());
+  return quantized_type != nullptr && quantized_type.isSigned() &&
+         (quantized_type.getStorageTypeIntegralWidth() == 4 ||
+          quantized_type.getStorageTypeIntegralWidth() == 8);
 }
 
 // Converts batch_matmul operation to fully_connected if rhs is a
@@ -79,51 +109,11 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
   using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
                                 PatternRewriter& rewriter) const override {
-    bool is_int_quantized_rank_2_value = false;
-    if (auto rhs_type = mlir::dyn_cast<quant::QuantizedType>(
-            getElementTypeOrSelf(bmm_op.getY().getType()))) {
-      int64_t rhs_type_rank = bmm_op.getY().getType().getRank();
-      bool rhs_i4_or_i8 = rhs_type.getStorageTypeIntegralWidth() == 4 ||
-                          rhs_type.getStorageTypeIntegralWidth() == 8;
-      if (rhs_i4_or_i8 && rhs_type.isSigned() && rhs_type_rank == 2) {
-        is_int_quantized_rank_2_value = true;
-      }
-    }
-
-    ElementsAttr constant = nullptr;
-    Value rhs = bmm_op.getY();
-    // If there is a reshape, look through it.
-    if (auto reshape = rhs.getDefiningOp<ReshapeOp>()) {
-      rhs = reshape.getInput();
-    }
-
-    ElementsAttr elements_constant;
-    if (matchPattern(rhs, m_Constant(&elements_constant))) {
-      constant = elements_constant;
-    } else if (auto dq = rhs.getDefiningOp<DequantizeOp>()) {
-      Value q_input = dq.getInput();
-      if (matchPattern(q_input, m_Constant(&elements_constant))) {
-        constant = elements_constant;
-      } else if (auto q = q_input.getDefiningOp<QuantizeOp>()) {
-        if (matchPattern(q.getInput(), m_Constant(&elements_constant))) {
-          constant = elements_constant;
-        }
-      } else if (auto pseudo_q = q_input.getDefiningOp<TFL::QConstOp>()) {
-        constant = pseudo_q.getValue();
-      } else if (auto const_op = q_input.getDefiningOp<TFL::ConstOp>()) {
-        constant = const_op.getValue();
-      }
-    }
-
-    const bool is_rank_2_constant =
-        constant &&
-        mlir::cast<ShapedType>(bmm_op.getY().getType()).getRank() == 2;
-
-    if (!is_rank_2_constant && !is_int_quantized_rank_2_value) {
+    if (!IsRhsFoldableIntoFullyConnected(bmm_op.getY())) {
       return rewriter.notifyMatchFailure(
           bmm_op,
-          "rhs is neither a constant with rank 2 nor int4 quantized nor a "
-          "dequantized value.");
+          "rhs is neither a rank 2 value foldable into a constant nor a rank 2 "
+          "signed int4/int8 quantized value.");
     }
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.
