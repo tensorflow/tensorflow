@@ -79,11 +79,15 @@ class InTopKOp : public XlaOpKernel {
     xla::XlaOp iota_r2 = xla::Broadcast(iota_r1, {batch_size});
 
     xla::XlaOp eq_r2 = xla::Eq(targets_r1, iota_r2, {0});
-    // An out-of-range target has no matching class. Without this check, the
-    // reduction below treats its prediction as zero and may report a false hit.
-    xla::XlaOp valid_target_r1 = xla::Reduce(
-        eq_r2, xla::ConstantR0<bool>(xla_builder, false),
-        xla::CreateScalarOrComputation(xla::PRED, xla_builder), {1});
+    // The masked reduction below treats an out-of-range target as zero, which
+    // can otherwise produce a false hit. Check bounds per target, rather than
+    // reducing the class-match matrix again.
+    xla::XlaOp targets_s64 = xla::ConvertElementType(targets_r1, xla::S64);
+    xla::XlaOp valid_target_r1 = xla::And(
+        xla::Ge(targets_s64, xla::ConstantR0<int64_t>(xla_builder, 0)),
+        xla::Lt(targets_s64,
+                xla::ConstantR0<int64_t>(xla_builder,
+                                         predictions_shape.dim_size(1))));
     xla::XlaOp zero_r0_f32 = xla::Zero(xla_builder, xla::F32);
     xla::XlaOp zero_r2_f32 = xla::ZerosLike(predictions_r2);
     xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_f32);
