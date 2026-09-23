@@ -400,18 +400,29 @@ bool MultiOutputFusion::Perform() {
 }
 
 void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
+  // Nothing below modifies the computation, so IsFusible is evaluated once per
+  // instruction rather than once per sibling visit.
+  std::vector<bool> is_fusible;
+  is_fusible.reserve(candidates_.size());
+  for (const FusionCandidate& node : candidates_) {
+    is_fusible.push_back(IsFusible(node.hlo));
+  }
+
   // Create the initial candidate list for each Node.
   for (auto& node : candidates_) {
     HloInstruction* instruction = node.hlo;
     int64_t instruction_id = get_candidate_id(instruction);
     FusionCandidate& instr_node = candidates_[instruction_id];
-    if (!IsFusible(instruction)) {
+    if (!is_fusible[instruction_id]) {
       continue;
     }
     all_fusion_candidates_.insert(instruction);
 
     std::vector<HloInstruction*> candidates;
-    absl::flat_hash_set<HloInstruction*> candidates_set;
+    // A user shows up in the slice of every profitable operand it shares with
+    // `instruction`. The checks below depend only on the pair, so the first
+    // visit decides and later visits are skipped.
+    absl::flat_hash_set<HloInstruction*> visited_users;
     VLOG(10) << "Looking at instruction: " << instruction->name();
     for (auto operand : instruction->operands()) {
       // Filter out the non-interesting instructions -- they
@@ -435,14 +446,12 @@ void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
       for (int64_t i = user_slice_begin; i < user_slice_end; ++i) {
         HloInstruction* user = operand->users()[i];
         VLOG(10) << "User: " << user->name();
-        if (user == instruction || !IsFusible(user)) {
-          VLOG(10) << "User is not fusible, or is the instruction itself: "
-                   << user->name();
+        if (user == instruction || !visited_users.insert(user).second) {
           continue;
         }
         int64_t user_id = get_candidate_id(user);
-        if (is_connected(instruction, user)) {
-          VLOG(10) << "User is connected: " << user->name();
+        if (!is_fusible[user_id]) {
+          VLOG(10) << "User is not fusible: " << user->name();
           continue;
         }
         if (instruction_id < user_id && user->opcode() == HloOpcode::kFusion) {
@@ -450,19 +459,20 @@ void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
                    << " which is higher than " << instruction_id;
           continue;
         }
+        if (is_connected(instruction, user)) {
+          VLOG(10) << "User is connected: " << user->name();
+          continue;
+        }
         if (!LegalToFuse(instruction, user)) {
           VLOG(10) << "User not legal to fuse: " << user->name();
           continue;
         }
-        if (candidates_set.insert(user).second) {
-          VLOG(10) << "User added to candidate list: " << user->name();
-          candidates.push_back(user);
-        }
+        VLOG(10) << "User added to candidate list: " << user->name();
+        candidates.push_back(user);
       }
     }
 
-    // Iterate over candidates rather than candidates_set to avoid
-    // nondeterminism.
+    // `candidates` is in visiting order, so the worklist is deterministic.
     for (auto candidate : candidates) {
       int64_t profit = GetProfit(instruction, candidate);
       if (profit > 0) {
