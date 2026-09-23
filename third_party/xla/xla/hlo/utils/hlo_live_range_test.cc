@@ -60,6 +60,25 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
                           .value();
+    CheckFlattenedInstructionSequence(schedule);
+  }
+
+  // GetFlattenedInstructionSequence() must return the sequence that Run()
+  // flattens, in both scopes.
+  void CheckFlattenedInstructionSequence(const HloSchedule& schedule) const {
+    for (bool module_scoped_analysis : {true, false}) {
+      ASSERT_OK_AND_ASSIGN(
+          HloInstructionSequence sequence,
+          HloLiveRange::GetFlattenedInstructionSequence(
+              schedule, module_->entry_computation(), module_scoped_analysis));
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                           HloLiveRange::Run(schedule, *alias_analysis_,
+                                             module_->entry_computation(),
+                                             module_scoped_analysis));
+      EXPECT_EQ(sequence.instructions(),
+                hlo_live_range->flattened_instruction_sequence().instructions())
+          << "module_scoped_analysis=" << module_scoped_analysis;
+    }
   }
 
   std::unique_ptr<HloModule> module_;

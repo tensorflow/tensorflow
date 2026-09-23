@@ -50,6 +50,15 @@ class HloLiveRange {
       const HloComputation* computation, bool module_scoped_analysis = true,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
+  // Returns the flattened_instruction_sequence() that Run() with the same
+  // arguments computes, without needing an alias analysis: the instructions of
+  // `computation` in schedule order and, in module scoped mode, the sequences
+  // of the computations they call inlined before the calling instruction.
+  static absl::StatusOr<HloInstructionSequence> GetFlattenedInstructionSequence(
+      const HloSchedule& schedule, const HloComputation* computation,
+      bool module_scoped_analysis = true,
+      absl::flat_hash_set<absl::string_view> execution_threads = {});
+
   // Returns all HloValues defined by this instruction.
   static std::vector<const HloValue*> GetValuesDefined(
       const HloInstruction* instruction, const HloDataflowAnalysis& dataflow);
@@ -159,16 +168,34 @@ class HloLiveRange {
         module_scoped_analysis_(module_scoped_analysis),
         execution_threads_(std::move(execution_threads)) {}
 
+  // What FlattenSchedule computes from a schedule alone.
+  struct FlattenedSchedule {
+    HloInstructionSequence instruction_sequence;
+    absl::flat_hash_map<const HloInstruction*, LogicalTime>
+        instruction_schedule;
+    absl::flat_hash_map<const HloComputation*, LiveRangeBounds>
+        computation_span_times;
+    absl::flat_hash_map<const HloComputation*, const HloComputation*>
+        computations_in_async_context;
+    bool total_order_scheduled = true;
+  };
+
   // FlattenSchedule walks through the instructions in `computation`, and
   // recurse into each called computations in module_scoped_analysis mode. As it
   // walks it also tracks down the ordinal number of each instruction in the
   // schedule and store it in the `instruction_schedule` and
-  // 'flattened_instruction_sequence`. async_context contains the asynchronous
-  // computation that this computation is in, if any. When this value is
-  // non-null, it means that this computation is called by an async op or
-  // another op in an asynchronous context.
-  absl::Status FlattenSchedule(const HloComputation& computation,
-                               const HloComputation* async_context = nullptr);
+  // 'instruction_sequence` of `flattened`. async_context contains the
+  // asynchronous computation that this computation is in, if any. When this
+  // value is non-null, it means that this computation is called by an async op
+  // or another op in an asynchronous context.
+  static absl::Status FlattenSchedule(
+      const HloSchedule& schedule, bool module_scoped_analysis,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      const HloComputation& computation, const HloComputation* async_context,
+      FlattenedSchedule& flattened);
+
+  // Flattens `computation` per `schedule_` into this object's members.
+  absl::Status FlattenSchedule(const HloComputation& computation);
 
   // Computes the end of the live range of an HloValue. Returns the end time and
   // the position where the live range ends.

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -291,6 +292,37 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, ExcludeNonMainThreadComputation) {
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToMemory(
                 *async_add, {{0, {}}, {1, {}}}, {{}}),
             0.0f);
+}
+
+TEST_F(MemorySpaceAssignmentCostAnalysisTest, ReadsTheCallerOwnedLiveRange) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    add = f32[2,4] add(param0, param1)
+    ROOT negate = f32[2,4] negate(add)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK(Initialize(module.get()));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                       HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                         module->entry_computation()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CostAnalysis> cost_analysis,
+      CostAnalysis::Create(*op_cost_manager_, options_, *module,
+                           alias_analysis.get(), *hlo_live_range));
+
+  // The caller's live range is read as is, not copied or recomputed.
+  EXPECT_EQ(&cost_analysis->hlo_live_range(), hlo_live_range.get());
+  EXPECT_EQ(cost_analysis->GetScheduleEndTime(),
+            cost_analysis_->GetScheduleEndTime());
+  EXPECT_EQ(cost_analysis->GetScheduleEndTime(), 4);
 }
 
 }  // namespace

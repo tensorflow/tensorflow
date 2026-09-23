@@ -66,6 +66,19 @@ absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
 }
 
 /*static*/
+absl::StatusOr<HloInstructionSequence>
+HloLiveRange::GetFlattenedInstructionSequence(
+    const HloSchedule& schedule, const HloComputation* computation,
+    bool module_scoped_analysis,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
+  FlattenedSchedule flattened;
+  ABSL_RETURN_IF_ERROR(FlattenSchedule(schedule, module_scoped_analysis,
+                                  execution_threads, *computation,
+                                  /*async_context=*/nullptr, flattened));
+  return std::move(flattened.instruction_sequence);
+}
+
+/*static*/
 std::vector<const HloValue*> HloLiveRange::GetValuesDefined(
     const HloInstruction* instruction, const HloDataflowAnalysis& dataflow) {
   std::vector<const HloValue*> values;
@@ -207,42 +220,66 @@ void HloLiveRange::NormalizeAliasedBuffers() {
   }
 }
 
+absl::Status HloLiveRange::FlattenSchedule(const HloComputation& computation) {
+  FlattenedSchedule flattened;
+  ABSL_RETURN_IF_ERROR(FlattenSchedule(schedule_, module_scoped_analysis_,
+                                  execution_threads_, computation,
+                                  /*async_context=*/nullptr, flattened));
+  flattened_instruction_sequence_ = std::move(flattened.instruction_sequence);
+  instruction_schedule_ = std::move(flattened.instruction_schedule);
+  computation_span_times_ = std::move(flattened.computation_span_times);
+  computations_in_async_context_ =
+      std::move(flattened.computations_in_async_context);
+  total_order_scheduled_ = flattened.total_order_scheduled;
+  return absl::OkStatus();
+}
+
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
+/*static*/
 absl::Status HloLiveRange::FlattenSchedule(
-    const HloComputation& computation, const HloComputation* async_context) {
+    const HloSchedule& schedule, bool module_scoped_analysis,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    const HloComputation& computation, const HloComputation* async_context,
+    FlattenedSchedule& flattened) {
   if (!HloInstruction::IsThreadIncluded(computation.execution_thread(),
-                                        execution_threads_)) {
+                                        execution_threads)) {
     return absl::OkStatus();
   }
-  auto it = schedule_.sequences().find(computation.unique_id());
-  if (it == schedule_.sequences().end()) {
-    total_order_scheduled_ = false;
+  auto it = schedule.sequences().find(computation.unique_id());
+  if (it == schedule.sequences().end()) {
+    flattened.total_order_scheduled = false;
     return absl::OkStatus();
   }
 
   // Check if we've already processed this computation.
-  if (computation_span_times_.contains(&computation)) {
+  if (flattened.computation_span_times.contains(&computation)) {
     return absl::OkStatus();
   }
 
   // Mark this computation into the async context, if available.
   if (async_context != nullptr) {
-    computations_in_async_context_[&computation] = async_context;
+    flattened.computations_in_async_context[&computation] = async_context;
   }
 
-  LogicalTime start_time = flattened_instruction_sequence_.size();
+  auto flatten = [&](const HloComputation& called_computation,
+                     const HloComputation* called_async_context) {
+    return FlattenSchedule(schedule, module_scoped_analysis, execution_threads,
+                           called_computation, called_async_context, flattened);
+  };
+
+  LogicalTime start_time = flattened.instruction_sequence.size();
 
   const HloInstructionSequence& instruction_sequence = it->second;
   for (HloInstruction* instruction : instruction_sequence.instructions()) {
-    if (module_scoped_analysis_) {
+    if (module_scoped_analysis) {
       // Recurse into sub computations if running with module scoped analysis
       // mode.
       if (instruction->opcode() == HloOpcode::kCall ||
           instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          ABSL_RETURN_IF_ERROR(FlattenSchedule(*called_computation, async_context));
+          ABSL_RETURN_IF_ERROR(flatten(*called_computation, async_context));
         }
       } else if (instruction->IsAsynchronous()) {
         // For async operations, the async wrapped computation is flattened
@@ -254,26 +291,24 @@ absl::Status HloLiveRange::FlattenSchedule(
         if (is_first_fully_bound) {
           const HloComputation* called_computation =
               instruction->async_wrapped_computation();
-          ABSL_RETURN_IF_ERROR(
-              FlattenSchedule(*called_computation, called_computation));
+          ABSL_RETURN_IF_ERROR(flatten(*called_computation, called_computation));
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
         // Order of flattening matters here: for while loops, the condition
         // must be flattened first, then the body.
         ABSL_RETURN_IF_ERROR(
-            FlattenSchedule(*instruction->while_condition(), async_context));
-        ABSL_RETURN_IF_ERROR(
-            FlattenSchedule(*instruction->while_body(), async_context));
+            flatten(*instruction->while_condition(), async_context));
+        ABSL_RETURN_IF_ERROR(flatten(*instruction->while_body(), async_context));
       }
     }
 
-    LogicalTime time = flattened_instruction_sequence_.size();
-    CHECK(instruction_schedule_.insert({instruction, time}).second);
-    flattened_instruction_sequence_.push_back(instruction);
+    LogicalTime time = flattened.instruction_sequence.size();
+    CHECK(flattened.instruction_schedule.insert({instruction, time}).second);
+    flattened.instruction_sequence.push_back(instruction);
   }
 
-  LogicalTime end_time = flattened_instruction_sequence_.size();
-  computation_span_times_[&computation] = {start_time, end_time};
+  LogicalTime end_time = flattened.instruction_sequence.size();
+  flattened.computation_span_times[&computation] = {start_time, end_time};
   return absl::OkStatus();
 }
 

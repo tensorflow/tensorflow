@@ -62,6 +62,17 @@ namespace memory_space_assignment {
                        std::move(hlo_live_range), std::move(call_graph)));
 }
 
+/*static*/ absl::StatusOr<std::unique_ptr<CostAnalysis>> CostAnalysis::Create(
+    OpCostManager& op_cost_manager, const CostAnalysisOptions& options,
+    const HloModule& module, HloAliasAnalysis* alias_analysis,
+    const HloLiveRange& hlo_live_range) {
+  auto call_graph = CallGraph::Build(&module);
+  // Using `new` to access a non-public constructor.
+  return absl::WrapUnique(new CostAnalysis(op_cost_manager, options,
+                                           alias_analysis, hlo_live_range,
+                                           std::move(call_graph)));
+}
+
 CostAnalysis::CostAnalysis(OpCostManager& op_cost_manager,
                            const CostAnalysisOptions& options,
                            HloAliasAnalysis* alias_analysis,
@@ -70,7 +81,19 @@ CostAnalysis::CostAnalysis(OpCostManager& op_cost_manager,
     : op_cost_manager_(op_cost_manager),
       options_(options),
       alias_analysis_(alias_analysis),
-      hlo_live_range_(std::move(hlo_live_range)),
+      owned_hlo_live_range_(std::move(hlo_live_range)),
+      hlo_live_range_(owned_hlo_live_range_.get()),
+      call_graph_(std::move(call_graph)) {}
+
+CostAnalysis::CostAnalysis(OpCostManager& op_cost_manager,
+                           const CostAnalysisOptions& options,
+                           HloAliasAnalysis* alias_analysis,
+                           const HloLiveRange& hlo_live_range,
+                           std::unique_ptr<CallGraph> call_graph)
+    : op_cost_manager_(op_cost_manager),
+      options_(options),
+      alias_analysis_(alias_analysis),
+      hlo_live_range_(&hlo_live_range),
       call_graph_(std::move(call_graph)) {}
 
 int64_t CostAnalysis::GetShapeSizeBytes(const Shape& shape) const {
