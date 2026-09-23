@@ -89,7 +89,8 @@ TEST_P(FactoryTest, GetCodegenBackends) {
         get_codegen_backends(
             stream_executor_, &allocator_, &debug_options_, compiler_.get(),
             &target_config_, &alias_info, &mlir_context,
-            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names);
+            /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names,
+            /*thread_pool=*/nullptr, /*mlir_context_pool=*/nullptr);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();

@@ -259,7 +259,8 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       ConfigAssignerPass::GetEnabledBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
-          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
+          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id(),
+          thread_pool.get()));
 
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);
