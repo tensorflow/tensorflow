@@ -32,8 +32,6 @@ namespace xla::gpu {
 // asynchronous executions.
 class StreamAttributeAsyncWrapper : public HloModulePass {
  public:
-  inline static constexpr char kParallelExecutionThread[] = "parallel";
-
   absl::string_view name() const override {
     return "async-stream-attribute-wrapper";
   }
