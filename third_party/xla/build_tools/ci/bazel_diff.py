@@ -25,40 +25,18 @@ import enum
 import hashlib
 import logging
 import os
-import re
 import subprocess
 import sys
 import tempfile
 import time
 from typing import Any, List, Optional, Protocol, Tuple
 
+from build_tools.ci import change_detector
+
 BAZEL_DIFF_VERSION = "v46.1.0"
 BAZEL_DIFF_JAR_URL = "https://github.com/Tinder/bazel-diff/releases/download/v46.1.0/bazel-diff_deploy.jar"
 BAZEL_DIFF_JAR_SHA256 = (
     "1026c66304d262e26065fc0ccd0281766c4c8b63abd18ea1fc4366fe05453c1e"
-)
-
-# Global configuration files whose modification invalidates incremental diffs
-# and necessitates a full test suite run.
-GLOBAL_BAZEL_CONFIG_PATTERNS: Tuple[str, ...] = (
-    r"(^|/)MODULE\.bazel$",
-    r"(^|/)REPO\.bazel$",
-    r"(^|/)WORKSPACE(\.bzlmod)?$",
-    r"\.bazelrc$",
-    r"\.bazelversion$",
-)
-
-# b/519689071: keywords in BUILD/.bzl changes that signal unconfigured hashing
-# under-selection (label_flag, config_setting, alias).
-FULL_RUN_BUILD_KEYWORDS: Tuple[str, ...] = (
-    "label_flag(",
-    "config_setting(",
-    "alias(",
-)
-
-# Regex matching files that only contain documentation or repository metadata.
-DOCS_OR_METADATA_PATTERN = re.compile(
-    r"(\.md$|^docs/|(^|/)OWNERS$|^LICENSE|^\.clang|^\.gitignore|^\.vscode/|\.png$|\.jpg$|\.jpeg$|\.svg$|\.webp$|\.gif$)"
 )
 
 # Target prefixes to keep in XLA's CI.
@@ -116,144 +94,6 @@ class BazelDiffDecision:
   reason: str = ""
   changed_files_count: int = 0
   elapsed_seconds: float = 0.0
-
-
-def matches_any_pattern(path: str, patterns: Sequence[str]) -> bool:
-  """Returns True if path matches any regex pattern in patterns."""
-  return any(re.search(pattern, path) for pattern in patterns)
-
-
-def is_global_config_changed(changed_files: Sequence[str]) -> bool:
-  """Returns True if any changed file matches global bazel config patterns."""
-  return any(
-      matches_any_pattern(file_path, GLOBAL_BAZEL_CONFIG_PATTERNS)
-      for file_path in changed_files
-  )
-
-
-def is_docs_or_metadata_only(changed_files: Sequence[str]) -> bool:
-  """Returns True if all changed files are docs or non-build metadata."""
-  if not changed_files:
-    return False
-  return all(
-      DOCS_OR_METADATA_PATTERN.search(file_path) for file_path in changed_files
-  )
-
-
-def _run_git_best_effort(
-    args: Sequence[str], cwd: str = "."
-) -> Optional[subprocess.CompletedProcess[str]]:
-  """Runs a git command best-effort, returning None on OS/subprocess error."""
-  try:
-    return subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-  except (OSError, subprocess.SubprocessError):
-    return None
-
-
-def get_merge_base(
-    base_sha: str, head_sha: str = "HEAD", cwd: str = "."
-) -> Optional[str]:
-  """Computes git merge-base between base_sha and head_sha.
-
-  Args:
-    base_sha: Base git commit SHA.
-    head_sha: Head git commit SHA or ref.
-    cwd: Directory where the git command should be executed.
-
-  Returns:
-    The merge base commit SHA as a string, or None if not found.
-  """
-  result = _run_git_best_effort(["merge-base", base_sha, head_sha], cwd=cwd)
-  if result and result.returncode == 0 and result.stdout.strip():
-    return result.stdout.strip()
-  return None
-
-
-def get_diff_base(base_sha: str, head_sha: str = "HEAD", cwd: str = ".") -> str:
-  """Returns the base commit to diff against head_sha.
-
-  Uses git merge-base when available so that changes that landed on the base
-  branch after the feature branch diverged are not falsely attributed to the PR.
-
-  Args:
-    base_sha: Base git commit SHA.
-    head_sha: Head git commit SHA or ref.
-    cwd: Directory where the git command should be executed.
-
-  Returns:
-    The merge-base SHA if available, otherwise base_sha.
-  """
-  merge_base = get_merge_base(base_sha, head_sha, cwd=cwd)
-  return merge_base if merge_base else base_sha
-
-
-def get_changed_files(
-    base_sha: str, head_sha: str = "HEAD", cwd: str = "."
-) -> List[str]:
-  """Returns list of changed filepaths between base_sha and head_sha.
-
-  Args:
-    base_sha: Base git commit SHA.
-    head_sha: Head git commit SHA or ref.
-    cwd: Directory where the git command should be executed.
-
-  Returns:
-    List of relative paths of changed files.
-  """
-  diff_base = get_diff_base(base_sha, head_sha, cwd=cwd)
-  command = ["git", "diff", "--name-only", diff_base, head_sha]
-  result = subprocess.run(
-      command, cwd=cwd, capture_output=True, text=True, check=True
-  )
-  return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-
-
-def touches_build_keywords(
-    changed_files: Sequence[str],
-    base_sha: str,
-    head_sha: str,
-    cwd: str = ".",
-) -> bool:
-  """Returns True if any BUILD or .bzl diff contains sensitive keywords."""
-  build_or_bzl_files = [
-      file_path
-      for file_path in changed_files
-      if file_path.endswith((".bzl", "BUILD", "BUILD.bazel"))
-  ]
-  if not build_or_bzl_files:
-    return False
-
-  try:
-    diff_base = get_diff_base(base_sha, head_sha, cwd=cwd)
-    command = [
-        "git",
-        "diff",
-        "-U0",
-        diff_base,
-        head_sha,
-        "--",
-        *build_or_bzl_files,
-    ]
-    result = subprocess.run(
-        command, cwd=cwd, capture_output=True, text=True, check=True
-    )
-    diff_text = result.stdout
-    for keyword in FULL_RUN_BUILD_KEYWORDS:
-      if keyword in diff_text:
-        logging.info(
-            "Found build keyword '%s' in diff; forcing full run", keyword
-        )
-        return True
-  except (OSError, subprocess.SubprocessError) as e:
-    logging.warning("Failed to check build keywords: %s", e)
-    return True
-  return False
 
 
 def normalize_target_label(label: str) -> str:
@@ -537,6 +377,59 @@ def get_cquery_command_options(build: BuildConfig) -> List[str]:
   return options
 
 
+# b/519689071: keywords in BUILD/.bzl changes that signal unconfigured hashing
+# under-selection (label_flag, config_setting, alias).
+FULL_RUN_BUILD_KEYWORDS: Tuple[str, ...] = (
+    "label_flag(",
+    "config_setting(",
+    "alias(",
+)
+
+
+def _touches_build_keywords(
+    changed_files: Sequence[str],
+    base_sha: str,
+    head_sha: str,
+    cwd: str = ".",
+) -> bool:
+  """Returns True if any BUILD or .bzl diff contains sensitive keywords."""
+  build_or_bzl_files = [
+      file_path
+      for file_path in changed_files
+      if file_path.endswith((".bzl", "BUILD", "BUILD.bazel"))
+  ]
+  if not build_or_bzl_files:
+    return False
+
+  try:
+    diff_base = change_detector.get_diff_base(base_sha, head_sha, cwd=cwd)
+    safe_head = change_detector.validate_git_ref(head_sha)
+    command = [
+        "git",
+        "diff",
+        "-U0",
+        "--end-of-options",
+        diff_base,
+        safe_head,
+        "--",
+        *build_or_bzl_files,
+    ]
+    result = subprocess.run(
+        command, cwd=cwd, capture_output=True, text=True, check=True
+    )
+    diff_text = result.stdout
+    for keyword in FULL_RUN_BUILD_KEYWORDS:
+      if keyword in diff_text:
+        logging.info(
+            "Found build keyword '%s' in diff; forcing full run", keyword
+        )
+        return True
+  except (OSError, subprocess.SubprocessError, ValueError) as e:
+    logging.warning("Failed to check build keywords: %s", e)
+    return True
+  return False
+
+
 def compute_impacted_targets(
     build: BuildConfig,
     base_sha: str,
@@ -564,29 +457,38 @@ def compute_impacted_targets(
   if dest_jar_path is None:
     dest_jar_path = os.path.join(tempfile.gettempdir(), "bazel-diff.jar")
 
+  try:
+    base_sha = change_detector.validate_git_ref(base_sha)
+    head_sha = change_detector.validate_git_ref(head_sha or "HEAD")
+  except ValueError as e:
+    return BazelDiffDecision(
+        decision=BazelDiffDecisionType.FULL,
+        reason=f"Invalid git revision parameter: {e}",
+        elapsed_seconds=time.time() - start_time,
+    )
+
   # Record original ref currently checked out so we can faithfully restore it
   original_head = head_sha
-  result = _run_git_best_effort(["rev-parse", "HEAD"], cwd=workspace_dir)
+  result = change_detector.run_git_best_effort(
+      ["rev-parse", "HEAD"], cwd=workspace_dir
+  )
   if result and result.returncode == 0 and result.stdout.strip():
-    original_head = result.stdout.strip()
+    try:
+      original_head = change_detector.validate_git_ref(result.stdout.strip())
+    except ValueError:
+      original_head = head_sha
 
-  if not head_sha or head_sha == "HEAD":
+  if head_sha == "HEAD":
     head_sha = original_head
 
-  # Fetch base SHA if shallow
-  _run_git_best_effort(
-      ["fetch", "--depth=1", "origin", base_sha], cwd=workspace_dir
-  )
-
-  if not get_merge_base(base_sha, head_sha, cwd=workspace_dir):
-    _run_git_best_effort(["fetch", "--unshallow", "origin"], cwd=workspace_dir)
+  change_detector.ensure_base_fetched(base_sha, head_sha, cwd=workspace_dir)
 
   # 1. Changed files analysis
   try:
-    changed_files = get_changed_files(
+    changed_files = change_detector.get_changed_files(
         base_sha, head_sha, cwd=workspace_dir
     )
-  except (OSError, subprocess.SubprocessError) as e:
+  except (OSError, subprocess.SubprocessError, ValueError) as e:
     return BazelDiffDecision(
         decision=BazelDiffDecisionType.FULL,
         reason=f"Failed to get git changed files: {e}",
@@ -594,7 +496,7 @@ def compute_impacted_targets(
     )
 
   changed_count = len(changed_files)
-  if is_global_config_changed(changed_files):
+  if change_detector.is_global_config_changed(changed_files):
     return BazelDiffDecision(
         decision=BazelDiffDecisionType.FULL,
         reason="Global Bazel configuration modified",
@@ -602,7 +504,7 @@ def compute_impacted_targets(
         elapsed_seconds=time.time() - start_time,
     )
 
-  if touches_build_keywords(
+  if _touches_build_keywords(
       changed_files, base_sha, head_sha, cwd=workspace_dir
   ):
     return BazelDiffDecision(
@@ -610,14 +512,6 @@ def compute_impacted_targets(
         reason=(
             "Diff touches label_flag, config_setting, or alias (b/519689071)"
         ),
-        changed_files_count=changed_count,
-        elapsed_seconds=time.time() - start_time,
-    )
-
-  if is_docs_or_metadata_only(changed_files):
-    return BazelDiffDecision(
-        decision=BazelDiffDecisionType.SKIP,
-        reason="Only documentation or repository metadata modified",
         changed_files_count=changed_count,
         elapsed_seconds=time.time() - start_time,
     )
@@ -645,11 +539,15 @@ def compute_impacted_targets(
   if build.startup_options:
     startup_options = dict_to_cli_options(build.startup_options)
 
-  diff_base = get_diff_base(base_sha, head_sha, cwd=workspace_dir)
   try:
+    diff_base = change_detector.validate_git_ref(
+        change_detector.get_diff_base(base_sha, head_sha, cwd=workspace_dir)
+    )
+    safe_head = change_detector.validate_git_ref(head_sha)
+
     # Generate base hashes
     subprocess.run(
-        ["git", "checkout", "-f", diff_base],
+        ["git", "checkout", "-f", "--end-of-options", diff_base],
         cwd=workspace_dir,
         check=True,
         capture_output=True,
@@ -665,7 +563,7 @@ def compute_impacted_targets(
 
     # Generate head hashes
     subprocess.run(
-        ["git", "checkout", "-f", head_sha],
+        ["git", "checkout", "-f", "--end-of-options", safe_head],
         cwd=workspace_dir,
         check=True,
         capture_output=True,
@@ -700,7 +598,16 @@ def compute_impacted_targets(
     )
   finally:
     # Guaranteed restoration to original HEAD
-    _run_git_best_effort(["checkout", "-f", original_head], cwd=workspace_dir)
+    try:
+      safe_original_head = change_detector.validate_git_ref(original_head)
+      change_detector.run_git_best_effort(
+          ["checkout", "-f", "--end-of-options", safe_original_head],
+          cwd=workspace_dir,
+      )
+    except ValueError:
+      logging.warning(
+          "Skipping git checkout restore for invalid ref: %r", original_head
+      )
 
   target_patterns = build.target_patterns
   filtered_targets = filter_and_normalize_targets(

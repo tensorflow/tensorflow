@@ -175,6 +175,7 @@ TEST_F(CompilerTest, Compile) {
              loaded_executable_handle: 1234
              name: "foo-executable"
              num_devices: 2
+             device_ids: [ 0, 1 ]
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
            })pb",
@@ -204,8 +205,7 @@ TEST_F(CompilerTest, Compile) {
 
   EXPECT_EQ(executable->name(), "foo-executable");
   EXPECT_EQ(executable->num_devices(), 2);
-  EXPECT_THAT(executable->addressable_devices(),
-              ElementsAre(&devices[0], &devices[1]));
+  EXPECT_THAT(executable->devices(), Optional(device_list));
   EXPECT_THAT(executable->Fingerprint(),
               absl_testing::IsOkAndHolds(Optional(std::string("fingerprint"))));
 }
