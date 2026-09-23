@@ -79,6 +79,11 @@ class InTopKOp : public XlaOpKernel {
     xla::XlaOp iota_r2 = xla::Broadcast(iota_r1, {batch_size});
 
     xla::XlaOp eq_r2 = xla::Eq(targets_r1, iota_r2, {0});
+    // An out-of-range target has no matching class. Without this check, the
+    // reduction below treats its prediction as zero and may report a false hit.
+    xla::XlaOp valid_target_r1 = xla::Reduce(
+        eq_r2, xla::ConstantR0<bool>(xla_builder, false),
+        xla::CreateScalarOrComputation(xla::PRED, xla_builder), {1});
     xla::XlaOp zero_r0_f32 = xla::Zero(xla_builder, xla::F32);
     xla::XlaOp zero_r2_f32 = xla::ZerosLike(predictions_r2);
     xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_f32);
@@ -99,9 +104,10 @@ class InTopKOp : public XlaOpKernel {
         one_hot_r2, zero_r0,
         xla::CreateScalarAddComputation(xla::S32, xla_builder), {1});
 
-    xla::XlaOp result =
+    xla::XlaOp result = xla::And(
         xla::And(xla::Lt(num_gt_r1, xla::ConstantR0<int32_t>(xla_builder, k)),
-                 xla::IsFinite(targets_values_r1));
+                 xla::IsFinite(targets_values_r1)),
+        valid_target_r1);
 
     context->SetOutput(0, result);
   }

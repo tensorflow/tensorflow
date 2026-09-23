@@ -17,6 +17,8 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -61,6 +63,19 @@ class InTopKTest(test.TestCase):
     predictions = [[0.1, 0.3, 0.2, 0.2], [0.1, 0.3, 0.2, 0.2]]
     target = [2, 4]  # must return False for invalid target
     self._validateInTopK(predictions, target, 2, [True, False])
+
+  def testXlaOutOfRangeTarget(self):
+    predictions = constant_op.constant(
+        [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
+    expected = [False, True, True, False]
+    for dtype in (dtypes.int32, dtypes.int64):
+      targets = constant_op.constant([-1, 0, 1, 2], dtype=dtype)
+
+      @def_function.function(jit_compile=True)
+      def in_top_k(predictions, targets):
+        return nn_ops.in_top_k(predictions, targets, 1)
+
+      self.assertAllEqual(in_top_k(predictions, targets), expected)
 
   def testEmpty(self):
     predictions = np.empty([0, 5])
