@@ -207,6 +207,36 @@ class MathTest(test.TestCase, parameterized.TestCase):
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
 
+  def testHeaviside(self):
+    # x1 < 0 -> 0, x1 == 0 -> x2, x1 > 0 -> 1 (NumPy semantics).
+    x1 = np.array([-1.0, 0.0, 1.0, 2.0, -3.0, 0.5], dtype=np.float32)
+    x2 = np.array([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], dtype=np.float32)
+    self.match(
+        np_math_ops.heaviside(x1, x2),
+        np.heaviside(x1, x2),
+        msg='heaviside standard',
+    )
+
+  def testHeavisideNaNPropagation(self):
+    # NumPy propagates NaN from the first argument. TensorFlow's relational
+    # operators evaluate to False for NaN, so the unguarded implementation
+    # returned x2 (or 0/1) instead of NaN. Regression test for
+    # tensorflow/tensorflow#127819.
+    x1 = np.array([np.nan, 0.0, -1.0, 1.0], dtype=np.float32)
+    x2 = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+    actual = np_math_ops.heaviside(x1, x2)
+    expected = np.heaviside(x1, x2)
+    np.testing.assert_equal(actual.tolist(), expected.tolist())
+
+  def testHeavisideIntegerInputs(self):
+    # Integer inputs have no NaN; the result is still promoted to a floating
+    # point dtype (matching NumPy) and the integer cases are reproduced.
+    x1 = np.array([-1, 0, 1, 2], dtype=np.int32)
+    x2 = np.array([3, 3, 3, 3], dtype=np.int32)
+    actual = np_math_ops.heaviside(x1, x2)
+    expected = np.heaviside(x1, x2)
+    np.testing.assert_equal(actual.tolist(), expected.tolist())
+
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
     self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
