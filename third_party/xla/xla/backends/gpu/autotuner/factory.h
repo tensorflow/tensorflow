@@ -26,8 +26,13 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/stream_executor.h"
+
+namespace tsl::thread {
+class ThreadPool;
+}  // namespace tsl::thread
 
 namespace xla {
 
@@ -44,7 +49,9 @@ struct GetCodegenBackends {
       const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
       mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      absl::Span<const autotuner::Backend> backend_allowlist)>;
+      absl::Span<const autotuner::Backend> backend_allowlist,
+      tsl::thread::ThreadPool* thread_pool,
+      MlirContextPool* mlir_context_pool)>;
 };
 
 }  // namespace gpu
