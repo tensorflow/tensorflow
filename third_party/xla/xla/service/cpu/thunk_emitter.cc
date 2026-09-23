@@ -149,7 +149,8 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 }  // namespace
 
 static FusionCompiler::Options FusionCompilerOptions(
-    const HloModuleConfig& config) {
+    const HloModuleConfig& config,
+    const TargetMachineFeatures& target_machine_features) {
   const DebugOptions& debug_options = config.debug_options();
   return FusionCompiler::Options{
       debug_options.xla_cpu_prefer_vector_width(),
@@ -157,12 +158,15 @@ static FusionCompiler::Options FusionCompilerOptions(
       debug_options.xla_cpu_enable_fast_min_max(),
       llvm_ir::GetCpuFastMathFlags(config),
       debug_options.xla_cpu_use_new_xtile_lowering(),
-      options::IsMsanEnabled(config)};
+      options::IsMsanEnabled(config),
+      target_machine_features.get_target_feature_string()};
 }
 
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
-                                            const HloModule& hlo_module) {
-  FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
+static FusionCompiler FusionCompilerFactory(
+    mlir::MLIRContext* context, const HloModule& hlo_module,
+    const TargetMachineFeatures& target_machine_features) {
+  FusionCompiler::Options options =
+      FusionCompilerOptions(hlo_module.config(), target_machine_features);
   return FusionCompiler(context, std::move(options), &hlo_module);
 }
 
@@ -179,10 +183,12 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
+      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module,
+                                             target_machine_features)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
-          &buffer_assignment,
+          thread_pool,
+          FusionCompilerOptions(hlo_module_config_, target_machine_features),
+          &hlo_module, &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),
           options::EnableTiledEmitter(hlo_module_config_)) {}
