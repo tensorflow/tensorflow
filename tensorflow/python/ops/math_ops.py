@@ -4628,9 +4628,12 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     A `Tensor` with the number of segment entries with 0-entries set to 1.
   """
   num_segments = ops.convert_to_tensor(num_segments)
-  # bincount doesn't support negative indices so we use unsorted_segment_sum
+  # bincount doesn't support negative indices so we use unsorted_segment_sum.
+  # Count in integer segment_ids.dtype (e.g. int32 or int64) rather than
+  # data.dtype to avoid mantissa saturation and precision loss for
+  # reduced-precision floating-point types such as bfloat16 and float16.
   segment_ids_shape = array_ops.shape_internal(segment_ids)
-  ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
+  ones_tensor = array_ops.ones(segment_ids_shape, dtype=segment_ids.dtype)
   n = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
   broadcastable_shape = array_ops.concat(
@@ -4640,7 +4643,8 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
                       dtype=num_segments.dtype)],
       axis=0)
   n = array_ops.reshape(n, broadcastable_shape)
-  return gen_math_ops.maximum(n, 1)
+  n = gen_math_ops.maximum(n, 1)
+  return cast(n, dtype=data.dtype)
 
 
 @tf_export(
