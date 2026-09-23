@@ -293,6 +293,36 @@ class FunctionCacheTest(test.TestCase):
           "d",
       )
 
+  def testClear(self):
+    cache = function_cache.FunctionCache()
+    f_type = make_type(1)
+    ctx = function_cache.FunctionContext()
+    cache.add(MockFunction(f_type, "target_func"), ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type, ctx))
+    cache.clear()
+    self.assertIsNone(cache.lookup(f_type, ctx))
+
+  def testMaxCapacityEvictionAndLRU(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    f_type3 = make_type(3)
+
+    ctx = function_cache.FunctionContext()
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+
+    # Access f_type1 so f_type2 becomes the LRU entry
+    cache.lookup(f_type1, ctx)
+
+    # Add f_type3, which should evict f_type2 (the LRU entry)
+    cache.add(MockFunction(f_type3, "func3"), ctx)
+
+    self.assertIsNotNone(cache.lookup(f_type1, ctx))
+    self.assertIsNone(cache.lookup(f_type2, ctx))
+    self.assertIsNotNone(cache.lookup(f_type3, ctx))
+
 
 class FunctionCacheBenchmark(test.Benchmark):
 

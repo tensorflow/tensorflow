@@ -801,6 +801,10 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     """
     return len(self._function_cache)
 
+  def clear_cache(self):
+    """Removes all cached concrete functions for this tf.function."""
+    self._function_cache.clear()
+
   @property
   def _run_functions_eagerly(self):
     return eager_function_run.RUN_FUNCTIONS_EAGERLY
