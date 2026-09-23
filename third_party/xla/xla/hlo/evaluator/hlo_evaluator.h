@@ -78,19 +78,28 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     const HloDataflowAnalysis* dataflow_analysis;
   };
 
+  struct SpecializationCache;
+
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   //
-  // If `cache_call_computation_evals` true, HloEvaluator caches evals on
+  // If `cache_call_computation_evals` is true, HloEvaluator caches evals on
   // computations on call ops to avoid re-evaluating the same call on identical
-  // constant arguments.
+  // constant arguments. If `specialization_cache` is non-null, this evaluator
+  // shares the provided cache; otherwise, if `cache_call_computation_evals` is
+  // true, a new `SpecializationCache` is created.
   //
-  // In case `is_embeeded` is true, HloEvaluator does not create a fresh cache
-  // for call evals. Instead `CreateEmbedded` api sets it so that the child
-  // evaluator borrow the cache from the parent evaluator.
-  explicit HloEvaluator(int64_t max_loop_iterations = -1,
-                        bool cache_call_computation_evals = false,
-                        bool is_embedded = false);
+  // Note that the cache is keyed by the raw `HloComputation` pointer:
+  //   1. If a called computation is modified in-place, the cache will not be
+  //      updated or invalidated automatically; users should not enable caching
+  //      if called computations may be modified.
+  //   2. `HloEvaluator` does not automatically clear the cache between
+  //      evaluations and the user of `HloEvaluator` should call
+  //      `ClearSpecializationCache()` when appropriate.
+  explicit HloEvaluator(
+      int64_t max_loop_iterations = -1,
+      bool cache_call_computation_evals = false,
+      std::shared_ptr<SpecializationCache> specialization_cache = nullptr);
 
   // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
   static bool IsOpcodeImplemented(HloOpcode opcode);
@@ -104,11 +113,10 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       int64_t max_loop_iterations) {
     auto result = std::make_unique<HloEvaluator>(max_loop_iterations,
                                                  cache_call_computation_evals_,
-                                                 /*is_embedded=*/true);
+                                                 specialization_cache_);
     result->set_use_fast_path(use_fast_path_);
     result->set_custom_call_handler(custom_call_handler_);
     result->set_eval_literal_handler(eval_literal_handler_);
-    result->specialization_cache_ = specialization_cache_;
     return result;
   }
 
@@ -300,7 +308,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // identical constant arguments.
   //
   // SpecializationKey identifies an evaluation by its target HloComputation
-  // and concrete argument literals (compared by value).
+  // pointer and concrete argument literals.
+  //
+  // Because the key uses the raw `HloComputation` pointer, if a computation is
+  // modified in-place, existing cache entries for that computation pointer are
+  // not invalidated or updated; callers should not enable caching if
+  // computations may be modified.
   //
   // SpecializationCache stores the mapping from SpecializationKey to the
   // evaluated result Literal, along with backing storage for argument literals.
@@ -407,22 +420,17 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     }
   };
 
+  // Clears all cached call computation results and argument literals. Must be
+  // called by the user if computations are modified.
   void ClearSpecializationCache() {
     if (specialization_cache_ != nullptr) {
       specialization_cache_->Clear();
     }
   }
-  bool is_embedded() const { return is_embedded_; }
 
   // Used by unit tests.
   bool cache_call_computation_evals() const {
     return cache_call_computation_evals_;
-  }
-  void set_cache_call_computation_evals(bool enable) {
-    cache_call_computation_evals_ = enable;
-    if (cache_call_computation_evals_ && specialization_cache_ == nullptr) {
-      specialization_cache_ = std::make_shared<SpecializationCache>();
-    }
   }
   const SpecializationCache* specialization_cache() const {
     return specialization_cache_.get();
@@ -812,8 +820,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // embedded evaluators to safely share cache ownership without raw-pointer
   // lifetime issues or manual ownership tracking.
   std::shared_ptr<SpecializationCache> specialization_cache_;
-  // True if this evaluator was created as an embedded evaluator.
-  bool is_embedded_ = false;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;

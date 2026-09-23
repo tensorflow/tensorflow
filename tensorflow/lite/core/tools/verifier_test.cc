@@ -153,6 +153,26 @@ class TfLiteFlatbufferModelBuilder {
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS));
   }
 
+  // Adds a custom operator whose options live outside the flatbuffer,
+  // addressed by (large_custom_options_offset, large_custom_options_size).
+  void AddOperatorWithLargeCustomOptions(const std::vector<int32_t>& inputs,
+                                         const std::vector<int32_t>& outputs,
+                                         const char* custom_op, uint64_t offset,
+                                         uint64_t size) {
+    operator_codes_.push_back(
+        CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, custom_op));
+    // Vectors have to be serialized before the Operator table is started.
+    auto inputs_offset = builder_.CreateVector(inputs);
+    auto outputs_offset = builder_.CreateVector(outputs);
+    OperatorBuilder op_builder(builder_);
+    op_builder.add_opcode_index(operator_codes_.size() - 1);
+    op_builder.add_inputs(inputs_offset);
+    op_builder.add_outputs(outputs_offset);
+    op_builder.add_large_custom_options_offset(offset);
+    op_builder.add_large_custom_options_size(size);
+    operators_.push_back(op_builder.Finish());
+  }
+
   enum BuilderMode {
     kBuilderModeEmptyVectorIsEmpty,
     kBuilderModeEmptyVectorIsNull,
@@ -673,6 +693,75 @@ TEST(VerifyModel, InputIsBufferOffset) {
   ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
+
+// Regression tests for the uint64 wrap in the external-offset bounds checks.
+// A Buffer or Operator whose (offset, size) pair sums past 2^64 used to slip
+// through an `offset + size > len` check because the sum wrapped to a small
+// value. The verifier now uses the subtraction form and must reject these.
+
+TEST(VerifyModel, BufferOffsetPlusSizeOverflowIsRejected) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  // offset + size wraps to exactly 0 in uint64_t.
+  builder.AddBufferOffsetTensor({2, 2}, TensorType_UINT8,
+                                /*offset=*/0xFFFFFFFFFFFFFF00ULL,
+                                /*size=*/0x100ULL, "offset_weight");
+  builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+  builder.FinishModel({0}, {2});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex("Tensor offset_weight buffer 2 "
+                                       "specified an out of range offset"));
+}
+
+TEST(VerifyModel, BufferOffsetOverflowWithSmallSizeIsRejected) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  // size alone fits in the model, so only the `offset > len - size` clause
+  // can catch this; offset + size wraps to 8.
+  builder.AddBufferOffsetTensor({2, 2}, TensorType_UINT8,
+                                /*offset=*/0xFFFFFFFFFFFFFFF8ULL,
+                                /*size=*/0x10ULL, "offset_weight");
+  builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+  builder.FinishModel({0}, {2});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex("Tensor offset_weight buffer 2 "
+                                       "specified an out of range offset"));
+}
+
+TEST(VerifyModel, LargeCustomOptionsOffsetPlusSizeOverflowIsRejected) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+  // offset + size wraps to exactly 0 in uint64_t.
+  builder.AddOperatorWithLargeCustomOptions(
+      {0}, {1}, "test", /*offset=*/0xFFFFFFFFFFFFFF00ULL, /*size=*/0x100ULL);
+  builder.FinishModel({0}, {1});
+  ASSERT_FALSE(builder.Verify());
+  ASSERT_FALSE(builder.VerifyWithOpResolver());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Operator's large_custom_options is out of bound"));
+}
+
+TEST(VerifyModel, LargeCustomOptionsInRangeIsAccepted) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+  // (offset, size) inside the model bytes; the check must not fire.
+  builder.AddOperatorWithLargeCustomOptions({0}, {1}, "test", /*offset=*/8,
+                                            /*size=*/4);
+  builder.FinishModel({0}, {1});
+  ASSERT_TRUE(builder.Verify());
+  ASSERT_TRUE(builder.VerifyWithOpResolver());
+  EXPECT_EQ("", builder.GetErrorString());
+}
+
 TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;

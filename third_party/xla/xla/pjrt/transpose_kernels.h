@@ -20,9 +20,189 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 #include <utility>
 
+#include "hwy//highway.h"
 #include "xla/compiler_macros.h"
+
+HWY_BEFORE_NAMESPACE();
+namespace xla {
+namespace HWY_NAMESPACE {
+namespace hn = hwy::HWY_NAMESPACE;
+
+// Highway's model: Vectors are composed of 128-bit blocks, blocks hold lanes.
+// Interleave operations work within blocks. Cross-block movement requires
+// block-level shuffles.
+constexpr size_t kBlockBytes = 16;   // 128-bit blocks
+constexpr size_t kMaxLaneBytes = 8;  // Lanes are at most 64 bits
+
+enum class Extract { kLo, kHi };
+// Unpack: Interleave lanes within each 128-bit block
+template <size_t element_size, Extract extract, class V>
+HWY_INLINE V Unpack(V a, V b) {
+  static_assert(element_size <= kMaxLaneBytes);
+  using D = hn::DFromV<V>;
+  using ElementT = hwy::UnsignedFromSize<element_size>;
+  const hn::Repartition<ElementT, D> d_elem;
+  auto a_elem = hn::BitCast(d_elem, a);
+  auto b_elem = hn::BitCast(d_elem, b);
+  if constexpr (extract == Extract::kLo) {
+    return hn::BitCast(D(), hn::InterleaveLower(d_elem, a_elem, b_elem));
+  } else {
+    return hn::BitCast(D(), hn::InterleaveUpper(d_elem, a_elem, b_elem));
+  }
+}
+// Load/Store
+template <class D, size_t bytes>
+HWY_INLINE hn::Vec<D> LoadBytes(D d, const void* p) {
+  const hn::FixedTag<uint8_t, bytes> d_fixed;
+  return hn::ResizeBitCast(
+      d, hn::LoadU(d_fixed, reinterpret_cast<const uint8_t*>(p)));
+}
+template <class D, size_t bytes, size_t lane>
+HWY_INLINE void StoreLane(D d, void* p, hn::Vec<D> v) {
+  if constexpr (bytes <= kMaxLaneBytes && lane > 0) {
+    using ElementT = hwy::UnsignedFromSize<bytes>;
+    const hn::Repartition<ElementT, D> d_elem;
+    const ElementT scalar = hn::ExtractLane(hn::BitCast(d_elem, v), lane);
+    hwy::CopyBytes(&scalar, reinterpret_cast<ElementT*>(p), bytes);
+  } else {
+    const hn::Repartition<uint8_t, D> d_u8;
+    auto v_u8 = hn::BitCast(d_u8, v);
+    if constexpr (lane > 0) {
+      v_u8 = hn::SlideDownLanes(d_u8, v_u8, lane * bytes);
+    }
+    const hn::FixedTag<uint8_t, bytes> d_fixed;
+    hn::StoreU(hn::ResizeBitCast(d_fixed, v_u8), d_fixed,
+               reinterpret_cast<uint8_t*>(p));
+  }
+}
+template <class D, size_t bytes, size_t... lane>
+HWY_INLINE void StoreLanes(D d, char* b, int64_t ldb, hn::Vec<D> v, size_t i,
+                           std::index_sequence<lane...>) {
+  (StoreLane<D, bytes, lane>(d, b + ldb * (i + lane), v), ...);
+}
+
+// Extracts the I-th element from a parameter pack (0-indexed).
+template <size_t I, class T, class... Ts>
+HWY_INLINE decltype(auto) GetFromPack(T&& t, Ts&&... ts) {
+  static_assert(I < 1 + sizeof...(Ts), "Index out of bounds");
+  if constexpr (I == 0) {
+    return std::forward<T>(t);
+  } else {
+    return GetFromPack<I - 1>(std::forward<Ts>(ts)...);
+  }
+}
+
+// Pack iteration helper (pack -> stream): ForEachIndexed
+template <class F, size_t... I, class... Ts>
+HWY_INLINE void ForEachIndexedImpl(F&& f, std::index_sequence<I...>,
+                                   Ts&&... ts) {
+  (std::forward<F>(f)(std::integral_constant<size_t, I>{},
+                      std::forward<Ts>(ts)),
+   ...);
+}
+template <class F, class... Ts>
+HWY_INLINE void ForEachIndexed(F&& f, Ts&&... ts) {
+  ForEachIndexedImpl(std::forward<F>(f),
+                     std::make_index_sequence<sizeof...(Ts)>{},
+                     std::forward<Ts>(ts)...);
+}
+
+// CPS: UnpackStep (pack -> pack), lvalue-only inputs
+template <size_t out_i, size_t element_size, size_t step_size, class... Vs>
+HWY_INLINE auto UnpackOutFromPack(Vs&... vs) {
+  constexpr size_t group = 2 * step_size;
+  constexpr size_t base = (out_i / group) * group;
+  constexpr size_t p = out_i - base;
+  constexpr size_t j = p / 2;
+  constexpr bool is_lo = (p % 2) == 0;
+  constexpr size_t ia = base + j;
+  constexpr size_t ib = base + j + step_size;
+  auto& a = GetFromPack<ia>(vs...);
+  auto& b = GetFromPack<ib>(vs...);
+  if constexpr (is_lo) {
+    return Unpack<element_size * step_size, Extract::kLo>(a, b);
+  } else {
+    return Unpack<element_size * step_size, Extract::kHi>(a, b);
+  }
+}
+
+template <size_t element_size, size_t step_size, class Cont, size_t... I,
+          class... Vs>
+HWY_INLINE void UnpackStepCPSImpl(Cont&& cont, std::index_sequence<I...>,
+                                  Vs&... vs) {
+  std::forward<Cont>(cont)(
+      UnpackOutFromPack<I, element_size, step_size>(vs...)...);
+}
+
+template <size_t element_size, size_t step_size, class Cont, class... Vs>
+HWY_INLINE void UnpackStepCPS(Cont&& cont, Vs&... in) {
+  constexpr size_t N = sizeof...(Vs);
+  static_assert(N % (step_size * 2) == 0);
+  static_assert(element_size * step_size <= kMaxLaneBytes);
+  UnpackStepCPSImpl<element_size, step_size>(
+      std::forward<Cont>(cont), std::make_index_sequence<N>{}, in...);
+}
+
+// CPS: InterleaveWithinBlocks (pack -> pack)
+template <size_t element_size, size_t step_size, size_t unpack_limit,
+          class Cont, class... Vs>
+HWY_INLINE void InterleaveWithinBlocksCPS(Cont&& cont, Vs... in) {
+  if constexpr (element_size * step_size < unpack_limit &&
+                element_size * step_size <= kMaxLaneBytes) {
+    UnpackStepCPS<element_size, step_size>(
+        [&](auto... out) {
+          // out... are by-value parameters; do not forward as rvalues.
+          InterleaveWithinBlocksCPS<element_size, step_size * 2, unpack_limit>(
+              std::forward<Cont>(cont), out...);
+        },
+        in...);  // lvalues inside this function
+  } else {
+    std::forward<Cont>(cont)(in...);
+  }
+}
+
+// Helper template that applies the pairwise interleaving reduction.
+template <size_t element_size, class Cont, size_t... I, class... Vs>
+HWY_INLINE void CombinePairsAccImpl(Cont&& cont, std::index_sequence<I...>,
+                                    Vs&&... vs) {
+  std::forward<Cont>(cont)(Unpack<element_size, Extract::kLo>(
+      GetFromPack<2 * I>(std::forward<Vs>(vs)...),
+      GetFromPack<2 * I + 1>(std::forward<Vs>(vs)...))...);
+}
+
+// Applies a pairwise interleaving reduction across an arbitrary sequence of
+// vectors. Adjacent vectors are combined using their lower halves, and the
+// resulting halved-length sequence is forwarded to the provided continuation.
+template <size_t element_size, class Cont, class... Vs>
+HWY_INLINE void CombinePairsAcc(Cont&& cont, Vs&&... in) {
+  CombinePairsAccImpl<element_size>(
+      std::forward<Cont>(cont), std::make_index_sequence<sizeof...(Vs) / 2>{},
+      std::forward<Vs>(in)...);
+}
+
+template <size_t element_size, size_t bs, size_t vector_bytes, class Cont,
+          class... Vs>
+HWY_INLINE void CombineRowsCPS(Cont&& cont, Vs... in) {
+  constexpr size_t N = sizeof...(Vs);
+  if constexpr (N > 1 && element_size * bs < vector_bytes) {
+    static_assert(N % 2 == 0);
+    CombinePairsAcc<element_size>(
+        [&](auto... paired) {
+          CombineRowsCPS<element_size * 2, bs, vector_bytes>(
+              std::forward<Cont>(cont), paired...);
+        },
+        in...);
+  } else {
+    std::forward<Cont>(cont)(in...);
+  }
+}
+
+}  // namespace HWY_NAMESPACE
+}  // namespace xla
+HWY_AFTER_NAMESPACE();
 
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
@@ -37,6 +217,15 @@ limitations under the License.
 #endif  // defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 
 namespace xla {
+
+// Maximum number of elements along each dimension of a macroblock. When the
+// inner microkernel block size `bs` is at least `kMaxOuterBlockElems`, the
+// outer block dimensions (`outer_bs_a` and `outer_bs_b`) are always 1.
+inline constexpr int kMaxOuterBlockElems = 16;
+
+// Maximum input byte stride (`lda`) for which the 128-bit square microkernel
+// is preferred over the 256-bit rectangular microkernel when `lda >= ldb`.
+inline constexpr int kMaxSquare128StrideBytes = 64;
 
 // The transpose microkernels use a general approach of zipping elements from
 // different rows together. We start zipping together elements of size 1, size 2
@@ -697,7 +886,7 @@ struct TransposeMicroKernel {
       } else if constexpr (sizeof(T) * bs == sizeof(__m128i)) {
         // Prefer SseSquare when gathering from memory (lda >= ldb) with small
         // strides, rather than dealing with lo/hi packing.
-        if (lda >= ldb && lda <= 64) {
+        if (lda >= ldb && lda <= kMaxSquare128StrideBytes) {
           return SseSquareTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b,
                                                                  ldb);
         }
