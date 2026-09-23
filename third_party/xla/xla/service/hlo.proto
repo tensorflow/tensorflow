@@ -472,6 +472,9 @@ message HloComputationProto {
 
   // The name of execution thread this computation belongs to.
   string execution_thread = 8;
+
+  // Backend configuration for the computation. Has backend-specific meaning.
+  bytes backend_config = 9;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
@@ -597,7 +600,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
-// Next ID: 25
+// Next ID: 26
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -695,6 +698,9 @@ message HloModuleProto {
   string device_type = 21;
 
   repeated DebugAttributeTableEntryProto debug_attributes = 24;
+
+  // Backend configuration for the module. Has backend-specific meaning.
+  bytes backend_config = 25;
 
   reserved 9;
   reserved "dynamic_parameter_binding";

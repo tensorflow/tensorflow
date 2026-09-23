@@ -23,6 +23,8 @@ from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
@@ -57,6 +59,24 @@ def _summarize_eager(tensor, summarize=None):
   return ", ".join(lst)
 
 
+def _format_ragged(x, summarize):
+  """Returns `x`, or a scalar string `Tensor` describing it if it is ragged.
+
+  Assert only handles dense tensors, so a `RaggedTensor` is formatted the way
+  `tf.print` formats it.
+  """
+  if not isinstance(x, internal_types.RaggedTensor):
+    return x
+  # Default to Assert's own 3. Ragged formatting accepts only a Python int
+  # that is -1 (everything) or positive.
+  summarize = 3 if summarize is None else int(summarize)
+  if summarize < 0:
+    summarize = -1
+  elif summarize == 0:
+    summarize = 1
+  return string_ops.string_format("{}", [x], summarize=summarize)
+
+
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
 @tf_export("debugging.Assert", "Assert")
@@ -70,8 +90,10 @@ def Assert(condition, data, summarize=None, name=None):
 
   Args:
     condition: The condition to evaluate.
-    data: The tensors to print out when condition is false.
-    summarize: Print this many entries of each tensor.
+    data: The tensors to print out when condition is false. `RaggedTensor`s
+      are printed as `tf.print` prints them.
+    summarize: Print this many entries of each tensor. For a `RaggedTensor`,
+      the first and last this many entries of each dimension.
     name: A name for this operation (optional).
 
   Returns:
@@ -97,6 +119,7 @@ def Assert(condition, data, summarize=None, name=None):
   """
   if context.executing_eagerly():
     if not condition:
+      data = [_format_ragged(x, summarize) for x in data]
       xs = ops.convert_n_to_tensor(data)
       data_str = [_summarize_eager(x, summarize) for x in xs]
       raise errors.InvalidArgumentError(
@@ -107,8 +130,13 @@ def Assert(condition, data, summarize=None, name=None):
     return
 
   with ops.name_scope(name, "Assert", [condition, data]) as name:
-    xs = ops.convert_n_to_tensor(data)
-    if all(x.dtype in {dtypes.string, dtypes.int32} for x in xs):
+    # Ragged data cannot go through convert_n_to_tensor, and its formatting
+    # ops should only run when the assert fails, so it takes the guarded path.
+    data = list(data)
+    has_ragged = any(isinstance(x, internal_types.RaggedTensor) for x in data)
+    if not has_ragged and all(
+        x.dtype in {dtypes.string, dtypes.int32}
+        for x in ops.convert_n_to_tensor(data)):
       # As a simple heuristic, we assume that string and int32 are
       # on host to avoid the need to use cond. If it is not case,
       # we will pay the price copying the tensor to host memory.
@@ -118,7 +146,8 @@ def Assert(condition, data, summarize=None, name=None):
 
       def true_assert():
         return gen_logging_ops._assert(  # pylint: disable=protected-access
-            condition, data, summarize, name="Assert")
+            condition, [_format_ragged(x, summarize) for x in data],
+            summarize, name="Assert")
 
       guarded_assert = cond.cond(
           condition,

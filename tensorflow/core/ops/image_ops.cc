@@ -670,9 +670,18 @@ REGISTER_OP("DecodeWebP")
 REGISTER_OP("DecodeJxl")
     .Input("contents: string")
     .Attr("channels: int = 0")
-    .Attr("dtype: {uint8} = DT_UINT8")
+    .Attr("dtype: {uint8, uint16} = DT_UINT8")
     .Output("image: dtype")
     .SetShapeFn(DecodeImageShapeFn);
+
+// --------------------------------------------------------------------------
+REGISTER_OP("EncodeJxl")
+    .Attr("quality: float = 95.0")
+    .Attr("effort: int = 7")
+    .Attr("T: {uint8, uint16} = DT_UINT8")
+    .Input("image: T")
+    .Output("contents: string")
+    .SetShapeFn(BatchedEncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")
