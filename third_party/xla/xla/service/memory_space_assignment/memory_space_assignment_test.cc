@@ -1695,7 +1695,6 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = false;
   options.enable_sync_slice_replacement = true;
-  options.verify = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
   options.max_size_in_bytes = 96;
@@ -4899,7 +4898,11 @@ TEST_F(MemorySpaceAssignmentTest,
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   for (const HloInstruction* instruction :
        module->entry_computation()->instructions()) {
@@ -4936,7 +4939,11 @@ TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
@@ -7565,6 +7572,9 @@ TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -7614,6 +7624,9 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -7666,6 +7679,9 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -8825,7 +8841,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
@@ -8869,7 +8889,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
@@ -8930,7 +8954,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -8969,7 +8997,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -9000,7 +9032,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -9042,7 +9078,11 @@ TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done =
       FindInstruction(module.get(), "collective-permute-done");
@@ -9687,6 +9727,10 @@ TEST_F(MemorySpaceAssignmentTest,
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
   options.repacker = &repacker;
+  // TODO(b/563782724): MSA emits a zero-sized alternate memory allocation for
+  // this module, which trips a CHECK in HeapSimulator::Chunk::OverlapsWith
+  // during verification. Re-enable verification once that is fixed.
+  options.verify = false;
   AssignMemorySpace(module.get(), std::move(options));
 }
 
@@ -11343,7 +11387,6 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   options.max_cross_program_prefetches = -1;
   options.max_size_in_bytes = 256;
   options.alignment_in_bytes = 8;
-  options.verify = true;
   AssignMemorySpace(module.get(), std::move(options));
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -14075,6 +14118,9 @@ ENTRY main {
 })hlo";
   Options options = MakeDefaultOptions();
   options.enable_sync_copy_replacement = true;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -14959,6 +15005,9 @@ ENTRY main {
   Options options = MakeDefaultOptions();
   options.sliced_prefetch_options.set_max_slices(100000);
   options.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
 
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
@@ -15080,7 +15129,6 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   memory_space_options.max_retries = 2;
   memory_space_options.max_repacks = 0;
   memory_space_options.repack_after_every_allocation = false;
-  memory_space_options.verify = false;
   memory_space_options.enable_cross_program_prefetch = true;
   memory_space_options.default_cross_program_prefetch_heuristic = false;
   memory_space_options.enable_cross_program_prefetch_freeing = true;
@@ -15207,7 +15255,6 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   memory_space_options.max_retries = 2;
   memory_space_options.max_repacks = 4;
   memory_space_options.repack_after_every_allocation = false;
-  memory_space_options.verify = false;
   memory_space_options.enable_cross_program_prefetch = true;
   memory_space_options.default_cross_program_prefetch_heuristic = false;
   memory_space_options.enable_cross_program_prefetch_freeing = true;
@@ -16801,7 +16848,6 @@ ENTRY entry {
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
   memory_space_options.max_outstanding_prefetches = 0;
-  memory_space_options.verify = true;
 
   std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
       {"p0", "prefetch_start0", "prefetch_done_0"},
@@ -16930,7 +16976,6 @@ ENTRY entry {
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
   memory_space_options.max_outstanding_prefetches = 0;
-  memory_space_options.verify = true;
 
   std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
       {"p0", "prefetch_start0", "prefetch_done_0"},
@@ -17449,7 +17494,6 @@ ENTRY entry {
       {negate0_position, kAlternateMemorySpace},
       {negate1_position, kAlternateMemorySpace}};
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
@@ -17498,7 +17542,6 @@ ENTRY entry {
       {negate3_position, kAlternateMemorySpace},
       {add0_use_of_negate2, kAlternateMemorySpace}};
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
@@ -17554,7 +17597,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
 
   HloPosition negate2_position = {FindInstruction(module.get(), "negate2"), {}};
   HloPosition negate3_position = {FindInstruction(module.get(), "negate3"), {}};
@@ -17652,7 +17694,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.enable_sync_copy_replacement = true;
   memory_space_options.enable_sync_slice_replacement = true;
   HloUse add2_use_of_copy0{FindInstruction(module.get(), "add2"), 0, {}};
@@ -17742,7 +17783,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.enable_sync_copy_replacement = true;
   memory_space_options.enable_sync_slice_replacement = true;
   HloUse negate4_use_of_slice0{FindInstruction(module.get(), "negate4"), 0, {}};
@@ -17802,7 +17842,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 72;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->name() == "negate0" ||
@@ -17897,7 +17936,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->opcode() == HloOpcode::kCustomCall;
@@ -17970,7 +18008,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->opcode() == HloOpcode::kCustomCall;
@@ -18414,7 +18451,6 @@ ENTRY entry {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
-  options.verify = true;
   std::optional<Options> options_override = std::move(options);
   AssignMemorySpace(module.get(), std::move(options_override));
 

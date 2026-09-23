@@ -866,5 +866,59 @@ ENTRY %main {
   EXPECT_EQ(ordering.GetExecutionConstraint(async_done, dus),
             HloOrdering::ExecutionConstraint::kIsSame);
 }
+
+TEST_F(HloOrderingTest, WhileOrderingThroughSharedAsyncComputation) {
+  // The async computation is started from the while condition and from
+  // another computation, so the condition does not dominate it: an instruction
+  // in it is unordered against the body, although the caller chain from it
+  // reaches the while through the condition.
+  constexpr absl::string_view hlo = R"(
+HloModule test
+
+%async_wrapped (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %param)
+}
+
+%cond (cp: f32[]) -> pred[] {
+  %cp = f32[] parameter(0)
+  %async-start = ((f32[]), f32[], u32[]) async-start(f32[] %cp), calls=%async_wrapped
+  %async-done = f32[] async-done(((f32[]), f32[], u32[]) %async-start)
+  %zero = f32[] constant(0)
+  ROOT %compare = pred[] compare(f32[] %async-done, f32[] %zero), direction=GT
+}
+
+%body (bp: f32[]) -> f32[] {
+  %bp = f32[] parameter(0)
+  ROOT %exp = f32[] exponential(f32[] %bp)
+}
+
+%other (op: f32[]) -> f32[] {
+  %op = f32[] parameter(0)
+  %async-start.1 = ((f32[]), f32[], u32[]) async-start(f32[] %op), calls=%async_wrapped
+  ROOT %async-done.1 = f32[] async-done(((f32[]), f32[], u32[]) %async-start.1)
+}
+
+ENTRY %entry (x: f32[]) -> (f32[], f32[]) {
+  %x = f32[] parameter(0)
+  %while = f32[] while(f32[] %x), condition=%cond, body=%body
+  %call = f32[] call(f32[] %x), to_apply=%other
+  ROOT %tuple = (f32[], f32[]) tuple(f32[] %while, f32[] %call)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  DependencyHloOrdering ordering(module.get());
+  HloInstruction* negate = FindInstruction(module.get(), "negate");
+  HloInstruction* compare = FindInstruction(module.get(), "compare");
+  HloInstruction* exp = FindInstruction(module.get(), "exp");
+  EXPECT_EQ(ordering.GetExecutionConstraint(compare, exp),
+            HloOrdering::ExecutionConstraint::kRunBeforeEnd);
+  EXPECT_EQ(ordering.GetExecutionConstraint(exp, compare),
+            HloOrdering::ExecutionConstraint::kUnordered);
+  EXPECT_EQ(ordering.GetExecutionConstraint(negate, exp),
+            HloOrdering::ExecutionConstraint::kUnordered);
+  EXPECT_EQ(ordering.GetExecutionConstraint(exp, negate),
+            HloOrdering::ExecutionConstraint::kUnordered);
+}
 }  // namespace
 }  // namespace xla

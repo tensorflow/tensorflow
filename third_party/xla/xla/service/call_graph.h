@@ -140,8 +140,23 @@ class CallGraphNode {
       HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
-  // Computation represented by this call graph node.
+  // Computation represented by this call graph node. The fields that the
+  // dominance and ancestor queries read follow it, at the front of the node.
   HloComputation* computation_;
+
+  // The context in which this computation is called.
+  CallContext context_ = CallContext::kNone;
+
+  // The depth of this node in the call graph.
+  int depth_ = 0;
+
+  // Index in CallGraph::nodes_ of the computation containing
+  // caller_callsites_[0], or -1 when this computation has no callers. Lets a
+  // callee to caller walk step without a hash lookup.
+  int64_t first_caller_node_ = -1;
+
+  // The call sites in other computations which call this computation.
+  absl::InlinedVector<CallSite, 1> caller_callsites_;
 
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
@@ -159,15 +174,6 @@ class CallGraphNode {
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
   absl::flat_hash_map<const HloInstruction*, int64_t> callsite_instructions_;
-
-  // The call sites in other computations which call this computation.
-  absl::InlinedVector<CallSite, 1> caller_callsites_;
-
-  // The context in which this computation is called.
-  CallContext context_ = CallContext::kNone;
-
-  // The depth of this node in the call graph.
-  int depth_ = 0;
 };
 
 // The call graph for an HLO module. The graph includes a node for each
@@ -248,6 +254,26 @@ class CallGraph {
   // computation.
   std::pair<HloInstruction*, HloInstruction*> NearestAncestorsInSameComputation(
       HloInstruction* a, HloInstruction* b) const;
+
+  // The nearest ancestors of NearestAncestorsInSameComputation together with,
+  // per side, the computation the chain stepped out of when it entered the
+  // ancestors' computation ('a_child' for 'a', nullptr when 'a' is in that
+  // computation itself), and a flag that is set when every computation on the
+  // chain up to the child is called from a single computation. The child then
+  // dominates the instruction's computation. The flag is clear only when the
+  // chain passes an async computation called from several computations. In
+  // the example above the result for %a and %b is (%x, %y) with children
+  // (A, B) and both flags set.
+  struct NearestAncestors {
+    HloInstruction* a = nullptr;
+    HloInstruction* b = nullptr;
+    const HloComputation* a_child = nullptr;
+    const HloComputation* b_child = nullptr;
+    bool a_child_dominates = false;
+    bool b_child_dominates = false;
+  };
+  NearestAncestors NearestAncestorsWithChildren(HloInstruction* a,
+                                                HloInstruction* b) const;
 
   // Given a set of instructions within a computation, returns nearest common
   // ancestors as Hlo instructions (There could be multiple nearest common
@@ -350,6 +376,10 @@ class CallGraph {
   CallGraph(const CallGraph&) = delete;
   CallGraph& operator=(const CallGraph&) = delete;
 
+  // Returns the index in nodes_ of the node of the given computation, or -1 if
+  // the computation is not in the call graph.
+  int64_t FindNodeIndex(const HloComputation* computation) const;
+
   // Sets the call contexts for every node in the graph.
   void SetCallContexts();
 
@@ -383,6 +413,13 @@ class CallGraph {
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
   absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
+
+  // The same node indices keyed by HloComputation::unique_id(), -1 for ids of
+  // no computation in the graph, as int32 to halve the table. The ids of a
+  // module's computations are distinct and non negative, so a node lookup is
+  // an array load; a lookup whose slot does not name the computation, and any
+  // lookup when the ids were too sparse to index, falls back to node_indices_.
+  std::vector<int32_t> node_indices_by_unique_id_;
 
   // The execution threads that the call graph is built for.
   absl::flat_hash_set<absl::string_view> execution_threads_;

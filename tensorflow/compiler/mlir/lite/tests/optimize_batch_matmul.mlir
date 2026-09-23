@@ -276,3 +276,70 @@ func.func @BatchMatmulResourceConstantToFullyConnected(%arg0: tensor<16x1024xf32
   %0 = "tfl.batch_matmul"(%arg0, %weight) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
   func.return %0 : tensor<16x128xf32>
 }
+
+// The cases below pin `IsRhsFoldableIntoFullyConnected`, which both directions
+// of the batch_matmul/fully_connected rewrite share. They come in pairs: an rhs
+// shape that batch_matmul -> fully_connected accepts, and the same shape in the
+// fully_connected -> batch_matmul position, which must be refused. If the two
+// ever disagree the pair rewrites each other forever, so the refusal half is
+// load bearing rather than incidental.
+
+// A dequantize folds into the filter whether or not its input is a constant.
+// CHECK-LABEL: Batchmatmul2FullyconnectedDequantizedNonConstY
+func.func @Batchmatmul2FullyconnectedDequantizedNonConstY(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<16x128xf32> {
+  %0 = "tfl.dequantize"(%arg1) : (tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<1024x128xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmulDequantizedNonConst
+func.func @NotFuseTransposeFCRhsToBatchMatmulDequantizedNonConst(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>, %arg2: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.dequantize"(%arg1) : (tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<1024x128xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %2 = "tfl.fully_connected"(%arg0, %1, %arg2) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %2 : tensor<16x128xf32>
+}
+
+// A transpose only rearranges the constant, so the rhs is still foldable.
+// CHECK-LABEL: Batchmatmul2FullyconnectedTransposeChainConstY
+func.func @Batchmatmul2FullyconnectedTransposeChainConstY(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<128x1024xf32>
+  %0 = "tfl.transpose"(%weight, %cst) : (tensor<128x1024xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmulTransposeChainConstant
+func.func @NotFuseTransposeFCRhsToBatchMatmulTransposeChainConstant(%arg0: tensor<16x1024xf32>, %arg1: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<128x1024xf32>
+  %0 = "tfl.transpose"(%weight, %cst) : (tensor<128x1024xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %2 = "tfl.fully_connected"(%arg0, %1, %arg1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %2 : tensor<16x128xf32>
+}
+
+// The chain is walked to the constant rather than only one op deep, so a
+// reshape stacked under a transpose is still recognized.
+// CHECK-LABEL: Batchmatmul2FullyconnectedReshapeTransposeChainConstY
+func.func @Batchmatmul2FullyconnectedReshapeTransposeChainConstY(%arg0: tensor<16x1024xf32>) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_shape = arith.constant dense<[128, 1024]> : tensor<2xi32>
+  %weight = arith.constant dense_resource<__elided__> : tensor<64x2048xf32>
+  %0 = "tfl.reshape"(%weight, %cst_shape) : (tensor<64x2048xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<128x1024xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %2 = "tfl.batch_matmul"(%arg0, %1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  func.return %2 : tensor<16x128xf32>
+}

@@ -433,11 +433,15 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 
 TEST_F(GpuMemorySpaceAssignmentTest,
        TestSymmetricalMemoryMosaicMemorySpaceAssignment) {
+  // Mosaic requests collective memory for the buffers that have to be
+  // symmetric through the `results_memory_spaces` frontend attribute. Here
+  // only the first result is symmetric, so the second one must stay in the
+  // default memory space.
   constexpr absl::string_view kHloModule = R"(
     HloModule m
 
     ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={"xla_symmetric_memory_parameters"}
+      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", frontend_attributes={results_memory_spaces="{0:1}"}
     }
   )";
 
@@ -460,9 +464,11 @@ TEST_F(GpuMemorySpaceAssignmentTest,
     const HloValue* value = alias_analysis->buffers()[i].values()[0];
     ASSERT_THAT(value, NotNull());
     ASSERT_THAT(value->has_color(), IsTrue());
-    const bool is_tuple = value->defining_position().shape().IsTuple();
-    const int expected_color = (int)(is_tuple ? MemorySpaceColor::kDefault
-                                              : MemorySpaceColor::kCollective);
+    // Only the first (non-tuple) result was requested to be symmetric.
+    const bool is_symmetric = value->defining_index() == ShapeIndex({0});
+    const int expected_color =
+        (int)(is_symmetric ? MemorySpaceColor::kCollective
+                           : MemorySpaceColor::kDefault);
     ASSERT_THAT(value->color(), Eq(expected_color));
   }
 }

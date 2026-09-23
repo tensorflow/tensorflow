@@ -128,17 +128,37 @@ cc_library(
     hdrs = ["literal_exporter.h"],
     deps = [
         ":type_to_shape",
-        "//xla:array",
         "//xla:literal",
-        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "literal_exporter_test",
+    srcs = ["literal_exporter_test.cc"],
+    deps = [
+        ":literal_exporter",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
