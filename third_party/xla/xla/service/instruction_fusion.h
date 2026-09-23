@@ -115,6 +115,18 @@ class InstructionFusion : public HloModulePass {
   virtual std::unique_ptr<FusionQueue> GetFusionQueue(
       HloComputation* computation);
 
+  // Returns a reachability map of `computation` that is current for it
+  // (HloReachabilityMap::IsCurrentFor), or null. RunImpl calls this once per
+  // computation before any fusion in it and trusts the map: it reads it for
+  // the global duplication analysis and for the multi output fusion cycle
+  // checks of the fusion loop, and never updates it after its own fusions.
+  // With null it builds its own. The subclass keeps ownership and keeps the
+  // map alive while RunImpl works on that computation.
+  virtual const HloReachabilityMap* CurrentReachabilityMap(
+      const HloComputation* computation) {
+    return nullptr;
+  }
+
   // Returns whether the given producer instruction should be fused into the
   // given consumer instruction. producer is necessarily an operand of consumer.
   // Derived classes should define this method to specify which instructions

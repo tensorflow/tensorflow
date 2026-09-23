@@ -610,8 +610,13 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
     if (IsEmbeddedComputation(computation)) {
       continue;
     }
-    std::unique_ptr<HloReachabilityMap> reachability =
-        HloReachabilityMap::Build(computation);
+    std::unique_ptr<HloReachabilityMap> owned_reachability;
+    const HloReachabilityMap* reachability =
+        CurrentReachabilityMap(computation);
+    if (reachability == nullptr) {
+      owned_reachability = HloReachabilityMap::Build(computation);
+      reachability = owned_reachability.get();
+    }
 
     HloInstructionSet do_not_duplicate;
     // If we allow duplications, we need to compute which instructions we do not

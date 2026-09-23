@@ -1,6 +1,8 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal", "xla_py_proto_library")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
@@ -3500,6 +3502,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
@@ -4282,8 +4285,8 @@ xla_test(
             "xla_amdgpu_any",
             "no_oss",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     disabled_backends = [],
@@ -4779,6 +4782,7 @@ cc_library(
     srcs = ["command_buffer_conversion_pass.cc"],
     hdrs = ["command_buffer_conversion_pass.h"],
     deps = [
+        ":async_execution",
         ":async_thunk",
         ":collective_group_thunk",
         ":command_buffer_cmd_emitter",
@@ -4788,6 +4792,7 @@ cc_library(
         ":custom_call_thunk",
         ":device_to_device_copy_thunk",
         ":dynamic_slice_fusion_v2_thunk",
+        ":execution_stream_id",
         ":ragged_all_to_all_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -4802,8 +4807,10 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -4814,6 +4821,31 @@ cc_library(
         "@tsl//tsl/platform",
         "@tsl//tsl/profiler/lib:profiler_lock",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "command_buffer_async_conversion_test",
+    srcs = ["command_buffer_async_conversion_test.cc"],
+    deps = [
+        ":async_thunk",
+        ":command_buffer_conversion_pass",
+        ":command_buffer_thunk",
+        ":execution_stream_id",
+        ":memset_thunk",
+        ":replica_id_thunk",
+        ":thunk",
+        ":thunk_executor",
+        ":thunk_id",
+        ":thunk_pass_pipeline",
+        ":while_thunk",
+        "//xla:xla_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -5509,6 +5541,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -5524,7 +5557,14 @@ cc_library(
 
 xla_test(
     name = "record_ffi_test",
-    srcs = ["record_ffi_test.cc"],
+    srcs = ["record_ffi_test.cc"] + if_cuda_is_configured(
+        ["record_ffi_test_cuda.cc"],
+    ) + if_rocm_is_configured(
+        ["record_ffi_test_rocm.cc"],
+    ) + if_cuda_or_rocm_is_configured(
+        [],
+        ["record_ffi_test_default.cc"],
+    ),
     backends = ["gpu"],
     deps = [
         ":record_ffi",
@@ -5536,9 +5576,9 @@ xla_test(
         "//xla/ffi:invoke",
         "//xla/ffi:record_ffi",
         "//xla/ffi/api:c_api",
+        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
@@ -5546,12 +5586,21 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/cuda:cuda_status",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+        "//xla/stream_executor/rocm:rocm_status",
+    ]),
 )

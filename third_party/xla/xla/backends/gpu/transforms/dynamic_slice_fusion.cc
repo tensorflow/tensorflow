@@ -508,6 +508,7 @@ DynamicSliceFusion::ResolveParameter(const HloInstruction* operand) {
     source = slice->operand(0);
   }
 
+  Shape source_shape = source->shape();
   source = WalkThroughBitcasts(source);
   auto* parameter = DynCast<HloParameterInstruction>(source);
   if (parameter == nullptr) {
@@ -519,7 +520,7 @@ DynamicSliceFusion::ResolveParameter(const HloInstruction* operand) {
 
   return DynamicSliceFusion::Parameter{
       parameter->parameter_number(),
-      source->shape(),
+      std::move(source_shape),
       slice_shape,
       config,
       std::move(offsets),
