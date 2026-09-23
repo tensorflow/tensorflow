@@ -225,6 +225,34 @@ HWY_INLINE void StoreVecs128(D d, char* b, int64_t ldb, Vs... v) {
       v...);
 }
 
+// 128-bit (single block) transpose
+template <typename T, int bs>
+HWY_FLATTEN void TransposeMicroKernel128(const char* HWY_RESTRICT a,
+                                         int64_t lda, char* HWY_RESTRICT b,
+                                         int64_t ldb) {
+  using D = hn::Full128<uint8_t>;
+  static constexpr size_t element_size = sizeof(T);
+  static constexpr size_t row_bytes = element_size * bs;
+  static_assert(row_bytes <= kBlockBytes);
+  const D d;
+  LoadRowsCPS<0, T, bs, D, row_bytes>(d, a, lda, [&](auto... loads) {
+    CombineRowsCPS<element_size, bs, kBlockBytes>(
+        [&](auto... vecs) {
+          constexpr size_t kNumVecs = sizeof...(vecs);
+          constexpr size_t kBytesInMatrix = element_size * bs * bs;
+          constexpr size_t kStoresPerRow = bs / kNumVecs;
+          constexpr size_t kElementsPerVec = kBytesInMatrix / (bs * kNumVecs);
+          InterleaveWithinBlocksCPS<kElementsPerVec, 1, row_bytes>(
+              [&](auto... transposed) {
+                StoreVecs128<D, row_bytes, kStoresPerRow>(d, b, ldb,
+                                                          transposed...);
+              },
+              vecs...);
+        },
+        loads...);
+  });
+}
+
 }  // namespace HWY_NAMESPACE
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
