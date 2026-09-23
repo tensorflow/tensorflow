@@ -372,7 +372,7 @@ struct NodeViewDiff {
   bool update_name = false;
   string op;
   bool update_op = false;
-  string device;
+  std::string device;
   bool update_device = false;
   // Fanins to append after existing regular fanins.
   std::vector<SafeTensorId> regular_inputs_to_add;
