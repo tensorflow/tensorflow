@@ -15063,6 +15063,30 @@ TEST_F(AlgebraicSimplifierTest, DoNotFoldTransposeIntoScatterWhenDisabled) {
               absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSlice) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      operand = f32[10] parameter(0)
+      i = s32[] parameter(1)
+      j = s32[] parameter(2)
+      inner_ds = f32[4] dynamic-slice(operand, i), dynamic_slice_sizes={4}
+      ROOT outer_ds = f32[1] dynamic-slice(inner_ds, j), dynamic_slice_sizes={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(
+                  m::Parameter(0),
+                  m::Add(m::Clamp(m::ConstantScalar(0), m::Parameter(2),
+                                  m::ConstantScalar(3)),
+                         m::Clamp(m::ConstantScalar(0), m::Parameter(1),
+                                  m::ConstantScalar(6))))));
+}
+
 }  // namespace
 }  // namespace xla
 // Trivial comment to force rebuild

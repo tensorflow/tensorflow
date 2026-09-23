@@ -110,6 +110,7 @@ std::vector<UppercaseStringSetterTestSpec> GetUppercaseStringSetterTestCases() {
       UppercaseStringSetterTestSpec{"sse4_2", "SSE4_2"},
       UppercaseStringSetterTestSpec{"aVx512", "AVX512"},
       UppercaseStringSetterTestSpec{"AMx_fP16", "AMX_FP16"},
+      UppercaseStringSetterTestSpec{"amx_FP8", "AMX_FP8"},
   });
 }
 

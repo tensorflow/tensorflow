@@ -65,5 +65,51 @@ INSTANTIATE_TEST_SUITE_P(Avx512Bf16Fp16Suite, Avx512Bf16Fp16Test,
                          ::testing::ValuesIn(GetAvx512Bf16Fp16TestSpecs()),
                          Avx512Bf16Fp16Test::Name);
 
+struct AmxFp16Fp8TestSpec {
+  std::string cpu_name;
+  std::string features;
+  bool has_amx_fp16;
+  bool has_amx_fp8;
+};
+
+class AmxFp16Fp8Test
+    : public TargetMachineTestBase,
+      public ::testing::WithParamInterface<AmxFp16Fp8TestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<AmxFp16Fp8TestSpec>& info) {
+    return info.param.cpu_name;
+  }
+};
+
+TEST_P(AmxFp16Fp8Test, CheckAvailability) {
+  AmxFp16Fp8TestSpec spec = GetParam();
+  const char* triple_string = "x86_64-unknown-linux-gnu";
+  std::unique_ptr<TargetMachineFeatures> features =
+      CreateTargetMachineFeatures(triple_string, spec.cpu_name, spec.features);
+  EXPECT_EQ(features->has_amx_fp16(), spec.has_amx_fp16);
+  EXPECT_EQ(features->has_amx_fp8(), spec.has_amx_fp8);
+}
+
+std::vector<AmxFp16Fp8TestSpec> GetAmxFp16Fp8TestSpecs() {
+  return std::vector<AmxFp16Fp8TestSpec>{
+      // SPR-class: neither AMX_FP16 nor AMX_FP8.
+      AmxFp16Fp8TestSpec{"sapphirerapids", "+amx-bf16,+amx-int8,+amx-tile",
+                         false, false},
+      // GNR-class: AMX_FP16 only -> emulation path for FP8.
+      AmxFp16Fp8TestSpec{"graniterapids",
+                         "+amx-bf16,+amx-int8,+amx-tile,+amx-fp16", true,
+                         false},
+      // DMR-class: native AMX_FP8 (and AMX_FP16).
+      AmxFp16Fp8TestSpec{"diamondrapids",
+                         "+amx-bf16,+amx-int8,+amx-tile,+amx-fp16,+amx-fp8",
+                         true, true},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(AmxFp16Fp8Suite, AmxFp16Fp8Test,
+                         ::testing::ValuesIn(GetAmxFp16Fp8TestSpecs()),
+                         AmxFp16Fp8Test::Name);
+
 }  // namespace
 }  // namespace xla::cpu
