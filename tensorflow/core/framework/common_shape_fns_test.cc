@@ -1373,6 +1373,9 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   // A window one larger than the input produces an empty spatial dimension.
   set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,d0_3]");
+  // Integer division also truncates a small negative numerator to zero.
+  set_op({1, 2, 1, 1}, {1, 4, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,d0_3]");
   // A substantially larger window still has a negative output size.
   set_op({1, 1, 1, 1}, {1, 3, 2, 1}, "VALID", "NHWC");
   INFER_ERROR("Negative dimension size", op, "[1,1,2,3]");
