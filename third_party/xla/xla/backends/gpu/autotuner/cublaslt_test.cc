@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,11 +40,16 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+using ::testing::Gt;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using ::testing::Optional;
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
 
@@ -107,6 +114,7 @@ class CublasLtBackendTest : public HloHardwareIndependentTestBase {
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  mlir::MLIRContext mlir_context_;
   CublasLtBackend backend_;
 
   CublasLtBackendTest()
@@ -115,8 +123,8 @@ class CublasLtBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(stream_executor_, &debug_options_, &compiler_,
-                 &target_config_) {}
+        backend_(stream_executor_, &debug_options_, &compiler_, &target_config_,
+                 &mlir_context_) {}
 
   CublasLtBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::GemmKey();
@@ -130,8 +138,8 @@ TEST_F(CublasLtBackendTest, CanCreateCublasBackend) {
 }
 
 TEST_F(CublasLtBackendTest, GetSupportedConfigs) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
@@ -155,8 +163,8 @@ TEST_F(CublasLtBackendTest, GetSupportedConfigsReturnsErrorForDeviceless) {
 
 TEST_F(CublasLtBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonCublasLtCustomCall) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kUnsupportedHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kUnsupportedHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
@@ -165,8 +173,8 @@ TEST_F(CublasLtBackendTest,
 }
 
 TEST_F(CublasLtBackendTest, GetDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
       backend_.GetDefaultConfig(
@@ -188,8 +196,8 @@ TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
           lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
@@ -198,8 +206,8 @@ TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
 }
 
 TEST_F(CublasLtBackendTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
   CublasLtBackendConfig config;
   config.set_algorithm(2);
   config.set_autotune_workspace_size(42);
@@ -250,13 +258,13 @@ TEST_F(CublasLtBackendTest, CompileFp8SwapOperands) {
     ROOT %get-tuple-element = f32[16,16]{1,0} get-tuple-element(%custom-call), index=0
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kFp8MatmulWithSwapHlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kFp8MatmulWithSwapHlo));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()->operand(0))));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend_.Compile(
           *(module->entry_computation()->root_instruction()->operand(0)),
@@ -308,19 +316,34 @@ HloModule module
     ROOT %get-tuple-element.1 = f32[2,512]{1,0} get-tuple-element(%cublas-lt-matmul), index=1
   }
  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloWith3TupleOutput));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloWith3TupleOutput));
   HloInstruction* cublas_lt_matmul =
       module->entry_computation()->GetInstructionWithName("cublas-lt-matmul");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*cublas_lt_matmul));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          backend_.Compile(*cublas_lt_matmul, *config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*cublas_lt_matmul));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       backend_.Compile(*cublas_lt_matmul, *config));
   const ProgramShape& program_shape =
       executable->compute_computation_layout().ComputeProgramShape();
   EXPECT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(program_shape.result().IsTuple());
 }
 
+TEST_F(CublasLtBackendTest, GetSupportedConfigsWithEstimates) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<CodegenBackend::EstimatedConfig> estimated_configs,
+      backend_.GetSupportedConfigsWithEstimates(
+          *hlo_module->entry_computation()->root_instruction()->operand(0)));
+  ASSERT_THAT(estimated_configs, Not(IsEmpty()));
+  for (const auto& config : estimated_configs) {
+    EXPECT_THAT(config.estimated_runtime, Optional(Gt(absl::ZeroDuration())));
+  }
+}
+
+}  // namespace
 }  // namespace gpu
 }  // namespace xla

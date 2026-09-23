@@ -211,7 +211,7 @@ absl::Status SaveXSpace(const std::string& repository_root,
 absl::Status SaveXSpaceChunks(
     absl::string_view repository_root, absl::string_view run,
     absl::string_view host,
-    std::vector<tensorflow::profiler::XSpace>& xspaces) {
+    const std::vector<tensorflow::profiler::XSpace>& xspaces) {
   if (xspaces.empty()) {
     return absl::OkStatus();
   }
@@ -256,7 +256,7 @@ absl::Status SaveXSpaceChunks(
   if (!writer.ok()) {
     return writer.status();
   }
-  for (tensorflow::profiler::XSpace& xspace : xspaces) {
+  for (const tensorflow::profiler::XSpace& xspace : xspaces) {
     std::string plane_names = GetPlaneNames(xspace);
     VLOG(1) << "SaveXSpaceChunks "
             << ", size: " << xspace.ByteSizeLong() << " bytes"
@@ -266,9 +266,7 @@ absl::Status SaveXSpaceChunks(
     if (!writer.WriteRecord(xspace)) {
       break;
     }
-    tensorflow::profiler::XSpace().Swap(&xspace);
   }
-  xspaces.clear();
   if (!writer.Close()) {
     return writer.status();
   }
