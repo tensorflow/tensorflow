@@ -1113,21 +1113,10 @@ ComposeIndexingResult ComposeInstructionIndexing(
   std::vector<SymbolicTiledHloInstruction*> rt_operands;
   rt_operands.reserve(tiled_hlo_instruction->runtime_variables().size() +
                       operand_indexing.runtime_variables().size());
-  for (auto [i, rt] :
-       llvm::enumerate(tiled_hlo_instruction->runtime_variables())) {
-    size_t idx = i + range_vars_count;
-    if (removed.size() > idx && removed[idx]) {
-      continue;
-    }
-    VLOG(2) << "adding runtime variable from instruction " << rt;
-    rt_operands.push_back(rt);
-  }
-
   std::vector<SymbolicTiledHloInstruction*> new_instructions;
   for (const auto& [i, rt_var] :
        llvm::enumerate(operand_indexing.runtime_variables())) {
-    size_t idx = i + tiled_hlo_instruction->runtime_variables().size() +
-                 range_vars_count;
+    size_t idx = i + range_vars_count;
     if (removed.size() > idx && removed[idx]) {
       continue;
     }
@@ -1145,6 +1134,17 @@ ComposeIndexingResult ComposeInstructionIndexing(
     if (inserted) {
       new_instructions.push_back(tiled_hlo);
     }
+  }
+
+  for (auto [i, rt] :
+       llvm::enumerate(tiled_hlo_instruction->runtime_variables())) {
+    size_t idx =
+        i + operand_indexing.runtime_variables().size() + range_vars_count;
+    if (removed.size() > idx && removed[idx]) {
+      continue;
+    }
+    VLOG(2) << "adding runtime variable from instruction " << rt;
+    rt_operands.push_back(rt);
   }
 
   // Whenever a range variable is introduced in our indexing map, we have

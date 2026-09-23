@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
@@ -961,7 +962,6 @@ void HloCompareInstruction::ToProto(HloInstructionProto* proto) const {
       ComparisonDirectionToString(compare_.GetDirection()));
   proto->set_comparison_order(
       ComparisonOrderToShortString(compare_.GetOrder()));
-  proto->set_comparison_type(ComparisonTypeToString(compare_.GetType()));
 }
 
 void HloCompareInstruction::PrintExtraAttributesImpl(
@@ -1983,6 +1983,70 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size() % 2, 0);
   return std::make_unique<HloReduceInstruction>(shape, new_operands,
                                                 dimensions(), to_apply());
+}
+
+HloShuffleInstruction::HloShuffleInstruction(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<const int64_t> dimensions, const ShuffleMode& mode)
+    : HloDimensionsInstruction(HloOpcode::kShuffle, shape, dimensions),
+      mode_(mode) {
+  AppendOperand(operand);
+}
+
+bool HloShuffleInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloShuffleInstruction&>(other);
+  // Shuffle results are determined by the shuffled dimensions and by the mode
+  // together with its attributes.
+  return dimensions() == casted_other.dimensions() &&
+         protobuf_util::HaveSameSerialization(mode_, casted_other.mode_);
+}
+
+std::unique_ptr<HloInstruction> HloShuffleInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return std::make_unique<HloShuffleInstruction>(shape, new_operands[0],
+                                                 dimensions(), mode_);
+}
+
+void HloShuffleInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  HloDimensionsInstruction::PrintExtraAttributesImpl(printer, options);
+  printer.Next([this](Printer* printer) {
+    printer->Append("mode=");
+    printer->Append(ShuffleModeToString(mode()));
+  });
+  // Each mode's inner attributes.
+  switch (mode()) {
+    case ShuffleMode::kPermute:
+      printer.Next([this](Printer* printer) {
+        printer->Append("indices=");
+        absl::StatusOr<Literal> indices = shuffle::GetPermuteIndices(mode_);
+        if (indices.ok()) {
+          indices->PrintWithLayoutOneline(printer);
+        } else {
+          printer->Append("{...}");
+        }
+      });
+      break;
+    case ShuffleMode::kRotate:
+      printer.Next([this](Printer* printer) {
+        printer->Append("shifts={");
+        AppendJoin(printer, rotate().shifts(), ",");
+        printer->Append("}");
+      });
+      break;
+    case ShuffleMode::MODE_NOT_SET:
+      break;
+  }
+}
+
+void HloShuffleInstruction::ToProto(HloInstructionProto* proto) const {
+  HloDimensionsInstruction::ToProto(proto);
+  *proto->mutable_shuffle_mode() = mode_;
 }
 
 HloScanInstruction::HloScanInstruction(const Shape& shape,

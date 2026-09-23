@@ -24,6 +24,7 @@ typedef tsl::float8_e5m2 float8_e5m2;
 typedef tsl::float8_e4m3fnuz float8_e4m3fnuz;
 typedef tsl::float8_e4m3b11fnuz float8_e4m3b11fnuz;
 typedef tsl::float8_e5m2fnuz float8_e5m2fnuz;
+typedef tsl::float8_e8m0fnu float8_e8m0fnu;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FLOAT8_H_
