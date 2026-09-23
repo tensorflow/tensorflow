@@ -51,11 +51,101 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
+namespace memory_space_assignment {
+
+// This class contains pre-set assignments determined by memory space
+// assignment. It contains two data structures: (1) a chunks vector that maps a
+// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
+// vector that maps the memory space to information like its allocated size and
+// heap memory trace. If there is only one alternate memory space like there is
+// currently, there will be one entry in assignment_info.
+class PresetAssignments {
+ public:
+  // Contains per-memory-space information like the allocated size and heap
+  // simulator trace.
+  struct AssignmentInformation {
+    int64_t size;
+    HeapSimulatorTrace heap_simulator_trace;
+  };
+
+  PresetAssignments() = default;
+
+  std::unique_ptr<PresetAssignments> ClonePresetAssignments() const {
+    return std::make_unique<PresetAssignments>(*this);
+  }
+
+  void add_chunk(const HloPosition& position,
+                 const HeapSimulator::Chunk& chunk) {
+    chunks_.emplace_back(position, chunk);
+  }
+
+  void add_scoped_allocation_chunk(HloInstruction* instruction,
+                                   const HeapSimulator::Chunk& chunk) {
+    scoped_allocation_chunks_.emplace_back(instruction, chunk);
+  }
+
+  AssignmentInformation* assignment_information_for_space(
+      int64_t memory_space) {
+    for (auto& space_and_info : assignment_info_) {
+      if (space_and_info.first == memory_space) {
+        return &space_and_info.second;
+      }
+    }
+    assignment_info_.emplace_back(memory_space, AssignmentInformation());
+    return &assignment_info_.back().second;
+  }
+
+  absl::Span<const std::pair<HloPosition, HeapSimulator::Chunk>> chunks()
+      const {
+    return chunks_;
+  }
+
+  absl::Span<const std::pair<HloInstruction*, HeapSimulator::Chunk>>
+  scoped_allocation_chunks() const {
+    return scoped_allocation_chunks_;
+  }
+
+  absl::Span<const std::pair<int64_t, AssignmentInformation>>
+  assignment_informations() const {
+    return assignment_info_;
+  }
+
+  // A chunk of alternate memory that has been allocated for post-module
+  // scoped operations.
+  std::optional<HeapSimulator::Chunk>
+  post_module_scoped_alternate_memory_chunk() const {
+    return post_module_scoped_alternate_memory_chunk_;
+  }
+
+  void set_post_module_scoped_alternate_memory_chunk(
+      const HeapSimulator::Chunk& chunk) {
+    post_module_scoped_alternate_memory_chunk_ = chunk;
+  }
+
+  // Get debugging information.
+  std::string buffer_info_str() const { return buffer_info_str_; }
+  std::string allocation_info_str() const { return allocation_info_str_; }
+  std::string instruction_schedule_str() const {
+    return instruction_schedule_str_;
+  }
+
+ private:
+  std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
+  std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
+      scoped_allocation_chunks_;
+  std::optional<HeapSimulator::Chunk>
+      post_module_scoped_alternate_memory_chunk_ = std::nullopt;
+  std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
+  std::string buffer_info_str_;
+  std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
+};
+
+}  // namespace memory_space_assignment
 
 // Walk the call graph of the HLO module and place each computation into either
 // thread_local_computations or global_computations depending upon whether the
