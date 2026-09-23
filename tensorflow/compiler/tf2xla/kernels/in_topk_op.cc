@@ -83,6 +83,8 @@ class InTopKOp : public XlaOpKernel {
     // can otherwise produce a false hit. Check bounds per target, rather than
     // reducing the class-match matrix again.
     xla::XlaOp targets_s64 = xla::ConvertElementType(targets_r1, xla::S64);
+    // This folds to a constant for static dimensions, while using the actual
+    // class count instead of the static bound for a dynamic dimension.
     xla::XlaOp num_classes_s64 = xla::ConvertElementType(
         xla::GetDimensionSize(predictions_r2, 1), xla::S64);
     xla::XlaOp valid_target_r1 = xla::And(
