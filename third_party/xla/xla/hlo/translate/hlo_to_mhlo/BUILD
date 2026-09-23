@@ -233,7 +233,10 @@ xla_cc_test(
     srcs = ["hlo_utils_test.cc"],
     deps = [
         ":hlo_utils",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
