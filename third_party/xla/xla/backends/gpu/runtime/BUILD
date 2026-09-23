@@ -4779,6 +4779,7 @@ cc_library(
     srcs = ["command_buffer_conversion_pass.cc"],
     hdrs = ["command_buffer_conversion_pass.h"],
     deps = [
+        ":async_execution",
         ":async_thunk",
         ":collective_group_thunk",
         ":command_buffer_cmd_emitter",
@@ -4788,6 +4789,7 @@ cc_library(
         ":custom_call_thunk",
         ":device_to_device_copy_thunk",
         ":dynamic_slice_fusion_v2_thunk",
+        ":execution_stream_id",
         ":ragged_all_to_all_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -4802,8 +4804,10 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -4814,6 +4818,31 @@ cc_library(
         "@tsl//tsl/platform",
         "@tsl//tsl/profiler/lib:profiler_lock",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "command_buffer_async_conversion_test",
+    srcs = ["command_buffer_async_conversion_test.cc"],
+    deps = [
+        ":async_thunk",
+        ":command_buffer_conversion_pass",
+        ":command_buffer_thunk",
+        ":execution_stream_id",
+        ":memset_thunk",
+        ":replica_id_thunk",
+        ":thunk",
+        ":thunk_executor",
+        ":thunk_id",
+        ":thunk_pass_pipeline",
+        ":while_thunk",
+        "//xla:xla_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
