@@ -23,7 +23,7 @@ fusion {
 // CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<32x16x256xf32, #xtile.layout<[2, 0, 1]>>,
 // CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<256x16x512xf32, #xtile.layout<[0, 1, 2]>>,
 // CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<16x32x512xf32, #xtile.layout<[2, 0, 1]>>,
-// CHECK-SAME:  %[[ARG3:[A-Za-z0-9]+]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:  %[[ARG3:[A-Za-z0-9]+]]: index{{( \{xla.range = \[0 : index, 255 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 
 // CHECK-DAG:  %[[TC0:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
 // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
