@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,6 +34,7 @@ cc_library(
     hdrs = ["jxl_io.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
+        "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/strings",
         "@jpegxl",
         "@jpegxl//:jpegxl_threads",
@@ -43,4 +45,17 @@ alias(
     name = "testdata",
     actual = "//tensorflow/core/lib/jxl/testdata:testdata",
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+tf_cc_test(
+    name = "jxl_io_test",
+    srcs = ["jxl_io_test.cc"],
+    data = [":testdata"],
+    deps = [
+        ":jxl_io",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+    ],
 )
