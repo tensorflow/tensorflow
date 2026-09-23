@@ -1636,6 +1636,7 @@ cc_library(
         "//xla/backends/gpu/tests:__pkg__",
         "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
+        "//learning/brain/google/xla:__pkg__",
     ]),
     deps = [
         ":buffer_value",
@@ -2120,6 +2121,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

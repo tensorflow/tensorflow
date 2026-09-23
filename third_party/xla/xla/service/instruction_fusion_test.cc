@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/instruction_fusion.h"
 
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -40,8 +42,7 @@ class InstructionFusionTest : public HloHardwareIndependentTestBase {
   AliasInfo alias_info_;
 };
 
-// Subclass of InstructionFusion exposing the protected methods Fuse and
-// FuseIntoMultiOutput for testing.
+// Subclass of InstructionFusion exposing protected methods for testing.
 class InstructionFusionForTesting : public InstructionFusion {
  public:
   explicit InstructionFusionForTesting(const AliasInfo* alias_info)
@@ -58,6 +59,8 @@ class InstructionFusionForTesting : public InstructionFusion {
     return InstructionFusion::FuseIntoMultiOutput(producer, consumer,
                                                   computation);
   }
+
+  using InstructionFusion::MultiOutputFusionCreatesCycle;
 };
 
 TEST_F(InstructionFusionTest, FuseInstructions) {
@@ -123,6 +126,120 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
       << module->ToString();
+}
+
+// The pass builds the reachability map once per computation and never updates
+// it. The cycle check trusts the map for a positive answer and otherwise
+// searches the current graph. Later blocks mutate the graph after the map was
+// built; each pins the check's answer on the mutated graph.
+TEST_F(InstructionFusionTest,
+       MultiOutputFusionCreatesCycleWithStaleReachability) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    abs = f32[4,3]{1,0} abs(p0)
+    exp = f32[4,3]{1,0} exponential(p0)
+    add = f32[4,3]{1,0} add(abs, exp)
+    neg_a = f32[4,3]{1,0} negate(abs)
+    neg_b = f32[4,3]{1,0} negate(neg_a)
+    join = f32[4,3]{1,0} add(neg_a, neg_b)
+    iota_a = f32[4,3]{1,0} iota(), iota_dimension=0, control-predecessors={abs}
+    mix_a = f32[4,3]{1,0} add(abs, iota_a)
+    iota_b = f32[4,3]{1,0} iota(), iota_dimension=0
+    mix_b = f32[4,3]{1,0} add(abs, iota_b)
+    ROOT tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[4,3]{1,0}, f32[4,3]{1,0})
+      tuple(add, join, mix_a, mix_b)
+  })"));
+  HloComputation* computation = module->entry_computation();
+  HloInstruction* tuple = computation->root_instruction();
+  HloInstruction* add = tuple->mutable_operand(0);
+  HloInstruction* join = tuple->mutable_operand(1);
+  HloInstruction* mix_a = tuple->mutable_operand(2);
+  HloInstruction* mix_b = tuple->mutable_operand(3);
+  HloInstruction* abs = add->mutable_operand(0);
+  HloInstruction* exp = add->mutable_operand(1);
+  HloInstruction* p0 = abs->mutable_operand(0);
+  HloInstruction* neg_a = join->mutable_operand(0);
+  HloInstruction* neg_b = join->mutable_operand(1);
+  HloInstruction* iota_a = mix_a->mutable_operand(1);
+  HloInstruction* iota_b = mix_b->mutable_operand(1);
+  std::unique_ptr<HloReachabilityMap> reachability =
+      HloReachabilityMap::Build(computation);
+
+  // join is reached through neg_a and again through neg_b; a revisit is not a
+  // cycle.
+  EXPECT_FALSE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, add, *reachability));
+
+  // The map still says neg_a reaches neg_b, and that positive answer is
+  // trusted even though the current graph has no such path.
+  ASSERT_OK(neg_b->ReplaceOperandWith(0, p0));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      neg_a, join, *reachability));
+
+  // neg_a has no predecessor other than the producer: nothing to search for.
+  EXPECT_FALSE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, neg_a, *reachability));
+
+  // Without its control edge, iota_a has no incoming edge and no search could
+  // reach it, but the map's stale positive answer comes first.
+  ASSERT_OK(abs->RemoveControlDependencyTo(iota_a));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, mix_a, *reachability));
+
+  // A control edge into iota_b gives it an incoming edge the map has not seen,
+  // so the search has to find it through neg_a.
+  ASSERT_OK(neg_a->AddControlDependencyTo(iota_b));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, mix_b, *reachability));
+  ASSERT_OK(neg_a->RemoveControlDependencyTo(iota_b));
+
+  // A control edge the map has not seen is a path the search must find.
+  ASSERT_OK(abs->AddControlDependencyTo(exp));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, add, *reachability));
+  ASSERT_OK(abs->RemoveControlDependencyTo(exp));
+
+  // Removing an instruction leaves a hole in the local ids, so the added
+  // negate's id is not below the instruction count: the marks must be sized
+  // by the id bound, not by the count.
+  HloInstruction* removed = computation->AddInstruction(
+      HloInstruction::CreateUnary(abs->shape(), HloOpcode::kNegate, abs));
+  HloInstruction* neg = computation->AddInstruction(
+      HloInstruction::CreateUnary(abs->shape(), HloOpcode::kNegate, abs));
+  ASSERT_OK(computation->RemoveInstruction(removed));
+  ASSERT_GE(neg->local_id(), computation->instruction_count());
+  ASSERT_OK(exp->ReplaceOperandWith(0, neg));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, add, *reachability));
+  // In the other direction the search from exp meets only the consumer, which
+  // is already visited, and never reaches abs.
+  EXPECT_FALSE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      exp, add, *reachability));
+
+  // A control predecessor of the consumer is a target too. The map has not
+  // seen abs reach exp, so the search has to find exp through neg.
+  ASSERT_OK(exp->AddControlDependencyTo(neg_a));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, neg_a, *reachability));
+  ASSERT_OK(exp->RemoveControlDependencyTo(neg_a));
+
+  // The map is consulted for control predecessors as well: iota_a is a leaf
+  // in the current graph, but the stale map still says abs reaches it.
+  ASSERT_OK(iota_a->AddControlDependencyTo(neg_a));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, neg_a, *reachability));
+  ASSERT_OK(iota_a->RemoveControlDependencyTo(neg_a));
+
+  // neg is not in the map, first as a predecessor of mix_a and then as the
+  // producer for add. Neither may be looked up there.
+  ASSERT_OK(mix_a->ReplaceOperandWith(1, neg));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      abs, mix_a, *reachability));
+  ASSERT_OK(add->ReplaceOperandWith(0, neg));
+  EXPECT_TRUE(InstructionFusionForTesting::MultiOutputFusionCreatesCycle(
+      neg, add, *reachability));
 }
 
 TEST_F(InstructionFusionTest, FuseInstructionsWithOriginalValue) {

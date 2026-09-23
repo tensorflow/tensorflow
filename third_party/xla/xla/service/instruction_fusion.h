@@ -186,6 +186,19 @@ class InstructionFusion : public HloModulePass {
                                               HloInstruction* consumer,
                                               HloComputation* computation);
 
+  // Returns whether fusing `producer` into `consumer` as a multi output fusion
+  // would create a cycle. That is the case when `producer` reaches another
+  // operand or control predecessor of `consumer` in the current graph. Both
+  // must be in the same computation. The pass builds `reachability` once per
+  // computation and does not update it after fusions, so it may be stale. A
+  // positive answer from it is trusted anyway; a stale positive only forgoes
+  // a fusion. Otherwise, when `consumer` has a predecessor that a search could
+  // reach, the current graph is searched, which allocates one byte per local
+  // instruction id of the computation.
+  static bool MultiOutputFusionCreatesCycle(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const HloReachabilityMap& reachability);
+
   // An "effectively unary" operation is one that has at most one "large"
   // input with the others being negligible in terms of memory usage.
   // We use "has a smaller true rank than the output" as a heuristic

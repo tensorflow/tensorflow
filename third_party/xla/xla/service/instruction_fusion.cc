@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
@@ -519,63 +520,89 @@ class ReversePostOrderFusionQueue : public FusionQueue {
   std::vector<bool> fusion_config_;
 };
 
-bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
-                                   HloInstruction* consumer,
-                                   const HloReachabilityMap& reachability) {
-  absl::flat_hash_set<int64_t> operands;
-  auto insert = [&](const HloInstruction* operand) {
-    if (operand == producer) {
-      return false;
-    }
+}  // namespace
 
-    // If the reachability map already contains the producer and the operand of
-    // the consumer, and the producer can reach the operand, then we know for
-    // sure MultiOutputFusion would create a cycle. If not, we need to do a DFS
-    // traversal of the computation to verify that this multioutput fusion would
-    // not create a cycle.
-    if (reachability.IsPresent(producer) && reachability.IsPresent(operand) &&
-        reachability.IsReachable(producer, operand)) {
-      return true;
-    }
-    operands.insert(operand->unique_id());
-    return false;
+/*static*/ bool InstructionFusion::MultiOutputFusionCreatesCycle(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    const HloReachabilityMap& reachability) {
+  DCHECK_EQ(producer->parent(), consumer->parent())
+      << producer->name() << " and " << consumer->name();
+  // A target is an operand or control predecessor of the consumer that a
+  // search from the producer could reach: not the producer itself, and not a
+  // node without incoming edges. The fusion creates a cycle iff the producer
+  // reaches a target. A positive answer from the map is trusted even when the
+  // map is stale; at worst a fusion is forgone.
+  const bool producer_present = reachability.IsPresent(producer);
+  auto map_proves_cycle = [&](const HloInstruction* predecessor) {
+    return predecessor != producer && reachability.IsPresent(predecessor) &&
+           reachability.IsReachable(producer, predecessor);
   };
+  if (producer_present &&
+      (absl::c_any_of(consumer->operands(), map_proves_cycle) ||
+       absl::c_any_of(consumer->control_predecessors(), map_proves_cycle))) {
+    return true;
+  }
 
+  // A consumer without targets needs no search.
+  auto is_target = [&](const HloInstruction* predecessor) {
+    return predecessor != producer &&
+           (predecessor->operand_count() > 0 ||
+            !predecessor->control_predecessors().empty());
+  };
+  if (!absl::c_any_of(consumer->operands(), is_target) &&
+      !absl::c_any_of(consumer->control_predecessors(), is_target)) {
+    return false;
+  }
+
+  // Otherwise search the current graph from the producer. The search stays in
+  // the consumer's computation, so local ids index a dense vector. Live local
+  // ids are below next_unique_instruction_internal_id(); instruction_count()
+  // is smaller once removed instructions have left holes.
+  enum class Mark : uint8_t { kNone = 0, kTarget, kVisited };
+  std::vector<Mark> marks(
+      consumer->parent()->next_unique_instruction_internal_id());
+  auto mark_of = [&](const HloInstruction* instruction) -> Mark& {
+    DCHECK_EQ(instruction->parent(), consumer->parent()) << instruction->name();
+    DCHECK_GE(instruction->local_id(), 0) << instruction->name();
+    DCHECK_LT(instruction->local_id(), marks.size()) << instruction->name();
+    return marks[instruction->local_id()];
+  };
   for (const HloInstruction* operand : consumer->operands()) {
-    if (insert(operand)) {
-      return true;
+    if (is_target(operand)) {
+      mark_of(operand) = Mark::kTarget;
     }
   }
   for (const HloInstruction* predecessor : consumer->control_predecessors()) {
-    if (insert(predecessor)) {
-      return true;
+    if (is_target(predecessor)) {
+      mark_of(predecessor) = Mark::kTarget;
     }
   }
 
-  // Do a DFS on the producer to see if any of the other consumer operands are
-  // reachable in the current state of the graph.
-  std::vector<HloInstruction*> worklist = producer->users();
+  // In an acyclic graph no transitive successor of the consumer, through data
+  // or control edges, is one of its predecessors, so expanding the consumer
+  // would only visit nodes that cannot be targets.
+  mark_of(consumer) = Mark::kVisited;
+  std::vector<const HloInstruction*> worklist(producer->users().begin(),
+                                              producer->users().end());
   worklist.insert(worklist.end(), producer->control_successors().begin(),
                   producer->control_successors().end());
-  absl::flat_hash_set<int64_t> visits;
   while (!worklist.empty()) {
-    const HloInstruction* user = worklist.back();
+    const HloInstruction* node = worklist.back();
     worklist.pop_back();
-    if (operands.count(user->unique_id()) != 0) {
+    Mark& node_mark = mark_of(node);
+    if (node_mark == Mark::kTarget) {
       return true;
     }
-    if (visits.count(user->unique_id()) == 0) {
-      visits.insert(user->unique_id());
-      worklist.insert(worklist.end(), user->users().begin(),
-                      user->users().end());
-      worklist.insert(worklist.end(), user->control_successors().begin(),
-                      user->control_successors().end());
+    if (node_mark == Mark::kVisited) {
+      continue;
     }
+    node_mark = Mark::kVisited;
+    worklist.insert(worklist.end(), node->users().begin(), node->users().end());
+    worklist.insert(worklist.end(), node->control_successors().begin(),
+                    node->control_successors().end());
   }
   return false;
 }
-
-}  // namespace
 
 std::vector<HloComputation*> InstructionFusion::GetNonFusionComputations(
     HloModule* module,
