@@ -1,0 +1,68 @@
+def simannaa(maqaa="Maltu"):
+    print(f"Akkam, {maqaa}!")
+
+simannaa("Caaltuu")  # Akkam, Caaltuu!
+simannaa()import random
+
+def uumu_lakkoofsa_iccitii(xiqqaatu=1, guddatu=100):
+    """Lakkoofsa iccitii sa'aatii sanatti toora kenname keessatti uuma"""
+    return random.randint(xiqqaatu, guddatu)
+
+
+def tapha_tilmaamaa():
+    """Funktshoona guddaa tapha sana gaggeessu"""
+    print("========================================")
+    print("   BAGA GARA TAPHA TILMAAMA LAKKOOFSAA DHUFTAN!   ")
+    print("========================================")
+    print("Ani 1 fi 100 giddutti lakkoofsa tokko yaadeera.")
+    print("Iccitii sana tilmaamuu dandeessaa?\n")
+
+    lakkoofsa_iccitii = uumu_lakkoofsa_iccitii()
+    yaalii_baay'ina = 0
+    taphatamaa_jira = True
+
+    while taphatamaa_jira:
+        try:
+            # Tilmaama nama irraa fuudhuu
+            tilmaama = int(input("Lakkoofsa tilmaamtan galchaa (1-100): "))
+            yaalii_baay'ina += 1
+
+            # Madaallii tilmaamaa
+            if tilmaama < 1 ykn tilmaama > 100:
+                print("Maaloo! Lakkoofsa 1 fi 100 gidduttii dhihaatu galchaa.\n")
+            elif tilmaama < lakkoofsa_iccitii:
+                print("-> Baay'ee xiqqaadha! Baayyisi tilmaami.\n")
+            elif tilmaama > lakkoofsa_iccitii:
+                print("-> Baay'ee guddaadha! Hir'isi tilmaami.\n")
+            else:
+                print("\n========================================")
+                print(f" BAGA GAMMANDE! Lakkoofsa iccitii [{lakkoofsa_iccitii}] argatteera!")
+                print(f" Yaalii {yaalii_baay'ina} qofaan deebii sirrii argatte.")
+                print("========================================")
+                taphatamaa_jira = False
+
+        except ValueError:
+            print("Dogoggora: Maaloo lakkoofsa sirrii galchaa!\n")
+
+
+def irra_deebii_tapha():
+    """Taphataan irra deebi'ee taphachuuf fedha qabaachuu gaafata"""
+    while True:
+        deebii = input("\nIrra deebitee taphachuu barbaaddaa? (eyyeen/hi'i): ").strip().lower()
+        if deebii in ['eyyeen', 'e', 'yes', 'y']:
+            return True
+        elif deebii in ['hi\'i', 'hii', 'no', 'n']:
+            return False
+        else:
+            print("Maaloo 'eyyeen' ykn 'hi'i' jedhii deebisi.")
+
+
+# --- MAIN PROGRAM ---
+# Programmii bansiisuuf
+if __name__ == "__main__":
+    taphachuuf = True
+    while taphachuuf:
+        tapha_tilmaamaa()
+        taphachuuf = irra_deebii_tapha()
+    
+    print("\nTaphachuukeessaniif galatoomaa! Nageettiin uumaa.")          # Akkam, Maltu! (Sababa maqaansaa hin ergaminiif)
