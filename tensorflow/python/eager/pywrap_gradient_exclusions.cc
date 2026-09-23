@@ -428,7 +428,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 490> a = {{
+  static std::array<OpIndexInfo, 491> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -507,6 +507,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"CrossReplicaSum"},
       {"Cumprod"},
       {"Cumsum"},
+      {"CumulativeLogsumexp"},
       {"DecodeBase64"},
       {"DecodePaddedRaw"},
       {"DecodeRaw"},

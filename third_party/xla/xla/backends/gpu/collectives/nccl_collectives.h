@@ -87,6 +87,10 @@ class NcclCollectives : public GpuCollectives {
   absl::StatusOr<CliqueIdCallback> InitializeTopology(
       const Topology& topology) final;
 
+  absl::Status MaybeAttachGxlCommunicators(
+      const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+      absl::Span<Communicator* const> comms) final;
+
  private:
   GxlCollectives* gxl_collectives();
 

@@ -66,8 +66,14 @@ class MappedPtrContainerSorter {
  public:
   // A function to map elements from an ordered container to elements in an
   // unordered container. Not every element in ordered_container need map to an
-  // element in unordered_container and vice versa.
+  // element in unordered_container and vice versa. Sort may call it any number
+  // of times per ordered element, including zero, so it must be pure.
   using MapPtrFn = absl::FunctionRef<const PointedToTy*(const PointedToTy*)>;
+
+  // Unordered containers up to this size are searched linearly when the
+  // elements are matched to the ordered container; larger ones through a hash
+  // map.
+  static constexpr size_t kLinearSearchLimit = 32;
 
   // A function that maps unmapped elements (from an unordered container) to an
   // index in the final sorted result. The returned index indicates that the
@@ -157,6 +163,16 @@ class MappedPtrContainerSorter {
       MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
       const OrderedTy& ordered_container,
       const UnorderedTy& unordered_container);
+
+  // The common case of ComputeNewIndices: every element of unordered_container
+  // is mapped by exactly one element of ordered_container. The result is then
+  // the order of those ordered elements, computed here without the partial
+  // order bookkeeping. Returns false, with new_indices unspecified, when the
+  // containers are not in that relation.
+  template <typename OrderedTy, typename UnorderedTy>
+  static bool TryComputeNewIndicesOfBijection(
+      MapPtrFn map_ptr, const OrderedTy& ordered_container,
+      const UnorderedTy& unordered_container, std::vector<size_t>& new_indices);
 
   // Reorders unordered_container according to the indices in new_indices. See
   // ComputeNewIndices() for how to interpret new_indices.
@@ -333,14 +349,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   }
 
   // Ensure that every element in unordered_container has a valid new index.
-  absl::flat_hash_set<size_t> used_indices;
   for (size_t index : result) {
-    if (used_indices.contains(index)) {
-      return InternalStrCat(
-          "2 elements in unordered_container are destined for the same "
-          "index: ",
-          index);
-    }
     if (index >= unordered_container_size_) {
       return InvalidArgumentStrCat("invalid unordered_container index: ", index,
                                    " v size(", unordered_container_size_, ")");
@@ -425,6 +434,76 @@ MappedPtrContainerSorter<PointedToTy>::ComputeNewIndices(
 }
 
 template <typename PointedToTy>
+template <typename OrderedTy, typename UnorderedTy>
+bool MappedPtrContainerSorter<PointedToTy>::TryComputeNewIndicesOfBijection(
+    MapPtrFn map_ptr, const OrderedTy& ordered_container,
+    const UnorderedTy& unordered_container, std::vector<size_t>& new_indices) {
+  using UnorderedPtrGetter = mapped_ptr_container_sorter_internal::PtrGetter<
+      typename UnorderedTy::const_reference, const PointedToTy*>;
+  using OrderedPtrGetter = mapped_ptr_container_sorter_internal::PtrGetter<
+      typename OrderedTy::const_reference, const PointedToTy*>;
+
+  const size_t size = unordered_container.size();
+  if (size >= IndexBeforeMappedElements()) {
+    return false;
+  }
+  if (size == 0) {
+    new_indices.clear();
+    return true;
+  }
+  // Small containers, such as the user list of an instruction, are searched
+  // linearly; a hash map only pays off well above kLinearSearchLimit.
+  absl::flat_hash_map<const PointedToTy*, size_t> index_of;
+  if (size > kLinearSearchLimit) {
+    index_of.reserve(size);
+    for (size_t i = 0; i < size; ++i) {
+      index_of.emplace(UnorderedPtrGetter::Get(unordered_container[i]), i);
+    }
+  }
+  // Index of a pointer in unordered_container, or InvalidIndex(). A pointer
+  // that occurs twice yields its first index. Its second occurrence is then
+  // never assigned below, and the bijection test fails as it must.
+  auto find_unordered = [&](const PointedToTy* ptr) {
+    if (size > kLinearSearchLimit) {
+      auto it = index_of.find(ptr);
+      return it == index_of.end() ? InvalidIndex() : it->second;
+    }
+    for (size_t i = 0; i < size; ++i) {
+      if (UnorderedPtrGetter::Get(unordered_container[i]) == ptr) {
+        return i;
+      }
+    }
+    return InvalidIndex();
+  };
+
+  std::vector<size_t> indices(size, InvalidIndex());
+  size_t next_index = 0;
+  for (const auto& ordered_element : ordered_container) {
+    const PointedToTy* unordered_ptr =
+        map_ptr(OrderedPtrGetter::Get(ordered_element));
+    if (unordered_ptr == nullptr) {
+      continue;
+    }
+    const size_t i = find_unordered(unordered_ptr);
+    if (i == InvalidIndex()) {
+      // Maps to a pointer outside of unordered_container.
+      continue;
+    }
+    if (indices[i] != InvalidIndex()) {
+      // A second ordered element maps to the same unordered element.
+      return false;
+    }
+    indices[i] = next_index++;
+  }
+  if (next_index != size) {
+    // An unmapped element, whose placement needs the unmapped index policy.
+    return false;
+  }
+  new_indices = std::move(indices);
+  return true;
+}
+
+template <typename PointedToTy>
 template <typename UnorderedTy>
 void MappedPtrContainerSorter<PointedToTy>::Reorder(
     std::vector<size_t> new_indices, UnorderedTy& unordered_container) {
@@ -446,9 +525,12 @@ absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;
-  ABSL_ASSIGN_OR_RETURN(indices,
-                   ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
-                                     unordered_container));
+  if (!TryComputeNewIndicesOfBijection(map_ptr, ordered_container,
+                                       unordered_container, indices)) {
+    ABSL_ASSIGN_OR_RETURN(
+        indices, ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
+                                   unordered_container));
+  }
   Reorder(std::move(indices), unordered_container);
   return absl::OkStatus();
 }

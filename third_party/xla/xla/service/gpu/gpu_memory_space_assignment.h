@@ -69,9 +69,9 @@ bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst);
 // Creates a buffer colorer that assigns memory space colors to HLO values
 // during buffer assignment. It handles:
 //  - Collective operations (all-reduce, all-gather, etc.) → kCollective
-//  - Mosaic with multimem → kCollective
 //  - Custom call `operands_memory_spaces` / `results_memory_spaces` frontend
-//    attributes → requested memory space
+//    attributes (e.g. emitted by Mosaic for multimem/symmetric buffers) →
+//    requested memory space
 //  - Everything else → kDefault
 BufferAssigner::Colorer CreateColorer(const DebugOptions& option);
 
