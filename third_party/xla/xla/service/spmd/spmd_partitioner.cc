@@ -2683,6 +2683,48 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+std::shared_ptr<const HloSharding>
+SpmdPartitioningVisitor::ManualToOneDeviceSharding(HloOpcode opcode,
+                                                   const HloInstruction* inst) {
+  const HloSharding& sharding = inst->sharding();
+  // A custom call is partitioned with the manual shardings left in place.
+  if (opcode == HloOpcode::kCustomCall) {
+    return nullptr;
+  }
+  if (!sharding.IsTuple()) {
+    // A partition id also keeps its manual sharding.
+    if (!sharding.IsManual() || opcode == HloOpcode::kPartitionId) {
+      return nullptr;
+    }
+    static const auto kSingleDevice0 =
+        std::make_shared<const HloSharding>(HloSharding::SingleDevice(0));
+    return kSingleDevice0;
+  }
+  // The replacement of a tuple sharding is cached by the identity of the
+  // sharding object. Every decision that depends on the opcode is made above,
+  // so a cached replacement is valid for every user of the tuple.
+  std::shared_ptr<const HloSharding> key = inst->sharding_ptr();
+  auto [it, inserted] =
+      manual_to_one_device_shardings_.try_emplace(key, nullptr);
+  if (!inserted) {
+    return it->second;
+  }
+  std::shared_ptr<const HloSharding> result;
+  if (absl::c_any_of(sharding.tuple_elements(),
+                     [](const HloSharding& s) { return s.IsManual(); })) {
+    std::vector<HloSharding> subshardings = sharding.tuple_elements();
+    for (HloSharding& subsharding : subshardings) {
+      if (subsharding.IsManual()) {
+        subsharding = HloSharding::SingleDevice(0);
+      }
+    }
+    result = std::make_shared<const HloSharding>(
+        HloSharding::FlatTuple(std::move(subshardings)));
+  }
+  it->second = result;
+  return result;
+}
+
 absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
   visiting_hlo_ = hlo;
   b_.set_visiting_hlo(hlo);
@@ -2698,58 +2740,22 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
-  // Temporarily replace manual sharding to one-device sharding so that the
-  // partitioner will not change the HLOs.
-  auto manual_to_onedevice =
-      [&](HloOpcode opcode, const HloInstruction* inst,
-          const HloSharding& sharding) -> std::optional<HloSharding> {
-    // If a tuple's elements are all manual, then sharding.IsManual() == True,
-    // so we test whether it is tuple first.
-    if (sharding.IsTuple()) {
-      std::vector<HloSharding> subshardings = sharding.tuple_elements();
-      bool changed = false;
-      for (HloSharding& subsharding : subshardings) {
-        // Delay manual sharding substitution for CustomCalls.
-        if (subsharding.IsManual() && opcode != HloOpcode::kCustomCall) {
-          subsharding = HloSharding::SingleDevice(0);
-          changed = true;
-        }
-      }
-      if (changed) {
-        if (inst->opcode() != HloOpcode::kOutfeed) {
-          return HloSharding::Tuple(inst->shape(), subshardings);
-        }
-        std::vector<Shape> operand_shapes(inst->operand_count());
-        for (int i = 0; i < inst->operand_count(); ++i) {
-          operand_shapes[i] = inst->operand(i)->shape();
-        }
-        return HloSharding::Tuple(ShapeUtil::MakeTupleShape(operand_shapes),
-                                  subshardings);
-      }
-      return std::nullopt;
-    }
-    // Delay manual sharding substitution for CustomCalls and PartitionIds.
-    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
-        opcode != HloOpcode::kPartitionId) {
-      return HloSharding::SingleDevice(0);
-    }
-    return std::nullopt;
-  };
-
   if (hlo->sharding().IsManual() &&
       !hlo->IsCustomCall("SPMDFullToShardShape")) {
+    // Temporarily replace the manual shardings with one device shardings so
+    // that the partitioner does not change the HLOs.
     visiting_hlo_sharding_ = hlo->sharding_ptr();
-    if (auto new_sharding =
-            manual_to_onedevice(hlo->opcode(), hlo, *visiting_hlo_sharding_)) {
-      hlo->set_sharding(std::move(*new_sharding));
+    if (std::shared_ptr<const HloSharding> new_sharding =
+            ManualToOneDeviceSharding(hlo->opcode(), hlo)) {
+      hlo->set_sharding(std::move(new_sharding));
     }
 
     visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
     for (HloInstruction* operand : hlo->unique_operands()) {
       visiting_hlo_operand_shardings_.push_back(operand->sharding_ptr());
-      if (auto new_op_sharding = manual_to_onedevice(hlo->opcode(), operand,
-                                                     operand->sharding())) {
-        operand->set_sharding(std::move(*new_op_sharding));
+      if (std::shared_ptr<const HloSharding> new_op_sharding =
+              ManualToOneDeviceSharding(hlo->opcode(), operand)) {
+        operand->set_sharding(std::move(new_op_sharding));
       }
       GetPartitionedHlo(operand).hlo()->copy_sharding(operand);
     }
