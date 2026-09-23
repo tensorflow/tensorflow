@@ -131,6 +131,30 @@ TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE_EQ(context, v.dims->size, 4);
   TF_LITE_ENSURE_EQ(context, output.dims->size, 4);
 
+  bool is_seq_major = true;
+  if (registration->builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node->builtin_data != nullptr) {
+    const auto* composite_params =
+        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+    if (composite_params->name != nullptr &&
+        strcmp(composite_params->name, "odml.sdpa_transposed") == 0) {
+      is_seq_major = false;
+    }
+  } else if (registration->builtin_code == kTfLiteBuiltinCustom &&
+             registration->custom_name != nullptr &&
+             strcmp(registration->custom_name, "odml.sdpa_transposed") == 0) {
+    is_seq_major = false;
+  }
+  if (is_seq_major) {
+    TF_LITE_ENSURE_EQ(context, q.dims->data[2], k.dims->data[2]);
+    TF_LITE_ENSURE_EQ(context, k.dims->data[2], v.dims->data[2]);
+  } else {
+    TF_LITE_ENSURE(context, k.dims->data[1] > 0);
+    TF_LITE_ENSURE_EQ(context, k.dims->data[1], v.dims->data[1]);
+    TF_LITE_ENSURE(context, q.dims->data[1] >= k.dims->data[1] &&
+                                q.dims->data[1] % k.dims->data[1] == 0);
+  }
+
   // If 4th input is present, it can be Mask or Param.
   if (node->inputs->size >= 4 && node->inputs->data[3] != -1) {
     const TfLiteTensor& input3 = context->tensors[node->inputs->data[3]];
@@ -319,14 +343,35 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
       ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &scale_val,
                         YNN_VALUE_FLAG_COPY_DATA_FP32, &scale_const_id));
 
+  const int q_head_dim = is_seq_major ? 2 : 1;
+  const int k_head_dim = is_seq_major ? 2 : 1;
+  const int n_q = q_tensor.dims->data[q_head_dim];
+  const int n_kv = k_tensor.dims->data[k_head_dim];
+  TF_LITE_ENSURE(context, n_kv > 0 && n_q % n_kv == 0);
+  const size_t g_heads_per_kv = static_cast<size_t>(n_q / n_kv);
+
+  if (g_heads_per_kv > 1) {
+    uint32_t q_5d_id = YNN_INVALID_VALUE_ID;
+    const size_t q_splits[2] = {static_cast<size_t>(n_kv), g_heads_per_kv};
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, /*axis=*/1,
+                                                   /*num_splits=*/2, q_splits,
+                                                   q_trans_id, &q_5d_id, 0));
+    uint32_t q_packed_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(
+        subgraph, /*axis=*/2, /*axes_count=*/2, q_5d_id, &q_packed_id, 0));
+    q_trans_id = q_packed_id;
+  }
+
   const int q_seq_dim = is_seq_major ? 1 : 2;
-  bool use_decode1 = (q_tensor.dims->data[q_seq_dim] <= 32);
+  bool use_decode1 =
+      !is_seq_major &&
+      (q_tensor.dims->data[q_seq_dim] * static_cast<int>(g_heads_per_kv) <= 32);
 
   bool need_slice_out = false;
   uint32_t post_bmm_id = YNN_INVALID_VALUE_ID;
   uint32_t* post_bmm_ptr = &post_bmm_id;
 
-  if (!need_slice_out && !is_seq_major) {
+  if (!need_slice_out && !is_seq_major && g_heads_per_kv == 1) {
     post_bmm_ptr = &output_val_id;
   }
 
@@ -400,9 +445,32 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
           &sliced_mask_id, /*flags=*/0));
       mask_to_add_id = sliced_mask_id;
     }
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
-                                                logits_id, mask_to_add_id,
-                                                &masked_logits_id, 0));
+    if (g_heads_per_kv > 1) {
+      const size_t logits_splits[2] = {g_heads_per_kv, 0};
+      uint32_t logits_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2,
+                               logits_splits, logits_id, &logits_5d_id, 0));
+
+      const int32_t expand_axis = 2;
+      uint32_t mask_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+          subgraph, /*num_new_axes=*/1, &expand_axis, mask_to_add_id,
+          &mask_5d_id, 0));
+
+      uint32_t masked_logits_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
+                                                  logits_5d_id, mask_5d_id,
+                                                  &masked_logits_5d_id, 0));
+
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_fuse_dim(subgraph, /*axis=*/2, /*axes_count=*/2,
+                              masked_logits_5d_id, &masked_logits_id, 0));
+    } else {
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
+                                                  logits_id, mask_to_add_id,
+                                                  &masked_logits_id, 0));
+    }
   } else {
     masked_logits_id = logits_id;
   }
@@ -459,7 +527,28 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t post_trans_id = *post_bmm_ptr;
   uint32_t* post_trans_ptr = &post_trans_id;
 
-  if (is_seq_major) {
+  if (g_heads_per_kv > 1) {
+    const size_t out_splits[2] = {g_heads_per_kv, 0};
+    uint32_t out_5d_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2, out_splits,
+                             *post_bmm_ptr, &out_5d_id, 0));
+    if (is_seq_major) {
+      const int32_t perm_5d[] = {0, 3, 1, 2, 4};
+      uint32_t out_trans_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+          subgraph, 5, perm_5d, out_5d_id, &out_trans_5d_id, 0));
+      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_fuse_dim(subgraph, /*axis=*/2, /*axes_count=*/2,
+                              out_trans_5d_id, post_trans_ptr, 0));
+    } else {
+      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(subgraph, /*axis=*/1,
+                                                    /*axes_count=*/2, out_5d_id,
+                                                    post_trans_ptr, 0));
+    }
+  } else if (is_seq_major) {
     if (!need_slice_out) {
       post_trans_ptr = &output_val_id;
     } else {

@@ -11,10 +11,7 @@ xla_test(
     srcs = ["elementwise_aot_test.cc"],
     backends = ["cpu"],
     data = glob(["executables/elementwise_aot_test_cpu/**/*.pbtxt"]),
-    tags = [
-        "broken",
-        "no_oss",
-    ],
+    tags = ["no_oss"],
     deps = [
         "//xla:literal",
         "//xla/service:hlo_module_config",
