@@ -327,13 +327,6 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
   // particular device list, e.g., portable executables.
   virtual std::optional<DeviceListRef> devices() const = 0;
 
-  // The following APIs are taken from xla::PjRtLoadedExecutable for fast
-  // prototyping.
-  // TODO(hyeontaek): Move the following XLA-specific methods to
-  // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
-
-  virtual absl::Span<Device* const> addressable_devices() const = 0;
-
   struct DeleteOptions {
     // Analogous to `ExecuteOptions::execution_stream_id` for any side-effects
     // of deleting the executable.
