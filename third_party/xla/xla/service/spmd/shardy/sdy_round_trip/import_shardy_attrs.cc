@@ -263,19 +263,21 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     // future.
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
             op)) {
-      op->setAttr(kShardingAttr,
-                  convertToSdySharding(parseShardingFromString(shardingAttr),
-                                       op->getResultTypes(), op->getContext()));
+      if (auto sdySharding =
+              convertToSdySharding(parseShardingFromString(shardingAttr),
+                                   op->getResultTypes(), op->getContext())) {
+        op->setAttr(kShardingAttr, sdySharding);
+      }
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
           targetName == "X64Combine" ||
           isPythonCallbackCustomCall(customCallOp)) {
-        customCallOp->setAttr(
-            kShardingAttr,
-            convertToSdySharding(parseShardingFromString(shardingAttr),
-                                 customCallOp->getResultTypes(),
-                                 customCallOp->getContext()));
+        if (auto sdySharding = convertToSdySharding(
+                parseShardingFromString(shardingAttr),
+                customCallOp->getResultTypes(), customCallOp->getContext())) {
+          customCallOp->setAttr(kShardingAttr, sdySharding);
+        }
       }
     }
 

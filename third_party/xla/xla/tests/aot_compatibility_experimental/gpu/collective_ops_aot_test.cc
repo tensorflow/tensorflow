@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/aot_compatibility_experimental/test_lib.h"
+#include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
@@ -55,7 +56,7 @@ class CollectiveOpsAotTest : public AotCompatibilityTest,
         UnitTest::GetInstance()->current_test_info()->name();
     std::string test_name = full_name.substr(0, full_name.find('/'));
     file_path_ = tsl::io::JoinPath(
-        GetExecutablesDirectory(GetParam().target_name),
+        GetExecutablesDirectory(GetParam().target_name, AOTTestPlatform::kGpu),
         absl::StrCat("v", version), absl::StrCat(test_name, ".pbtxt"));
   }
 };
@@ -141,7 +142,7 @@ std::vector<AotTestParam> GetTestParamsOrDie(
 INSTANTIATE_TEST_SUITE_P(
     BackwardsCompatibility, CollectiveOpsAotTest,
     ValuesIn(GetTestParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
-        "collective_ops_aot_test_2gpu"))),
+        "collective_ops_aot_test_2gpu", AOTTestPlatform::kGpu))),
     [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });
@@ -149,7 +150,7 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     GoldenFileVerification, CollectiveOpsAotTest,
     ValuesIn(GetTestParamsOrDie(GetAotTestParamsForGoldenFileVerification(
-        "collective_ops_aot_test_2gpu"))),
+        "collective_ops_aot_test_2gpu", AOTTestPlatform::kGpu))),
     [](const TestParamInfo<AotTestParam>& info) {
       return absl::StrCat("v", info.param.version);
     });
