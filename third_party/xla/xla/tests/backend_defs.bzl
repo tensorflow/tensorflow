@@ -17,10 +17,7 @@
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google")
-load(
-    "//xla/tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
+load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -76,7 +73,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
+    gpu_backend_tags = backend_tags.get("gpu", if_google(["gpu", "notsan"], tf_gpu_tests_tags()))
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 

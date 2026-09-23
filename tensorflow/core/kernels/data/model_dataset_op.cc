@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -192,8 +194,9 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
         auto ram_budget_manager = ctx->ram_budget_manager();
-        model_thread_ =
-            ctx->StartThread("tf_data_model", [this, ram_budget_manager]() {
+        model_thread_.reset(Env::Default()->StartThread(
+            /*thread_options=*/{}, "tf_data_model",
+            tsl::WithCurrentContext([this, ram_budget_manager]() {
               int64_t captured_cpu_budget = cpu_budget_;
               int64_t captured_ram_budget = ram_budget_;
               absl::Status status = model_->OptimizeLoop(
@@ -205,7 +208,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                 LOG(WARNING)
                     << "Optimization loop failed: " << status.ToString();
               }
-            });
+            })));
       }
       return absl::OkStatus();
     }
