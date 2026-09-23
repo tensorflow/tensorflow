@@ -1,0 +1,7 @@
+def ida'uu(a, b):
+    bu'aa = a + b
+    return bu meeqqa  # Bu'aa sana gara alatti deebisa
+
+# Bu'aa funktshoona irraa deebi'e variable keessa kaawwachuu
+gimbi = ida'uu(10, 20)
+print(f"Ida'amni isaanii: {gimbi}")  # Bu'aan: 30
