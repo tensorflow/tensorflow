@@ -763,7 +763,6 @@ lit_test_suite_for_gpus(
             "dot_bf16.hlo",
             "element_wise_row_vectorization.hlo",
             "scatter_bf16.hlo",
-            "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
             "pdl.hlo",
@@ -777,13 +776,11 @@ lit_test_suite_for_gpus(
         ],
         "mi350": [
             "dot_bf16.hlo",
-            "single_instruction.hlo",
             "pdl.hlo",
         ],
         "mi450": [
             # TODO: re-enable once mi450 memory_bandwidth is finalized.
             "memory_bandwidth_fusion.hlo",
-            "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
