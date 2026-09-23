@@ -4308,7 +4308,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
 
   Args:
-    x: A Tensor with type `float32` or `float64`.
+    x: A Tensor with type `float16`, `bfloat16`, `float32`, or `float64`.
     name: A name for the operation (optional).
 
   Returns:
