@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_simplifier.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -46,10 +47,16 @@ namespace {
 using ::testing::_;
 namespace op = xla::testing::opcode_matchers;
 
+// Returns the first kWhile instruction in computation, or nullptr.
+HloInstruction* FindFirstWhile(HloComputation* computation) {
+  const auto& instrs = computation->instructions();
+  auto it = absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
+  return it == instrs.end() ? nullptr : *it;
+}
+
 // Returns the first kWhile instruction within m's entry computation.
 HloInstruction* FindFirstWhile(HloModule* m) {
-  const auto& instrs = m->entry_computation()->instructions();
-  return *absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
+  return FindFirstWhile(m->entry_computation());
 }
 
 class WhileLoopSimplifierTest : public HloHardwareIndependentTestBase {
@@ -2244,6 +2251,177 @@ TEST_F(WhileLoopSimplifierTest, SimplifierWithDisabledWhileLoopDceAttr) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+// The pass caches per computation facts (send/recv, kDomain, side effects)
+// for one run. This pins that the cache is dropped when a loop is rewritten
+// mid run. The innermost loop carries a kDomain. Once it is removed, the
+// middle loop's induction variables are merged only if the middle body is no
+// longer credited with that kDomain.
+TEST_F(WhileLoopSimplifierTest, CachedComputationFactsDroppedAfterChange) {
+  const std::string hlo_string = R"(
+  HloModule CachedComputationFactsDroppedAfterChange
+
+  inner.cond {
+    p = (s32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    zero = s32[] constant(0)
+    ROOT lt = pred[] compare(i, zero), direction=LT
+  }
+  inner.body {
+    p = (s32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    dom = s32[] domain(i), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+    ROOT t = (s32[]) tuple(dom)
+  }
+  middle.cond {
+    p = (s32[], s32[], s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    ten = s32[] constant(10)
+    ROOT lt = pred[] compare(i, ten), direction=LT
+  }
+  middle.body {
+    p = (s32[], s32[], s32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    j = s32[] get-tuple-element(p), index=1
+    dead = s32[] get-tuple-element(p), index=3
+    one = s32[] constant(1)
+    two = s32[] constant(2)
+    zero = s32[] constant(0)
+    i.next = s32[] add(i, one)
+    j.next = s32[] add(j, two)
+    inner.init = (s32[]) tuple(zero)
+    inner = (s32[]) while(inner.init), condition=inner.cond, body=inner.body
+    e.next = s32[] get-tuple-element(inner), index=0
+    ROOT t = (s32[], s32[], s32[], s32[]) tuple(i.next, j.next, e.next, dead)
+  }
+  outer.cond {
+    p = (s32[], s32[]) parameter(0)
+    k = s32[] get-tuple-element(p), index=0
+    three = s32[] constant(3)
+    ROOT lt = pred[] compare(k, three), direction=LT
+  }
+  outer.body {
+    p = (s32[], s32[]) parameter(0)
+    k = s32[] get-tuple-element(p), index=0
+    dead = s32[] get-tuple-element(p), index=1
+    zero = s32[] constant(0)
+    five = s32[] constant(5)
+    middle.init = (s32[], s32[], s32[], s32[]) tuple(zero, five, zero, zero)
+    middle = (s32[], s32[], s32[], s32[]) while(middle.init), condition=middle.cond, body=middle.body
+    mj = s32[] get-tuple-element(middle), index=1
+    me = s32[] get-tuple-element(middle), index=2
+    k.1 = s32[] add(k, mj)
+    k.next = s32[] add(k.1, me)
+    ROOT t = (s32[], s32[]) tuple(k.next, dead)
+  }
+  ENTRY main {
+    zero = s32[] constant(0)
+    dup.init = (s32[]) tuple(zero)
+    dup = (s32[]) while(dup.init), condition=inner.cond, body=inner.body
+    outer.init = (s32[], s32[]) tuple(zero, zero)
+    outer = (s32[], s32[]) while(outer.init), condition=outer.cond, body=outer.body
+    ROOT r = s32[] get-tuple-element(outer), index=0
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+
+  // First run: the inner loop is shared with the dead loop dup and is
+  // skipped. The middle and outer loops lose a dead tuple element, which
+  // rebuilds their bodies at the end of the module's computation list. The
+  // pass's DCE removes dup.
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  ASSERT_TRUE(changed);
+  HloInstruction* outer = FindFirstWhile(m.get());
+  ASSERT_NE(outer, nullptr);
+  HloInstruction* middle = FindFirstWhile(outer->while_body());
+  ASSERT_NE(middle, nullptr);
+  ASSERT_NE(FindFirstWhile(middle->while_body()), nullptr);
+  // The second run therefore visits the outer loop, then the inner loop, then
+  // the middle loop.
+  auto position = [&](const HloComputation* comp) {
+    auto comps = m->computations();
+    return std::distance(comps.begin(), absl::c_find(comps, comp));
+  };
+  ASSERT_LT(position(m->entry_computation()), position(middle->while_body()));
+  ASSERT_LT(position(middle->while_body()), position(outer->while_body()));
+
+  // Second run: the outer loop has nothing to simplify and the inner loop
+  // (trip count 0) is removed. The middle loop no longer contains a kDomain,
+  // so its induction variables are merged.
+  ASSERT_OK_AND_ASSIGN(changed, WhileLoopSimplifier().Run(m.get()));
+  ASSERT_TRUE(changed);
+  outer = FindFirstWhile(m.get());
+  ASSERT_NE(outer, nullptr);
+  middle = FindFirstWhile(outer->while_body());
+  ASSERT_NE(middle, nullptr);
+  EXPECT_EQ(FindFirstWhile(middle->while_body()), nullptr);
+  // The merged induction variable is passed through the body unchanged.
+  EXPECT_THAT(middle->while_body()->root_instruction(),
+              op::Tuple(_, op::GetTupleElement(op::Parameter(), 1), _));
+}
+
+// An async-update or async-done carries no called computation of its own; its
+// side effect is the wrapped instruction's, reached through the chain. Such an
+// instruction keeps the loop inputs it depends on alive, as the start does.
+TEST_F(WhileLoopSimplifierTest, AsyncChainKeepsItsInputsAlive) {
+  const std::string hlo_string = R"(
+  HloModule AsyncChainKeepsItsInputsAlive
+
+  async_comp {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT cc = f32[] custom-call(a, b), custom_call_target="Foo", custom_call_has_side_effect=SIDE_EFFECT
+  }
+  cond {
+    p = (s32[], f32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    ten = s32[] constant(10)
+    ROOT lt = pred[] compare(i, ten), direction=LT
+  }
+  body {
+    p = (s32[], f32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    x = f32[] get-tuple-element(p), index=1
+    y = f32[] get-tuple-element(p), index=2
+    one = s32[] constant(1)
+    i.next = s32[] add(i, one)
+    start = ((f32[]), f32[], s32[]) async-start(x), calls=async_comp
+    update = ((f32[], f32[]), f32[], s32[]) async-update(start, y)
+    done = f32[] async-done(update)
+    ROOT t = (s32[], f32[], f32[]) tuple(i.next, x, y)
+  }
+  ENTRY main {
+    zero = s32[] constant(0)
+    one = f32[] constant(1)
+    two = f32[] constant(2)
+    init = (s32[], f32[], f32[]) tuple(zero, one, two)
+    loop = (s32[], f32[], f32[]) while(init), condition=cond, body=body
+    ROOT r = s32[] get-tuple-element(loop), index=0
+  }
+  )";
+  // y feeds only the update, whose side effect is the custom call's. Only
+  // the start depends on x.
+  {
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                             hlo_string, {{"SIDE_EFFECT", "true"}})));
+    HloInstruction* loop = FindFirstWhile(m.get());
+    ASSERT_NE(loop, nullptr);
+    ASSERT_OK_AND_ASSIGN(bool changed, TryRemoveDeadWhileParams(loop));
+    EXPECT_FALSE(changed);
+  }
+  // Without the side effect both x and y are dead.
+  {
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                             hlo_string, {{"SIDE_EFFECT", "false"}})));
+    HloInstruction* loop = FindFirstWhile(m.get());
+    ASSERT_NE(loop, nullptr);
+    ASSERT_OK_AND_ASSIGN(bool changed, TryRemoveDeadWhileParams(loop));
+    EXPECT_TRUE(changed);
+    EXPECT_THAT(FindFirstWhile(m.get()), op::While(op::Tuple(op::Constant())));
+  }
 }
 
 }  // namespace
