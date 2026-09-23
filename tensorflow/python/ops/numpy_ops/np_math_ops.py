@@ -450,8 +450,9 @@ def heaviside(x1, x2):  # pylint: disable=missing-function-docstring
     # Integer dtypes cannot represent NaN, so only apply this to floating
     # inputs.
     if np.issubdtype(x1.dtype.as_numpy_dtype, np.inexact):
-      if not np.issubdtype(dtype.as_numpy_dtype, np.inexact):
-        result = math_ops.cast(result, np_utils.result_type(float))
+      # `x1` and `x2` share a promoted dtype (see `_bin_op`), so when `x1` is
+      # floating-point `result` already is too; no extra cast is required
+      # before injecting NaN.
       nan = constant_op.constant(np.nan, dtype=result.dtype)
       result = array_ops.where_v2(math_ops.is_nan(x1), nan, result)
     return result
