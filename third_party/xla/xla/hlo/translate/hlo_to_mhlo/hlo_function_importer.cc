@@ -20,12 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -84,6 +86,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1294,10 +1297,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kCompare: {
       auto compare = Cast<HloCompareInstruction>(instruction);
       attributes.push_back(ConvertComparisonDirection(compare->direction()));
-      auto default_type = Comparison::DefaultComparisonType(
+      auto default_order = Comparison::DefaultOrdering(
           compare->operand(0)->shape().element_type());
-      if (compare->type() != default_type) {
-        attributes.push_back(ConvertComparisonType(compare->type()));
+      if (compare->order() != default_order) {
+        attributes.push_back(ConvertComparisonOrder(compare->order()));
       }
       return mlir::stablehlo::CompareOp::create(*func_builder, loc, result_type,
                                                 operands, attributes)
@@ -1890,6 +1893,100 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         op->setAttr(attr.getName(), attr.getValue());
       }
       return op.getOperation();
+    }
+    case HloOpcode::kShuffle: {
+      const HloShuffleInstruction* shuffle_instruction =
+          Cast<HloShuffleInstruction>(instruction);
+      const Shape& result_shape = shuffle_instruction->shape();
+      if (!result_shape.is_static()) {
+        return InvalidArgument(
+            "Importing a shuffle of a dynamically shaped operand is not "
+            "supported, got %s",
+            ShapeUtil::HumanString(result_shape));
+      }
+      int64_t rank = result_shape.dimensions().size();
+      mlir::Value current_val = operands[0];
+
+      switch (shuffle_instruction->mode()) {
+        case ShuffleMode::kRotate:
+          // Rotating a dimension by `shift` is equivalent to
+          // concat(dim[shift:], dim[:shift])
+          for (const auto& [_, shift, dim] :
+               llvm::enumerate(shuffle_instruction->rotate().shifts(),
+                               shuffle_instruction->dimensions())) {
+            int64_t dim_size = result_shape.dimensions(dim);
+            int64_t norm_shift = shuffle::NormalizeShift(shift, dim_size);
+
+            // 1. slice1 = a[norm_shift:]
+            llvm::SmallVector<int64_t> slice1_starts(rank, 0);
+            slice1_starts[dim] = norm_shift;
+            llvm::SmallVector<int64_t> slice1_limits(
+                result_shape.dimensions().begin(),
+                result_shape.dimensions().end());
+
+            // 2. slice2 = a[:norm_shift]
+            llvm::SmallVector<int64_t> slice2_starts(rank, 0);
+            llvm::SmallVector<int64_t> slice2_limits(
+                result_shape.dimensions().begin(),
+                result_shape.dimensions().end());
+            slice2_limits[dim] = norm_shift;
+
+            llvm::SmallVector<int64_t> strides(rank, 1);
+
+            auto slice1 = mlir::stablehlo::SliceOp::create(
+                *func_builder, loc, current_val, ConvertArray(slice1_starts),
+                ConvertArray(slice1_limits), ConvertArray(strides));
+            auto slice2 = mlir::stablehlo::SliceOp::create(
+                *func_builder, loc, current_val, ConvertArray(slice2_starts),
+                ConvertArray(slice2_limits), ConvertArray(strides));
+
+            // 3. concatenate([slice1, slice2], dimension=dim)
+            auto concat = mlir::stablehlo::ConcatenateOp::create(
+                *func_builder, loc,
+                llvm::ArrayRef<mlir::Value>{slice1.getResult(),
+                                            slice2.getResult()},
+                builder_->getI64IntegerAttr(dim));
+            current_val = concat.getResult();
+          }
+          break;
+        case ShuffleMode::kPermute:
+        case ShuffleMode::kMultiRotate: {
+          // A permute moves every element on its own, which a gather of one
+          // element of the operand per element of the result expresses, and a
+          // multi-rotate moves them in a pattern that a permute expresses, so
+          // both take this same gather-based lowering.
+          ABSL_ASSIGN_OR_RETURN(mlir::Value start_indices,
+                           ImportShuffleStartIndices(shuffle_instruction,
+                                                     func_builder, loc));
+
+          // Each index of `start_indices` addresses a single element, so every
+          // dimension of the operand is indexed, sliced down to one element and
+          // collapsed, which leaves the result with the shape of the operand.
+          GatherDimensionNumbers dimension_numbers;
+          for (int64_t dimension = 0; dimension < rank; ++dimension) {
+            dimension_numbers.add_collapsed_slice_dims(dimension);
+            dimension_numbers.add_start_index_map(dimension);
+          }
+          dimension_numbers.set_index_vector_dim(rank);
+          llvm::SmallVector<int64_t> slice_sizes(rank, 1);
+
+          current_val = mlir::stablehlo::GatherOp::create(
+              *func_builder, loc, result_type, operands[0], start_indices,
+              stablehlo::ConvertGatherDimensionNumbers(dimension_numbers,
+                                                       builder_),
+              ConvertArray(slice_sizes),
+              /*indices_are_sorted=*/false);
+          break;
+        }
+        case ShuffleMode::MODE_NOT_SET:
+          return InvalidArgument("Unsupported shuffle mode");
+      }
+
+      mlir::Operation* op = current_val.getDefiningOp();
+      for (const auto& attr : attributes) {
+        op->setAttr(attr.getName(), attr.getValue());
+      }
+      return op;
     }
     case HloOpcode::kRng: {
       auto shape = mlir::stablehlo::ConstantOp::create(
@@ -2582,6 +2679,131 @@ absl::StatusOr<Value> HloFunctionImporter::GetMlirValue(
                   instruction->ToString());
 }
 
+absl::StatusOr<Value> HloFunctionImporter::ImportShuffleStartIndices(
+    const HloShuffleInstruction* shuffle, mlir::OpBuilder* func_builder,
+    mlir::Location loc) {
+  const Shape& operand_shape = shuffle->operand(0)->shape();
+  const int64_t rank = operand_shape.dimensions().size();
+  absl::Span<const int64_t> dimensions = shuffle->dimensions();
+
+  // The indices of the shuffle hold one coordinate per shuffled dimension, and
+  // an index of the gather holds one coordinate per dimension of the operand,
+  // so both are laid out with the coordinates in an innermost dimension.
+  Literal indices;
+  switch (shuffle->mode()) {
+    case ShuffleMode::kPermute: {
+      ABSL_ASSIGN_OR_RETURN(indices,
+                       shuffle::GetPermuteIndices(shuffle->shuffle_mode()));
+      break;
+    }
+    case ShuffleMode::kMultiRotate: {
+      // The shifts of a multi-rotate are known here, and so is the coordinate
+      // that every element is rotated to, so the indices of the permute that
+      // moves the elements the same way are materialized once at compile time
+      // rather than computed on the device out of an iota and the shifts.
+      ABSL_ASSIGN_OR_RETURN(indices, shuffle::GetMultiRotatePermuteIndices(
+                                    shuffle->shuffle_mode(), dimensions[0],
+                                    operand_shape.dimensions(dimensions[0])));
+      break;
+    }
+    case ShuffleMode::kRotate:
+    case ShuffleMode::MODE_NOT_SET:
+      return InvalidArgument(
+          "Importing a shuffle in %s mode as a gather is not supported",
+          ShuffleModeToString(shuffle->mode()));
+  }
+  ABSL_ASSIGN_OR_RETURN(mlir::DenseElementsAttr indices_attr,
+                   CreateDenseElementsAttrFromLiteral(indices, *builder_));
+  Value coordinates =
+      mlir::stablehlo::ConstantOp::create(*func_builder, loc, indices_attr);
+
+  // Coordinates of dimensions that the shuffle leaves in place are added below,
+  // and those run up to the size of their dimension, so the coordinates need a
+  // type that holds every dimension size, which the indices need not have.
+  const absl::Span<const int64_t> operand_dimensions =
+      operand_shape.dimensions();
+  const int64_t largest_dimension =
+      operand_dimensions.empty() ? 0 : *absl::c_max_element(operand_dimensions);
+  mlir::Type coordinate_type =
+      largest_dimension <= std::numeric_limits<int32_t>::max()
+          ? func_builder->getI32Type()
+          : func_builder->getI64Type();
+  mlir::RankedTensorType coordinates_type =
+      mlir::cast<mlir::RankedTensorType>(coordinates.getType());
+  if (coordinates_type.getElementType() != coordinate_type) {
+    coordinates = mlir::stablehlo::ConvertOp::create(
+        *func_builder, loc, coordinates_type.clone(coordinate_type),
+        coordinates);
+  }
+
+  // The indices may share coordinates across dimensions of size 1, and hold a
+  // single coordinate directly when one dimension is shuffled, so they are
+  // broadcast to the shape that holds one coordinate per shuffled dimension for
+  // every element of the result.
+  llvm::SmallVector<int64_t> coordinates_shape(
+      operand_shape.dimensions().begin(), operand_shape.dimensions().end());
+  coordinates_shape.push_back(dimensions.size());
+  if (coordinates_type.getShape() !=
+      llvm::ArrayRef<int64_t>(coordinates_shape)) {
+    llvm::SmallVector<int64_t> broadcast_dimensions(coordinates_type.getRank());
+    absl::c_iota(broadcast_dimensions, 0);
+    coordinates = mlir::stablehlo::BroadcastInDimOp::create(
+        *func_builder, loc,
+        mlir::RankedTensorType::get(coordinates_shape, coordinate_type),
+        coordinates, ConvertArray(broadcast_dimensions));
+  }
+
+  // The gather indexes every dimension, so a shuffle of all of them in order
+  // already holds all the coordinates that the gather needs.
+  if (static_cast<int64_t>(dimensions.size()) == rank &&
+      absl::c_is_sorted(dimensions)) {
+    return coordinates;
+  }
+
+  llvm::SmallVector<int64_t> coordinate_of_dimension(rank, -1);
+  for (const auto& [coordinate, dimension] : llvm::enumerate(dimensions)) {
+    coordinate_of_dimension[dimension] = coordinate;
+  }
+
+  // A dimension that the shuffle leaves in place keeps the coordinate that the
+  // element has in the result, which is what an iota along that dimension
+  // holds; a shuffled dimension takes its coordinate from the indices.
+  llvm::SmallVector<int64_t> component_shape(operand_shape.dimensions().begin(),
+                                             operand_shape.dimensions().end());
+  component_shape.push_back(1);
+  mlir::RankedTensorType component_type =
+      mlir::RankedTensorType::get(component_shape, coordinate_type);
+  llvm::SmallVector<int64_t> starts(rank + 1, 0);
+  llvm::SmallVector<int64_t> limits(component_shape);
+  llvm::SmallVector<int64_t> strides(rank + 1, 1);
+
+  llvm::SmallVector<Value> components;
+  components.reserve(rank);
+  for (int64_t dimension = 0; dimension < rank; ++dimension) {
+    const int64_t coordinate = coordinate_of_dimension[dimension];
+    if (coordinate < 0) {
+      components.push_back(mlir::stablehlo::IotaOp::create(
+          *func_builder, loc, component_type,
+          builder_->getI64IntegerAttr(dimension)));
+      continue;
+    }
+    // A single shuffled dimension leaves the coordinates holding just its
+    // coordinate, so they need no slicing to be singled out.
+    if (dimensions.size() == 1) {
+      components.push_back(coordinates);
+      continue;
+    }
+    starts.back() = coordinate;
+    limits.back() = coordinate + 1;
+    components.push_back(mlir::stablehlo::SliceOp::create(
+        *func_builder, loc, coordinates, ConvertArray(starts),
+        ConvertArray(limits), ConvertArray(strides)));
+  }
+  return mlir::stablehlo::ConcatenateOp::create(
+             *func_builder, loc, components, builder_->getI64IntegerAttr(rank))
+      .getResult();
+}
+
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
     ComparisonDirection direction) {
   return builder_->getNamedAttr(
@@ -2592,14 +2814,20 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
                                       .value()));
 }
 
-mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
-    Comparison::Type type) {
+mlir::NamedAttribute HloFunctionImporter::ConvertComparisonOrder(
+    ComparisonOrder order) {
+  mlir::stablehlo::ComparisonType type;
+  switch (order) {
+    case ComparisonOrder::kPartial:
+      type = mlir::stablehlo::ComparisonType::FLOAT;
+      break;
+    case ComparisonOrder::kTotal:
+      type = mlir::stablehlo::ComparisonType::TOTALORDER;
+      break;
+  }
   return builder_->getNamedAttr(
       "compare_type",
-      mlir::stablehlo::ComparisonTypeAttr::get(
-          builder_->getContext(),
-          mlir::stablehlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .value()));
+      mlir::stablehlo::ComparisonTypeAttr::get(builder_->getContext(), type));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
