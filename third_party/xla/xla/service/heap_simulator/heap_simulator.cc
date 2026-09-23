@@ -934,6 +934,12 @@ void BufferIntervalTree::RotateRight(BufferIntervalTreeNode* x) {
 }
 
 void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
+  if (!OccupiedRangeIndex::Supports(start, end, chunk)) {
+    occupied_ranges_state_ = OccupiedRangeIndexState::kUnsupported;
+    occupied_ranges_.Clear();
+  } else if (occupied_ranges_state_ == OccupiedRangeIndexState::kBuilt) {
+    occupied_ranges_.Add(start, end, chunk);
+  }
   const uint64_t priority =
       BufferIntervalTreeNodePriority(start, end, chunk.offset);
   node_storage_.emplace_back(BufferIntervalTreeNode{
@@ -1008,6 +1014,12 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
   if (to_delete == nullptr) {
     // Nothing to delete.
     return false;
+  }
+  // Merged ranges cannot give a chunk back; an index built later from the
+  // remaining nodes is still exact, an existing one is not.
+  if (occupied_ranges_state_ == OccupiedRangeIndexState::kBuilt) {
+    occupied_ranges_state_ = OccupiedRangeIndexState::kUnsupported;
+    occupied_ranges_.Clear();
   }
 
   // Treap delete: rotate `to_delete` down until it is a leaf, always bringing
@@ -1219,6 +1231,175 @@ int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
 void BufferIntervalTree::Clear() {
   root_ = nullptr;
   node_storage_.clear();
+  occupied_ranges_.Clear();
+  occupied_ranges_state_ = OccupiedRangeIndexState::kNotBuilt;
+}
+
+void BufferIntervalTree::DisableOccupiedRangeIndexForTesting() {
+  occupied_ranges_state_ = OccupiedRangeIndexState::kUnsupported;
+  occupied_ranges_.Clear();
+}
+
+bool BufferIntervalTree::IsOccupiedRangeIndexActiveForTesting() const {
+  return occupied_ranges_state_ == OccupiedRangeIndexState::kBuilt;
+}
+
+void BufferIntervalTree::AppendOccupiedRangesOverlappingInTime(
+    int64_t start, int64_t end, std::vector<Chunk>* chunks) const {
+  // An inverted query interval matches the nodes containing [end, start], a
+  // set the index cannot express.
+  if (start > end ||
+      occupied_ranges_state_ == OccupiedRangeIndexState::kUnsupported) {
+    ApplyToNodesOverlappingInTime(start, end,
+                                  [chunks](const BufferIntervalTreeNode* node) {
+                                    chunks->push_back(node->chunk);
+                                  });
+    return;
+  }
+  if (occupied_ranges_state_ == OccupiedRangeIndexState::kNotBuilt) {
+    // Walk the treap rather than node_storage_, which keeps removed nodes.
+    // Every node passed Supports, or the state would be kUnsupported.
+    std::vector<const BufferIntervalTreeNode*> pending;
+    if (root_ != nullptr) {
+      pending.push_back(root_);
+    }
+    while (!pending.empty()) {
+      const BufferIntervalTreeNode* node = pending.back();
+      pending.pop_back();
+      occupied_ranges_.Add(node->start, node->end, node->chunk);
+      if (node->left != nullptr) {
+        pending.push_back(node->left);
+      }
+      if (node->right != nullptr) {
+        pending.push_back(node->right);
+      }
+    }
+    occupied_ranges_state_ = OccupiedRangeIndexState::kBuilt;
+  }
+  occupied_ranges_.AppendOccupiedRanges(start, end, chunks);
+}
+
+/*static*/ bool BufferIntervalTree::OccupiedRangeIndex::Supports(
+    int64_t start, int64_t end, const Chunk& chunk) {
+  return start >= 0 && start <= end && end < (int64_t{1} << 62) &&
+         chunk.size > 0;
+}
+
+/*static*/ void BufferIntervalTree::OccupiedRangeIndex::InsertRange(
+    const Chunk& range, std::vector<Chunk>* ranges) {
+  // Ranges are sorted by offset, disjoint and non adjacent, so their ends are
+  // sorted too: the ranges to merge with `range` form one run, from the first
+  // range ending at or after range.offset to the last one starting at or
+  // before range.chunk_end().
+  auto first = std::lower_bound(
+      ranges->begin(), ranges->end(), range.offset,
+      [](const Chunk& c, int64_t offset) { return c.chunk_end() < offset; });
+  auto last = std::upper_bound(
+      first, ranges->end(), range.chunk_end(),
+      [](int64_t end, const Chunk& c) { return end < c.offset; });
+  if (first == last) {
+    ranges->insert(first, range);
+    return;
+  }
+  *first = Chunk::FromOffsetEnd(
+      std::min(first->offset, range.offset),
+      std::max(std::prev(last)->chunk_end(), range.chunk_end()));
+  ranges->erase(std::next(first), last);
+}
+
+int32_t BufferIntervalTree::OccupiedRangeIndex::NewNode() {
+  DCHECK_LT(nodes_.size(), std::numeric_limits<int32_t>::max());
+  nodes_.emplace_back();
+  return static_cast<int32_t>(nodes_.size() - 1);
+}
+
+void BufferIntervalTree::OccupiedRangeIndex::Add(int64_t start, int64_t end,
+                                                 const Chunk& chunk) {
+  DCHECK(Supports(start, end, chunk));
+  if (root_ < 0) {
+    root_ = NewNode();
+    capacity_ = 1;
+  }
+  // Grow to the right: the old root keeps covering [0, old capacity) as the
+  // left child of the new root, so the canonical nodes of the chunks already
+  // stored do not move.
+  while (end >= capacity_) {
+    const int32_t new_root = NewNode();
+    nodes_[new_root].left = root_;
+    nodes_[new_root].subtree = nodes_[root_].subtree;
+    root_ = new_root;
+    capacity_ *= 2;
+  }
+  Insert(root_, 0, capacity_ - 1, start, end, chunk);
+}
+
+void BufferIntervalTree::OccupiedRangeIndex::Insert(int32_t node, int64_t lo,
+                                                    int64_t hi, int64_t start,
+                                                    int64_t end,
+                                                    const Chunk& range) {
+  // `subtree` covers the canonical nodes themselves: Query reads only
+  // `subtree` at a node whose range the query interval contains.
+  InsertRange(range, &nodes_[node].subtree);
+  if (start <= lo && hi <= end) {
+    InsertRange(range, &nodes_[node].own);
+    return;
+  }
+  const int64_t mid = lo + (hi - lo) / 2;
+  if (start <= mid) {
+    if (nodes_[node].left < 0) {
+      const int32_t child = NewNode();
+      nodes_[node].left = child;
+    }
+    Insert(nodes_[node].left, lo, mid, start, end, range);
+  }
+  if (end > mid) {
+    if (nodes_[node].right < 0) {
+      const int32_t child = NewNode();
+      nodes_[node].right = child;
+    }
+    Insert(nodes_[node].right, mid + 1, hi, start, end, range);
+  }
+}
+
+void BufferIntervalTree::OccupiedRangeIndex::AppendOccupiedRanges(
+    int64_t start, int64_t end, std::vector<Chunk>* out) const {
+  // Nothing is stored outside [0, capacity_).
+  start = std::max<int64_t>(start, 0);
+  end = std::min(end, capacity_ - 1);
+  if (root_ < 0 || start > end) {
+    return;
+  }
+  Query(root_, 0, capacity_ - 1, start, end, out);
+}
+
+void BufferIntervalTree::OccupiedRangeIndex::Query(
+    int32_t node, int64_t lo, int64_t hi, int64_t start, int64_t end,
+    std::vector<Chunk>* out) const {
+  const Node& n = nodes_[node];
+  if (start <= lo && hi <= end) {
+    // Every chunk with a canonical node in this subtree is live somewhere in
+    // [lo, hi], hence in [start, end].
+    out->insert(out->end(), n.subtree.begin(), n.subtree.end());
+    return;
+  }
+  // The chunks canonical here are live throughout [lo, hi], which meets
+  // [start, end].
+  out->insert(out->end(), n.own.begin(), n.own.end());
+  const int64_t mid = lo + (hi - lo) / 2;
+  if (start <= mid && n.left >= 0) {
+    Query(n.left, lo, mid, start, end, out);
+  }
+  if (end > mid && n.right >= 0) {
+    Query(n.right, mid + 1, hi, start, end, out);
+  }
+}
+
+void BufferIntervalTree::OccupiedRangeIndex::Clear() {
+  // Release the nodes: a heap that clears between its heaps, or a tree that
+  // turned the index off, would otherwise hold them for the rest of its life.
+  std::vector<Node>().swap(nodes_);
+  root_ = -1;
+  capacity_ = 0;
 }
 
 template <typename BufferType>
@@ -2570,22 +2751,29 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
   used_chunks_.clear();
 
-  // Collect chunks that are in use.
-  interval_tree_.ApplyToNodesOverlappingInTime(
-      buffer_interval.start, buffer_interval.end,
-      [&](const BufferIntervalTreeNode* node) {
-        used_chunks_.push_back(node->chunk);
-      });
+  // Collect the memory occupied while the buffer or any of its colocations is
+  // live. The gap filter below hides the zero width gap between two touching
+  // chunks from every buffer of positive size, so merged ranges serve them;
+  // a buffer without a positive size fits that gap and needs the chunks.
+  auto collect_used_chunks = [&](int64_t start, int64_t end) {
+    if (buffer_interval.size > 0) {
+      interval_tree_.AppendOccupiedRangesOverlappingInTime(start, end,
+                                                           &used_chunks_);
+      return;
+    }
+    interval_tree_.ApplyToNodesOverlappingInTime(
+        start, end, [&](const BufferIntervalTreeNode* node) {
+          used_chunks_.push_back(node->chunk);
+        });
+  };
+  collect_used_chunks(buffer_interval.start, buffer_interval.end);
 
   for (const BufferType* colocation :
        GetTransitiveColocations(buffer_interval)) {
     const BufferInterval& interval = buffer_intervals_.at(colocation);
     VLOG(1) << "  Alias size " << interval.size << ", start " << interval.start
             << ", end " << interval.end << " " << interval.buffer->ToString();
-    interval_tree_.ApplyToNodesOverlappingInTime(
-        interval.start, interval.end, [&](const BufferIntervalTreeNode* node) {
-          used_chunks_.push_back(node->chunk);
-        });
+    collect_used_chunks(interval.start, interval.end);
   }
 
   // Sort used chunks by offset ascending.

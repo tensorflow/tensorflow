@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/heap_simulator/heap_simulator.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -1047,10 +1048,6 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const HloValue* buffer_h_;
   const HloValue* buffer_i_;
 
- private:
-  friend class GlobalDecreasingSizeBestFitHeapBenchmark;
-  friend class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark;
-
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
     const HloValue::Id id = buffers_.size();
@@ -1059,6 +1056,10 @@ class HeapAlgorithmTestBase : public ::testing::Test {
     buffers_.emplace_back(std::make_unique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
+
+ private:
+  friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+  friend class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark;
 
   HloComputation::Builder builder_;
   std::vector<std::unique_ptr<HloValue>> buffers_;
@@ -1417,6 +1418,93 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
   EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
 }
 
+// Free lists built from the occupied range index must place every buffer
+// where free lists built by enumerating the interval tree's nodes place it.
+TEST_F(GlobalDecreasingSizeBestFitHeapTest,
+       PlacementsMatchWithoutOccupiedRangeIndex) {
+  using HeapTy = GlobalDecreasingSizeBestFitHeap<HloValue>;
+  class Heap : public HeapTy {
+   public:
+    Heap(int64_t alignment, PackingStrategy strategy, bool use_index)
+        : HeapTy(alignment, strategy) {
+      if (!use_index) {
+        interval_tree_.DisableOccupiedRangeIndexForTesting();
+      }
+    }
+    bool index_active() const {
+      return interval_tree_.IsOccupiedRangeIndexActiveForTesting();
+    }
+  };
+  struct Event {
+    enum Kind { kAlloc, kShare, kFree } kind;
+    const HloValue* buffer;
+    const HloValue* share_with;
+    int64_t size;
+  };
+  std::mt19937_64 rng(2026);
+  for (int round = 0; round < 8; ++round) {
+    const int64_t alignment = (round % 2 == 0) ? 1 : 64;
+    const HeapTy::PackingStrategy strategy =
+        (round % 4 < 2) ? HeapTy::kSpatial : HeapTy::kTemporal;
+    // A random alloc, share and free trace; sizes with and without alignment
+    // slack, shares with buffers that may already be freed (as the heap
+    // simulator issues them).
+    std::vector<Event> trace;
+    std::vector<std::pair<const HloValue*, int64_t>> live;
+    std::vector<const HloValue*> all;
+    for (int step = 0; step < 500; ++step) {
+      if (live.empty() || rng() % 2 == 0) {
+        const HloValue* buffer = DummyBufferValue();
+        const int64_t size = 8 * (1 + rng() % 12);
+        if (!all.empty() && rng() % 4 == 0) {
+          trace.push_back(
+              {Event::kShare, buffer, all[rng() % all.size()], size});
+        } else {
+          trace.push_back({Event::kAlloc, buffer, nullptr, size});
+        }
+        live.push_back({buffer, size});
+        all.push_back(buffer);
+      } else {
+        const size_t i = rng() % live.size();
+        trace.push_back({Event::kFree, live[i].first, nullptr, live[i].second});
+        live.erase(live.begin() + i);
+      }
+    }
+    for (const auto& [buffer, size] : live) {
+      trace.push_back({Event::kFree, buffer, nullptr, size});
+    }
+
+    std::vector<HeapSimulator::HeapResult<HloValue>> results;
+    for (bool use_index : {true, false}) {
+      Heap heap(alignment, strategy, use_index);
+      for (const Event& event : trace) {
+        switch (event.kind) {
+          case Event::kAlloc:
+            heap.Alloc(event.buffer, event.size);
+            break;
+          case Event::kShare:
+            heap.ShareWith(event.buffer, event.share_with, event.size);
+            break;
+          case Event::kFree:
+            heap.Free(event.buffer, event.size);
+            break;
+        }
+      }
+      ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                           heap.Finish());
+      ASSERT_EQ(result.heap_results.size(), 1);
+      ASSERT_EQ(heap.index_active(), use_index);
+      results.push_back(result.heap_results[0]);
+    }
+    EXPECT_EQ(results[0].heap_size, results[1].heap_size) << "round " << round;
+    ASSERT_EQ(results[0].chunk_map.size(), results[1].chunk_map.size());
+    for (const auto& [buffer, chunk] : results[0].chunk_map) {
+      EXPECT_EQ(chunk, results[1].chunk_map.at(buffer))
+          << "round " << round << " buffer " << buffer->id();
+    }
+  }
+}
+
 class FindGlobalDecreasingSizeBestFitTest : public HeapAlgorithmTestBase {
  protected:
   class InheritedGlobalDecreasingSizeBestFitHeap
@@ -1472,6 +1560,10 @@ class FindGlobalDecreasingSizeBestFitTest : public HeapAlgorithmTestBase {
     BufferInterval& GetBufferInterval(const HloValue* buffer) {
       CHECK(buffer_intervals_.contains(buffer));
       return buffer_intervals_[buffer];
+    }
+
+    bool index_active() const {
+      return interval_tree_.IsOccupiedRangeIndexActiveForTesting();
     }
 
     // Expose protected function.
@@ -1572,6 +1664,20 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, ChunkCandidate) {
   // offset: 25, size: 10, start: 4, end: 8
   // Preferred offset 15 could not be given because it is occupied.
   EXPECT_EQ(pair(25, 35), heap_.MakeFindAndCommit(buffer_g_, 10, 4, 8, 15));
+}
+
+TEST_F(FindGlobalDecreasingSizeBestFitTest, ZeroSizeBufferFitsTouchingGap) {
+  using pair = std::pair<int64_t, int64_t>;
+  // Two touching chunks [8, 16) and [16, 32), live over [0, 10].
+  EXPECT_EQ(pair(8, 16), heap_.MakeFindAndCommit(buffer_a_, 8, 0, 10, 8));
+  EXPECT_EQ(pair(16, 32), heap_.MakeFindAndCommit(buffer_b_, 16, 0, 10, 16));
+  // A sized buffer is placed from the occupied range index, which merges the
+  // two chunks; its preferred offset 32 is free.
+  EXPECT_EQ(pair(32, 36), heap_.MakeFindAndCommit(buffer_c_, 4, 0, 10, 32));
+  ASSERT_TRUE(heap_.index_active());
+  // A zero size buffer fits the zero width gap at 16 between the touching
+  // chunks, the smallest gap, which only the chunks themselves reveal.
+  EXPECT_EQ(pair(16, 36), heap_.MakeFindAndCommit(buffer_d_, 0, 0, 10));
 }
 
 TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
@@ -2278,6 +2384,173 @@ TEST_F(IntervalTreeTest, BufferIntervalTreeHeapSize) {
   EXPECT_THAT(tree.HeapSizeInInterval(15, 22), 64);
   EXPECT_THAT(tree.HeapSizeInInterval(23, 24), 48);
   EXPECT_THAT(tree.HeapSizeInInterval(25, 26), 16);
+}
+
+// Sorted, disjoint memory ranges covered by `chunks`; adjacent ranges merge.
+std::vector<std::pair<int64_t, int64_t>> UnionOfRanges(
+    std::vector<HeapSimulator::Chunk> chunks) {
+  std::sort(chunks.begin(), chunks.end(),
+            [](const HeapSimulator::Chunk& a, const HeapSimulator::Chunk& b) {
+              return a.offset < b.offset;
+            });
+  std::vector<std::pair<int64_t, int64_t>> ranges;
+  for (const HeapSimulator::Chunk& chunk : chunks) {
+    if (!ranges.empty() && chunk.offset <= ranges.back().second) {
+      ranges.back().second = std::max(ranges.back().second, chunk.chunk_end());
+    } else {
+      ranges.push_back({chunk.offset, chunk.chunk_end()});
+    }
+  }
+  return ranges;
+}
+
+std::vector<HeapSimulator::Chunk> ChunksOfNodesOverlapping(
+    const BufferIntervalTree& tree, int64_t start, int64_t end) {
+  std::vector<HeapSimulator::Chunk> chunks;
+  tree.ApplyToNodesOverlappingInTime(
+      start, end, [&chunks](const BufferIntervalTreeNode* node) {
+        chunks.push_back(node->chunk);
+      });
+  return chunks;
+}
+
+std::vector<HeapSimulator::Chunk> OccupiedRangesOverlapping(
+    const BufferIntervalTree& tree, int64_t start, int64_t end) {
+  std::vector<HeapSimulator::Chunk> chunks;
+  tree.AppendOccupiedRangesOverlappingInTime(start, end, &chunks);
+  return chunks;
+}
+
+TEST_F(IntervalTreeTest, OccupiedRangesMatchNodeUnionUnderRandomAdds) {
+  // Random chunks whose offsets reuse a small set of slots, so ranges merge
+  // and split in every combination, interleaved with random queries, some of
+  // them partly or wholly outside the time span seen so far. The last round
+  // runs near 2^40 so the index grows through many capacity doublings.
+  std::mt19937_64 rng(1234);
+  for (int round = 0; round < 5; ++round) {
+    BufferIntervalTree tree;
+    const int64_t base_time = round == 4 ? (int64_t{1} << 40) : 0;
+    const int64_t max_time = 1 + (round * 977) % 3000;
+    for (int step = 0; step < 600; ++step) {
+      int64_t start = base_time + rng() % max_time;
+      int64_t end = start + rng() % (base_time + max_time - start);
+      if (rng() % 3 != 0) {
+        int64_t offset = 16 * (rng() % 24);
+        int64_t size = 16 * (1 + rng() % 5);
+        tree.Add(start, end,
+                 HeapSimulator::Chunk::FromOffsetSize(offset, size));
+      }
+      if (rng() % 4 == 0) {
+        start -= static_cast<int64_t>(rng() % 50);
+        end += static_cast<int64_t>(rng() % 50);
+      }
+      ASSERT_EQ(UnionOfRanges(OccupiedRangesOverlapping(tree, start, end)),
+                UnionOfRanges(ChunksOfNodesOverlapping(tree, start, end)))
+          << "round " << round << " step " << step << " query [" << start
+          << ", " << end << "]";
+      ASSERT_TRUE(tree.IsOccupiedRangeIndexActiveForTesting());
+      if (step % 50 == 0) {
+        // A query covering every time reads the root's own subtree list,
+        // which capacity growth must carry over.
+        const int64_t all = std::numeric_limits<int64_t>::max();
+        ASSERT_EQ(UnionOfRanges(OccupiedRangesOverlapping(tree, 0, all)),
+                  UnionOfRanges(ChunksOfNodesOverlapping(tree, 0, all)))
+            << "round " << round << " step " << step;
+      }
+    }
+    // Clear restarts the index: the next query builds an empty one.
+    tree.Clear();
+    EXPECT_FALSE(tree.IsOccupiedRangeIndexActiveForTesting());
+    EXPECT_TRUE(OccupiedRangesOverlapping(tree, 0, max_time).empty());
+    EXPECT_TRUE(tree.IsOccupiedRangeIndexActiveForTesting());
+  }
+}
+
+TEST_F(IntervalTreeTest, OccupiedRangesFollowRemove) {
+  BufferIntervalTree tree;
+  const HeapSimulator::Chunk low = HeapSimulator::Chunk::FromOffsetEnd(0, 16);
+  const HeapSimulator::Chunk high = HeapSimulator::Chunk::FromOffsetEnd(32, 64);
+  tree.Add(10, 20, low);
+  tree.Add(15, 30, high);
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(tree, 0, 12)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+  ASSERT_TRUE(tree.IsOccupiedRangeIndexActiveForTesting());
+  // A built index cannot follow a Remove; the nodes answer until Clear.
+  ASSERT_TRUE(tree.Remove(10, 20, low));
+  EXPECT_FALSE(tree.IsOccupiedRangeIndexActiveForTesting());
+  EXPECT_TRUE(OccupiedRangesOverlapping(tree, 0, 12).empty());
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(tree, 18, 40)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{32, 64}}));
+  tree.Add(0, 5, low);
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(tree, 0, 12)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+  EXPECT_FALSE(tree.IsOccupiedRangeIndexActiveForTesting());
+  tree.Clear();
+  tree.Add(10, 20, high);
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(tree, 0, 12)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{32, 64}}));
+  EXPECT_TRUE(tree.IsOccupiedRangeIndexActiveForTesting());
+
+  // A Remove before the first query leaves an exact index to be built.
+  BufferIntervalTree unbuilt;
+  unbuilt.Add(10, 20, low);
+  unbuilt.Add(15, 30, high);
+  ASSERT_TRUE(unbuilt.Remove(10, 20, low));
+  EXPECT_TRUE(OccupiedRangesOverlapping(unbuilt, 0, 12).empty());
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(unbuilt, 18, 40)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{32, 64}}));
+  EXPECT_TRUE(unbuilt.IsOccupiedRangeIndexActiveForTesting());
+}
+
+TEST_F(IntervalTreeTest, OccupiedRangesKeepNodeSemanticsForOddInputs) {
+  // An inverted query interval matches the nodes containing [end, start]
+  // (the index would report nothing).
+  BufferIntervalTree tree;
+  tree.Add(2, 8, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(5, 6, HeapSimulator::Chunk::FromOffsetEnd(16, 32));
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(tree, 6, 4)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+
+  // A zero sized chunk is reported as is, even inside an occupied range where
+  // merging would swallow it: it separates free space without occupying any.
+  // Adding it to a built index turns the index off.
+  BufferIntervalTree walls;
+  walls.Add(0, 10, HeapSimulator::Chunk::FromOffsetSize(4, 4));
+  ASSERT_EQ(OccupiedRangesOverlapping(walls, 3, 4).size(), 1);
+  ASSERT_TRUE(walls.IsOccupiedRangeIndexActiveForTesting());
+  walls.Add(0, 10, HeapSimulator::Chunk::FromOffsetSize(5, 0));
+  std::vector<HeapSimulator::Chunk> chunks =
+      OccupiedRangesOverlapping(walls, 3, 4);
+  ASSERT_EQ(chunks.size(), 2);
+  std::sort(chunks.begin(), chunks.end(),
+            [](const HeapSimulator::Chunk& a, const HeapSimulator::Chunk& b) {
+              return a.offset < b.offset;
+            });
+  EXPECT_EQ(chunks[0], HeapSimulator::Chunk::FromOffsetSize(4, 4));
+  EXPECT_EQ(chunks[1], HeapSimulator::Chunk::FromOffsetSize(5, 0));
+  EXPECT_FALSE(walls.IsOccupiedRangeIndexActiveForTesting());
+
+  // Negative start times are outside the index's domain.
+  BufferIntervalTree negative;
+  negative.Add(-3, 4, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  negative.Add(2, 9, HeapSimulator::Chunk::FromOffsetEnd(16, 32));
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(negative, -5, -1)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(negative, 3, 3)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 32}}));
+  EXPECT_FALSE(negative.IsOccupiedRangeIndexActiveForTesting());
+
+  // So are inverted intervals and times at or beyond 2^62.
+  BufferIntervalTree inverted;
+  inverted.Add(8, 3, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(inverted, 0, 10)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+  EXPECT_FALSE(inverted.IsOccupiedRangeIndexActiveForTesting());
+  BufferIntervalTree far;
+  far.Add(0, int64_t{1} << 62, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  EXPECT_THAT(UnionOfRanges(OccupiedRangesOverlapping(far, 5, 5)),
+              ContainerEq(std::vector<std::pair<int64_t, int64_t>>{{0, 16}}));
+  EXPECT_FALSE(far.IsOccupiedRangeIndexActiveForTesting());
 }
 
 class SlicedBufferIntervalTest : public ::testing::Test {
