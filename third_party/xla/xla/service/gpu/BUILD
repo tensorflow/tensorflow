@@ -711,6 +711,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":gpu_constants",
+        ":gpu_memory_space_assignment",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -742,6 +743,35 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_executable_buffer_allocator_test",
+    srcs = ["gpu_executable_buffer_allocator_test.cc"],
+    deps = [
+        ":buffer_allocations",
+        ":gpu_constants",
+        ":gpu_executable_buffer_allocator",
+        ":gpu_memory_space_assignment",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service:service_executable_run_options",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:mock_platform",
+        "//xla/stream_executor:mock_stream",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1742,6 +1772,7 @@ cc_library(
         ":alias_info",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:alias_passthrough_params",
+        "//xla/backends/gpu/transforms:constant_fill_copy_rewriter",
         "//xla/backends/gpu/transforms:copy_fusion",
         "//xla/backends/gpu/transforms:sanitize_constant_names",
         "//xla/hlo/ir:hlo",
@@ -2308,7 +2339,6 @@ cc_library(
     deps = [
         ":gpu_executable",
         ":gpu_executable_proto_cc",
-        "//xla:debug_options_flags",
         "//xla:printer",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -3629,6 +3659,7 @@ cc_library(
     hdrs = ["execution_stream_assignment.h"],
     deps = [
         ":gpu_latency_hiding_scheduler",
+        "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/transforms/collectives:collective_domain",

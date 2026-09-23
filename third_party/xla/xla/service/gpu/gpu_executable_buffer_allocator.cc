@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_va_remap_allocator.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -51,6 +52,21 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+// True for allocations that GenerateBufferAllocations obtains from the device
+// memory allocator: everything that is not a parameter, a constant, or a
+// thread-local buffer.
+bool IsTransientAllocation(const BufferAllocation& allocation) {
+  return !allocation.is_thread_local() &&
+         !allocation.is_entry_computation_parameter() &&
+         !allocation.is_constant();
+}
+
+// True for allocations in the collective memory space S(1).
+bool IsCollectiveMemoryAllocation(const BufferAllocation& allocation) {
+  return allocation.color() ==
+         static_cast<int64_t>(MemorySpaceColor::kCollective);
+}
 
 absl::Status CheckAlignment(const BufferAllocation& allocation,
                             se::DeviceAddressBase buffer, int arg_idx) {
@@ -230,15 +246,36 @@ GpuExecutableBufferAllocator::ExecutionScope::GenerateBufferAllocations(
   const int64_t num_buffers = owner_->allocations_.size();
   ABSL_RETURN_IF_ERROR(Prepare(run_options, device_ordinal));
 
-  std::vector<se::DeviceAddressBase> buffers;
-  buffers.reserve(num_buffers);
+  // Resolve allocations in two passes so that every collective memory (S(1))
+  // buffer of this execution is allocated before any default memory (S(0))
+  // buffer. S(1) buffers back NCCL symmetric windows and can only live in the
+  // fixed, preallocated part of the shared BFC arena, while S(0) may later be
+  // allowed to grow past it. Allocating S(1) first guarantees that S(0)
+  // pressure within the same execution can never take the space S(1) needs.
+  // Both passes keep allocation-index order, so S(1) placement stays a
+  // deterministic function of the program, and `buffers` remains indexed by
+  // allocation index.
+  std::vector<se::DeviceAddressBase> buffers(num_buffers);
+  auto resolve = [&](int64_t i) -> absl::Status {
+    const BufferAllocation& allocation = *owner_->allocations_[i];
+    ABSL_ASSIGN_OR_RETURN(buffers[i], BufferForAllocation(
+                                     get_parameter_buffer, globals, allocation,
+                                     memory_allocator, device_ordinal, i));
+    return CheckAlignment(allocation, buffers[i], i);
+  };
+
+  std::vector<int64_t> deferred_indices;
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *owner_->allocations_[i];
-    ABSL_ASSIGN_OR_RETURN(
-        buffers.emplace_back(),
-        BufferForAllocation(get_parameter_buffer, globals, allocation,
-                            memory_allocator, device_ordinal, i));
-    ABSL_RETURN_IF_ERROR(CheckAlignment(allocation, buffers.back(), i));
+    if (IsTransientAllocation(allocation) &&
+        !IsCollectiveMemoryAllocation(allocation)) {
+      deferred_indices.push_back(i);
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(resolve(i));
+  }
+  for (int64_t i : deferred_indices) {
+    ABSL_RETURN_IF_ERROR(resolve(i));
   }
   return BufferAllocations(buffers, device_ordinal, memory_allocator);
 }

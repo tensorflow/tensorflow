@@ -174,6 +174,12 @@ There are two ways to do this:
     of the flag flip if problems arise, and affected users can temporarily
     set the flag themselves before a rollback is performed.
 
+*   *Preprocessor Conditionals (`#ifdef`)*: Avoid using `#if` / `#ifdef` for
+    backend-, hardware-, or version-specific logic whenever possible. Prefer
+    runtime checks via `StreamExecutor`'s `DeviceDescription` or separate build
+    targets. See [The Hitchhiker's Guide to Fewer `#ifdef`s in XLA](./avoiding_ifdefs.md)
+    for details and examples.
+
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place
     in OpenXLA.

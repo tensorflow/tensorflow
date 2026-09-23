@@ -322,7 +322,29 @@ def subchannel_matmul_kernel(
     rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs, lhs_scales, rhs_scales)
 
-  return _target_fn
+  compiler_args: dict[str, Any] = {
+      "xla_detailed_logging": True,
+      "xla_tpu_control_large_2nd_minor_layout_for_x16": True,
+  }
+  if (
+      cfg.lhs_mem == pltpu.VMEM
+      and cfg.rhs_mem == pltpu.VMEM
+      and cfg.out_mem == pltpu.VMEM
+  ):
+    # For VMEM matmuls, if scoped VMEM is too high then we may hit OOM since we
+    # need space for the input operands outside of scoped VMEM. So set it to a
+    # relatively low value.
+    compiler_args["xla_tpu_scoped_vmem_limit_kib"] = 8 * 1024
+  lower_args = [
+      jax.ShapeDtypeStruct((m, k), cfg.lhs_dtype),
+      jax.ShapeDtypeStruct((k, n), cfg.rhs_quantized_dtype),
+      None,
+      jax.ShapeDtypeStruct((subblocks_per_tile, n), cfg.rhs_dtype),
+  ]
+  if cfg.pre_quantize_lhs:
+    lower_args[0] = jax.ShapeDtypeStruct((m, k), cfg.lhs_quantized_dtype)
+    lower_args[2] = jax.ShapeDtypeStruct((m, subblocks_per_tile), cfg.lhs_dtype)
+  return _target_fn.lower(*lower_args).compile(compiler_args)
 
 
 def subchannel_matmul_jax(
