@@ -232,7 +232,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
           /* .copy_input_to_scratch= */ true,
-          /* .emit_entry_barrier= */ true,
           /* .input_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .output_buffer_specs= */

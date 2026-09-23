@@ -204,6 +204,8 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kPartitionId:
     case Thunk::kReplicaId:
       return DebugOptions::FUSION;
+    case Thunk::kCollectiveKernel:
+      return DebugOptions::COLLECTIVES_KERNEL;
     case Thunk::kWhile:
       return DebugOptions::WHILE;
     case Thunk::kConditional:
@@ -214,7 +216,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllReduce:
     case Thunk::kAllToAll:
     case Thunk::kCollectiveBroadcast:
-    case Thunk::kCollectiveKernel:
     case Thunk::kCollectivePermute:
     case Thunk::kCollectiveReduce:
     case Thunk::kGroup:

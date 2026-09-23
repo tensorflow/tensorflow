@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -1248,81 +1247,109 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
   }
 }
 
-CollectiveCodegenConfig CreateCollectiveCodegenConfig(
-    const HloInstruction* instr) {
-  const HloInstruction* collective = instr;
-  if (instr->opcode() == HloOpcode::kFusion) {
-    collective = instr->fused_instructions_computation()->root_instruction();
-  }
-  CollectiveCodegenConfig config;
-  auto gpu_config = collective->backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return config;
-  }
-  const auto strategy =
-      gpu_config->collective_backend_config().kernel_strategy();
-  // One-shot AllGather: the runtime copies input to symmetric scratch and the
-  // kernel needs a barrier before reading peers' data.
-  if (collective->opcode() == HloOpcode::kAllGather &&
-      strategy == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT) {
-    config.copy_input_to_scratch = true;
-    config.emit_entry_barrier = true;
-  }
-  return config;
-}
+namespace {
 
-absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
-                                        int32_t world_size) {
-  // Find the xtile::EntryFuncOp in the module.
-  xtile::EntryFuncOp entry_func = nullptr;
-  for (auto fn : module.getOps<xtile::EntryFuncOp>()) {
-    entry_func = fn;
-    break;
+struct AllGatherRewriteContext {
+  mlir::stablehlo::AllGatherOp op;
+  xtile::EntryFuncOp entry_func;
+  xtile::ExtractTileOp input_extract;
+  xtile::SelectBufferOp pull_select;
+  mlir::Value rank_arg;
+  mlir::Value signal_buffers_arg;
+  int64_t world_size = 0;
+};
+
+absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
+    mlir::stablehlo::AllGatherOp op) {
+  if (op.getOperands().size() != 1) {
+    return absl::InvalidArgumentError(
+        "AllGather op must have exactly one operand.");
   }
+  auto entry_func = op->getParentOfType<xtile::EntryFuncOp>();
   if (!entry_func) {
-    return absl::InternalError(
-        "No xtile::EntryFuncOp found in module for barrier insertion.");
+    return absl::InvalidArgumentError(
+        "AllGather op must be in an XTile entry function.");
   }
-
-  // The opaque args are appended after the regular input/output args.
-  // Their count is stored in the "num_opaque_args" attribute.
   auto num_opaque_attr =
       entry_func->getAttrOfType<mlir::IntegerAttr>("num_opaque_args");
   if (!num_opaque_attr ||
       num_opaque_attr.getInt() < kNumCollectiveMetadataArgs) {
-    return absl::InternalError(
-        absl::StrCat("Expected at least ", kNumCollectiveMetadataArgs,
-                     " opaque args for collective entry barrier, got ",
-                     num_opaque_attr ? num_opaque_attr.getInt() : 0));
+    return absl::InvalidArgumentError(
+        "EntryFuncOp does not have collective metadata arguments.");
   }
 
-  // The opaque args start at (total_args - num_opaque_args).
+  mlir::Value input_tile = op.getOperand(0);
+  auto input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+      input_tile.getDefiningOp());
+  if (!input_extract && input_tile.getDefiningOp() &&
+      input_tile.getDefiningOp()->getNumOperands() > 0) {
+    // Workaround(i1_to_i8_workaround): booleans are stored as i8 and cast to
+    // i1 after ExtractTileOp.
+    input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+        input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
+  }
+  if (!input_extract) {
+    return absl::InvalidArgumentError(
+        "AllGather operand must be defined by xtile::ExtractTileOp.");
+  }
+
+  auto pull_select = llvm::dyn_cast_if_present<xtile::SelectBufferOp>(
+      input_extract.getSource().getDefiningOp());
+  if (!pull_select) {
+    return absl::InvalidArgumentError(
+        "AllGather ExtractTileOp source must be defined by "
+        "xtile::SelectBufferOp.");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto replica_groups,
+                   xla::ConvertReplicaGroups(op.getReplicaGroups(), op));
+  if (replica_groups->replica_groups().empty()) {
+    return absl::InvalidArgumentError(
+        "AllGather replica groups must not be empty.");
+  }
+
+  AllGatherRewriteContext ctx;
+  ctx.op = op;
+  ctx.entry_func = entry_func;
+  ctx.input_extract = input_extract;
+  ctx.pull_select = pull_select;
+  ctx.world_size = replica_groups->num_devices_per_group();
+
   int32_t total_args = entry_func.getNumArguments();
-  int32_t opaque_start =
+  int32_t metadata_args_start =
       total_args - num_opaque_attr.getInt() - kNumTileIndexArgs;
   // Layout: opaque[0]=rank, opaque[1]=invocation count (unused, the signal
   // value comes from a counter in device memory), opaque[2]=signal_buffers.
-  mlir::Value rank_arg = entry_func.getArgument(opaque_start);
-  mlir::Value signal_buffers_arg = entry_func.getArgument(opaque_start + 2);
+  ctx.rank_arg = entry_func.getArgument(metadata_args_start);
+  ctx.signal_buffers_arg = entry_func.getArgument(metadata_args_start + 2);
+  return ctx;
+}
 
-  // Insert at the beginning of the entry block, right after program_id
-  // extraction (which is the first op). We want the barrier before any
-  // scf.for tile loop.
-  mlir::Block& entry_block = entry_func.front();
-  auto loc = entry_func.getLoc();
-  mlir::ImplicitLocOpBuilder builder(loc, &entry_block, entry_block.begin());
+}  // namespace
+
+mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
+                                     mlir::PatternRewriter& rewriter) {
+  absl::StatusOr<AllGatherRewriteContext> maybe_ctx = BuildAllGatherContext(op);
+  if (!maybe_ctx.ok()) {
+    return rewriter.notifyMatchFailure(op, maybe_ctx.status().message());
+  }
+  AllGatherRewriteContext& ctx = *maybe_ctx;
+
+  mlir::ImplicitLocOpBuilder builder(ctx.pull_select.getLoc(), rewriter);
+  builder.setInsertionPoint(ctx.pull_select);
 
   mlir::Value block_id = ttir::GetProgramIdOp::create(builder, 0);
   mlir::Value signal_value = EmitDeviceInvocationCount(
-      builder, signal_buffers_arg, rank_arg, block_id, world_size);
+      builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size);
   // Inter-block barrier via signal flags. This blocks until all
   // remote ranks have also signaled.
-  mtx::BlockBarrierOp::create(builder, signal_buffers_arg, rank_arg,
+  mtx::BlockBarrierOp::create(builder, ctx.signal_buffers_arg, ctx.rank_arg,
                               signal_value, /*signal_slot=*/nullptr,
-                              builder.getI32IntegerAttr(world_size),
+                              builder.getI32IntegerAttr(ctx.world_size),
                               /*signal_stride=*/nullptr);
 
-  return absl::OkStatus();
+  rewriter.replaceOp(op, op.getOperand(0));
+  return mlir::success();
 }
 
 }  // namespace xla::gpu

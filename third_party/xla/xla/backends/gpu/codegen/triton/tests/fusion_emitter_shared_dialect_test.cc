@@ -584,8 +584,10 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
     CHECK: %[[SELECT2:.*]] = xtile.select_buffer %[[SELECT1]][%{{.*}}]
     CHECK-SAME: : memref<2xi64> -> memref<128x128xf32>
     CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
+    CHECK: %[[AG1:.*]] = "stablehlo.all_gather"(%[[LHS_TILE]])
+    CHECK: %[[AG2:.*]] = "stablehlo.all_gather"(%[[AG1]])
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
-    CHECK: stablehlo.dot_general %[[LHS_TILE]], %[[RHS_TILE]]
+    CHECK: stablehlo.dot_general %[[AG2]], %[[RHS_TILE]]
     )"));
 }
 
