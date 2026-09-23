@@ -113,7 +113,12 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     Options options;
     options.max_size_in_bytes = 128;
     options.alignment_in_bytes = 8;
-    options.verify = false;
+    // Verify that MSA does not produce overlapping alternate memory
+    // allocations. This is on by default so that every test is protected
+    // against chunk-overlap regressions without having to opt in. A test that
+    // currently trips the verifier must set `verify = false` explicitly, with a
+    // TODO tracking the underlying bug.
+    options.verify = true;
     options.alternate_memory_space = kAlternateMemorySpace;
     options.max_outstanding_prefetches = -1;
     options.max_outstanding_evictions = -1;
