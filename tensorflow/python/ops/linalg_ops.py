@@ -784,6 +784,17 @@ def norm(tensor,
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
 
+    # Match np.linalg.norm: out-of-bounds axes raise a clear AxisError
+    # (a ValueError) instead of an opaque backend kernel failure.
+    if axis is not None and tensor.shape.rank is not None:
+      for ax in axis:
+        normalized = ax + tensor.shape.rank if ax < 0 else ax
+        if normalized < 0 or normalized >= tensor.shape.rank:
+          raise ValueError(
+              f'axis {ax} is out of bounds for tensor of rank '
+              f'{tensor.shape.rank}'
+          )
+
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)

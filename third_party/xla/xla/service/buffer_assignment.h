@@ -944,6 +944,12 @@ class BufferAssigner {
     // If set and returns > 0, the returned limit is used instead of the
     // default module config's device memory size.
     std::function<int64_t(LogicalBuffer::Color)> color_memory_limit;
+
+    // Optional predicate returning true if the fast buffer assignment
+    // algorithms (FAST_MERGE / FAST_SPLIT) may be used for buffers of the given
+    // color. Colors it rejects are assigned with the DEFAULT algorithm. If
+    // unset, the fast algorithms may be used for all colors.
+    std::function<bool(LogicalBuffer::Color)> supports_fast_assignment;
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
@@ -1014,6 +1020,11 @@ class BufferAssigner {
   // returns 0, indicating that fallback or FastMerge bounds don't apply.
   int64_t GetMemoryLimit(const BufferAssignment& assignment,
                          LogicalBuffer::Color color) const;
+
+  // Returns true if the fast buffer assignment algorithms (FAST_MERGE /
+  // FAST_SPLIT) may be used for buffers of the given color. Colors that are
+  // not supported fall back to the DEFAULT algorithm.
+  bool SupportsFastAssignment(LogicalBuffer::Color color) const;
 
  private:
   absl::Status RunAssignBuffers(
