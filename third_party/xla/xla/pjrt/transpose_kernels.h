@@ -200,6 +200,31 @@ HWY_INLINE void CombineRowsCPS(Cont&& cont, Vs... in) {
   }
 }
 
+// Stream -> Pack adapter for loads
+template <int I, typename T, int bs, class D, size_t row_bytes, class Cont,
+          class... Vs>
+HWY_INLINE void LoadRowsCPS(D d, const char* a, int64_t lda, Cont&& cont,
+                            Vs... vs) {
+  if constexpr (I == bs) {
+    std::forward<Cont>(cont)(vs...);
+  } else {
+    auto v = LoadBytes<D, row_bytes>(d, a + lda * I);
+    LoadRowsCPS<I + 1, T, bs, D, row_bytes>(d, a, lda, std::forward<Cont>(cont),
+                                            vs..., v);
+  }
+}
+// Pack -> Stream adapter for 128-bit stores
+template <class D, size_t row_bytes, size_t stores_per_row, class... Vs>
+HWY_INLINE void StoreVecs128(D d, char* b, int64_t ldb, Vs... v) {
+  ForEachIndexed(
+      [&](auto idx_c, auto&& vec) {
+        constexpr size_t i = decltype(idx_c)::value;
+        StoreLanes<D, row_bytes>(d, b, ldb, vec, i * stores_per_row,
+                                 std::make_index_sequence<stores_per_row>{});
+      },
+      v...);
+}
+
 }  // namespace HWY_NAMESPACE
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
