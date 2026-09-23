@@ -15,12 +15,24 @@ limitations under the License.
 
 #include "xla/service/instruction_fusion.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -28,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/fusion_queue.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1113,6 +1126,420 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
   FusionDecision fusion_decision = InstructionFusion::ShouldFuseInPlaceOp(
       add, root, &alias_info_, std::nullopt);
   EXPECT_TRUE(fusion_decision.IsForbidden());
+}
+
+// What BruteForceQueue saw: the multi output fusion decisions it could check
+// and the refusals that disagreed with its search.
+struct BruteForceResults {
+  int fused = 0;
+  int refused = 0;
+  std::vector<std::string> mismatches;
+};
+
+// The multi output fusion candidates of the tests below: array shaped
+// producers with several users. A get-tuple-element of a multi output fusion
+// is left out, as backend policies leave it out: the generic loop fuses it by
+// making the fusion an operand of the consumer's fusion, whose parameter then
+// keeps the old tuple shape when that fusion gains an output.
+bool IsBruteForceCandidate(const HloInstruction* producer) {
+  return producer->IsFusible() && producer->user_count() > 1 &&
+         producer->shape().IsArray() &&
+         producer->opcode() != HloOpcode::kGetTupleElement;
+}
+
+// Dequeues the given consumers in the given order, each with all of its
+// operands, so a test controls which fusions happen before which multi output
+// fusion check; a consumer listed again after the entry that fuses it is
+// dequeued as its fusion. Decides for itself, from the reachability of the
+// graph as it is then, whether each multi output fusion candidate of a
+// dequeued consumer (other than the fusible (consumer, producer) name pairs,
+// which fuse regularly) would close a cycle, and holds the loop to it: a
+// refusal that disagrees is recorded, a fusion that disagrees would close a
+// cycle the loop cannot go on over and fails at once.
+class BruteForceQueue : public FusionQueue {
+ public:
+  BruteForceQueue(
+      std::vector<HloInstruction*> order,
+      std::vector<std::pair<absl::string_view, absl::string_view>> fusible,
+      BruteForceResults* results)
+      : order_(std::move(order)),
+        fusible_(std::move(fusible)),
+        results_(results) {}
+
+  std::pair<HloInstruction*, std::vector<int64_t>>
+  DequeueNextInstructionAndOperandsToFuseInOrder() override {
+    if (next_ == order_.size()) {
+      return {nullptr, {}};
+    }
+    HloInstruction* consumer = order_[next_++];
+    std::unique_ptr<HloReachabilityMap> reachability;
+    std::vector<int64_t> operands(consumer->operand_count());
+    absl::c_iota(operands, 0);
+    for (int64_t i : operands) {
+      const HloInstruction* producer = consumer->operand(i);
+      if (!IsBruteForceCandidate(producer) ||
+          absl::c_linear_search(
+              fusible_, std::pair(consumer->name(), producer->name()))) {
+        continue;
+      }
+      if (reachability == nullptr) {
+        reachability = HloReachabilityMap::Build(consumer->parent());
+      }
+      // A cycle: the producer reaches another operand or control predecessor
+      // of the consumer.
+      auto reached = [&](const HloInstruction* other) {
+        return other != producer && reachability->IsReachable(producer, other);
+      };
+      expected_fusible_[{producer, consumer}] =
+          !absl::c_any_of(consumer->operands(), reached) &&
+          !absl::c_any_of(consumer->control_predecessors(), reached);
+    }
+    return {consumer, operands};
+  }
+
+  void PreFusion(HloInstruction* producer, HloInstruction* consumer) override {
+    auto it = expected_fusible_.find({producer, consumer});
+    if (it == expected_fusible_.end()) {
+      return;  // Not a multi output fusion candidate.
+    }
+    ++results_->fused;
+    CHECK(it->second) << producer->name() << " into " << consumer->name()
+                      << " fused against the brute force search";
+  }
+  void NotFusingInstruction(HloInstruction* producer,
+                            HloInstruction* consumer) override {
+    auto it = expected_fusible_.find({producer, consumer});
+    if (it == expected_fusible_.end()) {
+      return;
+    }
+    ++results_->refused;
+    if (it->second) {
+      results_->mismatches.push_back(
+          absl::StrCat(producer->name(), " into ", consumer->name(),
+                       " refused against the brute force search"));
+    }
+  }
+  void OnFusingInstruction(HloInstruction* fusion,
+                           HloInstruction* original_producer,
+                           HloInstruction* original_consumer) override {
+    absl::c_replace(order_, original_consumer, fusion);
+  }
+  void RemoveInstruction(HloInstruction* instruction) override {}
+  const std::vector<bool>* FusionConfiguration() override { return nullptr; }
+
+ private:
+  std::vector<HloInstruction*> order_;
+  std::vector<std::pair<absl::string_view, absl::string_view>> fusible_;
+  size_t next_ = 0;
+  BruteForceResults* results_;
+  absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,
+                      bool>
+      expected_fusible_;
+};
+
+// Processes the consumers named in order through a BruteForceQueue, fuses
+// only the (consumer, producer) name pairs in fusible regularly, and offers
+// multi output fusion for every brute force candidate. after_fuse, if set,
+// runs on each new regular fusion, as a backend's fusion hook might.
+class MultiOutputCycleFusion : public InstructionFusion {
+ public:
+  using FusionHook = void (*)(HloComputation*, HloInstruction*);
+
+  MultiOutputCycleFusion(
+      const AliasInfo* alias_info, std::vector<absl::string_view> order,
+      std::vector<std::pair<absl::string_view, absl::string_view>> fusible,
+      BruteForceResults* results, FusionHook after_fuse = nullptr)
+      : InstructionFusion(InstructionFusion::IsExpensive, alias_info),
+        order_(std::move(order)),
+        fusible_(std::move(fusible)),
+        results_(results),
+        after_fuse_(after_fuse) {}
+
+ protected:
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       HloComputation* computation) override {
+    HloInstruction* fusion =
+        InstructionFusion::Fuse(producer, consumer, computation);
+    if (after_fuse_ != nullptr) {
+      after_fuse_(computation, fusion);
+    }
+    return fusion;
+  }
+
+  std::unique_ptr<FusionQueue> GetFusionQueue(
+      HloComputation* computation) override {
+    std::vector<HloInstruction*> order;
+    for (absl::string_view name : order_) {
+      HloInstruction* instruction = computation->GetInstructionWithName(name);
+      CHECK(instruction != nullptr) << name;
+      order.push_back(instruction);
+    }
+    return std::make_unique<BruteForceQueue>(std::move(order), fusible_,
+                                             results_);
+  }
+
+  FusionDecision ShouldFuse(HloInstruction* consumer,
+                            int64_t operand_index) override {
+    for (const auto& [consumer_name, producer_name] : fusible_) {
+      if (consumer->name() == consumer_name &&
+          consumer->operand(operand_index)->name() == producer_name) {
+        return FusionDecision::Allow();
+      }
+    }
+    return FusionDecision::Forbid("not in the fusible list");
+  }
+
+  FusionDecision IsConsumerSuitableForMultiOutputFusion(
+      const HloInstruction* consumer) const override {
+    return FusionDecision::Allow();
+  }
+
+  FusionDecision ShouldFuseOperandIntoMultiOutputFusion(
+      HloInstruction* consumer, int64_t operand_index) override {
+    return FusionDecision(
+        IsBruteForceCandidate(consumer->operand(operand_index)),
+        "not a brute force candidate");
+  }
+
+ private:
+  std::vector<absl::string_view> order_;
+  std::vector<std::pair<absl::string_view, absl::string_view>> fusible_;
+  BruteForceResults* results_;
+  FusionHook after_fuse_;
+};
+
+// A graph, the consumers to process in order, the regular fusions to allow
+// and an optional fusion hook (see MultiOutputCycleFusion). Each scenario
+// ends in a multi output fusion that would close a cycle through instructions
+// fused or raised earlier in the loop: the search from the producer has to
+// get there, and a level at or past the consumer's on the way would prune it.
+struct CycleScenario {
+  absl::string_view name;
+  absl::string_view hlo;
+  std::vector<absl::string_view> order;
+  std::vector<std::pair<absl::string_view, absl::string_view>> fusible;
+  MultiOutputCycleFusion::FusionHook after_fuse = nullptr;
+};
+
+class MultiOutputCycleCheckTest
+    : public InstructionFusionTest,
+      public ::testing::WithParamInterface<CycleScenario> {};
+
+// Every multi output fusion decision agrees with the brute force search of
+// the graph at the time of the decision, and the scenario's cycle is refused.
+TEST_P(MultiOutputCycleCheckTest, AgreesWithBruteForceSearch) {
+  const CycleScenario& scenario = GetParam();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(scenario.hlo));
+  BruteForceResults results;
+  MultiOutputCycleFusion fusion(&alias_info_, scenario.order, scenario.fusible,
+                                &results, scenario.after_fuse);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&fusion, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(results.mismatches, ::testing::IsEmpty());
+  EXPECT_GE(results.fused, 1);
+  EXPECT_GE(results.refused, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Scenarios, MultiOutputCycleCheckTest,
+    ::testing::ValuesIn<CycleScenario>({
+        // A fusion hook may give the fusion a predecessor deeper than its
+        // consumer: k3 comes to precede b's fusion by a control edge, so the
+        // fusion, x and z must go above k3, or the check for q into z prunes
+        // k3 and misses the cycle through the fusion. The levels exist by
+        // then: the first check, for m0 into m, computes them.
+        {"LiftsFusionAboveNewPredecessor",
+         R"(
+          HloModule test_module
+          ENTRY entry_computation {
+            p = f32[4] parameter(0)
+            t = f32[4] parameter(1)
+            m0 = f32[4] negate(p)
+            m1 = f32[4] abs(p)
+            m2 = f32[4] tanh(m0)
+            m = f32[4] add(m0, m1)
+            q = f32[4] exponential(t)
+            k1 = f32[4] tanh(q)
+            k2 = f32[4] tanh(k1)
+            k3 = f32[4] tanh(k2)
+            a = f32[4] negate(p)
+            b = f32[4] cosine(a)
+            x = f32[4] abs(b)
+            z = f32[4] add(x, q)
+            ROOT r = (f32[4], f32[4], f32[4], f32[4]) tuple(z, k3, m, m2)
+          })",
+         {"m", "b", "z"},
+         {{"b", "a"}},
+         [](HloComputation* computation, HloInstruction* fusion) {
+           CHECK_OK(computation->GetInstructionWithName("k3")
+                        ->AddControlDependencyTo(fusion));
+         }},
+        // A consumer whose other operands have no incoming edges needs no
+        // search: nothing reaches q, so a goes into c1 without one. y's other
+        // operand x2 has one, so the search runs and finds b's cycle; w's
+        // other operand k has one too, and the search allows d.
+        {"SkipsSearchWithoutTargets",
+         R"(
+          HloModule test_module
+          ENTRY entry_computation {
+            p = f32[4] parameter(0)
+            q = f32[4] parameter(1)
+            a = f32[4] negate(p)
+            a2 = f32[4] abs(a)
+            c1 = f32[4] add(a, q)
+            b = f32[4] exponential(p)
+            x2 = f32[4] tanh(b)
+            y = f32[4] add(b, x2)
+            k = f32[4] cosine(q)
+            d = f32[4] sine(p)
+            d2 = f32[4] floor(d)
+            w = f32[4] add(d, k)
+            ROOT r = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(a2, c1, y, w, d2)
+          })",
+         {"c1", "y", "w"}},
+        // A multi output fusion raises the producer's other users above it:
+        // after a goes into b, x and y read a through the fusion, one layer
+        // below b in the initial levels.
+        {"SeesMultiOutputFusion",
+         R"(
+          HloModule test_module
+          ENTRY entry_computation {
+            p = f32[4] parameter(0)
+            q = f32[4] exponential(p)
+            a = f32[4] negate(p)
+            x = f32[4] abs(a)
+            y = f32[4] add(x, q)
+            d1 = f32[4] tanh(q)
+            d2 = f32[4] floor(d1)
+            b = f32[4] multiply(a, d2)
+            ROOT root = f32[4] subtract(y, b)
+          })",
+         {"b", "y"}},
+        // A fusion hook may add users the consumer never had: y comes to read
+        // b's fusion, and the propagation must raise it too.
+        {"AfterUnverifiedFusion",
+         R"(
+          HloModule test_module
+          ENTRY entry_computation {
+            p = f32[4] parameter(0)
+            m0 = f32[4] negate(p)
+            m1 = f32[4] abs(p)
+            m2 = f32[4] tanh(m0)
+            m = f32[4] add(m0, m1)
+            w = f32[4] abs(p)
+            y = f32[4] tanh(w)
+            q = f32[4] exponential(p)
+            z = f32[4] add(y, q)
+            a = f32[4] negate(q)
+            b = f32[4] cosine(a)
+            ROOT r = (f32[4], f32[4], f32[4], f32[4]) tuple(m, m2, z, b)
+          })",
+         {"m", "b", "z"},
+         {{"b", "a"}},
+         [](HloComputation* computation, HloInstruction* fusion) {
+           CHECK_OK(
+               computation->GetInstructionWithName("y")->ReplaceOperandWith(
+                   0, fusion));
+         }},
+        // A multi output fusion into an instruction an earlier one raised:
+        // p1 into c lifts x1 to c's level, two layers up, and u into x1's
+        // fusion must lift n1, n2 and z past that, or the check for w into z
+        // prunes the fusion and misses the cycle through n1 and n2.
+        {"AfterNestedMove",
+         R"(
+          HloModule test_module
+          ENTRY entry_computation {
+            p = f32[4] parameter(0)
+            p1 = f32[4] abs(p)
+            u = f32[4] exponential(p)
+            w = f32[4] floor(p)
+            x1 = f32[4] clamp(p1, u, w)
+            n1 = f32[4] negate(u)
+            n2 = f32[4] tanh(n1)
+            z = f32[4] add(n2, w)
+            d1 = f32[4] tanh(p)
+            d2 = f32[4] tanh(d1)
+            d3 = f32[4] tanh(d2)
+            c = f32[4] multiply(p1, d3)
+            ROOT r = (f32[4], f32[4], f32[4]) tuple(x1, z, c)
+          })",
+         {"c", "x1", "z"}},
+    }),
+    [](const ::testing::TestParamInfo<CycleScenario>& info) {
+      return std::string(info.param.name);
+    });
+
+// Every multi output fusion decision on a pseudo random graph of 160
+// elementwise instructions, each consumer offered twice so that fusions into
+// fusions occur, agrees with the brute force search. The graph is fixed by the
+// generator's seed; both outcomes occur often enough for the comparison to
+// mean something.
+TEST_F(InstructionFusionTest, MultiOutputCycleCheckAgreesWithBruteForceSearch) {
+  constexpr int kInstructions = 160;
+  uint32_t state = 2026;
+  auto next = [&state](int n) {
+    state = state * 1664525u + 1013904223u;
+    return static_cast<int>((state >> 8) % n);
+  };
+  std::string hlo = R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    v0 = f32[4] parameter(0)
+    v1 = f32[4] parameter(1)
+)";
+  std::vector<int> users(kInstructions, 0);
+  for (int i = 2; i < kInstructions; ++i) {
+    static constexpr absl::string_view kUnary[] = {"negate", "exponential",
+                                                   "abs", "tanh"};
+    static constexpr absl::string_view kBinary[] = {"add", "multiply",
+                                                    "subtract", "maximum"};
+    const int reach = std::min(i, 10);
+    const int a = i - 1 - next(reach);
+    ++users[a];
+    if (next(3) == 0) {
+      absl::StrAppend(&hlo, "    v", i, " = f32[4] ", kUnary[next(4)], "(v", a,
+                      ")\n");
+      continue;
+    }
+    int b = a;
+    while (b == a) {
+      b = i - 1 - next(reach);
+    }
+    ++users[b];
+    absl::StrAppend(&hlo, "    v", i, " = f32[4] ", kBinary[next(4)], "(v", a,
+                    ", v", b, ")\n");
+  }
+  std::string roots;
+  std::string tuple_shape;
+  for (int i = 2; i < kInstructions; ++i) {
+    if (users[i] == 0) {
+      absl::StrAppend(&roots, roots.empty() ? "" : ", ", "v", i);
+      absl::StrAppend(&tuple_shape, tuple_shape.empty() ? "" : ", ", "f32[4]");
+    }
+  }
+  absl::StrAppend(&hlo, "    ROOT root = (", tuple_shape, ") tuple(", roots,
+                  ")\n  }\n");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  // Consumers from the last to the first, as the default queue orders them:
+  // a producer then meets a consumer whose other operands its earlier users
+  // may reach.
+  std::vector<std::string> names;
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = kInstructions - 1; i >= 2; --i) {
+      names.push_back(absl::StrCat("v", i));
+    }
+  }
+  BruteForceResults results;
+  MultiOutputCycleFusion fusion(
+      &alias_info_, std::vector<absl::string_view>(names.begin(), names.end()),
+      /*fusible=*/{}, &results);
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&fusion, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(results.mismatches, ::testing::IsEmpty());
+  EXPECT_GE(results.fused, 40);
+  EXPECT_GE(results.refused, 10);
 }
 
 class FusionDecisionTest : public HloHardwareIndependentTestBase {};
