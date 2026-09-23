@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -6084,6 +6086,172 @@ ENTRY entry {
   // Total Peak = 16396 + 4096 + 8 = 20496 bytes.
   //
   EXPECT_EQ(scheduler_core->GetMemoryPeak(), 20496);
+}
+
+TEST_F(LatencyHidingSchedulerTest, MemoryPressureTrackedOnlyWhenItCanBeRead) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+async_computation {
+  p = f32[1024] parameter(0)
+  ROOT ar = f32[1024] all-reduce(p), to_apply=sum
+}
+
+ENTRY entry {
+  p0 = f32[1024] parameter(0)
+  all-reduce.start = ((f32[1024]), f32[1024], u32[]) async-start(p0), calls=async_computation
+  c0 = f32[1024] negate(p0)
+  c1 = f32[1024] negate(c0)
+  all-reduce.done = f32[1024] async-done(all-reduce.start), calls=async_computation
+  ROOT root = f32[1024] add(c1, all-reduce.done)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  // The module and the scheduler stay alive while the core is inspected.
+  struct Run {
+    std::unique_ptr<HloModule> module;
+    std::unique_ptr<LatencyHidingScheduler> scheduler;
+    std::shared_ptr<SchedulerCore> core;
+  };
+  auto run = [&](const SchedulerConfig& sched_config, bool dump_schedule) {
+    Run result;
+    result.module = hlo_module->Clone();
+    result.module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_dump_latency_hiding_schedule(dump_schedule);
+    std::tie(result.scheduler, result.core) =
+        SetupScheduler(result.module.get(), sched_config).value();
+    EXPECT_OK(result.scheduler->Run(result.module.get()));
+    return result;
+  };
+
+  // No limit, but the state is requested: tracked.
+  SchedulerConfig tracked_config = GetDefaultSchedConfig();
+  tracked_config.track_memory_pressure_without_limit = true;
+  Run tracked = run(tracked_config, false);
+  EXPECT_TRUE(tracked.core->IsTrackingMemoryPressure());
+  EXPECT_GT(tracked.core->GetMemoryPeak(), 0);
+
+  // No limit and nothing reads the state: not built.
+  SchedulerConfig untracked_config = GetDefaultSchedConfig();
+  untracked_config.track_memory_pressure_without_limit = false;
+  Run untracked = run(untracked_config, false);
+  EXPECT_FALSE(untracked.core->IsTrackingMemoryPressure());
+  EXPECT_EQ(untracked.core->GetMemoryPeak(), 0);
+  EXPECT_EQ(static_cast<DefaultSchedulerCore*>(untracked.core.get())
+                ->GetModulePressureState(),
+            nullptr);
+
+  // A memory limit needs the state whatever the config says.
+  SchedulerConfig limit_config = untracked_config;
+  limit_config.memory_limit = 20000;
+  Run limited = run(limit_config, false);
+  EXPECT_TRUE(limited.core->IsTrackingMemoryPressure());
+  EXPECT_EQ(limited.core->GetMemoryPeak(), 20496);
+
+  // The schedule dump records memory usage per instruction, so it needs the
+  // state too.
+  Run dumped = run(untracked_config, true);
+  EXPECT_TRUE(dumped.core->IsTrackingMemoryPressure());
+  EXPECT_GT(dumped.core->GetMemoryPeak(), 0);
+  ASSERT_OK_AND_ASSIGN(ScheduleProto schedule_proto,
+                       dumped.core->GetCapturedScheduleProto());
+  ASSERT_EQ(schedule_proto.computation_schedules_size(), 1);
+  bool has_memory_trace = false;
+  for (const ScheduleProto::Instruction& instruction :
+       schedule_proto.computation_schedules(0).instructions()) {
+    has_memory_trace |= instruction.peak_memory_after() > 0;
+  }
+  EXPECT_TRUE(has_memory_trace);
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       ScheduleUnchangedWithoutMemoryPressureTracking) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  param = (bf16[1024]{0}, bf16[1024]{0}, pred[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param), index=2
+}
+
+while_body {
+  param = (bf16[1024]{0}, bf16[1024]{0}, pred[]) parameter(0)
+  gte0 = bf16[1024]{0} get-tuple-element(param), index=0
+  gte1 = bf16[1024]{0} get-tuple-element(param), index=1
+  gte2 = pred[] get-tuple-element(param), index=2
+  collective-permute.1 = bf16[1024]{0} collective-permute(gte0), source_target_pairs={{0,1},{1,2},{2,3}}
+  all-gather.1 = bf16[2048]{0} all-gather(gte1), dimensions={0}, replica_groups={{0,1}}
+  slice.1 = bf16[1024]{0} slice(all-gather.1), slice={[0:1024]}
+  negate.1 = bf16[1024]{0} negate(gte1)
+  negate.2 = bf16[1024]{0} negate(negate.1)
+  negate.3 = bf16[1024]{0} negate(negate.2)
+  add.1 = bf16[1024]{0} add(collective-permute.1, negate.3)
+  add.2 = bf16[1024]{0} add(slice.1, negate.2)
+  ROOT tuple = (bf16[1024]{0}, bf16[1024]{0}, pred[]) tuple(add.1, add.2, gte2)
+}
+
+ENTRY entry {
+  p0 = bf16[1024]{0} parameter(0)
+  p1 = bf16[1024]{0} parameter(1)
+  p2 = pred[] parameter(2)
+  negate.4 = bf16[1024]{0} negate(p0)
+  negate.5 = bf16[1024]{0} negate(negate.4)
+  tuple = (bf16[1024]{0}, bf16[1024]{0}, pred[]) tuple(negate.5, p1, p2)
+  while = (bf16[1024]{0}, bf16[1024]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+  collective-permute.2 = bf16[1024]{0} collective-permute(p1), source_target_pairs={{0,1},{1,2},{2,3}}
+  all-gather.2 = bf16[2048]{0} all-gather(p0), dimensions={0}, replica_groups={{0,1}}
+  slice.2 = bf16[1024]{0} slice(all-gather.2), slice={[1024:2048]}
+  negate.6 = bf16[1024]{0} negate(p1)
+  negate.7 = bf16[1024]{0} negate(negate.6)
+  gte0 = bf16[1024]{0} get-tuple-element(while), index=0
+  gte1 = bf16[1024]{0} get-tuple-element(while), index=1
+  add.3 = bf16[1024]{0} add(gte0, collective-permute.2)
+  add.4 = bf16[1024]{0} add(gte1, slice.2)
+  add.5 = bf16[1024]{0} add(add.3, negate.7)
+  ROOT add.6 = bf16[1024]{0} add(add.4, add.5)
+}
+)";
+  using ScheduleNames =
+      absl::flat_hash_map<std::string, std::vector<std::string>>;
+  auto schedule_names = [](const HloModule& module) {
+    ScheduleNames names;
+    for (const HloComputation* computation : module.computations()) {
+      if (!module.schedule().is_computation_scheduled(computation)) {
+        continue;
+      }
+      for (const HloInstruction* instruction :
+           module.schedule().sequence(computation).instructions()) {
+        names[computation->name()].emplace_back(instruction->name());
+      }
+    }
+    return names;
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto tracked_module, ParseHloText(hlo_string));
+  SchedulerConfig tracked_config = GetDefaultSchedConfig();
+  tracked_config.track_memory_pressure_without_limit = true;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunScheduler(tracked_module.get(), tracked_config));
+  EXPECT_TRUE(changed);
+
+  ASSERT_OK_AND_ASSIGN(auto untracked_module, ParseHloText(hlo_string));
+  SchedulerConfig untracked_config = GetDefaultSchedConfig();
+  untracked_config.track_memory_pressure_without_limit = false;
+  ASSERT_OK_AND_ASSIGN(changed,
+                       RunScheduler(untracked_module.get(), untracked_config));
+  EXPECT_TRUE(changed);
+
+  ScheduleNames tracked = schedule_names(*tracked_module);
+  ASSERT_EQ(tracked.size(), 3);
+  EXPECT_EQ(schedule_names(*untracked_module), tracked);
 }
 
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {

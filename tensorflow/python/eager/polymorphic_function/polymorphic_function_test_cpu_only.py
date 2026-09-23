@@ -33,8 +33,9 @@ class FunctionCpuOnlyTest(test.TestCase, parameterized.TestCase):
     if test.is_built_with_rocm() or test_util.is_xla_enabled():
       return
 
-    with self.assertRaisesRegex(errors.UnimplementedError,
-                                'support for that platform linked in'):
+    with self.assertRaisesRegex(
+        errors.NotFoundError, 'The PJRT client factory'
+    ):
 
       @polymorphic_function.function(jit_compile=True)
       def fn(x):
