@@ -161,7 +161,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/lib/core:status",
