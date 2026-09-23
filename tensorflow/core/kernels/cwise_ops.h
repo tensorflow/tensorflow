@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <type_traits>
 
@@ -29,6 +30,25 @@ limitations under the License.
 
 namespace Eigen {
 namespace internal {
+
+// Floating-point comparisons may treat subnormals as zero when FTZ is enabled.
+// Inspect the bits so Sign still distinguishes nonzero float32 values.
+struct scalar_sign_float_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(float x) const {
+    const uint32_t bits = Eigen::numext::bit_cast<uint32_t>(x);
+    const uint32_t magnitude = bits & 0x7fffffffU;
+    if (magnitude == 0) return 0.0f;
+    if (magnitude > 0x7f800000U) return x;  // NaN.
+    return (bits & 0x80000000U) ? -1.0f : 1.0f;
+  }
+};
+
+template <>
+struct functor_traits<scalar_sign_float_op> {
+  // Eigen's packet sign uses floating-point comparisons, which can flush
+  // subnormal inputs even when the scalar path is bit-safe.
+  enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
+};
 
 #if GOOGLE_CUDA
 template <>
@@ -990,6 +1010,9 @@ struct log1p : base<T, Eigen::internal::scalar_log1p_op<T>> {};
 
 template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T>> {};
+
+template <>
+struct sign<float> : base<float, Eigen::internal::scalar_sign_float_op> {};
 
 template <typename T>
 struct sinh : base<T, Eigen::internal::scalar_sinh_op<T>> {};

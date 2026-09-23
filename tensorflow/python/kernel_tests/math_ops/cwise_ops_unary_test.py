@@ -239,6 +239,25 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFloatSignSubnormals(self):
+    # Construct the inputs from bits so FTZ cannot discard a subnormal first.
+    bits = np.array([
+        0x00000001, 0x80000001, 0x000116C2, 0x800116C2,
+        0x00000000, 0x80000000, 0x3F800000, 0xBF800000,
+        0x7F800000, 0xFF800000,
+    ], dtype=np.uint32)
+    values = bits.view(np.float32)
+    expected = np.array([1, -1, 1, -1, 0, 0, 1, -1, 1, -1],
+                        dtype=np.float32)
+    for use_gpu in (False, True):
+      if use_gpu and not test.is_gpu_available():
+        continue
+      with test_util.device(use_gpu=use_gpu):
+        x = constant_op.constant(values)
+        for sign in (math_ops.sign, gen_math_ops.sign):
+          self.assertAllEqual(self.evaluate(sign(x)), expected)
+
   def testFloatErfinvNearOne(self):
     # Regression test for GitHub issue #121629: eager float32 erfinv used to
     # lose ~4 digits of precision for inputs close to +/-1 because it computed
