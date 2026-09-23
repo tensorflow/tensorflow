@@ -22,11 +22,12 @@ REGISTER4(UnaryOp, CPU, "Sign", functor::sign, int8_t, int16_t, int32_t,
           int64_t);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER5(UnaryOp, GPU, "Sign", functor::sign, Eigen::half, double, int64,
-          complex64, complex128);
+REGISTER6(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
+          int64, complex64, complex128);
+#else
+REGISTER(UnaryOp, GPU, "Sign", functor::sign, float);
 #endif
 
-REGISTER(UnaryOp, GPU, "Sign", functor::sign, float);
 REGISTER(UnaryOp, GPU, "Sign", functor::sign, bfloat16);
 
 // A special GPU kernel for int32.
