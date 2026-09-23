@@ -49,6 +49,19 @@ struct softmax_traits<Eigen::bfloat16> {
   using accumulator_type = float;
 };
 
+template <typename T>
+__global__ void SoftmaxSingleClassKernel(const T* __restrict__ logits,
+                                         T* __restrict__ output,
+                                         const int64_t num_elements,
+                                         const bool in_log_space) {
+  using acc_type = typename softmax_traits<T>::accumulator_type;
+  for (int64_t idx : GpuGridRangeX<int64_t>(num_elements)) {
+    acc_type val = static_cast<acc_type>(logits[idx]);
+    acc_type zero = val - val;
+    output[idx] = static_cast<T>(in_log_space ? zero : exp(zero));
+  }
+}
+
 template <typename T, typename U, int kUnroll>
 __global__ void GenerateNormalizedProb(const T* logits, const U* sum_probs,
                                        const T* max_logits, T* output,
@@ -195,6 +208,17 @@ class SoftmaxOpGPU : public OpKernel {
 
     const auto& cu_stream = GetGpuStream(context);
     if (logits_in_.NumElements() > 0) {
+      if (cols == 1) {
+        const auto& d = context->eigen_gpu_device();
+        GpuLaunchConfig config = GetGpuLaunchConfig(rows, d);
+        TF_CHECK_OK(GpuLaunchKernel(
+            SoftmaxSingleClassKernel<T>, config.block_count,
+            config.thread_per_block, 0, cu_stream,
+            reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
+            const_cast<T*>(softmax_out->flat<T>().data()), rows, log_));
+        return;
+      }
+
       Tensor max_logits;
       Tensor sum_probs;
       OP_REQUIRES_OK(context,
