@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/ffi/ffi_attributes_from_backend_config.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
@@ -1231,27 +1232,8 @@ class NativeCustomCallEmitterContextImpl
   }
 
   absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const override {
-    // Decode the opaque backend config into an FFI attributes map, mirroring
-    // EmitGenericCustomCall. For FFI handlers the backend config must be a
-    // string parsable into an MLIR dictionary attribute.
-    absl::StatusOr<GpuBackendConfig> backend_config =
-        instr_.backend_config<GpuBackendConfig>();
-    const std::string& backend_config_str =
-        backend_config.ok()
-            ? backend_config->custom_call_backend_config().attributes()
-            : instr_.raw_backend_config_string();
-    if (backend_config_str.empty()) {
-      return xla::ffi::Attributes::Create(xla::ffi::AttributesMap());
-    }
-    mlir::Attribute attr = mlir::parseAttribute(
-        backend_config_str, emitter_.ir_emitter_context_->mlir_context());
-    auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
-    TF_RET_CHECK(dict != nullptr)
-        << "Unsupported backend config. Expected a string parsable into a "
-           "dictionary attribute.";
-    ABSL_ASSIGN_OR_RETURN(xla::ffi::AttributesMap attributes,
-                     xla::ffi::BuildAttributesMap(dict));
-    return xla::ffi::Attributes::Create(std::move(attributes));
+    return FfiAttributesFromBackendConfig(
+        instr_, *emitter_.ir_emitter_context_->mlir_context());
   }
 
  private:

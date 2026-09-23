@@ -136,6 +136,7 @@ use_repo(
     "oneccl_v1",
     "onednn",
     "onednn_async",
+    "onedpl",
     "org_sqlite",
     "pthreadpool",
     "raft",
