@@ -37,6 +37,7 @@ xla_test(
     deps = [
         "//xla:literal",
         "//xla/service:hlo_module_config",
+        "//xla/tests:aot_interception_pjrt_client",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tests/aot_compatibility_experimental:test_lib",
