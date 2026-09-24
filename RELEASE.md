@@ -14,7 +14,8 @@
 
 ### Major Features and Improvements
 
-*   <MAJOR FEATURES GO HERE>
+* `tf.lite`
+    * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
 
 ### Bug Fixes and Other Changes
 
