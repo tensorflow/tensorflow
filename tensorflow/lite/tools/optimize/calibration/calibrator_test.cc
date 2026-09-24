@@ -731,6 +731,7 @@ TEST(CalibratorTest, NonVariableInputsNotReLoggedPostInvocation) {
   for (size_t i = 0; i < interpreter->inputs().size(); i++) {
     int input_tensor_idx = interpreter->inputs()[i];
     TfLiteTensor* tensor = interpreter->tensor(input_tensor_idx);
+    ASSERT_NE(tensor, nullptr);
     ASSERT_EQ(tensor->bytes, tensor_size * sizeof(float));
     for (size_t j = 0; j < tensor_size; j++) {
       tensor->data.f[j] = i + 1;
@@ -746,8 +747,10 @@ TEST(CalibratorTest, NonVariableInputsNotReLoggedPostInvocation) {
   EXPECT_EQ(kTfLiteOk, status);
   const float eps = 1e-6f;
   for (int tensor_idx = 0; tensor_idx < 4; tensor_idx++) {
-    EXPECT_NEAR(stats.find({0, tensor_idx})->second.min, tensor_idx + 1, eps);
-    EXPECT_NEAR(stats.find({0, tensor_idx})->second.max, tensor_idx + 1, eps);
+    auto it = stats.find({0, tensor_idx});
+    ASSERT_NE(it, stats.end());
+    EXPECT_NEAR(it->second.min, tensor_idx + 1, eps);
+    EXPECT_NEAR(it->second.max, tensor_idx + 1, eps);
   }
 }
 }  // namespace
