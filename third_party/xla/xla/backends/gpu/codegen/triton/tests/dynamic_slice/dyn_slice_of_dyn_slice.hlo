@@ -7,8 +7,6 @@
 
 fusion {
   p0 = f32[64] parameter(0)
-  // Fun fact: if you remove this convert and pass s32 parameter directly to the
-  // fusion, then the current emitter will generate incorrect code.
   c0 = s32[64] convert(p0)
   slice1 = s32[1] slice(c0), slice={[0:1]}
   off = s32[] reshape(slice1)
@@ -43,7 +41,7 @@ fusion {
 // CHECK-NEW:         xtile.insert %{{.*}} into %[[ARG1]][%[[C0]]] [32] [{{.*}}] : tensor<32xi32> -> memref<10xi32>
 // CHECK-NEW:         xtile.return
 //
-// CHECK-OLD-COUNT-3: arith.minsi
+// CHECK-OLD-COUNT-2: arith.minsi
 
 ENTRY main {
   p0 = f32[64] parameter(0)

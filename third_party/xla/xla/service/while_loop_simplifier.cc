@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/inlined_bit_set.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -53,15 +53,194 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 namespace m = match;
-using hlo_query::ContainsInstrWithOpcode;
 using std::optional;
+
+namespace {
+
+// rows bit sets of num_bits bits each, in one allocation.
+class DenseBitSets {
+ public:
+  DenseBitSets(int64_t rows, int64_t num_bits)
+      : rows_(rows),
+        num_bits_(num_bits),
+        words_per_row_((num_bits + kWordBits - 1) / kWordBits),
+        words_(rows * words_per_row_, 0) {}
+
+  void Set(int64_t row, int64_t bit) {
+    DCHECK_GE(bit, 0);
+    DCHECK_LT(bit, num_bits_);
+    Row(row)[bit / kWordBits] |= Mask(bit);
+  }
+
+  bool Test(int64_t row, int64_t bit) const {
+    DCHECK_GE(bit, 0);
+    DCHECK_LT(bit, num_bits_);
+    return (Row(row)[bit / kWordBits] & Mask(bit)) != 0;
+  }
+
+  // row |= other.
+  void Or(int64_t row, int64_t other) {
+    uint64_t* dst = Row(row);
+    const uint64_t* src = Row(other);
+    for (int64_t w = 0; w < words_per_row_; ++w) {
+      dst[w] |= src[w];
+    }
+  }
+
+  // row |= other, with bit of other ignored.
+  void OrWithout(int64_t row, int64_t other, int64_t bit) {
+    DCHECK_GE(bit, 0);
+    DCHECK_LT(bit, num_bits_);
+    uint64_t* dst = Row(row);
+    const uint64_t* src = Row(other);
+    const int64_t bit_word = bit / kWordBits;
+    for (int64_t w = 0; w < words_per_row_; ++w) {
+      const uint64_t keep = w == bit_word ? ~Mask(bit) : ~uint64_t{0};
+      dst[w] |= src[w] & keep;
+    }
+  }
+
+ private:
+  static constexpr int64_t kWordBits = 64;
+  static constexpr uint64_t Mask(int64_t bit) {
+    return uint64_t{1} << (bit % kWordBits);
+  }
+  uint64_t* Row(int64_t row) {
+    DCHECK_GE(row, 0);
+    DCHECK_LT(row, rows_);
+    return words_.data() + row * words_per_row_;
+  }
+  const uint64_t* Row(int64_t row) const {
+    DCHECK_GE(row, 0);
+    DCHECK_LT(row, rows_);
+    return words_.data() + row * words_per_row_;
+  }
+
+  int64_t rows_;
+  int64_t num_bits_;
+  int64_t words_per_row_;
+  std::vector<uint64_t> words_;
+};
+
+// Facts about a computation and everything it calls: whether it contains a
+// send/recv or a kDomain instruction and whether it has a side effect. Each
+// is a recursive walk, and the pass asks them for every loop, so a nested
+// body would be walked once per nesting level. The answers are cached per
+// computation while the module is unchanged; RunImpl clears the cache after
+// every transformation.
+class CalledComputationFacts {
+ public:
+  bool ContainsSendRecv(const HloComputation* comp) {
+    return OpcodeFacts(comp).send_recv;
+  }
+
+  // Only meaningful when ContainsSendRecv(comp) is false: the walk stops at
+  // the first send/recv because the pass never asks about kDomain then.
+  bool ContainsDomain(const HloComputation* comp) {
+    return OpcodeFacts(comp).domain;
+  }
+
+  // Same answer as HloInstruction::HasSideEffect, with the recursion into
+  // called computations served from the cache.
+  bool HasSideEffect(const HloInstruction* instr) {
+    // HloAsyncInstruction overrides HasSideEffect to ask the instruction it
+    // wraps. An async-update or async-done usually reaches that instruction
+    // through its chain and has no called computation of its own.
+    if (HloAsyncInstruction::ClassOf(instr)) {
+      return instr->HasSideEffect();
+    }
+    if (instr->HasSideEffectNoRecurse()) {
+      return true;
+    }
+    for (const HloComputation* callee : instr->called_computations()) {
+      if (HasSideEffect(callee)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Clear() { facts_.clear(); }
+
+ private:
+  struct Facts {
+    bool opcodes_known = false;
+    bool send_recv = false;
+    bool domain = false;
+    bool side_effect_known = false;
+    bool side_effect = false;
+  };
+
+  Facts OpcodeFacts(const HloComputation* comp) {
+    if (auto it = facts_.find(comp);
+        it != facts_.end() && it->second.opcodes_known) {
+      return it->second;
+    }
+    bool send_recv = false;
+    bool domain = false;
+    for (const HloInstruction* instr : comp->instructions()) {
+      switch (instr->opcode()) {
+        case HloOpcode::kSend:
+        case HloOpcode::kSendDone:
+        case HloOpcode::kRecv:
+        case HloOpcode::kRecvDone:
+          send_recv = true;
+          break;
+        case HloOpcode::kDomain:
+          domain = true;
+          break;
+        default:
+          break;
+      }
+      for (const HloComputation* callee : instr->called_computations()) {
+        if (send_recv) {
+          break;
+        }
+        const Facts callee_facts = OpcodeFacts(callee);
+        send_recv |= callee_facts.send_recv;
+        domain |= callee_facts.domain;
+      }
+      if (send_recv) {
+        break;
+      }
+    }
+    // Looked up after the walk: the recursion may have rehashed facts_.
+    Facts& result = facts_[comp];
+    result.opcodes_known = true;
+    result.send_recv = send_recv;
+    result.domain = domain;
+    return result;
+  }
+
+  bool HasSideEffect(const HloComputation* comp) {
+    if (auto it = facts_.find(comp);
+        it != facts_.end() && it->second.side_effect_known) {
+      return it->second.side_effect;
+    }
+    bool side_effect = false;
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (HasSideEffect(instr)) {
+        side_effect = true;
+        break;
+      }
+    }
+    // Looked up after the walk: the recursion may have rehashed facts_.
+    Facts& result = facts_[comp];
+    result.side_effect_known = true;
+    result.side_effect = side_effect;
+    return side_effect;
+  }
+
+  absl::flat_hash_map<const HloComputation*, Facts> facts_;
+};
+
+}  // namespace
 
 // This function removes trivial compare hlo instructions inside the while body.
 // Assuming a while loop with known trip count, k, loop induction variable i,
@@ -348,7 +527,8 @@ bool AllWhileParamConsumersGte(const HloInstruction* while_op) {
 
 }  // namespace
 
-absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+static absl::StatusOr<bool> TryRemoveDeadWhileParamsImpl(
+    HloInstruction* while_op, CalledComputationFacts& facts) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   if (HasDisableWhileLoopDceAttr(while_op)) {
     return false;
@@ -414,115 +594,199 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // 1) There is no use after the loop, and the input does not affect other
   // outputs (though it may update itself).
   // 2) A group of mutually dependent elements whose outputs are either unused
-  // after the loop or are passed-through unmodified. We use UnionFind to
+  // after the loop or are passed through unmodified. We use a union find to
   // approximate connected components (which has false negatives for directed
   // dependencies).
 
-  // Tracks the set of inputs that each instruction depends on (in one
-  // iteration). Used to find inputs affecting other outputs (case 1) and
-  // inputs affecting the condition or side effects (cases 1 & 2).
-  absl::flat_hash_map<HloInstruction*, InlinedBitSet<>> inst_input_deps;
-  // Find disjoint sets of connected instruction groups. This helps finding a
-  // group of inter-dependent indices that can be removed together. For case 2).
-  absl::flat_hash_map<HloInstruction*, UnionFind<HloInstruction*>>
-      disjoint_sets;
-  // Initialize.
+  // Only an index that is unused after the loop or passed through unmodified
+  // can be removed, in either case. The dependency sets below track just
+  // those candidate indices, numbered by candidate_bit.
+  auto is_passed_through = [&](int64_t index) {
+    const HloInstruction* output = while_body_root->operand(index);
+    return output->opcode() == HloOpcode::kGetTupleElement &&
+           output->operand(0) == while_body->parameter_instruction(0) &&
+           output->tuple_index() == index;
+  };
+  std::vector<int64_t> candidate_bit(tuple_size, -1);
+  int64_t num_candidates = 0;
+  for (int64_t i = 0; i < tuple_size; ++i) {
+    if (!used_indices_after_loop.Test(i) || is_passed_through(i)) {
+      candidate_bit[i] = num_candidates++;
+    }
+  }
+
+  // Instructions of the body and the condition are addressed by slot: the
+  // body's local ids first, then the condition's.
+  const int64_t body_slots = while_body->next_unique_instruction_internal_id();
+  const int64_t num_slots =
+      body_slots + while_cond->next_unique_instruction_internal_id();
+  auto slot_of = [&](const HloInstruction* inst) -> int64_t {
+    DCHECK(inst->parent() == while_body || inst->parent() == while_cond);
+    return (inst->parent() == while_body ? 0 : body_slots) + inst->local_id();
+  };
+  // Per slot, the set of candidate inputs the instruction depends on (in one
+  // iteration). Two extra rows accumulate the inputs that reach a side effect
+  // or the condition and the inputs that reach another output.
+  const int64_t side_effecting_row = num_slots;
+  const int64_t affecting_others_row = num_slots + 1;
+  DenseBitSets input_deps(num_slots + 2, num_candidates);
+  // Disjoint sets of connected instructions over the same slots. They give
+  // the groups of interdependent indices that can be removed together, for
+  // case 2).
+  std::vector<int64_t> set_parent(num_slots);
+  absl::c_iota(set_parent, 0);
+  auto find_set = [&](int64_t slot) {
+    while (set_parent[slot] != slot) {
+      set_parent[slot] = set_parent[set_parent[slot]];
+      slot = set_parent[slot];
+    }
+    return slot;
+  };
+  auto merge_sets = [&](int64_t a, int64_t b) {
+    set_parent[find_set(a)] = find_set(b);
+  };
+  // The parameters and the body root take no part in the dependencies.
+  const HloInstruction* body_param = while_body->parameter_instruction(0);
+  const HloInstruction* cond_param = while_cond->parameter_instruction(0);
+  auto is_tracked = [&](const HloInstruction* inst) {
+    return inst != body_param && inst != cond_param && inst != while_body_root;
+  };
+  // Merge the disjoint sets and seed the dependencies of the parameter's
+  // get-tuple-elements. Also collect the sinks, whose inputs must stay: the
+  // side effecting instructions and the condition's root.
+  std::vector<const HloInstruction*> sinks;
   for (HloComputation* comp : {while_body, while_cond}) {
     HloInstruction* while_input = comp->parameter_instruction(0);
     for (HloInstruction* inst : comp->instructions()) {
-      if (inst == while_input || inst == while_body_root) {
+      if (!is_tracked(inst)) {
         continue;
       }
-      disjoint_sets[inst].Get() = inst;
-    }
-  }
-  // Track the dependencies and merge the disjoint sets.
-  InlinedBitSet<> side_effecting_indices(tuple_size);
-  for (HloComputation* comp : {while_body, while_cond}) {
-    HloInstruction* while_input = comp->parameter_instruction(0);
-    for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
-      if (inst == while_input || inst == while_body_root) {
-        continue;
-      }
-      auto& deps = inst_input_deps.try_emplace(inst, tuple_size).first->second;
-      auto& my_set = disjoint_sets[inst];
+      const int64_t slot = slot_of(inst);
       if (inst->opcode() == HloOpcode::kGetTupleElement &&
           inst->operand(0) == while_input) {
-        deps.Set(inst->tuple_index());
+        if (candidate_bit[inst->tuple_index()] >= 0) {
+          input_deps.Set(slot, candidate_bit[inst->tuple_index()]);
+        }
         HloInstruction* output =
             while_body_root->mutable_operand(inst->tuple_index());
         if (output != inst) {
-          disjoint_sets[output].Merge(&my_set);
+          merge_sets(slot_of(output), slot);
         }
       } else {
-        for (HloInstruction* operand : inst->operands()) {
-          if (operand == while_body_root) {
-            // The root is skipped above, so it has no map entries. Looking it
-            // up here would insert one and could dangle deps and my_set.
-            continue;
-          }
-          disjoint_sets[operand].Merge(&my_set);
-          auto it = inst_input_deps.find(operand);
-          if (it != inst_input_deps.end()) {
-            deps |= it->second;
+        for (const HloInstruction* operand : inst->operands()) {
+          if (is_tracked(operand)) {
+            merge_sets(slot_of(operand), slot);
           }
         }
       }
-      if (inst->HasSideEffect() || inst == while_cond->root_instruction()) {
-        side_effecting_indices |= deps;
+      if (facts.HasSideEffect(inst) || inst == while_cond->root_instruction()) {
+        sinks.push_back(inst);
       }
     }
   }
+  // Fill input_deps for target and for everything it depends on: a depth
+  // first walk over the tracked operands that finishes each instruction once.
+  enum class VisitState : uint8_t { kNew, kOnStack, kDone };
+  std::vector<VisitState> state(num_slots, VisitState::kNew);
+  std::vector<const HloInstruction*> stack;
+  auto compute_deps = [&](const HloInstruction* target) {
+    stack.push_back(target);
+    while (!stack.empty()) {
+      const HloInstruction* inst = stack.back();
+      const int64_t slot = slot_of(inst);
+      if (state[slot] == VisitState::kDone) {
+        stack.pop_back();
+        continue;
+      }
+      if (state[slot] == VisitState::kNew) {
+        state[slot] = VisitState::kOnStack;
+        for (const HloInstruction* operand : inst->operands()) {
+          if (is_tracked(operand) &&
+              state[slot_of(operand)] == VisitState::kNew) {
+            stack.push_back(operand);
+          }
+        }
+        continue;
+      }
+      // Every operand is done; a get-tuple-element of the parameter has no
+      // tracked operand and keeps its seeded bit.
+      for (const HloInstruction* operand : inst->operands()) {
+        if (is_tracked(operand)) {
+          input_deps.Or(slot, slot_of(operand));
+        }
+      }
+      state[slot] = VisitState::kDone;
+      stack.pop_back();
+    }
+  };
+  for (const HloInstruction* sink : sinks) {
+    compute_deps(sink);
+    input_deps.Or(side_effecting_row, slot_of(sink));
+  }
   // Find inputs that can be removed because they don't affect others.
-  InlinedBitSet<> indices_affecting_others(tuple_size);
   for (int64_t i = 0; i < tuple_size; ++i) {
-    HloInstruction* output = while_body_root->mutable_operand(i);
-    auto it = inst_input_deps.find(output);
-    if (it != inst_input_deps.end()) {
-      InlinedBitSet<> deps = it->second;
+    const HloInstruction* output = while_body_root->operand(i);
+    compute_deps(output);
+    if (candidate_bit[i] >= 0) {
       // Ignore self-updates.
-      deps.Clear(i);
-      indices_affecting_others |= deps;
+      input_deps.OrWithout(affecting_others_row, slot_of(output),
+                           candidate_bit[i]);
+    } else {
+      input_deps.Or(affecting_others_row, slot_of(output));
     }
   }
   for (int64_t i = 0; i < tuple_size; ++i) {
-    if (!indices_affecting_others.Test(i) && !used_indices_after_loop.Test(i) &&
-        !side_effecting_indices.Test(i)) {
+    if (used_indices_after_loop.Test(i)) {
+      continue;
+    }
+    // Not used after the loop, so a candidate.
+    if (!input_deps.Test(affecting_others_row, candidate_bit[i]) &&
+        !input_deps.Test(side_effecting_row, candidate_bit[i])) {
       VLOG(2) << "Remove with dependencies " << i;
       used_tuple_indices.erase(i);
     }
   }
-  // Find the connected groups of input/output indices.
-  absl::flat_hash_map<HloInstruction*, absl::flat_hash_set<int64_t>> groups;
+  // Find the connected groups of input/output indices: (set, index) pairs
+  // sorted by set.
+  std::vector<std::pair<int64_t, int64_t>> group_members;
+  group_members.reserve(tuple_size +
+                        while_body->parameter_instruction(0)->user_count() +
+                        while_cond->parameter_instruction(0)->user_count());
   for (int64_t i = 0; i < tuple_size; ++i) {
-    HloInstruction* output = while_body_root->mutable_operand(i);
-    groups[disjoint_sets[output].Get()].insert(i);
+    group_members.emplace_back(find_set(slot_of(while_body_root->operand(i))),
+                               i);
   }
   for (HloComputation* comp : {while_body, while_cond}) {
     HloInstruction* while_input = comp->parameter_instruction(0);
     for (HloInstruction* gte : while_input->users()) {
-      groups[disjoint_sets[gte].Get()].insert(gte->tuple_index());
+      group_members.emplace_back(find_set(slot_of(gte)), gte->tuple_index());
     }
   }
-  for (const auto& group : groups) {
-    if (absl::c_any_of(group.second, [&](int64_t index) {
-          // We cannot remove this index causes side effects, or if its output
-          // is not passed through from input and it is used after the while op.
-          const HloInstruction* output = while_body_root->operand(index);
-          return side_effecting_indices.Test(index) ||
-                 (used_indices_after_loop.Test(index) &&
-                  !(output->opcode() == HloOpcode::kGetTupleElement &&
-                    output->operand(0) ==
-                        while_body->parameter_instruction(0) &&
-                    output->tuple_index() == index));
-        })) {
-      continue;
+  absl::c_sort(group_members);
+  auto index_blocks_removal = [&](int64_t index) {
+    // An index blocks its group when a side effect or the condition depends
+    // on it, or when it is not a candidate. The latter means used after the
+    // loop and not passed through.
+    return candidate_bit[index] < 0 ||
+           input_deps.Test(side_effecting_row, candidate_bit[index]);
+  };
+  for (auto group_begin = group_members.begin();
+       group_begin != group_members.end();) {
+    auto group_end = std::find_if(group_begin, group_members.end(),
+                                  [&](const std::pair<int64_t, int64_t>& m) {
+                                    return m.first != group_begin->first;
+                                  });
+    if (std::none_of(group_begin, group_end,
+                     [&](const std::pair<int64_t, int64_t>& m) {
+                       return index_blocks_removal(m.second);
+                     })) {
+      VLOG(2) << "Remove with groups:";
+      for (auto it = group_begin; it != group_end; ++it) {
+        VLOG(2) << "    index " << it->second;
+        used_tuple_indices.erase(it->second);
+      }
     }
-    VLOG(2) << "Remove with groups:";
-    for (int64_t index : group.second) {
-      VLOG(2) << "    index " << index;
-      used_tuple_indices.erase(index);
-    }
+    group_begin = group_end;
   }
 
   if (used_tuple_indices.size() == tuple_size) {
@@ -543,6 +807,11 @@ absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
                    RemoveDeadTupleIndices(while_op, used_tuple_indices));
 
   return true;
+}
+
+absl::StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
+  CalledComputationFacts facts;
+  return TryRemoveDeadWhileParamsImpl(while_op, facts);
 }
 
 // Returns if this instruction looks like an insertion inside a variable of a
@@ -1550,6 +1819,15 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
   XLA_VLOG_LINES(
       3, "WhileLoopSimplifier::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
+  CalledComputationFacts facts;
+  // Every transformation below rewrites loop computations, so the cached
+  // facts about them are only reused while nothing has changed.
+  auto note_change = [&](bool result) {
+    changed |= result;
+    if (result) {
+      facts.Clear();
+    }
+  };
 
   // Gather all the while ops in our module.  We do this ahead of time so we
   // don't have to worry about mutating the lists of computations or
@@ -1581,32 +1859,32 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // loop.
 
     ABSL_ASSIGN_OR_RETURN(bool result, TryRemoveRepeatedWhileTupleIndices(while_op));
-    changed |= result;
+    note_change(result);
     if (result) {
       continue;
     }
 
     ABSL_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
-    changed |= result;
+    note_change(result);
     if (result) {
       continue;
     }
 
-    ABSL_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
-    changed |= result;
+    ABSL_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParamsImpl(while_op, facts));
+    note_change(result);
     if (result) {
       continue;
     }
 
     ABSL_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
-    changed |= result;
+    note_change(result);
     if (result) {
       continue;
     }
 
     if (simplify_compare_instrs_) {
       ABSL_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
-      changed |= result;
+      note_change(result);
       if (result) {
         continue;
       }
@@ -1616,23 +1894,25 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // on the particular loop structure around the node matching on the send and
     // recv sides.  Other while simplifications require us to remove the loop
     // and replace it with a new one, so we can't do that either.
-    if (ContainsInstrWithOpcode(while_op->while_body(),
-                                {HloOpcode::kSend, HloOpcode::kSendDone,
-                                 HloOpcode::kRecv, HloOpcode::kRecvDone}) ||
-        ContainsInstrWithOpcode(while_op->while_condition(),
-                                {HloOpcode::kSend, HloOpcode::kSendDone,
-                                 HloOpcode::kRecv, HloOpcode::kRecvDone})) {
+    if (facts.ContainsSendRecv(while_op->while_body()) ||
+        facts.ContainsSendRecv(while_op->while_condition())) {
       VLOG(2) << "Not attempting to simplify while loop because it contains a "
                  "send/recv node: "
               << while_op->ToShortString();
       continue;
     }
+    // Read before TryPropagateConstant: a successful propagation drops the
+    // cache, and the answer survives it because propagation never adds or
+    // removes a kDomain.
+    const bool contains_domain =
+        facts.ContainsDomain(while_op->while_body()) ||
+        facts.ContainsDomain(while_op->while_condition());
 
     ABSL_ASSIGN_OR_RETURN(result, TryPropagateConstant(while_op));
-    changed |= result;
+    note_change(result);
 
     ABSL_ASSIGN_OR_RETURN(result, TryRemoveWhileLoop(while_op));
-    changed |= result;
+    note_change(result);
 
     if (result) {
       // Don't continue simplifying after successfully removing the while loop
@@ -1643,9 +1923,7 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     // TODO(b/119281462): Cowardly refuse to perform any of the following
     // optimizations in the presence of kDomain instructions.  It seems that
     // modifying a while loop's tuple doesn't work when kDomain is present.
-    if (ContainsInstrWithOpcode(while_op->while_body(), {HloOpcode::kDomain}) ||
-        ContainsInstrWithOpcode(while_op->while_condition(),
-                                {HloOpcode::kDomain})) {
+    if (contains_domain) {
       continue;
     }
 
@@ -1657,7 +1935,7 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
                        TryMergeInductionVariables(while_op, elem_ty));
       if (new_while_op) {
         while_op = new_while_op;
-        changed = true;
+        note_change(true);
         merged_induction_vars = true;
       }
     }
