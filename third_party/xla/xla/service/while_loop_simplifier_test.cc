@@ -1615,15 +1615,15 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue) {
   const std::string hlo_string = R"(
   HloModule Test
   Body {
-    param = (s32[1], s32[2], s32[3]) parameter(0)
+    param = (s32[1], s32[2], s32[3]) parameter(0), origin={({"bp0"},{"bp1"},{"bp2"})}
     a = s32[1] get-tuple-element(param), index=0
     a.1 = s32[1] add(a, a)
     b = s32[2] constant({1,1})
     c = s32[3] constant({10,10,10})
-    ROOT tuple = (s32[1], s32[2], s32[3]) tuple(a.1, b, c)
+    ROOT tuple = (s32[1], s32[2], s32[3]) tuple(a.1, b, c), origin={({"br0"},{"br1"},{"br2"})}
   }
   Cond {
-    param = (s32[1], s32[2], s32[3]) parameter(0)
+    param = (s32[1], s32[2], s32[3]) parameter(0), origin={({"cp0"},{"cp1"},{"cp2"})}
     a = s32[1] get-tuple-element(param), index=0
     b = s32[2] get-tuple-element(param), index=1
     c = s32[3] get-tuple-element(param), index=2
@@ -1646,6 +1646,30 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarryWithOriginalValue) {
   HloInstruction* while_init = while_instr->while_init();
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(), R"(({"a"}, {"c"}))");
+  ASSERT_NE(
+      while_instr->while_body()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"bp0"}, {"bp2"}))");
+  ASSERT_NE(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"cp0"}, {"cp2"}))");
+  ASSERT_NE(while_instr->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->root_instruction()
+                ->original_value()
+                ->ToString(),
+            R"(({"br0"}, {"br2"}))");
   HloInstruction* root_instr = m->entry_computation()->root_instruction();
   ASSERT_NE(root_instr->original_value(), nullptr);
   EXPECT_EQ(root_instr->original_value()->ToString(),
@@ -1698,7 +1722,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveDeadTupleIndicesWithOriginalValue) {
   HloModule dus
 
 %while.body (arg_tuple: (f32[3], f32[2], f32[2], f32[3], s32[])) -> (f32[3], f32[2], f32[2], f32[3], s32[]) {
-  %arg_tuple = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %arg_tuple = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0), origin={({"bp0"}, {"bp1"}, {"bp2"}, {"bp3"}, {"bp4"})}
   %get-tuple-element.0 = f32[3] get-tuple-element(%arg_tuple), index=0
   %get-tuple-element.1 = f32[2] get-tuple-element(%arg_tuple), index=1
   %get-tuple-element.2 = f32[2] get-tuple-element(%arg_tuple), index=2
@@ -1710,11 +1734,11 @@ TEST_F(WhileLoopSimplifierTest, RemoveDeadTupleIndicesWithOriginalValue) {
   %dynamic-update-slice.0 = f32[3] dynamic-update-slice(%get-tuple-element.0, %constant.v0, s32[] %constant.1)
   %dynamic-update-slice.3 = f32[3] dynamic-update-slice(%get-tuple-element.3, %constant.v0, s32[] %constant.1)
   %add = add(s32[] %get-tuple-element.4, s32[] %constant.1)
-  ROOT %tuple = tuple(%dynamic-update-slice.0, %get-tuple-element.1, %get-tuple-element.2, %dynamic-update-slice.3, %add)
+  ROOT %tuple = tuple(%dynamic-update-slice.0, %get-tuple-element.1, %get-tuple-element.2, %dynamic-update-slice.3, %add), origin={({"br0"}, {"br1"}, {"br2"}, {"br3"}, {"br4"})}
 }
 
 %while.condition (arg_tuple.cond:(f32[3], f32[2], f32[2], f32[3], s32[])) -> pred[] {
-  %arg_tuple.cond = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %arg_tuple.cond = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0), origin={({"cp0"}, {"cp1"}, {"cp2"}, {"cp3"}, {"cp4"})}
   %get-tuple-element.cond = s32[] get-tuple-element(%arg_tuple.cond), index=4
   %constant.3 = s32[] constant(3)
   ROOT %compare = pred[] compare(s32[] %get-tuple-element.cond, s32[] %constant.3), direction=LT
@@ -1744,21 +1768,45 @@ ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(),
             R"(({"arg.0"}, {"arg.1"}, {"constant.0"}))");
+  ASSERT_NE(
+      while_instr->while_body()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"bp0"}, {"bp1"}, {"bp4"}))");
+  ASSERT_NE(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"cp0"}, {"cp1"}, {"cp4"}))");
+  ASSERT_NE(while_instr->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->root_instruction()
+                ->original_value()
+                ->ToString(),
+            R"(({"br0"}, {"br1"}, {"br4"}))");
 }
 
 TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
   const std::string hlo_string = R"(
   HloModule Test
   Body {
-    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0), origin={(({"bp0"}), ({"bp1"}, {"bp2"}, ({"bp3"})))}
     ta = (s32[1]) get-tuple-element(param), index=0
     a = s32[1] get-tuple-element(ta), index=0
     a.1 = s32[1] add(a, a)
     tbcd = (s32[2], s32[3], (s32[4])) get-tuple-element(param), index=1
-    ROOT tuple = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd)
+    ROOT tuple = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd), origin={(({"br0"}), ({"br1"}, {"br2"}, ({"br3"})))}
   }
   Cond {
-    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0), origin={(({"cp0"}), ({"cp1"}, {"cp2"}, ({"cp3"})))}
     ROOT cond = pred[] constant(true)
   }
   ENTRY Loop {
@@ -1773,7 +1821,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
       {"b"}, {"c"}, ({"d"})))}
     ROOT while = ((s32[1]), (s32[2], s32[3], (s32[4]))) while(init),
       condition=Cond, body=Body, origin={(({"while.116" {0}}), (
-      {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}})))}
+      {"while.116" {1}}, {"while.116" {2}}, ({"while.116" {3}}))),["while#$"]}
   })";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
@@ -1783,17 +1831,41 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTupleWithOriginalValue) {
   ASSERT_NE(while_instr->original_value(), nullptr);
   EXPECT_EQ(
       while_instr->original_value()->ToString(),
-      R"(({"while.116" {0}}, {"while.116" {1}}, {"while.116" {2}}, {"while.116" {3}}))");
+      R"(({"while.116" {0}}, {"while.116" {1}}, {"while.116" {2}}, {"while.116" {3}}),["while#$"])");
   HloInstruction* while_init = while_instr->while_init();
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(),
             R"(({"a"}, {"b"}, {"c"}, {"d"}))");
+  ASSERT_NE(
+      while_instr->while_body()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"bp0"}, {"bp1"}, {"bp2"}, {"bp3"}))");
+  ASSERT_NE(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"cp0"}, {"cp1"}, {"cp2"}, {"cp3"}))");
+  ASSERT_NE(while_instr->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->root_instruction()
+                ->original_value()
+                ->ToString(),
+            R"(({"br0"}, {"br1"}, {"br2"}, {"br3"}))");
 }
 
 const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
   HloModule Test
   Body {
-    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0), origin={({"bp0"}, {"bp1"}, {"bp2"})}
 
     a = TYPE[] get-tuple-element(param), index=0
     one = TYPE[] constant(1)
@@ -1805,10 +1877,10 @@ const char* const kSimpleMergeInductionVariablesModuleWithOriginalValue = R"(
 
     c = TYPE[] add(a, b)
 
-    ROOT tuple = (TYPE[], TYPE[], TYPE[]) tuple(a1,b1,c)
+    ROOT tuple = (TYPE[], TYPE[], TYPE[]) tuple(a1,b1,c), origin={({"br0"}, {"br1"}, {"br2"})}
   }
   Cond {
-    param = (TYPE[], TYPE[], TYPE[]) parameter(0)
+    param = (TYPE[], TYPE[], TYPE[]) parameter(0), origin={({"cp0"}, {"cp1"}, {"cp2"})}
     a = TYPE[] get-tuple-element(param), index=0
     b = TYPE[] get-tuple-element(param), index=1
     sum = TYPE[] power(a, b)
@@ -1843,6 +1915,30 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariablesWithOriginalValue) {
   ASSERT_NE(while_init->original_value(), nullptr);
   EXPECT_EQ(while_init->original_value()->ToString(),
             R"(({"a"}, {"b"}, {"c"}, {}))");
+  ASSERT_NE(
+      while_instr->while_body()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"bp0"}, {"bp1"}, {"bp2"}, {}))");
+  ASSERT_NE(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"cp0"}, {"cp1"}, {"cp2"}, {}))");
+  ASSERT_NE(while_instr->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->root_instruction()
+                ->original_value()
+                ->ToString(),
+            R"(({"br0"}, {"br1"}, {"br2"}, {}))");
   const HloInstruction* add =
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* induction_var_0 = add->operand(0);
