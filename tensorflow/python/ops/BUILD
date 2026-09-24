@@ -1803,9 +1803,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
+        ":array_ops_stack",
+        ":clip_ops",
         ":image_ops_gen",
         ":image_ops_impl",
-        ":linalg_ops",
+        ":math_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -3494,6 +3496,7 @@ py_library(
     srcs = ["image_grad_test_base.py"],
     strict_deps = True,
     deps = [
+        ":array_ops",
         ":array_ops_stack",
         ":gradient_checker_v2",
         ":image_ops",
