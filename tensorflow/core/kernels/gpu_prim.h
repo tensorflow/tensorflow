@@ -18,6 +18,10 @@ limitations under the license, the license you must see.
 
 #if GOOGLE_CUDA
 
+// Clang may emit -Wpass-failed for CUB code during CUDA compilation.
+// Suppress it in the owning Bazel target's GPU copts instead of changing
+// diagnostic state in this public header.
+
 #include "cub/block/block_load.cuh"
 #include "cub/block/block_scan.cuh"
 #include "cub/block/block_store.cuh"
