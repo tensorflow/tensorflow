@@ -981,12 +981,18 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     // Add the operands to the stack in reverse order so the first operand is
     // processed first. This will produce a more natural ordering and a nicer
     // result for things like HLO stringification.
+    const size_t stack_size_before = dfs_stack->size();
     const HloInstruction::InstructionVector& operands = current->operands();
     absl::c_for_each(tsl::gtl::make_range(operands.rbegin(), operands.rend()),
                      dfs_stack_push);
 
     // Add control predecessors to the stack.
     absl::c_for_each(current->control_predecessors(), dfs_stack_push);
+    if (dfs_stack->size() == stack_size_before) {
+      dfs_stack->pop_back();
+      visited.SetState(h, VisitState::kVisited);
+      func(current);
+    }
   }
 }
 

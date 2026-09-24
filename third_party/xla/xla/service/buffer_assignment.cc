@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
@@ -2912,87 +2913,161 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
   }
   VLOG(1) << "Compute peak memory logical buffers";
 
-  // To properly account for shared buffers, we keep track of the number of
-  // instances of the same shared buffer are currently live, their canonical ids
-  // and the size we had returned when allocating the buffer so that we can
-  // return the -size when freeing the buffer.
-  absl::flat_hash_map<int64_t, int> num_outstanding_shared_buffers;
-  absl::flat_hash_map<int64_t, int64_t> shared_canonical_ids;
-  absl::flat_hash_map<int64_t, int64_t> allocated_sizes;
-  // Returns how much the given event increases the total size of live
-  // buffers. Can be negative.
-  auto memory_delta = [&](const HeapSimulatorTrace::Event& event) -> int64_t {
-    const HloValue* buffer = id_to_value.at(event.buffer_id());
-    const int64_t buffer_size = buffer_sizes.at(buffer);
-    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
-      num_outstanding_shared_buffers[event.buffer_id()] = 1;
-      allocated_sizes[event.buffer_id()] = buffer_size;
-      return buffer_size;
-    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
-      shared_canonical_ids[event.buffer_id()] = event.share_with_canonical_id();
-      if (++num_outstanding_shared_buffers[event.share_with_canonical_id()] ==
-          1) {
-        // This shared buffer is currently the only instance of the buffer with
-        // the canonical id. So we return the buffer size.
-        allocated_sizes[event.buffer_id()] = buffer_size;
-        return buffer_size;
-      }
-      // There are multiple instances of this buffer, so return 0.
-      allocated_sizes[event.buffer_id()] = 0;
-      return 0;
-    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
-      auto shared_canonical_id_it =
-          shared_canonical_ids.find(event.buffer_id());
-      // Decrement the outstanding instances of this buffer and return the
-      // -size.
-      int64_t buffer_id = (shared_canonical_id_it == shared_canonical_ids.end())
-                              ? event.buffer_id()
-                              : shared_canonical_id_it->second;
-      --num_outstanding_shared_buffers[buffer_id];
-      return -1 * allocated_sizes[event.buffer_id()];
+  // To properly account for shared buffers, we map each buffer to its root
+  // canonical buffer ID and track the active live buffers in each canonical
+  // group as well as the currently accounted byte size of that group.
+  // Note that HeapSimulator::Run emits SHARE_WITH(B, A) before FREE(A) when
+  // instruction i aliases input A to output B. Thus a canonical group often
+  // transitions 1 -> 2 on SHARE_WITH(B, A) and then 2 -> 1 on FREE(A); the
+  // group's memory must remain live (and represented in live_values) until the
+  // last buffer in the canonical group is freed (1 -> 0).
+  absl::flat_hash_map<int64_t, int64_t> canonical_ids;
+  absl::flat_hash_map<int64_t, absl::InlinedVector<const HloValue*, 2>>
+      active_group_buffers;
+  absl::flat_hash_map<int64_t, int64_t> group_allocated_sizes;
+
+  auto reset_tracking = [&]() {
+    canonical_ids.clear();
+    active_group_buffers.clear();
+    group_allocated_sizes.clear();
+  };
+
+  auto update_group_on_add =
+      [&](int64_t root_id, const HloValue* buf, int64_t buf_size,
+          bool update_live_set, absl::flat_hash_set<const HloValue*>* live_set,
+          absl::flat_hash_map<int64_t, const HloValue*>* rep_map) -> int64_t {
+    auto& group = active_group_buffers[root_id];
+    group.push_back(buf);
+    int64_t prev_size = group_allocated_sizes[root_id];
+    int64_t delta = 0;
+    if (buf_size > prev_size) {
+      delta = buf_size - prev_size;
+      group_allocated_sizes[root_id] = buf_size;
     }
-    LOG(FATAL) << "Unknown event kind: " << event.kind();
+    if (update_live_set) {
+      auto rep_it = rep_map->find(root_id);
+      if (rep_it == rep_map->end()) {
+        if (group_allocated_sizes[root_id] > 0) {
+          (*rep_map)[root_id] = buf;
+          live_set->insert(buf);
+        }
+      } else if (buf_size > buffer_sizes.at(rep_it->second)) {
+        live_set->erase(rep_it->second);
+        rep_it->second = buf;
+        live_set->insert(buf);
+      }
+    }
+    return delta;
+  };
+
+  auto update_group_on_free =
+      [&](int64_t root_id, const HloValue* buf, bool update_live_set,
+          absl::flat_hash_set<const HloValue*>* live_set,
+          absl::flat_hash_map<int64_t, const HloValue*>* rep_map) -> int64_t {
+    auto& group = active_group_buffers[root_id];
+    auto buf_it = absl::c_find(group, buf);
+    if (buf_it != group.end()) {
+      group.erase(buf_it);
+    }
+    int64_t prev_size = group_allocated_sizes[root_id];
+    const HloValue* best_buf = nullptr;
+    int64_t new_size = 0;
+    for (const HloValue* remaining : group) {
+      int64_t s = buffer_sizes.at(remaining);
+      if (best_buf == nullptr || s > new_size) {
+        best_buf = remaining;
+        new_size = s;
+      }
+    }
+    group_allocated_sizes[root_id] = new_size;
+    if (update_live_set) {
+      auto rep_it = rep_map->find(root_id);
+      if (best_buf == nullptr || new_size == 0) {
+        if (rep_it != rep_map->end()) {
+          live_set->erase(rep_it->second);
+          rep_map->erase(rep_it);
+        }
+      } else if (rep_it != rep_map->end() && rep_it->second != best_buf) {
+        live_set->erase(rep_it->second);
+        rep_it->second = best_buf;
+        live_set->insert(best_buf);
+      }
+    }
+    return new_size - prev_size;
   };
 
   // First compute the size of the maximal live set.
   int64_t max_live_size = 0;
   int64_t live_size = 0;
   for (const auto& event : heap_trace.events()) {
-    if (!id_to_value.contains(event.buffer_id())) {
-      // Skip as the buffer associated with this trace event is not placed into
-      // this allocation. This can happen when size constraints are given to the
-      // heap simulator.
+    auto it = id_to_value.find(event.buffer_id());
+    if (it == id_to_value.end()) {
       continue;
     }
-    live_size += memory_delta(event);
+    const HloValue* buffer = it->second;
+    const int64_t buffer_size = buffer_sizes.at(buffer);
+    int64_t delta = 0;
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      int64_t root_id = event.buffer_id();
+      canonical_ids[root_id] = root_id;
+      delta = update_group_on_add(root_id, buffer, buffer_size, false, nullptr,
+                                  nullptr);
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      int64_t shared_id = event.share_with_canonical_id();
+      auto canon_it = canonical_ids.find(shared_id);
+      int64_t root_id =
+          (canon_it != canonical_ids.end()) ? canon_it->second : shared_id;
+      canonical_ids[event.buffer_id()] = root_id;
+      delta = update_group_on_add(root_id, buffer, buffer_size, false, nullptr,
+                                  nullptr);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      auto canon_it = canonical_ids.find(event.buffer_id());
+      int64_t root_id = (canon_it != canonical_ids.end()) ? canon_it->second
+                                                          : event.buffer_id();
+      delta = update_group_on_free(root_id, buffer, false, nullptr, nullptr);
+    } else {
+      LOG(FATAL) << "Unknown event kind: " << event.kind();
+    }
+    live_size += delta;
     if (max_live_size < live_size) {
       max_live_size = live_size;
     }
   }
 
   // Next gather the set of logical buffers live at the earliest point of
-  // maximal live set size.
+  // maximal live set size, keeping one representative buffer per live canonical
+  // group in live_values.
   absl::flat_hash_set<const HloValue*> live_values;
+  absl::flat_hash_map<int64_t, const HloValue*> group_rep;
   live_size = 0;
-  num_outstanding_shared_buffers.clear();
+  reset_tracking();
   for (const auto& event : heap_trace.events()) {
-    if (!id_to_value.contains(event.buffer_id())) {
-      // Skip as the buffer associated with this trace event is not placed into
-      // this allocation. This can happen when size constraints are given to the
-      // heap simulator.
+    auto it = id_to_value.find(event.buffer_id());
+    if (it == id_to_value.end()) {
       continue;
     }
-    const HloValue* value = id_to_value.at(event.buffer_id());
-    int64_t delta = memory_delta(event);
-    // To avoid including buffers that are aliases of each other to the peak
-    // buffers list, only add the buffers that memory_delta returns non-zero
-    // positive sizes. memory_delta returns 0 as the size for the buffer already
-    // has a live alias of itself.
-    if (delta > 0) {
-      InsertOrDie(&live_values, value);
-    } else if (delta < 0) {
-      CHECK(ContainsKey(live_values, value));
-      live_values.erase(value);
+    const HloValue* value = it->second;
+    const int64_t buffer_size = buffer_sizes.at(value);
+    int64_t delta = 0;
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      int64_t root_id = event.buffer_id();
+      canonical_ids[root_id] = root_id;
+      delta = update_group_on_add(root_id, value, buffer_size, true,
+                                  &live_values, &group_rep);
+    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      int64_t shared_id = event.share_with_canonical_id();
+      auto canon_it = canonical_ids.find(shared_id);
+      int64_t root_id =
+          (canon_it != canonical_ids.end()) ? canon_it->second : shared_id;
+      canonical_ids[event.buffer_id()] = root_id;
+      delta = update_group_on_add(root_id, value, buffer_size, true,
+                                  &live_values, &group_rep);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      auto canon_it = canonical_ids.find(event.buffer_id());
+      int64_t root_id = (canon_it != canonical_ids.end()) ? canon_it->second
+                                                          : event.buffer_id();
+      delta =
+          update_group_on_free(root_id, value, true, &live_values, &group_rep);
     }
     live_size += delta;
 
@@ -3240,6 +3315,8 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     // Ensure we account for alignment fragmentation exactly the way
     // CombineTempAllocations will.
     absl::btree_map<LogicalBuffer::Color, int64_t> allocated_bytes_by_color;
+    absl::btree_map<LogicalBuffer::Color, int64_t> temp_allocated_by_color;
+    absl::btree_map<LogicalBuffer::Color, int64_t> temp_peak_live_by_color;
 
     for (const BufferAllocation& alloc : assignment->Allocations()) {
       LogicalBuffer::Color color = alloc.color();
@@ -3248,6 +3325,16 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
         int64_t& allocated_bytes = allocated_bytes_by_color[color];
         int64_t base = RoundUpTo(allocated_bytes, alignment);
         allocated_bytes = base + alloc.size();
+        temp_allocated_by_color[color] += alloc.size();
+        int64_t peak_live_bytes = 0;
+        for (const HloValue* value : alloc.PeakMemoryLogicalBuffers()) {
+          auto it = alloc.assigned_buffers().find(value);
+          if (it != alloc.assigned_buffers().end()) {
+            peak_live_bytes += it->second.size;
+          }
+        }
+        temp_peak_live_by_color[color] =
+            std::max(temp_peak_live_by_color[color], peak_live_bytes);
       } else {
         allocated_bytes_by_color[color] += alloc.size();
       }
@@ -3256,6 +3343,24 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     for (const auto& [color, total_allocated_bytes] :
          allocated_bytes_by_color) {
       int64_t memory_limit = GetMemoryLimit(*assignment, color);
+      const int64_t temp_allocated = temp_allocated_by_color[color];
+      const int64_t temp_peak_live = temp_peak_live_by_color[color];
+      const int64_t temp_fragmentation =
+          std::max<int64_t>(0, temp_allocated - temp_peak_live);
+      constexpr int64_t kMaxAcceptableFragmentationBytes = int64_t{4} << 30;
+      if (temp_peak_live > 0 &&
+          temp_fragmentation > kMaxAcceptableFragmentationBytes &&
+          temp_fragmentation * 4 > temp_allocated &&
+          (memory_limit == 0 || total_allocated_bytes * 2 > memory_limit)) {
+        need_fallback = true;
+        VLOG(1) << "Primary BufferAssignment (FAST_MERGE) caused excessive "
+                << "fragmentation for color " << color << " ("
+                << temp_fragmentation << " bytes fragmented out of "
+                << temp_allocated
+                << " temp bytes; peak live = " << temp_peak_live
+                << " bytes). Triggering in-place fallback to DEFAULT.";
+        break;
+      }
       if (memory_limit > 0) {
         // Apply a safety margin of 2.5 GiB to the initial memory limit.
         constexpr int64_t kTwoPointFiveGiB = int64_t{5} << 29;
