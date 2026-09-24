@@ -207,11 +207,14 @@ TEST_F(GraphMemoryTest, CpuIgnoresSwapToHost) {
     cpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
   }
 
+  bool node_found = false;
   for (auto& node : *item.graph.mutable_node()) {
     if (node.name() == "AddN_1") {
       (*node.mutable_attr())["_swap_to_host"].mutable_list()->add_i(0);
+      node_found = true;
     }
   }
+  ASSERT_TRUE(node_found);
   GraphMemory swapped_memory(item);
   TF_ASSERT_OK(swapped_memory.InferStatically(devices_));
   const GraphMemory::MemoryUsage& swapped_cpu_mem =
