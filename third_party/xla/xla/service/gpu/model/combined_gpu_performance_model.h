@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace gpu {
@@ -51,7 +53,8 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
           ABSL_ATTRIBUTE_LIFETIME_BOUND,
       mlir::MLIRContext& mlir_context ABSL_ATTRIBUTE_LIFETIME_BOUND,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion);
+      bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion,
+      MlirContextPool* mlir_context_pool = nullptr);
 
   // Returns runtime data analysis results of a single instruction.
   //
@@ -81,8 +84,25 @@ class CombinedGpuPerformanceModel : public GpuPerformanceModelBase {
   // Returns the best tiling for a fusion.
   //
   // DOES NOT cache the result.
-  absl::StatusOr<TiledRunTimeDataOrError> TryFindBestTilingForFusion(
-      const HloFusionAdaptor& fusion_adaptor);
+  // NOTE: `fusion_adaptor` and `this` are captured; callers must ensure both
+  // `fusion_adaptor` and this model instance outlive the returned
+  // `tsl::Future`. If executor is nullptr, defaults to
+  // tsl::InlineExecutor::Instance().
+  ABSL_MUST_USE_RESULT tsl::Future<TiledRunTimeDataOrError>
+  TryFindBestTilingForFusionAsync(const HloFusionAdaptor& fusion_adaptor,
+                                  tsl::Executor* executor = nullptr);
+
+  // Returns top_k best tilings for a fusion.
+  //
+  // DOES NOT cache the result.
+  // NOTE: `fusion_adaptor` and `this` are captured; callers must ensure both
+  // `fusion_adaptor` and this model instance outlive the returned
+  // `tsl::Future`. If executor is nullptr, defaults to
+  // tsl::InlineExecutor::Instance().
+  ABSL_MUST_USE_RESULT tsl::Future<TopKTiledRunTimeDataOrError>
+  TryFindTopKBestTilingsForFusionAsync(const HloFusionAdaptor& fusion_adaptor,
+                                       int top_k,
+                                       tsl::Executor* executor = nullptr);
 
   // Invalidates all cache entries related to given instruction.
   //

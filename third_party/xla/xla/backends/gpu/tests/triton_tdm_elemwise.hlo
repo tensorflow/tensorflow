@@ -1,17 +1,21 @@
 // RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK-%{GPU},CHECK-%{PTX} --allow-unused-prefixes
 
-// Verify that element-wise Triton fusions targeting gfx1250 use TDM
+// Verify that element-wise Triton fusions targeting mi450 family use TDM
 // (Tensor Descriptor Memory) intrinsics instead of pointer arithmetic.
 // On non-TDM ROCm targets (e.g. mi200), buffer load/store ops are used.
 // On CUDA targets, the AMD-specific TDM intrinsics must not appear.
 
-// CHECK-gfx1250: @llvm.amdgcn.tensor.load.to.lds
-// CHECK-gfx1250: @llvm.amdgcn.s.wait.tensorcnt
-// CHECK-gfx1250: @llvm.amdgcn.tensor.store.from.lds
+// CHECK-mi450: @llvm.amdgcn.tensor.load.to.lds
+// CHECK-mi450: @llvm.amdgcn.s.wait.tensorcnt
+// CHECK-mi450: @llvm.amdgcn.tensor.store.from.lds
 
 // CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
 // CHECK-mi200: @llvm.amdgcn.raw.ptr.buffer.load
 // CHECK-mi200-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+
+// CHECK-mi300-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
+// CHECK-mi300: @llvm.amdgcn.raw.ptr.buffer.load
+// CHECK-mi300-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
 
 // CHECK-mi350-NOT: @llvm.amdgcn.{{(tensor\.|s\.wait\.tensorcnt)}}
 // CHECK-mi350: @llvm.amdgcn.raw.ptr.buffer.load
