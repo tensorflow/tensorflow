@@ -615,7 +615,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   if (execution_watchdog != nullptr) {
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
-      pre_abort = [&tracker, progress_tracking_n,
+      pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
                    device_ordinal = executor->device_ordinal()] {
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
@@ -708,12 +708,14 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
+  const int device_ordinal = run_options->device_ordinal() != -1
+                                 ? run_options->device_ordinal()
+                                 : main_stream->parent()->device_ordinal();
   ABSL_ASSIGN_OR_RETURN(CollectiveParams collective_params,
                    CollectiveParams::Create(
                        *run_options, communication_streams.streams,
-                       LocalDeviceId(main_stream->parent()->device_ordinal()),
-                       collective_max_nchannels, p2p_max_nchannels,
-                       collective_use_minimal_resource));
+                       LocalDeviceId(device_ordinal), collective_max_nchannels,
+                       p2p_max_nchannels, collective_use_minimal_resource));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);

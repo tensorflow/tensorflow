@@ -23,12 +23,11 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 
@@ -163,6 +162,27 @@ TEST_F(PjRtStateTestFixture, TestOnlyResetPjRtClientPreservesUnusedClients) {
   TF_ASSERT_OK(pjrt_state_->TestOnlyResetPjRtClient(tensorflow::DEVICE_GPU));
   EXPECT_EQ(pjrt_client_1_ptr->platform_name(), "cpu");
   EXPECT_EQ(pjrt_client_2_ptr->platform_name(), "cpu");
+}
+
+TEST_F(PjRtStateTestFixture, GetOrCreatePjRtClientXlaGpuFallsBackToGpu) {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
+  auto* pjrt_client_ptr = pjrt_client.get();
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_GPU,
+                                          std::move(pjrt_client)));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* xla_gpu_client,
+      pjrt_state_->GetPjRtClient(tensorflow::DeviceType("XLA_GPU")));
+  EXPECT_EQ(xla_gpu_client, pjrt_client_ptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* xla_gpu_or_create_client,
+      pjrt_state_->GetOrCreatePjRtClient(tensorflow::DeviceType("XLA_GPU")));
+  EXPECT_EQ(xla_gpu_or_create_client, pjrt_client_ptr);
 }
 
 }  // namespace
