@@ -1039,11 +1039,10 @@ class LayoutAssignment : public HloModulePass {
   std::string ToString(const LayoutConstraints& constraints) const;
 
   int64_t current_priority() const { return current_priority_; }
-
- private:
   // Returns whether the given instruction is in a copy-disabled while loop.
   bool IsWhileLoopCopyDisabled(const HloInstruction& instruction) const;
 
+ private:
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
