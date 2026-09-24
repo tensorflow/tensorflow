@@ -32,14 +32,49 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([-5, 0, 2, 3, 5, 8, 10, 11, 12]),
         boundaries=[0, 3, 8, 11])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
-    with self.session():
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_out, self.evaluate(op))
+
+  def testInt64(self):
+    op = math_ops._bucketize(
+        constant_op.constant([-5, 0, 2, 3, 5, 8, 10, 11, 12],
+                             dtype=dtypes.int64),
+        boundaries=[0, 3, 8, 11])
+    expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
+    with self.session(use_gpu=True):
+      self.assertAllEqual(expected_out, self.evaluate(op))
+
+  def testIntWithFloatBoundaries(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      # Positive fractional boundaries (reproducer from issue #70343)
+      op = math_ops._bucketize(
+          constant_op.constant([0, 1, 2, 3], dtype=dtype),
+          boundaries=[0.1, 1.1])
+      expected_out = [0, 1, 2, 2]
+      with self.session(use_gpu=True):
+        self.assertAllEqual(expected_out, self.evaluate(op))
+
+      # Negative and positive fractional boundaries
+      op = math_ops._bucketize(
+          constant_op.constant([-2, -1, 0, 1, 2], dtype=dtype),
+          boundaries=[-1.5, -0.5, 0.5, 1.5])
+      expected_out = [0, 1, 2, 3, 4]
+      with self.session(use_gpu=True):
+        self.assertAllEqual(expected_out, self.evaluate(op))
+
+      # Fractional boundaries close to integer boundaries
+      op = math_ops._bucketize(
+          constant_op.constant([0, 1, 2], dtype=dtype),
+          boundaries=[0.999, 1.001])
+      expected_out = [0, 1, 2]
+      with self.session(use_gpu=True):
+        self.assertAllEqual(expected_out, self.evaluate(op))
 
   def testEmptyFloat(self):
     op = math_ops._bucketize(
         array_ops.zeros([0, 3], dtype=dtypes.float32), boundaries=[])
     expected_out = np.zeros([0, 3], dtype=np.float32)
-    with self.session():
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   def testFloat(self):
@@ -47,7 +82,16 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([-5., 0., 2., 3., 5., 8., 10., 11., 12.]),
         boundaries=[0., 3., 8., 11.])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
-    with self.session():
+    with self.session(use_gpu=True):
+      self.assertAllEqual(expected_out, self.evaluate(op))
+
+  def testDouble(self):
+    op = math_ops._bucketize(
+        constant_op.constant([-5., 0., 2., 3., 5., 8., 10., 11., 12.],
+                             dtype=dtypes.float64),
+        boundaries=[0., 3., 8., 11.])
+    expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   def test2DInput(self):
@@ -55,7 +99,7 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([[-5, 0, 2, 3, 5], [8, 10, 11, 12, 0]]),
         boundaries=[0, 3, 8, 11])
     expected_out = [[0, 1, 1, 2, 2], [3, 3, 4, 4, 1]]
-    with self.session():
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   @test_util.run_deprecated_v1

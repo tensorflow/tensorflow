@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -55,6 +57,12 @@ __global__ void BucketizeCustomKernel(
     boundaries = shared_mem_boundaries;
   }
 
+  // For double input, compare as double. For float and integer inputs, compare
+  // as float to match CPU and XLA behavior without truncating fractional
+  // boundaries.
+  using CompType = typename std::conditional<std::is_same<T, double>::value,
+                                             double, float>::type;
+
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in[i];
     int32_t bucket = 0;
@@ -63,7 +71,8 @@ __global__ void BucketizeCustomKernel(
       int32_t l = bucket;
       int32_t step = count / 2;
       l += step;
-      if (!(value < static_cast<T>(boundaries[l]))) {
+      if (!(static_cast<CompType>(value) <
+            static_cast<CompType>(boundaries[l]))) {
         bucket = ++l;
         count -= step + 1;
       } else {
