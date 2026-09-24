@@ -85,8 +85,10 @@ class SlowOperationAlarm {
 // This is throttled to once-every-power-of-two occurrences, globally.
 //
 // `context` is an additional message prepended to the alarm.
+// `extra_advice` is optional additional troubleshooting guidance appended to
+// the alarm message.
 [[nodiscard]] std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view context);
+    absl::string_view context, absl::string_view extra_advice = "");
 
 }  // namespace xla
 

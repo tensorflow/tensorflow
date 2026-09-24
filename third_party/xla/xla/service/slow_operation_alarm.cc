@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -149,7 +148,7 @@ SlowOperationAlarm::~SlowOperationAlarm() {
 }
 
 std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view context) {
+    absl::string_view context, absl::string_view extra_advice) {
   // Pass a counter to these alarms so they only log once every power-of-two
   // occurrences.
   static auto* counter = new std::atomic<int64_t>(0);
@@ -162,24 +161,25 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
   }
 
 #if NDEBUG
-  return std::make_unique<SlowOperationAlarm>(
-      absl::Duration(absl::Minutes(2)),
-      absl::StrCat(
-          separator, "\n", context_msg,
-          "Very slow compile? If you want to file a bug, run with envvar "
-          "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
-          separator),
-      counter);
+  absl::Duration alarm_duration = absl::Minutes(2);
+  absl::string_view base_advice =
+      "Very slow compile? If you want to file a bug, run with envvar "
+      "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.";
 #else
-  return std::make_unique<SlowOperationAlarm>(
-      absl::Duration(absl::Seconds(10)),
-      absl::StrCat(
-          separator, "\n", context_msg,
-          "Slow compile? XLA was built without compiler optimizations, which "
-          "can be slow. Try rebuilding with -c opt.",
-          separator),
-      counter);
+  absl::Duration alarm_duration = absl::Seconds(10);
+  absl::string_view base_advice =
+      "Slow compile? XLA was built without compiler optimizations, which "
+      "can be slow. Try rebuilding with -c opt.";
 #endif
+
+  std::string extra_msg =
+      extra_advice.empty() ? "" : absl::StrCat("\n", extra_advice);
+
+  return std::make_unique<SlowOperationAlarm>(
+      alarm_duration,
+      absl::StrCat(separator, "\n", context_msg, base_advice, extra_msg,
+                   separator),
+      counter);
 }
 
 }  // namespace xla
