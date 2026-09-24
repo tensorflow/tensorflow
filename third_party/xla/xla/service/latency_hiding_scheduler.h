@@ -717,6 +717,7 @@ class HloGraphNode {
         (opcode_ == HloOpcode::kSend || opcode_ == HloOpcode::kSendDone ||
          opcode_ == HloOpcode::kRecv || opcode_ == HloOpcode::kRecvDone) &&
         static_cast<const HloSendRecvInstruction*>(i)->is_host_transfer();
+    is_nested_sync_computation_ = ComputeIsNestedSyncComputation(*i);
   }
 
   static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
@@ -791,6 +792,10 @@ class HloGraphNode {
   const HloInstruction& GetInstr() const { return *instr_; }
   HloOpcode GetOpcode() const { return opcode_; }
   bool IsHostTransfer() const { return is_host_transfer_; }
+  // Whether the instruction calls a computation and is not an async start or
+  // done: the scheduler must not interleave such a computation with in order
+  // resources held by the enclosing computation.
+  bool IsNestedSyncComputation() const { return is_nested_sync_computation_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
@@ -1056,6 +1061,13 @@ class HloGraphNode {
     releases_selective_resource_ = false;
     occupies_selective_resource_ = false;
     has_recursive_resources_ = false;
+    is_nested_sync_computation_ = false;
+  }
+
+  static bool ComputeIsNestedSyncComputation(const HloInstruction& instr) {
+    return !instr.called_computations().empty() &&
+           instr.opcode() != HloOpcode::kAsyncStart &&
+           instr.opcode() != HloOpcode::kAsyncDone;
   }
 
   // Some of the fields in this are rarely non-empty (in one large compilation,
@@ -1137,8 +1149,15 @@ class HloGraphNode {
   bool occupies_selective_resource_ : 1;
   // Whether recursive_resources_.size() > 0
   bool has_recursive_resources_ : 1;
+  // Whether the instruction calls a computation synchronously, see
+  // IsNestedSyncComputation().
+  bool is_nested_sync_computation_ : 1;
   // The position of this node in the original order.
   int32_t original_position_;
+  // For a supported async done whose operand is a supported async start, the
+  // index of the start node in the graph's node storage; -1 otherwise. Set by
+  // the HloScheduleGraph constructor.
+  int32_t async_start_index_ = -1;
   // Pointer to the HloGraphNode::Rare entry for this node in the parent object
   // (Actual storage is managed by rare_storage_ in parent object)
   Rare* rare_ = nullptr;
@@ -1281,6 +1300,19 @@ class HloScheduleGraph {
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
   HloGraphNode* GetNodePtr(const HloInstruction* instr) const;
+
+  // The node of the start of a supported async done when that start (the
+  // done's first operand) is a supported async start, nullptr otherwise. The
+  // relation is resolved once when the graph is built; instructions and their
+  // operands do not change while the graph exists.
+  const HloGraphNode* GetSupportedAsyncStart(const HloGraphNode& done) const {
+    if (done.async_start_index_ < 0) {
+      return nullptr;
+    }
+    DCHECK_LT(done.async_start_index_,
+              static_cast<int64_t>(node_storage_.size()));
+    return &node_storage_[done.async_start_index_];
+  }
 
   std::vector<HloGraphNode*> FindBottomRoots() const;
 
