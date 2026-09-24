@@ -3819,7 +3819,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "integer_pow_gpu",
     prefix = "integer_pow_gpu",
-    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
