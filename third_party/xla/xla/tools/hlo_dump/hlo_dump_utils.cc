@@ -1264,6 +1264,21 @@ void ApplyBoundingBoxTail(const MismatchBoundingBox& bbox, double rel_error,
       !bbox.pattern.empty() ? bbox.pattern : ClassifyMismatchPattern(bbox);
 }
 
+// Strips everything that would let the tensor inspector draw element-level
+// mismatches. The front-end treats a tensor with no shape and no elements as
+// non-inspectable and keeps the inspector closed for it, which is the honest
+// rendering when the producer does not know which elements mismatched.
+void ClearElementLevelData(TensorVisualizationInfo& info) {
+  info.shape.clear();
+  info.box_min.clear();
+  info.box_max.clear();
+  info.top_mismatches.clear();
+  info.mismatched_slices.clear();
+  info.slice_boxes.clear();
+  info.mismatch_count = 0;
+  info.total_elements = 0;
+}
+
 }  // namespace
 
 absl::flat_hash_map<std::string, TensorVisualizationInfo>
@@ -1310,7 +1325,9 @@ PopulateTensorVisualizations(const HloModule& module,
       if (it != instr_to_mismatch.end()) {
         const MismatchDetails* mismatch = it->second;
         info.has_mismatch = true;
-        if (mismatch->bounding_box.has_value()) {
+        if (!mismatch->has_element_level_data) {
+          ClearElementLevelData(info);
+        } else if (mismatch->bounding_box.has_value()) {
           const auto& bbox = *mismatch->bounding_box;
           if (!bbox.tensor_shape.empty()) {
             info.shape = bbox.tensor_shape;
@@ -1340,7 +1357,9 @@ PopulateTensorVisualizations(const HloModule& module,
       TensorVisualizationInfo& info = it->second;
       info.instruction_name = mismatch.target_instruction_name;
       info.has_mismatch = true;
-      if (mismatch.bounding_box.has_value()) {
+      if (!mismatch.has_element_level_data) {
+        ClearElementLevelData(info);
+      } else if (mismatch.bounding_box.has_value()) {
         const auto& bbox = *mismatch.bounding_box;
         info.shape = bbox.tensor_shape;
         info.box_min = bbox.box_min;
