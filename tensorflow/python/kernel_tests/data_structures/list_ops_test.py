@@ -1944,5 +1944,18 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(f(), [1.0, 1.0, 1.0, 1.0])
 
 
+  def testTensorListScatterIndexOverflow(self):
+    tensor = tf.constant([[1.0], [2.0]], dtype=tf.float32)
+    indices = tf.constant([0, 2147483647], dtype=tf.int32)
+    element_shape = tf.constant([1], dtype=tf.int32)
+    with self.assertRaises((tf.errors.InvalidArgumentError, ValueError)):
+      self.evaluate(
+          tf.raw_ops.TensorListScatter(
+              tensor=tensor,
+              indices=indices,
+              element_shape=element_shape,
+          )
+      )
+
 if __name__ == "__main__":
   test.main()
