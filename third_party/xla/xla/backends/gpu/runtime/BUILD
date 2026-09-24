@@ -4283,8 +4283,8 @@ xla_test(
             "xla_amdgpu_any",
             "no_oss",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     disabled_backends = [],
