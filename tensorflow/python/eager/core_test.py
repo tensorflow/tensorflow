@@ -1052,6 +1052,7 @@ class TFETest(test_util.TensorFlowTestCase):
         errors_by_thread[index] = e
 
     ctx = context.Context()
+    ctx.ensure_initialized()
     threads = []
     for i in range(num_threads):
       t = threading.Thread(
