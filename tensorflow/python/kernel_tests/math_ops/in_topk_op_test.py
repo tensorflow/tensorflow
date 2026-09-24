@@ -75,7 +75,8 @@ class InTopKTest(test.TestCase):
       def in_top_k(predictions, targets):
         return nn_ops.in_top_k(predictions, targets, 1)
 
-      self.assertAllEqual(self.evaluate(in_top_k(predictions, targets)), expected)
+      self.assertAllEqual(
+          self.evaluate(in_top_k(predictions, targets)), expected)
 
   def testEmpty(self):
     predictions = np.empty([0, 5])
