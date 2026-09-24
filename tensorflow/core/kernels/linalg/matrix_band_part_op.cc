@@ -74,24 +74,25 @@ class MatrixBandPartOp : public OpKernel {
         return tensor.scalar<int64_t>()();
       }
     };
-    const int64_t num_lower = as_int64_scalar(num_lower_in);
-    OP_REQUIRES(
-        context, num_lower <= input_reshaped.dimension(1),
-        errors::InvalidArgument(
-            "num_lower must be negative or less or equal to number of rows (",
-            input_reshaped.dimension(1), ") got: ", num_lower));
+    // Band limits that are out of range are clamped rather than rejected. The
+    // op is defined by
+    //   in_band(m, n) = (num_lower < 0 || (m - n) <= num_lower) &&
+    //                   (num_upper < 0 || (n - m) <= num_upper),
+    // which is well defined for any limit, and this is what the XLA lowering
+    // already computes. Clamping to [-1, dimension] additionally keeps the
+    // limits exactly representable in the `int` parameters of
+    // MatrixBandPartFunctor below; every negative limit is equivalent to -1,
+    // i.e. "keep the entire triangle".
+    const int64_t num_lower = std::clamp<int64_t>(
+        as_int64_scalar(num_lower_in), -1, input_reshaped.dimension(1));
 
     const Tensor& num_upper_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
                 absl::InvalidArgumentError(
                     absl::StrCat("num_upper must be scalar, got shape ",
                                  num_upper_in.shape().DebugString())));
-    const int64_t num_upper = as_int64_scalar(num_upper_in);
-    OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
-                errors::InvalidArgument("num_upper must be negative or less or "
-                                        "equal to number of columns (",
-                                        input_reshaped.dimension(2),
-                                        ") got: ", num_upper));
+    const int64_t num_upper = std::clamp<int64_t>(
+        as_int64_scalar(num_upper_in), -1, input_reshaped.dimension(2));
 
     if (input.NumElements() == 0 ||
         ((num_lower < 0 || num_lower == input_reshaped.dimension(1)) &&

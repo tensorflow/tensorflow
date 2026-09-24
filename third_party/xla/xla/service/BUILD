@@ -1050,6 +1050,7 @@ xla_cc_test(
     srcs = ["platform_util_test.cc"],
     deps = [
         ":platform_util",
+        "//xla/stream_executor:mock_platform",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
