@@ -18,10 +18,6 @@ limitations under the license, the license you must see.
 
 #if GOOGLE_CUDA
 
-// Clang can't always unroll all loops, and it's not clear yet why.
-// Silence the warning for now to avoid build breaks with -Werror.
-#pragma clang diagnostic ignored "-Wpass-failed"
-
 #include "cub/block/block_load.cuh"
 #include "cub/block/block_scan.cuh"
 #include "cub/block/block_store.cuh"
