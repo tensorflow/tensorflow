@@ -1,2 +1,3 @@
 unused_variable.patch
 symbol_op_interface.patch
+pow_op.patch

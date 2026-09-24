@@ -7405,15 +7405,6 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
                         *module, options_.report_instruction_count));
   XLA_VLOG_LINES(1, logger.MakeReport());
 
-  if (changed) {
-    HloPassPipeline pass("spmd-cleanup");
-    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
-    pass.AddPass<TupleSimplifier>();
-    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
-    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
-    ABSL_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
-  }
-
   ABSL_RETURN_IF_ERROR(ClearShardingAttributes(
       module, num_replicas() * num_partitions(), execution_threads));
 
@@ -7422,6 +7413,15 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     HloSharding final_sharding =
         ResolveReductionOpForSharding(entry_root, entry_root->sharding());
     entry_root->set_sharding(std::move(final_sharding));
+  }
+
+  if (changed) {
+    HloPassPipeline pass("spmd-cleanup");
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+    pass.AddPass<TupleSimplifier>();
+    pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
+    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+    ABSL_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
   }
 
   return changed;
