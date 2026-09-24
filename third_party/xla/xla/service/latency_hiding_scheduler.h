@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -346,6 +347,113 @@ class SchedulerCore {
   bool is_evaluating_concurrently_ = false;
 };
 
+// A count per resource, indexed by the resource id. Resource ids are small
+// dense integers (ResourceTypeToIndex values and the target defined range), so
+// a vector answers a lookup with one load where a hash map probed. The
+// interface is the subset of absl::flat_hash_map the scheduler uses, with the
+// same semantics: a resource is absent until written, operator[] makes it
+// present with a count of 0, any int64 is a valid count, iteration visits the
+// present resources (in increasing resource order).
+class ResourceCountMap {
+ public:
+  using value_type = std::pair<int64_t, int64_t>;
+
+  class const_iterator {
+   public:
+    using iterator_category = std::input_iterator_tag;
+    using value_type = ResourceCountMap::value_type;
+    using difference_type = std::ptrdiff_t;
+    using pointer = const value_type*;
+    using reference = value_type;
+
+    value_type operator*() const {
+      return {index_, map_->slots_[index_].count};
+    }
+    const value_type* operator->() const {
+      current_ = **this;
+      return &current_;
+    }
+    const_iterator& operator++() {
+      index_ = map_->NextPresent(index_ + 1);
+      return *this;
+    }
+    const_iterator operator++(int) {
+      const_iterator before = *this;
+      ++*this;
+      return before;
+    }
+    bool operator==(const const_iterator& other) const {
+      return index_ == other.index_ && map_ == other.map_;
+    }
+    bool operator!=(const const_iterator& other) const {
+      return !(*this == other);
+    }
+
+   private:
+    friend class ResourceCountMap;
+    // index is a present resource or Size(); the map guarantees it, so the
+    // constructor stays a pair of stores and find() inlines into the scan.
+    const_iterator(const ResourceCountMap* map, int64_t index)
+        : map_(map), index_(index) {}
+
+    const ResourceCountMap* map_;
+    int64_t index_;
+    mutable value_type current_;
+  };
+
+  const_iterator begin() const { return const_iterator(this, NextPresent(0)); }
+  const_iterator end() const { return const_iterator(this, Size()); }
+
+  // Positioned at the resource when it is present, end() otherwise.
+  const_iterator find(int64_t resource) const {
+    return Contains(resource) ? const_iterator(this, resource) : end();
+  }
+  // The count of the resource when it is present, nullptr otherwise: the
+  // scan's lookup, two compares and a load, with no iterator to build.
+  const int64_t* FindCount(int64_t resource) const {
+    return Contains(resource) ? &slots_[resource].count : nullptr;
+  }
+  // The count of a present resource.
+  int64_t at(int64_t resource) const {
+    CHECK(Contains(resource)) << "no count for resource " << resource;
+    return slots_[resource].count;
+  }
+  // The count of the resource, made present with 0 when absent.
+  int64_t& operator[](int64_t resource) {
+    CHECK_GE(resource, 0);
+    if (resource >= Size()) {
+      slots_.resize(resource + 1);
+    }
+    Slot& slot = slots_[resource];
+    if (!slot.present) {
+      slot.count = 0;
+      slot.present = true;
+    }
+    return slot.count;
+  }
+  void clear() { slots_.clear(); }
+
+ private:
+  struct Slot {
+    int64_t count = 0;
+    bool present = false;
+  };
+
+  int64_t Size() const { return static_cast<int64_t>(slots_.size()); }
+  bool Contains(int64_t resource) const {
+    return resource >= 0 && resource < Size() && slots_[resource].present;
+  }
+  // The first present resource at or after index, Size() when there is none.
+  int64_t NextPresent(int64_t index) const {
+    while (index < Size() && !slots_[index].present) {
+      ++index;
+    }
+    return index;
+  }
+
+  std::vector<Slot> slots_;
+};
+
 // Helper class to keep track of which instructions are to be supported and
 // how many supported instructions per-type are contained in computations
 // recursively.
@@ -391,6 +499,10 @@ class AsyncTracker {
   // Sets the maximum allowed number of instances for each resource
   virtual void SetConcurrentResourceLimits(
       absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const;
+  // The same limits written into the scheduler's per resource counts; other
+  // resources present in max_concurrent_resource keep their counts.
+  void SetConcurrentResourceLimits(
+      ResourceCountMap& max_concurrent_resource) const;
 
   // Returns the name of the given resource
   virtual absl::string_view GetResourceName(int64_t resource_type) const;
@@ -717,6 +829,7 @@ class HloGraphNode {
         (opcode_ == HloOpcode::kSend || opcode_ == HloOpcode::kSendDone ||
          opcode_ == HloOpcode::kRecv || opcode_ == HloOpcode::kRecvDone) &&
         static_cast<const HloSendRecvInstruction*>(i)->is_host_transfer();
+    is_nested_sync_computation_ = ComputeIsNestedSyncComputation(*i);
   }
 
   static void UpdateOrAddDependency(HloGraphNode* from, HloGraphNode* to,
@@ -791,6 +904,10 @@ class HloGraphNode {
   const HloInstruction& GetInstr() const { return *instr_; }
   HloOpcode GetOpcode() const { return opcode_; }
   bool IsHostTransfer() const { return is_host_transfer_; }
+  // Whether the instruction calls a computation and is not an async start or
+  // done: the scheduler must not interleave such a computation with in order
+  // resources held by the enclosing computation.
+  bool IsNestedSyncComputation() const { return is_nested_sync_computation_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
@@ -1024,7 +1141,8 @@ class HloGraphNode {
     return result;
   }
   bool HasRecursiveResources() const { return has_recursive_resources_; }
-  const absl::flat_hash_map<int64_t, int64_t>& GetRecursiveResources() const {
+  // (resource, count) pairs sorted by resource.
+  absl::Span<const std::pair<int64_t, int64_t>> GetRecursiveResources() const {
     return rare_->recursive_resources;
   }
   bool HasOperandThatIsSupportedAsyncDone() const {
@@ -1056,6 +1174,13 @@ class HloGraphNode {
     releases_selective_resource_ = false;
     occupies_selective_resource_ = false;
     has_recursive_resources_ = false;
+    is_nested_sync_computation_ = false;
+  }
+
+  static bool ComputeIsNestedSyncComputation(const HloInstruction& instr) {
+    return !instr.called_computations().empty() &&
+           instr.opcode() != HloOpcode::kAsyncStart &&
+           instr.opcode() != HloOpcode::kAsyncDone;
   }
 
   // Some of the fields in this are rarely non-empty (in one large compilation,
@@ -1066,14 +1191,16 @@ class HloGraphNode {
   // nodes point to their own storage allocated in a vector of Rare objects
   // in the HloScheduleGraph object.
   struct Rare {
+    // Recursive resources used by the node: (resource, count) pairs sorted by
+    // resource. The overlap limit test reads them for every ready node with
+    // recursive resources at every step, so they sit inline and first.
+    absl::InlinedVector<std::pair<int64_t, int64_t>, 8> recursive_resources;
     // Non-extendable resources released by this node.
     absl::InlinedVector<int64_t, 1> released_non_extendable_resources;
     // Shareable resources released by this node.
     absl::InlinedVector<int64_t, 1> released_shareable_resources;
     // Shareable resources occupied by this node.
     absl::InlinedVector<int64_t, 1> occupied_shareable_resources;
-    // Recursive resources used by the node.
-    absl::flat_hash_map<int64_t, int64_t> recursive_resources;
     // AsyncResources used by the node.
     ResourcesVector resources;
   };
@@ -1137,8 +1264,15 @@ class HloGraphNode {
   bool occupies_selective_resource_ : 1;
   // Whether recursive_resources_.size() > 0
   bool has_recursive_resources_ : 1;
+  // Whether the instruction calls a computation synchronously, see
+  // IsNestedSyncComputation().
+  bool is_nested_sync_computation_ : 1;
   // The position of this node in the original order.
   int32_t original_position_;
+  // For a supported async done whose operand is a supported async start, the
+  // index of the start node in the graph's node storage; -1 otherwise. Set by
+  // the HloScheduleGraph constructor.
+  int32_t async_start_index_ = -1;
   // Pointer to the HloGraphNode::Rare entry for this node in the parent object
   // (Actual storage is managed by rare_storage_ in parent object)
   Rare* rare_ = nullptr;
@@ -1281,6 +1415,19 @@ class HloScheduleGraph {
 
   HloGraphNode& GetNode(const HloInstruction* instr) const;
   HloGraphNode* GetNodePtr(const HloInstruction* instr) const;
+
+  // The node of the start of a supported async done when that start (the
+  // done's first operand) is a supported async start, nullptr otherwise. The
+  // relation is resolved once when the graph is built; instructions and their
+  // operands do not change while the graph exists.
+  const HloGraphNode* GetSupportedAsyncStart(const HloGraphNode& done) const {
+    if (done.async_start_index_ < 0) {
+      return nullptr;
+    }
+    DCHECK_LT(done.async_start_index_,
+              static_cast<int64_t>(node_storage_.size()));
+    return &node_storage_[done.async_start_index_];
+  }
 
   std::vector<HloGraphNode*> FindBottomRoots() const;
 
@@ -1761,7 +1908,7 @@ class DefaultSchedulerCore : public SchedulerCore {
 
  public:
   using ReadyQueueSet = std::vector<HloGraphNode*>;
-  using ResourceMap = absl::flat_hash_map<int64_t, int64_t>;
+  using ResourceMap = ResourceCountMap;
   using ShouldSkipNodeFunction = std::function<bool(const HloGraphNode*)>;
 
   struct SchedulingState;
