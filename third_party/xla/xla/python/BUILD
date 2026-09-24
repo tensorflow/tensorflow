@@ -378,6 +378,7 @@ nanobind_pywrap_extension(
     deps = [
         ":dlpack_types",
         ":nb_absl_span",
+        ":nb_numpy",
         ":strides",
         ":types",
         "//xla:array",
@@ -392,7 +393,6 @@ nanobind_pywrap_extension(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
-        "//xla/python:nb_numpy",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
