@@ -54,7 +54,8 @@ class SparseXentOpTestBase(test.TestCase):
     labels_mat = np.zeros_like(probs).astype(probs.dtype)
     labels_mat[np.arange(batch_size), labels] = 1.0
     gradient = (probs - labels_mat)
-    loss = -np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1)
+    loss = np.negative(
+        np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1))
     return loss, gradient
 
   def _testXent(self, np_labels, np_logits):
@@ -186,6 +187,19 @@ class SparseXentOpTestBase(test.TestCase):
           np_labels=np.array([0, 3]).astype(label_dtype),
           np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3.,
                                                  4.]]).astype(np.float64))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testDoublePreservesSmallGradient(self):
+    tail_probability = 5.551115123125776e-17
+    for label_dtype in np.int32, np.int64:
+      _, gradient = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+          labels=np.array([0], dtype=label_dtype),
+          features=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
+      gradient = self.evaluate(gradient)
+      self.assertAllClose(
+          [[-tail_probability, tail_probability]], gradient, rtol=1e-14,
+          atol=0)
+      self.assertEqual(gradient[0, 0], -gradient[0, 1])
 
   def testHalf(self):
     for label_dtype in np.int32, np.int64:
