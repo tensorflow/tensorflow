@@ -114,11 +114,7 @@ class GpuGridRange {
         : index_(index), delta_(delta), end_(end) {}
     __device__ T operator*() const { return index_; }
     __device__ Iterator& operator++() {
-      if (delta_ != 0 && end_ - index_ <= delta_) {
-        index_ = end_;
-      } else {
-        index_ += delta_;
-      }
+      index_ += (delta_ < end_ - index_) ? delta_ : (end_ - index_);
       return *this;
     }
     __device__ bool operator!=(const Iterator& other) const {
