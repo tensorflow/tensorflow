@@ -36,13 +36,21 @@ absl::StatusOr<ncclDataType_t> ToNcclDataType(
     stream_executor::RocmComputeCapability rocm_cc) {
   switch (dtype) {
     case F8E5M2:
-      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e5m2 : ncclInt8;
     case F8E4M3FN:
-      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e4m3 : ncclInt8;
-    case S8:
+      if (rocm_cc.has_ocp_fp8_support()) {
+        return dtype == F8E5M2 ? ncclFloat8e5m2 : ncclFloat8e4m3;
+      }
+      [[fallthrough]];
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
     case F8E8M0FNU:
+      if (is_reduction_op) {
+        return InvalidArgument(
+            "Unsupported data type for reduction operation: %s",
+            primitive_util::LowercasePrimitiveTypeName(dtype));
+      }
+      [[fallthrough]];
+    case S8:
       return ncclInt8;
     case PRED:
     case U8:
