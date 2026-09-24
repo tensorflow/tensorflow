@@ -291,14 +291,13 @@ void LaunchConv2DBackpropInputOpGpuImpl(
             : TensorShape({filter.dim_size(3), filter.dim_size(0),
                            filter.dim_size(1), filter.dim_size(2)});
 
-    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
-                                          &transformed_filter));
-    if (!FastBoundsCheck(filter.NumElements(),
-                         std::numeric_limits<int32>::max())) {
+    if (filter.NumElements() > std::numeric_limits<int32>::max()) {
       return errors::InvalidArgument(
           "Filter tensor num elements (", filter.NumElements(),
           ") exceeds 32-bit limit for GPU transformation");
     }
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                          &transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
         ctx->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 4>()),

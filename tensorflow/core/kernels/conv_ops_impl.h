@@ -1133,17 +1133,16 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
     }
   }
   TensorShape dst_shape(dst_shape_vec);
-  OP_REQUIRES_OK(context,
-                 context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
-                                        &transformed_filter));
-
   OP_REQUIRES(
       context,
-      FastBoundsCheck(filter.NumElements(),
-                      std::numeric_limits<int32>::max()),
+      filter.NumElements() <= std::numeric_limits<int32>::max(),
       errors::InvalidArgument("Filter tensor num elements (",
                               filter.NumElements(),
                               ") exceeds 32-bit limit for GPU transformation"));
+
+  OP_REQUIRES_OK(context,
+                 context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                        &transformed_filter));
 
   // Filter: [(spatial_dims), in, out] (HWIO)
   // T_filter: [out, in, (spatial_dims)] (OIHW) or

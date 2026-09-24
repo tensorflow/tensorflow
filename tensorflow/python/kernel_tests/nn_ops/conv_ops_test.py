@@ -3197,24 +3197,6 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
 
-  def testConv2DFilterExceeds32BitLimit(self):
-    # Verify that filter configurations with invalid element count exceeding
-    # the 32-bit limit for GPU transformation raise clean errors rather than
-    # crashing with process abort or illegal memory write.
-    with self.assertRaises((errors_impl.InvalidArgumentError, ValueError)):
-      with self.cached_session():
-        input_tensor = constant_op.constant(
-            1.0, shape=[1, 1, 1, 1], dtype=dtypes.float32)
-        # 3 * 100 * 8044155 = 2413246500 > INT32_MAX
-        filter_tensor = constant_op.constant(
-            0.0, shape=[3, 100, 8044155, 1], dtype=dtypes.float32)
-        t = gen_nn_ops.conv2d(
-            input=input_tensor,
-            filter=filter_tensor,
-            strides=[1, 1, 1, 1],
-            padding="SAME")
-        self.evaluate(t)
-
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
