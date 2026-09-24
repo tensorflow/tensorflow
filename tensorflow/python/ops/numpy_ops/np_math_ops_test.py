@@ -19,12 +19,15 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -206,6 +209,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     actual = np_math_ops.hypot(x, y)
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
+
+  def testLogaddexpEqualInputsGradient(self):
+    # Both partial derivatives of logaddexp(x, x) are 0.5. `maximum` used to
+    # send the whole gradient to x1 there, giving 1.0 and 0.0.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x1 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      x2 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x1)
+        tape.watch(x2)
+        y = math_ops.reduce_sum(np_math_ops.logaddexp(x1, x2))
+      for grad in tape.gradient(y, (x1, x2)):
+        self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
 
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
