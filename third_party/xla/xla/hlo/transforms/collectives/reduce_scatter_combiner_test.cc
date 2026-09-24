@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
