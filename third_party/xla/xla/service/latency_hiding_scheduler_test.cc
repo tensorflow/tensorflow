@@ -3819,8 +3819,7 @@ ENTRY %module {
     }
     int64_t GetNumTargetDefinedResources() const override { return 1; }
     void SetConcurrentResourceLimits(
-        absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource)
-        const override {
+        ResourceCounts& max_concurrent_resource) const override {
       max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
           1;
       max_concurrent_resource[GetTargetDefinedResourceTypeBegin()] = 1;

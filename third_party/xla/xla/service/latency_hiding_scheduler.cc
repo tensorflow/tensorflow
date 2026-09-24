@@ -876,7 +876,7 @@ int64_t AsyncTracker::GetNumResourcesPerInstruction(
 }
 
 void AsyncTracker::SetConcurrentResourceLimits(
-    absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource) const {
+    ResourceCounts& max_concurrent_resource) const {
   // Set the limits for default resources
   max_concurrent_resource[ResourceTypeToIndex(
       ResourceType::kCollectiveBroadcast)] =
@@ -1554,13 +1554,13 @@ void ReadySetLt::UpdateCandidateResourceConstrained(
   }
   cand.set_resource_constrained(false);
   for (const auto& [resource_type, usage_type] : cand_node->GetResources()) {
-    auto max_it = sched_state.max_concurrent_resource.find(resource_type);
-    auto res_it = sched_state.resource_users_in_queue.find(resource_type);
-    cand.set_resource_constrained(
-        max_it != sched_state.max_concurrent_resource.end() &&
-        max_it->second == 0 &&
-        res_it != sched_state.resource_users_in_queue.end() &&
-        res_it->second > 0);
+    const int64_t* max_count =
+        sched_state.max_concurrent_resource.Find(resource_type);
+    const int64_t* users_in_queue =
+        sched_state.resource_users_in_queue.Find(resource_type);
+    cand.set_resource_constrained(max_count != nullptr && *max_count == 0 &&
+                                  users_in_queue != nullptr &&
+                                  *users_in_queue > 0);
     if (cand.resource_constrained) {
       return;
     }
@@ -1594,13 +1594,17 @@ bool ReadySetLt::ShouldDelaySendHostDone(
       !gn.UsesResourceType(ResourceType::kSendHost).has_value()) {
     return false;
   }
-  const HloGraphNode& start =
-      sched_state.sched_graph->GetNode(gn.GetInstr().operand(0));
+  // The graph resolved the send when it was built if the tracker schedules
+  // send/recv pairs; otherwise go through the instruction and the node map.
+  const HloGraphNode* start = gn.GetSupportedAsyncStart();
+  if (start == nullptr) {
+    start = &sched_state.sched_graph->GetNode(gn.GetInstr().operand(0));
+  }
   const LatencyEstimator::TimeCost latency =
-      sched_state.latency_estimator->GetLatencyBetween(start, gn);
+      sched_state.latency_estimator->GetLatencyBetween(*start, gn);
   if (!gn_cand.has_estimated_connected_send_ready_time) {
     HloGraphNode::TimeCost start_ready_time = 0;
-    for (const auto& succ : start.GetSuccessors()) {
+    for (const auto& succ : start->GetSuccessors()) {
       if (succ.Target().GetReadyTime() >=
           std::numeric_limits<HloGraphNode::TimeCost>::max()) {
         return false;
@@ -1805,24 +1809,24 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
       return *res;
     }
   }
+  // Most comparisons involve no async done, so test the done bits first and
+  // only then resolve the starts. They were resolved when the graph was built
+  // (null unless the done's operand is a supported async start), so the test
+  // touches neither instruction.
   if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
-      sched_state.async_tracker->IsSupportedAsyncStart(
-          *an->GetInstr().operand(0)) &&
-      sched_state.async_tracker->IsSupportedAsyncStart(
-          *bn->GetInstr().operand(0)) &&
       an->GetOpcode() == bn->GetOpcode()) {
-    const HloGraphNode& start_an =
-        sched_state.sched_graph->GetNode(an->GetInstr().operand(0));
-    const HloGraphNode& start_bn =
-        sched_state.sched_graph->GetNode(bn->GetInstr().operand(0));
+    const HloGraphNode* start_an = an->GetSupportedAsyncStart();
+    const HloGraphNode* start_bn = bn->GetSupportedAsyncStart();
     // Tie-breaker for comparing two async-done operations: if one's
-    // corresponding async-start was marked as `ForceDelay`, we prioritize the
+    // corresponding async-start was marked as ForceDelay, we prioritize the
     // other one to preserve its overlap windows.
-    if (auto res =
-            CmpDirectional(core_->top_down_scheduling_,
-                           start_an.GetForceDelay(), start_bn.GetForceDelay(),
-                           "kDelayDoneOfForceDelayedAsyncStart", reason)) {
-      return *res;
+    if (start_an != nullptr && start_bn != nullptr) {
+      if (auto res = CmpDirectional(
+              core_->top_down_scheduling_, start_an->GetForceDelay(),
+              start_bn->GetForceDelay(), "kDelayDoneOfForceDelayedAsyncStart",
+              reason)) {
+        return *res;
+      }
     }
   }
 
@@ -2246,7 +2250,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
           GetNumResourcesNeededForAnnotation(
               sched_state, sched_state.ready_annotations.front());
       for (const auto& [resource, num_needed] : num_resources_needed) {
-        int64_t limit = sched_state.max_concurrent_resource.at(resource);
+        int64_t limit = sched_state.max_concurrent_resource.At(resource);
         if (num_needed > limit) {
           absl::StrAppend(&error_message, "It needs ", num_needed, " ",
                           sched_state.async_tracker->GetResourceName(resource),
@@ -3058,6 +3062,8 @@ HloScheduleGraph::HloScheduleGraph(
          n->opcode_ == HloOpcode::kRecv ||
          n->opcode_ == HloOpcode::kRecvDone) &&
         static_cast<const HloSendRecvInstruction*>(instr)->is_host_transfer();
+    n->is_nested_sync_computation_ =
+        HloGraphNode::ComputeIsNestedSyncComputation(*instr);
     n->original_position_ = current_pos;
     current_pos++;
 
@@ -3071,12 +3077,29 @@ HloScheduleGraph::HloScheduleGraph(
         async_tracker->GetReleasedShareableResourcesFromVector(resources);
     r.occupied_shareable_resources =
         async_tracker->GetOccupiedShareableResourcesFromVector(resources);
-    r.recursive_resources =
+    const absl::flat_hash_map<int64_t, int64_t> recursive_resources =
         async_tracker->GetNumResourcesPerInstruction(*instr);
+    r.recursive_resources.assign(recursive_resources.begin(),
+                                 recursive_resources.end());
+    absl::c_sort(r.recursive_resources);
     r.resources = resources;
+    n->is_supported_async_done_ = async_tracker->IsSupportedAsyncDone(*instr);
+    n->is_supported_async_start_ = async_tracker->IsSupportedAsyncStart(*instr);
+    // ReadySetLt::AIsBetterThanB breaks ties between two async dones on the
+    // force delay of their starts. Resolve the start once here instead of
+    // going through the instruction, its operand and the node map on every
+    // comparison. A done's first operand is not always its start (a pipelined
+    // loop feeds the done from the loop parameter; some custom call dones sit
+    // further from their start), hence the tracker check. Operands precede
+    // their users in the post order, so the start's node exists.
+    if (n->is_supported_async_done_ && instr->operand_count() > 0 &&
+        async_tracker->IsSupportedAsyncStart(*instr->operand(0))) {
+      r.async_start = GetNodePtr(instr->operand(0));
+    }
 
     n->has_recursive_resources_ = !(r.recursive_resources.empty());
-    if (!r.recursive_resources.empty() ||                //
+    if (r.async_start != nullptr ||                      //
+        !r.recursive_resources.empty() ||                //
         !r.released_non_extendable_resources.empty() ||  //
         !r.released_shareable_resources.empty() ||       //
         !r.occupied_shareable_resources.empty() ||       //
@@ -3092,8 +3115,6 @@ HloScheduleGraph::HloScheduleGraph(
       n->has_rare_ = false;
     }
 
-    n->is_supported_async_done_ = async_tracker->IsSupportedAsyncDone(*instr);
-    n->is_supported_async_start_ = async_tracker->IsSupportedAsyncStart(*instr);
     n->has_operand_that_is_supported_async_done_ = absl::c_any_of(
         instr->operands(), [async_tracker](const HloInstruction* i) {
           return async_tracker->IsSupportedAsyncDone(*i);
@@ -3564,33 +3585,33 @@ bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
   if (!node->HasRecursiveResources()) {
     return false;
   }
-  const HloInstruction& instr = node->GetInstr();
-  const bool is_nested_sync_comp = !instr.called_computations().empty() &&
-                                   instr.opcode() != HloOpcode::kAsyncStart &&
-                                   instr.opcode() != HloOpcode::kAsyncDone;
+  // The scan calls this for every ready node with recursive resources at
+  // every step; the nested computation test is answered from the node so
+  // the instruction is not touched.
+  const bool is_nested_sync_comp = node->IsNestedSyncComputation();
 
-  auto& num_resources_needed = node->GetRecursiveResources();
-  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
-  for (const auto& [resource, count] : num_resources_needed) {
-    auto it = sched_state.max_concurrent_resource.find(resource);
-    if (it == sched_state.max_concurrent_resource.end()) {
+  for (const auto& [resource, count] : node->GetRecursiveResources()) {
+    const int64_t* available =
+        sched_state.max_concurrent_resource.Find(resource);
+    if (available == nullptr) {
       continue;
     }
     if (is_nested_sync_comp &&
         sched_state.async_tracker->IsInorderResource(resource)) {
       int64_t total_capacity =
           sched_state.async_tracker->GetNumAvailableResources(resource);
-      if (it->second < total_capacity) {
+      if (*available < total_capacity) {
         VLOG(5) << "In-order resource " << resource
                 << " currently has outer in-flight operations (available "
-                << it->second << " < total " << total_capacity
-                << "). Cannot schedule nested computation " << instr.name();
+                << *available << " < total " << total_capacity
+                << "). Cannot schedule nested computation "
+                << node->GetInstr().name();
         return true;
       }
     }
-    if (count > it->second) {
+    if (count > *available) {
       VLOG(5) << "Cross overlap limit for resource: " << resource
-              << " count: " << count << " limit: " << it->second;
+              << " count: " << count << " limit: " << *available;
       return true;
     }
   }
@@ -3782,7 +3803,7 @@ bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
       GetNumResourcesNeededForAnnotation(sched_state, annotation,
                                          use_max_resources);
   for (const auto& [resource, num_needed] : num_resources_needed) {
-    int64_t limit = sched_state.max_concurrent_resource.at(resource);
+    int64_t limit = sched_state.max_concurrent_resource.At(resource);
     if (num_needed > limit) {
       return true;
     }
@@ -4384,8 +4405,6 @@ void LatencyHidingScheduler::LogScheduleStatistics(
                                             scheduling_context_)
                         .ToString());
 }
-
-
 
 absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
     HloModule* module,
