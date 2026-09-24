@@ -109,8 +109,8 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
   HloModule Module
 
   ENTRY CopyStartAndCopyDone {
-    p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    p0 = f32[2,3]{1,0:S(7)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(7)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
@@ -119,11 +119,158 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
 
   ExecutionStreamAssignment assignment(module.get());
 
-  // copy-start is a compute scope start, gets ComputationStreamId(0).
+  // D2D copy-start (neither endpoint is host memory) runs on a compute stream.
   EXPECT_THAT(
       assignment.GetExecutionStreamId(
           FindInstruction(module.get(), "copy-start")),
       absl_testing::IsOkAndHolds(ExecutionStreamId(ComputationStreamId(0))));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CopyStartD2HStreamId) {
+  // Destination is in host memory (S(5)) → device-to-host → kMemcpyD2HStreamId.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = f32[1024]{0} parameter(0)
+    copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[1024]{0:S(5)} copy-done(copy-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "copy-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, CopyStartH2DStreamId) {
+  // Source is in host memory (S(5)) → host-to-device → kMemcpyH2DStreamId.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = f32[1024]{0:S(5)} parameter(0)
+    copy-start = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[1024]{0} copy-done(copy-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "copy-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyH2DStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncDusToHostMemory) {
+  // async-start wrapping a DUS whose output is in host memory → D2H.
+  const char* const hlo = R"(
+  HloModule Module
+
+  dus_computation {
+    base = f32[4]{0:S(5)} parameter(0)
+    update = f32[1]{0} parameter(1)
+    idx = s32[] parameter(2)
+    ROOT result = f32[4]{0:S(5)} dynamic-update-slice(base, update, idx)
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    start = ((f32[4]{0:S(5)}, f32[1]{0}, s32[]), f32[4]{0:S(5)}, u32[]) async-start(p0, p1, p2), calls=dus_computation
+    ROOT done = f32[4]{0:S(5)} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncFusedDusToHostMemory) {
+  // async-start wrapping a kLoop fusion whose output is in host memory (the
+  // post-StreamAttributeAnnotator form of a D2H host-memory DUS).
+  const char* const hlo = R"(
+  HloModule Module
+
+  wrapped_dus_computation {
+    base = f32[4]{0:S(5)} parameter(0)
+    update = f32[1]{0} parameter(1)
+    idx = s32[] parameter(2)
+    ROOT dus = f32[4]{0:S(5)} dynamic-update-slice(base, update, idx)
+  }
+
+  fused_dus_async {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    ROOT fused = f32[4]{0:S(5)} fusion(p0, p1, p2), kind=kLoop,
+        calls=wrapped_dus_computation
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = f32[1]{0} parameter(1)
+    p2 = s32[] parameter(2)
+    start = ((f32[4]{0:S(5)}, f32[1]{0}, s32[]), f32[4]{0:S(5)}, u32[]) async-start(p0, p1, p2), calls=fused_dus_async
+    ROOT done = f32[4]{0:S(5)} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyD2HStreamId)));
+}
+
+TEST_F(ExecutionStreamAssignmentTest, AsyncDsFromHostMemory) {
+  // async-start wrapping a DS whose first operand is in host memory → H2D.
+  const char* const hlo = R"(
+  HloModule Module
+
+  ds_computation {
+    src = f32[4]{0:S(5)} parameter(0)
+    idx = s32[] parameter(1)
+    ROOT result = f32[1]{0} dynamic-slice(src, idx), dynamic_slice_sizes={1}
+  }
+
+  ENTRY main {
+    p0 = f32[4]{0:S(5)} parameter(0)
+    p1 = s32[] parameter(1)
+    start = ((f32[4]{0:S(5)}, s32[]), f32[1]{0}, u32[]) async-start(p0, p1), calls=ds_computation
+    ROOT done = f32[1]{0} async-done(start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(kMemcpyH2DStreamId)));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
