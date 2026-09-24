@@ -1805,22 +1805,21 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
       return *res;
     }
   }
-  if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
-      sched_state.async_tracker->IsSupportedAsyncStart(
-          *an->GetInstr().operand(0)) &&
-      sched_state.async_tracker->IsSupportedAsyncStart(
-          *bn->GetInstr().operand(0)) &&
+  // The start nodes are resolved when the graph is built (null unless the
+  // candidate is a supported async done whose operand is a supported async
+  // start), so this test touches neither instruction.
+  const HloGraphNode* start_an =
+      sched_state.sched_graph->GetSupportedAsyncStart(*an);
+  const HloGraphNode* start_bn =
+      sched_state.sched_graph->GetSupportedAsyncStart(*bn);
+  if (start_an != nullptr && start_bn != nullptr &&
       an->GetOpcode() == bn->GetOpcode()) {
-    const HloGraphNode& start_an =
-        sched_state.sched_graph->GetNode(an->GetInstr().operand(0));
-    const HloGraphNode& start_bn =
-        sched_state.sched_graph->GetNode(bn->GetInstr().operand(0));
     // Tie-breaker for comparing two async-done operations: if one's
-    // corresponding async-start was marked as `ForceDelay`, we prioritize the
+    // corresponding async-start was marked as ForceDelay, we prioritize the
     // other one to preserve its overlap windows.
     if (auto res =
             CmpDirectional(core_->top_down_scheduling_,
-                           start_an.GetForceDelay(), start_bn.GetForceDelay(),
+                           start_an->GetForceDelay(), start_bn->GetForceDelay(),
                            "kDelayDoneOfForceDelayedAsyncStart", reason)) {
       return *res;
     }
@@ -3058,6 +3057,8 @@ HloScheduleGraph::HloScheduleGraph(
          n->opcode_ == HloOpcode::kRecv ||
          n->opcode_ == HloOpcode::kRecvDone) &&
         static_cast<const HloSendRecvInstruction*>(instr)->is_host_transfer();
+    n->is_nested_sync_computation_ =
+        HloGraphNode::ComputeIsNestedSyncComputation(*instr);
     n->original_position_ = current_pos;
     current_pos++;
 
@@ -3135,6 +3136,25 @@ HloScheduleGraph::HloScheduleGraph(
     }
     if (top_down_scheduling) {
       n->SetTopDownScheduling(true);
+    }
+  }
+
+  // ReadySetLt::AIsBetterThanB breaks ties between two async dones on the force
+  // delay of their starts. Resolve each done's start node here, once, instead
+  // of going through the instruction, its operand and the node map on every
+  // comparison. A done's first operand is not always its start (a pipelined
+  // loop feeds the done from the loop parameter; some custom call dones sit
+  // further from their start), hence the tracker check.
+  for (HloGraphNode& node : node_storage_) {
+    if (!node.IsSupportedAsyncDone() || node.GetInstr().operand_count() == 0) {
+      continue;
+    }
+    const HloInstruction* start = node.GetInstr().operand(0);
+    if (async_tracker->IsSupportedAsyncStart(*start)) {
+      // The graph holds a whole computation and operands live in it.
+      auto it = nodes_.find(start);
+      CHECK(it != nodes_.end()) << start->name();
+      node.async_start_index_ = it->second;
     }
   }
 
@@ -3564,10 +3584,10 @@ bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
   if (!node->HasRecursiveResources()) {
     return false;
   }
-  const HloInstruction& instr = node->GetInstr();
-  const bool is_nested_sync_comp = !instr.called_computations().empty() &&
-                                   instr.opcode() != HloOpcode::kAsyncStart &&
-                                   instr.opcode() != HloOpcode::kAsyncDone;
+  // The scan calls this for every ready node with recursive resources at
+  // every step; the nested computation test is answered from the node so
+  // the instruction is not touched.
+  const bool is_nested_sync_comp = node->IsNestedSyncComputation();
 
   auto& num_resources_needed = node->GetRecursiveResources();
   // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
@@ -3584,7 +3604,8 @@ bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
         VLOG(5) << "In-order resource " << resource
                 << " currently has outer in-flight operations (available "
                 << it->second << " < total " << total_capacity
-                << "). Cannot schedule nested computation " << instr.name();
+                << "). Cannot schedule nested computation "
+                << node->GetInstr().name();
         return true;
       }
     }
