@@ -833,6 +833,99 @@ class PowGradTest(test.TestCase):
     g = self.evaluate(g)
     self.assertAllClose([-2., 0., 2.], g)
 
+  def test_pow_grad_y_finite_when_forward_overflows(self):
+    # Regression test for GitHub issue #126627 (b/555972764).
+    cases = [
+        (dtypes.float64, 2.0, 1024.0, 1.0, 1.2460659279417838e308),
+        (dtypes.float64, 2.0, 1023.0, 2.0, 1.2460659279417838e308),
+        (dtypes.float64, 8.0, 341.0, 0.25, 4.672747229781689e307),
+        (dtypes.float64, 0.5, -1024.0, 1.0, -1.2460659279417838e308),
+        (dtypes.float64, 2.0, 1025.0, 0.25, 6.230329639708919e307),
+        (dtypes.float64, 1e307, 2.0, 0.0, 0.0),
+        (dtypes.float32, 2.0, 128.0, 1.0, 2.3586576e38),
+        (dtypes.float16, 1.0 + 2.0**-10, 11392.0, 512.0, 33696.0),
+    ]
+    for dtype, x_val, y_val, scale_val, expected in cases:
+      with self.subTest(dtype=dtype, x=x_val, y=y_val, scale=scale_val):
+        x = constant_op.constant(x_val, dtype=dtype)
+        y = constant_op.constant(y_val, dtype=dtype)
+        scale = constant_op.constant(scale_val, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(y)
+          z = math_ops.pow(x, y)
+        gy = self.evaluate(tape.gradient(z, y, output_gradients=scale))
+        self.assertTrue(np.isfinite(gy))
+        self.assertAllClose(expected, gy, rtol=1e-6)
+
+    # Also verify elementwise masking across a mixed vector containing
+    # overflowing, non-overflowing, x = 0 (including z = inf), x < 0
+    # (including z = inf), and all z = NaN cases (y = NaN, x = NaN, and
+    # x < 0 with non-integer y).
+    x_vec = constant_op.constant(
+        [2.0, 2.0, 0.0, 0.0, -2.0, -2.0, 2.0, np.nan, -2.0],
+        dtype=dtypes.float64,
+    )
+    y_vec = constant_op.constant(
+        [1024.0, 3.0, 2.0, -2.0, 2.0, 1024.0, np.nan, 2.0, 0.5],
+        dtype=dtypes.float64,
+    )
+    with backprop.GradientTape() as tape:
+      tape.watch(y_vec)
+      z_vec = math_ops.pow(x_vec, y_vec)
+    gy_vec = self.evaluate(tape.gradient(z_vec, y_vec))
+    self.assertAllClose(
+        [
+            1.2460659279417838e308,
+            8.0 * np.log(2.0),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            np.nan,
+            np.nan,
+            np.nan,
+        ],
+        gy_vec,
+        rtol=1e-6,
+    )
+
+  def test_pow_grad_y_second_order_when_forward_overflows(self):
+    for x_val, y_val, expected_ggy in [
+        (2.0, 1024.0, 8.637070549523295e307),
+        (1.5, 1751.0, 3.562063418193927e307),
+    ]:
+      with self.subTest(x=x_val, y=y_val):
+        x = constant_op.constant(x_val, dtype=dtypes.float64)
+        y = constant_op.constant(y_val, dtype=dtypes.float64)
+        with backprop.GradientTape() as tape2:
+          tape2.watch(y)
+          with backprop.GradientTape() as tape1:
+            tape1.watch(y)
+            z = math_ops.pow(x, y)
+          gy = tape1.gradient(z, y)
+        ggy = self.evaluate(tape2.gradient(gy, y))
+        self.assertTrue(np.isinf(self.evaluate(z)))
+        self.assertTrue(np.isfinite(ggy))
+        self.assertAllClose(expected_ggy, ggy, rtol=1e-6)
+
+    # Also verify that when both x and y are watched (mixed second-order
+    # gradient d^2z / dx dy) at a point where x^(y-1) also overflows (e.g.
+    # x=2.0, y=1025.0), the unselected z branch does not inject 0 * inf = NaN.
+    x2 = constant_op.constant(2.0, dtype=dtypes.float64)
+    y2 = constant_op.constant(1025.0, dtype=dtypes.float64)
+    scale2 = constant_op.constant(2.0**-15, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape_outer:
+      tape_outer.watch([x2, y2])
+      with backprop.GradientTape() as tape_inner:
+        tape_inner.watch([x2, y2])
+        z2 = math_ops.pow(x2, y2)
+      _, gy2 = tape_inner.gradient(z2, [x2, y2], output_gradients=scale2)
+    dgydx, dgydy = self.evaluate(tape_outer.gradient(gy2, [x2, y2]))
+    self.assertFalse(np.isnan(dgydx))
+    self.assertTrue(np.isfinite(dgydx))
+    self.assertAllClose(3.9032448403173547e306, dgydx, rtol=1e-6)
+    self.assertTrue(np.isfinite(dgydy))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NextAfterTest(test.TestCase):

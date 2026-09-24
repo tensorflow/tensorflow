@@ -3672,10 +3672,10 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
 
   TF_RET_CHECK(specialization_cache_ != nullptr);
 
-  const Literal* cached_result =
-      specialization_cache_->Find(computation, arg_literals);
-  if (cached_result != nullptr) {
-    SetEvaluatedLiteralFor(call, cached_result->Clone());
+  if (std::optional<Literal> cached_result =
+          specialization_cache_->Find(computation, arg_literals);
+      cached_result.has_value()) {
+    SetEvaluatedLiteralFor(call, std::move(*cached_result));
     return absl::OkStatus();
   }
 
@@ -3686,9 +3686,7 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
   ABSL_ASSIGN_OR_RETURN(Literal result,
                    embedded_evaluator->Evaluate(*computation, arg_literals));
 
-  if (specialization_cache_->Find(computation, arg_literals) == nullptr) {
-    specialization_cache_->Insert(computation, arg_literals, result.Clone());
-  }
+  specialization_cache_->Insert(computation, arg_literals, result.Clone());
 
   SetEvaluatedLiteralFor(call, std::move(result));
   return absl::OkStatus();
