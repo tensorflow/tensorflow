@@ -26,7 +26,6 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,8 +35,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -65,12 +62,9 @@ TEST_F(CpuCompilerInternalsTest, DotRootedLoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kDotFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));
+  EXPECT_TRUE(FusionRoutesToMlirEmitter(fusion));
 }
 
 TEST_F(CpuCompilerInternalsTest, LoopFusionRoutesToMlirEmitter) {
@@ -87,12 +81,9 @@ TEST_F(CpuCompilerInternalsTest, LoopFusionRoutesToMlirEmitter) {
   )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kLoopFusionHlo));
-  if (!options::UseExperimentalLoopFusion(hlo_module->config())) {
-    GTEST_SKIP() << "Test covers the new-fusion-emitter configuration.";
-  }
   const auto* fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
-  EXPECT_TRUE(FusionRoutesToMlirEmitter(hlo_module->config(), fusion));
+  EXPECT_TRUE(FusionRoutesToMlirEmitter(fusion));
 }
 
 std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
@@ -110,27 +101,9 @@ std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
   return c->getSExtValue();
 }
 
-std::optional<std::string> GetMetadataString(
-    llvm::Metadata* absl_nullable value) {
-  if (value == nullptr) {
-    return std::nullopt;
-  }
-  auto* md_string = llvm::dyn_cast<llvm::MDString>(value);
-  if (md_string == nullptr) {
-    return std::nullopt;
-  }
-  return md_string->getString().str();
-}
-
 std::optional<int64_t> GetXlaDylibIndex(const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_dylib_index");
   return GetMetadataInt(md);
-}
-
-std::optional<std::string> GetXlaBackendExtraOptions(
-    const llvm::Module& llvm_module) {
-  llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
-  return GetMetadataString(md);
 }
 
 static constexpr absl::string_view kAddExponentialOfScatterHlo = R"(

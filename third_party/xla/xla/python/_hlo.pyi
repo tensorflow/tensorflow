@@ -321,37 +321,39 @@ class HloOpcode(enum.Enum):
 
   kShiftRightLogical = 117
 
-  kSign = 118
+  kShuffle = 118
 
-  kSin = 119
+  kSign = 119
 
-  kSinh = 120
+  kSin = 120
 
-  kSlice = 121
+  kSinh = 121
 
-  kSort = 122
+  kSlice = 122
 
-  kSqrt = 123
+  kSort = 123
 
-  kStochasticConvert = 124
+  kSqrt = 124
 
-  kSubtract = 125
+  kStochasticConvert = 125
 
-  kTan = 126
+  kSubtract = 126
 
-  kTanh = 127
+  kTan = 127
 
-  kTopK = 128
+  kTanh = 128
 
-  kTranspose = 129
+  kTopK = 129
 
-  kTriangularSolve = 130
+  kTranspose = 130
 
-  kTuple = 131
+  kTriangularSolve = 131
 
-  kWhile = 132
+  kTuple = 132
 
-  kXor = 133
+  kWhile = 133
+
+  kXor = 134
 
 class Layout:
   @overload

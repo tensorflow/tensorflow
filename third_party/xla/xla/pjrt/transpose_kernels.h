@@ -225,6 +225,187 @@ HWY_INLINE void StoreVecs128(D d, char* b, int64_t ldb, Vs... v) {
       v...);
 }
 
+// 128-bit (single block) transpose
+template <typename T, int bs>
+HWY_FLATTEN void TransposeMicroKernel128(const char* HWY_RESTRICT a,
+                                         int64_t lda, char* HWY_RESTRICT b,
+                                         int64_t ldb) {
+  using D = hn::Full128<uint8_t>;
+  static constexpr size_t element_size = sizeof(T);
+  static constexpr size_t row_bytes = element_size * bs;
+  static_assert(row_bytes <= kBlockBytes);
+  const D d;
+  LoadRowsCPS<0, T, bs, D, row_bytes>(d, a, lda, [&](auto... loads) {
+    CombineRowsCPS<element_size, bs, kBlockBytes>(
+        [&](auto... vecs) {
+          constexpr size_t kNumVecs = sizeof...(vecs);
+          constexpr size_t kBytesInMatrix = element_size * bs * bs;
+          constexpr size_t kStoresPerRow = bs / kNumVecs;
+          constexpr size_t kElementsPerVec = kBytesInMatrix / (bs * kNumVecs);
+          InterleaveWithinBlocksCPS<kElementsPerVec, 1, row_bytes>(
+              [&](auto... transposed) {
+                StoreVecs128<D, row_bytes, kStoresPerRow>(d, b, ldb,
+                                                          transposed...);
+              },
+              vecs...);
+        },
+        loads...);
+  });
+}
+
+// 256-bit (two block) transposes
+#if HWY_MIN_BYTES >= 32
+template <class D, class... Vs>
+HWY_INLINE void StoreRows256(D d, char* b, int64_t ldb, Vs... v) {
+  ForEachIndexed(
+      [&](auto idx_c, auto&& vec) {
+        constexpr size_t i = decltype(idx_c)::value;
+        hn::StoreU(vec, d, reinterpret_cast<hn::TFromD<D>*>(b + ldb * i));
+      },
+      v...);
+}
+
+// Invokes a continuation with an explicit parameter pack, rearranging the
+// arguments such that all even-indexed elements precede all odd-indexed
+// elements.
+template <size_t... I, class Cont, class... Vs>
+HWY_INLINE void CallContWithSeparatedImpl(Cont&& cont,
+                                          std::index_sequence<I...>,
+                                          Vs&&... vs) {
+  std::forward<Cont>(cont)(GetFromPack<2 * I>(std::forward<Vs>(vs)...)...,
+                           GetFromPack<2 * I + 1>(std::forward<Vs>(vs)...)...);
+}
+
+template <class Cont, class... Vs>
+HWY_INLINE void CallContWithSeparated(Cont&& cont, Vs&&... vs) {
+  CallContWithSeparatedImpl(std::forward<Cont>(cont),
+                            std::make_index_sequence<sizeof...(Vs) / 2>{},
+                            std::forward<Vs>(vs)...);
+}
+
+// Loads a square block of memory into 256-bit vectors, partitioning the
+// data spatially. Invokes the continuation with the vectors corresponding
+// to the left half of the block followed by the right half.
+template <int I, typename T, int bs, class D, class DHalf, class Cont,
+          class... Vs>
+HWY_INLINE void BuildVecs256SquareCPS(D d, DHalf d_half, const char* a,
+                                      int64_t lda, Cont& cont, Vs... vs) {
+  if constexpr (I == bs / 2) {
+    CallContWithSeparated(cont, vs...);
+  } else {
+    auto* row0 = reinterpret_cast<const hn::TFromD<DHalf>*>(a + lda * I);
+    auto row1 =
+        reinterpret_cast<const hn::TFromD<DHalf>*>(a + lda * (I + bs / 2));
+    auto row0_lo = hn::LoadU(d_half, row0);
+    auto row0_hi = hn::LoadU(d_half, row0 + kBlockBytes / sizeof(*row0));
+    auto row1_lo = hn::LoadU(d_half, row1);
+    auto row1_hi = hn::LoadU(d_half, row1 + kBlockBytes / sizeof(*row0));
+    auto v_lo = hn::Combine(d, row1_lo, row0_lo);
+    auto v_hi = hn::Combine(d, row1_hi, row0_hi);
+    BuildVecs256SquareCPS<I + 1, T, bs>(d, d_half, a, lda, cont, vs..., v_lo,
+                                        v_hi);
+  }
+}
+
+template <typename T, int bs, class D, class DHalf, class Cont>
+HWY_INLINE void BuildVecs256SquareCPS(D d, DHalf d_half, const char* a,
+                                      int64_t lda, Cont& cont) {
+  BuildVecs256SquareCPS<0, T, bs>(d, d_half, a, lda, cont);
+}
+
+template <typename T, int bs>
+HWY_FLATTEN void TransposeMicroKernel256Square(const char* HWY_RESTRICT a,
+                                               int64_t lda,
+                                               char* HWY_RESTRICT b,
+                                               int64_t ldb) {
+  using D = hn::FixedTag<uint8_t, 32>;
+  using DHalf = hn::Half<D>;
+  static constexpr size_t element_size = sizeof(T);
+  static constexpr size_t row_bytes = element_size * bs;
+  static_assert(row_bytes == 2 * kBlockBytes);
+  static_assert(bs % 2 == 0);
+  const D d;
+  const DHalf d_half;
+  auto cont = [&](auto... vecs) {
+    InterleaveWithinBlocksCPS<element_size, 1, kBlockBytes>(
+        [&](auto... transposed) { StoreRows256(d, b, ldb, transposed...); },
+        vecs...);
+  };
+  BuildVecs256SquareCPS<T, bs>(d, d_half, a, lda, cont);
+}
+// Permutes 64-bit lanes across 128-bit blocks in a 256-bit vector.
+// Specifically, reorders the 4 64-bit lanes from [0, 1, 2, 3] to [0, 2, 1, 3].
+template <class V>
+HWY_INLINE V ShuffleAcrossBlocks_3120(V v) {
+  const hn::DFromV<V> d;
+  const hn::Repartition<uint64_t, decltype(d)> d64;
+  return hn::BitCast(d,
+                     hn::Per4LaneBlockShuffle<3, 1, 2, 0>(hn::BitCast(d64, v)));
+}
+
+template <class DHalf, class... Vs>
+HWY_INLINE void StoreRectPairs(DHalf d_half, char* b, int64_t ldb, Vs... v) {
+  ForEachIndexed(
+      [&](auto idx_c, auto&& vec) {
+        constexpr size_t i = decltype(idx_c)::value;
+        const auto lo = hn::LowerHalf(d_half, vec);
+        const auto hi = hn::UpperHalf(d_half, vec);
+        hn::StoreU(lo, d_half,
+                   reinterpret_cast<hn::TFromD<DHalf>*>(b + ldb * (i * 2)));
+        hn::StoreU(hi, d_half,
+                   reinterpret_cast<hn::TFromD<DHalf>*>(b + ldb * (i * 2 + 1)));
+      },
+      v...);
+}
+
+// Loads a rectangular block of memory into 256-bit vectors. Invokes the
+// continuation with the constructed sequence of vectors.
+template <int I, typename T, int bs, class D, class DHalf, class Cont,
+          class... Vs>
+HWY_INLINE void BuildVecs256RectCPS(D d, DHalf d_half, const char* a,
+                                    int64_t lda, Cont& cont, Vs... vs) {
+  if constexpr (I == bs / 2) {
+    cont(vs...);
+  } else {
+    auto lo = hn::LoadU(
+        d_half, reinterpret_cast<const hn::TFromD<DHalf>*>(a + lda * I));
+    auto hi = hn::LoadU(d_half, reinterpret_cast<const hn::TFromD<DHalf>*>(
+                                    a + lda * (I + bs / 2)));
+    auto v = hn::Combine(d, hi, lo);
+    BuildVecs256RectCPS<I + 1, T, bs>(d, d_half, a, lda, cont, vs..., v);
+  }
+}
+
+template <typename T, int bs, class D, class DHalf, class Cont>
+HWY_INLINE void BuildVecs256RectCPS(D d, DHalf d_half, const char* a,
+                                    int64_t lda, Cont& cont) {
+  BuildVecs256RectCPS<0, T, bs>(d, d_half, a, lda, cont);
+}
+
+template <typename T, int bs>
+HWY_FLATTEN void TransposeMicroKernel256Rect(const char* HWY_RESTRICT a,
+                                             int64_t lda, char* HWY_RESTRICT b,
+                                             int64_t ldb) {
+  using D = hn::FixedTag<uint8_t, 32>;
+  using DHalf = hn::Half<D>;
+  static constexpr size_t element_size = sizeof(T);
+  static constexpr size_t row_bytes = element_size * bs;
+  static_assert(row_bytes == kBlockBytes);
+  static_assert(bs % 2 == 0);
+  const D d;
+  const DHalf d_half;
+  auto cont = [&](auto... vecs) {
+    InterleaveWithinBlocksCPS<element_size, 1, kBlockBytes / 2>(
+        [&](auto... interleaved) {
+          StoreRectPairs(d_half, b, ldb,
+                         ShuffleAcrossBlocks_3120(interleaved)...);
+        },
+        vecs...);
+  };
+  BuildVecs256RectCPS<T, bs>(d, d_half, a, lda, cont);
+}
+#endif  // HWY_MIN_BYTES >= 32
+
 }  // namespace HWY_NAMESPACE
 }  // namespace xla
 HWY_AFTER_NAMESPACE();
