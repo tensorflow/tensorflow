@@ -1,0 +1,7 @@
+# proto-file: third_party/tensorflow/compiler/xla/util/split_proto/human_readable_aot_executable.proto
+# proto-message: xla.HumanReadableAotExecutable
+
+# Minimal well-formed GPU artifact
+gpu_executable {
+  binary: "dummy_gpu_binary"
+}

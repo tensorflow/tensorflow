@@ -23,12 +23,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -41,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
@@ -52,7 +53,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
@@ -74,7 +77,14 @@ class GpuIndexingPerformanceModelTest
 
   bool use_experimental_tiling() const { return GetParam(); }
 
+  static std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
+    auto ctx = std::make_unique<mlir::MLIRContext>();
+    ctx->disableMultithreading();
+    return ctx;
+  }
+
   mlir::MLIRContext mlir_context_;
+  MlirContextPool mlir_context_pool_{CreateMlirContext, 4};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
@@ -85,7 +95,8 @@ class GpuIndexingPerformanceModelTest
       HloCostAnalysis::DefaultShapeSize,
       &mlir_context_,
       use_experimental_tiling(),
-      /*enable_same_shape_multi_output_fusion=*/false};
+      /*enable_same_shape_multi_output_fusion=*/false,
+      &mlir_context_pool_};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
@@ -441,7 +452,8 @@ ENTRY entry_computation {
 
   ASSERT_OK_AND_ASSIGN(
       TiledRunTimeDataOrError tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
 
@@ -494,7 +506,8 @@ ENTRY entry_computation {
 
   ASSERT_OK_AND_ASSIGN(
       TiledRunTimeDataOrError tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
 
@@ -537,8 +550,10 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(
       auto top_k_result,
-      indexing_cost_model_.TryFindTopKBestTilingsForFusion(*fusion_adaptor,
-                                                           /*top_k=*/3));
+      indexing_cost_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor,
+                                                /*top_k=*/3)
+          .Await());
   ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
       top_k_result)));
 
@@ -582,7 +597,8 @@ ENTRY main {
 
   ASSERT_OK_AND_ASSIGN(
       TiledRunTimeDataOrError tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+      indexing_cost_model_.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+          .Await());
 
   ASSERT_TRUE(std::holds_alternative<TiledRunTimeData>(tiling_result));
 
@@ -1281,6 +1297,107 @@ ENTRY entry_computation {
   ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
 }
 )");
+}
+
+TEST_P(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  c0 = f32[] constant(0)
+  exp = f32[128,256] exponential(p0)
+  dot = f32[128,64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reduce = f32[128] reduce(dot, c0), dimensions={1}, to_apply=add
+  ROOT tuple = (f32[128,64], f32[128]) tuple(dot, reduce)
+}
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  ROOT fusion = (f32[128,64], f32[128]) fusion(p0, p1), kind=kCustom,
+    calls=fused_computation
+}
+)"));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+
+  auto flops_map = internal::PrecomputeFlopsMap(
+      *fusion_adaptor, [this](const HloInstruction* instr) {
+        return indexing_cost_model_.FlopsPerElement(instr);
+      });
+
+  HloComputation* fused_comp = fusion->fused_instructions_computation();
+  const HloInstruction* dot = fused_comp->GetInstructionWithName("dot");
+  const HloInstruction* reduce = fused_comp->GetInstructionWithName("reduce");
+  const HloInstruction* exp = fused_comp->GetInstructionWithName("exp");
+
+  EXPECT_EQ(flops_map.at(dot), indexing_cost_model_.FlopsPerElement(dot));
+  EXPECT_EQ(flops_map.at(reduce), indexing_cost_model_.FlopsPerElement(reduce));
+  EXPECT_EQ(flops_map.at(exp), indexing_cost_model_.FlopsPerElement(exp));
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilingsForFusionAsync_ParallelMatchesSequential) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[1024,1024] parameter(0)
+  ROOT negate.1 = f32[1024,1024] negate(param_0.1)
+}
+
+ENTRY main {
+  param_0.3 = f32[1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024] fusion(param_0.3), kind=kCustom, calls=fused_computation
+}
+)"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  constexpr int top_k = 5;
+  ASSERT_OK_AND_ASSIGN(
+      auto seq_result,
+      indexing_cost_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, top_k)
+          .Await());
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 8);
+  ASSERT_OK_AND_ASSIGN(auto parallel_result,
+                       indexing_cost_model_
+                           .TryFindTopKBestTilingsForFusionAsync(
+                               *fusion_adaptor, top_k, thread_pool.AsExecutor())
+                           .Await());
+
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      seq_result)));
+  const auto& seq_candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(seq_result);
+  ASSERT_FALSE(seq_candidates.empty());
+
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      parallel_result)));
+  const auto& parallel_candidates =
+      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(parallel_result);
+
+  ASSERT_EQ(parallel_candidates.size(), seq_candidates.size());
+  for (int i = 0; i < seq_candidates.size(); ++i) {
+    EXPECT_EQ(parallel_candidates[i].runtime_data.exec_time,
+              seq_candidates[i].runtime_data.exec_time);
+    EXPECT_EQ(parallel_candidates[i].block_level_parameters.output_tile_sizes,
+              seq_candidates[i].block_level_parameters.output_tile_sizes);
+    EXPECT_EQ(parallel_candidates[i].block_level_parameters.num_warps,
+              seq_candidates[i].block_level_parameters.num_warps);
+  }
 }
 
 }  // namespace
