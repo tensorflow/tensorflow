@@ -1502,9 +1502,14 @@ def tile(a, reps):  # pylint: disable=missing-function-docstring
 
   return array_ops.tile(a, reps)
 
-
 @tf_export.tf_export('experimental.numpy.count_nonzero', v1=[])
 @np_utils.np_doc('count_nonzero')
+
+def count_nonzero(a, axis=None, *, keepdims=False):
+  return math_ops.count_nonzero(
+      np_array_ops.array(a), axis, keepdims=keepdims
+  )
+
 def count_nonzero(a, axis=None):
   a = np_array_ops.array(a)
   maybe_rank = a.shape.rank
