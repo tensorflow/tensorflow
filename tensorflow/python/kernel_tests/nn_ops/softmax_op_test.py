@@ -323,11 +323,14 @@ class SoftmaxTest(test.TestCase):
     # across SIMD batch boundaries (e.g. AVX2 Packet8f vectorized batches).
     batch_sizes = [1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 128, 129]
     for batch_size in batch_sizes:
-      for dtype in [dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16]:
+      for dtype in [
+          dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16
+      ]:
         for use_gpu in [False, True]:
           with self.cached_session(use_gpu=use_gpu):
             logits = math_ops.cast(
-                constant_op.constant(np.random.randn(batch_size, 1)), dtype=dtype)
+                constant_op.constant(np.random.randn(batch_size, 1)),
+                dtype=dtype)
             res = self.evaluate(nn_ops.softmax(logits, axis=-1))
             expected = np.ones((batch_size, 1), dtype=dtype.as_numpy_dtype)
             self.assertAllEqual(res, expected)

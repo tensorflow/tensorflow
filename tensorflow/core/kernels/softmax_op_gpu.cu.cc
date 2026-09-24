@@ -211,7 +211,7 @@ class SoftmaxOpGPU : public OpKernel {
       if (cols == 1) {
         const auto& d = context->eigen_gpu_device();
         GpuLaunchConfig config = GetGpuLaunchConfig(rows, d);
-        TF_CHECK_OK(GpuLaunchKernel(
+        OP_REQUIRES_OK(context, GpuLaunchKernel(
             SoftmaxSingleClassKernel<T>, config.block_count,
             config.thread_per_block, 0, cu_stream,
             reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
