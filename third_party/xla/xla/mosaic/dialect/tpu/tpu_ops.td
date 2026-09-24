@@ -377,6 +377,85 @@ def TPU_VectorCompressStoreOp : TPU_Op<"vector_compress_store", [DefaultMemWrite
   let hasVerifier = 1;
 }
 
+def TPU_ExpandLoadVregOp : TPU_Op<"expand_load_vreg", [DefaultMemRead]> {
+  let summary = "Performs a masked, expanded load of a single vreg.";
+  let description = [{
+    `tpu.expand_load_vreg` performs a masked, expanded load of a single vreg
+    from memory starting at the address given by `base[indices]`. It is the
+    physical (vreg-level) counterpart of `tpu.vector_expand_load`.
+
+    Masked-out lanes do not consume an address: the enabled lanes are filled
+    from contiguous, sequential locations in memory starting at
+    `base[indices]`. The n-th enabled lane reads `base[indices] + n`.
+
+    For example, loading with mask [true, false, true, false] yields
+    [`base[indices]`, <undef>, `base[indices] + 1`, <undef>].
+
+    Elements in masked-out lanes are undefined.
+
+    base   : Memref to load from.
+    indices: Scalar indices into `base`, identifying the position of the first
+             loaded element. The length must be the same as the rank of `base`.
+    mask   : 1-D lane mask.
+    result : The loaded vreg. For packed (sub-32-bit) types, the vreg is 2-D
+             with shape `(lane_count, packing)`, and a lane loads all of its
+             `packing` subelements together.
+  }];
+  let arguments = (ins
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfRankAndType<[1], [I1]>:$mask
+  );
+  let results = (outs TPU_Vreg:$result);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $mask attr-dict `:` type($base) `,` type($result) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_VectorExpandLoadOp : TPU_Op<"vector_expand_load", [DefaultMemRead]> {
+  let summary = "Performs a masked, expanded load of a vector.";
+  let description = [{
+    In contrast to `tpu.vector_load`, which has non-expanded semantics
+    (masked-out elements leave gaps in the addresses that are read), masked-out
+    elements are skipped entirely when striding along `expand_dim`:
+    `result[i_0, i_1, ...]`, if not masked, is loaded from
+    `base[j_0, j_1, ...]` where:
+    - For `n != expand_dim`, `j_n = indices_n + i_n` (same as a regular load)
+    - For `n == expand_dim`, `j_n = indices_n + c`, where `c` is the count of
+      enabled (true) values in `mask[i_0, i_1, ..., 0:i_n, ...]`
+
+    Elements at masked-off positions are undefined.
+
+    For example, for a rank-1 `result` (and hence `expand_dim` = 0), loading
+    with mask [true, false, true, false] yields
+    [base[indices], <undef>, base[indices + 1], <undef>].
+
+    base      : Memref to load from.
+    indices   : Scalar indices into `base`, identifying the position of the
+                first loaded element. Must be of the same rank as the base
+                memref shape.
+    mask      : Mask of the same shape as `result`. Masking has a granularity
+                of 32 bits: elements that share a 32-bit word must have the
+                same mask value.
+    expand_dim: The dimension along which the enabled elements are read
+                consecutively.
+    result    : The loaded vector. Must be of the same rank as the base memref
+                shape.
+  }];
+  let arguments = (ins
+    AnyMemRef:$base,
+    Variadic<Index>:$indices,
+    VectorOfNonZeroRankOf<[I1]>:$mask,
+    I32Attr:$expand_dim
+  );
+  let results = (outs AnyVectorOfNonZeroRank:$result);
+  let assemblyFormat = [{
+    $base `[` $indices `]` `,` $mask attr-dict `:` type($base) `,` type($result) `,` type($mask)
+  }];
+  let hasVerifier = 1;
+}
+
 // tpu.vector_load loads a vector from memory into a register.
 //
 //  base   : Memref to load from.
