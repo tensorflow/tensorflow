@@ -333,6 +333,26 @@ cc_library(
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
+xla_test(
+    name = "rocm_platform_test",
+    srcs = ["rocm_platform_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+    ],
+)
+
 cc_library(
     name = "rocm_runtime_abi_version",
     srcs = ["rocm_runtime_abi_version.cc"],

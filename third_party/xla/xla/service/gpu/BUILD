@@ -1709,6 +1709,7 @@ cc_library(
     hdrs = ["fusion_pipeline.h"],
     deps = [
         ":alias_info",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:conv_canonicalizer",
         "//xla/backends/gpu/transforms:conv_fusion_rewriter",
@@ -1720,6 +1721,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:hlo_cost_analysis",
