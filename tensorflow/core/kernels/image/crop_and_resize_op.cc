@@ -396,10 +396,16 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
     if (boxes.NumElements() > 0) {
-      const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite =
-          boxes.tensor<float, 2>().isfinite().all();
+      bool only_finite = true;
+      auto boxes_flat = boxes.flat<float>();
+      for (int i = 0; i < boxes_flat.size(); ++i) {
+        if (!std::isfinite(boxes_flat(i))) {
+          only_finite = false;
+          break;
+        }
+      }
       OP_REQUIRES_ASYNC(
-          context, only_finite(),
+          context, only_finite,
           absl::InvalidArgumentError(
               "boxes contains at least one element that is not finite"),
           done);
@@ -649,10 +655,16 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
     if (boxes.NumElements() > 0) {
-      const Eigen::Tensor<bool, 0, Eigen::RowMajor> only_finite =
-          boxes.tensor<float, 2>().isfinite().all();
+      bool only_finite = true;
+      auto boxes_flat = boxes.flat<float>();
+      for (int i = 0; i < boxes_flat.size(); ++i) {
+        if (!std::isfinite(boxes_flat(i))) {
+          only_finite = false;
+          break;
+        }
+      }
       OP_REQUIRES_ASYNC(
-          context, only_finite(),
+          context, only_finite,
           absl::InvalidArgumentError(
               "boxes contains at least one element that is not finite"),
           done);
