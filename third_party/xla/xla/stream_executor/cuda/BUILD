@@ -189,6 +189,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",
@@ -1090,6 +1091,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform:statusor",
@@ -1170,6 +1172,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1687,6 +1690,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",  # build_cleaner: keep
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2337,6 +2341,19 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "subprocess_compilation_provider_test",
+    srcs = ["subprocess_compilation_provider_test.cc"],
+    deps = [
+        ":compilation_options",
+        ":cuda_compute_capability",
+        ":subprocess_compilation_provider",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

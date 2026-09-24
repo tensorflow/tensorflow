@@ -42,7 +42,9 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
@@ -61,6 +63,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -121,7 +124,12 @@ absl::Status InitIsolatorOptions(ModuleIsolationOptions& options) {
   }
   if (!options.make_fake_arguments_fn) {
     options.make_fake_arguments_fn =
-        [](const HloModule& module) -> absl::StatusOr<std::vector<Literal>> {
+        [use_dataflow_based_input_generation =
+             options.use_dataflow_based_input_generation](
+            const HloModule& module) -> absl::StatusOr<std::vector<Literal>> {
+      if (use_dataflow_based_input_generation) {
+        return MakeDataflowConstrainedArguments(&module);
+      }
       return MakeFakeArguments(&module);
     };
   }
@@ -195,31 +203,87 @@ void WriteResults(const std::vector<HloIsolationTestResult>& pipeline_results) {
   }
 }
 
+void ApplyBoundingBoxToMismatch(
+    const absl::flat_hash_map<
+        int64_t, numerics::debug_info::MismatchBoundingBox>& computed_bboxes,
+    NumericMismatch& mismatch) {
+  int64_t idx = mismatch.output_shape_index();
+  auto it = computed_bboxes.find(idx);
+  if (it != computed_bboxes.end()) {
+    const auto& bbox = it->second;
+    for (int64_t dim : bbox.tensor_shape) {
+      mismatch.add_tensor_dimensions(dim);
+    }
+    for (int64_t val : bbox.box_min) {
+      mismatch.add_mismatch_box_min(val);
+    }
+    for (int64_t val : bbox.box_max) {
+      mismatch.add_mismatch_box_max(val);
+    }
+    if (mismatch.top_mismatch_index().empty() &&
+        !bbox.top_mismatch_coords.empty()) {
+      for (int64_t coord : bbox.top_mismatch_coords.front()) {
+        mismatch.add_top_mismatch_index(coord);
+      }
+    }
+    mismatch.set_mismatch_count(bbox.mismatch_count);
+    mismatch.set_total_elements(bbox.total_elements);
+  }
+}
+
+auto MakeMiscompareCallback(
+    std::string literal_prefix,
+    absl::flat_hash_map<int64_t, numerics::debug_info::MismatchBoundingBox>*
+        computed_bboxes = nullptr) {
+  return [literal_prefix = std::move(literal_prefix), computed_bboxes](
+             const LiteralSlice& expected, const LiteralSlice& actual,
+             const LiteralSlice& mismatches, const ShapeIndex& shape_index,
+             const literal_comparison::ErrorBuckets& /*error_buckets*/) {
+    std::string escaped_shape_index = absl::StrReplaceAll(
+        shape_index.ToString(), {{",", "_"}, {"{", ""}, {"}", ""}});
+    std::string shape_suffix =
+        escaped_shape_index.empty()
+            ? ""
+            : absl::StrCat("-shape-", escaped_shape_index);
+    WriteLiteralToTempFile(expected, literal_prefix,
+                           absl::StrCat("expected", shape_suffix));
+    WriteLiteralToTempFile(actual, literal_prefix,
+                           absl::StrCat("actual", shape_suffix));
+    WriteLiteralToTempFile(mismatches, literal_prefix,
+                           absl::StrCat("mismatches", shape_suffix));
+    if (computed_bboxes != nullptr) {
+      int64_t idx = shape_index.empty() ? 0 : shape_index.front();
+      (*computed_bboxes)[idx] =
+          numerics::debug_info::ComputeBoundingBoxFromLiteralMask(mismatches);
+    }
+  };
+}
+
+// Compares `test_output` against `reference_output` and records a NumericCheck
+// named `check_name` on `result`.
+//
+// Failing literals are dumped as `failed-<literal_prefix>-{expected,actual,
+// mismatches}...`. Callers must give checks that can run on the same module
+// distinct prefixes, so that a later check cannot overwrite the artifacts of an
+// earlier one.
+//
+// On mismatch the (formatted) failure message is appended to
+// `mismatch_messages` instead of being reported immediately: a single failing
+// check is not by itself conclusive, because RunIsolationTestOnModule accepts
+// the module as correct if *any* of its reference checks passes.
 absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
                             const Literal& reference_output,
                             HloIsolationTestResult& result,
                             const ModuleIsolationOptions& options,
-                            absl::string_view check_name) {
+                            absl::string_view check_name,
+                            absl::string_view literal_prefix,
+                            std::vector<std::string>& mismatch_messages) {
   ErrorSpec error_spec(options.abs_error_bound, options.rel_error_bound);
-  auto on_miscompare =
-      [&module](const LiteralSlice& expected, const LiteralSlice& actual,
-                const LiteralSlice& mismatches, const ShapeIndex& shape_index,
-                const literal_comparison::ErrorBuckets& /*error_buckets*/) {
-        std::string escaped_shape_index = absl::StrReplaceAll(
-            shape_index.ToString(), {{",", "_"}, {"{", ""}, {"}", ""}});
-        std::string shape_suffix =
-            escaped_shape_index.empty()
-                ? ""
-                : absl::StrCat("-shape-", escaped_shape_index);
-        WriteLiteralToTempFile(expected, module.name(),
-                               absl::StrCat("expected", shape_suffix));
-        WriteLiteralToTempFile(actual, module.name(),
-                               absl::StrCat("actual", shape_suffix));
-        WriteLiteralToTempFile(mismatches, module.name(),
-                               absl::StrCat("mismatches", shape_suffix));
-      };
+  absl::flat_hash_map<int64_t, numerics::debug_info::MismatchBoundingBox>
+      computed_bboxes;
   absl::Status status = literal_comparison::Near(
-      reference_output, test_output, error_spec, true, on_miscompare);
+      reference_output, test_output, error_spec, true,
+      MakeMiscompareCallback(std::string(literal_prefix), &computed_bboxes));
   NumericCheck* numeric_check = result.add_numeric_checks();
   numeric_check->set_name(check_name);
   numeric_check->set_expected_contains_inf_or_nan(
@@ -230,12 +294,54 @@ absl::Status CompareOutputs(const HloModule& module, const Literal& test_output,
     status = absl::InternalError(
         absl::StrFormat("Value mismatch in check %s for module %s\n\n%s",
                         check_name, module.name(), status.message()));
-    options.on_mismatch_fn(module, test_output, reference_output, status);
+    mismatch_messages.push_back(std::string(status.message()));
     absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
         ExtractAndEnrichTopMismatches(std::string(status.message()), &module);
+    if (top_mismatches.ok()) {
+      for (NumericMismatch& mismatch : *top_mismatches) {
+        ApplyBoundingBoxToMismatch(computed_bboxes, mismatch);
+      }
+    }
     PopulateNumericCheckMismatches(numeric_check, top_mismatches);
   }
   return status;
+}
+
+// Best-effort re-check of a stage-1 mismatch with excess precision disabled on
+// both sides. Returns true if the re-check succeeded and matched.
+bool RetryWithoutExcessPrecision(const HloModule& module,
+                                 HloRunnerInterface* test_runner,
+                                 absl::Span<const Literal> input_data,
+                                 HloIsolationTestResult& result,
+                                 const ModuleIsolationOptions& options,
+                                 std::vector<std::string>& mismatch_messages) {
+  HloModuleConfig exact_config = module.config();
+  exact_config.mutable_debug_options().set_xla_allow_excess_precision(false);
+  std::unique_ptr<HloModule> exact_module = module.Clone("exact", exact_config);
+  std::unique_ptr<HloModule> exact_defused_module =
+      module.Clone("exact-defused", exact_config);
+  absl::Status defuse_status = DefuseModule(exact_defused_module.get());
+  if (!defuse_status.ok()) {
+    LOG(WARNING) << "Could not defuse module " << module.name()
+                 << " with excess precision disabled: " << defuse_status;
+    return false;
+  }
+  absl::StatusOr<Literal> exact_test_output = options.run_module_fn(
+      std::move(exact_module), test_runner, input_data, {});
+  absl::StatusOr<Literal> exact_defused_output = options.run_module_fn(
+      std::move(exact_defused_module), test_runner, input_data, {});
+  if (!exact_test_output.ok() || !exact_defused_output.ok()) {
+    LOG(WARNING) << "Could not re-run module " << module.name()
+                 << " with excess precision disabled: "
+                 << (exact_test_output.ok() ? exact_defused_output.status()
+                                            : exact_test_output.status());
+    return false;
+  }
+  return CompareOutputs(
+             module, *exact_test_output, *exact_defused_output, result, options,
+             "TPU_VS_DEFUSED_TPU_NO_EXCESS_PRECISION",
+             absl::StrCat(module.name(), "-exact"), mismatch_messages)
+      .ok();
 }
 
 }  // namespace
@@ -379,30 +485,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               return;
             }
 
-            auto on_miscompare =
-                [module_name, op_name](
-                    const LiteralSlice& expected, const LiteralSlice& actual,
-                    const LiteralSlice& mismatches,
-                    const ShapeIndex& shape_index,
-                    const literal_comparison::ErrorBuckets& /*error_buckets*/) {
-                  std::string escaped_shape_index =
-                      absl::StrReplaceAll(shape_index.ToString(),
-                                          {{",", "_"}, {"{", ""}, {"}", ""}});
-                  std::string shape_suffix =
-                      escaped_shape_index.empty()
-                          ? ""
-                          : absl::StrCat("-shape-", escaped_shape_index);
-                  WriteLiteralToTempFile(
-                      expected, module_name,
-                      absl::StrCat(op_name, "-expected", shape_suffix));
-                  WriteLiteralToTempFile(
-                      actual, module_name,
-                      absl::StrCat(op_name, "-actual", shape_suffix));
-                  WriteLiteralToTempFile(
-                      mismatches, module_name,
-                      absl::StrCat(op_name, "-mismatches", shape_suffix));
-                };
-
+            absl::flat_hash_map<int64_t,
+                                numerics::debug_info::MismatchBoundingBox>
+                computed_bboxes;
             xla::ErrorSpec error_spec(static_cast<float>(abs_error),
                                       static_cast<float>(rel_error));
             absl::Status matched = xla::literal_comparison::Near(
@@ -410,7 +495,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                 /*actual=*/*literals[0],
                 /*error=*/error_spec,
                 /*detailed_message=*/true,
-                /*miscompare_callback=*/on_miscompare);
+                /*miscompare_callback=*/
+                MakeMiscompareCallback(absl::StrCat(module_name, "-", op_name),
+                                       &computed_bboxes));
 
             if (!matched.ok()) {
               std::string error_message = absl::StrFormat(
@@ -431,6 +518,11 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
               absl::StatusOr<std::vector<NumericMismatch>> top_mismatches =
                   ExtractTopMismatches(std::string(matched.message()),
                                        literals[0]->shape().IsTuple());
+              if (top_mismatches.ok()) {
+                for (NumericMismatch& mismatch : *top_mismatches) {
+                  ApplyBoundingBoxToMismatch(computed_bboxes, mismatch);
+                }
+              }
               PopulateNumericCheckMismatches(numeric_check, top_mismatches);
             }
           };
@@ -565,28 +657,103 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     log_failure("Test runner failed: ", test_output.status(), module.name());
     return result;
   }
+  const Literal& test_literal = *test_output;
+
+  // Messages of all the reference checks that mismatched. Reporting is deferred
+  // until the module is definitively classified as a numeric failure, because
+  // any single passing check is enough to accept the module.
+  std::vector<std::string> mismatch_messages;
+  absl::StatusOr<Literal> defused_output(absl::UnknownError("not run"));
+
+  // Reports every mismatch collected so far, exactly once. Must be called
+  // before returning any non-SUCCESS result, so that `on_mismatch_fn` side
+  // effects (notably dumping the failing module for later repro) still happen
+  // when a later stage aborts with a runner error. `defused_output` is
+  // preferred as the "expected" side because it is the reference that ran on
+  // the test platform; when it is unavailable the test output is passed in its
+  // place. Neither literal is used by any current on_mismatch_fn.
+  auto report_mismatches = [&] {
+    if (mismatch_messages.empty()) {
+      return;
+    }
+    options.on_mismatch_fn(
+        module, test_literal,
+        defused_output.ok() ? *defused_output : test_literal,
+        absl::InternalError(absl::StrJoin(mismatch_messages, "\n\n")));
+    mismatch_messages.clear();
+  };
+
+  auto fail_runner = [&](absl::string_view reason, absl::string_view prefix,
+                         const absl::Status& status,
+                         absl::string_view module_name) {
+    result.set_state(State::FAILURE);
+    result.set_reason(std::string(reason));
+    log_failure(prefix, status, module_name);
+    report_mismatches();
+    return result;
+  };
 
   // Run defused test runner.
+  //
+  // Defusing materializes every value that the fusion kept in registers or in
+  // VMEM, so the defused module can require orders of magnitude more HBM than
+  // the fusion under test. When that (or a timeout) happens the defused
+  // reference is simply unavailable for this module; it is not evidence of a
+  // miscompile, so fall through to the interpreter reference instead.
   std::unique_ptr<HloModule> defused_module = module.Clone("defused");
   ABSL_RETURN_IF_ERROR(DefuseModule(defused_module.get()));
-  absl::StatusOr<Literal> defused_output =
+  defused_output =
       run_module(std::move(defused_module), test_runner, input_data);
   if (!defused_output.ok()) {
-    result.set_state(State::FAILURE);
-    result.set_reason("DEFUSED_TEST_RUNNER_FAILURE");
-    log_failure("Test runner failed for defused module: ",
-                defused_output.status(), module.name());
-    return result;
+    if (!absl::IsResourceExhausted(defused_output.status()) &&
+        !absl::IsDeadlineExceeded(defused_output.status())) {
+      return fail_runner("DEFUSED_TEST_RUNNER_FAILURE",
+                         "Test runner failed for defused module: ",
+                         defused_output.status(), module.name());
+    }
+    LOG(WARNING) << "Skipping the defused reference for module "
+                 << module.name()
+                 << " because the defused module could not be run: "
+                 << defused_output.status();
   }
 
-  // Compare Test vs Defused Test.
-  absl::Status compare_status =
-      CompareOutputs(module, *test_output, *defused_output, result, options,
-                     "TPU_VS_DEFUSED_TPU");
-  if (compare_status.ok()) {
-    result.set_state(State::SUCCESS);
-    result.set_reason("STAGE_1_DEFUSED_TPU_SUCCESS");
-    return result;
+  if (defused_output.ok()) {
+    // Compare Test vs Defused Test.
+    absl::Status compare_status =
+        CompareOutputs(module, test_literal, *defused_output, result, options,
+                       "TPU_VS_DEFUSED_TPU", module.name(), mismatch_messages);
+    if (compare_status.ok()) {
+      result.set_state(State::SUCCESS);
+      result.set_reason("STAGE_1_DEFUSED_TPU_SUCCESS");
+      return result;
+    }
+
+    // Compare Test vs Defused Test again, this time with excess precision
+    // disabled on both sides.
+    //
+    // XLA lets a backend evaluate an instruction in a wider type than the HLO
+    // declares. A fusion can therefore hold an intermediate in f32 where the
+    // defused module, which materializes that intermediate in its declared
+    // (say bf16) type, is forced to round. Both results are correct, but they
+    // differ, and the difference is unbounded relative to the reference
+    // wherever the rounded reference cancels to exactly zero. Pinning both
+    // sides to the declared types removes that degree of freedom.
+    //
+    // Note that this recompiles the module under test, not just the reference,
+    // so it cannot distinguish "the two runs merely rounded differently" from
+    // "the backend miscompiles this fusion only on the excess-precision path".
+    // Set retry_without_excess_precision to false to investigate the latter.
+    //
+    // This is best effort: any failure to produce the comparison leaves the
+    // original mismatch standing.
+    if (options.retry_without_excess_precision &&
+        module.config().debug_options().xla_allow_excess_precision() &&
+        RetryWithoutExcessPrecision(module, test_runner, input_data, result,
+                                    options, mismatch_messages)) {
+      result.set_state(State::SUCCESS);
+      result.set_reason("STAGE_1B_NO_EXCESS_PRECISION_SUCCESS");
+      return result;
+    }
   }
 
   // Potentially skip reference run.
@@ -604,6 +771,27 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     reference_runner = nullptr;
   }
 
+  // The defused run exhausted device memory (or timed out), which means the
+  // module's materialized intermediates do not fit. The interpreter reference
+  // materializes those same intermediates on the host and is orders of
+  // magnitude slower, so escalating to it does not produce an answer -- it
+  // just turns a fast failure into a test timeout. Observed on
+  // broadcast_select_fusion.87 (b/524252856): the defused module needs 834 GB
+  // against 94.74 GB of HBM, and the interpreter then spent >27 minutes inside
+  // HloEvaluator::HandleBroadcast before the shard was killed.
+  //
+  // Report the module as unverified rather than guessing.
+  //
+  // TODO(b/524252856): with a pre-flight peak-memory estimate for the defused
+  // module we could tell "too big for HBM but fine on the host" apart from
+  // "too big for anything" and still use the interpreter for the former.
+  if (!defused_output.ok()) {
+    LOG(WARNING) << "No usable reference for module: " << module.name();
+    result.set_state(State::SKIPPED);
+    result.set_reason("DEFUSED_REFERENCE_UNAVAILABLE");
+    return result;
+  }
+
   if (reference_runner) {
     std::unique_ptr<HloModule> despecialized_module =
         module.Clone("despecialized");
@@ -615,17 +803,15 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     absl::StatusOr<Literal> reference_output = run_module(
         std::move(despecialized_module), reference_runner, input_data);
     if (!reference_output.ok()) {
-      result.set_state(State::FAILURE);
-      result.set_reason("REFERENCE_RUNNER_FAILURE");
-      log_failure("Reference runner failed: ", reference_output.status(),
-                  despecialized_module_name);
-      return result;
+      return fail_runner("REFERENCE_RUNNER_FAILURE",
+                         "Reference runner failed: ", reference_output.status(),
+                         despecialized_module_name);
     }
 
     // Compare Test vs Reference.
     absl::Status compare_status =
-        CompareOutputs(module, *test_output, *reference_output, result, options,
-                       "TPU_VS_INTERPRETER");
+        CompareOutputs(module, test_literal, *reference_output, result, options,
+                       "TPU_VS_INTERPRETER", module.name(), mismatch_messages);
     if (compare_status.ok()) {
       result.set_state(State::SUCCESS);
       result.set_reason("STAGE_2_INTERPRETER_SUCCESS");
@@ -661,12 +847,10 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
         run_module(std::move(debug_despecialized_module), reference_runner,
                    input_data, reference_opts);
     if (!debug_reference_output.ok()) {
-      result.set_state(State::FAILURE);
-      result.set_reason("REFERENCE_RUNNER_FAILURE");
-      log_failure("Reference runner failed (with fusion debugger enabled): ",
-                  debug_reference_output.status(),
-                  debug_despecialized_module_name);
-      return result;
+      return fail_runner(
+          "REFERENCE_RUNNER_FAILURE",
+          "Reference runner failed (with fusion debugger enabled): ",
+          debug_reference_output.status(), debug_despecialized_module_name);
     }
 
     std::shared_ptr<absl::Mutex> result_mutex = std::make_shared<absl::Mutex>();
@@ -686,16 +870,17 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
     absl::StatusOr<Literal> retry_test_output = run_module(
         std::move(test_module_clone), test_runner, input_data, retry_opts);
     if (!retry_test_output.ok()) {
-      result.set_state(State::FAILURE);
-      result.set_reason("TEST_RUNNER_FAILURE_ON_RETRY");
-      log_failure("Test runner failed on retry (with fusion debugger): ",
-                  retry_test_output.status(), module.name());
-      return result;
+      return fail_runner("TEST_RUNNER_FAILURE_ON_RETRY",
+                         "Test runner failed on retry (with fusion debugger): ",
+                         retry_test_output.status(), module.name());
     }
   }
 
   result.set_state(State::FAILURE);
   result.set_reason("NUMERIC_MISMATCH");
+
+  // Every reference check disagreed with the module under test.
+  report_mismatches();
 
   std::vector<numerics::debug_info::MismatchDetails> all_mismatch_details =
       ExtractMismatchDetails(module, result);
@@ -896,6 +1081,15 @@ absl::StatusOr<NumericMismatch> ParseMismatchLine(absl::string_view line) {
     data.set_actual(actual_double);
     data.set_expected(expected_double);
     data.set_rel_error(rel_error_double);
+    std::string clean_indices =
+        absl::StrReplaceAll(index_str, {{"{", ""}, {"}", ""}, {" ", ""}});
+    for (absl::string_view idx_part :
+         absl::StrSplit(clean_indices, ',', absl::SkipEmpty())) {
+      int64_t coord;
+      if (absl::SimpleAtoi(idx_part, &coord)) {
+        data.add_top_mismatch_index(coord);
+      }
+    }
     return data;
   }
   return absl::InvalidArgumentError(
@@ -1101,6 +1295,22 @@ numerics::debug_info::MismatchDetails ConvertToMismatchDetails(
   }
   if (m.has_result_of_reduce()) {
     details.result_of_reduce = m.result_of_reduce();
+  }
+  if (!m.tensor_dimensions().empty() || !m.top_mismatch_index().empty()) {
+    numerics::debug_info::MismatchBoundingBox bbox;
+    bbox.tensor_shape.assign(m.tensor_dimensions().begin(),
+                             m.tensor_dimensions().end());
+    bbox.box_min.assign(m.mismatch_box_min().begin(),
+                        m.mismatch_box_min().end());
+    bbox.box_max.assign(m.mismatch_box_max().begin(),
+                        m.mismatch_box_max().end());
+    if (!m.top_mismatch_index().empty()) {
+      bbox.top_mismatch_coords.push_back(std::vector<int64_t>(
+          m.top_mismatch_index().begin(), m.top_mismatch_index().end()));
+    }
+    bbox.mismatch_count = m.mismatch_count();
+    bbox.total_elements = m.total_elements();
+    details.bounding_box = std::move(bbox);
   }
   return details;
 }

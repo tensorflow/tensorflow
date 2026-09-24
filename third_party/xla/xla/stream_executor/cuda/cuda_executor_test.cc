@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
+#include "absl/strings/match.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -67,7 +68,7 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_GT(result->kernel_mode_driver_version().major_version(),
             300);  // NOLINT
 
-  if (!result->name().starts_with("NVIDIA GB300")) {
+  if (!absl::StartsWith(result->name(), "NVIDIA GB300")) {
     EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
   }
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));

@@ -22,6 +22,7 @@ import warnings
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -877,7 +878,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
+      return np.negative(np.sum(targets * np.log(pred + 1.0e-20), axis=1))
 
     np.random.seed(0)
     num_classes = 5
@@ -934,7 +935,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       stable_exp_logits = np.exp(logits -
                                  np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
-      return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)  # pylint: disable=invalid-unary-operand-type
+      return np.negative(np.sum(targets * np.log(pred + 1.0e-20), axis=1))
 
     np.random.seed(0)
     num_classes = 5
@@ -2054,6 +2055,77 @@ class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
             [2.5, 1, 4.5, 3, 6.5]
         ])
     self.assertAllClose(segments, [[0, 0, 0, 0, 0], [0, 1, 0, 1, 0]])
+
+  @parameterized.product(
+      shape=[(3,), (2, 3), (2, 2, 3)],
+      axis=[0, -1],
+      decreasing=[True, False],
+      dtype=[np.float32, np.float64],
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_pooled_gradient(self, shape, axis, decreasing, dtype):
+    # Each row has one singleton and a stable block pooling its last two values.
+    values = np.broadcast_to([4.0, 0.7, 2.0], shape).astype(dtype)
+    weights = np.arange(1, np.prod(shape) + 1, dtype=dtype).reshape(shape)
+    expected = weights.copy()
+    expected[..., 1:] = weights[..., 1:].mean(axis=-1, keepdims=True)
+    if not decreasing:
+      values = -values
+    x = constant_op.constant(np.moveaxis(values, -1, axis))
+    weights = constant_op.constant(np.moveaxis(weights, -1, axis))
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y, _ = nn_ops.isotonic_regression(x, decreasing=decreasing, axis=axis)
+    gradient = tape.gradient(y, x, output_gradients=weights)
+    self.assertAllClose(
+        np.moveaxis(expected, -1, axis), self.evaluate(gradient)
+    )
+
+  @parameterized.parameters((0,), (0, 3), (2, 0), (2, 0, 3))
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_gradient(self, *shape):
+    x = array_ops.zeros(shape, dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y, _ = nn_ops.isotonic_regression(x)
+    self.assertAllEqual(np.zeros(shape), self.evaluate(tape.gradient(y, x)))
+
+  @test_util.run_v2_only
+  def test_gradient_unknown_shape(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)]
+    )
+    def ComputeGradient(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y, _ = nn_ops.isotonic_regression(x)
+        selected = y[..., 1]
+      return tape.gradient(selected, x)
+
+    for shape in [(3,), (2, 3), (2, 2, 3)]:
+      x = constant_op.constant(np.broadcast_to([4.0, 0.7, 2.0], shape))
+      expected = np.broadcast_to([0.0, 0.5, 0.5], shape)
+      self.assertAllClose(expected, self.evaluate(ComputeGradient(x)))
+
+  @test_util.run_v2_only
+  def testGradient1D(self):
+    """Checks the gradient for a 1-D input, which has no batch dimension.
+
+    Pooling happens along the last axis, so a 1-D input has to be treated as
+    a single row rather than as one row per element.
+    """
+
+    @def_function.function
+    def ComputeIsotonicFn(x):
+      y, _ = nn_ops.isotonic_regression(x, decreasing=True)
+      return y
+
+    np.random.seed(0)
+    x_init = np.random.randn(50).astype(np.float64)
+    grad_theoretical, grad_numerical = gradient_checker_v2.compute_gradient(
+        ComputeIsotonicFn, [x_init], delta=1e-5
+    )
+    self.assertAllClose(grad_theoretical, grad_numerical)
 
   @test_util.run_v2_only
   def testGradientV2(self, dtype=np.float64, batch_size=30, dimensions=50):

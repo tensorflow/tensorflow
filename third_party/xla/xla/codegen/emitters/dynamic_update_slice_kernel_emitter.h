@@ -84,7 +84,8 @@ class DynamicUpdateSliceKernelEmitter final
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues() const;
 
- private:
+  bool IsRootInPlace(int root_index) const;
+
   mlir::MLIRContext& mlir_context_;
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;

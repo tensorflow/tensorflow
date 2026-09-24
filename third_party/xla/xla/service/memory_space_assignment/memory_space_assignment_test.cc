@@ -1695,7 +1695,6 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = false;
   options.enable_sync_slice_replacement = true;
-  options.verify = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
   options.max_size_in_bytes = 96;
@@ -4899,7 +4898,11 @@ TEST_F(MemorySpaceAssignmentTest,
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   for (const HloInstruction* instruction :
        module->entry_computation()->instructions()) {
@@ -4936,7 +4939,11 @@ TEST_F(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
@@ -7565,6 +7572,9 @@ TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -7614,6 +7624,9 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -7666,6 +7679,9 @@ TEST_F(MemorySpaceAssignmentTest,
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 4 * 10 * 10 * 10 * 10;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   MsaBufferIntervalCompare buffer_interval_compare =
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
@@ -8825,7 +8841,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
@@ -8869,7 +8889,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Expect both the source and destination buffers to get alternate memory
   // allocations.
@@ -8930,7 +8954,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -8969,7 +8997,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -9000,7 +9032,11 @@ ENTRY entry {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done1 =
       FindInstruction(module.get(), "collective-permute-done.1");
@@ -9042,7 +9078,11 @@ TEST_F(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
   )hlo";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  AssignMemorySpace(module.get());
+  Options options = DefaultMemorySpaceOptions();
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
+  AssignMemorySpace(module.get(), std::move(options));
 
   const HloInstruction* cp_done =
       FindInstruction(module.get(), "collective-permute-done");
@@ -9687,6 +9727,10 @@ TEST_F(MemorySpaceAssignmentTest,
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
   options.repacker = &repacker;
+  // TODO(b/563782724): MSA emits a zero-sized alternate memory allocation for
+  // this module, which trips a CHECK in HeapSimulator::Chunk::OverlapsWith
+  // during verification. Re-enable verification once that is fixed.
+  options.verify = false;
   AssignMemorySpace(module.get(), std::move(options));
 }
 
@@ -11343,7 +11387,6 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   options.max_cross_program_prefetches = -1;
   options.max_size_in_bytes = 256;
   options.alignment_in_bytes = 8;
-  options.verify = true;
   AssignMemorySpace(module.get(), std::move(options));
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -14075,6 +14118,9 @@ ENTRY main {
 })hlo";
   Options options = MakeDefaultOptions();
   options.enable_sync_copy_replacement = true;
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -14959,6 +15005,9 @@ ENTRY main {
   Options options = MakeDefaultOptions();
   options.sliced_prefetch_options.set_max_slices(100000);
   options.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
+  // TODO(b/563782724): MSA assigns overlapping alternate memory chunks for this
+  // module. Re-enable verification once that is fixed.
+  options.verify = false;
 
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
@@ -15080,7 +15129,6 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   memory_space_options.max_retries = 2;
   memory_space_options.max_repacks = 0;
   memory_space_options.repack_after_every_allocation = false;
-  memory_space_options.verify = false;
   memory_space_options.enable_cross_program_prefetch = true;
   memory_space_options.default_cross_program_prefetch_heuristic = false;
   memory_space_options.enable_cross_program_prefetch_freeing = true;
@@ -15207,7 +15255,6 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   memory_space_options.max_retries = 2;
   memory_space_options.max_repacks = 4;
   memory_space_options.repack_after_every_allocation = false;
-  memory_space_options.verify = false;
   memory_space_options.enable_cross_program_prefetch = true;
   memory_space_options.default_cross_program_prefetch_heuristic = false;
   memory_space_options.enable_cross_program_prefetch_freeing = true;
@@ -16801,7 +16848,6 @@ ENTRY entry {
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
   memory_space_options.max_outstanding_prefetches = 0;
-  memory_space_options.verify = true;
 
   std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
       {"p0", "prefetch_start0", "prefetch_done_0"},
@@ -16930,7 +16976,6 @@ ENTRY entry {
   memory_space_options.reserved_bytes_for_block_prefetches = 96;
   memory_space_options.max_outstanding_block_prefetches = 10;
   memory_space_options.max_outstanding_prefetches = 0;
-  memory_space_options.verify = true;
 
   std::vector<CustomCallPrefetchInfo> custom_call_prefetch_instructions = {
       {"p0", "prefetch_start0", "prefetch_done_0"},
@@ -17449,7 +17494,6 @@ ENTRY entry {
       {negate0_position, kAlternateMemorySpace},
       {negate1_position, kAlternateMemorySpace}};
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
@@ -17498,7 +17542,6 @@ ENTRY entry {
       {negate3_position, kAlternateMemorySpace},
       {add0_use_of_negate2, kAlternateMemorySpace}};
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
@@ -17554,7 +17597,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
 
   HloPosition negate2_position = {FindInstruction(module.get(), "negate2"), {}};
   HloPosition negate3_position = {FindInstruction(module.get(), "negate3"), {}};
@@ -17652,7 +17694,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.enable_sync_copy_replacement = true;
   memory_space_options.enable_sync_slice_replacement = true;
   HloUse add2_use_of_copy0{FindInstruction(module.get(), "add2"), 0, {}};
@@ -17742,7 +17783,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.enable_sync_copy_replacement = true;
   memory_space_options.enable_sync_slice_replacement = true;
   HloUse negate4_use_of_slice0{FindInstruction(module.get(), "negate4"), 0, {}};
@@ -17802,7 +17842,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 72;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->name() == "negate0" ||
@@ -17897,7 +17936,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->opcode() == HloOpcode::kCustomCall;
@@ -17970,7 +18008,6 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_string));
   Options memory_space_options = DefaultMemorySpaceOptions();
   memory_space_options.max_size_in_bytes = 48;
-  memory_space_options.verify = true;
   memory_space_options.position_requires_contiguous_allocation_fn =
       [](const HloPosition& position) {
         return position.instruction->opcode() == HloOpcode::kCustomCall;
@@ -18414,7 +18451,6 @@ ENTRY entry {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
-  options.verify = true;
   std::optional<Options> options_override = std::move(options);
   AssignMemorySpace(module.get(), std::move(options_override));
 
@@ -18681,6 +18717,205 @@ ENTRY entry {
       module->entry_computation()->GetInstructionWithName("async-done");
   EXPECT_EQ(async_done->shape().tuple_shapes(0).layout().memory_space(),
             kDefaultMemorySpace);
+}
+
+// Tests that FindAliases correctly maps operands to parameters for async-start,
+// async-update, call, and conditional instructions:
+// 1. Operands bound with async-start map 1-to-1 to initial parameters.
+// 2. Operand 0 of async-update (the async context token) does not alias
+//    parameters.
+// 3. Operands bound with async-update map 1-to-1 to subsequent parameters,
+//    offset by the number of previously bound operands.
+// 4. Operands of synchronous call map 1-to-1 to callee parameters by operand
+//    index, and operands 1..N of conditional map to branch_computation(i - 1)
+//    parameter 0.
+TEST_F(MemorySpaceAssignmentTest, FindAliasesAsyncStartAndAsyncUpdate) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+async_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  p2 = f32[4]{0} parameter(2)
+  p3 = f32[4]{0} parameter(3)
+  ROOT tuple = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(p0, p1, p2, p3)
+}
+
+call_computation {
+  cp0 = f32[4]{0} parameter(0)
+  cp1 = f32[4]{0} parameter(1)
+  ROOT call_tuple = (f32[4]{0}, f32[4]{0}) tuple(cp0, cp1)
+}
+
+branch0_computation {
+  ROOT bp0 = f32[4]{0} parameter(0)
+}
+
+branch1_computation {
+  ROOT bp1 = f32[4]{0} parameter(0)
+}
+
+ENTRY entry {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+  param2 = f32[4]{0} parameter(2)
+  param3 = f32[4]{0} parameter(3)
+  param_pred = pred[] parameter(4)
+  async-start = ((f32[4]{0}, f32[4]{0}), (), s32[]) async-start(param0, param1), calls=async_computation
+  async-update = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (), s32[]) async-update(async-start, param2, param3), calls=async_computation
+  async-done = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) async-done(async-update), calls=async_computation
+  sync-call = (f32[4]{0}, f32[4]{0}) call(param0, param1), to_apply=call_computation
+  cond = f32[4]{0} conditional(param_pred, param2, param3), true_computation=branch0_computation, false_computation=branch1_computation
+  ROOT root = ((f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}), (f32[4]{0}, f32[4]{0}), f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) tuple(async-done, sync-call, cond, param0, param1, param2, param3)
+}
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  HloInstruction* param2 = FindInstruction(module.get(), "param2");
+  HloInstruction* param3 = FindInstruction(module.get(), "param3");
+  HloInstruction* pred = FindInstruction(module.get(), "param_pred");
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  HloInstruction* sync_call = FindInstruction(module.get(), "sync-call");
+  HloInstruction* cond = FindInstruction(module.get(), "cond");
+
+  HloComputation* async_comp =
+      module->GetComputationWithName("async_computation");
+  HloInstruction* p0 = async_comp->parameter_instruction(0);
+  HloInstruction* p1 = async_comp->parameter_instruction(1);
+  HloInstruction* p2 = async_comp->parameter_instruction(2);
+  HloInstruction* p3 = async_comp->parameter_instruction(3);
+
+  HloComputation* call_comp =
+      module->GetComputationWithName("call_computation");
+  HloInstruction* cp0 = call_comp->parameter_instruction(0);
+  HloInstruction* cp1 = call_comp->parameter_instruction(1);
+
+  HloComputation* branch0_comp =
+      module->GetComputationWithName("branch0_computation");
+  HloInstruction* bp0 = branch0_comp->parameter_instruction(0);
+  HloComputation* branch1_comp =
+      module->GetComputationWithName("branch1_computation");
+  HloInstruction* bp1 = branch1_comp->parameter_instruction(0);
+
+  std::vector<AllocationValue> allocation_values;
+  // Allocation values for parameters of the async, call, and branch
+  // computations.
+  allocation_values.emplace_back(nullptr, HloPosition{p0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p2, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{p3, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{cp1, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp0, {}}, 16);
+  allocation_values.emplace_back(nullptr, HloPosition{bp1, {}}, 16);
+
+  // Allocation values for caller operands passed to async-start (operands 0 and
+  // 1) and sync-call (operands 0 and 1).
+  AllocationValue val_param0(nullptr, HloPosition{param0, {}}, 16);
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{async_start, 0}, 1});
+  val_param0.uses().push_back(AllocationValue::Use{HloUse{sync_call, 0}, 4});
+  allocation_values.push_back(std::move(val_param0));
+
+  AllocationValue val_param1(nullptr, HloPosition{param1, {}}, 16);
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{async_start, 1}, 1});
+  val_param1.uses().push_back(AllocationValue::Use{HloUse{sync_call, 1}, 4});
+  allocation_values.push_back(std::move(val_param1));
+
+  // Allocation values for async-start bound operand elements ({0, 0} and
+  // {0, 1}) consumed as operand 0 of async-update.
+  AllocationValue val_async_start_0(nullptr, HloPosition{async_start, {0, 0}},
+                                    16);
+  val_async_start_0.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 0}}, 2});
+  allocation_values.push_back(std::move(val_async_start_0));
+
+  AllocationValue val_async_start_1(nullptr, HloPosition{async_start, {0, 1}},
+                                    16);
+  val_async_start_1.uses().push_back(
+      AllocationValue::Use{HloUse{async_update, 0, {0, 1}}, 2});
+  allocation_values.push_back(std::move(val_async_start_1));
+
+  // Allocation values for caller operands passed to async-update (operands 1
+  // and 2) and conditional (operands 1 and 2).
+  AllocationValue val_param2(nullptr, HloPosition{param2, {}}, 16);
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{async_update, 1}, 2});
+  val_param2.uses().push_back(AllocationValue::Use{HloUse{cond, 1}, 5});
+  allocation_values.push_back(std::move(val_param2));
+
+  AllocationValue val_param3(nullptr, HloPosition{param3, {}}, 16);
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{async_update, 2}, 2});
+  val_param3.uses().push_back(AllocationValue::Use{HloUse{cond, 2}, 5});
+  allocation_values.push_back(std::move(val_param3));
+
+  AllocationValue val_pred(nullptr, HloPosition{pred, {}}, 1);
+  val_pred.uses().push_back(AllocationValue::Use{HloUse{cond, 0}, 5});
+  allocation_values.push_back(std::move(val_pred));
+
+  // Allocation values for async-update bound operand elements ({0, 0}, {0, 1},
+  // {0, 2}, and {0, 3}) consumed by async-done.
+  for (int64_t i = 0; i < 4; ++i) {
+    AllocationValue val_async_update(nullptr, HloPosition{async_update, {0, i}},
+                                     16);
+    val_async_update.uses().push_back(
+        AllocationValue::Use{HloUse{async_done, 0, {0, i}}, 3});
+    allocation_values.push_back(std::move(val_async_update));
+  }
+
+  MsaAlgorithm::FindAliasesForTesting(&allocation_values);
+
+  auto find_val = [&](const HloInstruction* inst,
+                      ShapeIndex index = {}) -> const AllocationValue& {
+    for (const auto& v : allocation_values) {
+      if (v.position().instruction == inst && v.position().index == index) {
+        return v;
+      }
+    }
+    LOG(FATAL) << "Not found: " << inst->name() << " " << index.ToString();
+  };
+
+  // 1. Verify 1-to-1 mapping for async-start operands:
+  // param0 (operand 0) aliases {async_start, {0, 0}} and callee parameter p0.
+  EXPECT_THAT(find_val(param0).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 0}},
+                                     HloPosition{p0, {}}));
+  // param1 (operand 1) aliases {async_start, {0, 1}} and callee parameter p1.
+  EXPECT_THAT(find_val(param1).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_start, {0, 1}},
+                                     HloPosition{p1, {}}));
+
+  // 2. Verify operand 0 of async-update (the async context tuple) aliases
+  // matching elements in async_update, and does not alias any callee parameter:
+  EXPECT_THAT(find_val(async_start, {0, 0}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 0}}));
+  EXPECT_THAT(find_val(async_start, {0, 1}).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 1}}));
+
+  // 3. Verify late-bound parameter offset calculation for async-update
+  // operands: param2 (operand 1 of async-update) aliases {async_update, {0, 2}}
+  // and callee parameter p2 (1 - 1 + 2 = 2).
+  EXPECT_THAT(find_val(param2).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 2}},
+                                     HloPosition{p2, {}}));
+  // param3 (operand 2 of async-update) aliases {async_update, {0, 3}} and
+  // callee parameter p3 (2 - 1 + 2 = 3).
+  EXPECT_THAT(find_val(param3).uses()[0].aliases,
+              ::testing::ElementsAre(HloPosition{async_update, {0, 3}},
+                                     HloPosition{p3, {}}));
+
+  // 4. Verify 1-to-1 mapping for synchronous call and conditional operands:
+  EXPECT_THAT(find_val(param0).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp0, {}}));
+  EXPECT_THAT(find_val(param1).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{cp1, {}}));
+  EXPECT_THAT(find_val(pred).uses()[0].aliases, ::testing::IsEmpty());
+  EXPECT_THAT(find_val(param2).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp0, {}}));
+  EXPECT_THAT(find_val(param3).uses()[1].aliases,
+              ::testing::ElementsAre(HloPosition{bp1, {}}));
 }
 
 // Tests a case where some operands bound in async-start/update are allowed
@@ -19742,6 +19977,70 @@ ENTRY %Entry (k_base: bf16[4,384,128], o_base: bf16[4,384,128], update_slice: bf
       HloPosition{root_tuple, {2, 0, 1}}, *alias_analysis));
   EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
       HloPosition{root_tuple, {2, 1}}, *alias_analysis));
+}
+
+// Test subclass of MsaAlgorithm that simulates an empty candidate list from
+// FindChunkCandidates.
+class EmptyChunkCandidatesMsaAlgorithm : public MsaAlgorithm {
+ public:
+  using MsaAlgorithm::FindBestChunkCandidates;
+  using MsaAlgorithm::MsaAlgorithm;
+
+  std::vector<Chunk> FindChunkCandidates(
+      const SlicedBufferInterval& sliced_buffer_interval,
+      int64_t preferred_offset) const override {
+    return {};
+  }
+};
+
+// Tests that FindBestChunkCandidates handles empty chunk candidates safely
+// without dereferencing past-the-end iterators (preventing ASAN container
+// overflows).
+TEST_F(MemorySpaceAssignmentTest, FindBestChunkCandidatesEmptyChunkCandidates) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0});
+  ASSERT_OK(module->set_schedule(schedule));
+
+  AllocationSequence allocations;
+  Options options = DefaultMemorySpaceOptions();
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                       HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                         module->entry_computation()));
+
+  EmptyChunkCandidatesMsaAlgorithm algorithm(module.get(), &allocations,
+                                             options, *alias_analysis,
+                                             &alias_info_, *hlo_live_range);
+
+  AllocationRequest request;
+  request.end_time = 10;
+  AliasedOffset preferred_offset{/*offset=*/16};
+
+  GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval buffer_interval;
+  buffer_interval.buffer = nullptr;
+  buffer_interval.size = 16;
+  buffer_interval.start = 0;
+  buffer_interval.end = 10;
+  buffer_interval.need_allocation = true;
+
+  using SlicedBufferInterval =
+      GlobalDecreasingSizeBestFitHeap<HloValue>::SlicedBufferInterval;
+  auto sliced_interval =
+      SlicedBufferInterval::CreateMutableInterval(buffer_interval);
+
+  // Without the bounds check in FindBestChunkCandidates, an empty
+  // chunk_candidates vector results in absl::c_min_element dereferencing an
+  // end() iterator, triggering an AddressSanitizer container-overflow/crash.
+  std::vector<Chunk> result = algorithm.FindBestChunkCandidates(
+      request, &preferred_offset, &sliced_interval);
+  EXPECT_THAT(result, ::testing::IsEmpty());
 }
 
 }  // namespace

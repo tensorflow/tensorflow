@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -22,9 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -47,9 +50,8 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
   EXPECT_FALSE(future.IsReady());
   promise.Set(KernelReuseCache::Entry{kernel_name});
 
-  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
-  EXPECT_THAT(result, testing::NotNull());
-  EXPECT_EQ(result->kernel_name, kernel_name);
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry& result, future.Await());
+  EXPECT_EQ(result.kernel_name, kernel_name);
   EXPECT_FALSE(cache.IsEmpty());
 
   const CompilationCacheProto proto = cache.Export();
@@ -76,9 +78,8 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
       return absl::UnimplementedError("Should be cached");
     });
     EXPECT_TRUE(was_cached);
-    ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry* result, future.Await());
-    EXPECT_THAT(result, testing::NotNull());
-    EXPECT_EQ(result->kernel_name, kernel_name);
+    ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry& result, future.Await());
+    EXPECT_EQ(result.kernel_name, kernel_name);
   }
 }
 
@@ -89,8 +90,11 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {5, 6}};
+        KernelReuseCache::Entry entry;
+        entry.kernel_name = kernel_name;
+        entry.binary = std::make_shared<const std::vector<uint8_t>>(
+            std::vector<uint8_t>{5, 6});
+        return entry;
       });
       return cache.Export();
     }("k1");
@@ -101,8 +105,11 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
     const CompilationCacheProto proto = [](std::string kernel_name) {
       KernelReuseCache cache;
       auto [result, was_cached] = cache.GetWithStatus("fingerprint1", [&]() {
-        return KernelReuseCache::Entry{.kernel_name = kernel_name,
-                                       .binary = {7, 8}};
+        KernelReuseCache::Entry entry;
+        entry.kernel_name = kernel_name;
+        entry.binary = std::make_shared<const std::vector<uint8_t>>(
+            std::vector<uint8_t>{7, 8});
+        return entry;
       });
       return cache.Export();
     }("k2");
@@ -115,6 +122,86 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
   CompilationCacheProto proto;
   EXPECT_TRUE(proto.ParseFromString(serialized));
   EXPECT_EQ(proto.entries_size(), 2);
+}
+
+TEST_F(KernelReuseTest, EntryRemainsValidAfterCacheClearAndDestruction) {
+  auto [promise, returned] = tsl::MakePromise<KernelReuseCache::Entry>();
+  tsl::Future<KernelReuseCache::Entry> future;
+  tsl::Future<KernelReuseCache::Entry> cached_future;
+  {
+    KernelReuseCache cache;
+    bool was_cached = false;
+    std::tie(future, was_cached) = cache.GetWithStatus(
+        "fingerprint1", [returned = std::move(returned)]() mutable {
+          return std::move(returned);
+        });
+    EXPECT_FALSE(was_cached);
+
+    std::tie(cached_future, was_cached) = cache.GetWithStatus(
+        "fingerprint1",
+        []() { return absl::UnimplementedError("Should be cached"); });
+    EXPECT_TRUE(was_cached);
+
+    cache.Clear();
+  }
+  {
+    auto p = std::move(promise);
+    KernelReuseCache::Entry expected;
+    expected.kernel_name = "kernel_after_clear";
+    expected.binary = std::make_shared<const std::vector<uint8_t>>(
+        std::vector<uint8_t>{1, 2, 3});
+    p.Set(std::move(expected));
+  }
+
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry& result, future.Await());
+  EXPECT_EQ(result.kernel_name, "kernel_after_clear");
+  ASSERT_NE(result.binary, nullptr);
+  EXPECT_THAT(*result.binary, testing::ElementsAre(1, 2, 3));
+
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry& cached_result,
+                       cached_future.Await());
+  EXPECT_EQ(cached_result.binary.get(), result.binary.get());
+}
+
+TEST_F(KernelReuseTest, DefaultConstructedEntryHasNonNullEmptyBinary) {
+  KernelReuseCache::Entry entry{"empty_kernel"};
+  ASSERT_NE(entry.binary, nullptr);
+  EXPECT_TRUE(entry.binary->empty());
+}
+
+TEST_F(KernelReuseTest, MovingFromReturnedEntryDoesNotMutateCachedEntry) {
+  KernelReuseCache cache;
+  auto [first_future, first_cached] =
+      cache.GetWithStatus("fp", []() -> tsl::Future<KernelReuseCache::Entry> {
+        KernelReuseCache::Entry entry;
+        entry.kernel_name = "shared_kernel";
+        entry.binary = std::make_shared<const std::vector<uint8_t>>(
+            std::vector<uint8_t>{10, 20, 30});
+        return entry;
+      });
+  EXPECT_FALSE(first_cached);
+
+  // Simulate a consumer (like TritonFusion::Emit) copying Entry into a result
+  // struct and then std::move'ing kernel_name and binary out of its copy.
+  auto moved_future = first_future.Map([](KernelReuseCache::Entry entry_copy) {
+    std::string moved_name = std::move(entry_copy.kernel_name);
+    std::shared_ptr<const std::vector<uint8_t>> moved_binary =
+        std::move(entry_copy.binary);
+    return std::make_pair(std::move(moved_name), std::move(moved_binary));
+  });
+  ASSERT_OK_AND_ASSIGN(auto first_moved, moved_future.Await());
+  EXPECT_EQ(first_moved.first, "shared_kernel");
+  ASSERT_NE(first_moved.second, nullptr);
+
+  // A subsequent cache hit must still see the intact kernel_name and share the
+  // exact same underlying binary buffer.
+  auto [second_future, second_cached] = cache.GetWithStatus(
+      "fp", []() { return absl::UnimplementedError("Should be cached"); });
+  EXPECT_TRUE(second_cached);
+  ASSERT_OK_AND_ASSIGN(const KernelReuseCache::Entry& second_result,
+                       second_future.Await());
+  EXPECT_EQ(second_result.kernel_name, "shared_kernel");
+  EXPECT_EQ(second_result.binary.get(), first_moved.second.get());
 }
 
 }  // namespace

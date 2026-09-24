@@ -58,6 +58,22 @@ static const absl::NoDestructor<AllocationAttributes> kLower(
     /*retry_on_failure=*/false, /*allocation_will_be_logged=*/false,
     /*freed_by_func=*/nullptr, AllocationEnd::kLower);
 
+// The shared GPU pool serves collective memory below default memory, while
+// keeping each memory space's splitting policy and preferring equal-size holes
+// nearest its outer arena boundary.
+BFCAllocator::Options SharedGpuPoolOptions() {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+  opts.lower_end_policy = {BFCAllocator::HoleOrder::kAscendingAddress,
+                           BFCAllocator::SplitPolicy::kExact,
+                           BFCAllocator::SplitPolicy::kExact};
+  opts.upper_end_policy = {BFCAllocator::HoleOrder::kDescendingAddress,
+                           BFCAllocator::SplitPolicy::kRetainPadding,
+                           BFCAllocator::SplitPolicy::kRetainPadding};
+  return opts;
+}
+
 // SubAllocator that hands out fake (non-dereferenceable) addresses without
 // allocating any real memory. It bump-allocates from a large, fixed virtual
 // base so addresses are unique, well-aligned, and consistent. This lets tests
@@ -151,6 +167,17 @@ TEST(BFCAllocatorTest, DefaultAlignment) {
   ASSERT_NE(ptr, nullptr);
   EXPECT_TRUE(IsAligned(ptr, kAlignment));
   alloc.DeallocateRaw(ptr);
+}
+
+TEST(BFCAllocatorTest, RejectsAllocationWhoseRoundedSizeWouldOverflow) {
+  BFCAllocator::Options opts;
+  opts.allow_retry_on_failure = false;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/1 << 20, /*name=*/"test", opts);
+
+  EXPECT_EQ(
+      alloc.AllocateRaw(kAlignment, std::numeric_limits<size_t>::max() - 1),
+      nullptr);
 }
 
 TEST(BFCAllocatorTest, OomLogsAllocationAnnotations) {
@@ -674,7 +701,8 @@ TEST(BFCAllocatorTest, SpatialUpperOffsetsStable) {
       if (p) {
         live_upper.push_back(p);
       }
-      // Occasionally free an earlier upper temp, mimicking short-lived S(1).
+      // Occasionally free an earlier upper temp, mimicking short-lived
+      // buffers.
       if (live_upper.size() > 2) {
         alloc.DeallocateRaw(live_upper.front());
         live_upper.erase(live_upper.begin());
@@ -687,6 +715,528 @@ TEST(BFCAllocatorTest, SpatialUpperOffsetsStable) {
   for (uint32_t seed = 2; seed <= 32; ++seed) {
     EXPECT_EQ(run(seed), rank0)
         << "upper offsets diverged for lower_seed=" << seed;
+  }
+}
+
+// Upper activity does not perturb lower offsets. This mirrors
+// SpatialKeepsUpperOffset for the end that anchors symmetric memory.
+TEST(BFCAllocatorTest, SpatialKeepsLowerOffset) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+
+  BFCAllocator alloc_a(std::make_unique<FakeSubAllocator>(),
+                       /*total_memory=*/4096, /*name=*/"spatial_a", opts);
+  BFCAllocator alloc_b(std::make_unique<FakeSubAllocator>(),
+                       /*total_memory=*/4096, /*name=*/"spatial_b", opts);
+  const uintptr_t base = FakeSubAllocator::kBase;
+
+  // Pool A sees light upper activity.
+  void* upper_a = alloc_a.AllocateRaw(kAlignment, 256, *kUpper);
+  void* lower0_a = alloc_a.AllocateRaw(kAlignment, 512, *kLower);
+  void* lower1_a = alloc_a.AllocateRaw(kAlignment, 256, *kLower);
+
+  // Pool B sees heavier, interleaved upper activity including a free that
+  // rejoins the central gap between the two lower allocations.
+  void* upper_b = alloc_b.AllocateRaw(kAlignment, 256, *kUpper);
+  void* extra_upper_b = alloc_b.AllocateRaw(kAlignment, 1024, *kUpper);
+  void* lower0_b = alloc_b.AllocateRaw(kAlignment, 512, *kLower);
+  alloc_b.DeallocateRaw(extra_upper_b);
+  void* more_upper_b = alloc_b.AllocateRaw(kAlignment, 768, *kUpper);
+  void* lower1_b = alloc_b.AllocateRaw(kAlignment, 256, *kLower);
+
+  ASSERT_NE(upper_a, nullptr);
+  ASSERT_NE(lower0_a, nullptr);
+  ASSERT_NE(lower1_a, nullptr);
+  ASSERT_NE(upper_b, nullptr);
+  ASSERT_NE(extra_upper_b, nullptr);
+  ASSERT_NE(lower0_b, nullptr);
+  ASSERT_NE(more_upper_b, nullptr);
+  ASSERT_NE(lower1_b, nullptr);
+
+  // Lower offsets from the base are identical in both pools.
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower0_a), base);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower0_b), base);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower1_a), base + 512);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower1_b), base + 512);
+
+  alloc_a.DeallocateRaw(lower1_a);
+  alloc_a.DeallocateRaw(lower0_a);
+  alloc_a.DeallocateRaw(upper_a);
+  alloc_b.DeallocateRaw(lower1_b);
+  alloc_b.DeallocateRaw(more_upper_b);
+  alloc_b.DeallocateRaw(lower0_b);
+  alloc_b.DeallocateRaw(upper_b);
+}
+
+// Lower must not reuse a non-boundary upper hole.
+TEST(BFCAllocatorTest, SpatialSkipsUpperHole) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/1024, /*name=*/"spatial", opts);
+
+  // Fill the whole region: two upper chunks then one lower chunk, leaving no
+  // central gap.
+  void* upper_a = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+  ASSERT_NE(upper_a, nullptr);
+  void* upper_b = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+  ASSERT_NE(upper_b, nullptr);
+  void* lower = alloc.AllocateRaw(kAlignment, 512, *kLower);
+  ASSERT_NE(lower, nullptr);
+
+  // upper_a is trapped above live upper_b.
+  alloc.DeallocateRaw(upper_a);
+
+  // Lower must not reuse the trapped upper hole.
+  void* trapped = alloc.AllocateRaw(kAlignment, 256, *kLower);
+  EXPECT_EQ(trapped, nullptr);
+
+  alloc.DeallocateRaw(lower);
+  alloc.DeallocateRaw(upper_b);
+}
+
+// A fully freed upper range reforms the central gap for lower allocations.
+TEST(BFCAllocatorTest, SpatialLowerReclaimsAfterUpperFill) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+  constexpr size_t kPool = size_t{1} << 30;  // 1 GiB.
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/kPool, /*name=*/"repro", opts);
+  const uintptr_t base = FakeSubAllocator::kBase;
+
+  // Upper fills the entire pool, then frees it.
+  constexpr size_t kChunk = size_t{32} << 20;  // 32 MiB.
+  constexpr int kNumChunks = kPool / kChunk;   // 32 chunks exactly fill 1 GiB.
+  std::vector<void*> upper_ptrs;
+  upper_ptrs.reserve(kNumChunks);
+  for (int i = 0; i < kNumChunks; ++i) {
+    void* p = alloc.AllocateRaw(kAlignment, kChunk, *kUpper);
+    ASSERT_NE(p, nullptr) << "upper fill failed at chunk " << i;
+    upper_ptrs.push_back(p);
+  }
+
+  // Boundary coalescing should reform one whole-pool gap.
+  for (void* p : upper_ptrs) {
+    alloc.DeallocateRaw(p);
+  }
+
+  // Lower should now allocate from the base of the reformed gap.
+  constexpr size_t kLowerBytes = 18 << 20;
+  void* lower = alloc.AllocateRaw(kAlignment, kLowerBytes, *kLower);
+  ASSERT_NE(lower, nullptr) << "lower should reclaim the freed pool";
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower), base)
+      << "lower allocation should be anchored at the base of the pool";
+  alloc.DeallocateRaw(lower);
+}
+
+// Identical lower allocation sequences should produce identical offsets from
+// the pool base. Lower requests use the coarse alignment of collective memory
+// while randomized upper churn uses the fine alignment of default memory.
+TEST(BFCAllocatorTest, SpatialLowerOffsetsStable) {
+  constexpr size_t kPool = size_t{512} << 20;
+  constexpr size_t kLowerAlignment = size_t{2} << 20;
+  // Fixed lower sizes, identical across simulated ranks.
+  const std::array<size_t, 8> kLowerSizes = {4 << 20,  16 << 20, 1 << 20,
+                                             18 << 20, 2 << 20,  8 << 20,
+                                             4 << 20,  32 << 20};
+
+  // Run the fixed lower sequence with randomized upper churn.
+  auto run = [&](uint32_t upper_seed) -> std::vector<uintptr_t> {
+    BFCAllocator::Options opts = SharedGpuPoolOptions();
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), kPool, "sym",
+                       opts);
+    const uintptr_t base = FakeSubAllocator::kBase;
+
+    std::mt19937 rng(upper_seed);
+    std::vector<std::pair<void*, size_t>> live_upper;  // (ptr, bytes)
+    size_t live_upper_bytes = 0;
+    // Keep utilization away from true exhaustion.
+    constexpr size_t kUpperCap = kPool / 2;
+    const std::array<size_t, 5> kUpperSizes = {256, 1 << 20, 8 << 20, 32 << 20,
+                                               64 << 20};
+    auto churn_upper = [&] {
+      // A random burst of upper allocations and frees, leaving some live.
+      const int ops = std::uniform_int_distribution<int>(0, 6)(rng);
+      for (int i = 0; i < ops; ++i) {
+        if (!live_upper.empty() &&
+            std::uniform_int_distribution<int>(0, 2)(rng) == 0) {
+          size_t idx = std::uniform_int_distribution<size_t>(
+              0, live_upper.size() - 1)(rng);
+          alloc.DeallocateRaw(live_upper[idx].first);
+          live_upper_bytes -= live_upper[idx].second;
+          live_upper.erase(live_upper.begin() + idx);
+        } else {
+          size_t bytes = kUpperSizes[std::uniform_int_distribution<size_t>(
+              0, kUpperSizes.size() - 1)(rng)];
+          if (live_upper_bytes + bytes > kUpperCap) {
+            continue;
+          }
+          void* p = alloc.AllocateRaw(kAlignment, bytes, *kUpper);
+          if (p) {
+            live_upper.push_back({p, bytes});
+            live_upper_bytes += bytes;
+          }
+        }
+      }
+    };
+
+    std::vector<uintptr_t> offsets;
+    std::vector<void*> live_lower;
+    for (size_t bytes : kLowerSizes) {
+      churn_upper();
+      void* p = alloc.AllocateRaw(kLowerAlignment, bytes, *kLower);
+      EXPECT_NE(p, nullptr)
+          << "lower alloc failed under upper churn (seed " << upper_seed << ")";
+      offsets.push_back(p ? absl::bit_cast<uintptr_t>(p) - base
+                          : std::numeric_limits<uintptr_t>::max());
+      if (p) {
+        live_lower.push_back(p);
+      }
+      // Occasionally free an earlier lower temp, mimicking short-lived S(1).
+      if (live_lower.size() > 2) {
+        alloc.DeallocateRaw(live_lower.front());
+        live_lower.erase(live_lower.begin());
+      }
+    }
+    return offsets;
+  };
+
+  const std::vector<uintptr_t> rank0 = run(/*upper_seed=*/1);
+  ASSERT_EQ(rank0.size(), kLowerSizes.size());
+  // The first lower allocation is anchored at the pool base, and every lower
+  // offset honors the coarse alignment.
+  EXPECT_EQ(rank0.front(), 0);
+  for (uintptr_t offset : rank0) {
+    EXPECT_EQ(offset % kLowerAlignment, 0);
+  }
+  for (uint32_t seed = 2; seed <= 32; ++seed) {
+    EXPECT_EQ(run(seed), rank0)
+        << "lower offsets diverged for upper_seed=" << seed;
+  }
+}
+
+// The default policies return the rounded request size from the gap at both
+// ends, even when the non-partitioned BFC heuristic would keep the remainder as
+// padding, so the gap stays available to the other end and neither end's chunk
+// sizes depend on the other's activity.
+TEST(BFCAllocatorTest, SpatialGapCarveSplitsExactlyAtBothEnds) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+  const uintptr_t base = FakeSubAllocator::kBase;
+
+  {
+    // Upper takes half the pool. The 1024-byte gap is less than twice the
+    // 768-byte lower request and the 256-byte remainder is far below the
+    // 128 MiB padding cap, so the non-partitioned heuristic alone would not
+    // split.
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                       /*total_memory=*/2048, /*name=*/"lower_carve", opts);
+    void* upper = alloc.AllocateRaw(kAlignment, 1024, *kUpper);
+    ASSERT_NE(upper, nullptr);
+    void* lower = alloc.AllocateRaw(kAlignment, 768, *kLower);
+    ASSERT_NE(lower, nullptr);
+    EXPECT_EQ(absl::bit_cast<uintptr_t>(lower), base);
+
+    // The remainder is still central gap, so the upper end can take it.
+    void* remainder = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+    ASSERT_NE(remainder, nullptr);
+    EXPECT_EQ(absl::bit_cast<uintptr_t>(remainder), base + 768);
+
+    alloc.DeallocateRaw(remainder);
+    alloc.DeallocateRaw(lower);
+    alloc.DeallocateRaw(upper);
+  }
+  {
+    // Mirror: lower takes half the pool and upper carves 768 bytes from the
+    // 1024-byte gap.
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                       /*total_memory=*/2048, /*name=*/"upper_carve", opts);
+    void* lower = alloc.AllocateRaw(kAlignment, 1024, *kLower);
+    ASSERT_NE(lower, nullptr);
+    void* upper = alloc.AllocateRaw(kAlignment, 768, *kUpper);
+    ASSERT_NE(upper, nullptr);
+    EXPECT_EQ(absl::bit_cast<uintptr_t>(upper), base + 1280);
+
+    void* remainder = alloc.AllocateRaw(kAlignment, 256, *kLower);
+    ASSERT_NE(remainder, nullptr);
+    EXPECT_EQ(absl::bit_cast<uintptr_t>(remainder), base + 1024);
+
+    alloc.DeallocateRaw(remainder);
+    alloc.DeallocateRaw(upper);
+    alloc.DeallocateRaw(lower);
+  }
+}
+
+// Reusing a same-tag hole follows the non-partitioned BFC split heuristic at
+// both ends: a hole smaller than twice the rounded request size is taken whole
+// if its unused space is below the padding limit.
+TEST(BFCAllocatorTest, SpatialHoleReuseKeepsSlackAtBothEnds) {
+  BFCAllocator::Options opts;
+  opts.allow_growth = false;
+  opts.enable_spatial_partitioning = true;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(),
+                     /*total_memory=*/4096, /*name=*/"spatial", opts);
+  const uintptr_t base = FakeSubAllocator::kBase;
+
+  // Lower: a 1024-byte hole trapped below a live guard.
+  void* lower_hole = alloc.AllocateRaw(kAlignment, 1024, *kLower);
+  void* lower_guard = alloc.AllocateRaw(kAlignment, 256, *kLower);
+  ASSERT_NE(lower_hole, nullptr);
+  ASSERT_NE(lower_guard, nullptr);
+  alloc.DeallocateRaw(lower_hole);
+
+  // Upper: a 1024-byte hole trapped above a live guard.
+  void* upper_hole = alloc.AllocateRaw(kAlignment, 1024, *kUpper);
+  void* upper_guard = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+  ASSERT_NE(upper_hole, nullptr);
+  ASSERT_NE(upper_guard, nullptr);
+  alloc.DeallocateRaw(upper_hole);
+
+  // 768-byte requests take the 1024-byte holes whole ...
+  void* lower_reuse = alloc.AllocateRaw(kAlignment, 768, *kLower);
+  ASSERT_NE(lower_reuse, nullptr);
+  EXPECT_EQ(lower_reuse, lower_hole);
+  void* upper_reuse = alloc.AllocateRaw(kAlignment, 768, *kUpper);
+  ASSERT_NE(upper_reuse, nullptr);
+  EXPECT_EQ(upper_reuse, upper_hole);
+
+  // ... so no 256-byte holes are left behind and the next requests are carved
+  // from the central gap on both sides of the guards.
+  void* lower_next = alloc.AllocateRaw(kAlignment, 256, *kLower);
+  ASSERT_NE(lower_next, nullptr);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(lower_next), base + 1280);
+  void* upper_next = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+  ASSERT_NE(upper_next, nullptr);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(upper_next), base + 4096 - 1280 - 256);
+
+  alloc.DeallocateRaw(upper_next);
+  alloc.DeallocateRaw(lower_next);
+  alloc.DeallocateRaw(upper_reuse);
+  alloc.DeallocateRaw(lower_reuse);
+  alloc.DeallocateRaw(upper_guard);
+  alloc.DeallocateRaw(lower_guard);
+}
+
+TEST(BFCAllocatorTest, SpatialHoleOrderPreservesCoalescing) {
+  constexpr size_t kMiB = size_t{1} << 20;
+  for (const AllocationAttributes* attrs : {&*kLower, &*kUpper}) {
+    SCOPED_TRACE(static_cast<int>(attrs->allocation_end));
+    const bool collective = attrs->allocation_end == AllocationEnd::kLower;
+    const size_t block_size = collective ? 2 * kMiB : kMiB;
+    const size_t alignment = collective ? 2 * kMiB : kAlignment;
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), 4 * block_size,
+                       "coalescing", SharedGpuPoolOptions());
+    auto allocate = [&](size_t bytes) {
+      return alloc.AllocateRaw(alignment, bytes, *attrs);
+    };
+    void* a = allocate(block_size);
+    void* b = allocate(block_size);
+    void* c = allocate(block_size);
+    void* d = allocate(block_size);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    ASSERT_NE(c, nullptr);
+    ASSERT_NE(d, nullptr);
+
+    alloc.DeallocateRaw(a);
+    alloc.DeallocateRaw(c);
+    void* e = allocate(block_size);
+    ASSERT_NE(e, nullptr);
+    // Prefer A, nearest this space's outer arena boundary, so freeing D lets
+    // C and D coalesce. Reusing C instead would leave A and D separated.
+    EXPECT_EQ(e, a);
+    alloc.DeallocateRaw(d);
+    void* f = allocate(2 * block_size);
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f, collective ? c : d);
+
+    alloc.DeallocateRaw(f);
+    alloc.DeallocateRaw(e);
+    alloc.DeallocateRaw(b);
+  }
+}
+
+TEST(BFCAllocatorTest, SpatialCollectiveHoleRemainderRemainsUsable) {
+  constexpr size_t kMiB = size_t{1} << 20;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), 16 * kMiB,
+                     "collective", SharedGpuPoolOptions());
+  auto collective = [&](size_t bytes) {
+    return alloc.AllocateRaw(2 * kMiB, bytes, *kLower);
+  };
+  void* a = collective(8 * kMiB);
+  void* b = collective(2 * kMiB);
+  void* c = alloc.AllocateRaw(kAlignment, 6 * kMiB, *kUpper);
+  ASSERT_NE(a, nullptr);
+  ASSERT_NE(b, nullptr);
+  ASSERT_NE(c, nullptr);
+
+  // B keeps A's free chunk collective-owned instead of returning it to the
+  // central gap. A 6 MiB request must leave its aligned 2 MiB remainder free.
+  alloc.DeallocateRaw(a);
+  void* d = collective(6 * kMiB);
+  ASSERT_NE(d, nullptr);
+  EXPECT_EQ(d, a);
+  EXPECT_EQ(alloc.AllocatedSize(d), 6 * kMiB);
+  void* e = collective(2 * kMiB);
+  ASSERT_NE(e, nullptr);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(e), FakeSubAllocator::kBase + 6 * kMiB);
+
+  alloc.DeallocateRaw(e);
+  alloc.DeallocateRaw(d);
+  alloc.DeallocateRaw(b);
+  alloc.DeallocateRaw(c);
+}
+
+TEST(BFCAllocatorTest, SpatialHoleOrderKeepsBestFit) {
+  for (const AllocationAttributes* attrs : {&*kLower, &*kUpper}) {
+    SCOPED_TRACE(static_cast<int>(attrs->allocation_end));
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), 8192, "best_fit",
+                       SharedGpuPoolOptions());
+    auto allocate = [&](size_t bytes) {
+      return alloc.AllocateRaw(kAlignment, bytes, *attrs);
+    };
+    void* large = allocate(1792);
+    void* guard0 = allocate(256);
+    void* small0 = allocate(1280);
+    void* guard1 = allocate(256);
+    void* small1 = allocate(1280);
+    void* guard2 = allocate(256);
+    ASSERT_NE(large, nullptr);
+    ASSERT_NE(guard0, nullptr);
+    ASSERT_NE(small0, nullptr);
+    ASSERT_NE(guard1, nullptr);
+    ASSERT_NE(small1, nullptr);
+    ASSERT_NE(guard2, nullptr);
+    alloc.DeallocateRaw(large);
+    alloc.DeallocateRaw(small0);
+    alloc.DeallocateRaw(small1);
+
+    // All holes share a bin. Size must win before the address tie-break, which
+    // prefers lower addresses for collective memory and higher for default
+    // memory. In both cases small0 is the equal-size hole nearest the outer
+    // arena boundary; large is even closer but must lose on size.
+    void* reused = allocate(1280);
+    ASSERT_NE(reused, nullptr);
+    EXPECT_EQ(reused, small0);
+    EXPECT_EQ(alloc.AllocatedSize(reused), 1280);
+    alloc.DeallocateRaw(reused);
+    alloc.DeallocateRaw(guard0);
+    alloc.DeallocateRaw(guard1);
+    alloc.DeallocateRaw(guard2);
+  }
+}
+
+TEST(BFCAllocatorTest, SpatialDefaultGapKeepsSlack) {
+  constexpr size_t kMiB = size_t{1} << 20;
+  BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), 12 * kMiB, "gap",
+                     SharedGpuPoolOptions());
+  void* a = alloc.AllocateRaw(2 * kMiB, 2 * kMiB, *kLower);
+  void* b = alloc.AllocateRaw(kAlignment, 2 * kMiB, *kUpper);
+  ASSERT_NE(a, nullptr);
+  ASSERT_NE(b, nullptr);
+  // Default memory keeps its BFC heuristic for gap carves: a 6 MiB request
+  // consumes the 8 MiB gap, retaining the small remainder as padding.
+  void* c = alloc.AllocateRaw(kAlignment, 6 * kMiB, *kUpper);
+  ASSERT_NE(c, nullptr);
+  EXPECT_EQ(alloc.AllocatedSize(c), 8 * kMiB);
+  EXPECT_EQ(alloc.AllocateRaw(2 * kMiB, 2 * kMiB, *kLower), nullptr);
+
+  // The padding becomes shared capacity again only when C is freed. The
+  // collective allocation still splits exactly from the restored 8 MiB gap.
+  alloc.DeallocateRaw(c);
+  void* d = alloc.AllocateRaw(2 * kMiB, 6 * kMiB, *kLower);
+  ASSERT_NE(d, nullptr);
+  EXPECT_EQ(alloc.AllocatedSize(d), 6 * kMiB);
+  EXPECT_EQ(absl::bit_cast<uintptr_t>(d), FakeSubAllocator::kBase + 2 * kMiB);
+  void* e = alloc.AllocateRaw(2 * kMiB, 2 * kMiB, *kLower);
+  ASSERT_NE(e, nullptr);
+
+  alloc.DeallocateRaw(e);
+  alloc.DeallocateRaw(d);
+  alloc.DeallocateRaw(b);
+  alloc.DeallocateRaw(a);
+}
+
+TEST(BFCAllocatorTest, SpatialExactHolePolicyAtBothEnds) {
+  for (const AllocationAttributes* attrs : {&*kLower, &*kUpper}) {
+    SCOPED_TRACE(static_cast<int>(attrs->allocation_end));
+    BFCAllocator::Options opts = SharedGpuPoolOptions();
+    opts.upper_end_policy.hole_split_policy = BFCAllocator::SplitPolicy::kExact;
+    BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), 2048, "exact",
+                       opts);
+    void* hole = alloc.AllocateRaw(kAlignment, 1024, *attrs);
+    void* guard = alloc.AllocateRaw(kAlignment, 256, *attrs);
+    ASSERT_NE(hole, nullptr);
+    ASSERT_NE(guard, nullptr);
+    alloc.DeallocateRaw(hole);
+    void* reused = alloc.AllocateRaw(kAlignment, 768, *attrs);
+    ASSERT_NE(reused, nullptr);
+    EXPECT_EQ(alloc.AllocatedSize(reused), 768);
+    void* remainder = alloc.AllocateRaw(kAlignment, 256, *attrs);
+    ASSERT_NE(remainder, nullptr);
+    EXPECT_EQ(absl::bit_cast<uintptr_t>(remainder),
+              absl::bit_cast<uintptr_t>(hole) +
+                  (attrs->allocation_end == AllocationEnd::kLower ? 768 : 0));
+    alloc.DeallocateRaw(remainder);
+    alloc.DeallocateRaw(reused);
+    alloc.DeallocateRaw(guard);
+  }
+}
+
+TEST(BFCAllocatorTest, SpatialUpperAlignmentKeepsSlack) {
+  struct TestCase {
+    size_t pool_size;
+    size_t filler_size;
+    size_t free_size;
+    size_t request_size;
+    size_t expected_offset;
+    size_t expected_size;
+  };
+  for (const TestCase& test : {
+           // The free chunk starts 256 bytes past a 512-byte boundary. Split
+           // the mandatory prefix, then retain the 256-byte suffix as padding.
+           TestCase{4096, 512, 1280, 768, 2560, 1024},
+           // A large free chunk must split. Its high-end carve still keeps the
+           // trailing 256 bytes instead of creating an alignment suffix hole.
+           TestCase{8192, 256, 3072, 512, 7168, 768},
+       }) {
+    SCOPED_TRACE(test.free_size);
+    for (bool from_gap : {false, true}) {
+      SCOPED_TRACE(from_gap);
+      BFCAllocator alloc(std::make_unique<FakeSubAllocator>(), test.pool_size,
+                         "aligned_upper", SharedGpuPoolOptions());
+      void* filler = alloc.AllocateRaw(kAlignment, test.filler_size, *kUpper);
+      ASSERT_NE(filler, nullptr);
+      void* guard;
+      if (from_gap) {
+        // Leave a central gap with the same address and size as the owned hole
+        // below. Lower allocations split exactly under the shared GPU policy.
+        guard = alloc.AllocateRaw(
+            kAlignment, test.pool_size - test.filler_size - test.free_size,
+            *kLower);
+      } else {
+        void* hole = alloc.AllocateRaw(kAlignment, test.free_size, *kUpper);
+        ASSERT_NE(hole, nullptr);
+        EXPECT_EQ(alloc.AllocatedSize(hole), test.free_size);
+        guard = alloc.AllocateRaw(kAlignment, 256, *kUpper);
+        ASSERT_NE(guard, nullptr);
+        alloc.DeallocateRaw(hole);
+      }
+      ASSERT_NE(guard, nullptr);
+
+      void* reused = alloc.AllocateRaw(512, test.request_size, *kUpper);
+      ASSERT_NE(reused, nullptr);
+      EXPECT_EQ(absl::bit_cast<uintptr_t>(reused),
+                FakeSubAllocator::kBase + test.expected_offset);
+      EXPECT_EQ(alloc.AllocatedSize(reused), test.expected_size);
+      alloc.DeallocateRaw(reused);
+      alloc.DeallocateRaw(guard);
+      alloc.DeallocateRaw(filler);
+    }
   }
 }
 

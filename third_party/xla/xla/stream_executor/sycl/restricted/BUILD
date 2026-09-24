@@ -72,6 +72,7 @@ xla_test(
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tests/restricted:llvm_irgen_test_base",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

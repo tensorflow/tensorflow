@@ -31,6 +31,9 @@ load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@rules_cc//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
 
+def hipcc_workspace_prefix():
+    return Label("@config_rocm_hipcc//rocm:build_defs.bzl").workspace_root + "/rocm"
+
 all_compile_actions = [
     ACTION_NAMES.c_compile,
     ACTION_NAMES.cpp_compile,
@@ -1131,7 +1134,7 @@ def _impl(ctx):
     # ROCm HIPcc feature from hipcc_config()
     _hipcc_config = hipcc_config()
     # Construct full paths - config_rocm_hipcc is in external workspace
-    _workspace_prefix = "external/config_rocm_hipcc/rocm"
+    _workspace_prefix = hipcc_workspace_prefix()
     _rocm_path = _workspace_prefix + "/" + _hipcc_config.rocm_root
 
     rocm_hipcc_feature = feature(

@@ -29,15 +29,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/shaped_slice.h"
@@ -174,47 +175,31 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
-  absl::MutexLock lock(mutex_);
-
-  // Load the kernel into the device if necessary.
-  //
-  // We could alternatively do this within ExecuteOnStream, but doing it here
-  // lets the time spent loading the kernel not count towards our execution
-  // profiles.
-  if (!kernel_cache_.contains(params.executor)) {
-    std::unique_ptr<se::Kernel> kernel;
-    if (!params.src.binary.empty()) {
-      ABSL_ASSIGN_OR_RETURN(
-          kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
-                               params.executor, shmem_bytes_, use_pdl_));
-
-    } else {
-      ABSL_ASSIGN_OR_RETURN(kernel,
-                       CreateKernel(kernel_name_, args_.size(), params.src.text,
-                                    params.executor, shmem_bytes_, use_pdl_));
-    }
-
-    kernel_cache_.emplace(params.executor, std::move(kernel));
-  }
-
-  return absl::OkStatus();
+  return kernel_cache_
+      .GetOrCreate(
+          params.executor,
+          [&params, this]() -> absl::StatusOr<std::unique_ptr<se::Kernel>> {
+            if (!params.src.binary.empty()) {
+              return CreateKernel(kernel_name_, args_.size(), params.src.binary,
+                                  params.executor, shmem_bytes_, use_pdl_);
+            }
+            return CreateKernel(kernel_name_, args_.size(), params.src.text,
+                                params.executor, shmem_bytes_, use_pdl_);
+          })
+      .status();
 }
 
 absl::StatusOr<KernelThunk::KernelWithArgs> KernelThunk::GetKernelAndArgs(
     const BufferAllocations& buffer_allocations,
     se::StreamExecutor* executor) const {
-  se::Kernel* kernel;
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = kernel_cache_.find(executor);
-    if (it == kernel_cache_.end() || it->second == nullptr) {
-      return absl::InternalError(absl::StrFormat(
-          "Kernel not loaded for executor (Initialize() not called): %s",
-          kernel_name_));
-    }
-    kernel = it->second.get();
+  se::Kernel* kernel = kernel_cache_.Find(executor);
+  if (kernel == nullptr) {
+    return absl::InternalError(absl::StrFormat(
+        "Kernel not loaded for executor (Initialize() not called): %s",
+        kernel_name_));
   }
   absl::InlinedVector<se::KernelArg, 4> kernel_args;
+  kernel_args.reserve(args_.size());
   for (int idx = 0; idx < args_.size(); ++idx) {
     se::DeviceAddressBase buf =
         buffer_allocations.GetDeviceAddress(args_[idx].slice);

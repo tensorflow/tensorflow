@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
+#include <stdlib.h>
+
 #include <fstream>
+#include <optional>
 #include <string>
 
 #include "absl/algorithm/container.h"
@@ -29,6 +32,33 @@ limitations under the License.
 
 namespace tsl {
 namespace {
+
+// Helper to set an environment variable for the duration of a scope and
+// restore its previous state on destruction.
+class ScopedEnv {
+  std::string name_;
+  std::optional<std::string> old_value_;
+
+ public:
+  ScopedEnv(const char* name, const char* value) : name_(name) {
+    const char* old = getenv(name);
+    if (old != nullptr) {
+      old_value_ = old;
+    }
+    tsl::setenv(name, value, 1);
+  }
+
+  ~ScopedEnv() {
+    if (old_value_.has_value()) {
+      tsl::setenv(name_.c_str(), old_value_->c_str(), 1);
+    } else {
+      tsl::unsetenv(name_.c_str());
+    }
+  }
+
+  ScopedEnv(const ScopedEnv&) = delete;
+  ScopedEnv& operator=(const ScopedEnv&) = delete;
+};
 
 const std::string kTestContent = "random original scratch content";
 
@@ -68,7 +98,7 @@ class FakeLibCurl : public LibCurl {
       case CURLOPT_POST:
         is_post_ = param;
         break;
-      case CURLOPT_PUT:
+      case CURLOPT_UPLOAD:
         is_put_ = param;
         break;
       default:
@@ -192,15 +222,8 @@ class FakeLibCurl : public LibCurl {
     }
     return CURLE_OK;
   }
-  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             double* value) override {
-    switch (info) {
-      case CURLINFO_SIZE_DOWNLOAD:
-        *value = response_content_.size();
-        break;
-      default:
-        break;
-    }
+  CURLcode curl_easy_getinfo(CURL* /*curl*/, CURLINFO /*info*/,
+                             double* /*value*/) override {
     return CURLE_OK;
   }
   void curl_easy_cleanup(CURL* curl) override { is_cleaned_up_ = true; }
@@ -333,8 +356,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct) {
 }
 
 TEST(CurlHttpRequestTest, GetRequest_CustomCaInfoFlag) {
-  static char set_var[] = "CURL_CA_BUNDLE=test";
-  putenv(set_var);
+  ScopedEnv scoped_env("CURL_CA_BUNDLE", "test");
   FakeLibCurl libcurl("get response", 200);
   CurlHttpRequest http_request(&libcurl);
 

@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
@@ -1236,7 +1237,6 @@ absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
   mlir::RankedTensorType input_type = input.getType();
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
 
-  // At this point we know that neither the input nor the output are 0D tensors.
   auto output_tensor_type = mlir::RankedTensorType::get(
       padded_tile_sizes, input_type.getElementType());
 
@@ -1247,6 +1247,40 @@ absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                      absl::StrJoin(output_tensor_type.getShape(), "x")));
   }
   return mlir::stablehlo::ReshapeOp::create(b, output_tensor_type, input);
+}
+
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  SmallVector<int64_t> padded_output_tile_sizes =
+      GetPaddedTileSizes(output_tile_sizes);
+  SmallVector<int64_t> dim_positions =
+      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+  // If all output dimensions are non-trivial, no broadcast expansion is needed.
+  if (dim_positions.size() == padded_output_tile_sizes.size()) {
+    return EmitTiledReshape(b, padded_output_tile_sizes, input);
+  }
+  SmallVector<int64_t> reshape_tile_sizes;
+  reshape_tile_sizes.reserve(dim_positions.size());
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
+  }
+  // In legacy tiling, backward propagation does not clamp trivial dimensions
+  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
+  // Dot), the input tile already contains elements along that dimension (e.g.
+  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
+  // expansion is needed; reshape directly to the full output tile.
+  //
+  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
+  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
+  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
+    return EmitTiledReshape(b, padded_output_tile_sizes, input);
+  }
+  ABSL_ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // Broadcast handles expansion of trivial dimensions (tt.expand_dims if tile
+  // size == 1, or tt.broadcast if tile size > 1).
+  return BroadcastInDims(b, re, padded_output_tile_sizes, dim_positions);
 }
 
 TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,

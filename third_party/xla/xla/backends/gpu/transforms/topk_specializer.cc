@@ -51,6 +51,9 @@ namespace xla::gpu {
 
 namespace {
 
+// Scratch memory allocated for RAFT select_k temporary buffers (32 MB).
+constexpr size_t kRaftScratchSize = 32 * 1024 * 1024;
+
 // Broadcast a 32-bit scalar to a target shape.
 HloInstruction* BroadcastU32(HloComputation* comp, const Shape& target_shape,
                              uint32_t value) {
@@ -246,7 +249,9 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
   Shape k_shape =
       ShapeUtil::ChangeElementType(topk->shape().tuple_shapes(0), U64);
   Shape idx_shape = topk->shape().tuple_shapes(1);
-  Shape new_cc_shape = ShapeUtil::MakeTupleShape({k_shape, idx_shape});
+  Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+  Shape new_cc_shape =
+      ShapeUtil::MakeTupleShape({k_shape, idx_shape, scratch_shape});
 
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -338,10 +343,17 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   if (n < min_n) {
     return InvalidArgument("Input too small (n=%d, min_n=%d)", n, min_n);
   }
+  Shape cc_shape = topk->shape();
+  if (is_cuda && use_raft) {
+    Shape scratch_shape = ShapeUtil::MakeShape(U8, {kRaftScratchSize});
+    cc_shape = ShapeUtil::MakeTupleShape({topk->shape().tuple_shapes(0),
+                                          topk->shape().tuple_shapes(1),
+                                          scratch_shape});
+  }
   HloComputation* comp = topk->parent();
   HloInstruction* new_topk =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
-          topk->shape(), topk->operands(),
+          cc_shape, topk->operands(),
           // We don't need the original to_apply, but keeping it around allows
           // us to round-trip this CustomCall on tests.
           topk->to_apply(), "__gpu$TopK",

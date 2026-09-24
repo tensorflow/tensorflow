@@ -698,14 +698,11 @@ ENTRY main {
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* module = module_and_executable.first;
 
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
   EXPECT_EQ(CountCopies(*module), 5);
   // All-gather-done is scheduled as late as possible to overlap with
   // computation, which requires an extra copy to resolve the live range
   // conflict with param_1.
-  const HloInstruction* while_op =
-      root->operand(0)->operand(0)->operand(0)->operand(0);
+  const HloInstruction* while_op = FindInstruction(module, HloOpcode::kWhile);
   const HloInstruction* operand_1 =
       while_op->while_body()->root_instruction()->operand(1);
   EXPECT_EQ(operand_1->opcode(), HloOpcode::kCopy);
@@ -1912,7 +1909,7 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
       p_multimem = s32[1] parameter(0)
       p_non_coll = s32[1] parameter(1)
 
-      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_symmetric_memory_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+      cc_multimem = (s32[1]{0}) custom-call(p_multimem), custom_call_target="mosaic_gpu_v2", frontend_attributes={operands_memory_spaces="{0:1}",results_memory_spaces="{0:1}"}, api_version=API_VERSION_TYPED_FFI
       res_multimem = s32[1] get-tuple-element(cc_multimem), index=0
 
       cc_non_coll = (s32[1]{0}) custom-call(p_non_coll), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
@@ -1936,25 +1933,18 @@ TEST_F(GpuCompilerTest, MosaicMultimemRequiresSymmetricMemoryCopies) {
     // Multimem input parameters are copied to S1
     // CHECK-DAG: [[COPY_MULTI_IN:%copy[^ ]*]] = s32[1]{0:S(1)} copy([[P_MULTI]])
 
-    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}backend_config={xla_symmetric_memory_parameters = "0"}
+    // CHECK-DAG: [[CC_MULTI:%[^ ]+]] = (s32[1]{0:S(1)}) custom-call([[COPY_MULTI_IN]]){{.*}}results_memory_spaces={0:1}
     // CHECK-DAG: [[CC_NON:%[^ ]+]] = (s32[1]{0}) custom-call([[P_NON]])
 
     // Extracting from the 1-element tuples returned by custom calls (all index=0)
     // CHECK-DAG: [[GTE_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[CC_MULTI]]), index=0
     // CHECK-DAG: [[GTE_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[CC_NON]]), index=0
 
-    // XLA packs an intermediate tuple
-    // CHECK-DAG: [[INTER_TUPLE:%[^ ]+]] = (s32[1]{0:S(1)}, s32[1]{0}) tuple([[GTE_MULTI]], [[GTE_NON]])
-
-    // XLA unpacks the intermediate tuple to perform the isolation copies
-    // CHECK-DAG: [[GTE_OUT_MULTI:%[^ ]+]] = s32[1]{0:S(1)} get-tuple-element([[INTER_TUPLE]]), index=0
-    // CHECK-DAG: [[GTE_OUT_NON:%[^ ]+]] = s32[1]{0} get-tuple-element([[INTER_TUPLE]]), index=1
-
     // The S1 -> S0 isolation copies
-    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_OUT_MULTI]])
+    // CHECK-DAG: [[COPY_OUT_MULTI:%copy[^ ]*]] = s32[1]{0} copy([[GTE_MULTI]])
 
     // The final ROOT is pure S0
-    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_OUT_NON]])
+    // CHECK: ROOT %tuple{{.*}} = (s32[1]{0}, s32[1]{0}) tuple([[COPY_OUT_MULTI]], [[GTE_NON]])
     )";
 
   EXPECT_THAT(RunFileCheck(
@@ -3619,6 +3609,40 @@ ENTRY main {
   auto it = extra_options.find("xla_is_host_offload");
   ASSERT_NE(it, extra_options.end());
   EXPECT_EQ(it->second, "true");
+}
+
+TEST_F(GpuCompilerTest, EarlyExitAfterConfigAssignment) {
+  absl::string_view hlo_text = R"hlo(
+    HloModule gemm
+
+    ENTRY main {
+      p0 = f32[32,32]{1,0} parameter(0)
+      p1 = f32[32,32]{1,0} parameter(1)
+      ROOT dot = f32[32,32] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+)hlo";
+
+  AotCompilationOptions aot_options(compiler()->PlatformId());
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config()));
+  aot_options.set_early_exit_point(
+      AotCompilationOptions::EarlyExitPoint::kAfterConfigAssignment);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
+      compiler()->CompileAheadOfTime(std::move(module), aot_options));
+
+  ASSERT_EQ(aot_results.size(), 1);
+  const HloModule* optimized_module = aot_results[0]->optimized_module();
+  ASSERT_NE(optimized_module, nullptr);
+
+  // Make sure both the pre-autotune and autotuner passes are run.
+  EXPECT_THAT(optimized_module, HasExpectedPasses(std::vector<std::string>{
+                                    "layout-assignment", "cublas-gemm-rewriter",
+                                    "config-assigner"}));
 }
 
 }  // namespace gpu

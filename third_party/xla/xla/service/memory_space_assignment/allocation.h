@@ -117,10 +117,12 @@ class Allocation {
   MemorySpace memory_space() const { return memory_space_; }
   // Returns the associated chunk that may be a nullopt if the allocation is
   // in the default memory space.
-  std::optional<HeapSimulator::Chunk> maybe_chunk() const { return chunk_; }
+  virtual std::optional<HeapSimulator::Chunk> maybe_chunk() const {
+    return chunk_;
+  }
   // Returns the associated chunk. The caller should ensure that the chunk is
   // defined (the allocation should be in the alternate memory space).
-  HeapSimulator::Chunk chunk() const;
+  virtual HeapSimulator::Chunk chunk() const;
   HeapSimulator::Chunk* mutable_chunk() { return &*chunk_; }
   void set_offset(int64_t offset);
   // Returns true if the allocation is in the alternate memory space.
@@ -629,8 +631,10 @@ class MirroredAllocation final : public Allocation {
   bool operator==(const MirroredAllocation& other) const;
   const Allocation& original_allocation() const { return original_allocation_; }
 
-  HeapSimulator::Chunk chunk() const { return original_allocation_.chunk(); }
-  std::optional<HeapSimulator::Chunk> maybe_chunk() const {
+  HeapSimulator::Chunk chunk() const final {
+    return original_allocation_.chunk();
+  }
+  std::optional<HeapSimulator::Chunk> maybe_chunk() const final {
     return original_allocation_.maybe_chunk();
   }
 

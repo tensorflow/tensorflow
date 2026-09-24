@@ -202,7 +202,7 @@ cuda_py_strict_test(
     name = "linear_operator_block_diag_test",
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],
-    shard_count = 8,
+    shard_count = 16,
     tags = ["optonly"],
     deps = [
         "//tensorflow/python/eager:backprop",

@@ -41,9 +41,9 @@ class JaxMatmulConfig(benchmark.BenchmarkConfig):
   m: int = 1024
   k: int = 1024
   n: int = 1024
-  lhs_dtype: jnp.dtype = jnp.bfloat16
-  rhs_dtype: jnp.dtype = jnp.bfloat16
-  out_dtype: jnp.dtype = jnp.bfloat16
+  lhs_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+  rhs_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
+  out_dtype: jnp.dtype = jnp.bfloat16  # pyrefly: ignore[bad-assignment]
 
   def get_benchmark(self) -> benchmark.Benchmark:
     return JaxMatmulBenchmark(self)

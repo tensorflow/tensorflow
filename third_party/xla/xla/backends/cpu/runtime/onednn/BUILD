@@ -185,6 +185,7 @@ onednn_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -336,6 +337,128 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   // constant.
   EXPECT_EQ(3, fusion_inst->fused_instruction_count());
   EXPECT_EQ(0, fusion_inst->operand_count());
+}
+
+TEST_F(CpuFusionTest, DynamicUpdateSliceOutOfPlace) {
+  const char* const hlo_string = R"(
+HloModule OutOfPlaceDus
+
+dus_fusion {
+  base = f32[4,4] parameter(0)
+  update = f32[2,2] parameter(1)
+  idx0 = s32[] parameter(2)
+  idx1 = s32[] parameter(3)
+  ROOT dus = f32[4,4] dynamic-update-slice(base, update, idx0, idx1)
+}
+
+ENTRY main {
+  p0 = f32[4,4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  fusion = f32[4,4] fusion(p0, p1, p2, p3), kind=kLoop, calls=dus_fusion
+  neg = f32[4,4] negate(p0)
+  ROOT tuple = (f32[4,4], f32[4,4]) tuple(fusion, neg)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto p0_literal = LiteralUtil::CreateR2<float>({
+      {1.0f, 2.0f, 3.0f, 4.0f},
+      {5.0f, 6.0f, 7.0f, 8.0f},
+      {9.0f, 10.0f, 11.0f, 12.0f},
+      {13.0f, 14.0f, 15.0f, 16.0f},
+  });
+  auto p1_literal = LiteralUtil::CreateR2<float>({
+      {100.0f, 200.0f},
+      {300.0f, 400.0f},
+  });
+  auto p2_literal = LiteralUtil::CreateR0<int32_t>(1);
+  auto p3_literal = LiteralUtil::CreateR0<int32_t>(1);
+
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&p0_literal, &p1_literal,
+                                                   &p2_literal, &p3_literal}));
+
+  LiteralTestUtil::ExpectR2Near<float>({{1.0f, 2.0f, 3.0f, 4.0f},
+                                        {5.0f, 100.0f, 200.0f, 8.0f},
+                                        {9.0f, 300.0f, 400.0f, 12.0f},
+                                        {13.0f, 14.0f, 15.0f, 16.0f}},
+                                       LiteralSlice(result, {0}), error_spec_);
+
+  LiteralTestUtil::ExpectR2Near<float>({{-1.0f, -2.0f, -3.0f, -4.0f},
+                                        {-5.0f, -6.0f, -7.0f, -8.0f},
+                                        {-9.0f, -10.0f, -11.0f, -12.0f},
+                                        {-13.0f, -14.0f, -15.0f, -16.0f}},
+                                       LiteralSlice(result, {1}), error_spec_);
+}
+
+TEST_F(CpuFusionTest, DynamicUpdateSliceOutOfPlaceWithBitcast) {
+  const char* const hlo_string = R"(
+HloModule OutOfPlaceDusWithBitcast
+
+dus_fusion {
+  base = f32[16] parameter(0)
+  bitcast_base = f32[4,4] bitcast(base)
+  update = f32[2,2] parameter(1)
+  idx0 = s32[] parameter(2)
+  idx1 = s32[] parameter(3)
+  dus = f32[4,4] dynamic-update-slice(bitcast_base, update, idx0, idx1)
+  ROOT bitcast_dus = f32[16] bitcast(dus)
+}
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  fusion = f32[16] fusion(p0, p1, p2, p3), kind=kLoop, calls=dus_fusion
+  neg = f32[16] negate(p0)
+  ROOT tuple = (f32[16], f32[16]) tuple(fusion, neg)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto p0_literal = LiteralUtil::CreateR1<float>({
+      1.0f,
+      2.0f,
+      3.0f,
+      4.0f,
+      5.0f,
+      6.0f,
+      7.0f,
+      8.0f,
+      9.0f,
+      10.0f,
+      11.0f,
+      12.0f,
+      13.0f,
+      14.0f,
+      15.0f,
+      16.0f,
+  });
+  auto p1_literal = LiteralUtil::CreateR2<float>({
+      {100.0f, 200.0f},
+      {300.0f, 400.0f},
+  });
+  auto p2_literal = LiteralUtil::CreateR0<int32_t>(1);
+  auto p3_literal = LiteralUtil::CreateR0<int32_t>(1);
+
+  ASSERT_OK_AND_ASSIGN(const Literal result,
+                       Execute(std::move(module), {&p0_literal, &p1_literal,
+                                                   &p2_literal, &p3_literal}));
+
+  LiteralTestUtil::ExpectR1Near<float>(
+      {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 100.0f, 200.0f, 8.0f, 9.0f, 300.0f, 400.0f,
+       12.0f, 13.0f, 14.0f, 15.0f, 16.0f},
+      LiteralSlice(result, {0}), error_spec_);
+
+  LiteralTestUtil::ExpectR1Near<float>(
+      {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f, -7.0f, -8.0f, -9.0f, -10.0f,
+       -11.0f, -12.0f, -13.0f, -14.0f, -15.0f, -16.0f},
+      LiteralSlice(result, {1}), error_spec_);
 }
 
 }  // namespace

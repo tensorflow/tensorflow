@@ -64,7 +64,7 @@ def _get_read_only_resource_input_indices_op(op):
   try:
     read_only_input_indices = op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR)
   except ValueError:
-    # Attr was not set. Add all resource inputs to `writes` and return.
+    # Attr was not set, so no inputs are known to be read-only.
     return []
 
   read_only_input_indices_set = set(read_only_input_indices)

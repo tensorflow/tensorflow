@@ -55,17 +55,17 @@ std::unique_ptr<HloPassPipeline> GetCublasLtRewriterPipeline(
     const stream_executor::DeviceDescription& device_description) {
   auto pipeline =
       std::make_unique<HloPassPipeline>("cublaslt_rewriter_pipeline");
-  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
-  for (GemmRewriterOptions::DType dtype :
-       {GemmRewriterOptions::DType::kFp8Only,
-        GemmRewriterOptions::DType::kNonFp8Only}) {
-    GemmRewriterOptions options{dtype};
-    auto gemm_rewriter = std::make_unique<GemmRewriter>(
-        device_description.gpu_compute_capability(),
-        device_description.runtime_version(), options);
-    pipeline->AddPass(std::move(gemm_rewriter));
-  }
+  pipeline->AddPass(std::make_unique<GemmRewriter>(
+      device_description.gpu_compute_capability(),
+      device_description.runtime_version(),
+      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}));
+  pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>(
+      device_description.gpu_compute_capability()));
+  pipeline->AddPass(std::make_unique<GemmRewriter>(
+      device_description.gpu_compute_capability(),
+      device_description.runtime_version(),
+      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only}));
   return pipeline;
 }
 
@@ -87,11 +87,11 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
   backends.push_back(std::make_unique<TritonBackend>(
       debug_options, compiler, target_config, alias_info, mlir_context));
   backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_executor, debug_options, compiler, target_config));
+      stream_executor, debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<CublasLtBackend>(stream_executor, debug_options,
-                                        compiler, target_config),
+                                        compiler, target_config, mlir_context),
       GetCublasLtRewriterPipeline(target_config->device_description),
       alias_info, mlir_context));
   backends.push_back(std::make_unique<NativeEmitterBackend>(

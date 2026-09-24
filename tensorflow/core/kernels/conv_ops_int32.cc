@@ -15,6 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/kernels/conv_ops_impl.h"
 
 namespace tensorflow {

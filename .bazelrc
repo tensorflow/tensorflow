@@ -76,7 +76,7 @@
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
-common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
+common --repo_env=ML_WHEEL_VERSION_SUFFIX="-rc0"
 
 common --incompatible_default_to_explicit_init_py
 
@@ -709,6 +709,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_windows_x86_cpu_2022 --features=-with_wrapper
 
 # Override the remote instance and BES instance names to use the new RBE pools
 common:rbe_windows_x86_cpu_2022 --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance
