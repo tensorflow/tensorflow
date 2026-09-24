@@ -28,6 +28,7 @@ limitations under the License.
 #include "mhlo/transforms/passes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -2566,10 +2567,21 @@ mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
   xla::XlaOp xla_result;
   if (type_attr &&
       type_attr.getValue() != mlir::stablehlo::ComparisonType::NOTYPE) {
-    auto type = xla::StringToComparisonType(
-                    stringifyComparisonType(type_attr.getValue()).str())
-                    .value();
-    xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
+    xla::ComparisonOrder order;
+    switch (type_attr.getValue()) {
+      case mlir::stablehlo::ComparisonType::FLOAT:
+        order = xla::ComparisonOrder::kPartial;
+        break;
+      case mlir::stablehlo::ComparisonType::TOTALORDER:
+      case mlir::stablehlo::ComparisonType::SIGNED:
+      case mlir::stablehlo::ComparisonType::UNSIGNED:
+        order = xla::ComparisonOrder::kTotal;
+        break;
+      case mlir::stablehlo::ComparisonType::NOTYPE:
+        LOG(FATAL) << "Unreachable";
+    }
+    xla_result =
+        xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, order);
   } else {
     xla_result = xla::Compare(lhs, rhs, dir);
   }
