@@ -149,6 +149,7 @@ message HostSendDoneThunkProto {
   int64 channel_id = 1;
   optional int64 device_constraint = 2;
   uint64 async_events_unique_id = 3;
+  ShapedSliceProto buffer = 4;
 }
 
 message HostRecvThunkProto {
@@ -164,6 +165,7 @@ message HostRecvDoneThunkProto {
   int64 channel_id = 1;
   optional int64 device_constraint = 2;
   uint64 async_events_unique_id = 3;
+  ShapedSliceProto buffer = 4;
 }
 
 message HostExecuteStartThunkProto {

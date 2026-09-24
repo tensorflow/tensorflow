@@ -49,6 +49,15 @@ struct SoftmaxEigenImpl {
     const int64_t batch_size = logits.dimension(kBatchDim);
     const int64_t num_classes = logits.dimension(kClassDim);
 
+    if (num_classes == 1) {
+      if (log) {
+        softmax.device(d) = logits - logits;
+      } else {
+        softmax.device(d) = (logits - logits).exp();
+      }
+      return;
+    }
+
     // These arrays are used to reduce along the class dimension, and broadcast
     // the resulting value to all classes.
     Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
