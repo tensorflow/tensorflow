@@ -77,7 +77,7 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
         // negative numerator toward zero. Larger windows still produce an
         // invalid (negative) output size and must not be silently accepted.
         const int64_t gap = c->Value(window_size) - c->Value(input_size);
-        if ((stride - gap) / stride == 0) {
+        if (stride > 0 && (stride - gap) / stride == 0) {
           *output_size = c->MakeDim(0);
           break;
         }
