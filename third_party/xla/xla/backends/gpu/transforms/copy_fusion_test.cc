@@ -676,5 +676,49 @@ TEST_F(CopyFusionTest, PropagateOriginalValue) {
   EXPECT_EQ(fusion->original_value()->ToString(), R"(({"transpose"}, {}, {}))");
 }
 
+TEST_F(CopyFusionTest, CopyFusionBitcastConvertSameBitwidthIsFused) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      p0 = f32[16,32]{1,0} parameter(0)
+      ROOT neg = f32[16,32]{1,0} negate(p0)
+    }
+
+    ENTRY main {
+      p0 = f32[16,32]{1,0} parameter(0)
+      fusion = f32[16,32]{1,0} fusion(p0), kind=kLoop, calls=fused_computation
+      bitcast = s32[16,32]{1,0} bitcast(fusion)
+      copy = s32[16,32]{1,0} copy(bitcast)
+      ROOT t = (f32[16,32]{1,0}, s32[16,32]{1,0}) tuple(fusion, copy)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, cf_.Run(module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                        m::GetTupleElement())));
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Negate(), m::Copy(m::Bitcast()))));
+}
+
+TEST_F(CopyFusionTest, CopyFusionBitcastConvertDifferentBitwidthIsNotFused) {
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      p0 = f32[16,32]{1,0} parameter(0)
+      ROOT neg = f32[16,32]{1,0} negate(p0)
+    }
+
+    ENTRY main {
+      p0 = f32[16,32]{1,0} parameter(0)
+      fusion = f32[16,32]{1,0} fusion(p0), kind=kLoop, calls=fused_computation
+      bitcast = s8[16,32,4]{2,1,0} bitcast(fusion)
+      copy = s8[16,32,4]{2,1,0} copy(bitcast)
+      ROOT t = (f32[16,32]{1,0}, s8[16,32,4]{2,1,0}) tuple(fusion, copy)
+    })")));
+  ASSERT_OK_AND_ASSIGN(bool changed, cf_.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace gpu
 }  // namespace xla

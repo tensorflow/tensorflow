@@ -395,6 +395,42 @@ TEST_F(DynamicSliceFusionTest, ResolveParamDirectParameter) {
   EXPECT_EQ(params[1], (Parameter{1, f32_4x4, f32_4x4}));
 }
 
+TEST_F(DynamicSliceFusionTest, ResolveParamWithBitcastBeforeDynamicSlice) {
+  const char* hlo = R"(
+    HloModule test
+
+    %fused {
+      %p0 = f32[2,4,4] parameter(0)
+      %p1 = s32[] parameter(1)
+      %bc = f32[8,4] bitcast(%p0)
+      %zero = s32[] constant(0)
+      %ds = f32[1,4] dynamic-slice(%bc, %p1, %zero), dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":0,"byte_stride":16}}
+      ROOT %custom = f32[1,4] custom-call(%ds), custom_call_target="hero"
+    }
+
+    ENTRY main {
+      %input = f32[2,4,4] parameter(0)
+      %ivar = s32[] parameter(1)
+      ROOT %fusion = f32[1,4] fusion(%input, %ivar), kind=kCustom, calls=%fused
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* body = module->GetComputationWithName("fused");
+  const HloInstruction* hero = DynamicSliceFusion::FindHero(body);
+  ASSERT_NE(hero, nullptr);
+
+  ASSERT_OK_AND_ASSIGN(auto params,
+                       DynamicSliceFusion::ResolveParameters(hero));
+  ASSERT_EQ(params.size(), 1);
+  EXPECT_EQ(params[0],
+            (Parameter{
+                0, ShapeUtil::MakeShape(F32, {8, 4}),
+                ShapeUtil::MakeShape(F32, {1, 4}), MakeConfig(0, 0, 16),
+                Offsets{{0, Offset::Parameter(1)}, {1, Offset::Constant(0)}}}));
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicSliceFusion::ResolveResults tests
 //===----------------------------------------------------------------------===//
