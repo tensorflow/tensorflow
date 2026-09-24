@@ -148,7 +148,7 @@ void HloInstruction::Users::AddUser(HloInstruction* user) {
   }
 }
 
-int64_t HloInstruction::Users::UserId(HloInstruction* user) {
+int64_t HloInstruction::Users::UserId(HloInstruction* user) const {
   if (user_map_ == nullptr) {
     auto it = std::find(users_.begin(), users_.end(), user);
     CHECK(it != users_.end());
@@ -3068,19 +3068,20 @@ void HloInstruction::DetachFromOperandsAndUsers() {
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64_t operand_num = 0; operand_num < operand_count(); ++operand_num) {
-    HloInstruction* operand = operands_[operand_num];
+    HloInstruction* operand = operands()[operand_num];
     if (operand == nullptr) {
       continue;
     }
-    operand->users_.MaybeRemoveUser(this);
-    operands_[operand_num] = nullptr;
+    operand->users_.Mutate(operand).MaybeRemoveUser(this);
+    operands_.Mutate(this)[operand_num] = nullptr;
   }
 
   // Update users. Set `nullptr` to the corresponding operand slot for users.
-  for (auto& user : this->users()) {
-    for (int i = 0; i < user->operand_count(); ++i) {
-      if (user->operands_[i] == this) {
-        user->operands_[i] = nullptr;
+  for (HloInstruction* user : this->users()) {
+    InstructionVector& user_operands = user->operands_.Mutate(user);
+    for (int i = 0; i < user_operands.size(); ++i) {
+      if (user_operands[i] == this) {
+        user_operands[i] = nullptr;
       }
     }
   }
@@ -3090,7 +3091,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     const Shape& shape, const std::string& suffix,
     HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape, operands_, context);
+      CloneWithNewOperands(shape, operands(), context);
   if (suffix.empty()) {
     clone->name_.assign(name().begin(), name().end());
   } else {
@@ -3130,12 +3131,12 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
 }
 
 const HloInstruction* HloInstruction::operand(int64_t i) const {
-  return operands_[i];
+  return operands()[i];
 }
 
 HloInstruction* HloInstruction::mutable_operand(int64_t i) {
-  CHECK(operands_[i] != nullptr);
-  return operands_[i];
+  CHECK(operands()[i] != nullptr);
+  return operands()[i];
 }
 
 int64_t HloInstruction::operand_index(const HloInstruction* target) const {
@@ -3215,9 +3216,11 @@ absl::Status HloInstruction::AddControlDependencyTo(
   TF_RET_CHECK(instruction->parent() == parent());
   if (!absl::c_linear_search(control_successors(), instruction)) {
     mutable_rare()->control_successors.push_back(instruction);
-    TF_RET_CHECK(!absl::c_linear_search(
-        instruction->rare()->control_predecessors, this));
-    instruction->mutable_rare()->control_predecessors.push_back(this);
+    TF_RET_CHECK(
+        !absl::c_linear_search(instruction->control_predecessors(), this));
+    instruction->mutable_rare()
+        ->control_predecessors.Mutate(instruction)
+        .push_back(this);
   }
   return absl::OkStatus();
 }
@@ -3229,25 +3232,27 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
     EraseElementFromVector(&mutable_rare()->control_successors, instruction);
   }
   if (instruction->has_rare()) {
-    EraseElementFromVector(&instruction->mutable_rare()->control_predecessors,
-                           this);
+    EraseElementFromVector(
+        &instruction->mutable_rare()->control_predecessors.Mutate(instruction),
+        this);
   }
   return absl::OkStatus();
 }
 
 absl::Status HloInstruction::DropAllControlDeps() {
   if (has_rare()) {
-    for (auto* ctrl_succ : rare()->control_successors) {
-      EraseElementFromVector(&ctrl_succ->mutable_rare()->control_predecessors,
-                             this);
+    for (HloInstruction* ctrl_succ : control_successors()) {
+      EraseElementFromVector(
+          &ctrl_succ->mutable_rare()->control_predecessors.Mutate(ctrl_succ),
+          this);
     }
-    for (auto* ctrl_pred : rare()->control_predecessors) {
+    for (HloInstruction* ctrl_pred : control_predecessors()) {
       EraseElementFromVector(&ctrl_pred->mutable_rare()->control_successors,
                              this);
     }
     Rare* r = mutable_rare();
     r->control_successors.clear();
-    r->control_predecessors.clear();
+    r->control_predecessors.Mutate(this).clear();
   }
   return absl::OkStatus();
 }
@@ -3255,8 +3260,8 @@ absl::Status HloInstruction::DropAllControlDeps() {
 absl::Status HloInstruction::SafelyDropAllControlDependencies() {
   // Add all pairs of transitive dependencies from predecessors to successors.
   if (has_rare()) {
-    for (HloInstruction* predecessor : rare()->control_predecessors) {
-      for (HloInstruction* successor : rare()->control_successors) {
+    for (HloInstruction* predecessor : control_predecessors()) {
+      for (HloInstruction* successor : control_successors()) {
         ABSL_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(successor));
       }
     }
@@ -3266,8 +3271,7 @@ absl::Status HloInstruction::SafelyDropAllControlDependencies() {
 }
 
 bool HloInstruction::HasControlDependencies() const {
-  const Rare* r = rare();
-  return (!r->control_predecessors.empty() || !r->control_successors.empty());
+  return !control_predecessors().empty() || !control_successors().empty();
 }
 
 bool HloInstruction::HasSuccessorControlDependencies() const {
@@ -3365,7 +3369,7 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
     DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
-  operands_.push_back(operand);
+  operands_.Mutate(this).push_back(operand);
   operand->AddUser(this);
 }
 
@@ -3376,32 +3380,70 @@ void HloInstruction::AppendOperands(
   }
 }
 
+void HloInstruction::AddUser(HloInstruction* user) {
+  users_.Mutate(this).AddUser(user);
+}
+
+void HloInstruction::RemoveUser(HloInstruction* user) {
+  users_.Mutate(this).RemoveUser(user);
+}
+
+void HloInstruction::SortUsers(
+    absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+        compare) {
+  users_.Mutate(this).SortInstructionUsers(compare);
+}
+
+void HloInstruction::set_parent(HloComputation* computation) {
+  // An instruction is a post-order DFS root of its computation iff none of its
+  // users is in a computation, so this instruction's parent is post-order
+  // state of the computations holding its operands, in addition to the old and
+  // the new parent computation.
+  for (HloInstruction* operand : operands()) {
+    if (operand != nullptr && operand->parent() != nullptr) {
+      operand->parent()->InvalidateInstructionPostOrderCache();
+    }
+  }
+  if (computation != nullptr) {
+    computation->InvalidateInstructionPostOrderCache();
+  }
+  parent_.Mutate(this) = computation;
+}
+
+void HloInstruction::RemoveOperandAt(int index) {
+  InstructionVector& operands = operands_.Mutate(this);
+  operands.erase(operands.begin() + index);
+}
+
+void HloInstruction::RemoveAllOperands() { operands_.Mutate(this).clear(); }
+
 void HloInstruction::RemoveOperandsAtAscendingIndices(
     absl::Span<const int> ascending_indices) {
   if (ascending_indices.empty()) {
     return;
   }
+  InstructionVector& operands = operands_.Mutate(this);
   int next_index = 0;
   int removed_count = 0;
   for (int to_remove : ascending_indices) {
     while (next_index < to_remove) {
-      operands_[next_index - removed_count] = operands_[next_index];
+      operands[next_index - removed_count] = operands[next_index];
       ++next_index;
     }
-    CHECK_LT(to_remove, operands_.size());
+    CHECK_LT(to_remove, operands.size());
     ++removed_count;
     ++next_index;
   }
-  while (next_index < operands_.size()) {
-    operands_[next_index - removed_count] = operands_[next_index];
+  while (next_index < operands.size()) {
+    operands[next_index - removed_count] = operands[next_index];
     ++next_index;
   }
   CHECK_EQ(removed_count, ascending_indices.size());
-  operands_.resize(operands_.size() - removed_count);
+  operands.resize(operands.size() - removed_count);
 }
 
 bool HloInstruction::HasConstantOperand() const {
-  for (const HloInstruction* operand : operands_) {
+  for (const HloInstruction* operand : operands()) {
     if (operand->IsConstant()) {
       return true;
     }
@@ -3593,9 +3635,8 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
 
   RemoveUser(user);
 
-  TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
-  std::replace(user->operands_.begin(), user->operands_.end(), this,
-               new_producer);
+  TF_RET_CHECK(absl::c_count(user->operands(), this) >= 0);
+  absl::c_replace(user->operands_.Mutate(user), this, new_producer);
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
@@ -3621,14 +3662,14 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   VLOG(3) << "Replacing operand " << operand_number << " of " << name()
           << " in " << user->name() << " with " << new_producer->name();
 
-  if (absl::c_count(user->operands_, this) == 1) {
+  if (absl::c_count(user->operands(), this) == 1) {
     RemoveUser(user);
   }
 
   TF_RET_CHECK(user->operand(operand_number) == this)
       << "Expected operand " << operand_number << " of " << user->ToString()
       << " to be equal to " << ToString();
-  user->operands_[operand_number] = new_producer;
+  user->operands_.Mutate(user)[operand_number] = new_producer;
   new_producer->AddUser(user);
   return absl::OkStatus();
 }
@@ -3652,12 +3693,12 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
     return absl::OkStatus();
   }
 
-  operands_[operand_num] = new_operand;
+  operands_.Mutate(this)[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
           << new_operand->name() << ", was " << old_operand->name();
 
-  if (!absl::c_linear_search(operands_, old_operand)) {
+  if (!absl::c_linear_search(operands(), old_operand)) {
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
@@ -3777,9 +3818,9 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     ABSL_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
 
-  if (parent_ && parent_->root_instruction() == this) {
-    parent_->set_root_instruction(new_producer,
-                                  /*accept_different_shape=*/true);
+  if (parent() != nullptr && parent()->root_instruction() == this) {
+    parent()->set_root_instruction(new_producer,
+                                   /*accept_different_shape=*/true);
   }
   return absl::OkStatus();
 }
@@ -3811,8 +3852,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       // graph. new_producer remains the only user of this instruction.
       new_producer_is_user = true;
     } else {
-      std::replace(user->operands_.begin(), user->operands_.end(), this,
-                   new_producer);
+      absl::c_replace(user->operands_.Mutate(user), this, new_producer);
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
         ABSL_RETURN_IF_ERROR(
@@ -3820,13 +3860,13 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       }
     }
   }
-  users_.Clear();
+  users_.Mutate(this).Clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
-  if (parent_ && parent_->root_instruction() == this) {
-    parent_->set_root_instruction(new_producer,
-                                  /*accept_different_shape=*/true);
+  if (parent() != nullptr && parent()->root_instruction() == this) {
+    parent()->set_root_instruction(new_producer,
+                                   /*accept_different_shape=*/true);
   }
   // Copy the original value recovery table from this instruction to the new
   // producer instruction if their shapes are compatible.
@@ -3907,7 +3947,7 @@ void HloInstruction::set_while_body(HloComputation* computation) {
 
 HloInstruction* HloInstruction::while_init() const {
   CHECK_EQ(HloOpcode::kWhile, opcode_);
-  return operands_[0];
+  return operands()[0];
 }
 
 HloComputation* HloInstruction::true_computation() const {
@@ -3958,11 +3998,11 @@ void HloInstruction::set_branch_computation(int b,
 }
 
 std::string HloInstruction::SignatureString() const {
-  std::string operands =
-      StrJoin(operands_, ", ", [](std::string* out, HloInstruction* operand) {
+  std::string operand_shapes =
+      StrJoin(operands(), ", ", [](std::string* out, HloInstruction* operand) {
         StrAppend(out, ShapeUtil::HumanString(operand->shape()));
       });
-  return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
+  return StrCat("(", operand_shapes, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
 absl::string_view PrintName(absl::string_view name, bool print_ids) {
@@ -4137,8 +4177,7 @@ bool HloInstruction::IsElementwiseImpl(
   }
   if (opcode_ == HloOpcode::kBitcastConvert &&
       primitive_util::StorageBitWidth(shape().element_type()) !=
-          primitive_util::StorageBitWidth(
-              operands_[0]->shape().element_type())) {
+          primitive_util::StorageBitWidth(operand(0)->shape().element_type())) {
     return false;
   }
   return IsOpElementwise(opcode_);
@@ -4314,10 +4353,10 @@ void HloInstruction::PrintWithCanonicalNameMap(
 void HloInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  if (operands_.empty()) {
+  if (operands().empty()) {
     return;
   }
-  absl::Span<HloInstruction* const> slice(operands_);
+  absl::Span<HloInstruction* const> slice(operands());
   constexpr int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
       slice.size() > kMaxOperandsToShowIfCompact) {
@@ -4382,7 +4421,7 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
     }
     print_one(slice[i]);
   }
-  const int64_t remaining = operands_.size() - slice.size();
+  const int64_t remaining = operand_count() - slice.size();
   if (remaining > 0) {
     printer->Append(", ...(+");
     printer->Append(remaining);
@@ -4701,7 +4740,7 @@ std::string FrontendAttributesToString(
 
 std::string HloInstruction::ToShortString() const {
   return StrCat("%", name(), " = ", HloOpcodeString(opcode()), "(",
-                StrJoin(operands_, ", ",
+                StrJoin(operands(), ", ",
                         [](std::string* out, HloInstruction* operand) {
                           StrAppend(out, "%", operand->name());
                         }),
@@ -4716,7 +4755,7 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   proto->set_name(name_);
   *proto->mutable_opcode() = std::string(HloOpcodeString(opcode_));
   shape().ToProto(*proto->mutable_shape());
-  for (const HloInstruction* operand : operands_) {
+  for (const HloInstruction* operand : operands()) {
     proto->add_operand_ids(operand->unique_id());
   }
   for (const HloInstruction* control : control_predecessors()) {
@@ -4804,7 +4843,7 @@ std::string HloInstruction::ToCategory() const {
 }
 
 bool HloInstruction::IsFused() const {
-  return parent_ != nullptr && parent_->IsFusionComputation();
+  return parent() != nullptr && parent()->IsFusionComputation();
 }
 
 bool HloInstruction::IsCustomCall(absl::string_view target) const {
@@ -5364,7 +5403,7 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
 absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
   const size_t num_operands = operand_count();
-  const HloInstruction* const* operand_ptr = operands_.data();
+  const HloInstruction* const* operand_ptr = operands().data();
   absl::InlinedVector<int64_t, 4> result;
   for (size_t i = 0; i < num_operands; ++i) {
     if (operand_ptr[i] == operand) {
@@ -5984,10 +6023,8 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
 }
 
 HloModule* HloInstruction::GetModule() const {
-  if (parent_) {
-    return parent_->parent();
-  }
-  return nullptr;
+  HloComputation* computation = parent_.get();
+  return computation != nullptr ? computation->parent() : nullptr;
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
@@ -5999,12 +6036,12 @@ void HloInstruction::UniquifyName(HloModule* module) {
 }
 
 int64_t HloInstruction::unique_id() const {
-  CHECK(parent_ != nullptr)
+  CHECK(parent() != nullptr)
       << "Instruction " << name()
       << " must have a parent in order to have a unique ID.";
   // The parent's unique ID is stored in the most significant 32 bits of the
   // unique ID.
-  return CalculateUniqueId(parent_->unique_id(), local_id_);
+  return CalculateUniqueId(parent()->unique_id(), local_id_);
 }
 
 int64_t HloInstruction::CalculateUniqueId(int32_t computation_unique_id,
@@ -6017,13 +6054,14 @@ void HloInstruction::SortInstructionUsersAndControlLists(
     const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
     const HloInstruction& sorted_instruction) {
   using Sorter = MappedPtrContainerSorter<HloInstruction>;
-  users_.SortInstructionUsers(map_fn, sorted_instruction.users_);
+  users_.Mutate(this).SortInstructionUsers(map_fn,
+                                           sorted_instruction.users_.get());
 
   absl::Status status;
   if (has_rare()) {
     status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
                           sorted_instruction.control_predecessors(),
-                          mutable_rare()->control_predecessors);
+                          mutable_rare()->control_predecessors.Mutate(this));
   }
   if (!status.ok()) {
     LOG(ERROR) << "Failed to sort instruction control predecessors for "
