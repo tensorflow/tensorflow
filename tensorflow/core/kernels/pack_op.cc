@@ -28,6 +28,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declaration of the GPU scalar-pack helper defined in
+// pack_op_gpu.cu.cc (compiled with EIGEN_USE_GPU by NVCC/hipcc).
+// Calling into that translation unit avoids instantiating Eigen
+// GPU-device expressions inside a regular .cc file where
+// EIGEN_USE_GPU is not defined, which would trigger Eigen's
+// static assertion:
+//   "Default executor instantiated with non-default device."
+namespace tensorflow {
+template <typename T>
+void PackScalarsOnGPU(OpKernelContext* c, int num, Tensor* output);
+}  // namespace tensorflow
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -79,6 +93,26 @@ class PackOp : public OpKernel {
     // Allocate output
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    // Special case: packing 0-D (scalar) inputs on GPU.
+    //
+    // The generic path below flattens inputs to {before_dim, after_dim}
+    // matrices and calls ConcatGPU. For scalars before_dim == after_dim == 1,
+    // giving {1,1} input matrices and a {1,num} output matrix. Some GPU
+    // drivers reject the resulting launch configuration, causing a
+    // "Can't concatenate scalars" error at runtime. Dispatch to
+    // PackScalarsOnGPU (defined in pack_op_gpu.cu.cc, compiled with
+    // EIGEN_USE_GPU) which writes each scalar element directly into the
+    // output flat vector. The indirection through a separate .cu.cc TU is
+    // required: Eigen device() assignments must be compiled with
+    // EIGEN_USE_GPU defined (i.e. by NVCC/hipcc), otherwise Eigen fires a
+    // static assertion even inside discarded if-constexpr branches.
+    if (std::is_same<Device, GPUDevice>::value && first_input.dims() == 0) {
+      PackScalarsOnGPU<T>(c, num, output);
+      return;
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
     int64_t before_dim = 1;
     for (int i = 0; i < axis; ++i) {

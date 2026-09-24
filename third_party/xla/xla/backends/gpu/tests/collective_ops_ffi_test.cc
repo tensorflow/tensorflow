@@ -1227,8 +1227,8 @@ TEST_P(AllReduceTest, DeviceAllReduce) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        in = u32[]{:S(1)} copy(id)
-        all-reduce = u32[]{:S(1)} custom-call(in),
+        in = u32[]{:S(7)} copy(id)
+        all-reduce = u32[]{:S(7)} custom-call(in),
           custom_call_target="__xla_test_$0_device_all_reduce",
           api_version=API_VERSION_TYPED_FFI
         ROOT out = u32[] copy(all-reduce)
@@ -1316,7 +1316,7 @@ TEST_P(AllReduceTest, MulticastAllReduce) {
 
       ENTRY test_computation {
         c0 = u32[] constant(1)
-        in = u32[]{:S(1)} copy(c0)
+        in = u32[]{:S(7)} copy(c0)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_multimem_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1360,7 +1360,7 @@ TEST_P(AllReduceTest, SymMulticastAllReduce) {
 
       ENTRY test_computation {
         c0 = u32[] constant(1)
-        in = u32[]{:S(1)} copy(c0)
+        in = u32[]{:S(7)} copy(c0)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_sym_multimem_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1405,7 +1405,7 @@ TEST_P(AllReduceTest, SymPeerAllReduce) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        in = u32[]{:S(1)} copy(id)
+        in = u32[]{:S(7)} copy(id)
         all-reduce = u32[] custom-call(in),
           custom_call_target="__xla_test_$0_sym_peer_all_reduce",
           api_version=API_VERSION_TYPED_FFI
@@ -1442,7 +1442,7 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 // Same as DeviceAllReduce, but uses frontend_attributes to specify memory
-// spaces instead of hardcoded S(1).
+// spaces instead of hardcoded S(7).
 TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
@@ -1462,8 +1462,8 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
           custom_call_target="__xla_test_blocked_device_all_reduce",
           api_version=API_VERSION_TYPED_FFI,
           frontend_attributes={
-            operands_memory_spaces="{0:1}",
-            results_memory_spaces="{0:1}"
+            operands_memory_spaces="{0:7}",
+            results_memory_spaces="{0:7}"
           }
         ROOT out = u32[] copy(all-reduce)
       }

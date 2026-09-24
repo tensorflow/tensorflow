@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -518,12 +519,34 @@ class UnsortedSegmentReductionOp : public OpKernel {
                    internal::ValidateUnsortedSegmentReduction(
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
-        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32_t>()()
-                                         : num_segments.scalar<int64_t>()()));
-    OP_REQUIRES(context, output_rows >= 0,
-                errors::InvalidArgument("Input num_segments == ", output_rows,
-                                        " must not be negative."));
+    // Copy the value out of the (possibly shared) input buffer before any
+    // validation, so that the value that is checked is the same one that is
+    // subsequently used (see SubtleMustCopy).
+    const int64_t num_segments_val =
+        num_segments.dtype() == DT_INT32
+            ? static_cast<int64_t>(
+                  internal::SubtleMustCopy(num_segments.scalar<int32_t>()()))
+            : internal::SubtleMustCopy(num_segments.scalar<int64_t>()());
+    OP_REQUIRES(context, num_segments_val >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input num_segments == ", num_segments_val,
+                                 " must not be negative.")));
+    // Guard against excessively large num_segments that would cause integer
+    // overflow in output tensor size calculations, leading to illegal memory
+    // access or process abort (see #117549).
+    //
+    // Use kint32max for every index type. Although an int64 index could
+    // represent 2^31, that value is not representable as a signed int32 and
+    // would wrap if any downstream code performs 32-bit indexing; a uniform
+    // bound avoids that edge case. Nothing practical is lost, since the CPU
+    // functor already allocates std::vector<Index> row_counter(num_segments).
+    const int64_t kMaxSegments =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    OP_REQUIRES(context, num_segments_val <= kMaxSegments,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input num_segments == ", num_segments_val,
+                    " is too large. Must be at most ", kMaxSegments)));
+    const Index output_rows = static_cast<Index>(num_segments_val);
     TensorShape output_shape;
     OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
@@ -1342,7 +1365,17 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, M));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
+    if (M == 0 || N == 0) {
+      // `allocate_output` does not initialize the buffer, and the functor below
+      // only runs when N > 0. Without this, an empty `indices` combined with
+      // `output_dim0` > 0 returns the freshly allocated output uninitialized.
+      // Zero is the correct gradient for a row that received no contribution.
+      if (output->NumElements() > 0) {
+        functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                             output->flat<T>());
+      }
+      return;
+    }
 
     OP_REQUIRES(context, input.dim_size(0) > 0,
                 absl::InvalidArgumentError("Invalid number of segments"));
