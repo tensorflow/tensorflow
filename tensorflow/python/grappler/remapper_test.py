@@ -337,6 +337,25 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     fused_op = ['_FusedConv2D']
     self._VerifyValues(out, False, fused_op, epilog_ops)
 
+  @test_util.run_deprecated_v1
+  def test_matmul_transpose_a_broadcast_bias_add(self):
+    """Test MatMul(transpose_a=True) + Add([1, N]) fusion."""
+    ops.reset_default_graph()
+    k, m, n = (4, 8, 16)
+    x = _input([k, m])
+    w = _weight([k, n])
+    b = constant_op.constant(0.5, shape=[1, n], dtype=dtypes.float32)
+
+    y = math_ops.matmul(x, w, transpose_a=True)
+    out = math_ops.add(y, b)
+
+    if test_util.IsMklEnabled():
+      fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+      epilog_ops = [b'BiasAdd']
+      self._VerifyValues(out, False, fused_op, epilog_ops)
+    else:
+      self._VerifyNoFusion(out)
+
 
 if __name__ == '__main__':
   test.main()
