@@ -6005,6 +6005,188 @@ ENTRY main {
   }
 }
 
+TEST_F(CopyInsertionTest, RecurrentAccumulatorKeepsLoopCarriedCopy) {
+  // A loop-level xla_disjoint_read_write_regions annotation asserts that the
+  // read region and the write region of every dynamic-update-slice in the body
+  // are disjoint. That assertion is false for a recurrent accumulator, where
+  // the value written back is derived from a dynamic-slice of the very same
+  // buffer. Eliding the loop-carried copy for such an index lets iteration
+  // i + 1 read a buffer that iteration i has already partially overwritten, so
+  // the copy must be retained even though the loop carries the annotation.
+  //
+  // The two modules below are identical apart from the provenance of the value
+  // handed to the dynamic-update-slice:
+  //   * kRecurrent writes add(dynamic-slice(buf), delta) - a read-modify-write
+  //     cycle on buf, so the copy must be kept.
+  //   * kNonRecurrent writes delta directly. It keeps the very same competing
+  //     dynamic-slice reader of buf alive (through the iteration counter) so
+  //     that provenance is the only difference, and the copy may be elided.
+  absl::string_view kRecurrent = R"(
+HloModule RecurrentAccumulatorModule
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  c1 = s32[] constant(1)
+  buf = f32[8] get-tuple-element(state), index=1
+  probe = f32[2] dynamic-slice(buf, iter), dynamic_slice_sizes={2}
+  zero = f32[] constant(0)
+  psum = f32[] reduce(probe, zero), dimensions={0}, to_apply=add_f32
+  pbit = pred[] compare(psum, zero), direction=GT
+  step = s32[] select(pbit, c1, c1)
+  next_iter = s32[] add(iter, step)
+  delta = f32[2] constant({1.0, 2.0})
+  new_acc = f32[2] add(probe, delta)
+  updated_buf = f32[8] dynamic-update-slice(buf, new_acc, iter), frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT next_state = (s32[], f32[8]) tuple(next_iter, updated_buf)
+}
+
+ENTRY main {
+  c0 = s32[] constant(0)
+  p0 = f32[8] parameter(0)
+  seed = f32[8] add(p0, p0)
+  init = (s32[], f32[8]) tuple(c0, seed)
+  loop = (s32[], f32[8]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true", xla_disjoint_read_write_regions="true"}
+  o1 = f32[8] get-tuple-element(loop), index=1
+  ROOT out = (f32[8], f32[8]) tuple(o1, seed)
+}
+)";
+
+  absl::string_view kNonRecurrent = R"(
+HloModule NonRecurrentModule
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+while_cond {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  c1 = s32[] constant(1)
+  buf = f32[8] get-tuple-element(state), index=1
+  probe = f32[2] dynamic-slice(buf, iter), dynamic_slice_sizes={2}
+  zero = f32[] constant(0)
+  psum = f32[] reduce(probe, zero), dimensions={0}, to_apply=add_f32
+  pbit = pred[] compare(psum, zero), direction=GT
+  step = s32[] select(pbit, c1, c1)
+  next_iter = s32[] add(iter, step)
+  delta = f32[2] constant({1.0, 2.0})
+  updated_buf = f32[8] dynamic-update-slice(buf, delta, iter), frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT next_state = (s32[], f32[8]) tuple(next_iter, updated_buf)
+}
+
+ENTRY main {
+  c0 = s32[] constant(0)
+  p0 = f32[8] parameter(0)
+  seed = f32[8] add(p0, p0)
+  init = (s32[], f32[8]) tuple(c0, seed)
+  loop = (s32[], f32[8]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true", xla_disjoint_read_write_regions="true"}
+  o1 = f32[8] get-tuple-element(loop), index=1
+  ROOT out = (f32[8], f32[8]) tuple(o1, seed)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> recurrent,
+                       ParseAndReturnVerifiedModule(kRecurrent));
+  InsertCopies(recurrent.get());
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> non_recurrent,
+                       ParseAndReturnVerifiedModule(kNonRecurrent));
+  InsertCopies(non_recurrent.get());
+
+  auto while_state_operand =
+      [](const HloModule& module) -> const HloInstruction* {
+    for (const HloInstruction* instr :
+         module.entry_computation()->instructions()) {
+      if (instr->opcode() == HloOpcode::kWhile) {
+        return instr->operand(0)->operand(1);
+      }
+    }
+    return nullptr;
+  };
+
+  // The recurrent accumulator must be copied before it enters the loop, so that
+  // the in-place read-modify-write inside the body cannot clobber the value
+  // that is still live afterwards.
+  const HloInstruction* recurrent_init = while_state_operand(*recurrent);
+  ASSERT_NE(recurrent_init, nullptr);
+  EXPECT_EQ(recurrent_init->opcode(), HloOpcode::kCopy)
+      << "expected a loop-carried copy, got: " << recurrent_init->ToString();
+
+  // Without the read-modify-write cycle the loop-level annotation is honored
+  // and the buffer is handed to the loop in place.
+  const HloInstruction* non_recurrent_init =
+      while_state_operand(*non_recurrent);
+  ASSERT_NE(non_recurrent_init, nullptr);
+  EXPECT_NE(non_recurrent_init->opcode(), HloOpcode::kCopy)
+      << "expected the loop-carried copy to be elided, got: "
+      << non_recurrent_init->ToString();
+}
+
+TEST_F(CopyInsertionTest, NonRecurrentDynamicUpdateSliceStaysInPlace) {
+  // The recurrent-accumulator carve-out must stay narrow: a plain in-place
+  // dynamic-update-slice under the loop-level annotation still gets its
+  // loop-carried copy elided, leaving the while body copy-free.
+  absl::string_view hlo_string = R"(
+HloModule InPlaceModule
+
+while_cond {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  limit = s32[] constant(4)
+  ROOT cmp = pred[] compare(iter, limit), direction=LT
+}
+
+while_body {
+  state = (s32[], f32[8]) parameter(0)
+  iter = s32[] get-tuple-element(state), index=0
+  c1 = s32[] constant(1)
+  next_iter = s32[] add(iter, c1)
+  buf = f32[8] get-tuple-element(state), index=1
+  delta = f32[2] constant({1.0, 2.0})
+  updated_buf = f32[8] dynamic-update-slice(buf, delta, iter), frontend_attributes={xla_disjoint_read_write_regions="true"}
+  ROOT next_state = (s32[], f32[8]) tuple(next_iter, updated_buf)
+}
+
+ENTRY main {
+  c0 = s32[] constant(0)
+  p0 = f32[8] parameter(0)
+  init = (s32[], f32[8]) tuple(c0, p0)
+  loop = (s32[], f32[8]) while(init), condition=while_cond, body=while_body, frontend_attributes={xla_disable_while_loop_copies="true", xla_disjoint_read_write_regions="true"}
+  ROOT out = f32[8] get-tuple-element(loop), index=1
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  for (const HloInstruction* instr : while_body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kCopy);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(CondOrder, CopyInsertionCondOrderTest,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Values(int64_t{0},

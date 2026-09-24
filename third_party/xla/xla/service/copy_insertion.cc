@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -571,15 +572,66 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
             instr->operand_count() == 1);
   };
 
+  // Check if this tuple slot is a genuine recurrent accumulator: an updated
+  // buffer whose DUS update operand (operand 1) depends on a dynamic slice of
+  // this same buffer inside the loop body (a true read-modify-write cycle).
+  std::vector<const HloInstruction*> ds_users;
+  auto collect_dynamic_slices = [](const HloInstruction* instr,
+                                   std::vector<const HloInstruction*>& slices,
+                                   auto& self) -> void {
+    for (const HloInstruction* user : instr->users()) {
+      if (user->opcode() == HloOpcode::kDynamicSlice ||
+          (user->IsAsynchronous() &&
+           user->async_wrapped_opcode() == HloOpcode::kDynamicSlice)) {
+        slices.push_back(user);
+      } else if (user->opcode() == HloOpcode::kBitcast ||
+                 user->opcode() == HloOpcode::kBitcastConvert ||
+                 user->opcode() == HloOpcode::kReshape) {
+        self(user, slices, self);
+      }
+    }
+  };
+  collect_dynamic_slices(param_gte, ds_users, collect_dynamic_slices);
+
+  bool is_recurrent_accumulator = false;
+  if (!ds_users.empty()) {
+    std::unique_ptr<HloReachabilityMap> reachability =
+        HloReachabilityMap::Build(while_body);
+    for (const HloInstruction* instr : while_body->instructions()) {
+      const HloInstruction* dus = nullptr;
+      if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        dus = instr;
+      } else if (instr->opcode() == HloOpcode::kAsyncStart &&
+                 instr->async_wrapped_opcode() ==
+                     HloOpcode::kDynamicUpdateSlice) {
+        dus = instr;
+      }
+      if (dus != nullptr && dus->operand_count() > 1) {
+        const HloInstruction* update_val = dus->operand(1);
+        for (const HloInstruction* ds : ds_users) {
+          if (reachability->IsReachable(ds, update_val)) {
+            is_recurrent_accumulator = true;
+            break;
+          }
+        }
+        if (is_recurrent_accumulator) {
+          break;
+        }
+      }
+    }
+  }
+
   // Ensure param_gte has no competing readers inside the loop body unless the
-  // loop is explicitly annotated as disjoint.
+  // loop is explicitly annotated as disjoint. Recurrent accumulators cannot
+  // be overridden by loop-level disjoint attributes.
   const HloInstruction* single_reader = param_gte;
   while (single_reader->user_count() == 1 &&
          is_transparent_wrapper(single_reader->users()[0])) {
     single_reader = single_reader->users()[0];
   }
   if (single_reader->user_count() != 1 &&
-      !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      (!HasDisjointReadWriteRegionsAttr(while_instr) ||
+       is_recurrent_accumulator)) {
     return false;
   }
 
@@ -598,7 +650,8 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
     const HloInstruction* next = nullptr;
     if (curr->opcode() == HloOpcode::kDynamicUpdateSlice) {
       if (!HasDisjointReadWriteRegionsAttr(curr) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+          (!HasDisjointReadWriteRegionsAttr(while_instr) ||
+           is_recurrent_accumulator)) {
         return false;
       }
       next = curr->operand(0);
@@ -615,7 +668,8 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
       }
       if (!HasDisjointReadWriteRegionsAttr(curr) &&
           !HasDisjointReadWriteRegionsAttr(async_start) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+          (!HasDisjointReadWriteRegionsAttr(while_instr) ||
+           is_recurrent_accumulator)) {
         return false;
       }
       next = async_start->operand(0);

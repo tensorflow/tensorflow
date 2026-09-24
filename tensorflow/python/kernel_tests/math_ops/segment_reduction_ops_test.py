@@ -1302,7 +1302,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 10]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
@@ -1317,7 +1317,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, -1, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
@@ -1333,7 +1333,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 1, 4]  # 5 segments
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError("Invalid number of segments"):
@@ -1348,7 +1348,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [0, 1, 2, 0]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
@@ -1363,7 +1363,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ]
     segment_indices = [-1, 0, 1, 1]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):
