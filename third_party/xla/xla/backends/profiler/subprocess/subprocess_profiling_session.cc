@@ -107,13 +107,20 @@ absl::Status SubprocessProfilingSession::Stop() {
   terminate_request.set_session_id(request_.session_id());
   tensorflow::TerminateResponse terminate_response;
   grpc::ClientContext context;
-  ABSL_RETURN_IF_ERROR(FromGrpcStatus(subprocess_info_.profiler_stub->Terminate(
-      &context, terminate_request, &terminate_response)));
+  absl::Status terminate_status =
+      FromGrpcStatus(subprocess_info_.profiler_stub->Terminate(
+          &context, terminate_request, &terminate_response));
+  if (!terminate_status.ok()) {
+    // The Profile RPC may never end on its own now. Cancel it so that it
+    // completes and is drained below instead of leaking.
+    context_.TryCancel();
+  }
 
   // Wait for the response from the AsyncProfile+Finish calls.
   void* got_tag;
   bool ok = false;
   bool success = completion_queue_.Next(&got_tag, &ok);
+  ABSL_RETURN_IF_ERROR(terminate_status);
   // Verify the response is correct by checking for the tag we passed in the
   // call to Finish(). See
   // https://grpc.io/docs/languages/cpp/async/#async-client for more details.
