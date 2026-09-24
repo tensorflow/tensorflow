@@ -23,13 +23,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -87,6 +93,36 @@ absl::StatusOr<std::string> GetUndeclaredOutputsDir() {
 }
 
 }  // namespace
+
+std::string DetectGpuArchToken() {
+  if (const char* env_arch = std::getenv("XLA_AOT_GOLDEN_ARCH")) {
+    return env_arch;
+  }
+  absl::StatusOr<stream_executor::Platform*> platform =
+      stream_executor::PlatformManager::PlatformWithName("CUDA");
+  CHECK_OK(platform.status())
+      << "AOT golden arch detection failed to get the CUDA platform; set "
+         "XLA_AOT_GOLDEN_ARCH to override.";
+  absl::StatusOr<stream_executor::StreamExecutor*> executor =
+      (*platform)->ExecutorForDevice(0);
+  CHECK_OK(executor.status())
+      << "AOT golden arch detection failed to get a device executor; set "
+         "XLA_AOT_GOLDEN_ARCH to override.";
+  const std::string name =
+      absl::AsciiStrToLower((*executor)->GetDeviceDescription().name());
+
+  // Longest token first: "gb200" contains "b200". gb300 is deliberately
+  // absent -- it is listed in gpu/BUILD's disabled_backends (b/491194726), so
+  // no gb300 goldens exist and no gb300 target is generated.
+  for (const absl::string_view arch : {"gb200", "b200", "h100"}) {
+    if (absl::StrContains(name, arch)) {
+      return std::string(arch);
+    }
+  }
+
+  LOG(FATAL) << "Unrecognized GPU arch for AOT goldens: " << name
+             << "; set XLA_AOT_GOLDEN_ARCH to override.";
+}
 
 std::string GetExecutablesDirectory(absl::string_view target_name,
                                     AOTTestPlatform platform) {
