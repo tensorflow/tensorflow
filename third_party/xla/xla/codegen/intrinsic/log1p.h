@@ -35,9 +35,11 @@ class Log1p : public Intrinsic<Log1p> {
   static std::vector<std::vector<Type>> SupportedVectorTypes(
       absl::string_view features = "") {
     return {
-        {Type::S(F16)}, {Type::V(F16, 2)}, {Type::V(F16, 4)}, {Type::V(F16, 8)},
-        {Type::S(F32)}, {Type::V(F32, 2)}, {Type::V(F32, 4)}, {Type::V(F32, 8)},
-        {Type::S(F64)}, {Type::V(F64, 2)}, {Type::V(F64, 4)}, {Type::V(F64, 8)},
+        {Type::S(F16)},    {Type::V(F16, 2)}, {Type::V(F16, 4)},
+        {Type::V(F16, 8)}, {Type::S(F32)},    {Type::V(F32, 2)},
+        {Type::V(F32, 4)}, {Type::V(F32, 8)}, {Type::V(F32, 16)},
+        {Type::S(F64)},    {Type::V(F64, 2)}, {Type::V(F64, 4)},
+        {Type::V(F64, 8)},
     };
   }
 };
