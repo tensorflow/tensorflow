@@ -248,13 +248,15 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     periodic.shape.assert_has_rank(0)
     even = 1 - math_ops.mod(window_length, 2)
 
-    n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
-    count = math_ops.cast(math_ops.range(window_length), dtype)
-    cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
+    def _compute_window():
+      n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
+      count = math_ops.cast(math_ops.range(window_length), dtype)
+      cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
+      return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
 
     if window_length_const is not None:
-      return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
+      return _compute_window()
     return cond.cond(
         math_ops.equal(window_length, 1),
         lambda: array_ops.ones([window_length], dtype=dtype),
-        lambda: math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype))
+        _compute_window)
