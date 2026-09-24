@@ -159,6 +159,44 @@ TEST_F(LRNFloatTest, Depth16) {
   EXPECT_TRUE(Compare());
 }
 
+TEST_F(LRNFloatTest, ZeroSizeInput) {
+  TF_ASSERT_OK(NodeDefBuilder("lrn_op", "LRN")
+                   .Input(FakeInput())
+                   .Attr("depth_radius", 2)
+                   .Attr("bias", 1.0f)
+                   .Attr("alpha", 1.0f)
+                   .Attr("beta", 0.5f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInput<float>(TensorShape({0, 0, 0, 0}),
+                  [](int i) -> float { return 0.0f; });
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->NumElements(), 0);
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({0, 0, 0, 0}));
+}
+
+TEST_F(LRNFloatTest, ZeroSizeInputGrad) {
+  TF_ASSERT_OK(NodeDefBuilder("lrn_grad_op", "LRNGrad")
+                   .Input(FakeInput())
+                   .Input(FakeInput())
+                   .Input(FakeInput())
+                   .Attr("depth_radius", 2)
+                   .Attr("bias", 1.0f)
+                   .Attr("alpha", 1.0f)
+                   .Attr("beta", 0.5f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInput<float>(TensorShape({0, 0, 0, 0}),
+                  [](int i) -> float { return 0.0f; });
+  AddInput<float>(TensorShape({0, 0, 0, 0}),
+                  [](int i) -> float { return 0.0f; });
+  AddInput<float>(TensorShape({0, 0, 0, 0}),
+                  [](int i) -> float { return 0.0f; });
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->NumElements(), 0);
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({0, 0, 0, 0}));
+}
+
 static double RndGaussian(random::SimplePhilox* rnd) {
   // Box-Muller transformation.
   // See, for example, http://www.taygeta.com/random/gaussian.html

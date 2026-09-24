@@ -57,6 +57,8 @@ absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
       return "sapphirerapids";
     case CPUFeature::AMX_FP16:
       return "graniterapids";
+    case CPUFeature::AMX_FP8:
+      return "diamondrapids";
 
     //===------------------------------------------------------------------===//
     // AArch64
@@ -90,6 +92,7 @@ std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
          {"AVX512_BF16", CPUFeature::AVX512_BF16},
          {"AMX", CPUFeature::AMX_BF16},  // Includes AMX_INT8.
          {"AMX_FP16", CPUFeature::AMX_FP16},
+         {"AMX_FP8", CPUFeature::AMX_FP8},
          //===-------------------------------------------------------------===//
          // AArch64
          //===-------------------------------------------------------------===//
@@ -156,6 +159,19 @@ static bool ShouldEnableX86CpuFeature(absl::string_view feature,
     case CPUFeature::AMX_INT8:
     case CPUFeature::AMX_BF16:
       if (feature == "amx-fp16") return false;
+      [[fallthrough]];
+
+    case CPUFeature::AMX_FP16:
+      // Suppress DMR-and-newer additions over GNR: AVX10.2, remaining AMX
+      // tiles, and APX extensions.
+      if (feature == "amx-fp8" || feature == "amx-tf32" ||
+          feature == "amx-avx512" || feature == "amx-movrs" ||
+          absl::StartsWith(feature, "avx10.2") || feature == "egpr" ||
+          feature == "ndd" || feature == "ccmp" || feature == "nf" ||
+          feature == "zu" || feature == "ppx" || feature == "push2pop2" ||
+          feature == "movrs" || feature == "jmpabs") {
+        return false;
+      }
       [[fallthrough]];
 
     default:

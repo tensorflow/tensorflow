@@ -403,7 +403,7 @@ def vdot(a, b):  # pylint: disable=missing-docstring
   a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
   a = np_array_ops.reshape(a, [-1])
   b = np_array_ops.reshape(b, [-1])
-  if a.dtype == np_dtypes.complex128 or a.dtype == np_dtypes.complex64:
+  if a.dtype.is_complex:
     a = conj(a)
   return dot(a, b)
 
@@ -536,12 +536,20 @@ def logaddexp(x1, x2):
       float_dtype = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_dtype)
       x2 = math_ops.cast(x2, float_dtype)
-    amax = maximum(x1, x2)
     delta = x1 - x2
+    # `maximum` sends the whole gradient to `x1` where `x1 == x2`, so the two
+    # partial derivatives (analytically 0.5 each) come out as 1.0 and 0.0.
+    # Selecting the operands through `where` instead keeps the forward values
+    # bit-for-bit identical while giving each argument its own differentiable
+    # expression, so both gradients are 0.5 at `x1 == x2`. Selecting them once
+    # also avoids evaluating `exp` and `log1p` for both branches. The exponent
+    # is always <= 0, hence this cannot overflow.
+    max_val = np_array_ops.where(x1 > x2, x1, x2)
+    min_val = np_array_ops.where(x1 > x2, x2, x1)
     return np_array_ops.where(
         isnan(delta),
         x1 + x2,  # NaNs or infinities of the same sign.
-        amax + log1p(exp(-abs(delta))),
+        max_val + log1p(exp(min_val - max_val)),
     )
 
   return _bin_op(f, x1, x2)
@@ -1176,8 +1184,15 @@ def positive(x):
 def sinc(x):
   def f(x):
     pi_x = x * np.pi
+    is_zero = x == 0
+    # `sin(pi_x) / pi_x` is 0/0 at `x == 0`. That branch is never selected, but
+    # `where` still propagates its gradient, and 0 * nan is nan, so the
+    # gradient at zero comes out as nan instead of 0. Substituting 1 for the
+    # denominator keeps the selected value bit-for-bit identical while making
+    # the discarded branch finite, so its contribution is scaled to exactly 0.
+    safe_pi_x = array_ops.where_v2(is_zero, array_ops.ones_like(pi_x), pi_x)
     return array_ops.where_v2(
-        x == 0, array_ops.ones_like(x), math_ops.sin(pi_x) / pi_x
+        is_zero, array_ops.ones_like(x), math_ops.sin(safe_pi_x) / safe_pi_x
     )
 
   return _scalar(f, x, True)
