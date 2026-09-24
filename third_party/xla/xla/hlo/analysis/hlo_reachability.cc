@@ -19,17 +19,22 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/base/optimization.h"
+#include "absl/base/prefetch.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -306,29 +311,324 @@ void HloReachabilityMap::UpdateReachabilityForMerge(
   tmp_indices_to_update_.clear();
 }
 
-void HloReachabilityMap::UpdateMultipleInstructions(
-    absl::flat_hash_map<const HloInstruction*,
-                        absl::flat_hash_set<const HloInstruction*>>
-        to_update) {
-  while (!to_update.empty()) {
-    auto it = to_update.begin();
-    const HloInstruction* instruction = it->first;
+namespace {
 
-    BitSet bit_set = BitSetFromIndex(GetIndex(instruction));
-    bool changed = false;
-    // NOLINTNEXTLINE the loop aggregation is order independent.
-    for (const HloInstruction* operand : it->second) {
-      BitSet operand_bit_set = BitSetFromIndex(GetIndex(operand));
-      changed |= bit_set.OrUpdate(operand_bit_set);
+// UpdateMultipleInstructions forwards the dirty words of a row to a successor
+// as runs of consecutive words, each run one vectorized union, or the whole
+// row as one union when that is cheaper. A run costs about as much as the
+// union of this many words on top of its own length: measured with
+// BM_HloReachabilityUpdateMultipleInstructionsComb, where ten one word runs
+// cost as much as the union of a 257 word row.
+constexpr size_t kWordsPerRun = 24;
+
+// Calls fn on instruction if is_present(instruction). Otherwise looks
+// through it: the instructions that neighbors yields for it are handled the
+// same way, transitively. An instruction absent from the map has no row, but
+// paths through it still connect instructions that do.
+template <typename IsPresent, typename Neighbors, typename Fn>
+void ForEachPresentThrough(const HloInstruction* instruction,
+                           const IsPresent& is_present,
+                           const Neighbors& neighbors, const Fn& fn) {
+  if (is_present(instruction)) {
+    fn(instruction);
+    return;
+  }
+  absl::InlinedVector<const HloInstruction*, 4> absent = {instruction};
+  for (size_t i = 0; i < absent.size(); ++i) {
+    neighbors(absent[i], [&](const HloInstruction* neighbor) {
+      if (is_present(neighbor)) {
+        fn(neighbor);
+      } else if (!absl::c_linear_search(absent, neighbor)) {
+        absent.push_back(neighbor);
+      }
+    });
+  }
+}
+
+}  // namespace
+
+void HloReachabilityMap::UpdateMultipleInstructions(
+    const absl::flat_hash_map<const HloInstruction*,
+                              absl::flat_hash_set<const HloInstruction*>>&
+        to_update) {
+  const size_t num_words = words_per_bitset_;
+  const size_t mask_words = (num_words + BitSet::kBits - 1) / BitSet::kBits;
+  if (tmp_pending_state_.size() < indices_.size()) {
+    tmp_pending_state_.resize(indices_.size(), kPendingNone);
+    tmp_dirty_masks_.resize(indices_.size() * mask_words, 0);
+  }
+  if (tmp_delta_words_.size() < num_words) {
+    tmp_delta_words_.resize(num_words);
+  }
+
+  const auto is_present = [this](const HloInstruction* instruction) {
+    return IsKeyPresent(GetKey(instruction));
+  };
+  const auto successors = [](const HloInstruction* instruction,
+                             const auto& visit) {
+    for (const HloInstruction* user : instruction->users()) {
+      visit(user);
     }
-    to_update.erase(it);
+    for (const HloInstruction* successor : instruction->control_successors()) {
+      visit(successor);
+    }
+  };
+  const auto predecessors = [](const HloInstruction* instruction,
+                               const auto& visit) {
+    for (const HloInstruction* operand : instruction->operands()) {
+      visit(operand);
+    }
+    for (const HloInstruction* predecessor :
+         instruction->control_predecessors()) {
+      visit(predecessor);
+    }
+  };
+  const auto mask_of = [&](Key key) {
+    return tmp_dirty_masks_.data() + key * mask_words;
+  };
+  // Marks the words [begin, end) in mask.
+  const auto mark_dirty = [](BitSet::Word* mask, size_t begin, size_t end) {
+    for (size_t word = begin; word < end;) {
+      const size_t bit = word % BitSet::kBits;
+      const size_t count = std::min(BitSet::kBits - bit, end - word);
+      const BitSet::Word bits = count == BitSet::kBits
+                                    ? ~BitSet::Word{0}
+                                    : ((BitSet::Word{1} << count) - 1) << bit;
+      mask[word / BitSet::kBits] |= bits;
+      word += count;
+    }
+  };
+
+  // Min heap by row index. Build assigns indices in post order, so a row is
+  // normally popped once, after all of its predecessors. The result does not
+  // depend on the order: a change that arrives later queues the row again.
+  using Item = std::pair<Index, const HloInstruction*>;
+  std::vector<Item>& worklist = tmp_pending_rows_;
+  DCHECK(worklist.empty());
+  // Sets the pending state of target and queues it if it was not pending.
+  // A row that graduates from pending words to a pending row drops its mask.
+  const auto set_pending =
+      [&](const HloInstruction* target, Index index, PendingState& state,
+          PendingState pending) ABSL_ATTRIBUTE_ALWAYS_INLINE {
+        if (state == kPendingNone) {
+          worklist.emplace_back(index, target);
+          // A chain keeps one row queued at a time; a heap of one needs no
+          // sift.
+          if (worklist.size() > 1) {
+            std::push_heap(worklist.begin(), worklist.end(),
+                           std::greater<Item>());
+          }
+        } else if (state == kPendingWords && pending == kPendingRow) {
+          BitSet::Word* mask = mask_of(GetKey(target));
+          std::fill(mask, mask + mask_words, 0);
+        }
+        state = pending;
+      };
+
+  // Merges the row source of a new predecessor into the row of target
+  // and flags the words that changed in the dirty mask of target.
+  const auto seed_row = [&](const HloInstruction* target,
+                            const BitSet& source) {
+    const Key key = GetKey(target);
+    const Index index = indices_[key];
+    BitSet row = BitSetFromIndex(index);
+    PendingState& state = tmp_pending_state_[key];
+    if (state == kPendingRow) {
+      row |= source;
+      return;
+    }
+    BitSet::Word* const delta = tmp_delta_words_.data();
+    row.OrUpdateDelta(source, delta);
+    BitSet::Word* mask = mask_of(key);
+    BitSet::Word changed = 0;
+    for (size_t i = 0; i < num_words; ++i) {
+      const BitSet::Word bit = static_cast<BitSet::Word>(delta[i] != 0)
+                               << (i % BitSet::kBits);
+      mask[i / BitSet::kBits] |= bit;
+      changed |= bit;
+    }
+    if (changed != 0) {
+      set_pending(target, index, state, kPendingWords);
+    }
+  };
+
+  // Merges the row source, forwarded whole, into the row of target, which
+  // then forwards its whole row too if it changed: one vectorized union per
+  // edge, the old cost of every pop.
+  const auto absorb_row =
+      [&](const HloInstruction* target, const BitSet& source)
+          ABSL_ATTRIBUTE_ALWAYS_INLINE {
+            const Key key = GetKey(target);
+            const Index index = indices_[key];
+            BitSet row = BitSetFromIndex(index);
+            PendingState& state = tmp_pending_state_[key];
+            if (state == kPendingRow) {
+              row |= source;
+            } else if (row.OrUpdate(source)) {
+              set_pending(target, index, state, kPendingRow);
+            }
+          };
+
+  // Merges the runs of words runs of the row source into the row of
+  // target and flags the runs that changed in the dirty mask of target.
+  using Run = std::pair<uint32_t, uint32_t>;
+  const auto absorb_runs = [&](const HloInstruction* target,
+                               const BitSet& source,
+                               absl::Span<const Run> runs) {
+    const Key key = GetKey(target);
+    const Index index = indices_[key];
+    BitSet row = BitSetFromIndex(index);
+    PendingState& state = tmp_pending_state_[key];
+    if (state == kPendingRow) {
+      for (const auto& [begin, end] : runs) {
+        row.OrRange(source, begin, end);
+      }
+      return;
+    }
+    BitSet::Word* mask = mask_of(key);
+    bool changed = false;
+    for (const auto& [begin, end] : runs) {
+      if (row.OrUpdateRange(source, begin, end)) {
+        mark_dirty(mask, begin, end);
+        changed = true;
+      }
+    }
     if (changed) {
-      for (const HloInstruction* user : instruction->users()) {
-        to_update[user].insert(instruction);
+      set_pending(target, index, state, kPendingWords);
+    }
+  };
+
+  // Seed: every updated row absorbs the rows of its new predecessors.
+  absl::InlinedVector<const HloInstruction*, 4> targets;
+  absl::InlinedVector<const HloInstruction*, 4> sources;
+  // NOLINTNEXTLINE the loop aggregation is order independent.
+  for (const auto& [instruction, new_predecessors] : to_update) {
+    targets.clear();
+    ForEachPresentThrough(
+        instruction, is_present, successors,
+        [&](const HloInstruction* target) { targets.push_back(target); });
+    // NOLINTNEXTLINE the loop aggregation is order independent.
+    for (const HloInstruction* predecessor : new_predecessors) {
+      DCHECK(
+          instruction->IsUserOf(predecessor) ||
+          absl::c_linear_search(predecessor->control_successors(), instruction))
+          << "The new edge from " << predecessor->name() << " to "
+          << instruction->name() << " is not in the graph.";
+      sources.clear();
+      ForEachPresentThrough(
+          predecessor, is_present, predecessors,
+          [&](const HloInstruction* source) { sources.push_back(source); });
+      for (const HloInstruction* source : sources) {
+        const BitSet source_row = BitSetFromIndex(GetIndex(source));
+        for (const HloInstruction* target : targets) {
+          seed_row(target, source_row);
+        }
       }
-      for (const HloInstruction* succ : instruction->control_successors()) {
-        to_update[succ].insert(instruction);
+    }
+  }
+
+  // Returns the only successor of instruction if it has exactly one, else
+  // nullptr. Counts what successors visits.
+  const auto only_successor =
+      [](const HloInstruction* instruction) -> const HloInstruction* {
+    const auto& users = instruction->users();
+    const auto& control = instruction->control_successors();
+    if (users.size() + control.size() != 1) {
+      return nullptr;
+    }
+    return users.empty() ? control.front() : users.front();
+  };
+
+  absl::InlinedVector<Run, 16> runs;
+  while (!worklist.empty()) {
+    if (worklist.size() > 1) {
+      std::pop_heap(worklist.begin(), worklist.end(), std::greater<Item>());
+    }
+    auto [index, instruction] = worklist.back();
+    worklist.pop_back();
+    // Set when instruction was reached by tail forwarding below: its whole
+    // row is pending, and neither its state nor its mask were touched.
+    bool in_hand = false;
+    bool whole_row = false;
+    for (;;) {
+      if (!in_hand) {
+        const Key key = GetKey(instruction);
+        PendingState& state = tmp_pending_state_[key];
+        whole_row = state == kPendingRow;
+        if (!whole_row) {
+          // The dirty words as runs of consecutive words, clearing the mask.
+          BitSet::Word* mask = mask_of(key);
+          runs.clear();
+          size_t dirty_words = 0;
+          for (size_t block = 0; block < mask_words; ++block) {
+            BitSet::Word bits = mask[block];
+            mask[block] = 0;
+            while (bits != 0) {
+              const size_t low = absl::countr_zero(bits);
+              const size_t count = absl::countr_one(bits >> low);
+              const uint32_t begin = block * BitSet::kBits + low;
+              const uint32_t end = begin + count;
+              if (!runs.empty() && runs.back().second == begin) {
+                runs.back().second = end;
+              } else {
+                runs.emplace_back(begin, end);
+              }
+              dirty_words += count;
+              // Clears bits [low, low + count); every shift stays below kBits.
+              bits &= ~BitSet::Word{0} << low << (count - 1) << 1;
+            }
+          }
+          // Forwarding the whole row costs about one union of num_words
+          // words, the runs about their length plus kWordsPerRun words each.
+          whole_row = dirty_words + runs.size() * kWordsPerRun >= num_words;
+        }
+        state = kPendingNone;
       }
+      const BitSet row = BitSetFromIndex(index);
+      // Tail forwarding: a whole row that goes to a single present successor
+      // while nothing else is queued makes that successor the next pop, with
+      // its whole row pending and its mask untouched. Handling it in place
+      // skips the queue and the state round trip; the pops happen in the same
+      // order, since that successor would have been the only queued row.
+      if (whole_row && worklist.empty()) {
+        const HloInstruction* next = only_successor(instruction);
+        if (next != nullptr && ABSL_PREDICT_TRUE(is_present(next))) {
+          const Key next_key = GetKey(next);
+          DCHECK_EQ(tmp_pending_state_[next_key], kPendingNone);
+          const Index next_index = indices_[next_key];
+          BitSet next_row = BitSetFromIndex(next_index);
+          // On a chain the key of the row after next is read right after
+          // this union; fetched now so that the union hides the miss on it.
+          if (const auto& users = next->users(); users.size() == 1) {
+            absl::PrefetchToLocalCache(users.front());
+          }
+          if (!next_row.OrUpdate(row)) {
+            break;
+          }
+          index = next_index;
+          instruction = next;
+          in_hand = true;
+          continue;
+        }
+      }
+      const auto forward = [&](const HloInstruction* target)
+                               ABSL_ATTRIBUTE_ALWAYS_INLINE {
+                                 if (whole_row) {
+                                   absorb_row(target, row);
+                                 } else {
+                                   absorb_runs(target, row, runs);
+                                 }
+                               };
+      successors(
+          instruction,
+          [&](const HloInstruction* successor) ABSL_ATTRIBUTE_ALWAYS_INLINE {
+            if (ABSL_PREDICT_TRUE(is_present(successor))) {
+              forward(successor);
+            } else {
+              ForEachPresentThrough(successor, is_present, successors, forward);
+            }
+          });
+      break;
     }
   }
 }
