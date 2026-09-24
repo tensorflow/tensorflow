@@ -18,7 +18,13 @@ END
 Number of color channels for the decoded image.
 END
   }
-  summary: "Decode a JPEG XL encoded image to a uint8 tensor."
+  attr {
+    name: "dtype"
+    description: <<END
+The desired DType of the returned `Tensor`. uint8 or uint16.
+END
+  }
+  summary: "Decode a JPEG XL encoded image to a uint8 or uint16 tensor."
   description: <<END
 The attr `channels` indicates the desired number of color channels for the
 decoded image.
