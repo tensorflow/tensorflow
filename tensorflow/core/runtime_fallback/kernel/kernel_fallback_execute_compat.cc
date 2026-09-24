@@ -427,7 +427,7 @@ class FallbackKernelAttributeFrame {
 
 // The BEF kernel for kernel fallback compat mode. The arguments and results are
 // expected to tensorflow::tfrt_stub::FallbackTensor.
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOpInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
@@ -494,7 +494,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
 }
 
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOp(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
