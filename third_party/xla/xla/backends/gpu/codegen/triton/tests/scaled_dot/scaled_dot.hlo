@@ -21,7 +21,7 @@ triton_dot {
 // CHECK-SAME:      %[[LHS_SCALE:.*]]: memref<128x4xi8>,
 // CHECK-SAME:      %[[RHS_SCALE:.*]]: memref<4x256xi8>,
 // CHECK-SAME:      %[[OUTPUT:.*]]: memref<128x256xbf16>,
-// CHECK-SAME:      {{.*}}: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      {{.*}}: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<128x256xf32>
 // CHECK-DAG:       %[[C1:.*]] = arith.constant 0 : index
 // CHECK:           %[[LHS_TILE:.*]] = xtile.extract %[[LHS]]
