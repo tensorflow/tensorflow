@@ -3322,11 +3322,13 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
     ],
 )

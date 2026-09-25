@@ -3073,8 +3073,12 @@ void HloInstruction::DetachFromOperandsAndUsers() {
       continue;
     }
     operand->users_.MaybeRemoveUser(this);
+    if (parent_ != nullptr) {
+      operand->InvalidateParentPostOrderCache();
+    }
     operands_[operand_num] = nullptr;
   }
+  InvalidateParentPostOrderCache();
 
   // Update users. Set `nullptr` to the corresponding operand slot for users.
   for (auto& user : this->users()) {
@@ -3083,6 +3087,7 @@ void HloInstruction::DetachFromOperandsAndUsers() {
         user->operands_[i] = nullptr;
       }
     }
+    user->InvalidateParentPostOrderCache();
   }
 }
 
@@ -3218,6 +3223,8 @@ absl::Status HloInstruction::AddControlDependencyTo(
     TF_RET_CHECK(!absl::c_linear_search(
         instruction->rare()->control_predecessors, this));
     instruction->mutable_rare()->control_predecessors.push_back(this);
+    instruction->has_control_predecessors_ = true;
+    instruction->InvalidateParentPostOrderCache();
   }
   return absl::OkStatus();
 }
@@ -3231,6 +3238,9 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
   if (instruction->has_rare()) {
     EraseElementFromVector(&instruction->mutable_rare()->control_predecessors,
                            this);
+    instruction->has_control_predecessors_ =
+        !instruction->rare()->control_predecessors.empty();
+    instruction->InvalidateParentPostOrderCache();
   }
   return absl::OkStatus();
 }
@@ -3240,6 +3250,9 @@ absl::Status HloInstruction::DropAllControlDeps() {
     for (auto* ctrl_succ : rare()->control_successors) {
       EraseElementFromVector(&ctrl_succ->mutable_rare()->control_predecessors,
                              this);
+      ctrl_succ->has_control_predecessors_ =
+          !ctrl_succ->rare()->control_predecessors.empty();
+      ctrl_succ->InvalidateParentPostOrderCache();
     }
     for (auto* ctrl_pred : rare()->control_predecessors) {
       EraseElementFromVector(&ctrl_pred->mutable_rare()->control_successors,
@@ -3248,6 +3261,8 @@ absl::Status HloInstruction::DropAllControlDeps() {
     Rare* r = mutable_rare();
     r->control_successors.clear();
     r->control_predecessors.clear();
+    has_control_predecessors_ = false;
+    InvalidateParentPostOrderCache();
   }
   return absl::OkStatus();
 }
@@ -3367,6 +3382,7 @@ void HloInstruction::AppendOperand(HloInstruction* operand) {
   }
   operands_.push_back(operand);
   operand->AddUser(this);
+  InvalidateParentPostOrderCache();
 }
 
 void HloInstruction::AppendOperands(
@@ -3398,6 +3414,7 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
   }
   CHECK_EQ(removed_count, ascending_indices.size());
   operands_.resize(operands_.size() - removed_count);
+  InvalidateParentPostOrderCache();
 }
 
 bool HloInstruction::HasConstantOperand() const {
@@ -3596,6 +3613,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
+  user->InvalidateParentPostOrderCache();
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
@@ -3629,6 +3647,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
       << "Expected operand " << operand_number << " of " << user->ToString()
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
+  user->InvalidateParentPostOrderCache();
   new_producer->AddUser(user);
   return absl::OkStatus();
 }
@@ -3653,6 +3672,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
   }
 
   operands_[operand_num] = new_operand;
+  InvalidateParentPostOrderCache();
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
           << new_operand->name() << ", was " << old_operand->name();
@@ -3813,6 +3833,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     } else {
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
+      user->InvalidateParentPostOrderCache();
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
         ABSL_RETURN_IF_ERROR(
@@ -3821,6 +3842,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     }
   }
   users_.Clear();
+  InvalidateParentPostOrderCache();
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
@@ -4896,6 +4918,7 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
       marked_as_dead_(false),
       is_root_(false),
       shape_is_canonicalized_(false),
+      has_control_predecessors_(false),
       shape_(std::make_shared<Shape>(shape)),
       name_(HloOpcodeString(opcode)) {
   DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape_));
@@ -6037,6 +6060,28 @@ void HloInstruction::SortInstructionUsersAndControlLists(
   if (!status.ok()) {
     LOG(ERROR) << "Failed to sort instruction control successors for " << name()
                << "; " << status;
+  }
+  // The order of the control predecessors is an input of the post order.
+  InvalidateParentPostOrderCache();
+}
+
+void HloInstruction::AddUser(HloInstruction* user) {
+  users_.AddUser(user);
+  if (user->parent_ != nullptr) {
+    InvalidateParentPostOrderCache();
+  }
+}
+
+void HloInstruction::RemoveUser(HloInstruction* user) {
+  users_.RemoveUser(user);
+  if (user->parent_ != nullptr) {
+    InvalidateParentPostOrderCache();
+  }
+}
+
+void HloInstruction::InvalidateParentPostOrderCache() {
+  if (parent_ != nullptr) {
+    parent_->InvalidatePostOrderCache();
   }
 }
 
