@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -100,8 +101,7 @@ class HostSendThunk : public HostAsyncThunk {
       absl::Span<const BufferAllocation> allocations,
       HostSendRecvAsyncEventsMap& async_events_map);
 
-  HostSendThunk(ThunkInfo thunk_info, Shape shape,
-                BufferAllocation::Slice buffer, int64_t channel_id,
+  HostSendThunk(ThunkInfo thunk_info, ShapedSlice buffer, int64_t channel_id,
                 std::shared_ptr<HostSendRecvAsyncEvents> events,
                 absl::flat_hash_map<std::string, std::string> frontend_attrs,
                 std::optional<GlobalDeviceId> device_constraint);
@@ -110,7 +110,7 @@ class HostSendThunk : public HostAsyncThunk {
 
   BufferUses buffer_uses() const override {
     return {
-        BufferUse::Read(buffer_, shape_),
+        BufferUse::Read(slice_.slice, slice_.shape),
     };
   }
 
@@ -121,8 +121,7 @@ class HostSendThunk : public HostAsyncThunk {
   bool IsAsyncStart() const override { return events_ != nullptr; }
 
  private:
-  Shape shape_;
-  BufferAllocation::Slice buffer_;
+  ShapedSlice slice_;
 
   int64_t channel_id_;
 
@@ -142,15 +141,22 @@ class HostSendDoneThunk : public HostAsyncThunk {
       absl::Span<const BufferAllocation> allocations,
       HostSendRecvAsyncEventsMap& async_events_map);
 
-  HostSendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
+  HostSendDoneThunk(ThunkInfo thunk_info, std::optional<ShapedSlice> slice,
+                    int64_t channel_id,
                     std::shared_ptr<HostSendRecvAsyncEvents> events,
                     std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  // TODO(b/527907619): Implement this properly once we have figured out how
-  // buffer uses should look like for async thunks.
-  BufferUses buffer_uses() const override { return {}; }
+  BufferUses buffer_uses() const override {
+    // TODO(b/527907619): make mandatory after 2027-1-1
+    if (!slice_.has_value()) {
+      return {};
+    }
+    return {
+        BufferUse::Read(slice_->slice, slice_->shape),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -163,12 +169,12 @@ class HostSendDoneThunk : public HostAsyncThunk {
 
   std::shared_ptr<HostSendRecvAsyncEvents> events_;
   std::optional<GlobalDeviceId> device_constraint_;
+  std::optional<ShapedSlice> slice_;
 };
 
 //===----------------------------------------------------------------------===//
 // HostRecvThunk
 //===----------------------------------------------------------------------===//
-
 class HostRecvThunk : public HostAsyncThunk {
  public:
   static absl::StatusOr<std::unique_ptr<HostRecvThunk>> FromProto(
@@ -218,15 +224,22 @@ class HostRecvDoneThunk : public HostAsyncThunk {
       absl::Span<const BufferAllocation> allocations,
       HostSendRecvAsyncEventsMap& async_events_map);
 
-  HostRecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
+  HostRecvDoneThunk(ThunkInfo thunk_info, std::optional<ShapedSlice> slice,
+                    int64_t channel_id,
                     std::shared_ptr<HostSendRecvAsyncEvents> events,
                     std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  // TODO(b/527907619): Implement this properly once we have figured out how
-  // buffer uses should look like for async thunks.
-  BufferUses buffer_uses() const override { return {}; }
+  BufferUses buffer_uses() const override {
+    // TODO(b/527907619): make mandatory after 2027-1-1
+    if (!slice_.has_value()) {
+      return {};
+    }
+    return {
+        BufferUse::Write(slice_->slice, slice_->shape),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -239,6 +252,7 @@ class HostRecvDoneThunk : public HostAsyncThunk {
 
   std::shared_ptr<HostSendRecvAsyncEvents> events_;
   std::optional<GlobalDeviceId> device_constraint_;
+  std::optional<ShapedSlice> slice_;
 };
 
 }  // namespace xla::gpu
