@@ -20,7 +20,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
