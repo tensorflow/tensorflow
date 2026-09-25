@@ -724,6 +724,11 @@ static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
 
 }  // namespace internal
 
+// Decode per-execution custom options using the same dictionary interface.
+template <>
+struct CtxDecoding<CustomOptions>
+    : internal::CustomOptionsDecoding<Dictionary> {};
+
 template <>
 struct CtxDecoding<DeviceOrdinal> {
   using Type = int32_t;

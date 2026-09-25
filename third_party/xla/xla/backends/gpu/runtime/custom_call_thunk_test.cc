@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
@@ -202,32 +203,48 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                        executor->CreateStream());
+  auto options = std::make_shared<const xla::CustomOptions>(
+      xla::CustomOptions::Map{{"value", int64_t{42}}});
   int instantiate_calls = 0;
   int prepare_calls = 0;
   int initialize_calls = 0;
   int execute_calls = 0;
   CustomCallThunk::OwnedHandlerBundle bundle;
-  bundle.instantiate =
-      ffi::Ffi::Bind<ffi::ExecutionStage::kInstantiate>().To([&]() {
-        ++instantiate_calls;
-        return absl::OkStatus();
-      });
-  bundle.prepare = ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>().To([&]() {
-    ++prepare_calls;
-    return absl::OkStatus();
-  });
-  bundle.initialize =
-      ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>().To([&]() {
-        ++initialize_calls;
-        return absl::OkStatus();
-      });
-  bundle.execute = ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>().To([&]() {
-    ++execute_calls;
-    return absl::OkStatus();
-  });
+  bundle.instantiate = ffi::Ffi::Bind<ffi::ExecutionStage::kInstantiate>()
+                           .Ctx<ffi::CustomOptions>()
+                           .To([&](ffi::Dictionary options) {
+                             EXPECT_TRUE(options.empty());
+                             ++instantiate_calls;
+                             return absl::OkStatus();
+                           });
+  bundle.prepare = ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>()
+                       .Ctx<ffi::CustomOptions>()
+                       .To([&](ffi::Dictionary options) {
+                         EXPECT_THAT(options.get<int64_t>("value"),
+                                     absl_testing::IsOkAndHolds(42));
+                         ++prepare_calls;
+                         return absl::OkStatus();
+                       });
+  bundle.initialize = ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>()
+                          .Ctx<ffi::CustomOptions>()
+                          .To([&](ffi::Dictionary options) {
+                            EXPECT_THAT(options.get<int64_t>("value"),
+                                        absl_testing::IsOkAndHolds(42));
+                            ++initialize_calls;
+                            return absl::OkStatus();
+                          });
+  bundle.execute = ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
+                       .Ctx<ffi::CustomOptions>()
+                       .To([&](ffi::Dictionary options) {
+                         EXPECT_THAT(options.get<int64_t>("value"),
+                                     absl_testing::IsOkAndHolds(42));
+                         ++execute_calls;
+                         return absl::OkStatus();
+                       });
 
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
+  run_options.mutable_run_options()->set_custom_options(options);
   ASSERT_OK_AND_ASSIGN(
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
@@ -239,16 +256,17 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
 
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor,
-                                      &buffer_allocations};
+  Thunk::PrepareParams prepare_params{
+      &collective_params,  &clique_requests, &memory_requests, executor,
+      &buffer_allocations, nullptr,          options.get()};
 
   Thunk::InitializeParams initialize_params;
+  initialize_params.custom_options = options.get();
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
-      ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
-      stream.get(), nullptr, nullptr, nullptr);
+      run_options, buffer_allocations, stream.get(), stream.get(), nullptr,
+      nullptr, nullptr);
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallThunk> thunk,
