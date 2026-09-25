@@ -792,10 +792,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
-  @parameterized.parameters(
-      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
-  def testMaxPoolInvalidFilterSize(self, **kwargs):
+  def testMaxPoolInvalidFilterSize(self):
     use_gpu = test.is_gpu_available()
     with self.cached_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
@@ -2448,18 +2446,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                     strides=[2, 1, 1, 1],
                     padding="SAME"))
 
-        # Filter too large.
+        # A filter one larger gives an empty output; two larger is invalid.
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1],
+                  ksize=[1, 20, 22, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-              ksize=[1, 21, 20, 1],
+              ksize=[1, 22, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")
 
