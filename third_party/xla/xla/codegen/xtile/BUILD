@@ -54,7 +54,6 @@ cc_library(
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiling_space_utils",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -103,7 +102,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
     ],
 )
 
@@ -113,7 +111,6 @@ xla_cc_test(
     deps = [
         ":block_level_parameters",
         ":xtile_config_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
