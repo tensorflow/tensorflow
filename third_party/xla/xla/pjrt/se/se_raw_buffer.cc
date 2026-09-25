@@ -147,14 +147,18 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
-          auto copy_to_staging_buffer = [src, transfer_size,
-                                         staging_buffer]() mutable {
-            tsl::profiler::TraceMe trace("H2D Copy To Staging Buffer");
-            std::memcpy(staging_buffer.get(), src, transfer_size);
-          };
-          ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
-          ABSL_RETURN_IF_ERROR(
-              stream->Memcpy(&sub_buffer, staging_buffer.get(), transfer_size));
+          if (staging_buffer != nullptr) {
+            auto copy_to_staging_buffer = [src, transfer_size,
+                                           staging_buffer]() mutable {
+              tsl::profiler::TraceMe trace("H2D Copy To Staging Buffer");
+              std::memcpy(staging_buffer.get(), src, transfer_size);
+            };
+            ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_to_staging_buffer));
+            ABSL_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, staging_buffer.get(),
+                                           transfer_size));
+          } else {
+            ABSL_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
+          }
         } else {
           ABSL_RETURN_IF_ERROR(stream->Memcpy(&sub_buffer, src, transfer_size));
         }
@@ -218,15 +222,19 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
-          ABSL_RETURN_IF_ERROR(
-              stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
-          auto copy_from_staging_buffer = [dst, transfer_size,
-                                           staging_buffer]() mutable {
-            tsl::profiler::TraceMe trace("D2H Copy From Staging Buffer");
-            std::memcpy(dst, staging_buffer.get(), transfer_size);
-          };
-          // TODO(parkers): This failing maybe consitutes a race.
-          ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
+          if (staging_buffer != nullptr) {
+            ABSL_RETURN_IF_ERROR(stream->Memcpy(staging_buffer.get(), sub_buffer,
+                                           transfer_size));
+            auto copy_from_staging_buffer = [dst, transfer_size,
+                                             staging_buffer]() mutable {
+              tsl::profiler::TraceMe trace("D2H Copy From Staging Buffer");
+              std::memcpy(dst, staging_buffer.get(), transfer_size);
+            };
+            // TODO(parkers): This failing maybe consitutes a race.
+            ABSL_RETURN_IF_ERROR(stream->DoHostCallback(copy_from_staging_buffer));
+          } else {
+            ABSL_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
+          }
         } else {
           ABSL_RETURN_IF_ERROR(stream->Memcpy(dst, sub_buffer, transfer_size));
         }
