@@ -276,19 +276,51 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
 
     auto stream = context->op_device_context()->stream();
+    Tensor invalid_segment_ids_device;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DT_INT32, TensorShape({1}),
+                               &invalid_segment_ids_device),
+        done);
+    auto invalid_segment_ids = invalid_segment_ids_device.flat<int32>();
+    stream_executor::DeviceAddressBase invalid_segment_ids_ptr(
+        invalid_segment_ids.data(), sizeof(int32));
+    OP_REQUIRES_OK_ASYNC(
+        context, stream->MemZero(&invalid_segment_ids_ptr, sizeof(int32)), done);
+
+    SegmentReductionFunctor functor_;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        functor_.ValidateSegmentIds(context->eigen_device<GPUDevice>(),
+                                    segment_ids.flat<Index>(),
+                                    invalid_segment_ids.data()),
+        done);
+    ScratchSpace<int32> invalid_segment_ids_host(context, 1,
+                                                  /*on_host=*/true);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        stream->Memcpy(invalid_segment_ids_host.mutable_data(),
+                       invalid_segment_ids_ptr, sizeof(int32)),
+        done);
     OP_REQUIRES_OK_ASYNC(context,
                          stream->Memcpy(output_rows_host.mutable_data(),
                                         output_rows_device, sizeof(Index)),
                          done);
 
-    SegmentReductionFunctor functor_;
-    auto create_and_check_output = [context, output_rows_host, &input,
-                                    &segment_ids, &functor_, done]() {
+    auto create_and_check_output =
+        [context, output_rows_host, invalid_segment_ids_host,
+         invalid_segment_ids_device, &input, &segment_ids, &functor_, done]() {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
       std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
           stream->parent()->Activate();
+
+      OP_REQUIRES_ASYNC(
+          context, *invalid_segment_ids_host.data() == 0,
+          absl::InvalidArgumentError(
+              "segment ids must be >= 0 and sorted"),
+          done);
 
       Index output_rows = *output_rows_host.data();
       output_rows++;
