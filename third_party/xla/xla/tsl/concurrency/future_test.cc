@@ -1087,6 +1087,25 @@ TEST(FutureTest, JoinCopyableFuturesError) {
   EXPECT_EQ(join_two.Await().status(), absl::InternalError("error0"));
 }
 
+TEST(FutureTest, JoinEmptyCopyableFutures) {
+  std::vector<Future<int32_t>> futures;
+  Future<std::vector<int32_t>> join = JoinFutures<int32_t>(futures);
+  ASSERT_TRUE(join.IsValid());
+  EXPECT_TRUE(join.IsReady());
+  ASSERT_OK_AND_ASSIGN(std::vector<int32_t> v, join.Await());
+  EXPECT_TRUE(v.empty());
+}
+
+TEST(FutureTest, JoinEmptyMoveOnlyFutures) {
+  std::vector<Future<std::unique_ptr<int32_t>>> futures;
+  Future<std::vector<std::unique_ptr<int32_t>>> join =
+      JoinFutures<std::unique_ptr<int32_t>>(absl::MakeSpan(futures));
+  ASSERT_TRUE(join.IsValid());
+  EXPECT_TRUE(join.IsReady());
+  ASSERT_OK_AND_ASSIGN(auto v, std::move(join).Await());
+  EXPECT_TRUE(v.empty());
+}
+
 TEST(FutureTest, JoinMoveOnlyFuture) {
   auto [promise0, future0] = MakePromise<std::unique_ptr<int32_t>>();
   auto [promise1, future1] = MakePromise<std::unique_ptr<int32_t>>();

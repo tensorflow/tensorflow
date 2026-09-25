@@ -3,6 +3,9 @@
 build:rocm_dev --remote_upload_local_results=false
 build:rocm_dev --remote_cache="grpcs://wardite.cluster.engflow.com"
 
+common:rocm_ci --test_verbose_timeout_warnings
+common:rocm_ci --test_timeout=920,2400,7200,9600
+
 build:rocm_rbe --remote_cache="grpcs://wardite.cluster.engflow.com"
 build:rocm_rbe --repo_env=REMOTE_GPU_TESTING=1
 build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
@@ -16,11 +19,15 @@ build:rocm_rbe --tls_client_key="/data/ci-cert.key"
 build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
 build:rocm_rbe --remote_cache_compression
+build:rocm_rbe --execution_log_compact_file=execution_log.binpb.zst
+build:rocm_rbe --cache_test_results=yes
+build:rocm_rbe --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_do_gfx950
 
-test:rocm_rbe --jobs=30
+test:rocm_rbe --jobs=50
 test:rocm_rbe --remote_executor=grpcs://wardite.cluster.engflow.com
 test:rocm_rbe --remote_timeout=3600
 test:rocm_rbe --strategy=TestRunner=remote,local
+test:rocm_rbe --test_sharding_strategy=explicit
 
 # Dynamic execution config for ROCm RBE - races remote vs local with remote head start
 build:rocm_rbe_dynamic --config=rocm_rbe

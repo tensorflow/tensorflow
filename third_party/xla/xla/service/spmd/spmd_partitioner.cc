@@ -232,10 +232,6 @@ bool ShouldKeepSharding(const HloInstruction* hlo,
       DynCast<HloSendRecvInstruction>(hlo) != nullptr) {
     return true;
   }
-  if (hlo->opcode() == HloOpcode::kParameter &&
-      hlo->parent() == hlo->GetModule()->entry_computation()) {
-    return true;
-  }
   if (keep_valid_shardings && hlo->has_sharding()) {
     // SPMD partitioner can generate invalid shardings since sharding is
     // meaningless after this pass. We only keep valid shardings to avoid
@@ -253,13 +249,6 @@ absl::Status ClearShardingAttributes(
   auto has_unreduced_axes = [](const HloInstruction* hlo) -> bool {
     return hlo->frontend_attributes().map().contains(sdy::kHasUnreducedAxes);
   };
-  for (int64_t i = 0; i < module->entry_computation()->num_parameters(); ++i) {
-    // Recover the unreduced sharding for parameters.
-    auto param = module->entry_computation()->parameter_instruction(i);
-    if (has_unreduced_axes(param)) {
-      param->set_sharding(module->spmd_parameters_shardings()[i]);
-    }
-  }
   const bool keep_shardings_after_spmd =
       module->config().debug_options().xla_keep_shardings_after_spmd();
   for (HloComputation* computation : module->computations(execution_threads)) {
@@ -7408,13 +7397,6 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
   ABSL_RETURN_IF_ERROR(ClearShardingAttributes(
       module, num_replicas() * num_partitions(), execution_threads));
 
-  auto entry_root = module->entry_computation()->root_instruction();
-  if (entry_root->has_sharding()) {
-    HloSharding final_sharding =
-        ResolveReductionOpForSharding(entry_root, entry_root->sharding());
-    entry_root->set_sharding(std::move(final_sharding));
-  }
-
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
     pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
@@ -7423,7 +7405,6 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     ABSL_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
   }
-
   return changed;
 }
 
@@ -7515,41 +7496,20 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         return res;
       };
       auto convert_unreduced_subgroup_sharding =
-          [](HloInstruction* hlo,
-             const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
-        // TODO(b/438306205): Remove this check once the unreduced
-        // subgroup sharding is compatible with manual.
-        TF_RET_CHECK(!sharding.IsManualSubgroup())
-            << "Incompatible unreduced sharding at " << hlo->ToString();
+          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
-        TileAssignment tile_assignment = sharding.tile_assignment();
-        if (sharding.HasPartialReplication()) {
-          // When we have both replicated and unreduced, merge them into one
-          // in the tile assignment.
-          int64_t unreduced_dim = sharding.SubgroupUnreducedDim();
-          DimensionVector new_dims(tile_assignment.dimensions().begin(),
-                                   tile_assignment.dimensions().end());
-          new_dims[sharding.SubgroupReplicationDim()] *=
-              new_dims[unreduced_dim];
-          new_dims.erase(new_dims.begin() + unreduced_dim);
-          tile_assignment = tile_assignment.Reshape(new_dims);
-        }
-        HloSharding res =
-            HloSharding::PartialTile(tile_assignment, sharding.metadata());
+        std::vector<OpSharding::Type> subgroup_types(
+            sharding.subgroup_types().begin(), sharding.subgroup_types().end());
+        absl::c_replace(subgroup_types, OpSharding::UNREDUCED,
+                        OpSharding::REPLICATED);
+        HloSharding res = HloSharding::Subgroup(
+            sharding.tile_assignment(), subgroup_types, sharding.metadata());
         res.set_reduction_op(sharding.reduction_op());
         return res;
       };
       auto convert_unreduced_named_sharding =
-          [](HloInstruction* hlo,
-             const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
+          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
         const NamedSharding& named_sharding = sharding.named_sharding();
-        // TODO(b/438306205): Remove this check once the unreduced named
-        // sharding is compatible with manual.
-        if (!named_sharding.manual_axes().empty()) {
-          return absl::UnimplementedError(
-              "NamedSharding with both unreduced and manual axes is not "
-              "supported.");
-        }
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
         std::vector<AxisRef> new_replicated_axes(
             named_sharding.replicated_axes().begin(),
@@ -7571,11 +7531,10 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         for (HloSharding& subsharding : subshardings) {
           if (subsharding.IsUnreducedSubgroup()) {
             if (subsharding.UseNamedShardingLeaf()) {
-              ABSL_ASSIGN_OR_RETURN(subsharding, convert_unreduced_named_sharding(
-                                                hlo, subsharding));
+              subsharding = convert_unreduced_named_sharding(hlo, subsharding);
             } else {
-              ABSL_ASSIGN_OR_RETURN(subsharding, convert_unreduced_subgroup_sharding(
-                                                hlo, subsharding));
+              subsharding =
+                  convert_unreduced_subgroup_sharding(hlo, subsharding);
             }
             should_convert = true;
           } else if (subsharding.IsUnreduced()) {
@@ -7589,14 +7548,10 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
       } else {
         if (sharding.IsUnreducedSubgroup()) {
           if (sharding.UseNamedShardingLeaf()) {
-            ABSL_ASSIGN_OR_RETURN(HloSharding new_sharding,
-                             convert_unreduced_named_sharding(hlo, sharding));
-            hlo->set_sharding(new_sharding);
+            hlo->set_sharding(convert_unreduced_named_sharding(hlo, sharding));
           } else {
-            ABSL_ASSIGN_OR_RETURN(
-                HloSharding new_sharding,
+            hlo->set_sharding(
                 convert_unreduced_subgroup_sharding(hlo, sharding));
-            hlo->set_sharding(new_sharding);
           }
         } else if (sharding.IsUnreduced()) {
           hlo->set_sharding(convert_unreduced_sharding(hlo));
