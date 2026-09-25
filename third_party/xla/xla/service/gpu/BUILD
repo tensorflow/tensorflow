@@ -2428,9 +2428,7 @@ xla_test(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_module_config",
-        "//xla/service:pattern_matcher",
         "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/log",
