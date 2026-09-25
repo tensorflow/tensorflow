@@ -796,13 +796,19 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
   def testMaxPoolInvalidFilterSize(self, **kwargs):
-    with self.cached_session(use_gpu=test.is_gpu_available()):
+    use_gpu = test.is_gpu_available()
+    with self.cached_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
-      with self.assertRaisesRegex(
-          (errors_impl.InvalidArgumentError, ValueError),
-          "Negative dimension size"):
-        t = self.evaluate(
-            nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
+      pooled = nn_ops.max_pool(
+          t, ksize=[1, 1, 2, 1], strides=1, padding="VALID")
+      # GPU returns an empty output; CPU rejects the oversized window.
+      if use_gpu:
+        self.assertEqual(self.evaluate(pooled).shape, (1, 1, 0, 1))
+      else:
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "ksize dimension .* is larger than the input tensor dimension"):
+          self.evaluate(pooled)
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
