@@ -17,7 +17,7 @@ fusion {
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[IN:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xf32>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[IN]]
 // CHECK-SAME:    : memref<128x256xcomplex<f32>> -> tensor<1x4xcomplex<f32>>
@@ -29,7 +29,7 @@ fusion {
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // NEW-VECTOR-SAME:    %[[IN:[^:]+]]: memref<128x256x2xf32>,
 // NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 
 // NEW-VECTOR:       vector.transfer_read %[[IN]]
 // NEW-VECTOR:       vector.extract_strided_slice
