@@ -334,5 +334,19 @@ TEST(ReshapeShapeResolverTest, RejectsInferredDimensionOverflow) {
                                                  *output_shape),
             kTfLiteOk);
 }
+TEST(ReshapeOpTest, MismatchedConstantReshapeFails) {
+  // Input tensor with 5 float elements (20 bytes)
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  // Target shape requesting 6 elements (24 bytes) - mismatch!
+  std::vector<int> shape_data = {6};
+  
+  ReshapeOpModel m({TensorType_FLOAT32, {5}}, shape_data,
+                   {TensorType_INT32, {1}}, TensorType_FLOAT32,
+                   /*use_shape_parameter=*/false);
+  m.SetInput(input_data);
+  // Allocation/Preparation should fail due to size mismatch
+  EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk);
+}
+
 }  // namespace
 }  // namespace tflite
