@@ -427,6 +427,33 @@ auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
 });
 ```
 
+### Per-execution Custom Options
+
+FFI handlers can access runtime custom options as a `Dictionary` by binding
+`Ctx<CustomOptions>()`. In JAX, pass options with `jax.execution_options`:
+
+```python
+with jax.execution_options(custom_options={"foo": 42}):
+    result = compiled_fn(x)
+```
+
+Python integer options decode as `int64_t`:
+
+```c++
+auto handler =
+    Ffi::Bind().Ctx<CustomOptions>().To([](Dictionary options) -> Error {
+      ErrorOr<int64_t> foo = options.get<int64_t>("foo");
+      return Error::Success();
+    });
+```
+
+**WARNING:** GPU command buffers can replay recorded or captured work without
+invoking the FFI handler again. Changing custom options does not trigger a
+command buffer update or invalidate the stream-capture cache, so replay may use
+work recorded with earlier option values. Custom calls whose recorded work
+depends on options that change between executions must stay out of GPU command
+buffers until this is supported.
+
 ### User-defined Struct Attributes
 
 XLA FFI can decode dictionary attributes into user-defined structs.

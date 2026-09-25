@@ -39,6 +39,7 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 namespace xla {
+class CustomOptions;
 class HloComputation;
 }  // namespace xla
 
@@ -111,6 +112,11 @@ struct InvokeContext {
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
+
+  // Borrowed options must remain alive until the handler returns. They are not
+  // retained for asynchronous work launched by the handler.
+  const xla::CustomOptions* custom_options = nullptr;
+
   const XLA_FFI_Extension* extension_start = nullptr;
 };
 

@@ -355,7 +355,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       ffi::InvokeContext::CpuContext{custom_call_params->intra_op_thread_pool},
       ffi::InvokeContext::StateContext{execution_state_.get()},
       /*called_computation=*/nullptr,
-      custom_call_params->ffi_execution_context};
+      custom_call_params->ffi_execution_context,
+      params.custom_options};
 
   ffi::HandlerRegistration& handler = std::get<1>(target_);
   return ffi::InvokeAsync(ffi::GetXlaFfiApi(), handler.bundle.execute,

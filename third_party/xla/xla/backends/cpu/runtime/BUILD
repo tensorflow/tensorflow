@@ -744,6 +744,23 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "custom_call_thunk_test",
+    srcs = ["custom_call_thunk_test.cc"],
+    deps = [
+        ":custom_call_thunk",
+        ":thunk",
+        "//xla:custom_options",
+        "//xla:executable_run_options",
+        "//xla/ffi",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "dot_dims",
     srcs = ["dot_dims.cc"],

@@ -166,6 +166,31 @@ absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
     const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+    const KernelArgsPackedArrayBase& args,
+    absl::Span<const Command* const> dependencies, StreamPriority priority) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kCreate));
+
+  ABSL_ASSIGN_OR_RETURN(
+      GraphNodeHandle handle,
+      CreateKernelNode(ToGraphNodeDependencies(dependencies), priority, threads,
+                       blocks, cluster_dims, kernel, args));
+
+  return AppendCommand(GpuCommand{handle});
+}
+
+absl::Status GpuCommandBuffer::UpdateLaunch(
+    const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
+  ABSL_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  auto* gpu_command = absl::down_cast<const GpuCommand*>(command);
+  return UpdateKernelNode(gpu_command->handle, threads, blocks, cluster_dims,
+                          kernel, args);
+}
+
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
+    const ThreadDim& threads, const BlockDim& blocks,
     const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgs& args, absl::Span<const Command* const> dependencies,
     StreamPriority priority) {

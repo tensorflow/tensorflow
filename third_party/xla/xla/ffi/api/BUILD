@@ -81,7 +81,7 @@ filegroup(
 cc_library(
     name = "api",
     hdrs = [":api_headers"],
-    visibility = ["//visibility:private"],
+    visibility = ["//xla/ffi:__pkg__"],
     deps = [
         ":c_api",
     ],
@@ -150,6 +150,7 @@ xla_cc_test(
     deps = [
         ":c_api",
         ":ffi",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
