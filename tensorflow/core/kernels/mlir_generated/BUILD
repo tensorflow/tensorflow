@@ -234,6 +234,7 @@ tf_kernel_library(
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
+        "//tensorflow/core/kernels:integer_pow_gpu",
         ":gpu_atan2_kernels",
         ":gpu_bitwise_and_kernels",
         ":gpu_bitwise_or_kernels",

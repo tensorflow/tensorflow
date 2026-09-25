@@ -3822,6 +3822,15 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "integer_pow_gpu",
+    prefix = "integer_pow_gpu",
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_kernel_library(
     name = "cross_op",
     prefix = "cross_op",
     deps = MATH_DEPS,
@@ -3842,6 +3851,7 @@ tf_kernel_library(
     ),
     prefix = "cwise_op",
     deps = MATH_DEPS + [
+        ":integer_pow_gpu",
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
         "@com_google_absl//absl/base:prefetch",
         "@com_google_absl//absl/status",
