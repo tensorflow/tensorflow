@@ -33,6 +33,7 @@ import sys
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 from build_tools.ci import bazel_diff
+from build_tools.ci import change_detector
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
@@ -960,6 +961,16 @@ def dump_all_build_commands():
     sys.stdout.write(f"# END {build.type_}\n")
 
 
+def get_xla_dir(build: Build) -> str:
+  """Resolves the local XLA git repository directory for the given build."""
+  for mapping in (build.override_module, build.override_repository):
+    if "xla" in mapping:
+      expanded = os.path.expandvars(mapping["xla"])
+      if not expanded.startswith("$"):
+        return expanded
+  return "."
+
+
 def _parse_args():
   """Defines flags and parses args."""
   parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -990,8 +1001,19 @@ def main():
   build = Build.all_builds()[args.build]
   github_event = os.environ.get("GITHUB_EVENT_NAME", "").strip()
   is_presubmit = github_event in ("", "pull_request", "pull_request_target")
-  base_sha = os.environ.get("XLA_CI_BAZEL_DIFF_BASE_SHA", "").strip()
-  head_sha = os.environ.get("XLA_CI_BAZEL_DIFF_HEAD_SHA", "HEAD").strip()
+  raw_base_sha = os.environ.get("XLA_CI_BAZEL_DIFF_BASE_SHA", "").strip()
+  raw_head_sha = (
+      os.environ.get("XLA_CI_BAZEL_DIFF_HEAD_SHA", "HEAD").strip() or "HEAD"
+  )
+  try:
+    base_sha = (
+        change_detector.validate_git_ref(raw_base_sha) if raw_base_sha else ""
+    )
+    head_sha = change_detector.validate_git_ref(raw_head_sha)
+  except ValueError as e:
+    logging.warning("Ignoring invalid git revision in environment: %s", e)
+    base_sha = ""
+    head_sha = "HEAD"
   disabled = os.environ.get("XLA_CI_DISABLE_BAZEL_DIFF", "false").lower() in (
       "true",
       "1",
@@ -999,20 +1021,38 @@ def main():
   )
 
   target_pattern_file = None
-  if build.use_bazel_diff and is_presubmit and base_sha and not disabled:
-    logging.info(
-        "Running bazel-diff analysis (base=%s, head=%s)",
+  if is_presubmit and base_sha and not disabled:
+    xla_dir = get_xla_dir(build)
+    skip_decision = change_detector.evaluate_skip(
         base_sha,
         head_sha,
+        cwd=xla_dir,
+        is_jax_build=(build.repo == "google/jax"),
     )
-    decision = bazel_diff.compute_impacted_targets(build, base_sha, head_sha)
-    bazel_diff.report_decision(decision, str(build.type_))
-
-    if decision.decision == bazel_diff.BazelDiffDecisionType.SKIP:
-      logging.info("bazel-diff: 0 impacted targets, skipping Bazel commands!")
+    if skip_decision.should_skip:
+      change_detector.report_skip(skip_decision, str(build.type_))
+      logging.info(
+          "change-detector: skipping Bazel commands (%s)",
+          skip_decision.reason,
+      )
       return
-    elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
-      target_pattern_file = decision.impacted_targets_file
+
+    if build.use_bazel_diff:
+      logging.info(
+          "Running bazel-diff analysis (base=%s, head=%s)",
+          base_sha,
+          head_sha,
+      )
+      decision = bazel_diff.compute_impacted_targets(
+          build, base_sha, head_sha, workspace_dir=xla_dir
+      )
+      bazel_diff.report_decision(decision, str(build.type_))
+
+      if decision.decision == bazel_diff.BazelDiffDecisionType.SKIP:
+        logging.info("bazel-diff: 0 impacted targets, skipping Bazel commands!")
+        return
+      elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
+        target_pattern_file = decision.impacted_targets_file
 
   for command in build.commands(target_pattern_file=target_pattern_file):
     result = sh(command, check=False)

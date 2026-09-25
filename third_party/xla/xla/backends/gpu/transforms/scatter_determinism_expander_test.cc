@@ -459,6 +459,90 @@ TEST_P(ScatterDeterminismExpanderTest,
 }
 
 TEST_P(ScatterDeterminismExpanderTest,
+       ScatterAddWithNonScalarIndexOutOfBoundCorrectnessTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY scatter_add_computation {
+      operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
+      indices = $0[5, 2] constant({{0, 0}, {0, 4}, {1, 0}, {1, 4}, {1, -4}})
+      updates = f32[5] constant({1, 2, 3, 4, 5})
+      ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0, 1},
+        scatter_dims_to_operand_dims={0, 1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto cloned_module = module->Clone();
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
+  auto expected_result = expected_literal.data<float>();
+
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
+  EXPECT_TRUE(result);
+
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
+
+  auto result_data = result_literal.data<float>();
+  std::vector<float> actual_result(result_data.begin(), result_data.end());
+
+  EXPECT_EQ(actual_result, expected_result);
+}
+
+TEST_P(ScatterDeterminismExpanderTest,
+       ScatterAddWithNonScalarUpdateAndImplicitDimensionsOutOfBoundTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY scatter_add_computation {
+      operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
+      indices = $0[3] constant({0, 4, -1})
+      updates = f32[3, 2] constant({{1, 2}, {10, 20}, {100, 200}})
+      ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
+        update_window_dims={1}, inserted_window_dims={1},
+        scatter_dims_to_operand_dims={1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto cloned_module = module->Clone();
+  ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                       Execute(std::move(cloned_module), {}));
+  auto expected_result = expected_literal.data<float>();
+
+  ASSERT_OK_AND_ASSIGN(bool result,
+                       RunScatterDeterminismExpander(module.get()));
+  EXPECT_TRUE(result);
+
+  ASSERT_OK_AND_ASSIGN(Literal result_literal, Execute(std::move(module), {}));
+
+  auto result_data = result_literal.data<float>();
+  std::vector<float> actual_result(result_data.begin(), result_data.end());
+
+  EXPECT_EQ(actual_result, expected_result);
+}
+
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest1) {
   auto index_type = GetParam();
   const char* const kModuleTemplate = R"(

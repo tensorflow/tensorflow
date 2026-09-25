@@ -27,7 +27,6 @@ import numpy as onp
 import six
 
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
@@ -2608,9 +2607,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def testReductionOfOutOfBoundsAxis(self):  # Issue 888
     x = tnp.ones((3, 4))
-    self.assertRaises(
-        errors_impl.InvalidArgumentError, lambda: tnp.sum(x, axis=2)
-    )
+    self.assertRaises(ValueError, lambda: tnp.sum(x, axis=2))
 
   @jtu.disable
   def testIssue956(self):
