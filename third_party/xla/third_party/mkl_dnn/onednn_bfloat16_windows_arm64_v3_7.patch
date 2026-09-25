@@ -1,0 +1,35 @@
+From f2b1e1094b0f8c9024b084a90a5806fd9759a246 Mon Sep 17 00:00:00 2001
+From: Mugundan <mugunthan.selvanayagam@multicorewareinc.com>
+Date: Tue, 18 Aug 2026 11:17:32 +0530
+Subject: [PATCH] Fix BFloat16 redefined issue for windows aarch64
+
+---
+ src/common/gemm.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/gemm.cpp b/src/common/gemm.cpp
+index 52da4a1be8..9378b0ddf2 100644
+--- a/src/common/gemm.cpp
++++ b/src/common/gemm.cpp
+@@ -143,7 +143,8 @@ dnnl_status_t dnnl_gemm_s8s8s32(char transa, char transb, char offsetc, dim_t M,
+ 
+ extern "C" dnnl_status_t DNNL_API dnnl_gemm_bf16bf16f32(char transa,
+         char transb, dim_t M, dim_t N, dim_t K, float alpha,
+-        const bfloat16_t *A, dim_t lda, const bfloat16_t *B, dim_t ldb,
++        const dnnl::impl::bfloat16_t *A, dim_t lda,
++        const dnnl::impl::bfloat16_t *B, dim_t ldb,
+         float beta, float *C, dim_t ldc) {
+ #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+     status_t status = dnnl_success;
+@@ -207,7 +208,8 @@ dnnl_status_t dnnl_threadpool_interop_gemm_s8s8s32(char transa, char transb,
+ 
+ extern "C" dnnl_status_t DNNL_API dnnl_threadpool_interop_gemm_bf16bf16f32(
+         char transa, char transb, dim_t M, dim_t N, dim_t K, float alpha,
+-        const bfloat16_t *A, dim_t lda, const bfloat16_t *B, dim_t ldb,
++        const dnnl::impl::bfloat16_t *A, dim_t lda,
++        const dnnl::impl::bfloat16_t *B, dim_t ldb,
+         float beta, float *C, dim_t ldc, void *th) {
+     threadpool_utils::activate_threadpool(
+             (dnnl::threadpool_interop::threadpool_iface *)th);
+-- 
+2.52.0.windows.1
