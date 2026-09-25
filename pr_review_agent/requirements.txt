@@ -1,5 +1,5 @@
-google-adk
-google-genai
-requests
-python-dotenv
-pylint>=3.0.0,<4.0.0
+google-adk==2.9.1
+google-genai==2.24.0
+requests==2.34.2
+python-dotenv==1.2.3
+pylint==3.3.9

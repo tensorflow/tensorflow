@@ -1,5 +1,18 @@
-# Copyright 2026
-# TensorFlow PR Review Agent - Commit-level Idempotency Tests
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # pylint: disable=bad-indentation,line-too-long
 
 from __future__ import annotations
@@ -414,6 +427,40 @@ class TestPylintIntegration(unittest.TestCase):
         for call_args in mock_run_pr_review.call_args_list:
             self.assertEqual(call_args.kwargs.get("pylint_output"), pylint_diag)
         mock_react.assert_called_with(12345, add_content="rocket")
+
+    @patch("agent.utils._fetch_file_content_at_commit")
+    @patch("agent.utils.subprocess.run")
+    def test_7_pylint_path_and_option_injection_hardening(
+        self, mock_subproc_run, mock_fetch_content
+    ):
+        """7. option-like paths are rejected and '--' precedes materialized paths in Pylint cmd"""
+        self.assertFalse(utils._is_safe_relative_path("--init-hook=evil.py"))
+        self.assertFalse(utils._is_safe_relative_path("tensorflow/--init-hook=evil.py"))
+        self.assertFalse(utils._is_safe_relative_path("-rcfile=evil.py"))
+        self.assertTrue(utils._is_safe_relative_path("tensorflow/foo.py"))
+
+        files = [
+            {"path": "--init-hook=evil.py", "changeType": "ADDED"},
+            {"path": "tensorflow/--rcfile=evil.py", "changeType": "ADDED"},
+            {"path": "tensorflow/foo.py", "changeType": "MODIFIED"},
+        ]
+        mock_fetch_content.return_value = "x = 1\n"
+        mock_proc_res = MagicMock()
+        mock_proc_res.returncode = 0
+        mock_proc_res.stdout = ""
+        mock_subproc_run.return_value = mock_proc_res
+
+        utils.run_pylint_on_changed_files(
+            files, raw_diff="", head_sha="a1b2c3d4"
+        )
+
+        self.assertEqual(mock_subproc_run.call_count, 1)
+        cmd = mock_subproc_run.call_args[0][0]
+        self.assertEqual(cmd[:4], [sys.executable, "-P", "-m", "pylint"])
+        self.assertIn("--", cmd)
+        sep_idx = cmd.index("--")
+        self.assertEqual(cmd[sep_idx + 1 :], ["tensorflow/foo.py"])
+        self.assertNotIn("--init-hook=evil.py", cmd)
 
 
 class TestModelFallback(unittest.TestCase):
