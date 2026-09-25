@@ -763,6 +763,7 @@ cc_library(
     deps = [
         "//xla/codegen:ir_emission_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:call_graph",

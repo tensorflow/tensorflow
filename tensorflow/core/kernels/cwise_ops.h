@@ -653,7 +653,11 @@ struct xlogy_op {
     scalar_log_op<Scalar> log_op;
     Packet log_y = log_op.packetOp(y);
     Packet x_log_y = pmul(x, log_y);
-    return pselect(mask, x, x_log_y);
+    // Select zeros rather than x. An x can compare equal to zero without being
+    // +0: -0 does, and so does a subnormal when denormals are flushed, as they
+    // are in TensorFlow's kernels. Returning x would leak either one, while
+    // the scalar path above returns +0 for both.
+    return pselect(mask, zeros, x_log_y);
   }
 };
 
@@ -683,7 +687,8 @@ struct xlog1py_op {
     scalar_log1p_op<Scalar> log1p_op;
     Packet log1p_y = log1p_op.packetOp(y);
     Packet x_log1p_y = pmul(x, log1p_y);
-    return pselect(mask, x, x_log1p_y);
+    // Select zeros rather than x; see xlogy_op.
+    return pselect(mask, zeros, x_log1p_y);
   }
 };
 
@@ -715,7 +720,8 @@ struct xdivy_op {
     Packet zeros = pzero(x);
     Packet mask = pcmp_eq(x, zeros);
     Packet x_div_y = pdiv(x, y);
-    return pselect(mask, x, x_div_y);
+    // Select zeros rather than x; see xlogy_op.
+    return pselect(mask, zeros, x_div_y);
   }
 };
 
