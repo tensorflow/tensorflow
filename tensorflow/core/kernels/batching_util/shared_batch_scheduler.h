@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -375,7 +376,7 @@ class SharedBatchScheduler
 
   const Options options_;
 
-  mutex mu_;
+  absl::Mutex mu_;
 
   // A list of queues. (We use std::list instead of std::vector to ensure that
   // iterators are not invalidated by adding/removing elements. It also offers
@@ -393,11 +394,11 @@ class SharedBatchScheduler
 
   // Used by idle batch threads to wait for work to enter the system. Notified
   // whenever a batch becomes schedulable.
-  condition_variable schedulable_batch_cv_;
+  absl::CondVar schedulable_batch_cv_;
 
   // Used by idle warmup threads to wait for work to enter the system. Notified
   // whenever a warmup batch becomes schedulable.
-  condition_variable warmup_scheduler_cv_;
+  absl::CondVar warmup_scheduler_cv_;
 
   // Threads that process batches obtained from the queues.
   std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_;
@@ -984,24 +985,6 @@ class Queue {
   absl::Status ValidateLowPriorityTaskQueueCapacity(const TaskType& task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // The task size of the last batch in the queue.
-  size_t tail_batch_task_size() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Returns the number of enqueued batches.
-  int64_t num_enqueued_batches() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Gets the appropriate batches.
-  std::deque<std::unique_ptr<Batch<TaskType>>>& GetBatches()
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Gets the appropriate batches (const version).
-  const std::deque<std::unique_ptr<Batch<TaskType>>>& GetBatches() const
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Gets the low priority task queue.
-  TaskQueue<TaskType>& GetLowPriorityTaskQueue()
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   // Retrieves the tasks up to the specified size from the low priority task
   // queue. It will immediately return an empty vector when
   // enable_priority_queue is false.
@@ -1034,7 +1017,7 @@ class Queue {
   // become schedulable.
   SchedulableBatchCallback schedulable_warmup_batch_callback_;
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Whether this queue can accept new tasks. This variable is monotonic: it
   // starts as false, and then at some point gets set to true and remains true
@@ -1149,7 +1132,7 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
   // queues.
   for (;;) {
     {
-      mutex_lock l(mu_);
+      absl::MutexLock l(mu_);
       if (queues_.empty()) {
         break;
       }
@@ -1162,7 +1145,7 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
   batch_threads_.clear();
   // Warmup threads sleep for a long time, so we need to notify them to
   // wake up and exit.
-  warmup_scheduler_cv_.notify_all();
+  warmup_scheduler_cv_.SignalAll();
   warmup_threads_.clear();
 }
 
@@ -1265,12 +1248,12 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   }
 
   auto schedulable_batch_callback = [this] {
-    mutex_lock l(mu_);
-    schedulable_batch_cv_.notify_one();
+    absl::MutexLock l(mu_);
+    schedulable_batch_cv_.Signal();
   };
   auto schedulable_warmup_batch_callback = [this] {
-    mutex_lock l(mu_);
-    warmup_scheduler_cv_.notify_one();
+    absl::MutexLock l(mu_);
+    warmup_scheduler_cv_.Signal();
   };
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
@@ -1281,7 +1264,7 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
       new internal::QueueHandle<TaskType>(this->shared_from_this(),
                                           internal_queue.get()));
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     queues_.push_back(std::move(internal_queue));
     if (next_queue_to_schedule_ == queues_.end()) {
       next_queue_to_schedule_ = queues_.begin();
@@ -1302,9 +1285,9 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
       options.batch_threads_startup_delay_micros;
   periodic_fn_options.env = options.env;
   for (int i = 0; i < options.num_batch_threads; ++i) {
-    std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
+    auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->ThreadLogic(); },
-        0 /* function invocation interval time */, periodic_fn_options));
+        0 /* function invocation interval time */, periodic_fn_options);
     batch_threads_.push_back(std::move(thread));
   }
   // Kick off the warmup threads.
@@ -1394,7 +1377,7 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
   // The queue with which 'batch_to_process' is associated.
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     while (true) {
       GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
       if (BatchExists(batch_to_process)) break;
@@ -1402,7 +1385,8 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =
           1;  // The smallest accepted granule of time.
-      WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
+      schedulable_batch_cv_.WaitWithTimeout(&mu_,
+                                            absl::Milliseconds(kTimeoutMillis));
       if (queues_.empty()) return;
     }
   }
@@ -1418,7 +1402,7 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
   BatchTaskUniquePtr batch_to_process = nullptr;
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     while (true) {
       if (queues_.empty()) return;
       // Select the first queue with a warmup batch. Fairness between queues is
@@ -1435,7 +1419,8 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
       // No warmup batch found. Wait until a warmup batch is schedulable, or
       // one second has elapsed, before checking again.
       const int64_t kTimeoutMillis = 1000;
-      WaitForMilliseconds(&l, &warmup_scheduler_cv_, kTimeoutMillis);
+      warmup_scheduler_cv_.WaitWithTimeout(&mu_,
+                                           absl::Milliseconds(kTimeoutMillis));
     }
   }
 
@@ -1475,14 +1460,14 @@ Queue<TaskType>::Queue(
   // the same traceme_context_id_counter_.
   traceme_context_id_counter_ = (absl::GetCurrentTimeNanos() & 0xFFFFFFFF)
                                 << 32;
-  GetBatches().emplace_back(new Batch<TaskType>);
+  high_priority_batches_.emplace_back(std::make_unique<Batch<TaskType>>());
 }
 
 template <typename TaskType>
 Queue<TaskType>::~Queue() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   DCHECK(IsEmptyInternal());
-  GetBatches().back()->Close();
+  high_priority_batches_.back()->Close();
 }
 
 template <typename TaskType>
@@ -1524,7 +1509,8 @@ absl::Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
   // use up all queue capacity.
   TF_RETURN_IF_ERROR(ValidateBatchTaskQueueCapacity((*task).get()));
 
-  std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+  std::deque<std::unique_ptr<Batch<TaskType>>>& batches =
+      high_priority_batches_;
 
   const int64_t open_batch_remaining_slot =
       max_execution_batch_size() - batches.back()->size();
@@ -1564,7 +1550,8 @@ absl::Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
 
 template <typename TaskType>
 void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
-  std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+  std::deque<std::unique_ptr<Batch<TaskType>>>& batches =
+      high_priority_batches_;
 
   const bool should_pad = options_.enable_priority_queue &&
                           options_.mixed_priority_batching_policy ==
@@ -1649,7 +1636,7 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   bool notify_of_schedulable_batch = false;
   bool notify_of_schedulable_warmup_batch = false;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
 
     DCHECK(!closed_);
 
@@ -1685,7 +1672,7 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
       // Check if the batch queue has a schedulable batch and mark it
       // schedulable if it not already marked.
       if (!schedulable_batch_) {
-        if (GetBatches().size() > 1 || IsOpenBatchSchedulable()) {
+        if (high_priority_batches_.size() > 1 || IsOpenBatchSchedulable()) {
           schedulable_batch_ = true;
           notify_of_schedulable_batch = true;
         }
@@ -1706,11 +1693,11 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 template <typename TaskType>
 size_t Queue<TaskType>::NumEnqueuedTasks() const {
   size_t num_enqueued_tasks = 0;
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   if (options_.enable_priority_aware_batch_scheduler) {
     return tasks_priority_queue_.num_tasks() + warmup_tasks_.num_tasks();
   }
-  for (const auto& batch : GetBatches()) {
+  for (const auto& batch : high_priority_batches_) {
     num_enqueued_tasks += batch->num_tasks();
   }
   return num_enqueued_tasks + low_priority_tasks_.num_tasks() +
@@ -1724,7 +1711,7 @@ std::optional<PriorityQueueState> Queue<TaskType>::GetPriorityQueueState()
     return std::nullopt;
   }
   PriorityQueueState state;
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   // Every band is populated, including empty ones, so that consumers exporting
   // one gauge cell per criticality reset idle bands to zero instead of leaving
   // them at their last non-zero value.
@@ -1739,7 +1726,7 @@ std::optional<PriorityQueueState> Queue<TaskType>::GetPriorityQueueState()
 
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacity() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   return SchedulingCapacityInternal();
 }
 
@@ -1752,10 +1739,10 @@ size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   }
   const int64_t num_new_batches_schedulable =
       static_cast<int64_t>(options_.max_enqueued_batches) -
-      this->num_enqueued_batches();
+      high_priority_batches_.size();
   const int64_t execution_batch_size_limit = max_execution_batch_size();
   const int64_t open_batch_capacity =
-      execution_batch_size_limit - this->tail_batch_task_size();
+      execution_batch_size_limit - high_priority_batches_.back()->size();
   // Note the returned value is guaranteed to be not negative, since
   // enqueue operation could only happen if queue has enough capacity.
   return (num_new_batches_schedulable * execution_batch_size_limit) +
@@ -1780,9 +1767,9 @@ absl::Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(
           "full; task size is ",
           task->size(), " but scheduling capacity is only ",
           SchedulingCapacityInternal(),
-          " (num_enqueued_batches=", num_enqueued_batches(),
+          " (num_enqueued_batches=", high_priority_batches_.size(),
           ", max_enqueued_batches=", options_.max_enqueued_batches,
-          ", open_batch_size=", tail_batch_task_size(),
+          ", open_batch_size=", high_priority_batches_.back()->size(),
           ", max_execution_batch_size=", max_execution_batch_size(), ")");
     }
     return absl::OkStatus();
@@ -1796,13 +1783,14 @@ absl::Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(
   // allows such models to continue to work.
   //
   // We need to revisit/remove this check after we fix model configs.
-  const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-  if (batches.back()->size() + task->size() > options_.input_batch_size_limit) {
-    if (batches.size() >= options_.max_enqueued_batches) {
+  if (high_priority_batches_.back()->size() + task->size() >
+      options_.input_batch_size_limit) {
+    if (high_priority_batches_.size() >= options_.max_enqueued_batches) {
       return errors::Unavailable(
           "The batch scheduling queue to which this task was submitted is "
           "full; currently ",
-          batches.size(), " batches enqueued and max_enqueued_batches is ",
+          high_priority_batches_.size(),
+          " batches enqueued and max_enqueued_batches is ",
           options_.max_enqueued_batches);
     }
   }
@@ -1847,12 +1835,13 @@ Queue<TaskType>::ScheduleBatch() {
   std::unique_ptr<Batch<TaskType>> batch_to_schedule;
 
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
 
     if (options_.enable_priority_aware_batch_scheduler) {
       batch_to_schedule = tasks_priority_queue_.ScheduleBatch();
     } else {
-      std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+      std::deque<std::unique_ptr<Batch<TaskType>>>& batches =
+          high_priority_batches_;
       // Just in time merging of low priority tasks into the open batch.
       PadOpenBatchWithLowPriorityTasks();
 
@@ -1940,8 +1929,8 @@ std::vector<std::unique_ptr<TaskType>> Queue<TaskType>::GetLowPriorityTasks(
   if (!options_.enable_priority_queue || size == 0)
     return low_priority_tasks_to_pad;
   {
-    mutex_lock l(mu_);
-    low_priority_tasks_to_pad = GetLowPriorityTaskQueue().RemoveTask(size);
+    absl::MutexLock l(mu_);
+    low_priority_tasks_to_pad = low_priority_tasks_.RemoveTask(size);
   }
   return low_priority_tasks_to_pad;
 }
@@ -1993,7 +1982,7 @@ void Queue<TaskType>::ProcessBatch(
   }
 
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     --num_batches_being_processed_;
     if (empty_notification_ != nullptr && IsEmptyInternal()) {
       empty_notification_->Notify();
@@ -2003,7 +1992,7 @@ void Queue<TaskType>::ProcessBatch(
 
 template <typename TaskType>
 bool Queue<TaskType>::IsEmpty() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   return IsEmptyInternal();
 }
 
@@ -2011,7 +2000,7 @@ template <typename TaskType>
 void Queue<TaskType>::CloseAndWaitUntilEmpty() {
   absl::Notification empty;
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     closed_ = true;
     if (IsEmptyInternal()) {
       empty.Notify();
@@ -2029,17 +2018,17 @@ bool Queue<TaskType>::IsEmptyInternal() const {
     return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty() &&
            warmup_tasks_.empty();
   }
-  const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-  return num_batches_being_processed_ == 0 && batches.size() == 1 &&
-         batches.back()->empty() && low_priority_tasks_.empty() &&
-         warmup_tasks_.empty();
+  return num_batches_being_processed_ == 0 &&
+         high_priority_batches_.size() == 1 &&
+         high_priority_batches_.back()->empty() &&
+         low_priority_tasks_.empty() && warmup_tasks_.empty();
 }
 
 template <typename TaskType>
 void Queue<TaskType>::StartNewBatch() {
-  std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-  batches.back()->Close();
-  batches.emplace_back(new Batch<TaskType>(++traceme_context_id_counter_));
+  high_priority_batches_.back()->Close();
+  high_priority_batches_.emplace_back(
+      std::make_unique<Batch<TaskType>>(++traceme_context_id_counter_));
 }
 
 template <typename TaskType>
@@ -2047,7 +2036,7 @@ absl::Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
     std::unique_ptr<TaskType>* input_task,
     std::vector<std::unique_ptr<TaskType>>* output_tasks) {
   const int open_batch_remaining_slot =
-      max_execution_batch_size() - this->tail_batch_task_size();
+      max_execution_batch_size() - high_priority_batches_.back()->size();
   return options_.split_input_task_func(
       std::move(input_task), open_batch_remaining_slot,
       max_execution_batch_size(), std::move(output_tasks));
@@ -2062,7 +2051,7 @@ template <typename TaskType>
 std::optional<typename Queue<TaskType>::BatchPriorityKey>
 Queue<TaskType>::PeekBatchPriority() const {
   {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     return PeekBatchPriorityImpl();
   }
 }
@@ -2089,7 +2078,8 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
   const int kHighPriority = 1;
   const int kLowPriority = 2;
 
-  const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+  const std::deque<std::unique_ptr<Batch<TaskType>>>& batches =
+      high_priority_batches_;
 
   if (batches.size() >= 2) {
     Batch<TaskType>* batch = batches.front().get();
@@ -2162,7 +2152,8 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
     // and the earliest task didn't time out.
     return batch_to_schedule;
   }
-  if (!GetBatches().empty() && !GetBatches().front()->empty()) {
+  if (!high_priority_batches_.empty() &&
+      !high_priority_batches_.front()->empty()) {
     // Return early if there is a non-empty high priority batch in the queue.
     return batch_to_schedule;
   }
@@ -2179,7 +2170,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
 
 template <typename TaskType>
 std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleWarmupBatch() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(mu_);
   std::unique_ptr<Batch<TaskType>> batch_to_schedule;
   if (std::unique_ptr<TaskType> task = warmup_tasks_.RemoveTask()) {
     batch_to_schedule = std::make_unique<Batch<TaskType>>();
@@ -2188,32 +2179,6 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleWarmupBatch() {
     ++num_batches_being_processed_;
   }
   return batch_to_schedule;
-}
-
-template <typename TaskType>
-size_t Queue<TaskType>::tail_batch_task_size() const {
-  return GetBatches().back()->size();
-}
-
-template <typename TaskType>
-int64_t Queue<TaskType>::num_enqueued_batches() const {
-  return GetBatches().size();
-}
-
-template <typename TaskType>
-std::deque<std::unique_ptr<Batch<TaskType>>>& Queue<TaskType>::GetBatches() {
-  return high_priority_batches_;
-}
-
-template <typename TaskType>
-const std::deque<std::unique_ptr<Batch<TaskType>>>&
-Queue<TaskType>::GetBatches() const {
-  return high_priority_batches_;
-}
-
-template <typename TaskType>
-TaskQueue<TaskType>& Queue<TaskType>::GetLowPriorityTaskQueue() {
-  return low_priority_tasks_;
 }
 
 template <typename TaskType>

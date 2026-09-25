@@ -766,6 +766,12 @@ lit_test_suite_for_gpus(
             "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
+            "pdl.hlo",
+        ],
+        "mi300": [
+            "memory_bandwidth_fusion.hlo",
+            "dot_bf16.hlo",
+            "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
@@ -779,7 +785,6 @@ lit_test_suite_for_gpus(
         "mi350": [
             "dot_bf16.hlo",
             "single_instruction.hlo",
-            "vectorization.hlo",
             "pdl.hlo",
         ],
         "mi450": [
@@ -1423,8 +1428,8 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     deps = [
