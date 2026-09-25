@@ -72,6 +72,10 @@ struct CuptiTracerOptions {
   // memory overhead when hierarchical scope trees are not needed (e.g., during
   // aggregated tracing).
   bool enable_scope_range_tracking = true;
+  // Buffer size in bytes for CUPTI activity buffers. Default is 32K.
+  size_t activity_buffer_size = 32 * 1024;
+  // Number of activity buffers to preallocate. Default is 8.
+  size_t activity_buffer_preallocation_count = 8;
 };
 
 class CuptiTracer;
@@ -194,6 +198,7 @@ class CuptiTracer {
   std::atomic<size_t> num_activity_events_in_dropped_buffer_ = 0;
   std::atomic<size_t> num_activity_events_in_cached_buffer_ = 0;
   std::atomic<size_t> num_callback_events_ = 0;
+  std::atomic<bool> zeroed_out_buffer_attribute_set_{false};
 
   // Clear activity_buffers, reset activity event counters.
   void PrepareActivityStart();

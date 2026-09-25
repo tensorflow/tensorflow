@@ -402,12 +402,13 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
   EnableProfiling(options);
 
   // 3. Simulate callback
-  CUpti_CallbackData cbdata;
+  CUpti_CallbackData cbdata = {};
   cbdata.callbackSite = CUPTI_API_EXIT;
   cbdata.context = reinterpret_cast<CUcontext>(uintptr_t{1});
   uint64_t correlationData = 100;
   cbdata.correlationData = &correlationData;
   cbdata.correlationId = 1;
+  cbdata.symbolName = "test_kernel";
 
   EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
       .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
@@ -450,6 +451,68 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
       tsl::profiler::FindMutablePlaneWithName(
           &space, tsl::profiler::kScopeRangeIdTreePlaneName);
   EXPECT_EQ(tree_plane, nullptr);
+}
+
+TEST_F(CuptiTracerTest, ActivityBufferOptionsAndZeroedOutNotification) {
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  EXPECT_CALL(*mock_, ActivitySetZeroedOutBufferV2())
+      .WillOnce(Return(CUPTI_SUCCESS));
+
+  {
+    ::testing::InSequence in_sequence;
+    EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+        .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+    ExpectV2KernelSession(subscriber, /*preflight_timestamp=*/0,
+                          /*end_timestamp=*/100, /*final_timestamp=*/200);
+    EXPECT_CALL(*mock_, Unsubscribe(subscriber))
+        .WillOnce(Return(CUPTI_SUCCESS));
+  }
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.activity_buffer_size = 64 * 1024;
+  options.activity_buffer_preallocation_count = 4;
+  EnableProfiling(options);
+
+  uint8_t* buffer1 = nullptr;
+  size_t size1 = 0;
+  cupti_tracer_->RequestActivityBuffer(&buffer1, &size1);
+  ASSERT_NE(buffer1, nullptr);
+  EXPECT_EQ(size1, 64 * 1024);
+  // Verify buffer is zeroed.
+  for (size_t i = 0; i < size1; ++i) {
+    ASSERT_EQ(buffer1[i], 0);
+  }
+
+  // Second request should NOT invoke ActivitySetZeroedOutBufferV2 again.
+  uint8_t* buffer2 = nullptr;
+  size_t size2 = 0;
+  cupti_tracer_->RequestActivityBuffer(&buffer2, &size2);
+  ASSERT_NE(buffer2, nullptr);
+  EXPECT_EQ(size2, 64 * 1024);
+
+  // Return buffer1 to be reclaimed with size 0.
+  std::memset(buffer1, 0xAB, size1);
+  EXPECT_OK(cupti_tracer_->ProcessActivityBuffer(
+      reinterpret_cast<CUcontext>(uintptr_t{1}), 0, buffer1, 0));
+
+  // Request buffer again - should get reclaimed buffer and it should be zeroed.
+  uint8_t* buffer3 = nullptr;
+  size_t size3 = 0;
+  cupti_tracer_->RequestActivityBuffer(&buffer3, &size3);
+  ASSERT_NE(buffer3, nullptr);
+  EXPECT_EQ(buffer3, buffer1);
+  for (size_t i = 0; i < size3; ++i) {
+    ASSERT_EQ(buffer3[i], 0);
+  }
+
+  // Return outstanding buffers so they are reclaimed into the pool.
+  EXPECT_OK(cupti_tracer_->ProcessActivityBuffer(
+      reinterpret_cast<CUcontext>(uintptr_t{1}), 0, buffer2, 0));
+  EXPECT_OK(cupti_tracer_->ProcessActivityBuffer(
+      reinterpret_cast<CUcontext>(uintptr_t{1}), 0, buffer3, 0));
+
+  DisableProfiling();
 }
 
 }  // namespace
