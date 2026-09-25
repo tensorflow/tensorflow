@@ -6,6 +6,8 @@ load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
+# temp
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
