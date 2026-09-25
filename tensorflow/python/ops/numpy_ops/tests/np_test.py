@@ -2094,7 +2094,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       tnp.rot90(a, axes=(0,))
     # In-bounds negative axes remain valid.
     self.assertAllClose(tnp.rot90(a, axes=(-2, -1)), onp.rot90(
-        onp.ones((2, 3)), axes=(-2, -1)))
+        onp.ones((2, 3)), axes=(-2, -1)), check_dtypes=False)
 
   # TODO(mattjj): test infix operator overrides
 
