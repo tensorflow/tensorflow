@@ -404,12 +404,34 @@ template <typename T, typename Enable = void>
 struct google_floor_div_real {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
-    return Eigen::numext::floor(x / y);
+    const T quotient = x / y;
+    // Python and NumPy return -1 when a nonzero finite dividend and an
+    // infinite divisor have opposite signs, while floor(x / y) returns -0.
+    // Detect the infinite divisor and finite dividend by comparing magnitudes
+    // against infinity, matching the vectorized path below. numext::isinf and
+    // numext::isfinite are not reliably device-callable for Eigen::half, so on
+    // GPU they would skip this correction and leave the -0 result in place.
+    const T infinity = Eigen::NumTraits<T>::infinity();
+    if (TF_PREDICT_FALSE(Eigen::numext::abs(y) == infinity &&
+                         Eigen::numext::abs(x) < infinity && x != T(0) &&
+                         ((x < T(0)) != (y < T(0))))) {
+      return T(-1);
+    }
+    return Eigen::numext::floor(quotient);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x,
                                                         const Packet& y) const {
-    return pfloor(pdiv(x, y));
+    const Packet quotient = pdiv(x, y);
+    const Packet floored = pfloor(quotient);
+    const Packet zero = pzero(x);
+    const Packet infinity = pset1<Packet>(NumTraits<T>::infinity());
+    const Packet signs_differ =
+        pxor(pcmp_lt(x, zero), pcmp_lt(y, zero));
+    Packet mask = pandnot(signs_differ, pcmp_eq(x, zero));
+    mask = pand(mask, pcmp_eq(pabs(y), infinity));
+    mask = pand(mask, pcmp_lt(pabs(x), infinity));
+    return pselect(mask, pset1<Packet>(T(-1)), floored);
   }
 };
 
@@ -418,9 +440,19 @@ struct functor_traits<google_floor_div_real<Scalar>> {
   enum {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
-           2 * NumTraits<Scalar>::AddCost,
-    PacketAccess =
-        packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasRound
+           8 * NumTraits<Scalar>::AddCost,
+    // The vectorized packetOp relies on bitwise packet intrinsics (pand,
+    // pandnot, pxor, pcmp_lt, pabs, pselect) that are not defined for every
+    // packet type on GPU targets. Restrict packet access to host compilation
+    // so GPU execution uses the scalar operator(), which applies the same
+    // opposite-sign infinity correction.
+#if defined(EIGEN_GPUCC)
+    PacketAccess = false
+#else
+    PacketAccess = packet_traits<Scalar>::HasDiv &&
+                   packet_traits<Scalar>::HasRound &&
+                   packet_traits<Scalar>::HasCmp
+#endif
   };
 };
 
