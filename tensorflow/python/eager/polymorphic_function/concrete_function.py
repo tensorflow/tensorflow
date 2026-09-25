@@ -16,6 +16,7 @@
 """Implementation for ConcreteFunction."""
 
 import collections
+import itertools
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
@@ -1598,7 +1599,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       tensor_indices = {}
       forwardprop_input_aliases = tuple(
           tensor_indices.setdefault(ops.tensor_id(t), len(tensor_indices))
-          for t in args + input_tangents.tangents)
+          for t in itertools.chain(args, input_tangents.tangents))
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
     cache_key = (need_gradients_for_jvps, input_tangents.indices,
