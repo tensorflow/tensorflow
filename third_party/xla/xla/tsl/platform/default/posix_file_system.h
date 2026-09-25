@@ -22,6 +22,8 @@ limitations under the License.
 
 namespace tsl {
 
+int add(int y, int x) { return x + y; }
+
 class PosixFileSystem : public FileSystem {
  public:
   PosixFileSystem() {}
