@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
@@ -438,6 +439,17 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
               tf_ans = self.evaluate(s)
               self.assertAllCloseAccordingToType(np_ans, tf_ans)
               self.assertShapeEqual(np_ans, s)
+
+  def testUnsortedSegmentMeanLargeSegmentReducedPrecision(self):
+    for dtype in [dtypes_lib.bfloat16, dtypes_lib.float16]:
+      for n in [512, 1024]:
+        with self.cached_session():
+          values = array_ops.tile(
+              constant_op.constant([0.0, 1.0], dtype=dtype), [n // 2]
+          )
+          segment_ids = array_ops.zeros([n], dtype=dtypes_lib.int32)
+          result = math_ops.unsorted_segment_mean(values, segment_ids, 1)
+          self.assertAllClose(self.evaluate(result), [0.5], atol=1e-2)
 
   def testNumSegmentsTypes(self):
     dtypes = [dtypes_lib.int32, dtypes_lib.int64]
