@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -188,6 +189,43 @@ TEST_F(GraphMemoryTest, GpuSwapping) {
     new_gpu_expected.insert("AddN_4:0");
     EXPECT_EQ(new_gpu_expected, new_gpu_tensors);
   }
+}
+
+TEST_F(GraphMemoryTest, CpuIgnoresSwapToHost) {
+  // _swap_to_host only applies to GPU devices: setting it on a CPU node must
+  // not change the CPU memory estimate.
+  TrivialTestGraphInputYielder fake_input(4, 2, 1024 * 1024, false, {"/CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+  item.feed.clear();
+
+  GraphMemory memory(item);
+  TF_ASSERT_OK(memory.InferStatically(devices_));
+  const GraphMemory::MemoryUsage& cpu_mem = memory.GetPeakMemoryUsage("/CPU:0");
+  std::set<std::string> cpu_tensors;
+  for (const auto& t : cpu_mem.live_tensors) {
+    cpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
+  }
+
+  bool node_found = false;
+  for (auto& node : *item.graph.mutable_node()) {
+    if (node.name() == "AddN_1") {
+      (*node.mutable_attr())["_swap_to_host"].mutable_list()->add_i(0);
+      node_found = true;
+    }
+  }
+  ASSERT_TRUE(node_found);
+  GraphMemory swapped_memory(item);
+  TF_ASSERT_OK(swapped_memory.InferStatically(devices_));
+  const GraphMemory::MemoryUsage& swapped_cpu_mem =
+      swapped_memory.GetPeakMemoryUsage("/CPU:0");
+  std::set<std::string> swapped_cpu_tensors;
+  for (const auto& t : swapped_cpu_mem.live_tensors) {
+    swapped_cpu_tensors.insert(absl::StrCat(t.node, ":", t.output_id));
+  }
+
+  EXPECT_EQ(cpu_mem.used_memory, swapped_cpu_mem.used_memory);
+  EXPECT_EQ(cpu_tensors, swapped_cpu_tensors);
 }
 
 TEST_F(GraphMemoryTest, CtrlDependencies) {
