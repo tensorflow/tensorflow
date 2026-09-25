@@ -1496,7 +1496,7 @@ TEST_F(BinaryOpsTest, SubUint32SpecialCases) {
 
 template <typename T>
 T baseline_xlogy(T x, T y) {
-  return x == T(0) ? x : x * std::log(y);
+  return x == T(0) ? T(0) : x * std::log(y);
 }
 
 GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Half, Eigen::half, float,
@@ -1519,12 +1519,13 @@ GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex128, std::complex<double>,
 
 template <typename T>
 T baseline_xlog1py(T x, T y) {
-  return x == T(0) ? x : x * std::log1p(y);
+  return x == T(0) ? T(0) : x * std::log1p(y);
 }
 
 template <typename T>
 std::complex<T> baseline_xlog1py(std::complex<T> x, std::complex<T> y) {
-  return x == std::complex<T>(0) ? x : x * std::log(std::complex<T>(1) + y);
+  return x == std::complex<T>(0) ? std::complex<T>(0)
+                                 : x * std::log(std::complex<T>(1) + y);
 }
 
 GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Half, Eigen::half, float,
@@ -1569,7 +1570,7 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 
 template <typename T>
 T baseline_xdivy(T x, T y) {
-  return x == T(0) ? x : x / y;
+  return x == T(0) ? T(0) : x / y;
 }
 
 GENERATE_DEFAULT_TESTS_2(Xdivy, /*test_name=*/Half, Eigen::half, float,
