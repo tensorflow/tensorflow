@@ -1,0 +1,46 @@
+name: TensorFlow PR Review Agent
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    if: github.event.label.name == 'Needs Review'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pr_review_agent
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Fetch PR Head Commit
+        run: git fetch origin ${{ github.event.pull_request.head.sha }} --depth=1
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run TensorFlow PR Review Agent
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pr_review_agent
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.API_NEEDS_REVIEW }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          INTERACTIVE: 0
+        run: python -m agent.main
