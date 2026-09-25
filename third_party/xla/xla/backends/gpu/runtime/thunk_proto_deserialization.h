@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -40,6 +41,8 @@ namespace xla::gpu {
 // - `symbol_resolver` is used to deserialize custom kernels where the kernel is
 //   not inlined in the proto, but rather loaded at runtime via symbol
 //   resolution.
+// - `kernel_spec_table` is used to resolve custom kernels that reference a
+//   deduplicated kernel spec table by index.
 absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     const ThunkSequenceProto& thunk_sequence_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
@@ -48,7 +51,8 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver = std::nullopt,
     const std::optional<xla::cpu::TargetMachineOptions>&
-        cpu_target_machine_options = std::nullopt);
+        cpu_target_machine_options = std::nullopt,
+    const KernelSpecTable* absl_nullable kernel_spec_table = nullptr);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_

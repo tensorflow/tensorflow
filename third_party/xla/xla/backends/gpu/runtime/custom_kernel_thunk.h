@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -71,6 +73,7 @@ class CustomKernelThunk : public Command {
       se::CommandBuffer* command_buffer) override;
 
   const CustomKernel& custom_kernel() const { return custom_kernel_; }
+  CustomKernel& mutable_custom_kernel() { return custom_kernel_; }
 
   const std::vector<ShapedSlice>& arguments() const { return args_; }
 
@@ -94,7 +97,8 @@ class CustomKernelThunk : public Command {
       ThunkInfo thunk_info, const CustomKernelThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-          symbol_resolver = std::nullopt);
+          symbol_resolver = std::nullopt,
+      const KernelSpecTable* absl_nullable kernel_spec_table = nullptr);
 
  private:
   // Private constructor for deserialization.

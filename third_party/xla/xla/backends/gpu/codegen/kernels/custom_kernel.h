@@ -20,9 +20,12 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
+#include "xla/backends/gpu/runtime/internable_kernel_loader_spec.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -55,9 +58,27 @@ class CustomKernel {
                se::BlockDim block_dims, se::ThreadDim thread_dims,
                se::ClusterDim cluster_dims, size_t shared_memory_bytes);
 
+  CustomKernel(std::string name, InternableKernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               size_t shared_memory_bytes);
+
+  CustomKernel(std::string name, InternableKernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
+
   absl::string_view name() const;
 
   const se::KernelLoaderSpec& kernel_spec() const;
+
+  const InternableKernelLoaderSpec& internable_kernel_spec() const {
+    return kernel_spec_;
+  }
+  InternableKernelLoaderSpec& mutable_internable_kernel_spec() {
+    return kernel_spec_;
+  }
+  void set_kernel_spec_table(KernelSpecTable* absl_nullable table) {
+    kernel_spec_.set_kernel_spec_table(table);
+  }
 
   se::BlockDim block_dims() const;
 
@@ -74,11 +95,12 @@ class CustomKernel {
   static absl::StatusOr<CustomKernel> FromProto(
       const CustomKernelProto& proto,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-          symbol_resolver = std::nullopt);
+          symbol_resolver = std::nullopt,
+      const KernelSpecTable* absl_nullable kernel_spec_table = nullptr);
 
  private:
   std::string name_;
-  se::KernelLoaderSpec kernel_spec_;
+  InternableKernelLoaderSpec kernel_spec_;
   se::BlockDim block_dims_;
   se::ThreadDim thread_dims_;
   std::optional<se::ClusterDim> cluster_dims_;
