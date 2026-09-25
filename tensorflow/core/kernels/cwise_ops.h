@@ -30,7 +30,7 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 template <>
 struct scalar_arg_op<std::complex<float>> {
   typedef typename Eigen::NumTraits<std::complex<float>>::Real result_type;
@@ -46,32 +46,6 @@ struct scalar_arg_op<std::complex<double>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
       const std::complex<double>& a) const {
     return ::atan2(a.imag(), a.real());
-  }
-};
-
-template <>
-struct scalar_abs_op<std::complex<float>> {
-  typedef typename Eigen::NumTraits<std::complex<float>>::Real result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(
-      const std::complex<float>& a) const {
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-    return ::hypotf(a.real(), a.imag());
-#else
-    return std::hypot(a.real(), a.imag());
-#endif
-  }
-};
-
-template <>
-struct scalar_abs_op<std::complex<double>> {
-  typedef typename Eigen::NumTraits<std::complex<double>>::Real result_type;
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
-      const std::complex<double>& a) const {
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-    return ::hypot(a.real(), a.imag());
-#else
-    return std::hypot(a.real(), a.imag());
-#endif
   }
 };
 #endif
