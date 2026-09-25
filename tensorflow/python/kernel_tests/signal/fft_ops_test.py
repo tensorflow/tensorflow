@@ -509,6 +509,24 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           feed_dict=feed_dict,
       )
 
+  def testEmptyInputWithFftLengthIsZero(self):
+    # Regression test for GitHub issue 126898. The input is empty along the
+    # transform axes but fft_length pads them, so the output is not empty and
+    # is the transform of pure zero padding, which is all zeros. The kernel
+    # used to return that output uninitialized.
+    result = self._tf_fft(np.zeros((2, 2, 0), np.float32), 1, fft_length=[16])
+    self.assertEqual(result.dtype, np.complex64)
+    self.assertAllEqual(result, np.zeros((2, 2, 9), np.complex64))
+
+    result = self._tf_fft(
+        np.zeros((2, 0, 0), np.float32), 2, fft_length=[8, 16])
+    self.assertAllEqual(result, np.zeros((2, 8, 9), np.complex64))
+
+    result = self._tf_ifft(
+        np.zeros((2, 2, 0), np.complex64), 1, fft_length=[16])
+    self.assertEqual(result.dtype, np.float32)
+    self.assertAllEqual(result, np.zeros((2, 2, 16), np.float32))
+
   def testIRFFTZeroOrNegativeLengthRaisesError(self):
     x = array_ops.ones([1], dtype=dtypes.complex64)
     with self.assertRaisesRegex(ValueError, r"fft_length\[-1\] must be > 0"):
