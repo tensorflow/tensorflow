@@ -2,23 +2,13 @@ tensorflow {
   global:
     *;
 
-  # Statically linked third-party code whose symbols must not reach the
-  # process-wide resolution scope. LLVM in particular collides with other
-  # copies loaded into the same process, for example the LLVM that llvmlite
-  # and numba bring in, which resolve against TensorFlow's build and crash on
-  # the mismatched layout.
+  # The C API of the statically linked LLVM. Exported, it lets another LLVM
+  # loaded into the same process, such as the one llvmlite and numba bring in,
+  # resolve its C API calls against TensorFlow's copy instead of its own. No
+  # other TensorFlow library imports these symbols.
   #
-  # Matched by namespace rather than by substring so that TensorFlow's own
-  # symbols are not caught: a plain *mlir* would also hide names such as
-  # tensorflow::tf_xla_test_use_mlir. TensorFlow's symbols must stay exported,
-  # because custom op libraries loaded through tf.load_op_library resolve
-  # REGISTER_OP and REGISTER_KERNEL_BUILDER against this library.
-  #
-  # LLVM* covers the LLVM C API, whose symbols are not in the llvm namespace.
+  # The llvm:: and mlir:: C++ symbols have to stay exported: libtensorflow_cc
+  # links against them from this library.
   local:
-    extern "C++" {
-      llvm::*;
-      mlir::*;
-    };
     LLVM*;
 };
