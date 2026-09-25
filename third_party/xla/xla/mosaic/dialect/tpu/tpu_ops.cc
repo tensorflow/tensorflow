@@ -372,9 +372,18 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
       result_type.getShape().take_front(untiled_dims), ShapedType::kDynamic);
   const int64_t sublane_count = tc_target_shape[0];
   const int64_t lane_count = tc_target_shape[1];
+  const SmallVector<int64_t> subtile_unit = tiled_layout.getUnitSubtile();
   for (int64_t i = 0; i < tile_rank; ++i) {
-    int64_t tile_dim = first_tile.dimension(i);
     const int64_t dim = untiled_dims + i;
+    int64_t tile_dim = first_tile.dimension(i);
+    if (tile_dim == xla::Tile::kCombineDimension) {
+      if (ShapedType::isDynamic(source_ty.getShape()[dim])) {
+        return std::string(
+            "Offsets along tiled dimensions must be aligned to tiles.");
+      }
+      tile_dim = llvm::alignTo(std::max<int64_t>(source_ty.getShape()[dim], 1),
+                               subtile_unit[i]);
+    }
     if (!isGuaranteedDivisible(getBaseIdx()[dim], tile_dim)) {
       return absl::StrCat(
           "Offsets along tiled dimensions must be aligned to tiles. Failed "
@@ -383,7 +392,8 @@ std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
           ". If it is, use tpu.assume_multiple to suppress this error.");
     }
     // We only require alignment to compact 2nd minor for large 2nd minor.
-    if (tile_rank == 2 && i == 0) {
+    if (tile_rank == 2 && i == 0 && sublane_count > 0 &&
+        first_tile.dimension(0) != xla::Tile::kCombineDimension) {
       int64_t packing = tile_dim / sublane_count;
       if (tile_dim == sublane_count * packing &&
           first_tile.dimension(1) == lane_count && packing > 1 &&
@@ -546,7 +556,9 @@ mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
           if (tile_idx < 0 || tile_idx >= static_cast<int>(tile_dims.size())) {
             return emitOpError() << "Internal error: tile index out of bounds.";
           }
-          if (tile_dims[tile_idx] != 1) {
+          if (tile_dims[tile_idx] != 1 &&
+              !(tile_dims[tile_idx] == xla::Tile::kCombineDimension &&
+                source_shape[dim] == 1)) {
             return emitOpError()
                    << "All tiled squeezed dimensions must be of size 1.";
           }
@@ -559,6 +571,14 @@ mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
       for (int dim : squeezed) {
         int first_tiled = source_shape.size() - first_tile.dimensions().size();
         if (dim >= first_tiled) {
+          int tile_idx = dim - first_tiled;
+          if (tile_idx >= 0 &&
+              tile_idx < static_cast<int>(first_tile.dimensions().size()) &&
+              first_tile.dimensions()[tile_idx] ==
+                  xla::Tile::kCombineDimension &&
+              source_shape[dim] == 1) {
+            continue;
+          }
           return emitOpError() << "When multiple tiles are present, no tiled "
                                   "dimensions can be squeezed.";
         }
@@ -723,9 +743,33 @@ FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
       if (result_rank < input_first_tile_rank) {
         return nullptr;
       }
+      const int64_t packing =
+          input_tiles.size() > 1 ? input_tiles[1].dimensions()[0] : 1;
+      const bool has_multiple_minor_tiles =
+          input_first_tile_rank >= 2 &&
+          input_first_tile[0] == xla::Tile::kCombineDimension &&
+          (ShapedType::isDynamic(input_shape.back()) ||
+           input_shape.back() > input_first_tile.back() ||
+           ShapedType::isDynamic(result_shape.back()) ||
+           result_shape.back() > input_first_tile.back());
+      auto effective_tile_dim = [&](int64_t idx) {
+        if (input_first_tile[idx] == xla::Tile::kCombineDimension) {
+          if (has_multiple_minor_tiles) {
+            return ShapedType::isStatic(
+                       input_shape[input_rank - input_first_tile_rank + idx])
+                       ? std::max<int64_t>(
+                             input_shape[input_rank - input_first_tile_rank +
+                                         idx],
+                             packing)
+                       : xla::Tile::kCombineDimension;
+          }
+          return packing;
+        }
+        return input_first_tile[idx];
+      };
       int64_t i = 0;
       // Leading tile dimensions of size 1 can be effectively ignored.
-      while (i < input_first_tile_rank && input_first_tile[i] == 1) {
+      while (i < input_first_tile_rank && effective_tile_dim(i) == 1) {
         ++i;
       }
       if (i == input_first_tile_rank) {
@@ -739,11 +783,12 @@ FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
       //       dimension, it is preserved between input and result.
       auto input_dim_it = input_shape.end() - input_first_tile_rank + i;
       auto result_dim_it = result_shape.end() - input_first_tile_rank + i;
+      const int64_t first_tile_dim = effective_tile_dim(i);
       bool can_preserve_tiling = *input_dim_it == *result_dim_it ||
                                  (ShapedType::isStatic(*input_dim_it) &&
                                   ShapedType::isStatic(*result_dim_it) &&
-                                  *input_dim_it % input_first_tile[i] == 0 &&
-                                  *result_dim_it % input_first_tile[i] == 0);
+                                  *input_dim_it % first_tile_dim == 0 &&
+                                  *result_dim_it % first_tile_dim == 0);
       ++i;
       ++input_dim_it;
       ++result_dim_it;
@@ -786,10 +831,14 @@ FailureOr<MemRefLayoutAttrInterface> MemRefReshapeOp::inferResultLayout(
       // collapsed together iff the tile dimensions that separate them are of
       // size 1. We iteratively collapse tile and non-tile dimensions and then
       // try expanding them into the result shape.
+      const int64_t packing =
+          input_tiles.size() > 1 ? input_tiles[1].dimensions()[0] : 1;
       auto get_input_tile_size = [&](int64_t input_dim) {
-        return input_untiled_rank <= input_dim
-                   ? input_first_tile[input_dim - input_untiled_rank]
-                   : 1;
+        if (input_untiled_rank <= input_dim) {
+          int64_t t = input_first_tile[input_dim - input_untiled_rank];
+          return t == xla::Tile::kCombineDimension ? packing : t;
+        }
+        return int64_t{1};
       };
       // Dynamic and padded dimensions must be preserved exactly.
       // NOTE: This relies on the verifier enforcing that, if there is a dynamic
