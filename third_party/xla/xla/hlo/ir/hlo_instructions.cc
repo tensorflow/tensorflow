@@ -961,7 +961,6 @@ void HloCompareInstruction::ToProto(HloInstructionProto* proto) const {
       ComparisonDirectionToString(compare_.GetDirection()));
   proto->set_comparison_order(
       ComparisonOrderToShortString(compare_.GetOrder()));
-  proto->set_comparison_type(ComparisonTypeToString(compare_.GetType()));
 }
 
 void HloCompareInstruction::PrintExtraAttributesImpl(

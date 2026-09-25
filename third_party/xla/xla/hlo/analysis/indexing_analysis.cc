@@ -1912,14 +1912,14 @@ OperandIndexing ComposeOperandIndexing(const OperandIndexing& first,
   std::vector<RuntimeVarIndexing> combined_runtime;
   combined_runtime.reserve(first.runtime_variables().size() +
                            second.runtime_variables().size());
-  combined_runtime.insert(combined_runtime.end(),
-                          first.runtime_variables().begin(),
-                          first.runtime_variables().end());
   for (const auto& rt_var : second.runtime_variables()) {
     IndexingMap combined_map = ComposeIndexingMaps(first.map(), rt_var.map);
     combined_runtime.push_back(
         RuntimeVarIndexing{rt_var.instruction_ref, combined_map});
   }
+  combined_runtime.insert(combined_runtime.end(),
+                          first.runtime_variables().begin(),
+                          first.runtime_variables().end());
 
   std::optional<IndexingMap> replica_id_map;
   if (first.replica_id_map().has_value()) {
