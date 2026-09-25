@@ -25,6 +25,7 @@ from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils
+from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -71,6 +72,29 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
       {job_name: [_strip_prefix(host, _GRPC_PREFIX) for host in remote_hosts]})
 
   connect_to_cluster(cluster_spec)
+
+
+def _find_master_job_and_task(cluster_spec, master):
+  """Finds the (job_name, task_id) in cluster_spec whose address matches master.
+
+  Returns as soon as the first match is found, so a later job in iteration
+  order can never silently override an earlier, correct match -- unlike a
+  plain nested-loop `break`, which only exits the inner loop.
+
+  Args:
+    cluster_spec: A `ClusterSpec` describing the cluster.
+    master: The master address to match against.
+
+  Returns:
+    A tuple `(job_name, task_id)` for the first matching task, or
+    `(None, None)` if no task address matches.
+  """
+  for job_name in cluster_spec.jobs:
+    for task_id in cluster_spec.task_indices(job_name):
+      task_address = cluster_spec.task_address(job_name, task_id)
+      if master in task_address or task_address in master:
+        return job_name, task_id
+  return None, None
 
 
 @tf_export("config.experimental_connect_to_cluster")
@@ -242,15 +266,8 @@ def connect_to_cluster(cluster_spec_or_resolver,
       cluster_spec_or_resolver,
       cluster_resolver.ClusterResolver) and cluster_spec_or_resolver.master():
     master = cluster_spec_or_resolver.master()
-    master_job_name = None
-    master_task_id = None
-    for job_name in cluster_spec.jobs:
-      for task_id in cluster_spec.task_indices(job_name):
-        task_address = cluster_spec.task_address(job_name, task_id)
-        if master in task_address or task_address in master:
-          master_job_name = job_name
-          master_task_id = task_id
-          break
+    master_job_name, master_task_id = _find_master_job_and_task(
+        cluster_spec, master)
 
     if not master_job_name:
       raise ValueError(
@@ -277,3 +294,43 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
+
+
+class FindMasterJobAndTaskTest(test.TestCase):
+
+  def testFindsFirstMatchWhenAddressesOverlap(self):
+    """Regression test: a later job must not silently override an earlier,
+    correct match when more than one job's task address satisfies the
+    loose substring-containment check used to identify the master.
+    """
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": ["10.0.0.5:2222"],
+        "chief": ["10.0.0.5:2222"],
+    })
+    master_job_name, master_task_id = _find_master_job_and_task(
+        cluster_spec, "10.0.0.5:2222")
+    self.assertEqual(master_job_name, "worker")
+    self.assertEqual(master_task_id, 0)
+
+  def testFindsMatchWithNoOverlap(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": ["10.0.0.5:2222"],
+        "chief": ["10.0.0.6:2222"],
+    })
+    master_job_name, master_task_id = _find_master_job_and_task(
+        cluster_spec, "10.0.0.6:2222")
+    self.assertEqual(master_job_name, "chief")
+    self.assertEqual(master_task_id, 0)
+
+  def testReturnsNoneWhenNoMatch(self):
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": ["10.0.0.5:2222"],
+    })
+    master_job_name, master_task_id = _find_master_job_and_task(
+        cluster_spec, "10.0.0.9:2222")
+    self.assertIsNone(master_job_name)
+    self.assertIsNone(master_task_id)
+
+
+if __name__ == "__main__":
+  test.main()
