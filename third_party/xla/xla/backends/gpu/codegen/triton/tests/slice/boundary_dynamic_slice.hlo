@@ -35,7 +35,7 @@ ENTRY main {
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<2x97xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<2xf32>,
-// CHECK-SAME:      %[[ARG2:.*]]: index)
+// CHECK-SAME:      %[[ARG2:.*]]: index{{( \{xla.range = \[0 : index, 1 : index\]\})?}})
 // CHECK:           %[[CST:.*]] = arith.constant 0xFF800000 : f32
 // CHECK:           %[[C0:.*]] = arith.constant 0 : index
 // CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[ARG2]], %[[C0]]] [1, 128] [1, 1] : memref<2x97xf32> -> tensor<1x128xf32>
