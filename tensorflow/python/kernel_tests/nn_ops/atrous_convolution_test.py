@@ -19,8 +19,11 @@ import contextlib
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -277,6 +280,47 @@ class AtrousConvolutionTest(test.TestCase):
     filters = array_ops.zeros([5, 5, 1, 8], dtype=dtypes.float32)
     with self.assertRaisesRegex(ValueError, "rank at least 3"):
       nn_ops.convolution(value, filters, padding="VALID")
+
+  def testDilatedConvolutionFailsWhenFilterExceedsInput(self):
+    """Eager and `tf.function` must fail the same way (#113319)."""
+    x = array_ops.zeros([2, 5, 5, 3])
+    f = array_ops.zeros([3, 3, 3, 4])  # spans 7 > 5 once dilated by 3
+    for padding in ("VALID", [[0, 0], [0, 0], [0, 0], [0, 0]]):
+      with self.assertRaisesRegex(ValueError, "no valid window"):
+        nn_ops.convolution(x, f, padding=padding, dilation_rate=[3, 3])
+
+      @def_function.function
+      def fn(a, b, padding=padding):
+        return nn_ops.convolution(a, b, padding=padding,
+                                  dilation_rate=[3, 3])
+
+      with self.assertRaisesRegex(ValueError, "no valid window"):
+        fn(x, f)
+
+  def testDilatedConvolutionFailsAtRuntimeForUnknownShapes(self):
+    """Shapes unknown at trace time are caught by the run-time assertion."""
+    fn = def_function.function(
+        lambda a, b: nn_ops.convolution(a, b, padding="VALID",
+                                        dilation_rate=[3, 3]))
+    concrete = fn.get_concrete_function(
+        tensor_spec.TensorSpec([None, None, None, 3], dtypes.float32),
+        tensor_spec.TensorSpec([3, 3, 3, 4], dtypes.float32))
+    # `tf.function` converts the `InvalidArgumentError` raised by the
+    # run-time assertion into a Python `ValueError`, so accept both spellings
+    # of the same failure.
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      concrete(array_ops.zeros([2, 5, 5, 3]), array_ops.zeros([3, 3, 3, 4]))
+
+  def testDilatedConvolutionFitsWithExplicitPadding(self):
+    """Explicit padding that admits a window is not rejected."""
+    x = array_ops.ones([1, 4, 4, 2])
+    f = array_ops.ones([2, 2, 2, 3])
+    y = nn_ops.convolution(
+        x,
+        f,
+        padding=[[0, 0], [1, 1], [1, 1], [0, 0]],
+        dilation_rate=[2, 2])
+    self.assertEqual(y.shape.as_list(), [1, 4, 4, 3])
 
 
 if __name__ == "__main__":
