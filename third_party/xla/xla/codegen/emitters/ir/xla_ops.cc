@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/codegen/emitters/ir/xla_dialect.cc.inc"
@@ -119,7 +120,7 @@ std::optional<Interval> GetRange(mlir::Value value) {
   }
 
   auto parent = bbarg.getParentBlock()->getParentOp();
-  if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(parent)) {
+  if (auto func_op = mlir::dyn_cast<mlir::FunctionOpInterface>(parent)) {
     return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
   }
   return GetIVRange(value);
