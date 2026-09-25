@@ -1214,6 +1214,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64_t> dimensions);
 
+  // Creates a shuffle instruction, which shuffles the elements of `operand`
+  // along the given dimensions following the pattern selected by `mode`.
+  static std::unique_ptr<HloInstruction> CreateShuffle(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<const int64_t> dimensions, const ShuffleMode& mode);
+
   // Creates a Afterall instruction used for joining or creating new values of
   // token type which thread through side-effecting operations. Operands must
   // all be tokens, calls without operands generates a token.
@@ -2746,6 +2752,16 @@ class HloInstruction {
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
 
+  // Implementation of DetachFromOperandsAndUsers that leaves the edges to
+  // instructions of the given computation (the parent, or null for none) in
+  // place and still marks this instruction cleaned up, so ~HloInstruction does
+  // not unlink them either. ~HloComputation uses it because unlinking an
+  // instruction scans every operand slot of each of its users, and the edges
+  // among instructions that die together are never read again.
+  // REQUIRES: every instruction of the given computation is deleted before any
+  // of those edges is read again.
+  void DetachFromOperandsAndUsersOutside(const HloComputation* computation);
+
   // Set the unique id for this instruction to "id". Should only be called by
   // the instruction's parent computation to set an internal unique id that fits
   // in an int32_t.
@@ -2955,6 +2971,7 @@ std::string ResultAccuracyToleranceToString(
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string ShuffleModeToString(ShuffleMode::ModeCase shuffle_mode);
 std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
@@ -2973,6 +2990,8 @@ absl::StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name);
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name);
+absl::StatusOr<ShuffleMode::ModeCase> StringToShuffleMode(
+    absl::string_view mode);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name);
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
