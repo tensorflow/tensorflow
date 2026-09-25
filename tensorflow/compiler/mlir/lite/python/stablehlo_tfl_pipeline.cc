@@ -150,6 +150,8 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // func.call boundaries that cause func.call result type mismatches when
   // quantized types are introduced.
   pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFL::CreateFoldStablehloConstantTransformsPass());
   pass_manager.addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
 
