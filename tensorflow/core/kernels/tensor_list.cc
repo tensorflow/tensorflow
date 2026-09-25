@@ -127,6 +127,25 @@ bool TensorList::Decode(const VariantTensorData& data) {
 
   const PartialTensorShape decoded_element_shape(element_shape_proto);
 
+  // Every element stored in a list must match its element_dtype and be
+  // compatible with its element_shape; the mutation paths (TensorListPushBack,
+  // TensorListSetItem) enforce this on insertion. The serialized data is
+  // untrusted, so re-establish the same invariant here. Consumers such as
+  // TensorListStack and TensorListGather skip the per-element shape check when
+  // element_shape is fully defined and then treat each element's count as the
+  // output element count, so a decoded element that does not match would
+  // overrun the output buffer.
+  for (const Tensor& t : decoded_tensors) {
+    if (t.dtype() == DT_INVALID) continue;  // Unset element placeholder.
+    if (decoded_element_dtype != DT_INVALID &&
+        t.dtype() != decoded_element_dtype) {
+      return false;
+    }
+    if (!decoded_element_shape.IsCompatibleWith(t.shape())) {
+      return false;
+    }
+  }
+
   element_dtype = decoded_element_dtype;
   max_num_elements = decoded_max_num_elements;
   tensors() = std::move(decoded_tensors);
