@@ -41,12 +41,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -3703,6 +3705,126 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
           dimension, ShapeUtil::HumanString(operand_shape));
     }
   }
+  return operand_shape;
+}
+
+namespace {
+
+// Verifies the attributes of a shuffle in permute mode against the operand that
+// the shuffle permutes. The shuffle `dimensions` must be distinct and in-bounds
+// for `operand_shape`.
+absl::Status ValidatePermuteMode(const Shape& operand_shape,
+                                 absl::Span<const int64_t> dimensions,
+                                 const ShuffleMode& mode) {
+  ABSL_ASSIGN_OR_RETURN(const Shape indices_shape,
+                   shuffle::GetPermuteIndicesShape(mode));
+  ABSL_RETURN_IF_ERROR(ExpectArray(indices_shape, "indices of shuffle"));
+  if (!primitive_util::IsIntegralType(indices_shape.element_type())) {
+    return InvalidArgument("The indices of a shuffle must be integers, got %s.",
+                           ShapeUtil::HumanString(indices_shape));
+  }
+
+  // One shuffled dimension needs a single coordinate per element, which the
+  // indices hold directly; several shuffled dimensions need one coordinate each
+  // instead, which an extra trailing dimension of the indices holds.
+  const int64_t operand_rank = operand_shape.dimensions().size();
+  const bool has_coordinate_dimension = dimensions.size() > 1;
+  const int64_t expected_rank =
+      operand_rank + (has_coordinate_dimension ? 1 : 0);
+  if (indices_shape.dimensions().size() != expected_rank) {
+    return InvalidArgument(
+        "The indices of a shuffle of %d dimensions of %s must have rank %d, "
+        "got %s.",
+        dimensions.size(), ShapeUtil::HumanString(operand_shape), expected_rank,
+        ShapeUtil::HumanString(indices_shape));
+  }
+  if (has_coordinate_dimension &&
+      indices_shape.dimensions(operand_rank) != dimensions.size()) {
+    return InvalidArgument(
+        "The innermost dimension of the indices of a shuffle holds one "
+        "coordinate per shuffled dimension, so it must have size %d, got %s.",
+        dimensions.size(), ShapeUtil::HumanString(indices_shape));
+  }
+
+  const absl::flat_hash_set<int64_t> shuffled_dimensions(dimensions.begin(),
+                                                         dimensions.end());
+  for (int64_t dimension = 0; dimension < operand_rank; ++dimension) {
+    const int64_t size = indices_shape.dimensions(dimension);
+    // Shuffled dimensions must match operand dimension.
+    // Unshuffled dimensions can match operand dimension or be 1 (broadcasted).
+    if (size == operand_shape.dimensions(dimension)) {
+      continue;
+    }
+    if (size == 1 && !shuffled_dimensions.contains(dimension)) {
+      continue;
+    }
+    return InvalidArgument(
+        "Dimension %d of the indices of a shuffle of %s must have size %d%s, "
+        "got %s.",
+        dimension, ShapeUtil::HumanString(operand_shape),
+        operand_shape.dimensions(dimension),
+        shuffled_dimensions.contains(dimension) ? "" : " or 1",
+        ShapeUtil::HumanString(indices_shape));
+  }
+
+  // Check that the indices are in bounds for the shuffled dimensions.
+  ABSL_ASSIGN_OR_RETURN(const Literal indices, shuffle::GetPermuteIndices(mode));
+  return ShapeUtil::ForEachIndexWithStatus(
+      indices_shape,
+      [&](absl::Span<const int64_t> index) -> absl::StatusOr<bool> {
+        // The innermost coordinate of an index selects the shuffled dimension
+        // that the entry at that index is a coordinate of.
+        const int64_t dimension =
+            has_coordinate_dimension ? dimensions[index.back()] : dimensions[0];
+        const std::optional<int64_t> coordinate =
+            indices.GetIntegralAsS64(index);
+        TF_RET_CHECK(coordinate.has_value());
+        if (*coordinate < 0 ||
+            *coordinate >= operand_shape.dimensions(dimension)) {
+          return InvalidArgument(
+              "The index %d of a shuffle is out-of-bounds in dimension %d of "
+              "%s.",
+              *coordinate, dimension, ShapeUtil::HumanString(operand_shape));
+        }
+        return true;
+      });
+}
+
+}  // namespace
+
+/*static */ absl::StatusOr<Shape> ShapeInference::InferShuffleShape(
+    const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+    const ShuffleMode& mode) {
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of shuffle"));
+  if (dimensions.empty()) {
+    return InvalidArgument("A shuffle must shuffle at least one dimension.");
+  }
+  if (!AllUnique(dimensions)) {
+    return InvalidArgument("A dimension number is duplicated in shuffle.");
+  }
+  for (int64_t dimension : dimensions) {
+    if (dimension < 0 || dimension >= operand_shape.dimensions().size()) {
+      return InvalidArgument(
+          "One of the shuffle dimensions (%d) is out-of-bounds in shape %s.",
+          dimension, ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  // Constraints on the attributes that are specific to the shuffle mode.
+  switch (mode.mode_case()) {
+    case ShuffleMode::kRotate:
+      if (dimensions.size() != mode.rotate().shifts().size()) {
+        return InvalidArgument(
+            "dimensions and shifts must have the same size, got %d and %d.",
+            dimensions.size(), mode.rotate().shifts().size());
+      }
+      break;
+    case ShuffleMode::kPermute:
+      ABSL_RETURN_IF_ERROR(ValidatePermuteMode(operand_shape, dimensions, mode));
+      break;
+    case ShuffleMode::MODE_NOT_SET:
+      return InvalidArgument("A shuffle must specify a mode.");
+  }
+  // A shuffle only moves elements around, so the shape is preserved.
   return operand_shape;
 }
 
