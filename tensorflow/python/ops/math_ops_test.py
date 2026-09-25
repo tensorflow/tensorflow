@@ -1366,6 +1366,36 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertAllClose(y, x)
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
+  def testComplexInfinity(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant(
+          [
+              complex(float("inf"), 0.0),
+              complex(float("inf"), 0.0),
+              complex(float("inf"), 0.0),
+              complex(0.0, float("inf")),
+              complex(float("inf"), float("inf")),
+              complex(2.0, 0.0),
+              complex(0.0, 0.0),
+          ],
+          dtype=dtype,
+      )
+      y = math_ops.reciprocal_no_nan(x)
+      target = constant_op.constant(
+          [
+              complex(0.0, 0.0),
+              complex(0.0, 0.0),
+              complex(0.0, 0.0),
+              complex(0.0, 0.0),
+              complex(0.0, 0.0),
+              complex(0.5, 0.0),
+              complex(0.0, 0.0),
+          ],
+          dtype=dtype,
+      )
+      self.assertAllEqual(y, target)
+      self.assertEqual(y.dtype.base_dtype, target.dtype.base_dtype)
+
 
 class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 

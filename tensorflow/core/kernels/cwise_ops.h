@@ -159,14 +159,18 @@ struct div_no_nan_op<T, /*IsComplex=*/true> {
                                                      const T& b) const {
     if (b == T(0)) {
       return T(0);
-    } else {
-      // If the numerator is zero, then the result must be zero even if |b|^2
-      // underflows to zero.
-      const T numerator =
-          scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
-      if (numerator == T(0)) {
+    }
+    // If a is finite and b has an infinite magnitude, the quotient is zero.
+    if ((Eigen::numext::isinf)(b.real()) || (Eigen::numext::isinf)(b.imag())) {
+      if ((Eigen::numext::isfinite)(a.real()) &&
+          (Eigen::numext::isfinite)(a.imag())) {
         return T(0);
       }
+    }
+    const T numerator =
+        scalar_product_op<T>()(a, scalar_conjugate_op<T>()(b));
+    if (numerator == T(0)) {
+      return T(0);
     }
     return scalar_quotient_op<T>()(a, b);
   }
@@ -184,8 +188,11 @@ template <typename T>
 struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::MulCost,
-    PacketAccess = packet_traits<T>::HasMul && packet_traits<T>::HasDiv &&
-                   packet_traits<T>::HasConj,
+    // PacketAccess is disabled for complex div_no_nan because Eigen's SIMD
+    // complex division computes (a * conj(b)) / |b|^2, which evaluates inf/inf
+    // to NaN when b has infinite components. Disabling packet access falls back
+    // to operator(), ensuring consistent non-NaN output across all elements.
+    PacketAccess = false,
   };
 };
 
