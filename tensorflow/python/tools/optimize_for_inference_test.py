@@ -400,16 +400,17 @@ class OptimizeForInferenceTest(test.TestCase):
         original_result = sess.run(["output:0"])
       optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
           original_graph_def)
-    with self.cached_session() as sess:
-      _ = importer.import_graph_def(
-          optimized_graph_def, input_map={}, name="optimized")
-      optimized_result = sess.run(["optimized/output:0"])
 
-      self.assertAllClose(
-          original_result, optimized_result, rtol=1e-04, atol=1e-06)
+      with self.cached_session() as sess:
+        _ = importer.import_graph_def(
+            optimized_graph_def, input_map={}, name="optimized")
+        optimized_result = sess.run(["optimized/output:0"])
 
-      for node in optimized_graph_def.node:
-        self.assertNotEqual("FusedBatchNormV3", node.op)
+        self.assertAllClose(
+            original_result, optimized_result, rtol=1e-04, atol=1e-06)
+
+        for node in optimized_graph_def.node:
+          self.assertNotEqual("FusedBatchNormV3", node.op)
 
   @test_util.run_deprecated_v1
   def testFuseResizePadAndConv(self):
