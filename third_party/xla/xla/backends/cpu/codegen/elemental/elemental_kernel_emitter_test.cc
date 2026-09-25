@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "xla/backends/cpu/codegen/target_machine_test_base.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -34,22 +35,26 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/cpu/cpu_executable.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
- public:
-  ElementalKernelEmitterTest()
-      : target_machine_features_([](int64_t size) { return 1; }) {}
+class ElementalKernelEmitterTest : public TargetMachineTestBase {
+ protected:
+  void SetUp() override {
+    // register X86/ARM targets
+    TargetMachineTestBase::SetUp();
+    target_machine_features_ =
+        CreateTargetMachineFeatures("x86_64-unknown-linux-gnu", "", "");
+  }
 
+ public:
   absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitKernelDefinition(
       const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
     ElementalKernelEmitter emitter(instr, buffer_assignment,
-                                   &target_machine_features_);
+                                   target_machine_features_.get());
 
     return emitter.EmitKernelDefinition();
   }
@@ -66,7 +71,7 @@ class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  TargetMachineFeaturesStub target_machine_features_;
+  std::unique_ptr<TargetMachineFeatures> target_machine_features_;
   AliasInfo alias_info_;
 };
 
@@ -117,7 +122,7 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
 
     CHECK: define ptr @convert_kernel(ptr noundef nonnull %0) #0 {
-    CHECK:   %[[X:.*]] = load i64, ptr %workgroup_id_x_gep, align 4
+    CHECK:   %[[X:.*]] = load i64, ptr %workgroup_id_x_gep, align 8
     CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 0
     CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 1
     CHECK:   %lo_dim_1_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 1, i32 0

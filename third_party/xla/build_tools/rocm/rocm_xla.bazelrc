@@ -23,7 +23,6 @@ test:rocm_rbe --remote_timeout=3600
 test:rocm_rbe --strategy=TestRunner=remote,local
 
 # Dynamic execution config for ROCm RBE - races remote vs local with remote head start
-# Compilation, linking, and tests all race, with CppLink forced local due to toolchain issues
 build:rocm_rbe_dynamic --config=rocm_rbe
 build:rocm_rbe_dynamic --jobs=50
 build:rocm_rbe_dynamic --internal_spawn_scheduler
@@ -31,9 +30,8 @@ build:rocm_rbe_dynamic --spawn_strategy=dynamic
 build:rocm_rbe_dynamic --dynamic_local_strategy=worker,standalone,local
 build:rocm_rbe_dynamic --dynamic_remote_strategy=remote
 build:rocm_rbe_dynamic --experimental_local_execution_delay=1000
-build:rocm_rbe_dynamic --remote_download_all
+build:rocm_rbe_dynamic --remote_download_minimal
 build:rocm_rbe_dynamic --local_resources=cpu=HOST_CPUS
-build:rocm_rbe_dynamic --strategy=CppLink=standalone,local
 
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
@@ -54,8 +52,7 @@ build:ci_multi_gpu --flaky_test_attempts=3
 build:ci_multi_gpu --experimental_guard_against_concurrent_changes
 build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
 
-build:ci_rocm_cpu --local_test_jobs=200
-build:ci_rocm_cpu --strategy=TestRunner=local
+build:ci_rocm_cpu --jobs=50
 
 test:xla_sgpu -- \
 //xla/... \

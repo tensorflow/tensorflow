@@ -34,17 +34,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
-#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/codegen_utils.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace cpu {
@@ -214,6 +214,26 @@ std::vector<MaxIsaTestSpec> GetX86MaxIsaTestCases() {
       MaxIsaTestSpec{"AVX512", "avx512f", true},
       MaxIsaTestSpec{"AVX512", "avx512vnni", false},
       MaxIsaTestSpec{"AVX512", "amx-bf16", false},
+      MaxIsaTestSpec{"AVX512", "amx-fp8", false},
+      // AMX_FP16 as max: SPR-or-older ISAs stay on; DMR additions (amx-fp8,
+      // other amx tiles, avx10, APX) are suppressed.
+      MaxIsaTestSpec{"AMX_FP16", "amx-bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-int8", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx512bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.1", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp8", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-tf32", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-avx512", false},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.2", false},
+      MaxIsaTestSpec{"AMX_FP16", "ndd", false},
+      MaxIsaTestSpec{"AMX_FP16", "ppx", false},
+      // AMX_FP8 as max: amx-fp8 and older AMX tiles stay on.
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp8", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-bf16", true},
+      // Older max still suppresses amx-fp8.
+      MaxIsaTestSpec{"AMX", "amx-fp8", false},
   });
 }
 
@@ -346,11 +366,11 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
 std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
   return std::vector<JitVectorizationTestSpec>({
       JitVectorizationTestSpec{HloOpcode::kMultiply, "SSE4_2",
-                               R"(CHECK: fmul <%d x float>)", 4},
+                               R"(CHECK: fmul contract <%d x float>)", 4},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX2",
-                               R"(CHECK: fmul <%d x float>)", 8},
+                               R"(CHECK: fmul contract <%d x float>)", 8},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX512",
-                               R"(CHECK: fmul <%d x float>)", 16},
+                               R"(CHECK: fmul contract <%d x float>)", 16},
   });
 }
 

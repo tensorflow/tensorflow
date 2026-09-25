@@ -296,6 +296,14 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let summary = "scan operation";
   let description = [{
     Mirrors HLO's kScan operation.
+
+    Unlike HLO, the inits and carries keep the scan dimension as a unit
+    dimension, i.e. they have the same rank as the inputs and outputs. This
+    avoids rank-zero carries for 1D scans, which Triton does not support, and
+    allows broadcasting a carry across a tile without changing its rank.
+
+    Example: for inputs of type `tensor<16x1024xf32>` and `dimension = 1`, the
+    inits and carries have type `tensor<16x1xf32>`.
   }];
 
   let arguments = (
@@ -321,6 +329,8 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
   }];
+
+  let hasVerifier = 1;
 }
 
 //

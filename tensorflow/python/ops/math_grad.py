@@ -347,7 +347,10 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
   )
   ones_shape = array_ops.concat([segment_ids_shape, remaining_shape], 0)
   ones = array_ops.ones(ones_shape, dtype=grad.dtype)
-  scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
+  # Empty segments must stay zero when differentiating this gradient for JVPs.
+  scaled_grad = math_ops.div_no_nan(
+      grad, math_ops.segment_sum(ones, op.inputs[1])
+  )
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
@@ -2039,32 +2042,49 @@ def _CumprodGrad(op: ops.Operation, grad):
 def _CumulativeLogsumexpGrad(op: ops.Operation, grad):
   x = op.inputs[0]
   axis = op.inputs[1]
-  cumulative_logsumexp = op.outputs[0]
 
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
+  cumulative_logsumexp = math_ops.cumulative_logsumexp(
+      x, axis=axis, exclusive=exclusive, reverse=reverse
+  )
 
   # Split the incoming gradient into positive and negative part
   # in order to take logs. This is required for stable results.
+  finite_lse = math_ops.is_finite(cumulative_logsumexp)
+  pos_mask = math_ops.logical_and(math_ops.greater(grad, 0), finite_lse)
+  safe_pos_grad = array_ops.where_v2(
+      pos_mask, grad, math_ops.cast(1.0, grad.dtype)
+  )
   log_grad_positive = array_ops.where_v2(
-      math_ops.greater(grad, 0),
-      math_ops.log(grad),
-      grad.dtype.min)
+      pos_mask,
+      math_ops.log(safe_pos_grad) - cumulative_logsumexp,
+      grad.dtype.min,
+  )
 
+  neg_mask = math_ops.logical_and(math_ops.less(grad, 0), finite_lse)
+  safe_neg_grad = array_ops.where_v2(
+      neg_mask, -grad, math_ops.cast(1.0, grad.dtype)
+  )
   log_grad_negative = array_ops.where_v2(
-      math_ops.less(grad, 0),
-      math_ops.log(-grad),
-      grad.dtype.min)
+      neg_mask,
+      math_ops.log(safe_neg_grad) - cumulative_logsumexp,
+      grad.dtype.min,
+  )
 
   output_pos = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_positive - cumulative_logsumexp,
-          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
+          log_grad_positive, axis=axis, reverse=not reverse, exclusive=exclusive
+      )
+      + x
+  )
 
   output_neg = math_ops.exp(
       math_ops.cumulative_logsumexp(
-          log_grad_negative - cumulative_logsumexp,
-          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
+          log_grad_negative, axis=axis, reverse=not reverse, exclusive=exclusive
+      )
+      + x
+  )
 
   return [output_pos - output_neg, None]
 

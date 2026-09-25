@@ -3749,9 +3749,13 @@ ENTRY %cluster_2013453984438090939__.47
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto custom_call = FindInstruction(module.get(), "custom-call.1");
+  const HloInstruction* custom_call =
+      FindInstruction(module.get(), "custom-call.1");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 104832);
-  auto sort = FindInstruction(module.get(), "sort");
+  const HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort)->is_stable());
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 4000);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 4000);
 }
@@ -3779,9 +3783,13 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  auto custom_call = FindInstruction(module.get(), "custom-call.1");
+  const HloInstruction* custom_call =
+      FindInstruction(module.get(), "custom-call.1");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 32128);
-  auto sort = FindInstruction(module.get(), "sort");
+  const HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort)->is_stable());
   EXPECT_EQ(sort->operand(0)->shape().dimensions(0), 1);
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 2);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(0), 1);
@@ -3811,9 +3819,13 @@ ENTRY entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
-  auto custom_call = FindInstruction(module.get(), "custom-call.1");
+  const HloInstruction* custom_call =
+      FindInstruction(module.get(), "custom-call.1");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->operand(0)->shape().dimensions(1), 16064);
-  auto sort = FindInstruction(module.get(), "sort");
+  const HloInstruction* sort = FindInstruction(module.get(), "sort");
+  ASSERT_NE(sort, nullptr);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort)->is_stable());
   EXPECT_EQ(sort->operand(0)->shape().dimensions(0), 2);
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 4);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(0), 2);
@@ -10958,11 +10970,74 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   auto p0 = op::GetTupleElement(op::Parameter(0));
-  auto to_shard = p0;
+  auto to_shard = op::Copy(p0);
   auto p1 = op::GetTupleElement(op::Parameter(0));
-  auto mul =
-      AllOf(op::Shape("f32[4,2]"), op::Multiply(op::Add(to_shard, p1), p0));
-  EXPECT_THAT(root, op::Tuple(mul));
+  auto mul = AllOf(op::Shape("f32[4,2]"),
+                   op::Multiply(op::Copy(op::Add(to_shard, p1)), p0));
+  EXPECT_THAT(root, op::Tuple(op::Copy(mul)));
+}
+
+// The two tuples have the same shape but different manual leaves, and each of
+// them is read by two manual get-tuple-elements. The first tuple also feeds a
+// manual custom call. The visitor partitions that custom call before the two
+// get-tuple-elements because it is the first operand of sum_a. The custom call
+// keeps its manual sharding and must not change how the later
+// get-tuple-elements are partitioned. The one device replacement of a tuple
+// sharding belongs to the sharding object rather than to the tuple shape, and
+// the parameters carry their original shardings once their users are
+// partitioned.
+TEST_P(SpmdPartitioningTest, ManualTupleOperandWithManyUsers) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = (f32[8,2], f32[8,2], f32[8,2]) parameter(0), sharding={{devices=[2,1]<=[2]},{manual},{manual}}
+  b = (f32[8,2], f32[8,2], f32[8,2]) parameter(1), sharding={{manual},{devices=[2,1]<=[2]},{manual}}
+  a0 = f32[8,2] get-tuple-element(a), index=0, sharding={devices=[2,1]<=[2]}
+  a1 = f32[8,2] get-tuple-element(a), index=1, sharding={manual}
+  a2 = f32[8,2] get-tuple-element(a), index=2, sharding={manual}
+  b0 = f32[8,2] get-tuple-element(b), index=0, sharding={manual}
+  b1 = f32[8,2] get-tuple-element(b), index=1, sharding={devices=[2,1]<=[2]}
+  b2 = f32[8,2] get-tuple-element(b), index=2, sharding={manual}
+  a0_shard = f32[4,2] custom-call(a0), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  b1_shard = f32[4,2] custom-call(b1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  sum_shards = f32[4,2] add(a0_shard, b1_shard), sharding={manual}
+  sum_full = f32[8,2] custom-call(sum_shards), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]<=[2]}
+  a_custom = f32[8,2] custom-call(a), custom_call_target="Opaque", sharding={manual}
+  sum_a = f32[8,2] add(a_custom, a1), sharding={manual}
+  sum_a2 = f32[8,2] add(sum_a, a2), sharding={manual}
+  sum_b = f32[8,2] add(b0, b2), sharding={manual}
+  sum_manual = f32[8,2] add(sum_a2, sum_b), sharding={manual}
+  ROOT result = (f32[8,2], f32[8,2]) tuple(sum_full, sum_manual), sharding={{devices=[2,1]<=[2]},{manual}}
+})";
+  auto manual_gte = [](int64_t parameter, int64_t index) {
+    return AllOf(op::GetTupleElement(op::Parameter(parameter), index),
+                 op::Shape("f32[8,2]"));
+  };
+  auto tiled_gte = [](int64_t parameter, int64_t index) {
+    return AllOf(op::GetTupleElement(op::Parameter(parameter), index),
+                 op::Shape("f32[4,2]"));
+  };
+  auto sum_full = AllOf(
+      op::Shape("f32[4,2]"),
+      op::Copy(op::Add(op::Copy(tiled_gte(0, 0)), op::Copy(tiled_gte(1, 1)))));
+  auto sum_manual = AllOf(
+      op::Shape("f32[8,2]"),
+      op::Add(
+          op::Add(op::Add(op::CustomCall(op::Parameter(0)), manual_gte(0, 1)),
+                  manual_gte(0, 2)),
+          op::Add(manual_gte(1, 0), manual_gte(1, 2))));
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(sum_full, sum_manual));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
+              op::Sharding("{{devices=[2,1]<=[2]},{manual},{manual}}"));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1),
+              op::Sharding("{{manual},{devices=[2,1]<=[2]},{manual}}"));
 }
 
 TEST_P(SpmdPartitioningTest, NestedManual) {
@@ -10981,7 +11056,9 @@ ENTRY entry {
                        PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Shape("s32[8,8,8]"), op::Parameter(0)));
+  EXPECT_THAT(root,
+              AllOf(op::Shape("s32[8,8,8]"),
+                    op::Copy(op::Copy(op::Copy(op::Copy(op::Parameter(0)))))));
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupAllToAllReshard) {
@@ -17405,10 +17482,19 @@ ENTRY %entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
+  const HloInstruction* sort_instruction =
+      FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instruction, nullptr);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
-  auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
-  auto topk_operand = topk_instruction->operand(0);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  const HloInstruction* topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
   EXPECT_THAT(topk_instruction,
               op::Shape("(bf16[64,40]{1,0}, s32[64,40]{1,0})"));
@@ -17438,14 +17524,74 @@ ENTRY %entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
-  CHECK_NE(sort_instruction, nullptr);
-  auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
-  auto topk_operand = topk_instruction->operand(0);
+  const HloInstruction* sort_instruction =
+      FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instruction, nullptr);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  for (const HloInstruction* inst :
+       sort_instruction->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCompare) {
+      EXPECT_EQ(Cast<HloCompareInstruction>(inst)->order(),
+                Comparison::Order::kTotal);
+    }
+  }
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  const HloInstruction* topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
   EXPECT_THAT(topk_instruction,
               op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
   EXPECT_THAT(topk_operand, op::Shape("bf16[32,256000]{1,0}"));
+}
+
+TEST_P(SpmdPartitioningTest, TopKCustomCallTupleRootUsesIndices) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+region {
+  index_lhs = s32[] parameter(2)
+  index_rhs = s32[] parameter(3)
+  value_lhs = bf16[] parameter(0)
+  value_rhs = bf16[] parameter(1)
+  ROOT compare = pred[] compare(value_lhs, value_rhs), direction=GT, order=TOTAL
+}
+
+ENTRY entry {
+  input = bf16[64,4096]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT topk = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(input), custom_call_target="TopK", called_computations={region}, sharding={{devices=[2,1]<=[2]}, {devices=[2,1]<=[2]}}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
+}
+
+TEST_P(SpmdPartitioningTest, TopKCustomCallIndexRootUsesIndices) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+region {
+  index_lhs = s32[] parameter(2)
+  index_rhs = s32[] parameter(3)
+  value_lhs = bf16[] parameter(0)
+  value_rhs = bf16[] parameter(1)
+  ROOT compare = pred[] compare(value_lhs, value_rhs), direction=GT, order=TOTAL
+}
+
+ENTRY entry {
+  input = bf16[64,4096]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  topk = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(input), custom_call_target="TopK", called_computations={region}, sharding={{devices=[2,1]<=[2]}, {devices=[2,1]<=[2]}}
+  ROOT indices = s32[64,40]{1,0} get-tuple-element(topk), index=1, sharding={devices=[2,1]<=[2]}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("s32[32,40]{1,0}"));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -17470,10 +17616,19 @@ ENTRY %entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
+  const HloInstruction* sort_instruction =
+      FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instruction, nullptr);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[32,40]{1,0}"));
-  auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
-  auto topk_operand = topk_instruction->operand(0);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  const HloInstruction* topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
   EXPECT_THAT(topk_instruction,
               op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
@@ -17502,14 +17657,87 @@ ENTRY %entry {
   ASSERT_OK_AND_ASSIGN(auto module,
                        PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort_instruction = FindInstruction(module.get(), HloOpcode::kSort);
+  const HloInstruction* sort_instruction =
+      FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instruction, nullptr);
   EXPECT_THAT(sort_instruction, op::Shape("bf16[64,80]{1,0}"));
-  auto topk_instruction = FindInstruction(module.get(), HloOpcode::kCustomCall);
-  auto topk_operand = topk_instruction->operand(0);
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  const HloInstruction* topk_operand = topk_instruction->operand(0);
   EXPECT_EQ(topk_instruction->custom_call_target(), "TopK");
   EXPECT_THAT(topk_instruction,
               op::Shape("(bf16[64,40]{1,0}, s32[64,40]{1,0})"));
   EXPECT_THAT(topk_operand, op::Shape("bf16[64,128000]{1,0}"));
+}
+
+TEST_P(SpmdPartitioningTest, TopKCustomCallTwoDimsShardedValuesOnly) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+region_695.22546 {
+  Arg_2.22549 = s32[] parameter(2)
+  Arg_3.22550 = s32[] parameter(3)
+  Arg_0.22547 = bf16[] parameter(0)
+  Arg_1.22548 = bf16[] parameter(1)
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
+}
+
+ENTRY %entry {
+  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[2,2]<=[4]}, {devices=[2,2]<=[4]}}
+  ROOT %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(kHloString, /*num_devices=*/4));
+  const HloInstruction* sort_instruction =
+      FindInstruction(module.get(), HloOpcode::kSort);
+  ASSERT_NE(sort_instruction, nullptr);
+  EXPECT_THAT(sort_instruction, op::Shape("bf16[32,80]{1,0}"));
+  EXPECT_FALSE(Cast<HloSortInstruction>(sort_instruction)->is_stable());
+  EXPECT_EQ(Cast<HloCompareInstruction>(
+                sort_instruction->to_apply()->root_instruction())
+                ->order(),
+            Comparison::Order::kTotal);
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  EXPECT_THAT(topk_instruction,
+              op::Shape("(bf16[32,40]{1,0}, s32[32,40]{1,0})"));
+  EXPECT_THAT(topk_instruction->operand(0), op::Shape("bf16[32,128000]{1,0}"));
+}
+
+TEST_P(SpmdPartitioningTest, TopKCustomCallRank1) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+region_695.22546 {
+  Arg_2.22549 = s32[] parameter(2)
+  Arg_3.22550 = s32[] parameter(3)
+  Arg_0.22547 = bf16[] parameter(0)
+  Arg_1.22548 = bf16[] parameter(1)
+  ROOT compare.22551 = pred[] compare(Arg_0.22547, Arg_1.22548), direction=GT, order=TOTAL
+}
+
+ENTRY %entry {
+  %p0 = bf16[256000]{0} parameter(0), sharding={devices=[2]<=[2]}
+  %custom-call = (bf16[40]{0}, s32[40]{0}) custom-call(bf16[256000]{0} %p0), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{replicated}, {replicated}}
+  ROOT %get-tuple-element.336 = bf16[40]{0} get-tuple-element((bf16[40]{0}, s32[40]{0}) %custom-call), index=0
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(kHloString, /*num_devices=*/2));
+  const HloInstruction* topk_instruction =
+      FindInstruction(module.get(), HloOpcode::kCustomCall);
+  ASSERT_NE(topk_instruction, nullptr);
+  EXPECT_THAT(topk_instruction, op::Shape("(bf16[40]{0}, s32[40]{0})"));
+  EXPECT_THAT(topk_instruction->operand(0), op::Shape("bf16[256000]{0}"));
 }
 
 TEST_P(SpmdPartitioningTest, TopKCustomCallManualSharding) {

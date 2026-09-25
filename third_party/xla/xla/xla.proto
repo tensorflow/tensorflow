@@ -93,6 +93,7 @@ message DebugOptions {
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
+    HOST_EXECUTE = 12;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
@@ -339,6 +340,9 @@ message DebugOptions {
   // the flag for more flexible control if necessary.
   optional string xla_cpu_max_isa = 333;
 
+  // Replace custom calls with noop operations on CPU.
+  optional bool xla_cpu_mock_custom_calls = 548;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
@@ -521,6 +525,13 @@ message DebugOptions {
     reserved 2;
   }
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point.
+  enum EarlyExitPoint {
+    EARLY_EXIT_POINT_UNSET = 0;
+    EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT = 1;
+  }
+
   // Filter which allows enabling NCCL symmetric buffers for a subset of
   // collectives based on their type and size.
   message CollectiveFilter {
@@ -555,6 +566,12 @@ message DebugOptions {
   // fusion autuning pass, and are not affected by this flag, use
   // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
   repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
+
+  // Preferred autotuner backend. If set and the preferred backend generates
+  // valid configs for an instruction, the autotuner will pick a config from
+  // this backend even if another backend is faster. If no valid config from the
+  // preferred backend is available, the autotuner falls back to other backends.
+  optional autotuner.Backend xla_autotuner_preferred_backend = 547;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
@@ -1759,6 +1776,11 @@ message DebugOptions {
   // layouts.
   optional bool xla_early_exit_with_layouts = 397;
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point. This flag is mutually exclusive with
+  // xla_early_exit_with_layouts.
+  optional EarlyExitPoint xla_gpu_experimental_early_exit = 549;
+
   // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
@@ -1853,7 +1875,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 547
+  // Next id: 550
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

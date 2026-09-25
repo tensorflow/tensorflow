@@ -445,10 +445,10 @@ xla_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
     deps = [
-        ":intrinsic",
         ":simple_jit_runner",
         ":tanh",
         ":test_matchers",
+        ":type",
         "//xla:xla_data_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:OrcJIT",

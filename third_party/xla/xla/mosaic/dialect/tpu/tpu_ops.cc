@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1125,6 +1126,94 @@ void VectorStoreOp::build(OpBuilder& builder, OperationState& state,
         /*strides=*/builder.getDenseI32ArrayAttr({}), mask, add);
 }
 
+LogicalResult CompressStoreVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType value_ty = getValueToStore().getType();
+  if (value_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and valueToStore element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  VectorType mask_ty = getMask().getType();
+  if (value_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected valueToStore dimension 0 to match mask dimension 0: ")
+           << value_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
+  }
+  return success();
+}
+
+template <typename Op>
+LogicalResult verifyCompressStoreExpandLoad(
+    Op op, VectorType ty, int32_t compress_expand_dim, StringRef vector_name,
+    StringRef compress_expand_dim_name) {
+  MemRefType ref_ty = op.getBase().getType();
+  const int64_t rank = ref_ty.getRank();
+  if (ty.getRank() != rank) {
+    return op.emitOpError("Expected ")
+           << vector_name << " to have the same rank as base (" << rank
+           << "). Got: " << ty.getRank() << ".";
+  }
+  if (llvm::size(op.getIndices()) != rank) {
+    return op.emitOpError("Expected ") << rank << " indices.";
+  }
+  if (compress_expand_dim < 0 || compress_expand_dim >= rank) {
+    return op.emitOpError("Expected ")
+           << compress_expand_dim_name << " to be in [0, " << rank
+           << "). Got: " << compress_expand_dim << ".";
+  }
+  const StringRef non_target_dim_adjective =
+      compress_expand_dim_name == "compress_dim" ? "Non-compressed"
+                                                 : "Non-expanded";
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == compress_expand_dim || ref_ty.isDynamicDim(i)) {
+      continue;
+    }
+    if (ty.getDimSize(i) > ref_ty.getDimSize(i)) {
+      return op.emitOpError(non_target_dim_adjective)
+             << " dimension " << i << " of " << vector_name
+             << " goes out of bounds of base (" << ty.getDimSize(i) << " > "
+             << ref_ty.getDimSize(i) << ").";
+    }
+  }
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return op.emitOpError("Expected base memref to be in VMEM.");
+  }
+  if (ty.getElementType() != ref_ty.getElementType()) {
+    return op.emitOpError("Expected base and ")
+           << vector_name << " element type to match";
+  }
+  // Note: We deliberately do not go through verifyStoreOp / verifyLoadOp, which
+  // reject masked stores/loads of non-32-bit element types. The mask here is
+  // mandatory and narrow element types are allowed. They are rejected later, in
+  // the vector layout passes.
+  if (ty.getShape() != op.getMask().getType().getShape()) {
+    return op.emitOpError("Expected mask shape to match ")
+           << (vector_name == "valueToStore" ? "value" : "result")
+           << " shape: (" << ty.getShape() << "). Got: ("
+           << op.getMask().getType().getShape() << ").";
+  }
+  return success();
+}
+
+LogicalResult VectorCompressStoreOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getValueToStore().getType(), getCompressDim(),
+      /*vector_name=*/"valueToStore",
+      /*compress_expand_dim_name=*/"compress_dim");
+}
+
+LogicalResult VectorExpandLoadOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getResult().getType(), getExpandDim(),
+      /*vector_name=*/"result",
+      /*compress_expand_dim_name=*/"expand_dim");
+}
+
 template <typename Op>
 LogicalResult verifyLoadOp(Op op) {
   MemRefType ref_ty = op.getBase().getType();
@@ -1145,6 +1234,31 @@ LogicalResult verifyLoadOp(Op op) {
       return op.emitOpError(
           "Expected mask shape to be broadcastable to result shape.");
     }
+  }
+  return success();
+}
+
+LogicalResult ExpandLoadVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType result_ty = getResult().getType();
+  if (result_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and result element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  // Note: We deliberately do not go through verifyLoadOp, which rejects masked
+  // loads of non-32-bit element types. The mask here is mandatory and narrow
+  // element types are allowed. They are rejected later, in the vector layout
+  // passes.
+  VectorType mask_ty = getMask().getType();
+  if (result_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected result dimension 0 to match mask dimension 0: ")
+           << result_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
   }
   return success();
 }
@@ -1756,10 +1870,25 @@ LogicalResult ConvOp::verify() {
 }
 
 LogicalResult MaskCastOp::verify() {
-  auto input_ty = getInput().getType();
-  auto output_ty = getResult().getType();
-  return success(input_ty.getShape().take_front(2) ==
-                 output_ty.getShape().take_front(2));
+  const VectorType input_ty = getInput().getType();
+  const VectorType output_ty = getResult().getType();
+  const int64_t input_rank = input_ty.getRank();
+  const int64_t output_rank = output_ty.getRank();
+  const int64_t min_rank = std::min(input_rank, output_rank);
+  const int64_t max_rank = std::max(input_rank, output_rank);
+  CHECK_GE(max_rank, 1);
+  // Unfortunately, if input and output ranks are equal, we don't have enough
+  // information to determine whether the last dimension is a subelement
+  // dimension (packed mask) or a target shape dimension (unpacked mask).
+  if (min_rank < max_rank - 1) {
+    return emitOpError("Input and output ranks must differ by at most 1");
+  }
+  if (input_ty.getShape().take_front(max_rank - 1) !=
+      output_ty.getShape().take_front(max_rank - 1)) {
+    return emitOpError(
+        "Input and output shapes must match on leading dimensions");
+  }
+  return success();
 }
 
 LogicalResult ScanOp::verify() {
@@ -3073,6 +3202,16 @@ LogicalResult SubcoreIdOp::verify() {
   }
   return success();
 }
+
+LogicalResult TileSizeOp::verify() {
+  MemRefType memref_ty = getSource().getType();
+  const int32_t index = getIndex();
+  if (index < 0 || index >= memref_ty.getRank()) {
+    return emitOpError("Index out of bounds");
+  }
+  return success();
+}
+
 }  // namespace tpu
 }  // namespace mlir
 

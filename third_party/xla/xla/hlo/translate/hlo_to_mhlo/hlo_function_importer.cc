@@ -1101,12 +1101,17 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getDefiningOp();
     }
     case HloOpcode::kCollectiveBroadcast: {
-      auto collective_broadcast = Cast<HloChannelInstruction>(instruction);
+      auto collective_broadcast =
+          Cast<HloCollectiveBroadcastInstruction>(instruction);
       attributes.push_back(ConvertReplicaGroups(collective_broadcast,
                                                 &symbol_table_, func_builder));
       if (collective_broadcast->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             collective_broadcast->channel_id().value(), builder_));
+      }
+      if (collective_broadcast->has_dynamic_root()) {
+        attributes.push_back(builder_->getNamedAttr("has_dynamic_root",
+                                                    builder_->getUnitAttr()));
       }
       return mlir::stablehlo::CollectiveBroadcastOp::create(
                  *func_builder, loc, result_type, operands, attributes)
@@ -1289,10 +1294,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kCompare: {
       auto compare = Cast<HloCompareInstruction>(instruction);
       attributes.push_back(ConvertComparisonDirection(compare->direction()));
-      auto default_type = Comparison::DefaultComparisonType(
+      auto default_order = Comparison::DefaultOrdering(
           compare->operand(0)->shape().element_type());
-      if (compare->type() != default_type) {
-        attributes.push_back(ConvertComparisonType(compare->type()));
+      if (compare->order() != default_order) {
+        attributes.push_back(ConvertComparisonOrder(compare->order()));
       }
       return mlir::stablehlo::CompareOp::create(*func_builder, loc, result_type,
                                                 operands, attributes)
@@ -2587,14 +2592,20 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
                                       .value()));
 }
 
-mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
-    Comparison::Type type) {
+mlir::NamedAttribute HloFunctionImporter::ConvertComparisonOrder(
+    ComparisonOrder order) {
+  mlir::stablehlo::ComparisonType type;
+  switch (order) {
+    case ComparisonOrder::kPartial:
+      type = mlir::stablehlo::ComparisonType::FLOAT;
+      break;
+    case ComparisonOrder::kTotal:
+      type = mlir::stablehlo::ComparisonType::TOTALORDER;
+      break;
+  }
   return builder_->getNamedAttr(
       "compare_type",
-      mlir::stablehlo::ComparisonTypeAttr::get(
-          builder_->getContext(),
-          mlir::stablehlo::symbolizeComparisonType(ComparisonTypeToString(type))
-              .value()));
+      mlir::stablehlo::ComparisonTypeAttr::get(builder_->getContext(), type));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(

@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "absl/log/check.h"
@@ -191,19 +193,29 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
   // `data` is too large to fit in input buffer so we deflate it directly.
   // Note that at this point we have already deflated all existing input so
   // we do not need to backup next_in and avail_in.
-  z_stream_->next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data.data()));
-  z_stream_->avail_in = bytes_to_write;
+  // zlib's avail_in is a uInt, so feed it at most UINT_MAX bytes at a time
+  // to avoid truncating the byte count for larger appends.
+  size_t bytes_deflated = 0;
+  while (bytes_deflated < bytes_to_write) {
+    // NOLINTNEXTLINE(misc-include-cleaner): uInt comes from <zlib.h>.
+    const uInt chunk = static_cast<uInt>(std::min<size_t>(
+        bytes_to_write - bytes_deflated, std::numeric_limits<uInt>::max()));
+    z_stream_->next_in = reinterpret_cast<Bytef*>(
+        const_cast<char*>(data.data() + bytes_deflated));
+    z_stream_->avail_in = chunk;
 
-  do {
-    if (z_stream_->avail_out == 0) {
-      // No available output space.
-      // Write output buffer to file.
-      ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
-    }
-    ABSL_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
-  } while (z_stream_->avail_out == 0);
+    do {
+      if (z_stream_->avail_out == 0) {
+        // No available output space.
+        // Write output buffer to file.
+        ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      }
+      ABSL_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
+    } while (z_stream_->avail_out == 0);
 
-  DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
+    DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
+    bytes_deflated += chunk;
+  }
 
   // Restore z_stream input pointers.
   z_stream_->next_in = z_stream_input_.get();

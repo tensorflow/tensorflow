@@ -47,6 +47,7 @@ cc_library(
         "//xla/codegen:ir_emission_utils",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/tiling/experimental:reshape_analysis",
         "//xla/codegen/tiling/experimental:scheduling",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
@@ -232,6 +233,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
@@ -245,6 +247,7 @@ xla_cc_test(
     srcs = ["tiled_emitter_constraints_test.cc"],
     deps = [
         ":tiled_emitter_constraints",
+        "//xla:xla_proto_cc",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",
         "//xla/hlo/analysis:symbolic_map",

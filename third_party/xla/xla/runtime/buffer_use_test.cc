@@ -107,5 +107,32 @@ TEST(BufferUseTest, ReadWriteSet) {
   EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice2, slice_shape)}));
 }
 
+TEST(BufferUseTest, ZeroSizeSlicesDoNotConflict) {
+  BufferUse::ReadWriteSet rwset;
+
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  Shape zero_size_shape = ShapeUtil::MakeShape(U8, {0});
+
+  // Two independent zero-size buffers (e.g. workspace outputs of unrelated
+  // custom-calls) can be assigned the exact same degenerate {index, offset,
+  // size=0} slice by buffer assignment. Since they don't refer to any actual
+  // memory, they must never be reported as conflicting.
+  BufferAllocation::Slice zero_slice(&alloc, /*offset=*/16, /*size=*/0);
+
+  rwset.Add(BufferUse::Write(zero_slice, zero_size_shape));
+  EXPECT_FALSE(
+      rwset.HasConflicts({BufferUse::Write(zero_slice, zero_size_shape)}));
+  EXPECT_FALSE(
+      rwset.HasConflicts({BufferUse::Read(zero_slice, zero_size_shape)}));
+
+  // A non-zero-size slice at the same offset should still be able to
+  // conflict normally.
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {2});
+  BufferAllocation::Slice non_zero_slice(&alloc, /*offset=*/16, /*size=*/8);
+  rwset.Add(BufferUse::Write(non_zero_slice, slice_shape));
+  EXPECT_TRUE(
+      rwset.HasConflicts({BufferUse::Write(non_zero_slice, slice_shape)}));
+}
+
 }  // namespace
 }  // namespace xla

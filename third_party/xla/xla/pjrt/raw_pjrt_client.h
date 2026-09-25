@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,41 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
+
+// Tracks device and client events for profiling and debugging.
+class PjRtEventTracker {
+ public:
+  virtual ~PjRtEventTracker() = default;
+
+  virtual void TrackAllocationEvent(
+      PjRtMemorySpace* memory_space, const tsl::AsyncValueRef<bool>& event,
+      const std::optional<std::string>& debug_info) = 0;
+
+  virtual void TrackFuture(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info,
+                           const Future<>& future) = 0;
+
+  virtual void AppendDescriptionToEvent(
+      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
+      absl::string_view description,
+      absl::Span<const PjRtDeviceEventPtr> waiters) = 0;
+
+  virtual void AddEventDependencies(
+      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
+      absl::Span<const PjRtDeviceEventRef> dependencies) = 0;
+
+  virtual void AddEventDependencies(PjRtMemorySpace* memory_space,
+                                    PjRtDeviceEventPtr device_event,
+                                    PjRtDeviceEventSpan dependencies) = 0;
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        tsl::RCReference<tsl::AsyncValue> event,
+                                        absl::string_view description) = 0;
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        PjRtDeviceEventPtr device_event,
+                                        absl::string_view description) = 0;
+};
 
 // Represents the launch state for a loaded executable. This state must be
 // reconstructed each time we want to launch the executable.
@@ -112,6 +148,17 @@ class PjRtRawClient {
   virtual ~PjRtRawClient() = default;
 
   virtual AsyncWorkRunner* async_work_runner() const = 0;
+
+  // Returns the event tracker for this client, or nullptr if event tracking
+  // is not enabled.
+  virtual PjRtEventTracker* event_tracker() const { return nullptr; }
+
+  // Returns true if memory allocations for async transfers in `memory_space`
+  // should be deferred behind an allocation event.
+  virtual bool ShouldCreateAsyncAllocationEvent(
+      PjRtMemorySpace* memory_space) const {
+    return false;
+  }
 
   using PjRtFulfillAliasRawBufferCallback =
       absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtRawBufferRef>) &&>;
@@ -220,6 +267,11 @@ class PjRtRawClient {
 
   virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
     LOG(FATAL) << "Implement MakeLoadState()";
+  }
+
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      LocalDeviceId local_device_id, absl::string_view description) const {
+    return nullptr;
   }
 
   virtual absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,

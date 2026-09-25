@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/ffi/ffi_attributes_from_backend_config.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
@@ -116,6 +117,7 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1179,6 +1181,11 @@ class NativeCustomCallEmitterContextImpl
     return emitter_.ir_emitter_context_->gpu_topology();
   }
 
+  const stream_executor::DeviceDescription& GetDeviceDescription()
+      const override {
+    return emitter_.ir_emitter_context_->gpu_device_info();
+  }
+
   const DebugOptions& GetDebugOptions() const override {
     return emitter_.ir_emitter_context_->debug_options();
   }
@@ -1195,33 +1202,47 @@ class NativeCustomCallEmitterContextImpl
 
   absl::StatusOr<BufferAllocation::Slice> GetOperandAllocationSlice(
       int64_t operand_index, const ShapeIndex& index) const override {
-    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
-    return emitter_.GetAllocationSlice(instr_.operand(operand_index), index);
+    ABSL_ASSIGN_OR_RETURN(const HloInstruction* operand, GetOperand(operand_index));
+    return emitter_.GetAllocationSlice(operand, index);
   }
 
-  absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const override {
-    // Decode the opaque backend config into an FFI attributes map, mirroring
-    // EmitGenericCustomCall. For FFI handlers the backend config must be a
-    // string parsable into an MLIR dictionary attribute.
-    absl::StatusOr<GpuBackendConfig> backend_config =
-        instr_.backend_config<GpuBackendConfig>();
-    const std::string& backend_config_str =
-        backend_config.ok()
-            ? backend_config->custom_call_backend_config().attributes()
-            : instr_.raw_backend_config_string();
-    if (backend_config_str.empty()) {
-      return xla::ffi::AttributesMap();
-    }
-    mlir::Attribute attr = mlir::parseAttribute(
-        backend_config_str, emitter_.ir_emitter_context_->mlir_context());
-    auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
-    TF_RET_CHECK(dict != nullptr)
-        << "Unsupported backend config. Expected a string parsable into a "
-           "dictionary attribute.";
-    return xla::ffi::BuildAttributesMap(dict);
+  absl::StatusOr<ShapedSlice> GetResultShapedSlice(
+      const ShapeIndex& index) const override {
+    return emitter_.GetShapedSliceForHlo(&instr_, index);
+  }
+
+  absl::StatusOr<ShapedSlice> GetOperandShapedSlice(
+      int64_t operand_index, const ShapeIndex& index) const override {
+    ABSL_ASSIGN_OR_RETURN(const HloInstruction* operand, GetOperand(operand_index));
+    return emitter_.GetShapedSliceForHlo(operand, index);
+  }
+
+  absl::StatusOr<emitters::KernelArguments> CreateKernelArguments(
+      absl::Span<const Shape> unmanaged_arguments) const override {
+    // Resolve slices through the emitter rather than through the buffer
+    // assignment, so that allocation overrides installed for this instruction
+    // are applied.
+    auto slice_provider = [this](const HloInstruction& instruction,
+                                 const ShapeIndex& index) {
+      return emitter_.GetAllocationSlice(&instruction, index);
+    };
+    return emitters::KernelArguments::Create(slice_provider,
+                                             GetDefaultBufferAlignment(),
+                                             &instr_, unmanaged_arguments);
+  }
+
+  absl::StatusOr<xla::ffi::Attributes> GetFfiAttributes() const override {
+    return FfiAttributesFromBackendConfig(
+        instr_, *emitter_.ir_emitter_context_->mlir_context());
   }
 
  private:
+  absl::StatusOr<const HloInstruction*> GetOperand(
+      int64_t operand_index) const {
+    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
+    return instr_.operand(operand_index);
+  }
+
   const ThunkEmitter& emitter_;
   const HloCustomCallInstruction& instr_;
 };
@@ -1601,13 +1622,14 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                     tma_metadata = result.tma_metadata,
                     kernel_name = std::move(kernel_name)](
                        const std::vector<uint8_t>& cubin) mutable {
-                return KernelReuseCache::Entry{std::move(kernel_name),
-                                               launch_dimensions,
-                                               /*cluster_dim=*/std::nullopt,
-                                               shmem_bytes,
-                                               cubin,
-                                               tma_metadata,
-                                               use_pdl};
+                return KernelReuseCache::Entry{
+                    std::move(kernel_name),
+                    launch_dimensions,
+                    /*cluster_dim=*/std::nullopt,
+                    shmem_bytes,
+                    std::make_shared<const std::vector<uint8_t>>(cubin),
+                    tma_metadata,
+                    use_pdl};
               });
         });
   };
@@ -1626,19 +1648,19 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
   return status_or_entry.Map(
       [info = std::move(info), kernel_arguments = std::move(kernel_arguments),
        call_zeroed_outputs = std::move(call_zeroed_outputs)](
-          const KernelReuseCache::Entry* entry) mutable
+          const KernelReuseCache::Entry& entry) mutable
           -> absl::StatusOr<ThunkSequence> {
-        ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                         kernel::CreateOwnedCubinCustomKernel(
-                             entry->kernel_name, entry->binary,
-                             kernel_arguments.args().size(),
-                             entry->launch_dimensions.block_counts(),
-                             entry->launch_dimensions.thread_counts_per_block(),
-                             entry->shmem_bytes));
+        ABSL_ASSIGN_OR_RETURN(
+            CustomKernel custom_kernel,
+            kernel::CreateSharedCubinCustomKernel(
+                entry.kernel_name, entry.binary, kernel_arguments.args().size(),
+                entry.launch_dimensions.block_counts(),
+                entry.launch_dimensions.thread_counts_per_block(),
+                entry.shmem_bytes));
         return ThunkSequence::Of<CustomKernelThunk>(
             std::move(info), std::move(custom_kernel),
-            std::move(kernel_arguments), entry->use_pdl, call_zeroed_outputs,
-            entry->tma_metadata);
+            std::move(kernel_arguments), entry.use_pdl, call_zeroed_outputs,
+            entry.tma_metadata);
       });
 }
 
@@ -2494,7 +2516,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSend(
   return ThunkSequence::Of<HostSendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      src->shape(), slice.slice, *instr->channel_id(), send_recv_events_,
+      slice, *instr->channel_id(), send_recv_events_,
       ConvertFrontendAttributes(instr->frontend_attributes()),
       DeviceConstraint(instr));
 }
@@ -2528,10 +2550,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSendDone(
         "Unknown channel id in host transfer send done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 
@@ -2543,10 +2568,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostRecvDone(
         "Unknown channel id in host transfer recv done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostRecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 

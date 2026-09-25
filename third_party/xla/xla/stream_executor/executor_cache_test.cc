@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
-#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"

@@ -170,8 +170,27 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
 
 absl::StatusOr<uint64_t> StreamExecutorGpuTopologyDescription::Fingerprint()
     const {
+  GpuTopologyProto proto = gpu_topology_->ToProto();
+
+  stream_executor::GpuDeviceInfoProto* device_info =
+      proto.mutable_gpu_target_config()->mutable_gpu_device_info();
+  if (device_info->device_memory_size() > 0) {
+    // Round `device_memory_size` to the nearest GiB to produce deterministic
+    // fingerprint even if the memory size is slightly different.
+    //
+    // TODO(b/563487743): Fix `device_memory_size` to return a stable lower
+    // bound instead and get rid of this logic.
+    static constexpr int64_t kGiB = 1 << 30;
+    device_info->set_device_memory_size(
+        (device_info->device_memory_size() + kGiB / 2) / kGiB * kGiB);
+  }
+  // Exclude `model_str` from the fingerprint as the rest of the proto already
+  // contains the same info and the device memory size in model str can make the
+  // fingerprint non-portable across GPUs.
+  device_info->clear_model_str();
+
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(proto, &result)) {
     return absl::InternalError("Failed to serialize gpu_topology");
   }
   return tsl::Fingerprint64(result);
