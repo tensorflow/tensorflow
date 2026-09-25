@@ -15,6 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_MLRT_KERNEL_CONTEXT_H_
 #define TENSORFLOW_CORE_TFRT_MLRT_KERNEL_CONTEXT_H_
 
+#include <memory>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
@@ -59,6 +68,14 @@ class Context : public mlrt::UserContext<Context> {
 
   const tfrt::CancellationContext* cancellation_context() const {
     return cancellation_context_;
+  }
+
+  mlrt::ExecutionContext* root_execution_context() const {
+    return root_execution_context_;
+  }
+  void set_root_execution_context(
+      mlrt::ExecutionContext* root_execution_context) {
+    root_execution_context_ = root_execution_context;
   }
 
   tfrt_stub::OpKernelRunState& run_state() {
@@ -124,7 +141,53 @@ class Context : public mlrt::UserContext<Context> {
 
   tfrt::ResourceContext* resource_context_ = nullptr;
   const tfrt::CancellationContext* cancellation_context_;
+  mlrt::ExecutionContext* root_execution_context_ = nullptr;
 };
+
+// Sets up exit_handler and deferred AsyncOpKernel tracking on
+// `execution_context` and its `tf_mlrt::Context`, returning a Chain AsyncValue
+// that becomes concrete only after both `mlrt::Execute` and all launched
+// AsyncOpKernels have finished. Also records `&execution_context` as
+// `root_execution_context` so child `mlrt.async` streams can reference a
+// context whose lifetime spans all deferred ops.
+inline tsl::RCReference<tsl::AsyncValue> SetUpExitAndDeferredOpsHandler(
+    mlrt::ExecutionContext& execution_context) {
+  struct PendingCompletionState {
+    absl::Mutex mu;
+    int num_pending ABSL_GUARDED_BY(mu) = 1;
+    tsl::AsyncValueRef<tsl::Chain> chain =
+        tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
+
+    void Increment() {
+      absl::MutexLock lock(&mu);
+      ++num_pending;
+    }
+
+    void Decrement() {
+      bool is_done = false;
+      {
+        absl::MutexLock lock(&mu);
+        DCHECK_GT(num_pending, 0);
+        is_done = (--num_pending == 0);
+      }
+      if (is_done) {
+        chain.SetStateConcrete();
+      }
+    }
+  };
+  auto pending_state = std::make_shared<PendingCompletionState>();
+  auto& tf_context = execution_context.GetUserContext<Context>();
+  tf_context.set_root_execution_context(&execution_context);
+  tf_context.params().inc_num_deferred_ops_function = [pending_state]() {
+    pending_state->Increment();
+  };
+  tf_context.params().dec_num_deferred_ops_function = [pending_state]() {
+    pending_state->Decrement();
+  };
+  execution_context.set_exit_handler(
+      [pending_state]() { pending_state->Decrement(); });
+  return pending_state->chain.CopyRCRef();
+}
 
 }  // namespace tf_mlrt
 }  // namespace tensorflow
