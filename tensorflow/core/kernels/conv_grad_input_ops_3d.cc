@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -873,6 +874,13 @@ void LaunchConvBackpropInputOpImpl(
           : TensorShape({filter_shape.dim_size(4), dims.filter_size(0),
                          dims.filter_size(1), dims.filter_size(2),
                          filter_shape.dim_size(3)});
+  OP_REQUIRES(
+      context,
+      filter.NumElements() <= std::numeric_limits<int32>::max(),
+      errors::InvalidArgument("Filter tensor num elements (",
+                              filter.NumElements(),
+                              ") exceeds 32-bit limit for GPU transformation"));
+
   OP_REQUIRES_OK(context,
                  context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                         &transformed_filter));
