@@ -640,6 +640,22 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   @test_util.run_deprecated_v1
+  def testComplexAbsSpecialValues(self):
+    # Test IEEE-754 / ISO C99 compliance for complex abs:
+    # hypot(+-inf, NaN) = +inf and hypot(NaN, +-inf) = +inf
+    for dtype in [np.complex64, np.complex128]:
+      x = np.array([
+          complex(np.inf, np.nan),
+          complex(-np.inf, np.nan),
+          complex(np.nan, np.inf),
+          complex(np.nan, -np.inf),
+          complex(np.inf, 1.0),
+          complex(1.0, np.inf),
+      ], dtype=dtype)
+      self._compareBoth(x, np.abs, math_ops.abs)
+      self._compareBoth(x, np.abs, _ABS)
+
+  @test_util.run_deprecated_v1
   def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)
