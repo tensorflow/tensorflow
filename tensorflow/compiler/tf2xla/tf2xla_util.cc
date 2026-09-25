@@ -114,6 +114,9 @@ absl::Status CopyAssociatedFunctions(
          GetAssociatedFunctions(*n, lookup_fld)) {
       switch (associated_function.type()) {
         case AssociatedFunctionInfo::kFunctionCallNode: {
+          if (fld->Find(associated_function.func_name()) != nullptr) {
+            break;
+          }
           const FunctionDef* fdef =
               lookup_fld->Find(associated_function.func_name());
           if (!fdef) {
@@ -202,12 +205,18 @@ absl::Status ReplaceArgUsageWithConstNode(
     }
   }
 
+  auto node_name_index = g->BuildNodeNameIndex();
   for (const auto& iter : const_input_index_to_node) {
     int arg_index = iter.first;
     VLOG(2) << "Replace usages of _Arg " << arg_index;
     NodeDef const_def = iter.second->def();
-    const_def.set_name(g->NewName(const_def.name()));
+    std::string new_name;
+    do {
+      new_name = g->NewName(const_def.name());
+    } while (node_name_index.contains(new_name));
+    const_def.set_name(new_name);
     TF_ASSIGN_OR_RETURN(Node * const_node, g->AddNode(const_def));
+    node_name_index[new_name] = const_node;
     Node* arg_node = arg_nodes[arg_index];
     TF_RETURN_IF_ERROR(
         ReplaceSrcOutputUsageWithNode(g, arg_node, 0, const_node));
@@ -245,9 +254,8 @@ absl::Status ReplaceRetvalInputWithArg(
   return absl::OkStatus();
 }
 
-// For a node's function attr (e.g. then/else branch for "If" nodes), rewrites
-// the function to replace _Arg nodes in `const_input_index_to_node` with Const
-// inputs.
+// Rewrites function attr of node n to use Const node instead of original _Arg
+// node.
 absl::Status PropagateConstIntoFuncAttr(
     Node* n, const std::string& attr_name,
     const absl::flat_hash_map<int, const Node*>& const_input_index_to_node,
@@ -258,13 +266,18 @@ absl::Status PropagateConstIntoFuncAttr(
   NameAttrList func_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
   const FunctionDef* fdef = lookup_fld->Find(func_attr.name());
+  const FunctionLibraryDefinition* fld_to_use = lookup_fld;
+  if (!fdef) {
+    fdef = fld->Find(func_attr.name());
+    fld_to_use = fld;
+  }
   if (!fdef) {
     return absl::InternalError(absl::StrCat(
         "Cannot find function ", func_attr.name(), " for node ", n->name()));
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fdef, AttrSlice(&func_attr.attr()), lookup_fld, &fbody));
+      *fdef, AttrSlice(&func_attr.attr()), fld_to_use, &fbody));
 
   // Rewrite _Arg usages with Const node.
   Graph* func_graph = fbody->graph;
@@ -280,7 +293,7 @@ absl::Status PropagateConstIntoFuncAttr(
   std::string new_func_name =
       fld->UniqueFunctionName(absl::StrCat(func_attr.name(), "_const_"));
   const StackTracesMap* stack_traces =
-      lookup_fld->GetStackTraces(func_attr.name());
+      fld_to_use->GetStackTraces(func_attr.name());
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*func_graph, new_func_name, &replace_fdef));
   if (stack_traces != nullptr) {
@@ -439,6 +452,11 @@ absl::Status PropagateConstIntoAndAroundWhileNode(
   TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_attr));
   const std::string fn_name = body_attr.name();
   const FunctionDef* body_func = lookup_fld->Find(fn_name);
+  const FunctionLibraryDefinition* fld_to_use = lookup_fld;
+  if (!body_func) {
+    body_func = fld->Find(fn_name);
+    fld_to_use = fld;
+  }
   if (!body_func) {
     return absl::InternalError(
         absl::StrCat("Propagate: Cannot find body function ", fn_name,
@@ -446,7 +464,7 @@ absl::Status PropagateConstIntoAndAroundWhileNode(
   }
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *body_func, AttrSlice(&body_attr.attr()), lookup_fld, &fbody));
+      *body_func, AttrSlice(&body_attr.attr()), fld_to_use, &fbody));
   GraphCache cache;
   for (int i = 0; i < while_node->num_inputs(); i++) {
     // Check if i-th retval's input comes from i-th arg directly.
