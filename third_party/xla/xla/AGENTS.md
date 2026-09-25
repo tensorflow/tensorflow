@@ -6,14 +6,19 @@ suggesting, or modifying code within the
 
 ## General Context
 
-*   **Impact:** OpenXLA is a core compiler for machine learning acceleration. Changes here affect the open-source community and various hardware backends.
-*   **Code Quality:** Adhere to [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) and OpenXLA-specific conventions.
-*   **Portability:** This code is open-sourced and runs on a number of host platforms (e.g. Linux, Windows, etc.)
+*   **Impact:** OpenXLA is a core compiler for machine learning acceleration.
+    Changes here affect the open-source community and various hardware backends.
+*   **Code Quality:** Adhere to [Google C++ Style
+    Guide](https://google.github.io/styleguide/cppguide.html) and
+    OpenXLA-specific conventions.
+*   **Portability:** This code is open-sourced and runs on a number of host
+    platforms (e.g. Linux, Windows, etc.)
 
 ## Coding Guidelines for AI Assistance
 
 1.  **Error Handling (`absl::Status`, `absl::StatusOr`)**:
-    *   **Always** use `absl::Status` or `absl::StatusOr<T>` for functions that can encounter recoverable errors.
+    *   **Always** use `absl::Status` or `absl::StatusOr<T>` for functions that
+        can encounter recoverable errors.
     *   **Macros**:
         *   Use header `tsl/platform/status_macros.h`.
         *   Use `ABSL_RETURN_IF_ERROR` for error propagation.
@@ -24,7 +29,8 @@ suggesting, or modifying code within the
     *   **Avoid `DCHECK` / `LOG(DFATAL)`** for checking returnable errors.
     *   **Prefer `TF_RET_CHECK`**:
         *   Located in `xla/status_macros.h`.
-        *   Use strict internal invariant checks inside functions returning `absl::Status` / `StatusOr`.
+        *   Use strict internal invariant checks inside functions returning
+            `absl::Status` / `StatusOr`.
         *   Example:
             ```cpp
             #include "xla/status_macros.h"
@@ -47,7 +53,8 @@ suggesting, or modifying code within the
 
             AutotunerDecision ShouldAutotuneCublasCall(HloInstruction* instr) {
                 // ...
-                return AutotunerDecision::Forbid("Cublas autotuning was explicitly disabled");
+                return AutotunerDecision::Forbid(
+                    "Cublas autotuning was explicitly disabled");
             }
 
             voud AutotuneCublas(const AutotunerDecision& decision) {
@@ -59,7 +66,8 @@ suggesting, or modifying code within the
 
 4.  **Performance Sensitivity**:
     *   OpenXLA is a compiler; patterns should be efficient.
-    *   Avoid unnecessary string copies or expensive allocations in hot paths (e.g., HLO passes).
+    *   Avoid unnecessary string copies or expensive allocations in hot paths
+        (e.g., HLO passes).
 
 5.  **Testing**:
     *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc.
@@ -86,14 +94,29 @@ suggesting, or modifying code within the
     *   **Avoid `auto`** in public headers or complex logic chains.
 
 8.  **Compiler Phases & Invariants**:
-    *   **Phase Ordering**: Understand where your pass or change sits in the pipeline (e.g., Optimizations, Layout Assignment, Fusion).
+    *   **Phase Ordering:** Understand where your pass or change sits in the
+        pipeline (e.g., Optimizations, Layout Assignment, Fusion).
     *   **Invariants**: Respect the invariants of the current phase.
-        *   *Example*: Do not generate `kCustomCall` instructions before the relevant expansion pass if they are not supported by the HLO verifier at that stage.
-        *   *Example*: Do not rely on layout information before Layout Assignment.
+        *   *Example*: Do not generate `kCustomCall` instructions before the
+            relevant expansion pass if they are not supported by the HLO
+            verifier at that stage.
+        *   *Example*: Do not rely on layout information before Layout
+            Assignment.
 
 9.  **Namespaces**:
-    *   Prefer xla::gpu over nested namespaces.
+    *   Prefer `xla::gpu` over nested namespaces.
 
 10. **MLIR Operation Creation**:
-    *   **Always** use the static `OpTy::create(rewriter, ...)` method when creating MLIR operations.
-    *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is deprecated.
+    *   **Always** use the static `OpTy::create(rewriter, ...)` method when
+        creating MLIR operations.
+    *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is
+        deprecated.
+
+## Hardware Testing
+
+11. **Testing on specific TPU types**:
+    *   Presubmit checks may not run tests on actual TPU hardware. To verify
+        changes on physical TPUs, use the `run_hardware_tests.sh` script:
+        ```bash
+        platforms/xla/tools/test_infra/run_hardware_tests.sh --tpu=<type>
+        ```
