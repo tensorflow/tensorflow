@@ -33,9 +33,27 @@ package(
     licenses = ["notice"],
 )
 
+pytype_strict_library(
+    name = "bazel_diff",
+    srcs = ["bazel_diff.py"],
+)
+
+py_test(
+    name = "bazel_diff_test",
+    srcs = ["bazel_diff_test.py"],
+    deps = [
+        ":bazel_diff",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 pytype_strict_binary(
     name = "build",
     srcs = ["build.py"],
+    deps = [
+        ":bazel_diff",
+    ],
 )
 
 pytype_strict_library(
@@ -72,7 +90,7 @@ py_test(
 genrule(
     name = "generated_build_commands",
     outs = ["generated_commands.txt"],
-    cmd = "$(location //build_tools/ci:build) --dump_commands > $(OUTS)",
+    cmd = "$(execpath //build_tools/ci:build) --dump_commands > $(OUTS)",
     tags = ["not_run:arm"],
     tools = [":build"],
 )

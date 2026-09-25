@@ -37,8 +37,10 @@ TFCI_BAZEL_COMMON_ARGS=
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=
 TFCI_BUILD_PIP_PACKAGE_BASE_ARGS=
 TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG=
-# Mostly meant to be used for Windows.
-# For Windows, the same wheel is uploaded to both tensorflow_cpu, and tensorflow
+# Extra project names to publish the same wheel under, space separated.
+# Used by the platforms that have no CUDA build to differentiate from, and so
+# upload one wheel as both tensorflow and tensorflow_cpu: Windows, Linux arm64
+# and macOS arm64.
 TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES=
 TFCI_DOCKER_ARGS=
 TFCI_DOCKER_ENABLE=

@@ -79,12 +79,6 @@ struct TargetTypes {
   bool needs_upcast = false;
 };
 
-std::string GetCpuFeaturesStr(mlir::ModuleOp module_op) {
-  mlir::StringAttr features =
-      module_op->template getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
-  return !features ? "" : features.getValue().str();
-}
-
 bool NeedsUpcast(mlir::Type type) {
   mlir::Type elem_type = mlir::getElementTypeOrSelf(type);
   return elem_type.isBF16() || elem_type.isF16();
@@ -290,56 +284,65 @@ Value CallIntrinsicFunc(mlir::ImplicitLocOpBuilder& b, Op op,
 }
 
 template <typename Intrinsic, typename Op>
-mlir::LogicalResult LowerIntrinsicPattern(Op op,
-                                          mlir::PatternRewriter& rewriter) {
-  auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
-  if (vec_type && vec_type.getRank() != 1) {
-    // These will later be converted to loops of 1D vectors but will then miss
-    // the XLA intrinsic lowering.
-    op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
-    return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
+class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
+ public:
+  LowerIntrinsicPattern(mlir::MLIRContext* context,
+                        absl::string_view cpu_features)
+      : mlir::OpRewritePattern<Op>(context), cpu_features_(cpu_features) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+    if (vec_type && vec_type.getRank() != 1) {
+      // These will later be converted to loops of 1D vectors but will then
+      // miss the XLA intrinsic lowering.
+      op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
+      return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
+    }
+
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    TargetTypes target_types = GetTargetTypes(op);
+
+    bool vector_supported =
+        Intrinsic::IsSupported(cpu_features_, target_types.vector_types);
+    std::optional<int64_t> subvector_size;
+    if (vec_type && !vector_supported) {
+      subvector_size = FindSupportedSubvectorSize<Intrinsic>(
+          op, cpu_features_, vec_type.getNumElements());
+    }
+    bool scalar_supported =
+        Intrinsic::IsSupported(cpu_features_, target_types.scalar_types);
+    if (!vector_supported && !subvector_size.has_value() && !scalar_supported) {
+      return rewriter.notifyMatchFailure(op, "unsupported type");
+    }
+    Value result = CallIntrinsicFunc<Intrinsic>(
+        b, op, target_types, vec_type, vector_supported, subvector_size);
+    rewriter.replaceOp(op, result);
+    return mlir::success();
   }
 
-  mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-  TargetTypes target_types = GetTargetTypes(op);
-  auto module_op = op->template getParentOfType<mlir::ModuleOp>();
-
-  std::string features_str = GetCpuFeaturesStr(module_op);
-  bool vector_supported =
-      Intrinsic::IsSupported(features_str, target_types.vector_types);
-  std::optional<int64_t> subvector_size;
-  if (vec_type && !vector_supported) {
-    subvector_size = FindSupportedSubvectorSize<Intrinsic>(
-        op, features_str, vec_type.getNumElements());
-  }
-  bool scalar_supported =
-      Intrinsic::IsSupported(features_str, target_types.scalar_types);
-  if (!vector_supported && !subvector_size.has_value() && !scalar_supported) {
-    return rewriter.notifyMatchFailure(op, "unsupported type");
-  }
-  Value result = CallIntrinsicFunc<Intrinsic>(b, op, target_types, vec_type,
-                                              vector_supported, subvector_size);
-  rewriter.replaceOp(op, result);
-  return mlir::success();
-}
+ private:
+  std::string cpu_features_;
+};
 
 class LowerXlaIntrinsicLibPass
     : public impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass> {
  public:
-  LowerXlaIntrinsicLibPass()
-      : impl::LowerXlaIntrinsicLibPassBase<LowerXlaIntrinsicLibPass>() {}
+  using LowerXlaIntrinsicLibPassBase::LowerXlaIntrinsicLibPassBase;
 
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(context);
-    patterns.add(LowerIntrinsicPattern<ci::Exp, mm::ExpOp>);
-    patterns.add(LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>);
-    patterns.add(LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>);
-    patterns.add(LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>);
-    patterns.add(LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>);
-    patterns.add(LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>);
-    patterns.add(LowerIntrinsicPattern<ci::Erf, mm::ErfOp>);
+    absl::string_view cpu_features = cpu_features_.getValue();
+    patterns.add<LowerIntrinsicPattern<ci::Exp, mm::ExpOp>,
+                 LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>,
+                 LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>,
+                 LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>,
+                 LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>,
+                 LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>,
+                 LowerIntrinsicPattern<ci::Erf, mm::ErfOp>>(context,
+                                                            cpu_features);
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();
