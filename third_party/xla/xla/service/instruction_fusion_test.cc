@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/instruction_fusion.h"
 
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -218,6 +220,61 @@ static int Count(const HloModule& module, HloOpcode op) {
     }
   }
   return count;
+}
+
+// Hands RunImpl a map of `computation` that has no edges, so the pass cannot
+// tell that a consumer's operands lie on a path from the producer.
+class InstructionFusionWithEmptyReachability : public InstructionFusion {
+ public:
+  explicit InstructionFusionWithEmptyReachability(const AliasInfo* alias_info)
+      : InstructionFusion(InstructionFusion::IsExpensive, alias_info,
+                          /*may_duplicate=*/true) {}
+
+  const HloReachabilityMap* CurrentReachabilityMap(
+      const HloComputation* computation) override {
+    ++calls_;
+    map_ = std::make_unique<HloReachabilityMap>(
+        computation->MakeInstructionPostOrder());
+    return map_.get();
+  }
+
+  int calls() const { return calls_; }
+
+ private:
+  std::unique_ptr<HloReachabilityMap> map_;
+  int calls_ = 0;
+};
+
+TEST_F(InstructionFusionTest, RunUsesTheReachabilityMapOfTheSubclass) {
+  // The pass keeps the add unduplicated because the rng blocks fusing it into
+  // the root along the abs1 path (AvoidDuplicationIfNotAllFusibleRecursively).
+  // A map without that path lets the add be duplicated, which shows that the
+  // global duplication analysis read the map the subclass handed out.
+  constexpr absl::string_view kModule = R"(
+  HloModule test_module
+  ENTRY OutputFusion {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    add = f32[] add(p0, p1)
+    abs1 = f32[] abs(add)
+    rng = f32[] rng(p1, abs1), distribution=rng_uniform
+    abs2 = f32[] abs(rng)
+    abs3 = f32[] abs(rng)
+    ROOT root = f32[] subtract(abs2, add)
+  })";
+  auto module = ParseAndReturnVerifiedModule(kModule).value();
+  InstructionFusionWithEmptyReachability fusion(&alias_info_);
+  EXPECT_TRUE(fusion.Run(module.get()).value()) << module->ToString();
+  EXPECT_EQ(fusion.calls(), 1);
+  EXPECT_EQ(Count(*module, HloOpcode::kAdd), 2) << module->ToString();
+
+  module = ParseAndReturnVerifiedModule(kModule).value();
+  EXPECT_TRUE(InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                                /*may_duplicate=*/true)
+                  .Run(module.get())
+                  .value())
+      << module->ToString();
+  EXPECT_EQ(Count(*module, HloOpcode::kAdd), 1) << module->ToString();
 }
 
 TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {

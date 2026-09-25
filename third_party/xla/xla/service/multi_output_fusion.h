@@ -100,7 +100,8 @@ class MultiOutputFusion : public HloModulePass {
   // The other instruction is removed from its parent computation.
   virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
 
-  // Recompute reachability for the current computation.
+  // Makes the held reachability map current for the current computation,
+  // keeping it when the graph is unchanged.
   void RecomputeReachability();
 
   // Returns the reachability map for the current computation.

@@ -3073,6 +3073,7 @@ void HloInstruction::DetachFromOperandsAndUsers() {
       continue;
     }
     operand->users_.MaybeRemoveUser(this);
+    operand->InvalidatePostOrderCache();
     operands_[operand_num] = nullptr;
   }
 
@@ -3083,7 +3084,9 @@ void HloInstruction::DetachFromOperandsAndUsers() {
         user->operands_[i] = nullptr;
       }
     }
+    user->InvalidatePostOrderCache();
   }
+  InvalidatePostOrderCache();
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
@@ -3218,6 +3221,7 @@ absl::Status HloInstruction::AddControlDependencyTo(
     TF_RET_CHECK(!absl::c_linear_search(
         instruction->rare()->control_predecessors, this));
     instruction->mutable_rare()->control_predecessors.push_back(this);
+    InvalidatePostOrderCache();
   }
   return absl::OkStatus();
 }
@@ -3232,6 +3236,7 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
     EraseElementFromVector(&instruction->mutable_rare()->control_predecessors,
                            this);
   }
+  InvalidatePostOrderCache();
   return absl::OkStatus();
 }
 
@@ -3248,6 +3253,7 @@ absl::Status HloInstruction::DropAllControlDeps() {
     Rare* r = mutable_rare();
     r->control_successors.clear();
     r->control_predecessors.clear();
+    InvalidatePostOrderCache();
   }
   return absl::OkStatus();
 }
@@ -3360,12 +3366,19 @@ bool HloInstruction::IdenticalInternal(
   return IdenticalSlowPath(other, eq_computations);
 }
 
+void HloInstruction::InvalidatePostOrderCache() {
+  if (parent_ != nullptr) {
+    parent_->InvalidatePostOrderCache();
+  }
+}
+
 void HloInstruction::AppendOperand(HloInstruction* operand) {
   if (operand->parent() != nullptr) {
     DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
   operands_.push_back(operand);
+  InvalidatePostOrderCache();
   operand->AddUser(this);
 }
 
@@ -3398,6 +3411,7 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
   }
   CHECK_EQ(removed_count, ascending_indices.size());
   operands_.resize(operands_.size() - removed_count);
+  InvalidatePostOrderCache();
 }
 
 bool HloInstruction::HasConstantOperand() const {
@@ -3596,6 +3610,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
   std::replace(user->operands_.begin(), user->operands_.end(), this,
                new_producer);
+  user->InvalidatePostOrderCache();
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
@@ -3629,6 +3644,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
       << "Expected operand " << operand_number << " of " << user->ToString()
       << " to be equal to " << ToString();
   user->operands_[operand_number] = new_producer;
+  user->InvalidatePostOrderCache();
   new_producer->AddUser(user);
   return absl::OkStatus();
 }
@@ -3653,6 +3669,7 @@ absl::Status HloInstruction::ReplaceOperandWithDifferentShape(
   }
 
   operands_[operand_num] = new_operand;
+  InvalidatePostOrderCache();
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
           << new_operand->name() << ", was " << old_operand->name();
@@ -3813,6 +3830,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     } else {
       std::replace(user->operands_.begin(), user->operands_.end(), this,
                    new_producer);
+      user->InvalidatePostOrderCache();
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
         ABSL_RETURN_IF_ERROR(
@@ -3821,6 +3839,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     }
   }
   users_.Clear();
+  InvalidatePostOrderCache();
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
@@ -6038,6 +6057,7 @@ void HloInstruction::SortInstructionUsersAndControlLists(
     LOG(ERROR) << "Failed to sort instruction control successors for " << name()
                << "; " << status;
   }
+  InvalidatePostOrderCache();
 }
 
 // TODO(b/80131774): Remove these temporary methods after transition.

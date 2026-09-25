@@ -17,19 +17,28 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/barrier.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/literal_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -177,6 +186,145 @@ ENTRY entry {
   // Verify that MakeInstructionPostOrder() is idempotent.
   auto post_order_2 = module->entry_computation()->MakeInstructionPostOrder();
   EXPECT_EQ(post_order, post_order_2);
+}
+
+constexpr absl::string_view kPostOrderCacheModule = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  a = f32[] add(p0, p1)
+  b = f32[] multiply(p1, p0)
+  ROOT t = (f32[], f32[]) tuple(a, b)
+})";
+
+std::string PostOrderNames(absl::Span<HloInstruction* const> order) {
+  return absl::StrJoin(order, " ",
+                       [](std::string* out, const HloInstruction* instruction) {
+                         absl::StrAppend(out, instruction->name());
+                       });
+}
+
+// ForEachInstructionPostOrder walks the graph without the cache.
+std::vector<HloInstruction*> UncachedPostOrder(
+    const HloComputation* computation) {
+  std::vector<HloInstruction*> order;
+  computation->ForEachInstructionPostOrder(
+      [&](HloInstruction* instruction) { order.push_back(instruction); });
+  return order;
+}
+
+// MakeInstructionPostOrder caches its result. Every kind of graph change
+// below moves at least one instruction in the order, and the cached order has
+// to follow each of them.
+TEST_F(HLOComputationTest, MakeInstructionPostOrderFollowsGraphChanges) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kPostOrderCacheModule));
+  HloComputation* computation = module->entry_computation();
+  HloInstruction* t = computation->root_instruction();
+  HloInstruction* a = t->mutable_operand(0);
+  HloInstruction* b = t->mutable_operand(1);
+  HloInstruction* p0 = a->mutable_operand(0);
+  HloInstruction* p1 = a->mutable_operand(1);
+
+  std::vector<HloInstruction*> previous =
+      computation->MakeInstructionPostOrder();
+  EXPECT_EQ(previous, UncachedPostOrder(computation));
+  auto expect_new_order = [&](absl::string_view step) {
+    SCOPED_TRACE(step);
+    std::vector<HloInstruction*> order =
+        computation->MakeInstructionPostOrder();
+    std::vector<HloInstruction*> fresh = UncachedPostOrder(computation);
+    EXPECT_EQ(order, fresh)
+        << PostOrderNames(order) << " vs fresh " << PostOrderNames(fresh);
+    EXPECT_NE(order, previous) << "order unchanged: " << PostOrderNames(order);
+    previous = order;
+  };
+
+  // Operand replaced: p1 now precedes p0.
+  ASSERT_OK(a->ReplaceOperandWith(0, p1));
+  expect_new_order("ReplaceOperandWith");
+  // Control edge added and removed: b and p0 move before a and back.
+  ASSERT_OK(b->AddControlDependencyTo(a));
+  expect_new_order("AddControlDependencyTo");
+  ASSERT_OK(b->RemoveControlDependencyTo(a));
+  expect_new_order("RemoveControlDependencyTo");
+  // Instruction added and removed: a second root after t. A constant has no
+  // operands, so only the instruction list changes.
+  HloInstruction* c = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  expect_new_order("AddInstruction");
+  ASSERT_OK(computation->RemoveInstruction(c));
+  // Cleanup frees c while the stale cache still points at it; the next call
+  // replaces the cache without reading it.
+  computation->Cleanup();
+  expect_new_order("RemoveInstruction and Cleanup");
+  // Cleanup compacts the instruction list stably, so a current cache stays
+  // valid without an invalidation. Two constants follow the hole so that an
+  // unstable compaction would swap them in the order.
+  c = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  expect_new_order("AddInstruction again");
+  computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0f)));
+  expect_new_order("AddInstruction third");
+  computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(4.0f)));
+  expect_new_order("AddInstruction fourth");
+  ASSERT_OK(computation->RemoveInstruction(c));
+  expect_new_order("RemoveInstruction again");
+  computation->Cleanup();
+  EXPECT_EQ(computation->MakeInstructionPostOrder(), previous);
+  EXPECT_EQ(previous, UncachedPostOrder(computation));
+  // All uses replaced: b loses its users and becomes a root before t.
+  ASSERT_OK(b->ReplaceAllUsesWith(a));
+  expect_new_order("ReplaceAllUsesWith");
+  // Control edge dropped in bulk.
+  ASSERT_OK(p0->AddControlDependencyTo(b));
+  expect_new_order("AddControlDependencyTo p0");
+  ASSERT_OK(b->DropAllControlDeps());
+  expect_new_order("DropAllControlDeps");
+  // One use replaced: b reads p0 twice, so p0 and b precede p1.
+  ASSERT_OK(p1->ReplaceUseWith(b, p0));
+  expect_new_order("ReplaceUseWith");
+  // Fusion: b is replaced by a fusion appended after t, which takes over b's
+  // place as a root.
+  computation->CreateFusionInstruction({b}, HloInstruction::FusionKind::kLoop);
+  expect_new_order("CreateFusionInstruction");
+}
+
+// The cache serves concurrent const readers; every one of them gets the
+// fresh order.
+TEST_F(HLOComputationTest, MakeInstructionPostOrderConcurrentReaders) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kPostOrderCacheModule));
+  HloComputation* computation = module->entry_computation();
+  HloInstruction* a = computation->root_instruction()->mutable_operand(0);
+  // Leave the cache stale so the readers below race on the first fill.
+  ASSERT_OK(a->ReplaceOperandWith(0, a->mutable_operand(1)));
+  const std::vector<HloInstruction*> expected = UncachedPostOrder(computation);
+
+  constexpr int kThreads = 8;
+  std::vector<std::vector<HloInstruction*>> results(kThreads);
+  {
+    // The pool has one thread per task, so the barrier releases every reader
+    // into the first fill together; the pool destructor joins them before the
+    // barrier goes away.
+    absl::Barrier start(kThreads);
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "post_order", kThreads);
+    for (int thread = 0; thread < kThreads; ++thread) {
+      pool.Schedule([&, thread] {
+        start.Block();
+        for (int i = 0; i < 100; ++i) {
+          results[thread] = computation->MakeInstructionPostOrder();
+        }
+      });
+    }
+  }
+  for (const std::vector<HloInstruction*>& result : results) {
+    EXPECT_EQ(result, expected) << PostOrderNames(result);
+  }
 }
 
 // Test AddCallee

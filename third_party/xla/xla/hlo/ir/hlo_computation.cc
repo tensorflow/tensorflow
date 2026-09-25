@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/backend_config.h"
@@ -310,6 +312,7 @@ void HloComputation::CopyLocalIdsFromComputation(
 
   instructions_ = std::move(cloned_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  InvalidatePostOrderCache();
 }
 
 static void IncrementCount(
@@ -444,6 +447,15 @@ HloInstruction* HloComputation::AddInstructionInternal(
         << "Called computation " << called_computation->name()
         << " is not in the same module as " << name();
     AddCallee(pinst, called_computation);
+  }
+  InvalidatePostOrderCache();
+  // The root scan of an operand's computation ignores users outside any
+  // computation, so this instruction gaining a parent can change that order
+  // even when the operand lives elsewhere (transiently, while fusing).
+  for (HloInstruction* operand : pinst->operands()) {
+    if (operand->parent() != this) {
+      operand->InvalidatePostOrderCache();
+    }
   }
   return pinst;
 }
@@ -837,6 +849,7 @@ absl::Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
   instruction->local_id_ = -1;
   instruction_count_--;
+  InvalidatePostOrderCache();
 
   return absl::OkStatus();
 }
@@ -877,6 +890,8 @@ void HloComputation::Cleanup() {
   }
   to_be_deleted_.clear();
   instructions_.resize(instruction_count());
+  // Shrinks; HloReachabilityMap::IsCurrentFor relies on every other change
+  // of this counter bumping the epoch.
   next_instruction_unique_id_ = instructions_.size();
 }
 
@@ -897,6 +912,7 @@ void HloComputation::CanonicalizeLocalIds() {
 
   instructions_ = std::move(new_instructions);
   next_instruction_unique_id_ = instructions_.size();
+  InvalidatePostOrderCache();
 }
 
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
@@ -1001,7 +1017,28 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
   return post_order;
 }
 
-std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+// Names the first position where a cached post order and a fresh one differ.
+// Only the fresh vector is dereferenced: a stale cache may hold dangling
+// pointers, which is the bug this message describes.
+static std::string DescribePostOrderMismatch(
+    absl::Span<HloInstruction* const> cached,
+    absl::Span<HloInstruction* const> fresh) {
+  if (cached.size() != fresh.size()) {
+    return absl::StrCat("cached size ", cached.size(), ", fresh size ",
+                        fresh.size());
+  }
+  for (size_t i = 0; i < fresh.size(); ++i) {
+    if (cached[i] != fresh[i]) {
+      return absl::StrFormat(
+          "first difference at index %d: fresh %s, cached %p", i,
+          fresh[i]->name(), cached[i]);
+    }
+  }
+  return "no difference";
+}
+
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderUncached()
+    const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   VisitMap visited(instructions_.size());
@@ -1022,6 +1059,30 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   CHECK_EQ(instruction_count(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
+}
+
+std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
+  // The mutex is not reentrant: nothing below may call MakeInstructionPostOrder
+  // or ToString on this computation.
+  absl::MutexLock lock(post_order_cache_mutex_);
+  const uint64_t epoch = post_order_epoch_.load(std::memory_order_relaxed);
+  if (post_order_cache_epoch_ != epoch) {
+    post_order_cache_ = MakeInstructionPostOrderUncached();
+    post_order_cache_epoch_ = epoch;
+  } else {
+    // A graph change that reached the cache without InvalidatePostOrderCache
+    // is a bug in HloInstruction or HloComputation; a mutation racing with
+    // this reader trips it too. Debug builds pay a full walk per call to
+    // catch it here; optimized builds do not evaluate the DCHECK.
+    DCHECK(post_order_cache_ == MakeInstructionPostOrderUncached())
+        << "stale post order cache in computation " << name()
+        << " (a mutation without InvalidatePostOrderCache, or one concurrent "
+           "with this call): "
+        << DescribePostOrderMismatch(post_order_cache_,
+                                     MakeInstructionPostOrderUncached());
+  }
+  // Callers keep the vector across graph changes, so they get a copy.
+  return post_order_cache_;
 }
 
 std::vector<HloInstruction*>

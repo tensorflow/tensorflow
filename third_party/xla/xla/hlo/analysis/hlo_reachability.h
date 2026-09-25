@@ -62,6 +62,28 @@ class HloReachabilityMap {
   static std::unique_ptr<HloReachabilityMap> Build(
       const HloComputation* computation);
 
+  // Makes `*map` a current map of `computation` (see IsCurrentFor): keeps
+  // the held map when it is current and otherwise releases it before building
+  // a new one, so only one map is alive at a time. Returns whether the held
+  // map was kept.
+  static bool BuildOrReuse(const HloComputation* computation,
+                           std::unique_ptr<HloReachabilityMap>* map);
+
+  // True when Build(computation) produced this map and neither the
+  // computation nor this map has changed since, so a new Build(computation)
+  // would produce the same bits and the same indices. The computation is
+  // unchanged while its unique id (unique within its module; -1 outside
+  // one), its graph epoch (instruction set, operand and control predecessor
+  // lists) and its local id bound (which shrinks when Cleanup compacts local
+  // ids) are the ones seen by Build.
+  bool IsCurrentFor(const HloComputation* computation) const {
+    return computation != nullptr && built_for_ == computation &&
+           computation->unique_id() == computation_id_ &&
+           built_epoch_ == computation->graph_epoch() &&
+           built_id_bound_ ==
+               computation->next_unique_instruction_internal_id();
+  }
+
   // Similar to the above Build operation except that it tries to identify
   // paths between instructions that do not contain control instructions
   // and multiple operands, i.e., b is_reachable a == true iff
@@ -109,7 +131,10 @@ class HloReachabilityMap {
   void SetReachable(const HloInstruction* a, const HloInstruction* b) {
     SetReachable(GetIndex(a), GetIndex(b));
   }
-  void SetReachable(Index a, Index b) { BitSetFromIndex(b).Set(a); }
+  void SetReachable(Index a, Index b) {
+    MarkEdited();
+    BitSetFromIndex(b).Set(a);
+  }
 
   // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
@@ -326,6 +351,10 @@ class HloReachabilityMap {
     return key < indices_.size() && indices_[key] != kValueAbsent;
   }
 
+  // Every method that changes bits or indices after Build calls this;
+  // IsCurrentFor is false from then on.
+  void MarkEdited() { built_for_ = nullptr; }
+
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
   void SetReachabilityToUnionHelper(
       absl::Span<const HloInstruction* const> inputs, Index index);
@@ -368,6 +397,13 @@ class HloReachabilityMap {
   std::vector<std::pair<size_t, BitSet::Word>> tmp_changed_words_;
   std::vector<uintptr_t> tmp_worklist_;
   std::vector<Index> tmp_indices_to_update_;
+
+  // The computation Build ran on, with its graph epoch and local id bound at
+  // that time; null for a map built any other way or edited since (see
+  // IsCurrentFor).
+  const HloComputation* built_for_ = nullptr;
+  uint64_t built_epoch_ = 0;
+  int32_t built_id_bound_ = 0;
 };
 
 }  // namespace xla

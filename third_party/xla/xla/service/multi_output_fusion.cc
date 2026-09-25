@@ -301,9 +301,9 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
 }
 
 void MultiOutputFusion::RecomputeReachability() {
-  // Free the memory used for the reachability map before computing a new one.
-  reachability_.reset();
-  reachability_ = HloReachabilityMap::Build(computation_);
+  // A phase that changed nothing leaves the map current; a stale map is
+  // released before the new one is built.
+  HloReachabilityMap::BuildOrReuse(computation_, &reachability_);
 }
 
 void MultiOutputFusion::UpdateReachability(

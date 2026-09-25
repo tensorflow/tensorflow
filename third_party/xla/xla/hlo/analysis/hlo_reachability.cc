@@ -73,6 +73,7 @@ HloReachabilityMap::HloReachabilityMap(
 bool HloReachabilityMap::SetReachabilityToUnion(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction) {
+  MarkEdited();
   Index index = GetIndex(instruction);
   BitSet bit_set = BitSetFromIndex(index);
   tmp_bit_set_.CopyBitSet(bit_set);
@@ -83,11 +84,13 @@ bool HloReachabilityMap::SetReachabilityToUnion(
 void HloReachabilityMap::FastSetReachabilityToUnion(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction) {
+  MarkEdited();
   SetReachabilityToUnionHelper(inputs, GetIndex(instruction));
 }
 
 void HloReachabilityMap::FastSetReachabilityToUnion(
     absl::Span<const Index> input_indices, Index index) {
+  MarkEdited();
   SetReachabilityToUnionHelper(input_indices, index);
 }
 
@@ -118,6 +121,7 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
 
 void HloReachabilityMap::Replace(const HloInstruction* original,
                                  const HloInstruction* replacement) {
+  MarkEdited();
   Key original_key = GetKey(original);
   Key replacement_key = GetKey(replacement);
   if (original_key != replacement_key) {
@@ -147,8 +151,23 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
   return result;
 }
 
+bool HloReachabilityMap::BuildOrReuse(
+    const HloComputation* computation,
+    std::unique_ptr<HloReachabilityMap>* map) {
+  if (*map != nullptr && (*map)->IsCurrentFor(computation)) {
+    return true;
+  }
+  map->reset();
+  *map = Build(computation);
+  return false;
+}
+
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
+  // Read before the walk so a change during the build can only make the map
+  // stale, never current with old bits.
+  const uint64_t graph_epoch = computation->graph_epoch();
+  const int32_t id_bound = computation->next_unique_instruction_internal_id();
   std::vector<HloInstruction*> instructions =
       computation->MakeInstructionPostOrder();
   auto result = std::make_unique<HloReachabilityMap>(instructions);
@@ -172,11 +191,15 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
 
     add_dependencies(instruction);
   }
+  result->built_for_ = computation;
+  result->built_epoch_ = graph_epoch;
+  result->built_id_bound_ = id_bound;
   return result;
 }
 
 void HloReachabilityMap::UpdateReachabilityThroughInstruction(
     const HloInstruction* instruction) {
+  MarkEdited();
   std::queue<const HloInstruction*> worklist;
   worklist.push(instruction);
 
@@ -221,6 +244,7 @@ static_assert(alignof(HloInstruction) >= 2,
               "HloInstruction must be aligned to at least 2 bytes");
 void HloReachabilityMap::UpdateReachabilityForMerge(
     const HloInstruction* left, const HloInstruction* right) {
+  MarkEdited();
   DCHECK(tmp_worklist_.empty());
   DCHECK(tmp_indices_to_update_.empty());
   DCHECK(IsKeyPresent(GetKey(left)));
@@ -310,6 +334,7 @@ void HloReachabilityMap::UpdateMultipleInstructions(
     absl::flat_hash_map<const HloInstruction*,
                         absl::flat_hash_set<const HloInstruction*>>
         to_update) {
+  MarkEdited();
   while (!to_update.empty()) {
     auto it = to_update.begin();
     const HloInstruction* instruction = it->first;

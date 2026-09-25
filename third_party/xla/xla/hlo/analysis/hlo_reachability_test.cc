@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -318,6 +319,164 @@ TEST_F(HloReachabilityTest, UpdateMultipleInstructions) {
   // a is still not reachable to d, f
   EXPECT_FALSE(reachability->IsReachable(a, d));
   EXPECT_FALSE(reachability->IsReachable(a, f));
+}
+
+TEST_F(HloReachabilityTest,
+       BuildOrReuseKeepsTheMapWhileTheComputationIsUnchanged) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      neg = f32[8] negate(p0)
+      exp = f32[8] exponential(p1)
+      ROOT add = f32[8] add(neg, exp)
+    })")
+                    .value();
+  HloComputation* computation = module->entry_computation();
+  HloInstruction* p0 = computation->parameter_instruction(0);
+  HloInstruction* p1 = computation->parameter_instruction(1);
+  HloInstruction* neg = computation->GetInstructionWithName("neg");
+  HloInstruction* exp = computation->GetInstructionWithName("exp");
+  HloInstruction* add = computation->root_instruction();
+
+  // A null holder gets a fresh map.
+  std::unique_ptr<HloReachabilityMap> map;
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(map->IsCurrentFor(nullptr));
+
+  // No change: the held map is kept.
+  const HloReachabilityMap* first = map.get();
+  EXPECT_TRUE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_EQ(map.get(), first);
+  EXPECT_FALSE(map->IsReachable(p1, neg));
+
+  // A control edge changes the graph: the map is rebuilt and sees the edge.
+  ASSERT_IS_OK(p1->AddControlDependencyTo(neg));
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_TRUE(map->IsReachable(p1, neg));
+
+  // An operand change: the map is rebuilt and sees the new edge.
+  ASSERT_IS_OK(add->ReplaceOperandWith(1, neg));
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(map->IsReachable(exp, add));
+
+  // A new instruction: the map is rebuilt and contains it.
+  HloInstruction* copy = computation->AddInstruction(
+      HloInstruction::CreateUnary(add->shape(), HloOpcode::kCopy, add));
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(map->IsPresent(copy));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsPresent(copy));
+  EXPECT_TRUE(map->IsReachable(p0, copy));
+
+  // A removed instruction: the map is rebuilt without it.
+  ASSERT_IS_OK(computation->RemoveInstruction(copy));
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_EQ(computation->instruction_count(), 5);
+
+  // Cleanup after a removal moves the local ids of the instructions behind
+  // the hole without a graph change: the map keyed by the old ids is stale.
+  ASSERT_IS_OK(computation->RemoveInstruction(exp));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  computation->Cleanup();
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_TRUE(map->IsPresent(add));
+  EXPECT_TRUE(map->IsReachable(p0, add));
+
+  // A map edited after Build is never reused, even if the graph is unchanged:
+  // the rebuilt map does not carry the edit.
+  map->SetReachable(p1, p0);
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+  EXPECT_TRUE(map->IsReachable(p1, p0));
+  EXPECT_FALSE(HloReachabilityMap::BuildOrReuse(computation, &map));
+  EXPECT_TRUE(map->IsCurrentFor(computation));
+  EXPECT_FALSE(map->IsReachable(p1, p0));
+
+  // A map of another computation or built with restrictions is not reused.
+  HloComputation::Builder builder("other");
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloComputation* other = module->AddEmbeddedComputation(
+      builder.Build(/*root_instruction=*/constant));
+  EXPECT_FALSE(map->IsCurrentFor(other));
+  std::unique_ptr<HloReachabilityMap> restricted =
+      HloReachabilityMap::BuildWithRestrictions(
+          computation, [](const HloInstruction* instruction,
+                          std::vector<HloInstruction*>* inputs) {});
+  EXPECT_FALSE(restricted->IsCurrentFor(computation));
+
+  // A computation with another unique id is not the one the map was built
+  // for, whatever its address.
+  computation->ClearUniqueIdInternal();
+  computation->SetUniqueId(other->unique_id() + 1);
+  EXPECT_FALSE(map->IsCurrentFor(computation));
+}
+
+TEST_F(HloReachabilityTest, EveryEditMakesTheMapStale) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      a = f32[8] parameter(0)
+      b = f32[8] negate(a)
+      ROOT c = f32[8] negate(b)
+    })")
+                    .value();
+  HloComputation* computation = module->entry_computation();
+  const HloInstruction* a = computation->parameter_instruction(0);
+  const HloInstruction* b = computation->GetInstructionWithName("b");
+  const HloInstruction* c = computation->root_instruction();
+
+  const std::vector<
+      std::pair<std::string, std::function<void(HloReachabilityMap&)>>>
+      edits = {
+          {"SetReachable",
+           [&](HloReachabilityMap& m) { m.SetReachable(c, a); }},
+          {"SetReachable(Index, Index)",
+           [&](HloReachabilityMap& m) {
+             m.SetReachable(m.GetIndex(c), m.GetIndex(a));
+           }},
+          {"SetReachabilityToUnion",
+           [&](HloReachabilityMap& m) { m.SetReachabilityToUnion({a}, c); }},
+          {"FastSetReachabilityToUnion",
+           [&](HloReachabilityMap& m) {
+             m.FastSetReachabilityToUnion({a}, c);
+           }},
+          {"FastSetReachabilityToUnion(Index)",
+           [&](HloReachabilityMap& m) {
+             m.FastSetReachabilityToUnion({m.GetIndex(a)}, m.GetIndex(c));
+           }},
+          {"Replace", [&](HloReachabilityMap& m) { m.Replace(c, c); }},
+          {"UpdateReachabilityThroughInstruction",
+           [&](HloReachabilityMap& m) {
+             m.UpdateReachabilityThroughInstruction(c);
+           }},
+          {"UpdateMultipleInstructions",
+           [&](HloReachabilityMap& m) {
+             m.UpdateMultipleInstructions({{c, {a}}});
+           }},
+          {"UpdateReachabilityForMerge",
+           [&](HloReachabilityMap& m) { m.UpdateReachabilityForMerge(a, b); }},
+      };
+  for (const auto& [name, edit] : edits) {
+    std::unique_ptr<HloReachabilityMap> map =
+        HloReachabilityMap::Build(computation);
+    ASSERT_TRUE(map->IsCurrentFor(computation)) << name;
+    edit(*map);
+    EXPECT_FALSE(map->IsCurrentFor(computation)) << name;
+  }
 }
 
 }  // namespace

@@ -63,7 +63,7 @@ cc_library(
     ],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":backend_config",
@@ -169,15 +169,19 @@ xla_cc_test(
     srcs = ["hlo_computation_test.cc"],
     deps = [
         ":hlo",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
