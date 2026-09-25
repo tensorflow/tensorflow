@@ -216,6 +216,13 @@ class HloValue::UseCache {
 }
 
 void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
+  SetPositions(positions, /*live_out_of_module=*/false);
+  live_out_of_module_ =
+      IsRootOf(defining_instruction()->GetModule()->entry_computation());
+}
+
+void HloValue::SetPositions(absl::Span<const HloPosition> positions,
+                            bool live_out_of_module) {
   CHECK_EQ(positions_.size(), 1) << "SetPositions should only be called once.";
 
   // The positions must be unique and should not contain the defining position
@@ -232,9 +239,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
 #endif  // NDEBUG
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
-  // Update liveout status of this HloValue.
-  live_out_of_module_ |=
-      IsRootOf(defining_instruction()->GetModule()->entry_computation());
+  live_out_of_module_ = live_out_of_module;
 }
 
 HloValue::Uses HloValue::ComputeUses(UseCache* use_cache) const {
