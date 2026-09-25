@@ -16,8 +16,8 @@
 
 import numpy as np
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
