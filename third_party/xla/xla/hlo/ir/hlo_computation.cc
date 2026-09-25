@@ -664,6 +664,7 @@ bool HloComputation::IsSafelyRemovable(
   return true;
 }
 
+// LINT.IfChange(has_side_effect)
 bool HloComputation::HasSideEffect() const {
   for (auto* instruction : instructions()) {
     if (instruction->HasSideEffect()) {
@@ -672,6 +673,7 @@ bool HloComputation::HasSideEffect() const {
   }
   return false;
 }
+// LINT.ThenChange(../../service/while_loop_simplifier.cc:cached_has_side_effect)
 
 bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
   return inst->IsMarkedAsDead();
