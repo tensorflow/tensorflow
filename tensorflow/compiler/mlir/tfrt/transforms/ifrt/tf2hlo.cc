@@ -76,6 +76,7 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
+static constexpr llvm::StringRef kShardingAttrName = "mhlo.sharding";
 uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
   std::string s;
   llvm::raw_string_ostream os(s);
@@ -83,6 +84,51 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
   flags.enableDebugInfo(false);
   module.print(os, flags);
   return tsl::Fingerprint64(os.str());
+}
+
+// Returns the number of tensor dimensions that `sharding` tiles. The trailing
+// subgroup dimensions (`last_tile_dims` and the replication dimension added by
+// `replicate_on_last_tile_dim`) do not map to tensor dimensions and are
+// therefore not counted. This mirrors xla::HloSharding::TiledDataRank().
+int TiledDataRank(const xla::OpSharding& sharding) {
+  return sharding.tile_assignment_dimensions_size() -
+         (sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         sharding.last_tile_dims_size();
+}
+
+// Removes the `mhlo.sharding` argument attributes of the entry function that
+// `metadata` no longer has a sharding for. The metadata and the attributes are
+// two encodings of the same load time sharding decision: the attribute is
+// exported as an XlaSharding op, and the metadata is what the TPU compiler
+// binds to the argument shape. Once UpdateCompileMetadata() has dropped a
+// sharding from the metadata because it does not apply to the shape bound to
+// the argument, the attribute does not apply either, and leaving it in place
+// would only fail the compilation when the exported XlaSharding op validates
+// it against that same shape.
+void DropArgShardingAttrsMissingFromMetadata(
+    mlir::ModuleOp module,
+    const tensorflow::tpu::TPUCompileMetadataProto& metadata) {
+  auto func = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!func || func.getNumArguments() != metadata.args_size()) {
+    return;
+  }
+  for (int i = 0; i < metadata.args_size(); ++i) {
+    if (metadata.args(i).has_sharding() &&
+        metadata.args(i).sharding().type() != xla::OpSharding::REPLICATED) {
+      continue;
+    }
+    auto sharding_attr =
+        func.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttrName);
+    if (!sharding_attr || sharding_attr.getValue().empty()) {
+      continue;
+    }
+    LOG(WARNING) << "Dropping the " << kShardingAttrName.str()
+                 << " attribute of argument " << i << " ("
+                 << sharding_attr.getValue().str()
+                 << "): the compile metadata has no sharding for it";
+    func.removeArgAttr(
+        i, mlir::StringAttr::get(func.getContext(), kShardingAttrName));
+  }
 }
 }  // namespace
 
@@ -181,8 +227,31 @@ absl::Status UpdateCompileMetadata(
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() =
-        inputs[i].GetShapeForCompilation().AsProto();
+    const tensorflow::TensorShape& shape = inputs[i].GetShapeForCompilation();
+    *metadata.mutable_args(i)->mutable_shape() = shape.AsProto();
+
+    // The sharding in `metadata` was inferred at load time from the MLIR type
+    // of the argument, which is not necessarily the shape that is bound to the
+    // argument here: the shape above comes from the actual input tensor, from
+    // the restored variable, or from a configured static shape. If the
+    // sharding tiles more dimensions than that shape has, it does not apply to
+    // this argument at all, and everything downstream that combines the two
+    // (e.g. xla::HloSharding::TileShape(), which indexes the shape by the tiled
+    // data rank) would read out of bounds. Drop the sharding here, where the
+    // inconsistency is introduced, so the argument is treated as unsharded.
+    const xla::OpSharding& sharding = metadata.args(i).sharding();
+    if (sharding.type() == xla::OpSharding::OTHER &&
+        TiledDataRank(sharding) != shape.dims()) {
+      LOG(WARNING) << "Overriding rank-mismatched sharding of argument " << i
+                   << " (" << metadata.args(i).name() << ") to REPLICATED: "
+                   << "sharding tiles " << TiledDataRank(sharding)
+                   << " dimension(s) but the argument shape "
+                   << shape.DebugString() << " has " << shape.dims()
+                   << " dimension(s). Sharding: "
+                   << sharding.ShortDebugString();
+      *metadata.mutable_args(i)->mutable_sharding() =
+          xla::HloSharding::Replicate().ToProto();
+    }
   }
   return absl::OkStatus();
 }
@@ -261,6 +330,27 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
 
   TF_RETURN_IF_ERROR(
       tensorflow::RefineShapes(arg_tensor_or_resource_shapes, arg.module));
+
+  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
+      arg.compile_metadata;
+  for (int i = 0; i < compile_metadata.args_size() && i < arg_shapes.size();
+       ++i) {
+    const xla::OpSharding& sharding = compile_metadata.args(i).sharding();
+    if (sharding.type() == xla::OpSharding::OTHER &&
+        TiledDataRank(sharding) != arg_shapes[i].dims()) {
+      LOG(WARNING) << "Overriding rank-mismatched sharding of argument " << i
+                   << " (" << compile_metadata.args(i).name()
+                   << ") to REPLICATED: "
+                   << "sharding tiles " << TiledDataRank(sharding)
+                   << " dimension(s) but argument shape "
+                   << arg_shapes[i].DebugString() << " has "
+                   << arg_shapes[i].dims() << " dimension(s).";
+      *compile_metadata.mutable_args(i)->mutable_sharding() =
+          xla::HloSharding::Replicate().ToProto();
+    }
+  }
+
+  DropArgShardingAttrsMissingFromMetadata(arg.module, compile_metadata);
   tpu::MlirToHloArgs mlir_to_hlo_args;
   std::string module_str = tensorflow::SerializeMlirModule(arg.module);
   mlir_to_hlo_args.mlir_module = module_str;
@@ -276,7 +366,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::XlaCompiler::CompilationResult compilation_result,
       tensorflow::tf2xla::v2::LegalizeMlirToHlo(
-          mlir_to_hlo_args, arg.compile_metadata, use_tuple_args, device_type,
+          mlir_to_hlo_args, compile_metadata, use_tuple_args, device_type,
           custom_legalization_passes,
           /*shape_determination_fns=*/
           tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns(
@@ -299,7 +389,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
 
   result.hlo_module_proto = std::move(compilation_result.computation->proto());
-  result.compile_metadata = arg.compile_metadata;
+  result.compile_metadata = std::move(compile_metadata);
   result.host_compute_metadata =
       std::move(compilation_result.host_compute_metadata);
 
