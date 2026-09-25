@@ -15,7 +15,7 @@
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG:[^:]+]]: memref<1x9xf16>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[ARG]]
 // CHECK-SAME:    : memref<1x9xf16> -> tensor<1x16xf16>
@@ -29,7 +29,7 @@
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // CHECK-VECTOR-SAME:     %[[ARG:[^:]+]]: memref<1x9xf16>,
 // CHECK-VECTOR-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
-// CHECK-VECTOR-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-VECTOR-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 // CHECK-VECTOR:        %[[ALLOCA_ARG:.*]] = memref.alloca() : memref<1x16xf16>
 // CHECK-VECTOR:        %[[ALLOCA_OUT:.*]] = memref.alloca() alignment = 64 : memref<1x16xi8>
 // CHECK-VECTOR:        memref.copy %[[ARG]],
@@ -42,9 +42,11 @@
 
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
 // NEW-VECTOR-SAME:    %[[ARG:[^:]+]]: memref<1x9xf16>, %[[OUT:[^:]+]]: memref<1x9xi8>, %[[PID:[^:]+]]: index
+// NEW-VECTOR:         %[[ARG_I16:.*]] = xtile.memref_bitcast %[[ARG]] : memref<1x9xf16> -> memref<1x9xi16>
 // NEW-VECTOR:         %[[MASK:.*]] = vector.constant_mask [1, 9] : vector<1x16xi1>
-// NEW-VECTOR:         %[[READ:.*]] = vector.transfer_read %[[ARG]]{{.*}}, %[[MASK]]{{.*}} : memref<1x9xf16>, vector<1x16xf16>
-// NEW-VECTOR:         %[[FINITE:.*]] = math.isfinite %[[READ]] : vector<1x16xf16>
+// NEW-VECTOR:         %[[READ:.*]] = vector.transfer_read %[[ARG_I16]]{{.*}}, %[[MASK]]{{.*}} : memref<1x9xi16>, vector<1x16xi16>
+// NEW-VECTOR:         %[[READ_F16:.*]] = arith.bitcast %[[READ]] : vector<1x16xi16> to vector<1x16xf16>
+// NEW-VECTOR:         %[[FINITE:.*]] = math.isfinite %[[READ_F16]] : vector<1x16xf16>
 // NEW-VECTOR:         %[[CAST:.*]] = arith.extui %[[FINITE]] : vector<1x16xi1> to vector<1x16xi8>
 // NEW-VECTOR:         vector.transfer_write %[[CAST]], %[[OUT]]{{.*}}, %[[MASK]]{{.*}} : vector<1x16xi8>, memref<1x9xi8>
 

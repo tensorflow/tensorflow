@@ -54,24 +54,16 @@ TEST(Comparison, IntegersDefaultToTotalOrder) {
       Comparison::Order::kTotal);
 }
 
-TEST(Comparison, LegacyConstructorDefaultsToX32) {
-  // We expect the legacy constructor to default to a {S,U,F}32 primitive type.
-  // This is legacy debt of the previous enumeration Comparison::Type, which
-  // attempted to combine ordering and numerical data classification in a single
-  // type.
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kFloat)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::F32);
-  EXPECT_EQ(
-      Comparison(Comparison::Direction::kGe, Comparison::Type::kFloatTotalOrder)
-          .GetPrimitiveType(),
-      xla::PrimitiveType::F32);
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kSigned)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::S32);
-  EXPECT_EQ(Comparison(Comparison::Direction::kGe, Comparison::Type::kUnsigned)
-                .GetPrimitiveType(),
-            xla::PrimitiveType::U32);
+TEST(Comparison, ComparisonTypeToOrder) {
+  EXPECT_THAT(ComparisonTypeToOrder("FLOAT"),
+              IsOkAndHolds(Comparison::Order::kPartial));
+  EXPECT_THAT(ComparisonTypeToOrder("TOTALORDER"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_THAT(ComparisonTypeToOrder("SIGNED"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_THAT(ComparisonTypeToOrder("UNSIGNED"),
+              IsOkAndHolds(Comparison::Order::kTotal));
+  EXPECT_FALSE(ComparisonTypeToOrder("INVALID").ok());
 }
 
 TEST(Comparison, PartialOrderReflexivity) {
