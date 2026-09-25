@@ -277,13 +277,14 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
   }
 }
 
-absl::Status RunShard(RestoreVariableShard shard,
-                      IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
-                      tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
-                      tf_mlrt::Context& context, bool use_async_restore,
-                      bool materialize_variables_in_resource_manager,
-                      std::vector<CheckpointLoader::MaterializedVariable>*
-                          materialized_variables) {
+absl::Status RunShard(
+    RestoreVariableShard shard,
+    IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
+    tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
+    tf_mlrt::Context& context, bool use_async_restore,
+    bool materialize_variables_in_resource_manager,
+    std::vector<CheckpointLoader::MaterializedVariable>* materialized_variables,
+    absl::Mutex* in_flight_mu, int* num_in_flight_shards) {
   if (!ifrt_restore_tensor_registry) {
     return absl::InternalError("ifrt_restore_tensor_registry must not be null");
   }
@@ -323,10 +324,18 @@ absl::Status RunShard(RestoreVariableShard shard,
   input_tf_tensor_values[1].tensor = &shard.tensor_names;
   input_tf_tensor_values[2].tensor = &shard.shape_and_slices;
 
-  auto& params = context.params();
+  tensorflow::OpKernelContext::Params params = context.params();
   tf_mlrt::SetUpParams(runner, input_tf_tensor_values, params);
-  // Use persistent device instead of the per request device.
+  // Use persistent device instead of the per request device, and clear
+  // per-request pointers that may be destroyed before async restore finishes.
   params.device = context.fallback_request_state().device_manager().HostCPU();
+  params.step_container = nullptr;
+  params.rendezvous = nullptr;
+  params.cancellation_manager = nullptr;
+  params.collective_executor = nullptr;
+  params.session_metadata = nullptr;
+  params.slice_reader_cache = nullptr;
+  params.runner = nullptr;
 
   auto async_state = std::make_unique<AsyncState>(
       input_tf_tensor_values, params, num_outputs,
@@ -398,14 +407,24 @@ absl::Status RunShard(RestoreVariableShard shard,
                    ifrt_restore_tensor_registry);
   } else {
     tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
+    {
+      absl::MutexLock lock(in_flight_mu);
+      ++(*num_in_flight_shards);
+    }
     // Use dedicated work queue for restore operation.
     checkpoint_loader_work_queue->AddTask(
         [runner = std::move(runner), async_state = std::move(async_state),
          shard = std::move(shard), bg_context = std::move(bg_context),
-         ifrt_restore_tensor_registry = ifrt_restore_tensor_registry]() {
-          tensorflow::WithContext wc(bg_context);
-          RunShardHelper(runner, async_state.get(), shard,
-                         ifrt_restore_tensor_registry);
+         ifrt_restore_tensor_registry = ifrt_restore_tensor_registry,
+         in_flight_mu = in_flight_mu,
+         num_in_flight_shards = num_in_flight_shards]() {
+          {
+            tensorflow::WithContext wc(bg_context);
+            RunShardHelper(runner, async_state.get(), shard,
+                           ifrt_restore_tensor_registry);
+          }
+          absl::MutexLock lock(in_flight_mu);
+          --(*num_in_flight_shards);
         });
   }
 
@@ -422,6 +441,12 @@ int64_t GetSizeFromVarHandle(const ResourceHandle& handle) {
 }
 
 }  // namespace
+
+CheckpointLoader::~CheckpointLoader() {
+  absl::MutexLock lock(&in_flight_mu_);
+  in_flight_mu_.Await(absl::Condition(
+      +[](int* count) { return *count == 0; }, &num_in_flight_shards_));
+}
 
 absl::Status CheckpointLoader::PrepareRestore(const PrepareRestoreArgs& args) {
   VLOG(1) << "Skip CheckpointLoader::PrepareRestore";
@@ -488,7 +513,7 @@ absl::Status CheckpointLoader::Load(
     TF_RETURN_IF_ERROR(RunShard(
         shard, ifrt_restore_tensor_registry_, checkpoint_loader_work_queue_,
         context, use_async_restore_, materialize_variables_in_resource_manager_,
-        &materialized_variables));
+        &materialized_variables, &in_flight_mu_, &num_in_flight_shards_));
   }
   if (!materialized_variables.empty()) {
     absl::MutexLock lock(&materialized_variables_mu_);

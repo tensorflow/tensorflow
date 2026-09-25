@@ -32,7 +32,7 @@ ENTRY main {
 
 // CHECK:      xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:   %[[OUT:[^:]+]]: memref<128xf32>,
-// CHECK-SAME:   %[[PID:[^:]+]]: index)
+// CHECK-SAME:   %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 // CHECK:        %[[IOTA:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
 // CHECK:        %[[CONV:.*]] = stablehlo.convert %{{.*}} : (tensor<32xi32>) -> tensor<32xf32>
 // CHECK:        xtile.insert %{{.*}} into %[[OUT]][%{{.*}}] [32] [1] : tensor<32xf32> -> memref<128xf32>
