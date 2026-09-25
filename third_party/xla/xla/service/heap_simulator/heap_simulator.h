@@ -394,6 +394,25 @@ class BufferIntervalTree {
       int64_t start, int64_t end,
       absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const;
 
+  // Appends to `chunks` chunks, unordered and possibly overlapping, whose
+  // union of memory ranges equals the union of the memory ranges of the nodes
+  // that overlap with the given time interval. Touching ranges may come back
+  // merged. Answered from the occupied range index, which the first call
+  // builds (so this const method mutates the tree; the tree is not thread
+  // safe) and Add keeps up to date, unless a Remove followed that first call
+  // or the tree holds a node the index does not support (see
+  // OccupiedRangeIndex::Supports); then, and for an inverted interval, by
+  // visiting the overlapping nodes.
+  void AppendOccupiedRangesOverlappingInTime(int64_t start, int64_t end,
+                                             std::vector<Chunk>* chunks) const;
+
+  // Makes AppendOccupiedRangesOverlappingInTime visit the nodes until the next
+  // Clear, so tests can compare the two paths.
+  void DisableOccupiedRangeIndexForTesting();
+  // True once a query has been answered from the index and nothing has
+  // turned it off since.
+  bool IsOccupiedRangeIndexActiveForTesting() const;
+
   // Apply fn to the nodes that overlap with the given time interval. It is
   // guaranteed that fn is called for non-null nodes in order of non-decreasing
   // start time. If fn returns true, then no more nodes are visited.
@@ -474,8 +493,77 @@ class BufferIntervalTree {
   void RotateLeft(BufferIntervalTreeNode* x);
   void RotateRight(BufferIntervalTreeNode* x);
 
+  // Answers "which memory is occupied at any time in [start, end]" without
+  // visiting the individual chunks: a segment tree over the time steps whose
+  // nodes hold merged memory ranges. A chunk live during [start, end] is
+  // stored at the O(log T) canonical nodes of that interval and its range is
+  // merged into the subtree list of every node on the paths from the root to
+  // them. A query reads O(log T) lists, so its cost grows with the length of
+  // those merged lists rather than with the number of overlapping chunks.
+  // Supports Add and Clear only.
+  class OccupiedRangeIndex {
+   public:
+    // Whether Add accepts the node: the tree covers non negative times of a
+    // non inverted interval, its capacity doubles until it exceeds `end` (so
+    // an end below 2^62 keeps it within int64), and a chunk without a
+    // positive size is a separator, not an occupied range.
+    static bool Supports(int64_t start, int64_t end, const Chunk& chunk);
+
+    // Records that `chunk` occupies its memory range during the inclusive
+    // time interval [start, end]. Requires Supports(start, end, chunk).
+    void Add(int64_t start, int64_t end, const Chunk& chunk);
+
+    // Appends to `out` chunks, unordered and possibly overlapping, whose union
+    // of memory ranges equals the union of the memory ranges of the added
+    // chunks whose time interval overlaps [start, end].
+    void AppendOccupiedRanges(int64_t start, int64_t end,
+                              std::vector<Chunk>* out) const;
+
+    void Clear();
+
+   private:
+    struct Node {
+      int32_t left = -1;
+      int32_t right = -1;
+      // Merged ranges of the chunks whose canonical decomposition includes
+      // this node.
+      std::vector<Chunk> own;
+      // Merged ranges of every chunk with a canonical node in this subtree,
+      // this node included.
+      std::vector<Chunk> subtree;
+    };
+
+    // Merges `range` into `ranges`, kept sorted by offset, pairwise disjoint
+    // and non adjacent.
+    static void InsertRange(const Chunk& range, std::vector<Chunk>* ranges);
+    int32_t NewNode();
+    void Insert(int32_t node, int64_t lo, int64_t hi, int64_t start,
+                int64_t end, const Chunk& range);
+    void Query(int32_t node, int64_t lo, int64_t hi, int64_t start, int64_t end,
+               std::vector<Chunk>* out) const;
+
+    std::vector<Node> nodes_;
+    int32_t root_ = -1;
+    // The root covers the times [0, capacity_).
+    int64_t capacity_ = 0;
+  };
+
+  enum class OccupiedRangeIndexState {
+    // Not built yet: trees that never ask for occupied ranges pay nothing.
+    kNotBuilt,
+    // Built from the nodes by the first query, kept up to date by Add.
+    kBuilt,
+    // Off until the next Clear: a Remove, or an unsupported node, cannot be
+    // reflected in merged ranges.
+    kUnsupported,
+  };
+
   BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
+  // Lazily built by the const query, hence mutable.
+  mutable OccupiedRangeIndex occupied_ranges_;
+  mutable OccupiedRangeIndexState occupied_ranges_state_ =
+      OccupiedRangeIndexState::kNotBuilt;
 };
 
 // An iterator that is passed to
