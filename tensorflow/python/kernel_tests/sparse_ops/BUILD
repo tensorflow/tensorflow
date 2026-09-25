@@ -390,6 +390,7 @@ py_library(
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
