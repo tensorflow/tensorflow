@@ -184,6 +184,24 @@ class UnaryOpTest(test.TestCase):
 
     return func
 
+  def testLgammaSubnormal(self):
+    # Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/121499
+    # lgamma of the smallest positive float32 subnormal must yield
+    # -log(2**-149) ~= 149*log(2), not an off-by-one value.
+    x = np.array([[1.401298464324817e-45]], dtype=np.float32)
+    expected = np.array([[103.2789306640625]], dtype=np.float32)
+    with test_util.force_cpu():
+      result = self.evaluate(math_ops.lgamma(constant_op.constant(x)))
+    self.assertAllClose(result, expected, atol=1e-4, rtol=1e-3)
+
+    # Smallest positive float64 subnormal: -log(2**-1074) ~= 1074*log(2).
+    x = np.array([[4.9406564584124654e-324]], dtype=np.float64)
+    expected = np.array([[744.4400719213812]], dtype=np.float64)
+    with test_util.force_cpu():
+      result = self.evaluate(math_ops.lgamma(constant_op.constant(x)))
+    self.assertAllClose(result, expected, atol=1e-12, rtol=1e-12)
+
   @test_util.run_deprecated_v1
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
