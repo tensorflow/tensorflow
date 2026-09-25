@@ -1,9 +1,9 @@
-# proto-file: third_party/tensorflow/compiler/xla/tools/split_proto/split_proto_cli.proto
-# proto-message: xla.split_proto_cli.DeserializedSplitExecutableAndOptions
-
+# proto-file: third_party/tensorflow/compiler/xla/util/split_proto/human_readable_aot_executable.proto
+# proto-message: xla.HumanReadableAotExecutable
 executable_and_options {
   compile_options {
     executable_build_options {
+      device_ordinal: -1
       result_layout {
         element_type: U32
         dimensions: 4
@@ -27,7 +27,7 @@ executable_and_options {
         xla_cpu_enable_fast_math: false
         xla_gpu_enable_fast_min_max: false
         xla_force_host_platform_device_count: 1
-        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_gpu_enable_dynamic_slice_fusion: true
         xla_hlo_evaluator_use_fast_path: true
         xla_dump_hlo_as_html: false
         xla_cpu_fast_math_honor_nans: true
@@ -53,7 +53,6 @@ executable_and_options {
         xla_gpu_use_runtime_fusion: false
         xla_dump_latency_hiding_schedule: false
         xla_dump_enable_mlir_pretty_form: true
-        xla_gpu_enable_latency_hiding_scheduler: false
         xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
         xla_gpu_enable_triton_gemm: true
         xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
@@ -66,14 +65,10 @@ executable_and_options {
         xla_gpu_all_gather_combine_threshold_bytes: 31457287
         xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
         xla_gpu_enable_highest_priority_async_stream: true
-        xla_gpu_enable_pipelined_all_reduce: false
         xla_gpu_exhaustive_tiling_search: false
         xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
         xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
-        xla_gpu_enable_pipelined_all_gather: false
         xla_gpu_redzone_padding_bytes: 8388608
-        xla_gpu_enable_pipelined_reduce_scatter: true
-        xla_gpu_fused_attention_use_cudnn_rng: false
         xla_gpu_copy_insertion_use_region_analysis: false
         xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
         xla_gpu_collect_cost_model_stats: false
@@ -117,6 +112,7 @@ executable_and_options {
         xla_reduce_window_rewrite_base_length: 16
         xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
         xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_exclude_nondeterministic_ops: true
         xla_gpu_nccl_terminate_on_error: false
         xla_gpu_shard_autotuning: true
         xla_gpu_enable_approx_costly_collectives: false
@@ -125,7 +121,7 @@ executable_and_options {
         xla_cmd_buffer_trace_cache_size: 16
         xla_gpu_temp_buffer_use_separate_color: false
         xla_syntax_sugar_async_ops: false
-        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_gpu_autotune_gemm_rtol: 0.01
         xla_enable_command_buffers_during_profiling: false
         xla_gpu_cudnn_gemm_max_plans: 5
         xla_cpu_parallel_codegen_split_count: 32
@@ -187,7 +183,6 @@ executable_and_options {
         xla_cpu_generate_unique_c_style_kernel_entry_points: false
         xla_gpu_experimental_collective_cse_distance_threshold: 0
         xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
-        xla_cpu_use_fusion_emitters: true
         xla_gpu_experimental_collective_perf_table_path: ""
         xla_gpu_collective_permute_combine_threshold_bytes: 31457287
         xla_unsupported_crash_on_hlo_pass_noop_change: false
@@ -196,7 +191,6 @@ executable_and_options {
         xla_gpu_unsupported_enable_triton_multi_output_fusion: false
         xla_gpu_experimental_matmul_perf_table_path: ""
         xla_gpu_unsupported_enable_all_reduce_decomposer: false
-        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
         xla_gpu_nccl_blocking_communicators: true
         xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
         xla_gpu_first_collective_call_terminate_timeout_seconds: 40
@@ -207,14 +201,13 @@ executable_and_options {
         xla_detect_unstable_reductions: DETECTION_MODE_NONE
         xla_gpu_command_buffer_scheduling_mode: LHS
         xla_gpu_experimental_enable_nccl_symmetric_buffers: false
-        xla_gpu_experimental_autotuner_cache_dir: ""
         xla_disable_automatic_host_compute_offload: false
         xla_gpu_experimental_enable_fusion_autotuner: true
         xla_gpu_experimental_scaled_dot_with_triton: true
         xla_gpu_command_buffer_unroll_loops: false
         xla_cpu_experimental_onednn_custom_call: false
-        xla_gpu_experimental_use_raft_select_k: false
         xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer: true
         xla_cpu_collective_call_terminate_timeout_seconds: 40
         xla_cpu_collective_call_warn_stuck_seconds: 20
         xla_keep_shardings_after_spmd: false
@@ -224,21 +217,32 @@ executable_and_options {
         xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
         xla_cpu_enable_platform_dependent_math: true
         xla_gpu_detect_nan: DETECTION_MODE_NONE
-        xla_gpu_experimental_dump_gpu_executable: true
         xla_gpu_detect_inf: DETECTION_MODE_NONE
         xla_enable_enzyme_comms_opt: false
         xla_gpu_experimental_enable_buffer_saver_on_thunks: false
         xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
-        xla_gpu_experimental_aot_compiled_thunks: true
         xla_enable_scoped_logging_timers: true
         xla_gpu_executable_embed_debug_info: true
         xla_cpu_collective_timeout_seconds: 1800
         xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
         xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_default_to_alg_dot_bf16_bf16_f32: false
+        xla_gpu_experimental_autotune_backends: CUDNN
+        xla_gpu_experimental_autotune_backends: TRITON
+        xla_gpu_experimental_autotune_backends: CUBLASLT
+        xla_gpu_experimental_autotune_backends: HIPBLASLT
+        xla_gpu_experimental_autotune_backends: MIOPEN
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL
+        xla_gpu_experimental_autotune_backends: BLOCK_LEVEL_EMITTER
+        xla_gpu_experimental_autotune_backends: NATIVE_EMITTER
+        xla_gpu_experimental_autotune_backends: LLVM_KERNEL_EMITTER
+        xla_gpu_experimental_autotune_backends: CUBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL_FISSION
+        xla_gpu_experimental_autotune_backends: HIPBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: YNNPACK
         xla_gpu_experimental_all_fusions_with_triton: false
         xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
         xla_gpu_rocm_max_trace_events: 4194304
-        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
         xla_gpu_execution_terminate_timeout: "inf"
         xla_enable_hlo_sharding_v3: false
         xla_gpu_log_minmax: false
@@ -249,6 +253,7 @@ executable_and_options {
         xla_gpu_experimental_max_unroll_factor: 32
         xla_gpu_enable_pdl: true
         xla_gpu_collective_combine_threshold_count: 2048
+        xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl: true
         xla_recognize_reduction_optimization_level: 0
         xla_gpu_experimental_parallel_async_compute_limit: 2
         xla_dump_buffer_assignment_analysis: true
@@ -268,12 +273,12 @@ executable_and_options {
         xla_gpu_executable_num_compute_streams: 0
         xla_gpu_executable_num_communication_streams: 0
         xla_gpu_experimental_collective_start_as_early_as_possible: false
-        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_cpu_experimental_enable_tiling_propagation: true
         xla_gpu_enable_dus_accumulator_zero_init_elimination: false
         xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
         xla_cpu_ftz: true
         xla_gpu_enable_allocator_spatial_partitioning: true
-        xla_dump_compact_gte: false
+        xla_dump_compact_gte: true
         xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
         xla_dump_hlo_as_riegeli: false
         xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
@@ -282,6 +287,35 @@ executable_and_options {
         xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
         xla_gpu_enable_nccl_user_buffers_in_default_space: false
         xla_sdy_export_all_reduce_scatter: false
+        xla_gpu_enable_gxl_ragged_all_to_all: false
+        xla_gpu_gxl_scratch_size_bytes: 67108864
+        xla_gpu_use_new_autotune_cache_format: true
+        xla_gpu_experimental_use_collective_kernels: COLLECTIVE_KERNEL_ALL_REDUCE
+        xla_gpu_pipeline_all_gather: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_all_reduce: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_reduce_scatter: COLLECTIVE_PIPELINING_MODE_ON
+        xla_spmd_enable_dynamic_slice_collective_broadcast: false
+        xla_gpu_experimental_ragged_all_to_all_use_device_kernel: false
+        xla_gpu_async_copy_min_bytes: -1
+        xla_gpu_blas_max_algorithms: 0
+        xla_gpu_experimental_enable_selective_memcpy_overlap: false
+        xla_gpu_experimental_enable_same_shape_multi_output_fusion: false
+        xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes: -1
+        xla_gpu_experimental_scheduler_memory_fencing_slack_windows: 1
+        xla_while_loop_all_reduce_dus_code_motion_max_size_bytes: 10240
+        xla_cpu_use_new_xtile_lowering: false
+        xla_gpu_trace_annotation_level: 0
+        xla_gpu_experimental_cost_model_gemm_tiling_default: false
+        xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback: false
+        xla_gpu_all_reduce_splitter_ignore_profitability_check: false
+        xla_gpu_enable_cupti_multi_subscriber: true
+        xla_enable_hlo_modules_upload: true
+        xla_gpu_collective_domain_assignment: ""
+        xla_gpu_experimental_parallel_scale_up_collective_overlap_limit: 1
+        xla_compile_all_supported_configs: false
+        xla_deduplicate_backend_configs_min_size: 9223372036854775807
+        xla_force_config: ""
+        xla_candidate_configs_file: ""
       }
       num_replicas: 2
       num_partitions: 1
@@ -299,9 +333,9 @@ executable_and_options {
       allow_spmd_sharding_propagation_to_parameters: false
       process_count: 1
       memory_fitting_level: EFFORT_O2
-      slice_size: 2
     }
   }
+  pjrt_client_name: "PjRtStreamExecutorClient"
 }
 gpu_executable {
   hlo_module_with_config {
@@ -320,6 +354,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "lhs"
           }
           frontend_attributes {
           }
@@ -336,6 +371,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "rhs"
           }
           parameter_number: 1
           id: 1
@@ -354,6 +390,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "add.1"
           }
           id: 2
           operand_ids: 0
@@ -399,9 +436,10 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "param_2.2"
           }
           parameter_number: 2
-          id: 12884901893
+          id: 8589934597
           frontend_attributes {
           }
           statistics_viz {
@@ -427,14 +465,14 @@ gpu_executable {
             }
             u32s: 0
           }
-          id: 12884901894
+          id: 8589934598
           frontend_attributes {
           }
           statistics_viz {
           }
         }
         instructions {
-          name: "p.4"
+          name: "p.2"
           opcode: "compare"
           shape {
             element_type: PRED
@@ -443,19 +481,21 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "p.2"
           }
-          id: 12884901892
-          operand_ids: 12884901893
-          operand_ids: 12884901894
+          id: 8589934596
+          operand_ids: 8589934597
+          operand_ids: 8589934598
           comparison_direction: "EQ"
           frontend_attributes {
           }
           comparison_type: "UNSIGNED"
           statistics_viz {
           }
+          comparison_order: "TOTAL"
         }
         instructions {
-          name: "pb.4"
+          name: "pb.2"
           opcode: "broadcast"
           shape {
             element_type: PRED
@@ -467,16 +507,17 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "pb.2"
           }
-          id: 12884901889
-          operand_ids: 12884901892
+          id: 8589934593
+          operand_ids: 8589934596
           frontend_attributes {
           }
           statistics_viz {
           }
         }
         instructions {
-          name: "param_0.4"
+          name: "param_0.1"
           opcode: "parameter"
           shape {
             element_type: U32
@@ -488,15 +529,16 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "param_0.1"
           }
-          id: 12884901890
+          id: 8589934594
           frontend_attributes {
           }
           statistics_viz {
           }
         }
         instructions {
-          name: "param_1.3"
+          name: "param_1.1"
           opcode: "parameter"
           shape {
             element_type: U32
@@ -508,9 +550,10 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "param_1.1"
           }
           parameter_number: 1
-          id: 12884901891
+          id: 8589934595
           frontend_attributes {
           }
           statistics_viz {
@@ -529,11 +572,12 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "data.2"
           }
-          id: 12884901888
-          operand_ids: 12884901889
-          operand_ids: 12884901890
-          operand_ids: 12884901891
+          id: 8589934592
+          operand_ids: 8589934593
+          operand_ids: 8589934594
+          operand_ids: 8589934595
           frontend_attributes {
           }
           statistics_viz {
@@ -573,84 +617,13 @@ gpu_executable {
             }
             is_dynamic_dimension: false
           }
-          parameter_names: "param_0.4"
-          parameter_names: "param_1.3"
+          parameter_names: "param_0.1"
+          parameter_names: "param_1.1"
           parameter_names: "param_2.2"
         }
-        id: 3
-        root_id: 12884901888
+        id: 2
+        root_id: 8589934592
         is_fusion_computation: true
-      }
-      computations {
-        name: "async_computation"
-        instructions {
-          name: "param_0.5"
-          opcode: "parameter"
-          shape {
-            element_type: U32
-            dimensions: 8
-            layout {
-              minor_to_major: 0
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-          }
-          metadata {
-          }
-          id: 21474836480
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-        }
-        instructions {
-          name: "ars.2"
-          opcode: "reduce-scatter"
-          shape {
-            element_type: U32
-            dimensions: 4
-            layout {
-              minor_to_major: 0
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-          }
-          metadata {
-          }
-          dimensions: 0
-          id: 21474836481
-          operand_ids: 21474836480
-          called_computation_ids: 0
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-          collective_device_list {
-          }
-        }
-        program_shape {
-          parameters {
-            element_type: U32
-            dimensions: 8
-            layout {
-              minor_to_major: 0
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-          }
-          result {
-            element_type: U32
-            dimensions: 4
-            layout {
-              minor_to_major: 0
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-          }
-          parameter_names: "param_0.5"
-        }
-        id: 5
-        root_id: 21474836481
       }
       computations {
         name: "main"
@@ -742,6 +715,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "id.1"
           }
           id: 4294967296
           frontend_attributes {
@@ -762,64 +736,22 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "loop_select_fusion"
           }
           fusion_kind: "kLoop"
           id: 4294967299
           operand_ids: 4294967297
           operand_ids: 4294967298
           operand_ids: 4294967296
-          called_computation_ids: 3
+          called_computation_ids: 2
           frontend_attributes {
           }
           statistics_viz {
           }
-          backend_config_payload {
-            id: 0
-          }
         }
         instructions {
-          name: "reduce-scatter-start"
-          opcode: "async-start"
-          shape {
-            element_type: TUPLE
-            tuple_shapes {
-              element_type: TUPLE
-              tuple_shapes {
-                element_type: U32
-                dimensions: 8
-                layout {
-                  minor_to_major: 0
-                  tail_padding_alignment_in_elements: 1
-                }
-                is_dynamic_dimension: false
-              }
-            }
-            tuple_shapes {
-              element_type: U32
-              dimensions: 4
-              layout {
-                minor_to_major: 0
-                tail_padding_alignment_in_elements: 1
-              }
-              is_dynamic_dimension: false
-            }
-          }
-          metadata {
-          }
-          id: 4294967300
-          operand_ids: 4294967299
-          called_computation_ids: 5
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-          backend_config_payload {
-            id: 1
-          }
-        }
-        instructions {
-          name: "reduce-scatter-done"
-          opcode: "async-done"
+          name: "ars.3"
+          opcode: "reduce-scatter"
           shape {
             element_type: U32
             dimensions: 4
@@ -830,12 +762,20 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "reduce-scatter-start"
           }
-          id: 4294967301
-          operand_ids: 4294967300
+          dimensions: 0
+          id: 4294967300
+          operand_ids: 4294967299
+          called_computation_ids: 0
           frontend_attributes {
           }
           statistics_viz {
+          }
+          collective_device_list {
+          }
+          backend_config_payload {
+            id: 0
           }
         }
         program_shape {
@@ -850,7 +790,7 @@ gpu_executable {
           }
         }
         id: 1
-        root_id: 4294967301
+        root_id: 4294967300
       }
       host_program_shape {
         result {
@@ -881,14 +821,6 @@ gpu_executable {
             instruction_ids: 4294967297
             instruction_ids: 4294967299
             instruction_ids: 4294967300
-            instruction_ids: 4294967301
-          }
-        }
-        sequences {
-          key: 5
-          value {
-            instruction_ids: 21474836480
-            instruction_ids: 21474836481
           }
         }
       }
@@ -907,11 +839,10 @@ gpu_executable {
       frontend_attributes {
         map {
           key: "fingerprint_before_lhs"
-          value: "ecc7fa57c3eeb812403576a4054128b5"
+          value: "c36d8870be58d238935bebefbbc5b827"
         }
       }
-      payloads: "{\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"native_emitter_backend_config\":{\"type\":\"NATIVE_EMITTER_TYPE_INVALID\",\"unroll_factor\":0},\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
-      payloads: "{\"collective_backend_config\":{\"backend\":\"DEFAULT\",\"collectives_mode\":\"COLLECTIVES_MODE_INVALID\",\"is_pipelined\":false,\"is_spmd_generated\":false,\"is_sync\":true,\"kernel_strategy\":\"KERNEL_STRATEGY_DEFAULT\"},\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
+      payloads: "{\"collective_backend_config\":{\"backend\":\"DEFAULT\",\"collectives_mode\":\"COLLECTIVES_MODE_INVALID\",\"communication_domain\":\"COLLECTIVE_COMMUNICATION_DOMAIN_UNSPECIFIED\",\"is_pipelined\":false,\"is_spmd_generated\":false,\"is_sync\":true,\"kernel_strategy\":\"KERNEL_STRATEGY_DEFAULT\"},\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
     }
     config {
       entry_computation_layout {
@@ -942,7 +873,7 @@ gpu_executable {
         xla_cpu_enable_fast_math: false
         xla_gpu_enable_fast_min_max: false
         xla_force_host_platform_device_count: 1
-        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_gpu_enable_dynamic_slice_fusion: true
         xla_hlo_evaluator_use_fast_path: true
         xla_dump_hlo_as_html: false
         xla_cpu_fast_math_honor_nans: true
@@ -968,7 +899,6 @@ gpu_executable {
         xla_gpu_use_runtime_fusion: false
         xla_dump_latency_hiding_schedule: false
         xla_dump_enable_mlir_pretty_form: true
-        xla_gpu_enable_latency_hiding_scheduler: false
         xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
         xla_gpu_enable_triton_gemm: true
         xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
@@ -981,14 +911,10 @@ gpu_executable {
         xla_gpu_all_gather_combine_threshold_bytes: 31457287
         xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
         xla_gpu_enable_highest_priority_async_stream: true
-        xla_gpu_enable_pipelined_all_reduce: false
         xla_gpu_exhaustive_tiling_search: false
         xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
         xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
-        xla_gpu_enable_pipelined_all_gather: false
         xla_gpu_redzone_padding_bytes: 8388608
-        xla_gpu_enable_pipelined_reduce_scatter: true
-        xla_gpu_fused_attention_use_cudnn_rng: false
         xla_gpu_copy_insertion_use_region_analysis: false
         xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
         xla_gpu_collect_cost_model_stats: false
@@ -1032,6 +958,7 @@ gpu_executable {
         xla_reduce_window_rewrite_base_length: 16
         xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
         xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_exclude_nondeterministic_ops: true
         xla_gpu_nccl_terminate_on_error: false
         xla_gpu_shard_autotuning: true
         xla_gpu_enable_approx_costly_collectives: false
@@ -1040,7 +967,7 @@ gpu_executable {
         xla_cmd_buffer_trace_cache_size: 16
         xla_gpu_temp_buffer_use_separate_color: false
         xla_syntax_sugar_async_ops: false
-        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_gpu_autotune_gemm_rtol: 0.01
         xla_enable_command_buffers_during_profiling: false
         xla_gpu_cudnn_gemm_max_plans: 5
         xla_cpu_parallel_codegen_split_count: 32
@@ -1102,7 +1029,6 @@ gpu_executable {
         xla_cpu_generate_unique_c_style_kernel_entry_points: false
         xla_gpu_experimental_collective_cse_distance_threshold: 0
         xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
-        xla_cpu_use_fusion_emitters: true
         xla_gpu_experimental_collective_perf_table_path: ""
         xla_gpu_collective_permute_combine_threshold_bytes: 31457287
         xla_unsupported_crash_on_hlo_pass_noop_change: false
@@ -1111,7 +1037,6 @@ gpu_executable {
         xla_gpu_unsupported_enable_triton_multi_output_fusion: false
         xla_gpu_experimental_matmul_perf_table_path: ""
         xla_gpu_unsupported_enable_all_reduce_decomposer: false
-        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
         xla_gpu_nccl_blocking_communicators: true
         xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
         xla_gpu_first_collective_call_terminate_timeout_seconds: 40
@@ -1122,14 +1047,13 @@ gpu_executable {
         xla_detect_unstable_reductions: DETECTION_MODE_NONE
         xla_gpu_command_buffer_scheduling_mode: LHS
         xla_gpu_experimental_enable_nccl_symmetric_buffers: false
-        xla_gpu_experimental_autotuner_cache_dir: ""
         xla_disable_automatic_host_compute_offload: false
         xla_gpu_experimental_enable_fusion_autotuner: true
         xla_gpu_experimental_scaled_dot_with_triton: true
         xla_gpu_command_buffer_unroll_loops: false
         xla_cpu_experimental_onednn_custom_call: false
-        xla_gpu_experimental_use_raft_select_k: false
         xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer: true
         xla_cpu_collective_call_terminate_timeout_seconds: 40
         xla_cpu_collective_call_warn_stuck_seconds: 20
         xla_keep_shardings_after_spmd: false
@@ -1139,21 +1063,32 @@ gpu_executable {
         xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
         xla_cpu_enable_platform_dependent_math: true
         xla_gpu_detect_nan: DETECTION_MODE_NONE
-        xla_gpu_experimental_dump_gpu_executable: true
         xla_gpu_detect_inf: DETECTION_MODE_NONE
         xla_enable_enzyme_comms_opt: false
         xla_gpu_experimental_enable_buffer_saver_on_thunks: false
         xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
-        xla_gpu_experimental_aot_compiled_thunks: true
         xla_enable_scoped_logging_timers: true
         xla_gpu_executable_embed_debug_info: true
         xla_cpu_collective_timeout_seconds: 1800
         xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
         xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_default_to_alg_dot_bf16_bf16_f32: false
+        xla_gpu_experimental_autotune_backends: CUDNN
+        xla_gpu_experimental_autotune_backends: TRITON
+        xla_gpu_experimental_autotune_backends: CUBLASLT
+        xla_gpu_experimental_autotune_backends: HIPBLASLT
+        xla_gpu_experimental_autotune_backends: MIOPEN
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL
+        xla_gpu_experimental_autotune_backends: BLOCK_LEVEL_EMITTER
+        xla_gpu_experimental_autotune_backends: NATIVE_EMITTER
+        xla_gpu_experimental_autotune_backends: LLVM_KERNEL_EMITTER
+        xla_gpu_experimental_autotune_backends: CUBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL_FISSION
+        xla_gpu_experimental_autotune_backends: HIPBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: YNNPACK
         xla_gpu_experimental_all_fusions_with_triton: false
         xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
         xla_gpu_rocm_max_trace_events: 4194304
-        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
         xla_gpu_execution_terminate_timeout: "inf"
         xla_enable_hlo_sharding_v3: false
         xla_gpu_log_minmax: false
@@ -1164,6 +1099,7 @@ gpu_executable {
         xla_gpu_experimental_max_unroll_factor: 32
         xla_gpu_enable_pdl: true
         xla_gpu_collective_combine_threshold_count: 2048
+        xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl: true
         xla_recognize_reduction_optimization_level: 0
         xla_gpu_experimental_parallel_async_compute_limit: 2
         xla_dump_buffer_assignment_analysis: true
@@ -1183,12 +1119,12 @@ gpu_executable {
         xla_gpu_executable_num_compute_streams: 0
         xla_gpu_executable_num_communication_streams: 0
         xla_gpu_experimental_collective_start_as_early_as_possible: false
-        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_cpu_experimental_enable_tiling_propagation: true
         xla_gpu_enable_dus_accumulator_zero_init_elimination: false
         xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
         xla_cpu_ftz: true
         xla_gpu_enable_allocator_spatial_partitioning: true
-        xla_dump_compact_gte: false
+        xla_dump_compact_gte: true
         xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
         xla_dump_hlo_as_riegeli: false
         xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
@@ -1197,6 +1133,35 @@ gpu_executable {
         xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
         xla_gpu_enable_nccl_user_buffers_in_default_space: false
         xla_sdy_export_all_reduce_scatter: false
+        xla_gpu_enable_gxl_ragged_all_to_all: false
+        xla_gpu_gxl_scratch_size_bytes: 67108864
+        xla_gpu_use_new_autotune_cache_format: true
+        xla_gpu_experimental_use_collective_kernels: COLLECTIVE_KERNEL_ALL_REDUCE
+        xla_gpu_pipeline_all_gather: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_all_reduce: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_reduce_scatter: COLLECTIVE_PIPELINING_MODE_ON
+        xla_spmd_enable_dynamic_slice_collective_broadcast: false
+        xla_gpu_experimental_ragged_all_to_all_use_device_kernel: false
+        xla_gpu_async_copy_min_bytes: -1
+        xla_gpu_blas_max_algorithms: 0
+        xla_gpu_experimental_enable_selective_memcpy_overlap: false
+        xla_gpu_experimental_enable_same_shape_multi_output_fusion: false
+        xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes: -1
+        xla_gpu_experimental_scheduler_memory_fencing_slack_windows: 1
+        xla_while_loop_all_reduce_dus_code_motion_max_size_bytes: 10240
+        xla_cpu_use_new_xtile_lowering: false
+        xla_gpu_trace_annotation_level: 0
+        xla_gpu_experimental_cost_model_gemm_tiling_default: false
+        xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback: false
+        xla_gpu_all_reduce_splitter_ignore_profitability_check: false
+        xla_gpu_enable_cupti_multi_subscriber: true
+        xla_enable_hlo_modules_upload: true
+        xla_gpu_collective_domain_assignment: ""
+        xla_gpu_experimental_parallel_scale_up_collective_overlap_limit: 1
+        xla_compile_all_supported_configs: false
+        xla_deduplicate_backend_configs_min_size: 9223372036854775807
+        xla_force_config: ""
+        xla_candidate_configs_file: ""
       }
       static_device_assignment {
         replica_count: 2
@@ -1238,58 +1203,43 @@ gpu_executable {
     }
     logical_buffers {
       id: 10
-      size: 16
-      defined_at {
-        instruction_id: 21474836481
-      }
-    }
-    logical_buffers {
-      id: 11
       size: 32
       defined_at {
         instruction_id: 4294967297
       }
     }
     logical_buffers {
-      id: 12
+      id: 11
       size: 32
       defined_at {
         instruction_id: 4294967298
       }
     }
     logical_buffers {
-      id: 13
+      id: 12
       size: 4
       defined_at {
         instruction_id: 4294967296
       }
     }
     logical_buffers {
-      id: 14
+      id: 13
       size: 32
       defined_at {
         instruction_id: 4294967299
       }
     }
     logical_buffers {
-      id: 15
+      id: 14
       size: 16
       defined_at {
-        instruction_id: 4294967300
-      }
-    }
-    logical_buffers {
-      id: 16
-      size: 8
-      defined_at {
-        shape_index: 0
         instruction_id: 4294967300
       }
     }
     buffer_allocations {
       size: 32
       assigned {
-        logical_buffer_id: 11
+        logical_buffer_id: 10
         size: 32
         element_type: U32
       }
@@ -1299,7 +1249,7 @@ gpu_executable {
       index: 1
       size: 32
       assigned {
-        logical_buffer_id: 12
+        logical_buffer_id: 11
         size: 32
         element_type: U32
       }
@@ -1310,13 +1260,13 @@ gpu_executable {
       size: 16
       maybe_live_out: true
       assigned {
-        logical_buffer_id: 10
-        size: 16
+        logical_buffer_id: 12
+        size: 4
         element_type: U32
       }
       assigned {
-        logical_buffer_id: 13
-        size: 4
+        logical_buffer_id: 14
+        size: 16
         element_type: U32
       }
     }
@@ -1335,7 +1285,6 @@ gpu_executable {
       size: 4
       is_thread_local: true
       assigned {
-        logical_buffer_id: 1
         size: 4
         element_type: U32
       }
@@ -1345,56 +1294,45 @@ gpu_executable {
       size: 4
       is_thread_local: true
       assigned {
+        logical_buffer_id: 1
         size: 4
         element_type: U32
       }
     }
     buffer_allocations {
       index: 6
-      size: 528
+      size: 32
       assigned {
-        logical_buffer_id: 14
+        logical_buffer_id: 13
         size: 32
         element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 15
-        offset: 512
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 16
-        offset: 256
-        size: 8
-        element_type: TUPLE
       }
     }
     heap_simulator_traces {
       events {
-        buffer_id: 14
+        buffer_id: 13
         computation_name: "main"
         instruction_name: "loop_select_fusion"
       }
       events {
         kind: FREE
-        buffer_id: 14
+        buffer_id: 13
         computation_name: "main"
         instruction_name: "loop_select_fusion"
       }
       whole_module_simulation: true
-      buffer_allocation_index: 5
+      buffer_allocation_index: 3
     }
     peak_buffers {
-      logical_buffer_ids: 11
+      logical_buffer_ids: 10
     }
     peak_buffers {
       index: 1
-      logical_buffer_ids: 12
+      logical_buffer_ids: 11
     }
     peak_buffers {
       index: 2
-      logical_buffer_ids: 10
+      logical_buffer_ids: 14
     }
     peak_buffers {
       index: 3
@@ -1402,24 +1340,22 @@ gpu_executable {
     }
     peak_buffers {
       index: 4
-      logical_buffer_ids: 1
-    }
-    peak_buffers {
-      index: 5
       logical_buffer_ids: 0
     }
     peak_buffers {
+      index: 5
+      logical_buffer_ids: 1
+    }
+    peak_buffers {
       index: 6
-      logical_buffer_ids: 14
-      logical_buffer_ids: 16
-      logical_buffer_ids: 15
+      logical_buffer_ids: 13
     }
   }
-  binary: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000@\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000<\005<\000@\0008\000\004\000@\000\t\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.nv.global\000.nv.constant4\000.rel.nv.constant4\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.nv.global\000.nv.constant4\000.rel.nv.constant4\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000buffer_for_c1_1\000buffer_for_c0_1\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000=\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000]\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000y\000\000\000\003\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\210\000\000\000\021\000\010\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\230\000\000\000\021\000\010\000\000\001\000\000\000\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\010\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\210\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\001\000\000\000\000\000\000\250\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000]\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\002\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000y\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0008\002\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000K\000\000\000\t\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000H\002\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\007\000\000\000\010\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000=\000\000\000\001\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000h\002\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\003\000\000\000\000\000\000@\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000@\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000h\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000@\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+  binary: "\177ELF\002\001\001A\010\000\000\000\000\000\000\000\002\000\276\000\001\000\000\000\000\000\000\000\000\000\000\000p\013\000\000\000\000\000\000\360\006\000\000\000\000\000\000\nd\000\006@\0008\000\004\000@\000\022\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.note.nv.tkinfo\000.note.nv.cuver\000.nv.info\000.nv.shared.reserved.0\000.nv.global\000.nv.constant4\000\000\000\000.nv.compat\000.debug_frame\000.rel.nv.constant.pic\000.rela.nv.constant4\000\000\000\000.nv.callgraph\000.nv.prototype\000.nv.merc.debug_frame\000.nv.merc.rela.nv.constant.pic\000.nv.merc.nv.constant.pic\000.nv.merc.nv.shared.reserved.0\000.nv.merc.symtab\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.note.nv.tkinfo\000.note.nv.cuver\000.nv.info\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.nv.global\000.nv.constant.pic\000.nv.compat\000.debug_frame\000.rel.nv.constant.pic\000.rela.nv.constant.pic\000.nv.callgraph\000.nv.prototype\000buffer_for_c1_1\000buffer_for_c0_1\000.nv.constant4\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000Q\000\000\000!\000\000\000@\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\200\000\000\000 \240\013\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\241\000\000\000\003\000\014\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000<\001\000\000\003\000\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\034\001\000\000\021\000\014\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000,\001\000\000\021\000\014\000\000\001\000\000\000\000\000\000@\000\000\000\000\000\000\000\014\000\000\000\234\000\000\000\320\007\000\000NVIDIA Corp\000\200\000\000\000\000\000\000\000\001\000\000\000\007\000\000\0006\000\000\000f\000\000\000\000ptxas\000Cuda compilation tools, release 12.8, V12.8.93\000Build system must define TOOLS_VERSION_EXTENDED\000-warn-spills  -arch sm_100a \000\000\014\000\000\000\014\000\000\000\350\003\000\000NVIDIA Corp\000\001\000d\000\001\000\000\000\001\000\000\000\002\002\001\000\002\005\005\000\002\003\000\000\002\006\001\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377\010\000\000\000\000\000\000\000\002\000\000\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\002\000\001\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\001\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000Q\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\200\000\000\000 \240\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\241\000\000\000\003\000\014\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\254\000\000\000\003\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\034\001\000\000\035 \014\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000,\001\000\000\035 \014\000\000\001\000\000\000\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\\\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\300\001\000\000\000\000\000\000J\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000(\003\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\216\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\350\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\007\000\000\000\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\350\003\000\000\000\000\000\000\264\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0009\000\000\000\007\000\000\000@\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\234\004\000\000\000\000\000\000$\000\000\000\000\000\000\000\005\000\000\000\007\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\203\000\000\000\206\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\300\004\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\306\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\004\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\260\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\004\000\000\000\000\000\0000\000\000\000\000\000\000\000\003\000\000\000\n\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000r\000\000\000\001\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \005\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000Q\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0000\005\000\000\000\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000g\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\000\000\000@\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\342\000\000\000\001\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\350\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\367\000\000\000\202\000\000p@\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\000\000\0000\000\000\000\000\000\000\000\021\000\000\000\017\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\025\001\000\000}\000\000p\002\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000 \005\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.\001\000\000\025\000\000p\003\000\000\020\000\000\000\000\000\000\000\000\000\000\000\0000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000L\001\000\000\205\000\000p\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\0000\006\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000p\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000p\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\340\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000 \005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\020\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\0000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\000\000\000\000\000\000\000\020\003\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
   gpu_compute_capability {
     cuda_compute_capability {
-      major: 6
-      feature_extension: NONE
+      major: 10
+      feature_extension: ACCELERATED_FEATURES
     }
   }
   module_name: "test"
@@ -1437,87 +1373,36 @@ gpu_executable {
   buffer_allocations {
     values {
       size: 32
-      assigned {
-        logical_buffer_id: 11
-        size: 32
-        element_type: U32
-      }
       is_constant: true
     }
     values {
       index: 1
       size: 32
-      assigned {
-        logical_buffer_id: 12
-        size: 32
-        element_type: U32
-      }
       is_constant: true
     }
     values {
       index: 2
       size: 16
       maybe_live_out: true
-      assigned {
-        logical_buffer_id: 10
-        size: 16
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 13
-        size: 4
-        element_type: U32
-      }
     }
     values {
       index: 3
       size: 4
       is_thread_local: true
-      assigned {
-        logical_buffer_id: 2
-        size: 4
-        element_type: U32
-      }
     }
     values {
       index: 4
       size: 4
       is_thread_local: true
-      assigned {
-        logical_buffer_id: 1
-        size: 4
-        element_type: U32
-      }
     }
     values {
       index: 5
       size: 4
       is_thread_local: true
-      assigned {
-        size: 4
-        element_type: U32
-      }
     }
     values {
       index: 6
-      size: 528
-      assigned {
-        logical_buffer_id: 14
-        size: 32
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 15
-        offset: 512
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 16
-        offset: 256
-        size: 8
-        element_type: TUPLE
-      }
+      size: 32
     }
   }
   output_info_map {
@@ -1621,7 +1506,7 @@ gpu_executable {
         name: "loop_select_fusion"
         kernel_spec {
           cubin {
-            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\200\010\000\000\000\000\000\000\000\006\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.nv.constant0.loop_select_fusion\000.rel.nv.constant0.loop_select_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.rel.nv.constant0.loop_select_fusion\000.nv.constant0.loop_select_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000loop_select_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\252\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\313\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\347\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\000\000\000\022\020\t\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\004/\010\000\005\000\000\000\007\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001 \000\003\031 \000\004\027\014\000\000\000\000\000\003\000\030\000\010\365!\000\004\027\014\000\000\000\000\000\002\000\020\000\010\365!\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000\270\000\000\000\004\020\014\000\010\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\000\376\000D\034\000\001\000\207\000\200\007\230L\002\000G\005\200\007\230L\000\000\027\002\000\000\310\360\342\007 \366\000\204\037\000\003\000W\005\200\007\230L\002\002\007\000\000\240\324\356\004\000\007\005\200\007\230L\377\007 \376A\304\037\000\005\000\027\005\200\007\230L\006\000\'\000\000\000H8\000\000\347\001\000\000(8\361\007\251\374\000\230\037\000\004\004\'\005\000\001DK\005\0057\005\000\001DK\004\004g\000\000\200\020\\\342\007 \366\000\230\037\000\005\005\007\000\000\010\020\\\004\004\007\000\000\240\324\356\002\006g\005\000\200\020L\347\007 \376 \374\037\000\003\000w\005\000\010\020L\004\002\007\000\000 \334\356\017\000\007\000\000\000\000\343\377\007\000\374\000\200\037\000\017\000\007\377\377\017@\342\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\340\007\000\374\000\200\037\000\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\366\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0006\001\000\000\000\000\000\000\t\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\002\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000K\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\364\002\000\000\000\000\000\000|\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\313\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\347\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\220\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\205\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\003\000\000\000\000\000\000`\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\000\001\000\000\000\000\000\000\003\000\000\000\005\000\000\007 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000\200\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\240\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000`\002\000\000\000\000\000\000`\002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\200\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+            data: "\177ELF\002\001\001A\010\000\000\000\000\000\000\000\002\000\276\000\001\000\000\000\000\000\000\000\000\000\000\000\030\025\000\000\000\000\000\000\230\017\000\000\000\000\000\000\nd\000\006@\0008\000\005\000@\000\026\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.note.nv.tkinfo\000.note.nv.cuver\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.nv.shared.reserved.0\000.nv.compat\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000.nv.constant0.loop_select_fusion\000.nv.capmerc.text.loop_select_fusion\000.nv.merc.debug_frame\000.nv.merc.nv.info\000.nv.merc.nv.info.loop_select_fusion\000.nv.merc.rela.debug_frame\000.nv.merc.nv.shared.reserved.0\000.nv.merc.symtab\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.note.nv.tkinfo\000.note.nv.cuver\000.nv.info\000.text.loop_select_fusion\000.nv.info.loop_select_fusion\000.nv.shared.loop_select_fusion\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.nv.compat\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000loop_select_fusion\000.nv.constant0.loop_select_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000Q\000\000\000\003\000\014\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\244\000\000\000!\000\000\000@\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\323\000\000\000 \240\r\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000/\001\000\000\003\000\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000K\001\000\000\022\020\014\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000^\001\000\000\003\000\016\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\004|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\377,\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000\004<\000\000\000\004\004\000\000\000\014\201\200\200(\000\000\000\000\000\014\000\000\000\234\000\000\000\320\007\000\000NVIDIA Corp\000\200\000\000\000\000\000\000\000\001\000\000\000\007\000\000\0006\000\000\000f\000\000\000\000ptxas\000Cuda compilation tools, release 12.8, V12.8.93\000Build system must define TOOLS_VERSION_EXTENDED\000-warn-spills  -arch sm_100a \000\000\014\000\000\000\014\000\000\000\350\003\000\000NVIDIA Corp\000\001\000d\000\001\000\000\000\001\000\000\000\004/\010\000\006\000\000\000\014\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004\027\014\000\000\000\000\000\003\000\030\000\010\365!\000\004\027\014\000\000\000\000\000\002\000\020\000\010\365!\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\002J\000\000\004\034\004\000\360\000\000\000\004\020\014\000\010\000\000\000\001\000\000\000\001\000\000\000\003\031 \000\004\n\010\000\007\000\000\000\200\003 \000\0046\004\000\010\000\000\000\002\002\001\000\002\005\005\000\002\003\000\000\002\006\001\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377D\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202{\001\377\000\337\000\000\000\010\000\000\000\360\017\000\202{\002\377\000\344\000\000\000\n\000\000\000\"\016\000\254w\004\377\000k\000\000\000\n\000\010\000.\016\000\202{\004\377\000\340\000\000\000\n\000\000\000b\016\000\031y\t\000\000\000\000\000\000!\000\000\000\242\016\000.x\000\000\000\000\000\000\000\000\000\000\000\314\017\000\202{\006\377\000\346\000\000\000\n\000\000\000\342\016\000\201y\002\002\004\000\000\000\000\231\036\014\000$\037\000\014r\000\002\377\000\000\000pP\360\003\000\332\017\001\202\013\004\377\000\342\000\000\000\010\000\000\000\260.\000\202\013\005\377\000\343\000\000\000\010\000\000\000\244\016\000%x\004\t\004\000\000\000\004\000\216\007\000\314O\000\201y\005\004\004\000\000\000\000\231\036\014\000\242\016\000%x\006\t\004\000\000\000\006\000\216\007\000\312\217\000\206y\000\006\005\000\000\000\004\031\020\014\000\342O\000My\000\000\000\000\000\000\000\000\200\003\000\352\017\000Gy\374\000\374\377\377\377\377\377\203\003\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\014\000\000\000\021\000\000@\200\271\000\000\001\013\004\n\370\000\004\000\000\000A\000\000\004\000\000\002\"\016\006\370\000R\000\000\000\203\000@\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\020\000\000\000\001\013\016\n\372\000\005\000\000\000\003\0019\004\000\000\002\"\016\006\370\000R\000\000\000\003\001@\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\013\004\n\370\000\004\000\000\000A\002\001\002\000\000\001b\000\n\370\000\000\000\000\000\000\000\000\000\000\000\002\"\016\006\370\000R\000\000\000\203\001@\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\030\000\000\000\002\"\016\006\000\000B\000\000\000\001\001@\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\002\"\016\006\000\000B\000\000\000A\001@\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\014\000\000\000\0028\0162\370\000@\021\000\000\000\000\202\001\n\000\000\002\001@\001\000\000\000\000\000\000\000\000\000\000\000P\010\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\001|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\3774\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\001\000\000\000\000\000\000\004\020\000\000\000\004\220\001\000\000\014\201\200\200(\000\004\360\377\377\377\000\000\000\000\000\000\000\000\000\004/\010\000\006\000\000\000\014\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004Z$\000\212\235\"\244\261\235\024m\000\264*\363\367X\003\216\014\007\n\033\342\336\212\327Rc\207\014\327+\007\000\315+\000\000\004\027\014\000\000\000\000\000\003\000\030\000\010\365!\000\004\027\014\000\000\000\000\000\002\000\020\000\010\365!\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\002J\000\000\004\034\004\000\220\001\000\000\004\020\014\000\010\000\000\000\001\000\000\000\001\000\000\000D\000\000\000\000\000\000\000=\000\001\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000Q\000\000\000\003\000\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\244\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\323\000\000\000 \240\024\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\000\000\000\003\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000/\001\000\000\003\000\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000K\001\000\000\022\020\017\000\000\000\000\000\000\000\000\000\240\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\350\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000L\002\000\000\000\000\000\000\177\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\003\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\305\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\220\004\000\000\000\000\000\000h\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\007\000\000\000\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\370\004\000\000\000\000\000\000\264\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0009\000\000\000\007\000\000\000@\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\254\005\000\000\000\000\000\000$\000\000\000\000\000\000\000\005\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000H\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\320\005\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000j\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\364\005\000\000\000\000\000\000\204\000\000\000\000\000\000\000\003\000\000\000\014\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\272\000\000\000\206\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000x\006\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\365\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\210\006\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\343\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\006\000\000\000\000\000\000\030\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000Q\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\007\000\000\000\000\000\000\000\002\000\000\000\000\000\000\003\000\000\000\006\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\244\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\t\000\000\000\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\021\001\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\t\000\000\000\000\000\000\240\003\000\000\000\000\000\000\000\000\000\000\014\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\001\000\000\026\000\000p\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\240\014\000\000\000\000\000\000\016\001\000\000\000\000\000\000\025\000\000\000\006\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000V\001\000\000\001\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\256\r\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000k\001\000\000\203\000\000p\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000 \016\000\000\000\000\000\000$\000\000\000\000\000\000\000\025\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000|\001\000\000\203\000\000p@\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000D\016\000\000\000\000\000\000\224\000\000\000\000\000\000\000\025\000\000\000\017\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\001\000\000\202\000\000p@\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\330\016\000\000\000\000\000\000\030\000\000\000\000\000\000\000\025\000\000\000\020\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\272\001\000\000\025\000\000p\003\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\360\016\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\330\001\000\000\205\000\000p\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\360\016\000\000\000\000\000\000\250\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000\030\025\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\030\025\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000\002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\003\000\000\000\000\000\000\240\003\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
           }
           arity: 4
           kernel_name: "loop_select_fusion"
@@ -1666,13 +1551,14 @@ gpu_executable {
           }
         }
       }
+      use_pdl: true
       tma_metadata {
       }
     }
   }
   thunks {
     thunk_info {
-      profile_annotation: "ars.2"
+      profile_annotation: "ars.3"
       thunk_id: 3
     }
     reduce_scatter_thunk {
@@ -1721,9 +1607,9 @@ gpu_executable {
     platform_name: "CUDA"
     cuda_platform_version {
       cuda_toolkit_version: "12.8.0"
-      cudnn_version: "9.10.0"
+      cudnn_version: "9.10.2"
       cub_version: "3.1.2"
     }
   }
-  buffer_allocations_debug_summary: "BufferAssignment OOM Debugging.\nBufferAssignment stats:\n             parameter allocation:         0B\n              constant allocation:        64B\n        maybe_live_out allocation:        16B\n     preallocated temp allocation:       528B\n  preallocated temp fragmentation:         0B (0.00%)\n                 total allocation:       620B\n              total fragmentation:       548B (88.39%)\nPeak buffers:\n\tBuffer 1:\n\t\tSize: 32B\n\t\tXLA Label: fusion\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 2:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 3:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 4:\n\t\tSize: 16B\n\t\tXLA Label: async-start\n\t\tShape: ((u32[8]), u32[4])\n\t\t==========================\n\n\tBuffer 5:\n\t\tSize: 16B\n\t\tXLA Label: reduce-scatter\n\t\tShape: u32[4]\n\t\t==========================\n\n\tBuffer 6:\n\t\tSize: 8B\n\t\tXLA Label: async-start\n\t\tShape: (u32[8])\n\t\t==========================\n\n\tBuffer 7:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 8:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 9:\n\t\tSize: 4B\n\t\tXLA Label: add\n\t\tShape: u32[]\n\t\t==========================\n"
+  buffer_allocations_debug_summary: "BufferAssignment OOM Debugging.\nBufferAssignment stats:\n             parameter allocation:         0B\n              constant allocation:        64B\n        maybe_live_out allocation:        16B\n     preallocated temp allocation:        32B\n  preallocated temp fragmentation:         0B (0.00%)\n                 total allocation:       124B\n              total fragmentation:        76B (61.29%)\nPeak buffers:\n\tBuffer 1:\n\t\tSize: 32B\n\t\tXLA Label: fusion\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 2:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 3:\n\t\tSize: 32B\n\t\tXLA Label: constant\n\t\tShape: u32[8]\n\t\t==========================\n\n\tBuffer 4:\n\t\tSize: 16B\n\t\tXLA Label: reduce-scatter\n\t\tShape: u32[4]\n\t\t==========================\n\n\tBuffer 5:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 6:\n\t\tSize: 4B\n\t\tXLA Label: parameter\n\t\tShape: u32[]\n\t\t==========================\n\n\tBuffer 7:\n\t\tSize: 4B\n\t\tXLA Label: add\n\t\tShape: u32[]\n\t\t==========================\n"
 }

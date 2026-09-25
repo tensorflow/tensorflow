@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla::xtile {
 
