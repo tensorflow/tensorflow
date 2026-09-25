@@ -13,13 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index b683f86ca386..70819c622402 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -57,6 +57,36 @@
-     # This one is needed for building and vendoring out lldb from off tree.
+@@ -59,6 +59,36 @@ exports_files([
      "utils/lldbDataFormatters.py",
  ])
-+
+ 
 +config_setting(
 +    name = "macos_arm64",
 +    constraint_values = [
@@ -49,9 +49,20 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
 +        "@platforms//cpu:x86_64",
 +    ],
 +)
- 
++
  config_setting(
      name = "darwin_arm64",
+     constraint_values = [
+@@ -533,7 +563,7 @@ cc_library(
+         # We unconditionally depend on the custom LLVM lzma wrapper. This only
+         # provides the configuration define unless lzma is enabled, in which
+         # case it also links the system liblzma.
+-        "//third-party:lzma",
++        # "//third-party:lzma",
+         "//libc:shared_math_headers_for_apfloat",
+     ],
+ )
+
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
