@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
@@ -85,8 +86,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -449,37 +448,59 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         return Internal("Expected %d leaf parameters but got %d",
                         flattened_shardings.size(), leaf_count);
       }
-
-      for (int i = 0; i < leaf_count; ++i) {
-        mlir::NamedAttrList argAttrs(function.getArgAttrDict(arg_index));
-        if (!flattened_shardings.empty()) {
-          argAttrs.set(xla::kMhloSharding,
-                       ConvertSharding(flattened_shardings[i], builder_));
-        }
-        if (frontend_attributes) {
-          if (leaf_count > 1) {
-            return InvalidArgument(
-                "A tuple parameter that is being flattened shouldn't have "
-                "frontend attributes");
-          }
-          argAttrs.set(xla::kMhloFrontendAttributes, frontend_attributes);
-        }
-        if (parameter->parameter_replicated_at_leaf_buffers() &&
-            parameter->parameter_replicated_at_leaf_buffers()->at(i)) {
-          argAttrs.set(xla::kMhloParameterReplication,
-                       builder_->getBoolArrayAttr({true}));
-        }
-        // NOTE: since we are flattening args, all arguments will share the same
-        // location as the tuple parameter instruction.
-        function.getArgument(arg_index).setLoc(
-            mlir::hlo::GenerateInstructionLocation(instruction, context_));
-        funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
+      if (frontend_attributes && leaf_count > 1) {
+        return InvalidArgument(
+            "A tuple parameter that is being flattened shouldn't have "
+            "frontend attributes");
       }
+
+      int i = 0;
+      ShapeUtil::ForEachLeafShape(
+          parameter->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            mlir::NamedAttrList argAttrs(function.getArgAttrDict(arg_index));
+            if (!flattened_shardings.empty()) {
+              argAttrs.set(xla::kMhloSharding,
+                           ConvertSharding(flattened_shardings[i], builder_));
+            }
+            if (frontend_attributes) {
+              argAttrs.set(xla::kMhloFrontendAttributes, frontend_attributes);
+            }
+            if (parameter->parameter_replicated_at_leaf_buffers() &&
+                parameter->parameter_replicated_at_leaf_buffers()->at(i)) {
+              argAttrs.set(xla::kMhloParameterReplication,
+                           builder_->getBoolArrayAttr({true}));
+            }
+            if (parameter->original_value()) {
+              // Parameter instructions are not call instructions, so they never
+              // carry a call_hierarchy (or is_synthetic_call). Each flattened
+              // argument only needs the leaf OriginalArray at `index`.
+              const auto& orig_array =
+                  parameter->original_value()->original_array(index);
+              if (orig_array.has_value()) {
+                OriginalValue leaf_ov(subshape);
+                *leaf_ov.mutable_original_array({}) = *orig_array;
+                argAttrs.set(xla::kMhloOriginalValueAttr,
+                             ConvertOriginalValue(leaf_ov, builder_));
+              }
+            }
+            // NOTE: since we are flattening args, all arguments will share the
+            // same location as the tuple parameter instruction.
+            function.getArgument(arg_index).setLoc(
+                mlir::hlo::GenerateInstructionLocation(instruction, context_));
+            funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
+            ++i;
+          });
     } else {
       mlir::NamedAttrList argAttrs(function.getArgAttrDict(arg_index));
       if (parameter->has_sharding()) {
         argAttrs.set(xla::kMhloSharding,
                      ConvertSharding(parameter->sharding(), builder_));
+      }
+      if (parameter->original_value()) {
+        argAttrs.set(
+            xla::kMhloOriginalValueAttr,
+            ConvertOriginalValue(*parameter->original_value(), builder_));
       }
       if (frontend_attributes) {
         argAttrs.set(
@@ -592,17 +613,9 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   // Setup the input parameters.
   const int num_parameters = computation.num_parameters();
 
-  FuncOp func = llvm::dyn_cast<FuncOp>(builder->getBlock()->getParentOp());
   for (int i = 0; i < num_parameters; i++) {
     auto* hlo_parameter = computation.parameter_instruction(i);
     instruction_value_map_[hlo_parameter] = arguments[i];
-    // Only add original value attributes to parameters in functions. Skip
-    // regions.
-    if (hlo_parameter->original_value() && func) {
-      func.setArgAttr(
-          i, kMhloOriginalValueAttr,
-          ConvertOriginalValue(*hlo_parameter->original_value(), builder_));
-    }
   }
 
   for (auto instruction : computation.MakeInstructionPostOrder()) {
@@ -1891,6 +1904,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return op.getOperation();
     }
+    // TODO(b/565684884): Add conversion when Shuffle is supported in StableHLO.
+    case HloOpcode::kShuffle:
+      return InvalidArgument("Shuffle is not supported in StableHLO.");
     case HloOpcode::kRng: {
       auto shape = mlir::stablehlo::ConstantOp::create(
           *func_builder, loc,
@@ -2141,8 +2157,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                   &instruction->precision_config(), builder_)));
 
       // If the element types of the operands for convolution are different,
-      // insert a convert op to convert the operands to the common element type
-      // while preserving the values.
+      // insert a convert op to convert the operands to the common element
+      // type while preserving the values.
       auto lhs = operands[0];
       auto rhs = operands[1];
       auto lhs_element_type = instruction->operand(0)->shape().element_type();
@@ -2200,10 +2216,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
 
     case HloOpcode::kAdd: {
-      // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
-      // AddOps on i1 are just addition with overflow; so, we have to implement
-      // the special behavior of HLO add ops on PRED here by creating an
-      // arith::OrIOp instead.
+      // HLO add ops on PRED elements are actually boolean or, but MHLO
+      // dialect AddOps on i1 are just addition with overflow; so, we have to
+      // implement the special behavior of HLO add ops on PRED here by
+      // creating an arith::OrIOp instead.
       if (instruction->shape().element_type() == PRED) {
         return mlir::stablehlo::OrOp::create(*func_builder, loc, result_type,
                                              operands, attributes)
@@ -2227,8 +2243,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
 
     case HloOpcode::kConvert: {
-      // Convert to boolean is special, it requires a comparison to 0 instead of
-      // a truncation to i1, otherwise it is a 1-1 translation.
+      // Convert to boolean is special, it requires a comparison to 0 instead
+      // of a truncation to i1, otherwise it is a 1-1 translation.
       auto ranked_type = mlir::dyn_cast<mlir::RankedTensorType>(result_type);
       mlir::IntegerType integer_type =
           (ranked_type)
@@ -2279,10 +2295,10 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
                                                   *domain_kind)));
 
-      // In XLA, DomainMetadata is open-world, but in the proto, it is hardcoded
-      // to be ShardingMetadata. Thankfully, the only other implementation of
-      // DomainMetadata is OpName, which is generally used for debugging and
-      // never for compiling production models.
+      // In XLA, DomainMetadata is open-world, but in the proto, it is
+      // hardcoded to be ShardingMetadata. Thankfully, the only other
+      // implementation of DomainMetadata is OpName, which is generally used
+      // for debugging and never for compiling production models.
       //
       // Since this is hardcoded as such in the proto, we must follow suit.
       auto exit_metadata = ShardingMetadata::ToShardingMetadata(
