@@ -309,7 +309,8 @@ absl::Status ValidateStridedSliceOp(
     }
     bool shrink_i = (dense_spec.shrink_axis_mask & (1 << i));
     if (dim_i == -1) {
-      processing_shape->AddDim(shrink_i ? 1 : -1);
+      TF_RETURN_IF_ERROR(
+          processing_shape->AddDimWithStatus(shrink_i ? 1 : -1));
       continue;
     }
 
@@ -397,9 +398,9 @@ absl::Status ValidateStridedSliceOp(
         size_i = interval_length / stride_i +
                  (interval_length % stride_i != 0 ? 1 : 0);
       }
-      processing_shape->AddDim(size_i);
+      TF_RETURN_IF_ERROR(processing_shape->AddDimWithStatus(size_i));
     } else {
-      processing_shape->AddDim(-1);
+      TF_RETURN_IF_ERROR(processing_shape->AddDimWithStatus(-1));
     }
   }
 
@@ -408,6 +409,19 @@ absl::Status ValidateStridedSliceOp(
   // new_axis will increase dimension by 1 (with a one-size dimension)
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
+  int output_rank = 0;
+  for (int32_t gather_index : dense_spec.final_shape_gather_indices) {
+    if (gather_index != kShrinkAxis) {
+      ++output_rank;
+    }
+  }
+  if (output_rank > TensorShape::MaxDimensions()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "StridedSlice would produce a tensor of rank ", output_rank,
+        ", which exceeds the maximum supported rank of ",
+        TensorShape::MaxDimensions(), "."));
+  }
+
   final_shape->Clear();
   if (shape_spec != nullptr) {
     shape_spec->output_to_sparse_mapping.clear();
@@ -427,13 +441,14 @@ absl::Status ValidateStridedSliceOp(
     int64_t sparse_index =
         dense_spec.final_shape_gather_indices_sparse[dense_dim];
     if (gather_index >= 0) {
-      final_shape->AddDim(processing_shape->dim_size(gather_index));
+      TF_RETURN_IF_ERROR(final_shape->AddDimWithStatus(
+          processing_shape->dim_size(gather_index)));
       if (shape_spec != nullptr) {
         shape_spec->output_to_sparse_mapping.push_back(sparse_index);
         shape_spec->output_to_processing_mapping.push_back(gather_index);
       }
     } else if (gather_index == kNewAxis) {
-      final_shape->AddDim(1);
+      TF_RETURN_IF_ERROR(final_shape->AddDimWithStatus(1));
       if (shape_spec != nullptr) {
         shape_spec->output_to_sparse_mapping.push_back(-1);
         shape_spec->output_to_processing_mapping.push_back(-1);
