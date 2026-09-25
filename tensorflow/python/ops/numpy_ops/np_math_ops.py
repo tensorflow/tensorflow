@@ -460,18 +460,30 @@ def hypot(x1, x2):  # pylint: disable=missing-function-docstring
       dtype = np_utils.result_type(float)
       x1 = math_ops.cast(x1, dtype)
       x2 = math_ops.cast(x2, dtype)
-    x1 = math_ops.abs(x1)
-    x2 = math_ops.abs(x2)
+    if x1.dtype.is_complex:
+      # Complex inputs contribute their magnitudes.
+      x1 = math_ops.abs(x1)
+      x2 = math_ops.abs(x2)
     # C99/IEEE: hypot(±inf, y) == +inf even when y is NaN.
     either_inf = math_ops.logical_or(math_ops.is_inf(x1), math_ops.is_inf(x2))
-    max_abs = math_ops.maximum(x1, x2)
-    min_abs = math_ops.minimum(x1, x2)
+    max_abs = math_ops.maximum(math_ops.abs(x1), math_ops.abs(x2))
     zero = constant_op.constant(0, dtype=max_abs.dtype)
     one = constant_op.constant(1, dtype=max_abs.dtype)
+    both_zero = math_ops.equal(max_abs, zero)
     # Scale by the larger magnitude to avoid intermediate overflow/underflow
     # from square(x) + square(y) (e.g. hypot(1e200, 1e200) must stay finite).
-    safe_max = array_ops.where_v2(math_ops.equal(max_abs, zero), one, max_abs)
-    result = max_abs * math_ops.sqrt(one + math_ops.square(min_abs / safe_max))
+    # hypot(x, y) == s * hypot(x / s, y / s) for any s > 0, so the scale is
+    # held constant under differentiation. This keeps the gradient x / hypot
+    # (and its higher derivatives) exact where |x| == |y| or where one input is
+    # zero, instead of routing it through abs/maximum/minimum.
+    scale = array_ops.stop_gradient(array_ops.where_v2(both_zero, one, max_abs))
+    sum_sq = math_ops.square(x1 / scale) + math_ops.square(x2 / scale)
+    # hypot is not differentiable at (0, 0); use a safe sqrt input there so the
+    # gradient is 0 rather than NaN.
+    safe_sum_sq = array_ops.where_v2(both_zero, one, sum_sq)
+    result = array_ops.where_v2(
+        both_zero, zero, scale * math_ops.sqrt(safe_sum_sq)
+    )
     return array_ops.where_v2(
         either_inf,
         constant_op.constant(np.inf, dtype=result.dtype),
