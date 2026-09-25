@@ -485,6 +485,24 @@ class BufferAssignment {
     buffer_assignment::BufferIsolationConfig config;
   };
 
+  struct LiveRangeInterferenceOptions {
+    // Unary predicate: returns true if this HloValue has custom interference
+    // rules and should bypass HeapSimulator interval packing.
+    std::function<bool(const HloAliasAnalysis&, const HloValue&)>
+        has_custom_interference;
+
+    // Symmetric binary predicate: returns true/false to override interference
+    // between lhs and rhs, or std::nullopt to fall back to default analysis.
+    // Must be symmetric: interferes(alias_analysis, a, b) ==
+    // interferes(alias_analysis, b, a).
+    std::function<std::optional<bool>(const HloAliasAnalysis&, const HloValue&,
+                                      const HloValue&)>
+        interferes;
+  };
+
+  using FixedOffset = std::function<std::optional<int64_t>(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
@@ -735,7 +753,8 @@ class BufferAssignment {
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
   absl::StatusOr<BufferAllocation*> NewAllocation(const HloBuffer& buffer,
-                                                  int64_t size);
+                                                  int64_t size,
+                                                  int64_t offset = 0);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
   absl::Status AddAssignment(BufferAllocation* allocation,
@@ -752,7 +771,10 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
-      std::optional<BufferValue::Color> temp_buffer_color);
+      std::optional<BufferValue::Color> temp_buffer_color,
+      std::optional<LiveRangeInterferenceOptions>
+          live_range_interference_options = std::nullopt,
+      std::optional<FixedOffset> fixed_offset = std::nullopt);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
   void ComputeSummaryStats();
@@ -870,6 +892,9 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+  using LiveRangeInterferenceOptions =
+      BufferAssignment::LiveRangeInterferenceOptions;
+  using FixedOffset = BufferAssignment::FixedOffset;
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
@@ -894,6 +919,13 @@ class BufferAssigner {
     // live out of a computation.
     std::optional<MustNotLiveOut> must_not_live_out;
 
+    // Optional callbacks to override live-range interference analysis between
+    // two buffer values (e.g. for target-specific concurrency or barriers).
+    std::optional<LiveRangeInterferenceOptions> live_range_interference_options;
+
+    // Optional callback returning a required fixed offset for a buffer
+    // position.
+    std::optional<FixedOffset> fixed_offset;
     // Description of any buffer offsets that are already set by an earlier
     // pass.
     std::unique_ptr<memory_space_assignment::PresetAssignments>
@@ -1014,6 +1046,12 @@ class BufferAssigner {
   // returns 0, indicating that fallback or FastMerge bounds don't apply.
   int64_t GetMemoryLimit(const BufferAssignment& assignment,
                          LogicalBuffer::Color color) const;
+
+  // Returns the required fixed offset for the given buffer if specified, or
+  // an error if values within the buffer specify conflicting fixed offsets.
+  absl::StatusOr<std::optional<int64_t>> GetRequiredFixedOffset(
+      const HloBuffer& hlo_buffer,
+      const HloAliasAnalysis& alias_analysis) const;
 
  private:
   absl::Status RunAssignBuffers(
