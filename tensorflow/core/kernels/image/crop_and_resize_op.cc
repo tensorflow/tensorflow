@@ -395,6 +395,21 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
+    if (boxes.NumElements() > 0) {
+      bool only_finite = true;
+      auto boxes_flat = boxes.flat<float>();
+      for (int i = 0; i < boxes_flat.size(); ++i) {
+        if (!std::isfinite(boxes_flat(i))) {
+          only_finite = false;
+          break;
+        }
+      }
+      OP_REQUIRES_ASYNC(
+          context, only_finite,
+          absl::InvalidArgumentError(
+              "boxes contains at least one element that is not finite"),
+          done);
+    }
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
@@ -639,7 +654,21 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
-
+    if (boxes.NumElements() > 0) {
+      bool only_finite = true;
+      auto boxes_flat = boxes.flat<float>();
+      for (int i = 0; i < boxes_flat.size(); ++i) {
+        if (!std::isfinite(boxes_flat(i))) {
+          only_finite = false;
+          break;
+        }
+      }
+      OP_REQUIRES_ASYNC(
+          context, only_finite,
+          absl::InvalidArgumentError(
+              "boxes contains at least one element that is not finite"),
+          done);
+    }
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),

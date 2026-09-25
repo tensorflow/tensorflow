@@ -14,7 +14,11 @@
 # ==============================================================================
 """Functional tests for Image Op Gradients."""
 
+import numpy as np
+
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import image_grad_test_base as test_base
+from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 ResizeNearestNeighborOpTest = test_base.ResizeNearestNeighborOpTestBase
@@ -25,6 +29,40 @@ CropAndResizeOpTest = test_base.CropAndResizeOpTestBase
 RGBToHSVOpTest = test_base.RGBToHSVOpTestBase
 AdjustContrastOpTest = test_base.AdjustContrastOpTestBase
 ImageProjectiveTransformOpTest = test_base.ImageProjectiveTransformOpTestBase
+
+
+class CropAndResizeGradNonFiniteTest(test_base.CropAndResizeOpTestBase):
+
+  def testCropAndResizeGradBoxesWithNaNOrNonFinite(self):
+    """Test crop_and_resize_grad_boxes with non-finite boxes."""
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    image = np.ones((1, 4, 4, 1), dtype=np.float32)
+    box_ind = np.array([0], dtype=np.int32)
+    
+    for bad_val in [np.nan, np.inf, -np.inf]:
+      boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        self.evaluate(
+            image_ops.crop_and_resize_grad_boxes(
+                grads, image, boxes_bad, box_ind
+            )
+        )
+
+  def testCropAndResizeGradImageWithNaNOrNonFinite(self):
+    """Test crop_and_resize_grad_image with non-finite boxes."""
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    box_ind = np.array([0], dtype=np.int32)
+    image_dense_shape = np.array([1, 4, 4, 1], dtype=np.int32)
+
+    for bad_val in [np.nan, np.inf, -np.inf]:
+      boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        self.evaluate(
+            image_ops.crop_and_resize_grad_image(
+                grads, boxes_bad, box_ind, image_dense_shape, T=np.float32
+            )
+        )
+
 
 if __name__ == "__main__":
   test.main()
