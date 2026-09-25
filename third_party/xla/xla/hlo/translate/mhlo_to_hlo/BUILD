@@ -253,7 +253,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:source_target_pairs",
-        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
