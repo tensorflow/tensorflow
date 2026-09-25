@@ -44,6 +44,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/future.h"
