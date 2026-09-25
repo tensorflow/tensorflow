@@ -14,7 +14,7 @@ fusion {
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:    %[[ARG0:.*]]: memref<64xi32>,
 // CHECK-SAME:    %[[ARG1:.*]]: memref<10xi32>,
-// CHECK-SAME:    %[[ARG2:.*]]: index)
+// CHECK-SAME:    %[[ARG2:.*]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}})
 // CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:     %[[C20:.*]] = arith.constant 20 : index
 // CHECK:         %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C20]]] [32] [1] : memref<64xi32> -> tensor<32xi32>

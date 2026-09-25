@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -221,6 +222,35 @@ ENTRY entry {
       FindInstruction(module.get(), "all-reduce-same-operand-subgroup"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce-different-operand"), {}));
+}
+
+TEST_F(HloReplicationAnalysisTest,
+       CrossPartitionSpmdWithModuleParameterShardings) {
+  const std::string module_str = R"(
+HloModule CrossPartitionSpmdWithModuleParameterShardings
+
+ENTRY entry {
+  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0})
+    parameter(0), sharding={{maximal device=0}, {replicated}}
+  gte0 = f32[4096,4096]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[4096,4096]{1,0} get-tuple-element(param), index=1
+  ROOT add = f32[4096,4096]{1,0} add(gte0, gte1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        module_str, /*replica_count=*/4));
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  module->set_spmd_parameters_shardings({param->sharding()});
+  param->clear_sharding();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> analysis,
+      HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte0"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "gte1"), {}));
 }
 
 TEST_F(HloReplicationAnalysisTest, NestedCall) {
