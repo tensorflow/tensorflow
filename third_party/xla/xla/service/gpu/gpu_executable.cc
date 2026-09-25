@@ -243,6 +243,8 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
   comm = std::max(0, comm);
+  bool need_d2h_stream = false;
+  bool need_h2d_stream = false;
 
   // Then traverse all thunks to see if anyone requested more streams. This
   // also sizes sparse collective-domain stream pools from their assigned IDs.
@@ -252,14 +254,20 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
         ExecutionStreamId id = async_start->execution_stream_id();
         if (id.is_computation()) {
           compute = std::max<int>(compute, id.computation_id().value() + 1);
-        } else {
+        } else if (id.is_communication()) {
           comm = std::max<int>(comm, id.communication_id().value() + 1);
+        } else if (id.is_memcpy()) {
+          if (id.memcpy_id() == kMemcpyD2HStreamId) {
+            need_d2h_stream = true;
+          } else if (id.memcpy_id() == kMemcpyH2DStreamId) {
+            need_h2d_stream = true;
+          }
         }
       }
     });
   }
 
-  return {compute, comm};
+  return {compute, comm, need_d2h_stream, need_h2d_stream};
 }
 
 GpuExecutable::BorrowedStreams GpuExecutable::BorrowedStreams::Assign(
@@ -615,7 +623,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   if (execution_watchdog != nullptr) {
     HangWatchdog::CancelCallback pre_abort;
     if (tracker.has_value()) {
-      pre_abort = [&tracker, progress_tracking_n,
+      pre_abort = [tracker = tracker->tracker(), progress_tracking_n,
                    device_ordinal = executor->device_ordinal()] {
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
@@ -791,6 +799,35 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(compute_streams.streams),
       &execution_scoped_state, persistent_alloc_indices);
+
+  // device_to_host_stream/host_to_device_stream above come from run_options,
+  // which are only populated when running through PJRT. Fall back to a
+  // borrowed stream (or main_stream, if no stream borrower is available) so
+  // that async host<->device copy thunks also work for non-PJRT clients.
+  StreamPool::Ptr borrowed_device_to_host_stream;
+  if (num_additional_streams.need_d2h_stream &&
+      execute_params.device_to_host_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_device_to_host_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.device_to_host_stream =
+          borrowed_device_to_host_stream.get();
+    } else {
+      execute_params.device_to_host_stream = main_stream;
+    }
+  }
+  StreamPool::Ptr borrowed_host_to_device_stream;
+  if (num_additional_streams.need_h2d_stream &&
+      execute_params.host_to_device_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_host_to_device_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.host_to_device_stream =
+          borrowed_host_to_device_stream.get();
+    } else {
+      execute_params.host_to_device_stream = main_stream;
+    }
+  }
 
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
