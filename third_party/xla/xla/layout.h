@@ -52,7 +52,7 @@ class Tile {
     Tile tile;
     tile.dimensions_.reserve(tile_proto.dimensions_size());
     for (int64_t dimension : tile_proto.dimensions()) {
-      TF_RET_CHECK(dimension >= 0);
+      TF_RET_CHECK(dimension >= 0 || dimension == kCombineDimension);
       tile.add_dimensions(dimension);
     }
     return tile;
