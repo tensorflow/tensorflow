@@ -129,8 +129,6 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_proto_cc",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
