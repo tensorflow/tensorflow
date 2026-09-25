@@ -183,9 +183,13 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
 // Returns the scaled-dot instruction inside a Triton GEMM fusion, or nullptr
 // if `instr` is not such a fusion.
 const HloInstruction* GetScaledDotFromFusion(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) return nullptr;
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return nullptr;
+  }
   auto gpu_config = instr.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) return nullptr;
+  if (!gpu_config.ok()) {
+    return nullptr;
+  }
   if (gpu_config->fusion_backend_config().kind() != kTritonGemmFusionKind) {
     return nullptr;
   }
@@ -326,7 +330,8 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       configs.push_back(std::move(config));
     }
     return configs;
-  } else if (IsCublasLtGroupedMatmul(instr)) {
+  }
+  if (IsCublasLtGroupedMatmul(instr)) {
     ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
 
@@ -517,7 +522,8 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));
     return parent->ReplaceInstruction(&instr, gte);
-  } else if (IsCublasLtGroupedMatmul(instr)) {
+  }
+  if (IsCublasLtGroupedMatmul(instr)) {
     ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                      instr.backend_config<GpuBackendConfig>());
     GemmBackendConfig* backend_config =
