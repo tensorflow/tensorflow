@@ -823,6 +823,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.diff(a, axis=-3)
 
+  def testTrace(self):
+    a = np.arange(6).reshape(2, 3)
+    self.match(np_math_ops.trace(a), np.trace(a))
+    self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=0, axis2=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(a, axis1=-3, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array([1, 2, 3]))
+
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)
     x2 = ops.convert_to_tensor(2147483647)
