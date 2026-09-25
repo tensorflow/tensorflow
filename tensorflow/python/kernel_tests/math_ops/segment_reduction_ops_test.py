@@ -1386,6 +1386,28 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate(tf_op(grad, indices, segment_ids, output_dim0))
 
+  def testGradientEmptyIndicesAndSegmentIds(self):
+    ops_list = [
+        math_ops.sparse_segment_sum_grad,
+        math_ops.sparse_segment_mean_grad,
+        math_ops.sparse_segment_sqrt_n_grad,
+    ]
+    indices = []
+    segment_ids = []
+    output_dim0 = 5
+    for dtype in [dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64]:
+      grad = constant_op.constant([], shape=[0, 4], dtype=dtype)
+      expected = np.zeros([output_dim0, 4], dtype=dtype.as_numpy_dtype)
+      for tf_op in ops_list:
+        out = tf_op(grad, indices, segment_ids, output_dim0)
+        self.assertAllEqual(expected, self.evaluate(out))
+
+      # When output_dim0 == 0, output is an empty tensor with shape [0, 4].
+      expected_empty = np.zeros([0, 4], dtype=dtype.as_numpy_dtype)
+      for tf_op in ops_list:
+        out = tf_op(grad, indices, segment_ids, 0)
+        self.assertAllEqual(expected_empty, self.evaluate(out))
+
   def testGradientV2Valid(self):
     # Baseline for the testGradientV2*Invalid* methods below.
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
