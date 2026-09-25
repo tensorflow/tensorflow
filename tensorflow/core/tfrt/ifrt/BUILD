@@ -103,25 +103,34 @@ cc_library(
     ],
 )
 
-tf_cc_test(
-    name = "ifrt_device_utils_test",
-    srcs = [
-        "ifrt_device_utils_test.cc",
-    ],
-    tags = ["no_oss"],
-    deps = [
-        ":ifrt_device_utils",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
-        "@xla//xla/python/ifrt",
-        "@xla//xla/python/ifrt:attribute_map",
-        "@xla//xla/python/ifrt:mock",
-        "@xla//xla/service:device_assignment",
-        "@xla//xla/tsl/platform:status_matchers",
-        "@xla//xla/tsl/platform:statusor",
-    ],
-)
+# copybara:uncomment_begin(PjRt-IFRT TPU client is not available in OSS)
+# # TODO(siqiaowu): ifrt_device_utils_test couples with TPU assumptions ("coords"
+# # and "core_on_chip" device attributes) and requires a TPU test client, which is
+# # not available in OSS.
+# tf_cc_test(
+#     name = "ifrt_device_utils_test",
+#     srcs = [
+#         "ifrt_device_utils_test.cc",
+#     ],
+#     tags = [
+#         "no_oss",
+#         "requires-tpu",
+#     ],
+#     deps = [
+#         ":ifrt_device_utils",
+#         "//learning/brain/research/ifrt/pjrt_ifrt/pjrt_tpu:pjrt_tpu_client_test_lib",
+#         "@com_google_googletest//:gtest_main",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:status_matchers",
+#         "@xla//xla/python/ifrt",
+#         "@xla//xla/python/ifrt:attribute_map",
+#         "@xla//xla/python/ifrt:test_util",
+#         "@xla//xla/service:device_assignment",
+#         "@xla//xla/tsl/platform:status_matchers",
+#         "@xla//xla/tsl/platform:statusor",
+#     ],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "ifrt_serving_executable",

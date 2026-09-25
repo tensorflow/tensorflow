@@ -238,6 +238,10 @@ cuda_py_strict_test(
     name = "cumulative_logsumexp_test",
     size = "medium",
     srcs = ["cumulative_logsumexp_test.py"],
+    tags = [
+        "noasan",  # b/566175542: times out
+        "notsan",  # b/566175542: times out
+    ],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
