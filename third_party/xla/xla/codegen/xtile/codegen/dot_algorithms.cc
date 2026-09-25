@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace xtile {
@@ -218,7 +219,10 @@ absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
       return lhs_type;
     }
   }
-  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+  // TODO(loislo): Remove the xla_cpu_use_new_xtile_lowering flag.
+  if (!debug_options.xla_cpu_use_new_xtile_lowering() &&
+      debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32() &&
+      tsl::tensor_float_32_execution_enabled()) {
     return b.getBF16Type();
   }
   return lhs_type;

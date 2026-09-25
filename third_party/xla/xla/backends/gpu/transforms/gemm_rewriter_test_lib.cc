@@ -65,6 +65,13 @@ DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
   // cuBLAS for them.
   debug_options.set_xla_gpu_enable_triton_gemm(false);
   debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+
+  // We don't want to default to BF16 for these tests because ROCm doesn't
+  // support this case but nVidia does. There are number of FileCheck tests that
+  // expect expect a specific hlo text which would be different for ROCm and
+  // CUDA.
+  debug_options.set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(false);
+
   return debug_options;
 }
 
