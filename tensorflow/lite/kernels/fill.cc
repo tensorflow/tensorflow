@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -46,6 +47,12 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
       return kTfLiteError;
     }
     output_shape->data[i] = data;
+  }
+  int num_elements = 0;
+  if (CheckedNumElements(output_shape, num_elements) != kTfLiteOk) {
+    TfLiteIntArrayFree(output_shape);
+    TF_LITE_KERNEL_LOG(context, "Fill output shape overflowed.");
+    return kTfLiteError;
   }
   return context->ResizeTensor(context, output, output_shape);
 }
@@ -112,9 +119,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
   DynamicBuffer buffer;
   const auto string_ref = GetString(value, 0);
-  int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
+  int n = 0;
+  if (CheckedNumElements(output, n) != kTfLiteOk) {
+    return kTfLiteError;
   }
   for (int i = 0; i < n; ++i) {
     buffer.AddString(string_ref.str, string_ref.len);
@@ -137,8 +144,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   }
   if (value->type == kTfLiteString) {
-    FillString(value, output);
-    return kTfLiteOk;
+    return FillString(value, output);
   }
 #define TF_LITE_FILL(data_type)                                               \
   reference_ops::Fill(GetTensorShape(value), GetTensorData<data_type>(value), \
