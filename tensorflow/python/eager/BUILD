@@ -754,6 +754,7 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:unconnected_gradients",
@@ -1148,6 +1149,12 @@ cuda_py_strict_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:msan_build": {"mem": "30g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     grpc_enabled = True,
     shard_count = 2,
     tags = [

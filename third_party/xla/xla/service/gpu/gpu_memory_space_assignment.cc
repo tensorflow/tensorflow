@@ -23,9 +23,6 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/function_ref.h"
-#include "absl/log/die_if_null.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -44,7 +41,6 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
@@ -181,26 +177,6 @@ bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
   return RequiresCollectiveSymmetricMemorySpace(input_alias.instruction());
 }
 
-bool HasMosaicInstruction(const HloValue& input_alias,
-                          absl::FunctionRef<bool(HloInstruction&)> predicate) {
-  // Tuple-shaped values are pointer containers and never hold data that needs
-  // to live in collective memory. Only array sub-elements do.
-  if (input_alias.shape().IsTuple()) {
-    return false;
-  }
-  for (const HloUse& use : input_alias.GetUses()) {
-    if (predicate(*ABSL_DIE_IF_NULL(use.instruction))) {
-      return true;
-    }
-  }
-
-  return predicate(*ABSL_DIE_IF_NULL(input_alias.instruction()));
-}
-
-bool HasMosaicWithSymmetricParameter(const HloValue& input_alias) {
-  return HasMosaicInstruction(input_alias, IsMosaicWithSymmetricParameter);
-}
-
 // Returns the memory space requested for the given custom call use, or
 // MemorySpaceColor::kDefault if none is specified.
 static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
@@ -314,24 +290,9 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
       }
     }
 
-    // Collective/Mosaic Candidates
-    // TODO(479768130): Mark only buffers which requires symmetric memory.
-    // TODO(508106498): We need to start to respect replica groups once
-    // mosaic will support them.
-    const bool is_mosaic_with_symmetric_parameter =
-        HasMosaicWithSymmetricParameter(*value);
-
-    if (is_mosaic_with_symmetric_parameter) {
-      VLOG(1) << "Assigning color kCollective to value of instruction "
-              << value->instruction()->ToShortString()
-              << " is_mosaic_with_symmetric_parameter "
-              << is_mosaic_with_symmetric_parameter;
-      // This is a temporary solution until a separate BFC
-      // allocator will be added for the symmetric memory space.
-      candidates.push_back(
-          static_cast<BufferValue::Color>(MemorySpaceColor::kCollective));
-    } else if (is_one_shot_ra2a_with_nccl &&
-               IsRaggedAllToAllCollectiveOperandOrResult(*value)) {
+    // Collective Candidates
+    if (is_one_shot_ra2a_with_nccl &&
+        IsRaggedAllToAllCollectiveOperandOrResult(*value)) {
       // One-shot RaggedAllToAll with NCCL requires collective memory for
       // both operand 1 and the result.
       candidates.push_back(

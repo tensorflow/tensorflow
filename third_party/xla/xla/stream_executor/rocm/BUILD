@@ -306,6 +306,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":rocm_diagnostics",
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_runtime_abi_version",
@@ -442,6 +443,13 @@ cc_library(
     ],
     deps = [
         ":rocm_compute_capability",
+        ":smi_util",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -937,6 +945,41 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_library(
+    name = "rocm_diagnostics",
+    srcs = ["rocm_diagnostics.cc"],
+    hdrs = ["rocm_diagnostics.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_status",
+        ":rocm_version_parser",
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
+    name = "rocm_diagnostics_test",
+    srcs = ["rocm_diagnostics_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":rocm_diagnostics",
+        ":rocm_platform",  # buildcleaner: keep
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ],
 )
 

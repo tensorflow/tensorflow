@@ -21,9 +21,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -188,6 +193,46 @@ TEST(IfrtLoadedVariableRegistryTest, KeyViewAndKeyHash) {
             absl::Hash<IfrtLoadedVariableRegistry::KeyView>()(key_view2));
   EXPECT_EQ(absl::Hash<IfrtLoadedVariableRegistry::Key>()(key1),
             absl::Hash<IfrtLoadedVariableRegistry::KeyView>()(key_view1));
+}
+
+TEST(IfrtLoadedVariableRegistryTest, GetLoadedVariableNames) {
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {2, 2});
+  auto shape_ptr = std::make_shared<xla::Shape>(shape);
+  IfrtLoadedVariableRegistry::Key key1{
+      .device_ids = {0, 1},
+      .input_name = "input1",
+      .hlo_sharding = xla::HloSharding::Replicate(),
+      .shape_on_device = shape_ptr,
+  };
+  IfrtLoadedVariableRegistry::Key key2{
+      .device_ids = {0, 1},
+      .input_name = "input2",
+      .hlo_sharding = xla::HloSharding::Replicate(),
+      .shape_on_device = shape_ptr,
+  };
+
+  IfrtLoadedVariableRegistry registry;
+  EXPECT_THAT(registry.GetLoadedVariableNames(), ::testing::IsEmpty());
+
+  auto pair1 = tsl::MakePromise<xla::ifrt::ArrayRef>();
+  auto future1 = pair1.second;
+  auto pair2 = tsl::MakePromise<xla::ifrt::ArrayRef>();
+  auto future2 = pair2.second;
+  TF_ASSERT_OK(registry.TryRegisterLoadedVariable(
+      key1,
+      [future1]()
+          -> absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable> {
+        return IfrtLoadedVariableRegistry::LoadedVariable({.array = future1});
+      }));
+  TF_ASSERT_OK(registry.TryRegisterLoadedVariable(
+      key2,
+      [future2]()
+          -> absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable> {
+        return IfrtLoadedVariableRegistry::LoadedVariable({.array = future2});
+      }));
+
+  EXPECT_THAT(registry.GetLoadedVariableNames(),
+              ::testing::UnorderedElementsAre("input1", "input2"));
 }
 
 }  // namespace

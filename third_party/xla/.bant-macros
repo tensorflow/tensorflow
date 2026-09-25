@@ -25,6 +25,38 @@
 xla_test = bant_forward_args(cc_test())
 xla_cc_test = bant_forward_args(cc_test())
 tsl_cc_test = bant_forward_args(cc_test())
+ifrt_proxy_cc_test = bant_forward_args(cc_test())
+onednn_cc_test = bant_forward_args(cc_test())
+onednn_graph_cc_test = bant_forward_args(cc_test())
+strict_cc_test = bant_forward_args(cc_test())
+exhaustive_xla_test = bant_forward_args(cc_test())
+
+# Binary rules
+xla_cc_binary = bant_forward_args(cc_binary())
+
+# Library rules
+onednn_cc_library = bant_forward_args(cc_library())
+onednn_graph_cc_library = bant_forward_args(cc_library())
+cuda_library = bant_forward_args(cc_library())
+rocm_library = bant_forward_args(cc_library())
+sycl_library = bant_forward_args(cc_library())
+embeddable_cuda_library = bant_forward_args(cc_library())
+
+# Helper macros that conditionally return deps/srcs lists.
+# In Bant, positional arguments are accessible via _arg_0, _arg_1, etc.
+if_static = _arg_0
+if_cuda_is_configured = _arg_0
+if_rocm_is_configured = _arg_0
+if_sycl_is_configured = _arg_0
+if_cuda_or_rocm_is_configured = _arg_0
+if_gpu_is_configured = _arg_0
+if_cuda = _arg_0
+if_rocm = _arg_0
+if_sycl = _arg_0
+if_windows = _arg_0
+if_oss = _arg_0
+if_google = _arg_0
+xla_internal = _arg_0
 
 # tf_proto_library() wraps proto_library() and cc_proto_library().
 # It generates a proto_library with the given name and a cc_proto_library
@@ -40,3 +72,4 @@ tf_proto_library = (
         deps = [":" + name],
     ),
 )
+

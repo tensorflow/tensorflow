@@ -51,9 +51,16 @@ void BufferUse::ReadWriteSet::AddAll(absl::Span<const BufferUse> uses) {
 }
 
 bool BufferUse::ReadWriteSet::HasConflicts(const BufferUse& use) const {
+  // A zero-size slice does not refer to any actual memory, so it can never
+  // alias another slice, even one with the same allocation and offset (e.g.
+  // buffer assignment may colocate unrelated zero-size scratch/workspace
+  // buffers at the same degenerate offset).
+  if (use.slice().size() == 0) return false;
+
   // Returns true if `use` overlaps with any of the slices in set.
   auto overlaps = [](const std::vector<BufferUse>& set, const BufferUse& use) {
     return absl::c_any_of(set, [&](const BufferUse& other) {
+      if (other.slice_.size() == 0) return false;
       return other.slice_.OverlapsWith(use.slice()) ||
              other.slice_ == use.slice_;
     });

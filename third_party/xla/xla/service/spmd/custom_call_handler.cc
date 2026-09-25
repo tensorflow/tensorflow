@@ -141,10 +141,13 @@ constexpr char kSPMDOpMultiRotate[] = "_SPMDInternalOp_MultiRotate";
 constexpr char kSPMDOpMultiSlice[] = "_SPMDInternalOp_MultiSlice";
 constexpr char kSPMDOpWrap[] = "_SPMDInternalOp_Wrap";
 
-bool IsTopKIndexOutputUsed(HloInstruction* hlo) {
+bool IsTopKIndexOutputUsed(const HloInstruction* hlo) {
+  if (hlo->IsRoot()) {
+    return true;
+  }
   for (const HloInstruction* user : hlo->users()) {
     if (user->opcode() == HloOpcode::kGetTupleElement) {
-      if (user->tuple_index() > 0 && !user->users().empty()) {
+      if (user->tuple_index() > 0 && !user->IsDead()) {
         return true;
       }
     } else {
@@ -159,7 +162,14 @@ bool IsTopKIndexOutputUsed(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     HloInstruction* hlo) {
-  if (!hlo->operand(0)->has_sharding()) {
+  // TopkRewriter flattens rank >= 2 inputs to 2D and leaves rank 1 inputs as
+  // 1D; this handler assumes a 2D [batch, sort] input.
+  if (hlo->operand_count() != 1 || !hlo->operand(0)->has_sharding() ||
+      !hlo->operand(0)->shape().IsArray() ||
+      hlo->operand(0)->shape().dimensions().size() != 2 ||
+      !hlo->shape().IsTuple() || hlo->shape().tuple_shapes().size() != 2 ||
+      !hlo->shape().tuple_shapes(0).IsArray() ||
+      hlo->shape().tuple_shapes(0).dimensions().size() != 2) {
     return DefaultAction(hlo);
   }
 
@@ -192,19 +202,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   auto partitioned_input = GetPartitionedHlo(input).PadWithValue(
       CreateFirstWithType(element_type, &b_));
 
-  auto partition_state = partitioned_input.state();
-  auto replicated_sharding = HloSharding::Replicate();
-  // If batch dimension is partitioned, partial replicated on sort dimension.
-  if (batch_dim_partition > 1) {
-    auto sharding_grouped =
-        hlo_sharding_util::GroupShardingOnDims(sharding, {batch_dim});
-    partition_state = CreatePerGroupPartitioningState(
-        partitioned_input.state(), sharding_grouped.device_groups,
-        partitioned_input.state().b);
-    replicated_sharding =
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding,
-                                                                 {sort_dim});
-  }
+  const HloSharding replicated_sharding =
+      batch_dim_partition > 1
+          ? hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding,
+                                                                     {sort_dim})
+          : HloSharding::Replicate();
 
   // Each partition needs to do TopK separately, thus the base shape
   // becomes [batch_size, k * shard_count].
@@ -240,7 +242,15 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   HloInstruction* slice_sort_value = nullptr;
   HloInstruction* slice_index_value = nullptr;
 
+  const int64_t partitioned_batch_size =
+      CeilOfRatio(batch_size, batch_dim_partition);
   if (IsTopKIndexOutputUsed(hlo)) {
+    const hlo_sharding_util::GroupedSharding sharding_grouped =
+        hlo_sharding_util::GroupShardingOnDims(sharding, {batch_dim});
+    PartitionedHlo::PartitioningState partition_state =
+        CreatePerGroupPartitioningState(partitioned_input.state(),
+                                        sharding_grouped.device_groups,
+                                        partitioned_input.state().b);
     // Get index from TopK.
     HloInstruction* index_gte =
         b_.AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -277,21 +287,18 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     XlaBuilder b("Sort.Compare");
     XlaComputation comparator = CreateScalarComparisonComputation(
         "compare-value-and-index", {input->shape().element_type(), S32},
-        {Gt, Lt}, &b);
+        {GtTotalOrder, LtTotalOrder}, &b);
     ABSL_ASSIGN_OR_RETURN(HloComputation * compare_computation,
                      XlaComputationToHloComputation(comparator, module_));
     // Each partition needs to do TopK separately, thus the base shape for sort
     // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
     const Shape sort_shape = ShapeUtil::MakeTupleShape(
-        {ShapeUtil::MakeShape(
-             hlo->operand(0)->shape().element_type(),
-             {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count}),
-         ShapeUtil::MakeShape(
-             S32,
-             {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count})});
-    auto sort = b_.AddInstruction(HloInstruction::CreateSort(
+        {ShapeUtil::MakeShape(element_type,
+                              {partitioned_batch_size, k * shard_count}),
+         ShapeUtil::MakeShape(S32, {partitioned_batch_size, k * shard_count})});
+    HloInstruction* sort = b_.AddInstruction(HloInstruction::CreateSort(
         sort_shape, sort_dim, {replicated_value_gte, replicated_index_gte},
-        compare_computation, true));
+        compare_computation, /*is_stable=*/false));
     sort->set_sharding(
         replicated_sharding.GetTupleSharding(sort->shape()).value());
     PartitionedHlo replicated_sort(sort, replicated_shape,
@@ -314,20 +321,19 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     // Sort only the replicated values.
     XlaBuilder b("Sort.Compare");
     XlaComputation comparator = CreateScalarComparisonComputation(
-        "compare-value", {input->shape().element_type()}, {Gt}, &b);
+        "compare-value", {input->shape().element_type()}, {GtTotalOrder}, &b);
     ABSL_ASSIGN_OR_RETURN(HloComputation * compare_computation,
                      XlaComputationToHloComputation(comparator, module_));
 
     const Shape sort_shape = ShapeUtil::MakeShape(
-        hlo->operand(0)->shape().element_type(),
-        {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count});
-    auto sort = b_.AddInstruction(
+        element_type, {partitioned_batch_size, k * shard_count});
+    HloInstruction* sort = b_.AddInstruction(
         HloInstruction::CreateSort(sort_shape, sort_dim, {replicated_value_gte},
-                                   compare_computation, true));
+                                   compare_computation, /*is_stable=*/false));
     sort->set_sharding(replicated_sharding);
 
-    const Shape sort_replicated_shape = ShapeUtil::MakeShape(
-        hlo->operand(0)->shape().element_type(), {batch_size, k * shard_count});
+    const Shape sort_replicated_shape =
+        ShapeUtil::MakeShape(element_type, {batch_size, k * shard_count});
     PartitionedHlo replicated_sort(sort, sort_replicated_shape,
                                    MakePartitioningState());
 
@@ -339,7 +345,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     HloInstruction* dummy_index_constant = b_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
     slice_index_value = b_.AddInstruction(HloInstruction::CreateBroadcast(
-        ShapeUtil::MakeShape(S32, {batch_size, k}), dummy_index_constant, {}));
+        ShapeUtil::MakeShape(S32, {partitioned_batch_size, k}),
+        dummy_index_constant, {}));
     slice_index_value->set_sharding(replicated_sharding);
   }
 
@@ -1268,9 +1275,6 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
   if (hlo->custom_call_target() == "SPMDFullToShardShape") {
     // This op switches from auto partitioning to manual partitioning.
-    // We emit a copy tagged with kSpmdBoundaryCopyAttr so that GSPMD can track
-    // the sharding boundary without mutating the input's sharding during
-    // partitioning; this copy will be removed at the end of the partitioner.
     auto input_partitioned = GetPartitionedHlo(hlo->operand(0));
     if (!EvenlyPartitions(hlo->shape(), input_partitioned.sharding())) {
       input_partitioned = input_partitioned.PadWithValue(
@@ -1283,23 +1287,18 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
         input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
-    copy->add_frontend_attribute(kSpmdBoundaryCopyAttr, "true");
     SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
-    // We emit a copy tagged with kSpmdBoundaryCopyAttr so that GSPMD can track
-    // the sharding boundary without mutating the input's sharding during
-    // partitioning; this copy will be removed at the end of the partitioner.
     auto input = GetPartitionedHlo(hlo->operand(0)).hlo();
     TF_RET_CHECK(input->sharding().IsManual() ||
                  input->sharding().IsManualSubgroup());
-    TF_RET_CHECK(ShapeUtil::Compatible(
-        input->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
-    copy->add_frontend_attribute(kSpmdBoundaryCopyAttr, "true");
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     SetPartitionedHlo(hlo, copy);
     return absl::OkStatus();
   }

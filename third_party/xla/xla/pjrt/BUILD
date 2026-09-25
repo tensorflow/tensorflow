@@ -563,6 +563,7 @@ xla_cc_test(
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:executable_metadata_proto_cc",
@@ -819,6 +820,8 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:chlo_ops",
@@ -844,6 +847,8 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )
@@ -934,6 +939,7 @@ cc_library(
     hdrs = ["transpose_kernels.h"],
     deps = [
         "//xla:compiler_macros",
+        "@highway//:hwy",
     ],
 )
 
@@ -993,6 +999,7 @@ xla_cc_test(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

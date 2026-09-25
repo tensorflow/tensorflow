@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/status.h"
@@ -435,6 +437,75 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
   CompareGraphs(expected, optimized_graph_def);
   CompareFunctions(expected.library().function(0),
                    optimized_graph_def.library().function(0));
+}
+
+TEST_F(OptimizeGraphTest, MinConsumerBump) {
+  setenv("TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS", "true", 1);
+  GraphDef graphdef;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice(
+        "/job:localhost/replica:0/task:0/device:CPU:0");
+
+    const Tensor kThree = test::AsScalar<float>(3.0);
+    auto fdef = tensorflow::FunctionDefHelper::Create(
+        "Pow3", {"x: float"}, {"y: float"}, {},
+        {{{"three"}, "Const", {}, {{"dtype", DT_FLOAT}, {"value", kThree}}},
+         {{"pow3"}, "Pow", {"x", "three:output:0"}, {{"T", DT_FLOAT}}}},
+        {{"y", "pow3:z:0"}});
+
+    tensorflow::FunctionDefLibrary fdef_lib;
+    *fdef_lib.add_function() = fdef;
+    TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+
+    Output a = ops::Const(scope.WithOpName("a"), 2.0, {1, 1});
+
+    std::vector<tensorflow::Output> inputs = {a};
+    std::vector<tensorflow::DataType> output_dtypes = {
+        fdef.signature().output_arg(0).type()};
+    tensorflow::NameAttrList func_attr;
+    func_attr.set_name(fdef.signature().name());
+    auto pcall = ops::PartitionedCall(scope, inputs, output_dtypes, func_attr);
+    Output b = pcall.output.front();
+
+    Output c = ops::Identity(scope.WithOpName("c"), b);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  // Ensure initial min_consumer is < 12 for testing.
+  graphdef.mutable_versions()->set_min_consumer(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  // This triggers the early return in OptimizeGraph if
+  // ProtoMemoryOptimizationsEnabled() is true.
+  options.run_placer_grappler_on_functions = false;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"c"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+
+  // If we bypassed AddFunctionLibrary, this might still be 0 if Grappler didn't
+  // bump it. We want to verify if it is bumped to 12. CURRENT BEHAVIOR: It is
+  // NOT bumped because we bypass AddFunctionLibrary via move assignment.
+  EXPECT_LT(optimized_graph.graph->versions().min_consumer(), 12);
+  unsetenv("TF_ENABLE_PROTO_MEMORY_OPTIMIZATIONS");
 }
 
 TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
@@ -53,7 +54,7 @@ SelectKThunk::SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                            std::uint32_t num_elements, std::uint32_t k,
                            xla::PrimitiveType dtype,
                            const emitters::KernelArguments& kernel_arguments)
-    : Thunk(Kind::kSelectK, thunk_info),
+    : TracedCommand(Kind::kSelectK, std::move(thunk_info)),
       batch_size_(batch_size),
       num_elements_(num_elements),
       k_(k),

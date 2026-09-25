@@ -16,9 +16,13 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import forwardprop
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -143,6 +147,113 @@ class CumulativeLogsumexpTest(test.TestCase):
               result,
               msg=f'Expected +inf outputs for all-inf input, got {result}',
           )
+
+  def testSecondDerivativeNestedForwardAccumulator(self):
+    # Regression test for GitHub issue #127243:
+    # cumulative_logsumexp produces NaN second derivative under nested
+    # forward-mode autodiff.
+    def target(t):
+      x = array_ops.reshape(
+          array_ops_stack.stack([t, -t + 1, t / 2 - 2, -2 * t, t + 3, t / 4]),
+          [2, 3],
+      )
+      y = math_ops.cumulative_logsumexp(
+          x, axis=-1, exclusive=False, reverse=True
+      )
+      return (
+          y[0, 0] + 2 * y[0, 1] - y[0, 2] + 3 * y[1, 0] + y[1, 1] - 2 * y[1, 2]
+      )
+
+    t = constant_op.constant(-40.0, dtype=dtypes.float64)
+    dt = constant_op.constant(1.0, dtype=dtypes.float64)
+    expected = 1.0572349592992632e-12
+
+    # Verify forward and 1st derivative
+    self.assertAllClose(self.evaluate(target(t)), 395.0000000000019)
+
+    # 1. Reverse-over-Reverse
+    with backprop.GradientTape() as t2:
+      t2.watch(t)
+      with backprop.GradientTape() as t1:
+        t1.watch(t)
+        y = target(t)
+      g1 = t1.gradient(y, t)
+    rr = t2.gradient(g1, t)
+    self.assertAllClose(self.evaluate(g1), -9.75, atol=1e-10)
+    self.assertAllClose(self.evaluate(rr), expected, atol=1e-12)
+
+    # 2. Forward-over-Reverse
+    with forwardprop.ForwardAccumulator(t, dt) as acc:
+      with backprop.GradientTape() as t1:
+        t1.watch(t)
+        y = target(t)
+      g1 = t1.gradient(y, t)
+    fr = acc.jvp(g1)
+    self.assertAllClose(self.evaluate(fr), expected, atol=1e-12)
+
+    # 3. Reverse-over-Forward
+    with backprop.GradientTape() as t1:
+      t1.watch(t)
+      with forwardprop.ForwardAccumulator(t, dt) as acc:
+        y = target(t)
+      j1 = acc.jvp(y)
+    rf = t1.gradient(j1, t)
+    self.assertAllClose(self.evaluate(rf), expected, atol=1e-12)
+
+    # 4. Forward-over-Forward (nested ForwardAccumulator)
+    with forwardprop.ForwardAccumulator(t, dt) as acc2:
+      with forwardprop.ForwardAccumulator(t, dt) as acc1:
+        y = target(t)
+      j1 = acc1.jvp(y)
+    ff = acc2.jvp(j1)
+    self.assertAllClose(self.evaluate(j1), -9.75, atol=1e-10)
+    self.assertAllClose(self.evaluate(ff), expected, atol=1e-12)
+
+    # Verify positive, negative, and zero cotangents across supported dtypes
+    tol_map = {
+        dtypes.float64: 1e-12,
+        dtypes.float32: 1e-5,
+        dtypes.float16: 1e-2,
+        dtypes.bfloat16: 2e-1,
+    }
+    for reverse in (True, False):
+      for exclusive in (True, False):
+        x64 = constant_op.constant([1.0, -2.0, 0.5, 3.0], dtype=dtypes.float64)
+        dx64 = constant_op.constant([1.0, -1.0, 0.0, 0.5], dtype=dtypes.float64)
+        w64 = constant_op.constant([2.0, -3.0, 0.0, 1.0], dtype=dtypes.float64)
+        with backprop.GradientTape() as t2:
+          t2.watch(x64)
+          with backprop.GradientTape() as t1:
+            t1.watch(x64)
+            lse64 = math_ops.cumulative_logsumexp(
+                x64, reverse=reverse, exclusive=exclusive
+            )
+            out64 = math_ops.reduce_sum(
+                (math_ops.exp(lse64) if exclusive else lse64) * w64
+            )
+          g1 = t1.gradient(out64, x64)
+          dir_g1 = math_ops.reduce_sum(g1 * dx64)
+        g2 = t2.gradient(dir_g1, x64)
+        ref_jvp1 = self.evaluate(dir_g1)
+        ref_jvp2 = self.evaluate(math_ops.reduce_sum(g2 * dx64))
+
+        for dtype in self.valid_dtypes:
+          x_val = constant_op.constant([1.0, -2.0, 0.5, 3.0], dtype=dtype)
+          dx_val = constant_op.constant([1.0, -1.0, 0.0, 0.5], dtype=dtype)
+          weights = constant_op.constant([2.0, -3.0, 0.0, 1.0], dtype=dtype)
+          with forwardprop.ForwardAccumulator(x_val, dx_val) as acc2:
+            with forwardprop.ForwardAccumulator(x_val, dx_val) as acc1:
+              lse = math_ops.cumulative_logsumexp(
+                  x_val, reverse=reverse, exclusive=exclusive
+              )
+              out = math_ops.reduce_sum(
+                  (math_ops.exp(lse) if exclusive else lse) * weights
+              )
+            jvp1 = acc1.jvp(out)
+          jvp2 = acc2.jvp(jvp1)
+          tol = tol_map[dtype]
+          self.assertAllClose(self.evaluate(jvp1), ref_jvp1, rtol=tol, atol=tol)
+          self.assertAllClose(self.evaluate(jvp2), ref_jvp2, rtol=tol, atol=tol)
 
   def testNaNPropagation(self):
     # Regression test for GitHub issue 111383. The LogSumExp reducer took the

@@ -53,8 +53,6 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-inline constexpr char kSpmdBoundaryCopyAttr[] = "_xla_spmd_boundary_copy";
-
 // Enum representing the partitioning methods for gather and scatter.
 enum class GatherScatterPartitioningMethod {
   kExplicitBatch,
@@ -908,11 +906,28 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::StatusOr<bool> TryDynamicSliceWithCollectiveBroadcast(
       HloInstruction* hlo);
 
+  // Returns the sharding that replaces the sharding of `inst` while an
+  // instruction with `opcode` is partitioned. The manual leaves of the
+  // sharding become single device leaves. Returns nullptr when the sharding is
+  // kept as it is.
+  std::shared_ptr<const HloSharding> ManualToOneDeviceSharding(
+      HloOpcode opcode, const HloInstruction* inst);
+
   PartitionedHlo::ReshardCache reshard_cache_;
 
   // Mapping from the instruction in the original computation to the new SPMD
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
+
+  // The one device replacements of tuple shardings, keyed by the original
+  // sharding object. A null value records that the tuple has no manual leaf.
+  // Postprocess puts the original object back after every visit, so a tuple
+  // that feeds many manual users is converted only once. The key keeps the
+  // original object alive, so its address cannot be reused by another
+  // sharding.
+  absl::flat_hash_map<std::shared_ptr<const HloSharding>,
+                      std::shared_ptr<const HloSharding>>
+      manual_to_one_device_shardings_;
 
   HloInstruction* visiting_hlo_;
   SpmdLogger* logger_;

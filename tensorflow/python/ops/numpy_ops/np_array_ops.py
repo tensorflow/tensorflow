@@ -1156,6 +1156,17 @@ def take(a, indices, axis=None, out=None, mode='clip'):
   if axis is None:
     a = array_ops.reshape(a, [-1])
     axis = 0
+  else:
+    # NumPy raises AxisError for out-of-bounds axes instead of letting the
+    # backend kernel fail with a confusing error.
+    maybe_rank = a.shape.rank
+    if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+      normalized = axis + maybe_rank if axis < 0 else axis
+      if normalized < 0 or normalized >= maybe_rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {maybe_rank}.'
+        )
 
   axis_size = array_ops.shape(a, out_type=indices.dtype)[axis]
   if mode == 'clip':
@@ -1315,6 +1326,20 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
   unwrapped_arrays = [
       a if isinstance(a, np_arrays.ndarray) else a for a in arrays
   ]
+  # NumPy raises AxisError for out-of-bounds axes instead of letting the
+  # backend kernel fail with a confusing error. `axis` is an insertion
+  # position, so rank itself is in bounds (NumPy 2.x allows axis == rank).
+  if arrays:
+    maybe_rank = asarray(unwrapped_arrays[0]).shape.rank
+    if (
+        maybe_rank is not None
+        and isinstance(axis, (int, np.integer))
+        and not -maybe_rank - 1 <= axis <= maybe_rank
+    ):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
   return asarray(array_ops_stack.stack(unwrapped_arrays, axis))
 
 
@@ -1636,9 +1661,14 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     delta = -1
 
   x = array_ops.expand_dims(x, -1)
-  return math_ops.pow(
-      x, math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  exponents = math_ops.cast(math_ops.range(start, limit, delta), dtype=x.dtype)
+  # Avoid 0.0 ** 0.0 in pow, whose gradient evaluates 0 * 0^(-1) = 0 * inf = NaN.
+  # Since x^0 == 1 has zero derivative with respect to x, substituting 1 for x
+  # where exponent == 0 preserves both forward values and exact derivatives.
+  safe_x = array_ops.where_v2(
+      math_ops.equal(exponents, 0), constant_op.constant(1, dtype=x.dtype), x
   )
+  return math_ops.pow(safe_x, exponents)
 
 
 @tf_export.tf_export('experimental.numpy.ix_', v1=[])

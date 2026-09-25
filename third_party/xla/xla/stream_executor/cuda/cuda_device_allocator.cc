@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"

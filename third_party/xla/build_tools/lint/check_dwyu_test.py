@@ -16,12 +16,12 @@ import contextlib
 import io
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
 
 from build_tools.lint import check_dwyu
-from build_tools.lint.check_dwyu import extract_targets
 
 ALLOWED_RULES = set(check_dwyu.DEFAULT_ALLOWED_RULES)
 
@@ -35,7 +35,7 @@ cc_library(
     srcs = ["foo.cc"],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "foo")
     self.assertEqual(result[0][1], {"foo.cc"})
@@ -47,7 +47,7 @@ xla_test(
     srcs = ["bar_test.cc"],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "bar_test")
     self.assertEqual(result[0][1], {"bar_test.cc"})
@@ -59,16 +59,41 @@ xla_cc_test(
     srcs = ["baz_test.cc"],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "baz_test")
     self.assertEqual(result[0][1], {"baz_test.cc"})
 
-  def test_skips_non_allowed_rules(self):
+  def test_cc_binary(self):
     build = """\
 cc_binary(
     name = "my_binary",
     srcs = ["main.cc"],
+)
+"""
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "my_binary")
+    self.assertEqual(result[0][1], {"main.cc"})
+
+  def test_cuda_library(self):
+    build = """\
+cuda_library(
+    name = "my_cuda_lib",
+    srcs = ["kernel.cu.cc"],
+    hdrs = ["kernel.h"],
+)
+"""
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "my_cuda_lib")
+    self.assertEqual(result[0][1], {"kernel.cu.cc", "kernel.h"})
+
+  def test_skips_non_allowed_rules(self):
+    build = """\
+py_binary(
+    name = "my_binary",
+    srcs = ["main.py"],
 )
 
 py_library(
@@ -76,7 +101,7 @@ py_library(
     srcs = ["lib.py"],
 )
 """
-    self.assertEqual(extract_targets(build, ALLOWED_RULES), [])
+    self.assertEqual(check_dwyu.extract_targets(build, ALLOWED_RULES), [])
 
   def test_mixed_rules(self):
     build = """\
@@ -85,9 +110,9 @@ cc_library(
     srcs = ["lib.cc"],
 )
 
-cc_binary(
+py_binary(
     name = "bin",
-    srcs = ["main.cc"],
+    srcs = ["main.py"],
 )
 
 xla_test(
@@ -95,17 +120,17 @@ xla_test(
     srcs = ["lib_test.cc"],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 2)
     self.assertEqual(result[0][0], "lib")
     self.assertEqual(result[1][0], "lib_test")
 
   def test_empty_build_file(self):
-    self.assertEqual(extract_targets("", ALLOWED_RULES), [])
+    self.assertEqual(check_dwyu.extract_targets("", ALLOWED_RULES), [])
 
   def test_name_on_same_line(self):
     build = 'cc_library(name = "inline_lib", srcs = ["a.cc"])\n'
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "inline_lib")
     self.assertEqual(result[0][1], {"a.cc"})
@@ -118,7 +143,7 @@ cc_library(
     hdrs = ["mylib.h"],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "mylib")
     self.assertEqual(result[0][1], {"mylib.cc", "mylib.h"})
@@ -137,10 +162,57 @@ cc_library(
     ],
 )
 """
-    result = extract_targets(build, ALLOWED_RULES)
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
     self.assertEqual(len(result), 1)
     self.assertEqual(result[0][0], "multi")
     self.assertEqual(result[0][1], {"a.cc", "b.cc", "a.h", "b.h"})
+
+  def test_concatenated_srcs(self):
+    build = """\
+cc_library(
+    name = "concat",
+    srcs = [
+        "a.cc",
+    ] + if_cuda([
+        "b.cu",
+    ]),
+    hdrs = ["a.h"],
+)
+"""
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "concat")
+    self.assertEqual(result[0][1], {"a.cc", "b.cu", "a.h"})
+
+  def test_conditional_srcs(self):
+    build = """\
+cc_library(
+    name = "conditional",
+    srcs = if_cuda_is_configured(["cuda.cc"]),
+)
+"""
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "conditional")
+    self.assertEqual(result[0][1], {"cuda.cc"})
+
+  def test_name_after_other_attributes(self):
+    build = """\
+cc_library(
+    # Long descriptive comments
+    # explaining the rationale of the target
+    # that exceed standard 5 lines
+    # before reaching the name attribute
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+    srcs = ["a.cc"],
+    name = "late_name",
+)
+"""
+    result = check_dwyu.extract_targets(build, ALLOWED_RULES)
+    self.assertEqual(len(result), 1)
+    self.assertEqual(result[0][0], "late_name")
+    self.assertEqual(result[0][1], {"a.cc"})
 
 
 class WorkspaceTest(unittest.TestCase):
@@ -308,6 +380,7 @@ tsl_cc_test(name = "controller_test", srcs = ["controller_test.cc"])
     )
 
 
+@unittest.skipUnless(shutil.which("git"), "requires git in PATH")
 class ChangedFilesTest(WorkspaceTest):
 
   def git(self, *args):

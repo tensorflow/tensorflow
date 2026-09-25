@@ -173,7 +173,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
-    RegisterPass<gpu::DotAlgorithmRewriter>();
+    RegisterPass<gpu::DotAlgorithmRewriter>(gpu_compute_capability);
     RegisterPass<gpu::DotDimensionSorter>();
     RegisterPass<gpu::DotNormalizer>();
     RegisterPass<gpu::DotOperandConverter>();

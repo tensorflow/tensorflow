@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/host_async_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -78,7 +80,7 @@ using HostExecuteAsyncEventsMap =
     absl::flat_hash_map<AsyncEventsUniqueId,
                         std::shared_ptr<HostExecuteAsyncEvents>>;
 
-class HostExecuteStartThunk : public HostAsyncThunk {
+class HostExecuteStartThunk : public Command {
  public:
   HostExecuteStartThunk(Thunk::ThunkInfo thunk_info,
                         const HloModule& hlo_module,
@@ -110,6 +112,12 @@ class HostExecuteStartThunk : public HostAsyncThunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+  bool requires_update_on_execute() const override { return true; }
+
   BufferUses buffer_uses() const override {
     BufferUses res;
     res.reserve(args_.size() + results_.size());
@@ -138,7 +146,7 @@ class HostExecuteStartThunk : public HostAsyncThunk {
     return &executable_proto_;
   }
 
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const;
 
   HostExecuteStartThunk(
       Thunk::ThunkInfo thunk_info,
@@ -157,12 +165,11 @@ class HostExecuteStartThunk : public HostAsyncThunk {
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
 };
 
-class HostExecuteDoneThunk : public HostAsyncThunk {
+class HostExecuteDoneThunk : public Command {
  public:
-  explicit HostExecuteDoneThunk(
-      Thunk::ThunkInfo thunk_info,
-      std::shared_ptr<HostExecuteAsyncEvents> async_events,
-      absl::InlinedVector<ShapedSlice, 4> results);
+  HostExecuteDoneThunk(Thunk::ThunkInfo thunk_info,
+                       std::shared_ptr<HostExecuteAsyncEvents> async_events,
+                       absl::InlinedVector<ShapedSlice, 4> results);
   HostExecuteDoneThunk(const HostExecuteDoneThunk&) = delete;
   HostExecuteDoneThunk& operator=(const HostExecuteDoneThunk&) = delete;
   ~HostExecuteDoneThunk() override = default;
@@ -178,6 +185,11 @@ class HostExecuteDoneThunk : public HostAsyncThunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
   BufferUses buffer_uses() const override {
     BufferUses res;
     res.reserve(results_.size() * 2);
@@ -188,7 +200,7 @@ class HostExecuteDoneThunk : public HostAsyncThunk {
     return res;
   }
 
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const;
 
  private:
   std::shared_ptr<HostExecuteAsyncEvents> async_events_;
