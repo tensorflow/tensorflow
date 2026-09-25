@@ -416,9 +416,8 @@ tf_python_pybind_extension(
     ],
     visibility = visibility + ["//third_party/py/tensorfn:__subpackages__"],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:protos_all_cc",
-        "@eigen_archive//:eigen3",
         "@pybind11",
     ],
 )
