@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/debug_options_flags.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -114,7 +114,7 @@ std::string ToString(absl::Span<const uint8_t> data) {
   return std::string(reinterpret_cast<const char*>(data.data()), data.size());
 }
 
-using GpuExecutableTest = HloHardwareIndependentTestBase;
+using GpuExecutableTest = HloPjRtGpuTestBase;
 
 void SetDummyBufferAssignment(GpuExecutable::Params& params) {
   params.buffer_assignment_proto = BufferAssignmentProto();
@@ -141,6 +141,24 @@ TEST(GpuModuleGlobalsTest, EmptyBinarySkipsModuleLoading) {
   ASSERT_OK_AND_ASSIGN(const auto* resolved, module_globals.Resolve(&stream));
 
   EXPECT_TRUE(resolved->empty());
+}
+
+TEST_F(GpuExecutableTest, ExecuteWithWatchdogs) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule watchdog_test
+    ENTRY main {
+      input = f32[4] parameter(0)
+      ROOT result = f32[4] add(input, input)
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_execution_terminate_timeout("10s");
+  config.mutable_debug_options().set_xla_gpu_device_execution_terminate_timeout(
+      "10s");
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 TEST_F(GpuExecutableTest, OutputInfoToAndFromProto) {
