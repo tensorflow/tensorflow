@@ -14,7 +14,7 @@
 # ==============================================================================
 
 ################################################################################
-ARG BASE_IMAGE=ubuntu:22.04@sha256:445586e41c1de7dfda82d2637f5ff688deea9eb5f5812f8c145afacc35b9f0db
+ARG BASE_IMAGE=ubuntu:22.04@sha256:281c5745f657873d78e5531fc5ba8575f46ab7769b94550ac99543f122679986
 FROM $BASE_IMAGE AS devel
 # See https://docs.docker.com/reference/dockerfile/#understand-how-arg-and-from-interact
 # on why we cannot reference BASE_IMAGE again unless we declare it again.
@@ -86,31 +86,31 @@ RUN if [ -e "/usr/local/cuda/compat/libcuda.so.1" ]; then ln -s /usr/local/cuda/
 # - buildozer: clean bazel build deps
 # - gcloud SDK: communicate with Google Cloud Platform (GCP) for RBE, CI
 # - patchelf: Utility tool to modify existing ELF executables and libraries
-RUN git clone --branch v1.13.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
-RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.27.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && \
-    echo "e1508323f347ad1465a887bc5d2bfb91cffc232d11e8e997b623227c6b32fb76  /usr/local/bin/bazel" | sha256sum --check && \
+RUN git clone --branch v1.14.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && \
+    echo "5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992  /usr/local/bin/bazel" | sha256sum --check && \
     chmod +x /usr/local/bin/bazel
-RUN wget https://github.com/bazelbuild/buildtools/releases/download/v8.2.1/buildifier-linux-amd64 -O /usr/local/bin/buildifier && \
-    echo "6ceb7b0ab7cf66fceccc56a027d21d9cc557a7f34af37d2101edb56b92fcfa1a  /usr/local/bin/buildifier" | sha256sum --check && \
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/v10.1.0/buildifier-linux-amd64 -O /usr/local/bin/buildifier && \
+    echo "31b6a8aa1e5c746696788f428729701770ad91925873d8256cb885c60e12c77e  /usr/local/bin/buildifier" | sha256sum --check && \
     chmod +x /usr/local/bin/buildifier
-RUN wget https://github.com/bazelbuild/buildtools/releases/download/v8.2.1/buildozer-linux-amd64 -O /usr/local/bin/buildozer && \
-    echo "04454a6a89c64c603027cc3371eb1c36e48727e04558e077c20ec37c9c2f831a  /usr/local/bin/buildozer" | sha256sum --check && \
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/v10.1.0/buildozer-linux-amd64 -O /usr/local/bin/buildozer && \
+    echo "3513b8b23619f5fb7ccad546e955af6e318475582ce7b6f2b47b634bd3b8dcbd  /usr/local/bin/buildozer" | sha256sum --check && \
     chmod +x /usr/local/bin/buildozer
 
-RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-483.0.0-linux-x86_64.tar.gz && \
-    echo "dd3ebdbd13bffa1997232ab5a68af7797594079b062fd41474c666b84165cc35  google-cloud-cli-483.0.0-linux-x86_64.tar.gz" | sha256sum --check && \
-    tar zxf google-cloud-cli-483.0.0-linux-x86_64.tar.gz && \
-    rm google-cloud-cli-483.0.0-linux-x86_64.tar.gz && \
+RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-586.0.0-linux-x86_64.tar.gz && \
+    echo "c1cd1823624a33f2341d0d384aafe2d7b24c1b77c9b131087d772ee0791ff2be  google-cloud-cli-586.0.0-linux-x86_64.tar.gz" | sha256sum --check && \
+    tar zxf google-cloud-cli-586.0.0-linux-x86_64.tar.gz && \
+    rm google-cloud-cli-586.0.0-linux-x86_64.tar.gz && \
     google-cloud-sdk/install.sh --quiet && \
     ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
 ENV PATH="$PATH:/google-cloud-sdk/bin/:/usr/local/cuda/bin/"
 
-# Download and install gh CLI v2.49.0 from GitHub.
-RUN wget https://github.com/cli/cli/releases/download/v2.49.0/gh_2.49.0_linux_amd64.tar.gz && \
-    echo "3f7ef10a8ae6164220db20cf6d4fb96528c61d614f0803ccf39b1cabb6ae7263  gh_2.49.0_linux_amd64.tar.gz" | sha256sum --check && \
-    tar zxf gh_2.49.0_linux_amd64.tar.gz && \
-    mv gh_2.49.0_linux_amd64/bin/gh /usr/local/bin/gh && \
-    rm -rf gh_2.49.0_linux_amd64*
+# Download and install gh CLI v2.101.0 from GitHub.
+RUN wget https://github.com/cli/cli/releases/download/v2.101.0/gh_2.101.0_linux_amd64.tar.gz && \
+    echo "9bca2d1c16825f109907a23307628a2f0698fbf99662b73a5cf0b020293072b8  gh_2.101.0_linux_amd64.tar.gz" | sha256sum --check && \
+    tar zxf gh_2.101.0_linux_amd64.tar.gz && \
+    mv gh_2.101.0_linux_amd64/bin/gh /usr/local/bin/gh && \
+    rm -rf gh_2.101.0_linux_amd64*
 
 # Download and install patchelf v0.18.0 from GitHub. The default Ubuntu focal
 # packages only provide the "0.10-2build1" version. We use patchelf to manipulate
