@@ -55,7 +55,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_slice_fusion_v2_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.pb.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -108,6 +112,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_id.h"
@@ -243,6 +248,8 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
   comm = std::max(0, comm);
+  bool need_d2h_stream = false;
+  bool need_h2d_stream = false;
 
   // Then traverse all thunks to see if anyone requested more streams. This
   // also sizes sparse collective-domain stream pools from their assigned IDs.
@@ -252,14 +259,20 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
         ExecutionStreamId id = async_start->execution_stream_id();
         if (id.is_computation()) {
           compute = std::max<int>(compute, id.computation_id().value() + 1);
-        } else {
+        } else if (id.is_communication()) {
           comm = std::max<int>(comm, id.communication_id().value() + 1);
+        } else if (id.is_memcpy()) {
+          if (id.memcpy_id() == kMemcpyD2HStreamId) {
+            need_d2h_stream = true;
+          } else if (id.memcpy_id() == kMemcpyH2DStreamId) {
+            need_h2d_stream = true;
+          }
         }
       }
     });
   }
 
-  return {compute, comm};
+  return {compute, comm, need_d2h_stream, need_h2d_stream};
 }
 
 GpuExecutable::BorrowedStreams GpuExecutable::BorrowedStreams::Assign(
@@ -386,6 +399,19 @@ static absl::StatusOr<std::vector<ShapedSlice>> GetModuleOutputSlices(
   return output_slices;
 }
 
+static void AttachKernelSpecTable(const ThunkSequence& thunks,
+                                  KernelSpecTable* table) {
+  for (const std::unique_ptr<Thunk>& thunk : thunks) {
+    thunk->Walk([&](Thunk* nested) {
+      if (auto* ck = dynamic_cast<CustomKernelThunk*>(nested)) {
+        ck->mutable_custom_kernel().set_kernel_spec_table(table);
+      } else if (auto* dsf = dynamic_cast<DynamicSliceFusionV2Thunk*>(nested)) {
+        AttachKernelSpecTable(dsf->thunks(), table);
+      }
+    });
+  }
+}
+
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
   if (params.buffer_allocations_debug_summary.empty()) {
@@ -396,6 +422,16 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
   int64_t next_idx = params.allocations.size();
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
+
+  // Hoist duplicated kernel loader specs into a side table so that a kernel
+  // invoked several times is serialized only once. Attaching the table before
+  // calling `ToProto()` lets each `CustomKernel` intern its spec directly into
+  // the table during serialization in deterministic schedule order.
+  auto kernel_spec_table = std::make_unique<KernelSpecTable>();
+  if (params.debug_options
+          .xla_gpu_experimental_deduplicate_custom_kernel_specs()) {
+    AttachKernelSpecTable(params.executable->thunks(), kernel_spec_table.get());
+  }
 
   // TODO(b/461380690): Remove this once we have a better way to distinguish
   // between compiler-generated and runtime-loaded GPU executables.
@@ -442,7 +478,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.alias_info), std::move(params.debug_options),
       std::move(params.constants), std::move(params.output_info),
       params.enable_debug_info_manager, std::move(params.module_stats),
-      std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
+      std::move(thunk_sequence_proto), std::move(kernel_spec_table),
+      std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
       std::move(params.buffer_allocations_debug_summary),
@@ -452,7 +489,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+    std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
     BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -462,6 +499,7 @@ GpuExecutable::GpuExecutable(
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+    std::unique_ptr<KernelSpecTable> kernel_spec_table,
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
@@ -501,6 +539,7 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
+      kernel_spec_table_(std::move(kernel_spec_table)),
       executable_abi_version_(std::move(executable_abi_version)),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)),
       buffer_allocations_debug_summary_(
@@ -791,6 +830,35 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(compute_streams.streams),
       &execution_scoped_state, persistent_alloc_indices);
+
+  // device_to_host_stream/host_to_device_stream above come from run_options,
+  // which are only populated when running through PJRT. Fall back to a
+  // borrowed stream (or main_stream, if no stream borrower is available) so
+  // that async host<->device copy thunks also work for non-PJRT clients.
+  StreamPool::Ptr borrowed_device_to_host_stream;
+  if (num_additional_streams.need_d2h_stream &&
+      execute_params.device_to_host_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_device_to_host_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.device_to_host_stream =
+          borrowed_device_to_host_stream.get();
+    } else {
+      execute_params.device_to_host_stream = main_stream;
+    }
+  }
+  StreamPool::Ptr borrowed_host_to_device_stream;
+  if (num_additional_streams.need_h2d_stream &&
+      execute_params.host_to_device_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_host_to_device_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.host_to_device_stream =
+          borrowed_host_to_device_stream.get();
+    } else {
+      execute_params.host_to_device_stream = main_stream;
+    }
+  }
 
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
@@ -1370,6 +1438,11 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
     *proto.add_thunks() = thunk_proto;
   }
 
+  if (!kernel_spec_table_->empty()) {
+    ABSL_ASSIGN_OR_RETURN(*proto.mutable_kernel_spec_table(),
+                     kernel_spec_table_->ToProto());
+  }
+
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
 
@@ -1416,17 +1489,21 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
     absl::string_view platform_name, DebugOptions debug_options,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    std::shared_ptr<HloModule> debug_module) {
   Params params;
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
-  if (proto.has_hlo_module_with_config()) {
+  if (debug_module != nullptr) {
+    params.debug_module = std::move(debug_module);
+  } else if (proto.has_hlo_module_with_config()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
+  }
+  if (params.debug_module != nullptr) {
     // The HLO module deserialized from the proto carries xla_dump_to from the
     // process that originally compiled it. Override with the current process's
     // dump path so that runtime dumps (checksum logs, etc.) land in the correct
@@ -1478,12 +1555,17 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
+
+  ABSL_ASSIGN_OR_RETURN(
+      KernelSpecTable kernel_spec_table,
+      KernelSpecTable::FromProto(proto.kernel_spec_table(), symbol_resolver));
+
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
-                                    params.debug_module.get(), platform_name,
-                                    gpu_compute_capability, symbol_resolver,
-                                    params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, params.allocations, params.debug_module.get(),
+          platform_name, gpu_compute_capability, symbol_resolver,
+          params.cpu_target_machine_options, &kernel_spec_table));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

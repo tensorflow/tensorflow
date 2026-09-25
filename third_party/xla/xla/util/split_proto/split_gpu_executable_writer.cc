@@ -30,9 +30,11 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/backends/gpu/runtime/kernel_spec_table.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/sort_json.h"
+#include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_riegeli_options.h"
@@ -43,7 +45,8 @@ namespace xla {
 
 namespace {
 
-SplitProtoManifest BuildManifest(int32_t num_of_contants) {
+SplitProtoManifest BuildManifest(int32_t num_of_contants,
+                                 int32_t num_of_kernel_specs) {
   SplitProtoManifest manifest;
   *manifest.mutable_result_proto_type() =
       gpu::GpuExecutableProto::descriptor()->full_name();
@@ -62,6 +65,11 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
   manifest.add_records()->mutable_proto_merge_record();
   // constants may be quite big, so put each of them in a separate record
   for (int i = 0; i < num_of_contants; ++i) {
+    manifest.add_records()->mutable_proto_merge_record();
+  }
+  // kernel_specs hold the custom kernel binaries, so put each of them in a
+  // separate record as well
+  for (int i = 0; i < num_of_kernel_specs; ++i) {
     manifest.add_records()->mutable_proto_merge_record();
   }
   // The rest of the fields (i.e. the non-offloaded fields)
@@ -122,6 +130,23 @@ absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
       } else if (!instruction.backend_config().empty()) {
         instruction.set_backend_config(std::move(backend_config_str));
       }
+
+      // The payload table is shared with metadata payloads, so they must be
+      // re-mapped into the new table as well, otherwise their IDs would dangle.
+      if (instruction.has_metadata() &&
+          instruction.metadata().has_metadata_payload()) {
+        Payload* payload =
+            instruction.mutable_metadata()->mutable_metadata_payload();
+        if (payload->has_id()) {
+          const int64_t id = payload->id();
+          if (id < 0 || id >= module->payloads_size()) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Invalid metadata payload id ", id,
+                             " with payloads size ", module->payloads_size()));
+          }
+          payload->set_id(get_new_payload_id(module->payloads(id)));
+        }
+      }
     }
   }
   module->mutable_payloads()->Assign(
@@ -137,7 +162,9 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
                                      std::unique_ptr<riegeli::Writer> writer) {
   riegeli::RecordWriter record_writer(std::move(writer),
                                       GetGpuSplitProtoOptions());
-  SplitProtoManifest manifest = BuildManifest(executable.constants_size());
+  SplitProtoManifest manifest =
+      BuildManifest(executable.constants_size(),
+                    executable.kernel_spec_table().kernel_specs_size());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, manifest),
       "failed to write manifest in GpuExecutableProto split proto");
@@ -170,6 +197,17 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   }
   executable.clear_constants();
 
+  for (stream_executor::KernelLoaderSpecProto& kernel_spec :
+       *executable.mutable_kernel_spec_table()->mutable_kernel_specs()) {
+    gpu::GpuExecutableProto kernel_spec_wrapper;
+    *kernel_spec_wrapper.mutable_kernel_spec_table()->add_kernel_specs() =
+        std::move(kernel_spec);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        WriteRecord(record_writer, kernel_spec_wrapper),
+        "failed to serialize kernel spec in GpuExecutableProto split proto");
+  }
+  executable.clear_kernel_spec_table();
+
   // The rest of the fields (i.e. the non-offloaded fields)
 
   // Ideally the backend configs would always be normalized when turned into a
@@ -184,7 +222,7 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
       WriteRecord(record_writer, executable),
       "failed to serialize the rest of the fields in GpuExecutableProto "
       "split proto (all fields except asm_text, binary, "
-      "dnn_compiled_graphs, and constants)");
+      "dnn_compiled_graphs, constants, and kernel_spec_table)");
 
   if (!record_writer.Close()) {
     return record_writer.status();

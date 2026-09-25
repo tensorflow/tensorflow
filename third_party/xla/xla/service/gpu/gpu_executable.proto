@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/kernel_spec_table.proto";
 import "xla/backends/gpu/runtime/thunk.proto";
 import "xla/service/cpu/executable.proto";
 import "xla/service/gpu/dense_data_intermediate.proto";
@@ -121,6 +122,16 @@ message GpuExecutableProto {
   // OOMs, includes the Hlo op metadata for every buffer associated with each
   // allocation.
   string buffer_allocations_debug_summary = 16;
+
+  // Deduplicated table of kernel loader specs, referenced by
+  // `CustomKernelProto.kernel_spec_index` from anywhere within `thunks`,
+  // including nested thunk sequences. Entries are ordered by first use in a
+  // deterministic traversal of `thunks`.
+  //
+  // Only populated when the compiler deduplicates custom kernels. Readers must
+  // keep supporting thunks that carry an inline `CustomKernelProto.kernel_spec`
+  // instead.
+  KernelSpecTableProto kernel_spec_table = 17;
 
   reserved 7;
 }

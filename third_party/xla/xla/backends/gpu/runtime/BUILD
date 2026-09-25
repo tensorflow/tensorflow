@@ -1,6 +1,8 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal", "xla_py_proto_library")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
@@ -420,6 +422,8 @@ xla_test(
         ":thunk_id",
         ":thunk_proto_cc",
         "//xla/service:platform_util",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:mock_stream",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
@@ -467,10 +471,14 @@ xla_test(
         ":thunk",
         ":thunk_executor",
         ":thunk_id",
+        "//xla:debug_options_flags",
+        "//xla:executable_run_options",
         "//xla/service:buffer_assignment",
         "//xla/service:platform_util",
         "//xla/service:service_executable_run_options",
+        "//xla/service:shaped_buffer",
         "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -480,6 +488,7 @@ xla_test(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -4521,6 +4530,88 @@ xla_py_proto_library(
     deps = [":thunk_proto"],
 )
 
+tf_proto_library(
+    name = "kernel_spec_table_proto",
+    srcs = ["kernel_spec_table.proto"],
+    deps = [
+        "//xla/stream_executor:kernel_spec_proto",
+    ],
+)
+
+cc_library(
+    name = "kernel_spec_table",
+    srcs = ["kernel_spec_table.cc"],
+    hdrs = ["kernel_spec_table.h"],
+    deps = [
+        ":kernel_spec_table_proto_cc",
+        "//xla/stream_executor:kernel_args_packing_spec",
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_spec_table_test",
+    srcs = ["kernel_spec_table_test.cc"],
+    deps = [
+        ":kernel_spec_table",
+        ":kernel_spec_table_proto_cc",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
+    ],
+)
+
+tf_proto_library(
+    name = "internable_kernel_loader_spec_proto",
+    srcs = ["internable_kernel_loader_spec.proto"],
+    deps = [
+        "//xla/stream_executor:kernel_spec_proto",
+    ],
+)
+
+cc_library(
+    name = "internable_kernel_loader_spec",
+    srcs = ["internable_kernel_loader_spec.cc"],
+    hdrs = ["internable_kernel_loader_spec.h"],
+    deps = [
+        ":internable_kernel_loader_spec_proto_cc",
+        ":kernel_spec_table",
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "internable_kernel_loader_spec_test",
+    srcs = ["internable_kernel_loader_spec_test.cc"],
+    deps = [
+        ":internable_kernel_loader_spec",
+        ":internable_kernel_loader_spec_proto_cc",
+        ":kernel_spec_table",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
+    ],
+)
+
 cc_library(
     name = "thunk_proto_deserialization",
     srcs = ["thunk_proto_deserialization.cc"],
@@ -4552,6 +4643,7 @@ cc_library(
         ":host_send_recv_thunk",
         ":host_to_device_copy_thunk",
         ":infeed_thunk",
+        ":kernel_spec_table",
         ":kernel_thunk",
         ":legacy_custom_call_thunk",
         ":memset_thunk",
@@ -5355,6 +5447,7 @@ cc_library(
     ]),
     deps = [
         ":command",
+        ":kernel_spec_table",
         ":lock_free_kernel_cache",
         ":print_buffer_contents",
         ":thunk",
@@ -5377,6 +5470,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:tensor_map",
         "//xla/stream_executor/gpu:tma_metadata",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -5539,6 +5633,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -5554,7 +5649,14 @@ cc_library(
 
 xla_test(
     name = "record_ffi_test",
-    srcs = ["record_ffi_test.cc"],
+    srcs = ["record_ffi_test.cc"] + if_cuda_is_configured(
+        ["record_ffi_test_cuda.cc"],
+    ) + if_rocm_is_configured(
+        ["record_ffi_test_rocm.cc"],
+    ) + if_cuda_or_rocm_is_configured(
+        [],
+        ["record_ffi_test_default.cc"],
+    ),
     backends = ["gpu"],
     deps = [
         ":record_ffi",
@@ -5566,9 +5668,9 @@ xla_test(
         "//xla/ffi:invoke",
         "//xla/ffi:record_ffi",
         "//xla/ffi/api:c_api",
+        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
@@ -5576,12 +5678,21 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/cuda:cuda_status",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
+        "//xla/stream_executor/rocm:rocm_status",
+    ]),
 )
