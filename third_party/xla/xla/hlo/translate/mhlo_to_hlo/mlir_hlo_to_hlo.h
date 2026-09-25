@@ -44,11 +44,6 @@ struct MlirToHloConversionOptions {
   // TODO(timshen): Investigate the necessity of having layouts in MHLO.
   bool propagate_layouts = false;
 
-  // Propagate the source and result layouts from mhlo bitcast op into the
-  // backend config for the bitcast. This is required for XLA:GPU backend to
-  // use elemental IR emitters for fused bitcasts without propagating layouts.
-  bool propagate_bitcast_layouts_to_backend_config = false;
-
   LayoutPreferenceFn layout_preference_fn;
   ShapeRepresentationFn shape_representation_fn;
 
