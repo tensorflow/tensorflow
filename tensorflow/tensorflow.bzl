@@ -128,6 +128,8 @@ tf_cuda_2gpu_tests_tags = _tf_cuda_2gpu_tests_tags
 # external project.
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
+# temp change
+
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
 
