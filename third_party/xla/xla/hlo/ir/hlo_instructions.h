@@ -72,6 +72,7 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kConcatenate:
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
+      case HloOpcode::kShuffle:
       case HloOpcode::kSort:
       case HloOpcode::kTranspose:
         return true;
@@ -1176,6 +1177,63 @@ class HloReverseInstruction : public HloDimensionsInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+};
+
+class HloShuffleInstruction : public HloDimensionsInstruction {
+ public:
+  explicit HloShuffleInstruction(const Shape& shape, HloInstruction* operand,
+                                 absl::Span<const int64_t> dimensions,
+                                 const ShuffleMode& mode);
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kShuffle;
+  }
+
+  const ShuffleMode& shuffle_mode() const { return mode_; }
+  ShuffleMode* mutable_shuffle_mode() { return &mode_; }
+  ShuffleMode::ModeCase mode() const { return mode_.mode_case(); }
+  void ToProto(HloInstructionProto* proto) const override;
+
+  // Accessors for the inner attributes of each mode.
+  const ShuffleMode::Rotate& rotate() const {
+    CHECK(mode_.has_rotate());
+    return mode_.rotate();
+  }
+  ShuffleMode::Rotate* mutable_rotate() {
+    CHECK(mode_.has_rotate());
+    return mode_.mutable_rotate();
+  }
+  const ShuffleMode::Permute& permute() const {
+    CHECK(mode_.has_permute());
+    return mode_.permute();
+  }
+  ShuffleMode::Permute* mutable_permute() {
+    CHECK(mode_.has_permute());
+    return mode_.mutable_permute();
+  }
+  const ShuffleMode::MultiRotate& multi_rotate() const {
+    CHECK(mode_.has_multi_rotate());
+    return mode_.multi_rotate();
+  }
+  ShuffleMode::MultiRotate* mutable_multi_rotate() {
+    CHECK(mode_.has_multi_rotate());
+    return mode_.mutable_multi_rotate();
+  }
+
+ private:
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+  ShuffleMode mode_;
 };
 
 class HloConcatenateInstruction : public HloDimensionsInstruction {
