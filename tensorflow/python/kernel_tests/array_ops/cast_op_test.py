@@ -181,8 +181,7 @@ class CastOpTest(test.TestCase):
         with self.cached_session(use_gpu=True):
           x = constant_op.constant(float("nan"), dtype=dtype)
           y = math_ops.cast(x, int_dtype)
-
-
+          self.assertAllEqual(self.evaluate(y), 0)
 
   def _OpError(self, x, dtype, err):
     with self.assertRaisesOpError(err):
