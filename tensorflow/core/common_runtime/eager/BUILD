@@ -644,6 +644,7 @@ cc_library(
         ":small_constants_optimizer",
         ":summary_optimizer",
         ":tensor_handle",
+        ":validate_function_devices",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
@@ -682,6 +683,19 @@ cc_library(
         ":zen_eager_op_rewrite",
         "//tensorflow/core/graph:zen_graph_util",
     ]),
+)
+
+cc_library(
+    name = "validate_function_devices",
+    srcs = ["validate_function_devices.cc"],
+    hdrs = ["validate_function_devices.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -812,6 +826,7 @@ cc_library(
         ":small_constants_optimizer",
         ":summary_optimizer",
         ":tensor_handle",
+        ":validate_function_devices",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:abstract_function",
