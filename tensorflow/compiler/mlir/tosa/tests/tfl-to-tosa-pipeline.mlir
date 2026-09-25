@@ -3356,6 +3356,22 @@ func.func @test_gather(%arg0: tensor<13x21x3xf32>, %arg1: tensor<7x7xi32>) -> te
 }
 
 // -----
+
+// CHECK-LABEL: test_gather_negative_axis
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[1, 13, 63]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg0, %[[VAR10]]
+// CHECK-DAG: %[[VAR11:.*]] = tosa.const_shape {values = dense<[1, 49]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAR5:.*]] = tosa.reshape %arg1, %[[VAR11]]
+// CHECK-DAG: %[[VAR6:.*]] = tosa.gather %[[VAR4]], %[[VAR5]]
+// CHECK-DAG: %[[VAR12:.*]] = tosa.const_shape {values = dense<[7, 7, 21, 3]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAR7:.*]] = tosa.reshape %[[VAR6]], %[[VAR12]]
+// CHECK: return %[[VAR7]]
+func.func @test_gather_negative_axis(%arg0: tensor<13x21x3xf32>, %arg1: tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = -3 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
 // CHECK-LABEL: test_gather_dyn
 // CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[1, -1, 63]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg0, %[[VAR10]]
@@ -3398,6 +3414,22 @@ func.func @test_gather_channel_dyn(%arg0: tensor<13x21x?xf32>, %arg1: tensor<7x7
 // CHECK: return %[[VAR7]]
 func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7xi32>) -> tensor<*xf32> {
   %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<?x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_gather_indices_dyn_negative_axis
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[1, 13, 63]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg0, %[[VAR10]]
+// CHECK-DAG: %[[VAR11:.*]] = tosa.const_shape {values = dense<[1, -1]> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR5:.*]] = tosa.reshape %arg1, %[[VAR11]]
+// CHECK-DAG: %[[VAR6:.*]] = tosa.gather %[[VAR4]], %[[VAR5]]
+// CHECK-DAG: %[[VAR12:.*]] = tosa.const_shape {values = dense<[-1, 7, 21, 3]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[VAR7:.*]] = tosa.reshape %[[VAR6]], %[[VAR12]]
+// CHECK: return %[[VAR7]]
+func.func @test_gather_indices_dyn_negative_axis(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = -3 : i32} : (tensor<13x21x3xf32>, tensor<?x7xi32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
