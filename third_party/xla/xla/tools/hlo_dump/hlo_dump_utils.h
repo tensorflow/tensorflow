@@ -87,6 +87,12 @@ struct MismatchDetails {
   std::optional<bool> result_of_reduce;
   std::optional<std::string> custom_description;
   std::optional<MismatchBoundingBox> bounding_box;
+  // Set to false when the producer only knows *that* the tensor mismatched, not
+  // *where* (e.g. an on-device comparison that only reports reduced scalars).
+  // The tensor inspector is then suppressed for this instruction, rather than
+  // falling back to a fabricated single-element mismatch at the origin. HLO
+  // highlighting, the graph view, and tooltips are unaffected.
+  bool has_element_level_data = true;
 };
 
 struct TensorKey {

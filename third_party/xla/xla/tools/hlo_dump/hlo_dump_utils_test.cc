@@ -1255,6 +1255,66 @@ ENTRY main {
   EXPECT_TRUE(absl::StrContains(html, "\"mismatch_count\": 15"));
 }
 
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsDefaultsToSingleElement) {
+  // Guards existing producers: without a bounding box, the historical fallback
+  // of a single mismatching element is preserved.
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[4] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+  MismatchDetails mismatch;
+  mismatch.target_instruction_name = "p0";
+
+  auto vis_map = PopulateTensorVisualizations(*module, {mismatch});
+  ASSERT_TRUE(vis_map.contains("p0"));
+  EXPECT_TRUE(vis_map["p0"].has_mismatch);
+  EXPECT_EQ(vis_map["p0"].shape, (std::vector<int64_t>{4}));
+  EXPECT_EQ(vis_map["p0"].mismatch_count, 1);
+  EXPECT_EQ(vis_map["p0"].total_elements, 4);
+}
+
+TEST(HloDumpUtilsTest, PopulateTensorVisualizationsWithoutElementLevelData) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule test_vis
+ENTRY main {
+  ROOT %p0 = f32[10,20] parameter(0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  MismatchDetails in_module;
+  in_module.target_instruction_name = "p0";
+  in_module.has_element_level_data = false;
+  // Even a supplied bounding box must not be rendered: the flag wins.
+  in_module.bounding_box = MakeBoundingBox({10, 20}, {1, 2}, {5, 8}, 15, 200);
+
+  MismatchDetails not_in_module;
+  not_in_module.target_instruction_name = "absent";
+  not_in_module.has_element_level_data = false;
+
+  auto vis_map =
+      PopulateTensorVisualizations(*module, {in_module, not_in_module});
+  for (absl::string_view name : {"p0", "absent"}) {
+    SCOPED_TRACE(name);
+    ASSERT_TRUE(vis_map.contains(name));
+    const auto& item = vis_map[name];
+    // The mismatch is still reported, so HLO/graph highlighting keep working,
+    // but the tensor is non-inspectable so the inspector stays closed.
+    EXPECT_TRUE(item.has_mismatch);
+    EXPECT_TRUE(item.shape.empty());
+    EXPECT_TRUE(item.box_min.empty());
+    EXPECT_TRUE(item.box_max.empty());
+    EXPECT_TRUE(item.top_mismatches.empty());
+    EXPECT_EQ(item.mismatch_count, 0);
+    EXPECT_EQ(item.total_elements, 0);
+  }
+}
+
 TEST(HloDumpUtilsTest, SerializeTensorVisualizationsJsSpecialFloats) {
   absl::flat_hash_map<std::string, TensorVisualizationInfo> vis_map;
   TensorVisualizationInfo item;
