@@ -6,9 +6,4 @@ package(
     licenses = ["notice"],
 )
 
-# The LICENSE from this package is used during pip package generation.
-# compliancelint:disable=NestedLicenseUnexported
-exports_files([
-    "LICENSE",
-    "ruy.patch",
-])
+exports_files(["ruy.patch"])
