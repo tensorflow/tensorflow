@@ -46,6 +46,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   TF_LITE_ENSURE(context, NumDimensions(input0) >= data->axis);
   TF_LITE_ENSURE(context, data->axis >= 0);
+  TF_LITE_ENSURE(context, data->axis <= INT8_MAX);
 
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
@@ -101,10 +102,11 @@ template <typename T>
 TfLiteStatus PackImpl(TfLiteContext* context, TfLiteNode* node,
                       TfLiteTensor* output, int values_count, int axis) {
   TF_LITE_ENSURE(context, axis >= 0);
+  TF_LITE_ENSURE(context, axis <= INT8_MAX);
 
   VectorOfTensors<T> all_inputs(*context, *node->inputs);
   tflite::PackParams op_params;
-  op_params.axis = axis;
+  op_params.axis = static_cast<int8_t>(axis);
   op_params.inputs_count = values_count;
 
   reference_ops::Pack<T>(op_params, all_inputs.shapes(), all_inputs.data(),
