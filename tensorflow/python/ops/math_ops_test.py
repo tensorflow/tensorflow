@@ -1563,6 +1563,23 @@ class CastTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class ScalarCoercionTest(test_util.TensorFlowTestCase):
 
+  def testSubtractScalarCoercion(self):
+    x = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+
+    def subtract_fn(t):
+      return math_ops.subtract(5, t)
+
+    def subtract_reverse_fn(t):
+      return math_ops.subtract(t, 5)
+
+    for fn, expected in ((subtract_fn, [4.0, 3.0, 2.0]),
+                         (subtract_reverse_fn, [-4.0, -3.0, -2.0])):
+      self.assertAllClose(fn(x), expected)
+      self.assertAllClose(def_function.function(fn)(x), expected)
+      if test_util.is_xla_enabled():
+        self.assertAllClose(
+            def_function.function(fn, jit_compile=True)(x), expected)
+
   def testMultiplyAndPowScalarCoercion(self):
     x1 = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     x2 = constant_op.constant([4.0, 5.0, 6.0, 7.0], dtype=dtypes.bfloat16)
