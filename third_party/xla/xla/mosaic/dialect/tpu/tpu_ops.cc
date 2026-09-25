@@ -955,6 +955,28 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
+OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  if (llvm::is_sorted(getPermutation())) {
+    return getVector();
+  }
+  if (auto cst = dyn_cast_if_present<SplatElementsAttr>(adaptor.getVector())) {
+    return cst.reshape(getType());
+  }
+  if (auto prev_op = getVector().getDefiningOp<TransposeOp>()) {
+    ArrayRef<int64_t> prev_perm = prev_op.getPermutation();
+    ArrayRef<int64_t> curr_perm = getPermutation();
+    CHECK_EQ(prev_perm.size(), curr_perm.size());
+    SmallVector<int64_t> composed_perm(curr_perm.size());
+    for (size_t i = 0; i < curr_perm.size(); ++i) {
+      composed_perm[i] = prev_perm[curr_perm[i]];
+    }
+    if (llvm::is_sorted(composed_perm)) {
+      return prev_op.getVector();
+    }
+  }
+  return nullptr;
+}
+
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
