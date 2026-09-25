@@ -56,6 +56,15 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shortest", &shortest));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("width", &width_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fill", &fill_string));
+    constexpr int64_t kMaxPaddingSize = 131072;
+    OP_REQUIRES(ctx, width_ >= -kMaxPaddingSize && width_ <= kMaxPaddingSize,
+                absl::InvalidArgumentError(
+                    absl::StrCat("width must be between -", kMaxPaddingSize,
+                                 " and ", kMaxPaddingSize, ", got ", width_)));
+    OP_REQUIRES(ctx, precision_ >= -kMaxPaddingSize && precision_ <= kMaxPaddingSize,
+                absl::InvalidArgumentError(
+                    absl::StrCat("precision must be between -", kMaxPaddingSize,
+                                 " and ", kMaxPaddingSize, ", got ", precision_)));
     if (dtype != DT_STRING && !DataTypeIsFloating(dtype) &&
         !DataTypeIsComplex(dtype)) {
       OP_REQUIRES(ctx, !(scientific || shortest),

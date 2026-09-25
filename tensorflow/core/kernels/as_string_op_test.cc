@@ -366,5 +366,25 @@ TEST_F(AsStringGraphTest, StringWidth) {
   test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
+TEST_F(AsStringGraphTest, WidthTooLarge) {
+  absl::Status s = Init(DT_INT32, /*fill=*/"", /*width=*/200000);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(absl::StrContains(s.message(), "width must be between -131072 and 131072"));
+
+  s = Init(DT_INT32, /*fill=*/"", /*width=*/-200000);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(absl::StrContains(s.message(), "width must be between -131072 and 131072"));
+}
+
+TEST_F(AsStringGraphTest, PrecisionTooLarge) {
+  absl::Status s = Init(DT_FLOAT, /*fill=*/"", /*width=*/-1, /*precision=*/200000);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(absl::StrContains(s.message(), "precision must be between -131072 and 131072"));
+
+  s = Init(DT_FLOAT, /*fill=*/"", /*width=*/-1, /*precision=*/-200000);
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  ASSERT_TRUE(absl::StrContains(s.message(), "precision must be between -131072 and 131072"));
+}
+
 }  // end namespace
 }  // end namespace tensorflow
