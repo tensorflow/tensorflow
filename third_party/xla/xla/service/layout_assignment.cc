@@ -148,7 +148,7 @@ bool BufferLayoutConstraint::UpdateLayout(int64_t priority,
 }
 
 OperandLayoutConstraint::OperandLayoutConstraint(
-    const ShapeLayout& shape_layout, const HloInstruction* instruction,
+    ShapeLayout shape_layout, const HloInstruction* instruction,
     int64_t operand_no, bool mandatory, bool dfs, int64_t priority)
     : LayoutConstraint(mandatory, dfs, priority),
       instruction_(instruction),
@@ -160,7 +160,28 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       << shape_layout.shape() << " is not compatible with "
       << instruction->operand(operand_no)->shape() << " (for operand "
       << operand_no << " of instruction " << instruction->ToString() << ")";
-  shape_layout_.push_back(shape_layout);
+  shape_layout_.push_back(std::move(shape_layout));
+}
+
+bool OperandLayoutConstraint::IsSatisfiedBy(const Shape& shape,
+                                            const Layout& layout) const {
+  // Same as shape_layout().MatchesLayoutInShape(shape with `layout`,
+  // /*minor_to_major_only=*/true) without building that shape: element type
+  // and dimensions must match (dynamic dimension markers ignored), the
+  // constraint must have a layout, and the two minor_to_major must be equal
+  // (tiles, element size, memory space, tail padding and split configs
+  // ignored).
+  DCHECK(shape.IsArray());
+  const Shape& constrained = shape_layout().shape();
+  return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(shape,
+                                                                constrained) &&
+         constrained.has_layout() &&
+         Layout::Equal()
+             .IgnoreTiles()
+             .IgnoreElementSize()
+             .IgnoreMemorySpace()
+             .IgnoreTailPaddingAlignmentInElements()
+             .IgnoreSplitConfigs()(layout, constrained.layout());
 }
 
 bool OperandLayoutConstraint::UpdateLayout(int64_t new_priority,
@@ -225,6 +246,7 @@ void LayoutAssignment::SetPointsToAnalysis(
   points_to_analysis_ = std::move(analysis);
   buffer_sets_cache_.clear();
   buffer_sets_cache_analysis_ = points_to_analysis_.get();
+  operand_indices_cache_.clear();
 }
 
 PointsToSet::BufferSet* LayoutAssignment::GetBufferSet(
@@ -360,6 +382,15 @@ absl::Status LayoutAssignment::SetOperandLayout(
   }
   LayoutConstraints& constraints =
       *FindOrDie(computation_layouts_, instruction->parent());
+  return SetOperandLayout(
+      shape_with_layout, instruction, operand_no, mandatory, dfs, priority,
+      constraints.MutableOperandLayoutConstraint(instruction, operand_no));
+}
+
+absl::Status LayoutAssignment::SetOperandLayout(
+    const Shape& shape_with_layout, const HloInstruction* instruction,
+    int64_t operand_no, bool mandatory, bool dfs, int64_t priority,
+    std::unique_ptr<OperandLayoutConstraint>& constraint_slot) {
   // The second and third operands (operand_no > 0) of a dynamic-update-slice
   // operation typically have much smaller sizes than the first (operand_no==0)
   // operand. It is necessary to downgrade the importance of the smaller
@@ -380,24 +411,22 @@ absl::Status LayoutAssignment::SetOperandLayout(
           << ShapeUtil::HumanStringWithLayout(shape_with_layout)
           << " : priority = " << priority << "; mandatory = " << mandatory
           << "; dfs = " << dfs << "\n";
-  std::unique_ptr<OperandLayoutConstraint>& curr_shape_layout =
-      constraints.MutableOperandLayoutConstraint(instruction, operand_no);
-  if (curr_shape_layout) {
-    if (!curr_shape_layout->UpdateLayout(priority, shape_with_layout, mandatory,
-                                         dfs, this)) {
+  if (constraint_slot) {
+    if (!constraint_slot->UpdateLayout(priority, shape_with_layout, mandatory,
+                                       dfs, this)) {
       return absl::OkStatus();
     }
   }
-  if (curr_shape_layout == nullptr) {
-    curr_shape_layout = std::make_unique<OperandLayoutConstraint>(
+  if (constraint_slot == nullptr) {
+    constraint_slot = std::make_unique<OperandLayoutConstraint>(
         ShapeLayout(shape_with_layout), instruction, operand_no, mandatory, dfs,
         priority);
   } else {
-    *curr_shape_layout =
+    *constraint_slot =
         OperandLayoutConstraint(ShapeLayout(shape_with_layout), instruction,
                                 operand_no, mandatory, dfs, priority);
   }
-  PushAddedConstraints(curr_shape_layout.get());
+  PushAddedConstraints(constraint_slot.get());
   return absl::OkStatus();
 }
 
@@ -424,11 +453,23 @@ absl::Status LayoutAssignment::SetArrayOperandLayout(
     bool mandatory, bool dfs, int64_t priority) {
   const HloInstruction* operand = instruction->operand(operand_no);
   TF_RET_CHECK(operand->shape().IsArray());
+  ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(layout, operand->shape()));
+  if (operand->shape().dimensions().empty()) {
+    return absl::OkStatus();  // SetOperandLayout ignores scalars.
+  }
+  // SetOperandLayout leaves a constraint that already holds this layout
+  // untouched; decide that here, before copying the operand shape for it.
+  std::unique_ptr<OperandLayoutConstraint>& constraint_slot =
+      FindOrDie(computation_layouts_, instruction->parent())
+          ->MutableOperandLayoutConstraint(instruction, operand_no);
+  if (constraint_slot != nullptr &&
+      constraint_slot->IsSatisfiedBy(operand->shape(), layout)) {
+    return absl::OkStatus();
+  }
   Shape shape(operand->shape());
   *shape.mutable_layout() = layout;
-  ABSL_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutInShape(shape));
   return SetOperandLayout(shape, instruction, operand_no, mandatory, dfs,
-                          priority);
+                          priority, constraint_slot);
 }
 
 absl::Status LayoutAssignment::LayoutConstraints::SetResultLayout(
@@ -2403,14 +2444,29 @@ absl::Status LayoutAssignment::PropagateConstraints(
   return absl::OkStatus();
 }
 
-namespace {
+absl::InlinedVector<int64_t, 4> LayoutAssignment::OperandIndicesInUser(
+    const HloInstruction* user, const HloInstruction* operand) const {
+  if (user->operand_count() < kMinOperandsForIndexMemo) {
+    return user->OperandIndices(operand);
+  }
+  auto& indices_by_operand = operand_indices_cache_[user];
+  if (indices_by_operand.empty()) {
+    for (int64_t i = 0; i < user->operand_count(); ++i) {
+      indices_by_operand[user->operand(i)].push_back(i);
+    }
+  }
+  auto it = indices_by_operand.find(operand);
+  if (it == indices_by_operand.end()) {
+    return {};
+  }
+  return it->second;
+}
 
-// Returns a vector containing all array-shaped uses (instruction and operand
-// number) of the given logical buffer or its aliases.
-std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
-    const TuplePointsToAnalysis::BufferAliasVector& aliases) {
+std::vector<std::pair<const HloInstruction*, int64_t>>
+LayoutAssignment::GetArrayUsesOfBuffer(const LogicalBuffer& buffer) const {
   std::vector<std::pair<const HloInstruction*, int64_t>> uses;
-  for (const auto& buffer_alias : aliases) {
+  for (const BufferAlias& buffer_alias :
+       points_to_analysis_->GetBufferAliases(buffer)) {
     if (!buffer_alias.instruction()->shape().IsArray()) {
       continue;
     }
@@ -2420,16 +2476,19 @@ std::vector<std::pair<const HloInstruction*, int64_t>> GetArrayUsesOfBuffer(
 
     // Add all uses of the instruction's output.
     for (const HloInstruction* user : buffer_alias.instruction()->users()) {
+      // A tuple forwards every operand buffer into its own points-to set, so
+      // PropagateBufferConstraintToUses would drop the use again.
+      if (user->opcode() == HloOpcode::kTuple) {
+        continue;
+      }
       for (int64_t operand_no :
-           user->OperandIndices(buffer_alias.instruction())) {
+           OperandIndicesInUser(user, buffer_alias.instruction())) {
         uses.emplace_back(user, operand_no);
       }
     }
   }
   return uses;
 }
-
-}  // namespace
 
 absl::Status LayoutAssignment::PropagateUseConstraintToDefs(
     const ShapeLayout& shape_layout, const HloInstruction* instruction,
@@ -2787,8 +2846,7 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToUses(
 
   // Propagate the layout to all array uses of the logical buffer. This skips
   // uses of the buffer where the buffer is the element of a tuple.
-  for (const auto& user_operand_no :
-       GetArrayUsesOfBuffer(points_to_analysis_->GetBufferAliases(buffer))) {
+  for (const auto& user_operand_no : GetArrayUsesOfBuffer(buffer)) {
     const HloInstruction* user = user_operand_no.first;
     int64_t operand_no = user_operand_no.second;
     // Only add an operand constraint if the user does not forward the buffer
@@ -3961,8 +4019,9 @@ absl::Status LayoutAssignment::ClearPreviousPassSideEffects(
   unconstrained_layout_instructions_.clear();
   unconstrained_buffer_ids_.clear();
   buffer_constraints_.Clear();
-  // buffer_sets_cache_ stays: it depends only on points_to_analysis_, which
-  // SetPointsToAnalysis owns.
+  // buffer_sets_cache_ and operand_indices_cache_ stay: both are valid for the
+  // current points_to_analysis_ and the operand lists it was built on, and
+  // only SetPointsToAnalysis replaces those; it clears both.
   return absl::OkStatus();
 }
 absl::Status LayoutAssignment::AddCopyForOperand(HloInstruction* instruction,
