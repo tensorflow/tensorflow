@@ -226,7 +226,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   NameAttrList then_branch = then_branch_;
   NameAttrList else_branch = else_branch_;
   xla::Literal cond_literal;
-  if (ctx->ConstantInput(0, &cond_literal).ok()) {
+  if (ctx->ConstantInput(0, &cond_literal).ok() &&
+      cond_literal.shape().IsArray() &&
+      cond_literal.shape().dimensions().empty() &&
+      cond_literal.shape().element_type() == xla::PRED) {
     const NameAttrList& taken_branch =
         cond_literal.Get<bool>({}) ? then_branch_ : else_branch_;
     VLOG(1) << "If predicate is constant; compiling only "
