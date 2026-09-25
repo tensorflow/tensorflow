@@ -1590,6 +1590,11 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
     TF_LITE_ENSURE_STATUS(
         ConvertTensorType(schema_params->quantized_bias_type(),
                           &params->quantized_bias_type, error_reporter));
+    if (const auto* quant_spec = schema_params->quant_spec()) {
+      // Borrowed from the model buffer; see TfLiteFullyConnectedParams.
+      params->quant_spec = quant_spec->data();
+      params->quant_spec_size = static_cast<int>(quant_spec->size());
+    }
     switch (schema_params->weights_format()) {
       case FullyConnectedOptionsWeightsFormat_DEFAULT:
         params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;

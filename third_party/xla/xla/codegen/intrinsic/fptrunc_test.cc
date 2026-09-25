@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/fptrunc.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -369,6 +370,34 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fn_Vector8) {
 
   // 242.0f rounds down to 240.0f:
   EXPECT_EQ(actuals[7], static_cast<int8_t>(0b01110111));
+}
+
+TEST(FpTruncExecutionTest, F32ToBf16_Vector16) {
+  constexpr size_t kN = 16;
+  const Type from = Type::V(F32, kN);
+  const Type to = Type::V(BF16, kN);
+  JitRunner jit = CreateJitRunner(from, to);
+  auto fptrunc = jit.GetVectorizedFn<kN, uint16_t, float>(
+      FpTrunc::Name({from, to}) + "_fptoi");
+  constexpr float kEps = std::numeric_limits<float>::epsilon();
+  std::array<float, kN> vals = {
+      1.0f, -2.0f, 0.5f, 0.0f, -0.0f, 3.0f, -0.75f,
+      // Rounds up to 65536.0f.
+      65504.0f,
+      // Ties round to even: 1 + 2^-8 rounds down, 1 + 3 * 2^-8 rounds up.
+      1.00390625f, 1.01171875f,
+      // Just above a tie rounds up.
+      1.00390625f + kEps,
+      // Rounds up to infinity.
+      std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::denorm_min(),
+      std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN()};
+  std::array<uint16_t, kN> expected = {
+      0x3F80, 0xC000, 0x3F00, 0x0000, 0x8000, 0x4040, 0xBF40, 0x4780,
+      0x3F80, 0x3F82, 0x3F81, 0x7F80, 0x0000, 0x7F80, 0xFF80, 0x7FC0};
+  EXPECT_EQ(fptrunc(vals), expected);
 }
 
 TEST(FpTruncExecutionTest, F32ToF8e4m3b11fnuz) {
