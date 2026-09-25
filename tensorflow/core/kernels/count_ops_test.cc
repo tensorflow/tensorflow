@@ -230,5 +230,39 @@ TEST_F(SparseCountLimitTest, Basic) {
   EXPECT_EQ(shape(1), int64_t{3});  // max_value + 1
 }
 
+// A dense_shape batch dimension wider than int32 must not be silently truncated
+// to a small num_batches. Before the fix, dense_shape[0] = 2^32 + 5 truncated to
+// 5 while an index of 2^31 (still < dense_shape[0], so it passes index
+// validation) truncated to a negative int32 batch that slipped past the
+// batch < num_batches check and indexed per_batch_counts out of bounds.
+TEST_F(SparseCountLimitTest, DenseShapeBatchDimTooWide) {
+  TF_ASSERT_OK(NodeDefBuilder("sparse_count", "SparseCountSparseOutput")
+                   .Input(FakeInput(DT_INT64))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT64))
+                   .Input(FakeInput(DT_INT64))
+                   .Attr("T", DT_INT32)
+                   .Attr("minlength", -1)
+                   .Attr("maxlength", -1)
+                   .Attr("binary_output", false)
+                   .Attr("output_type", DT_INT64)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  const int64_t kBatchDim = (int64_t{1} << 32) + 5;  // > kMaxBatches
+  const int64_t kBadBatch = int64_t{1} << 31;        // < kBatchDim, wraps < 0
+
+  // Indices: [[2^31, 0]]
+  AddInputFromArray<int64_t>(TensorShape({1, 2}), {kBadBatch, 0});
+  // Values: [1]
+  AddInputFromArray<int32_t>(TensorShape({1}), {1});
+  // Shape: [2^32 + 5, 3]
+  AddInputFromArray<int64_t>(TensorShape({2}), {kBatchDim, 3});
+  // Weights: []
+  AddInputFromArray<int64_t>(TensorShape({0}), {});
+
+  EXPECT_FALSE(RunOpKernel().ok());
+}
+
 }  // namespace
 }  // namespace tensorflow
