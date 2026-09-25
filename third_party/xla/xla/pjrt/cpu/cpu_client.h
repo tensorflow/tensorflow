@@ -106,8 +106,7 @@ class PjRtCpuRawClient : public PjRtRawClient {
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous, int max_transpose_threads,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-      int cpu_device_count, int max_inflight_computations,
-      const Eigen::ThreadPoolDevice* intra_op_device = nullptr);
+      int cpu_device_count, int max_inflight_computations);
 
   ~PjRtCpuRawClient() override;
 
@@ -134,9 +133,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
     return eigen_intraop_pool_.get();
   }
 
-  const Eigen::ThreadPoolDevice* eigen_intraop_device() const {
-    return custom_intraop_device_ != nullptr ? custom_intraop_device_
-                                             : eigen_intraop_device_.get();
+  Eigen::ThreadPoolDevice* eigen_intraop_device() const {
+    return eigen_intraop_device_.get();
   }
 
   cpu::CpuCollectives* collectives() const { return collectives_.get(); }
@@ -299,7 +297,6 @@ class PjRtCpuRawClient : public PjRtRawClient {
   // the member variables of this class that are already destroyed.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
-  const Eigen::ThreadPoolDevice* custom_intraop_device_ = nullptr;
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> execute_work_runner_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;

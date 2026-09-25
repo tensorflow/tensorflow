@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_JIT_COMPILED_CPU_FUNCTION_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_JIT_COMPILED_CPU_FUNCTION_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/status/statusor.h"
+#include "tensorflow/compiler/tf2xla/encoded_buffer_allocation_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
 #include "xla/backends/cpu/buffer_allocation_info.h"
-#include "xla/client/executable_build_options.h"
-#include "xla/executable_run_options.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/client/local_client.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -65,21 +62,16 @@ class XlaJitCompiledCpuFunction {
     return static_data_;
   }
 
-  const xla::PjRtExecutable& pjrt_executable() const {
-    CHECK(pjrt_executable_ != nullptr);  // Crash ok
-    return *pjrt_executable_;
+  const xla::LocalExecutable& LocalExecutable() const {
+    CHECK(executable_);  // Crash ok
+    return *executable_;
   }
-
-  const Eigen::ThreadPoolDevice* eigen_intra_op_thread_pool_device() const;
 
  private:
   XlaJitCompiledCpuFunction() : compilation_result_proto_(nullptr) {}
 
-  // The client holds the thread pool used for execution.
-  std::unique_ptr<xla::PjRtClient> pjrt_client_;
-
   // The executable holds the underlying function.
-  std::unique_ptr<xla::PjRtExecutable> pjrt_executable_;
+  std::unique_ptr<xla::LocalExecutable> executable_;
 
   // The compilation result proto.
   std::unique_ptr<xla::cpu::CompilationResultProto> compilation_result_proto_;
