@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
@@ -113,6 +114,15 @@ class MatrixSolveOpTest(test.TestCase):
     rhs = np.random.normal(size=(2, 3, 2, 2))
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testInvalidRank(self):
+    for fn in (linalg_ops.matrix_solve, gen_linalg_ops.matrix_solve):
+      for bad_shape in ([], [2]):
+        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+          with test_util.use_gpu():
+            self.evaluate(fn(val, val))
 
   def testNotInvertible(self):
     # The input should be invertible.

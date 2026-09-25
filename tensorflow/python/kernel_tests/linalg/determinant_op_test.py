@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -171,6 +172,19 @@ class DeterminantOpTest(test.TestCase):
     tensor1 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_ops.matrix_determinant(tensor1)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testInvalidRank(self):
+    for fn in (
+        linalg_ops.matrix_determinant,
+        gen_linalg_ops.matrix_determinant,
+        gen_linalg_ops.log_matrix_determinant,
+    ):
+      for bad_shape in ([], [2]):
+        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+          with test_util.use_gpu():
+            self.evaluate(fn(val))
 
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
