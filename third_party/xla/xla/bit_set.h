@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_INLINED_BIT_SET_H_
-#define XLA_INLINED_BIT_SET_H_
+#ifndef XLA_BIT_SET_H_
+#define XLA_BIT_SET_H_
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -90,6 +91,83 @@ class InlinedBitSet {
   absl::InlinedVector<Word, InlinedWords> words_;
 };
 
+// rows bit sets of num_bits bits each, in one heap allocation. Rows are
+// addressed by index; the operations across rows are ORs of one row into
+// another. Useful when an analysis keeps one bit set per element of a large
+// dense index space, for example per instruction, and would otherwise
+// allocate each set separately.
+class DenseBitSets {
+ public:
+  using Word = uint64_t;
+  static constexpr int kWordSize = sizeof(Word) * 8;
+
+  DenseBitSets(int64_t rows, int64_t num_bits)
+      : rows_(rows),
+        num_bits_(num_bits),
+        words_per_row_((num_bits + kWordSize - 1) / kWordSize),
+        words_(rows * words_per_row_, 0) {
+    DCHECK_GE(rows, 0);
+    DCHECK_GE(num_bits, 0);
+  }
+
+  int64_t rows() const { return rows_; }
+  int64_t num_bits() const { return num_bits_; }
+
+  void Set(int64_t row, int64_t bit) { Row(row)[WordIndex(bit)] |= Mask(bit); }
+
+  bool Test(int64_t row, int64_t bit) const {
+    return (Row(row)[WordIndex(bit)] & Mask(bit)) != 0;
+  }
+
+  // row |= other.
+  void Or(int64_t row, int64_t other) {
+    Word* dst = Row(row);
+    const Word* src = Row(other);
+    for (int64_t w = 0; w < words_per_row_; ++w) {
+      dst[w] |= src[w];
+    }
+  }
+
+  // row |= other, with ignored_bit of other left out.
+  void OrIgnoringBit(int64_t row, int64_t other, int64_t ignored_bit) {
+    Word* dst = Row(row);
+    const Word* src = Row(other);
+    const int64_t ignored_word = WordIndex(ignored_bit);
+    for (int64_t w = 0; w < words_per_row_; ++w) {
+      const Word keep = w == ignored_word ? ~Mask(ignored_bit) : ~Word{0};
+      dst[w] |= src[w] & keep;
+    }
+  }
+
+ private:
+  static constexpr Word Mask(int64_t bit) {
+    return Word{1} << (bit % kWordSize);
+  }
+
+  int64_t WordIndex(int64_t bit) const {
+    DCHECK_GE(bit, 0);
+    DCHECK_LT(bit, num_bits_);
+    return bit / kWordSize;
+  }
+
+  Word* Row(int64_t row) {
+    DCHECK_GE(row, 0);
+    DCHECK_LT(row, rows_);
+    return words_.data() + row * words_per_row_;
+  }
+
+  const Word* Row(int64_t row) const {
+    DCHECK_GE(row, 0);
+    DCHECK_LT(row, rows_);
+    return words_.data() + row * words_per_row_;
+  }
+
+  int64_t rows_;
+  int64_t num_bits_;
+  int64_t words_per_row_;
+  std::vector<Word> words_;
+};
+
 }  // namespace xla
 
-#endif  // XLA_INLINED_BIT_SET_H_
+#endif  // XLA_BIT_SET_H_
