@@ -88,7 +88,8 @@ class HloDataflowAnalysis {
       absl::flat_hash_set<absl::string_view> execution_threads = {},
       bool propagate_through_calls = true,
       std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses =
-          std::nullopt);
+          std::nullopt,
+      bool propagate_through_control_flow = true);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -219,7 +220,8 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       absl::flat_hash_set<absl::string_view> execution_threads,
-                      bool propagate_through_calls = true);
+                      bool propagate_through_calls = true,
+                      bool propagate_through_control_flow = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -335,6 +337,7 @@ class HloDataflowAnalysis {
   const bool ssa_form_;
   const bool bitcast_defines_value_;
   bool propagate_through_calls_ = true;
+  bool propagate_through_control_flow_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 
