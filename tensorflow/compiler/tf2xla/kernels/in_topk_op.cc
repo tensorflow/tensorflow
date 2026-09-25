@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -79,6 +77,17 @@ class InTopKOp : public XlaOpKernel {
     xla::XlaOp iota_r2 = xla::Broadcast(iota_r1, {batch_size});
 
     xla::XlaOp eq_r2 = xla::Eq(targets_r1, iota_r2, {0});
+    // The masked reduction below treats an out-of-range target as zero, which
+    // can otherwise produce a false hit. Check bounds per target, rather than
+    // reducing the class-match matrix again.
+    xla::XlaOp targets_s64 = xla::ConvertElementType(targets_r1, xla::S64);
+    // This folds to a constant for static dimensions, while using the actual
+    // class count instead of the static bound for a dynamic dimension.
+    xla::XlaOp num_classes_s64 = xla::ConvertElementType(
+        xla::GetDimensionSize(predictions_r2, 1), xla::S64);
+    xla::XlaOp valid_target_r1 = xla::And(
+        xla::Ge(targets_s64, xla::ConstantR0<int64_t>(xla_builder, 0)),
+        xla::Lt(targets_s64, num_classes_s64));
     xla::XlaOp zero_r0_f32 = xla::Zero(xla_builder, xla::F32);
     xla::XlaOp zero_r2_f32 = xla::ZerosLike(predictions_r2);
     xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_f32);
@@ -99,9 +108,10 @@ class InTopKOp : public XlaOpKernel {
         one_hot_r2, zero_r0,
         xla::CreateScalarAddComputation(xla::S32, xla_builder), {1});
 
-    xla::XlaOp result =
+    xla::XlaOp result = xla::And(
         xla::And(xla::Lt(num_gt_r1, xla::ConstantR0<int32_t>(xla_builder, k)),
-                 xla::IsFinite(targets_values_r1));
+                 xla::IsFinite(targets_values_r1)),
+        valid_target_r1);
 
     context->SetOutput(0, result);
   }
