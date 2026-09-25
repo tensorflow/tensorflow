@@ -89,7 +89,7 @@ inline uint64_t Fingerprint64(const absl::string_view s) {
   // Farmhash. If the implementation ever changes, Fingerprint op should be
   // modified to keep using Farmhash.
   // LINT.IfChange
-  return farmhash::Fingerprint64(s.data(), s.size());
+  return farmhash::Fingerprint64(absl::string_view(s.data(), s.size()));
   // LINT.ThenChange(//tensorflow/core/kernels/fingerprint_op.cc)
 #endif
 }
@@ -99,7 +99,7 @@ inline uint32_t Fingerprint32(const absl::string_view s) {
 #ifdef USE_OSS_FARMHASH
   return ::util::Fingerprint32(s.data(), s.size());
 #else
-  return farmhash::Fingerprint32(s.data(), s.size());
+  return farmhash::Fingerprint32(absl::string_view(s.data(), s.size()));
 #endif
 }
 
@@ -110,7 +110,8 @@ inline Fprint128 Fingerprint128(const absl::string_view s) {
   return {::util::Uint128Low64(fingerprint),
           ::util::Uint128High64(fingerprint)};
 #else
-  const auto fingerprint = farmhash::Fingerprint128(s.data(), s.size());
+  const auto fingerprint =
+      farmhash::Fingerprint128(absl::string_view(s.data(), s.size()));
   return {absl::Uint128Low64(fingerprint), absl::Uint128High64(fingerprint)};
 #endif
 }

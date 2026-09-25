@@ -855,6 +855,13 @@ class PriorityFusionQueue {
           *consumer, producer);
     }
 
+    return CanFuseWithNativeEmitter(producer, consumer);
+  }
+
+  // Checks whether `producer` can be fused into `consumer` using native
+  // emitters.
+  FusionDecision CanFuseWithNativeEmitter(HloInstruction* producer,
+                                          HloInstruction* consumer) {
     if (IsFusibleBitcast(*consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
@@ -1018,6 +1025,21 @@ class PriorityFusionQueue {
     return FusionDecision::Allow();
   }
 
+  // Records that `producer` cannot be fused into `user`.
+  void RecordUnfusableUser(HloInstruction* producer, HloInstruction* user,
+                           const FusionDecision& fusion_decision) {
+    VLOG(10) << "Cannot fuse " << producer->name() << " with " << user->name()
+             << ", because: " << fusion_decision.Explain();
+    if (dump_fusion_visualization_) {
+      RegisterFusionState(
+          *computation_,
+          absl::StrCat("Cannot fuse producer |", producer->name(),
+                       "| with consumer |", user->name(),
+                       "|: ", fusion_decision.Explain()),
+          *user, producer);
+    }
+  }
+
   FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
       return FusionDecision::Forbid("No users to fuse");
@@ -1031,16 +1053,7 @@ class PriorityFusionQueue {
       has_non_bitcast_user = true;
       if (auto fusion_decision = CanFuseCached(producer, user);
           !fusion_decision) {
-        VLOG(10) << "Cannot fuse " << producer->name() << " with "
-                 << user->name() << ", because: " << fusion_decision.Explain();
-        if (dump_fusion_visualization_) {
-          RegisterFusionState(
-              *computation_,
-              absl::StrCat("Cannot fuse producer |", producer->name(),
-                           "| with consumer |", user->name(),
-                           "|: ", fusion_decision.Explain()),
-              *user, producer);
-        }
+        RecordUnfusableUser(producer, user, fusion_decision);
         return fusion_decision;
       }
     }
