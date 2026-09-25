@@ -32,7 +32,7 @@ class DeviceMgr;
 //
 // E.g.,
 //   Rendezvous* rendez = worker_env->rendezvous_mgr->Find(0x8935);
-//   fork execution of an graph executor using "rendez"  on thread 1;
+//   fork execution of a graph executor using "rendez"  on thread 1;
 //   fork execution of another graph executor using "rendez" on thread 2;
 //   ...
 //   join threads 1 and 2;
