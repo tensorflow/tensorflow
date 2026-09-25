@@ -618,18 +618,24 @@ void TilingSpace::InitSimplificationIndexing() {
   }
 }
 
-SymbolicExpr TilingSpace::SimplifyExpression(const SymbolicExpr& expr) const {
+llvm::SmallVector<SymbolicExpr> TilingSpace::SimplifyExpressions(
+    const llvm::SmallVector<SymbolicExpr>& expressions) const {
   if (is_symbolic_) {
-    return expr.Canonicalize();
+    llvm::SmallVector<SymbolicExpr> simplified_expressions;
+    simplified_expressions.reserve(expressions.size());
+    for (const auto& expr : expressions) {
+      simplified_expressions.push_back(expr.Canonicalize());
+    }
+    return simplified_expressions;
   }
-
+  // TODO(b/565301234): add constraints from tiling space?
   SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), {expr});
+                                     rt_vars_.size(), expressions);
 
   IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
                            rt_vars_indexing_);
   indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
-  return indexing_map.GetSymbolicMap().GetResults()[0];
+  return std::move(indexing_map).GetSymbolicMap().GetResults();
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>

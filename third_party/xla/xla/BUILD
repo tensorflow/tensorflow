@@ -1193,6 +1193,29 @@ cc_library(
 )
 
 cc_library(
+    name = "shuffle",
+    srcs = ["shuffle.cc"],
+    hdrs = ["shuffle.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "shuffle_test",
+    srcs = ["shuffle_test.cc"],
+    deps = [
+        ":shuffle",
+        ":xla_data_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "window_util",
     srcs = ["window_util.cc"],
     hdrs = ["window_util.h"],
@@ -1330,7 +1353,6 @@ cc_library(
             "//xla/backends/autotuner:backends_proto_cc",
             "//xla/hlo/pass:hlo_pass_filter",
             "//xla/service:collective_utils",
-            "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
             "//xla/tsl/platform:logging",
             "//xla/tsl/util:command_line_flags",

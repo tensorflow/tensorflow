@@ -440,6 +440,48 @@ alias(
 )
 
 cuda_stub(
+    name = "nvjitlink",
+    srcs = ["nvjitlink.symbols"],
+)
+
+cc_library(
+    name = "nvjitlink_stub",  # buildifier: disable=duplicated-name
+    srcs = select({
+        "@xla//xla/tsl:is_cuda_enabled_and_oss": [
+            "nvjitlink.tramp.S",
+            "nvjitlink_stub.cc",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/nvjitlink/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
+    local_defines = [
+        "IMPLIB_EXPORT_SHIMS=1",
+    ],
+    textual_hdrs = ["nvjitlink.inc"],
+    visibility = ["//visibility:public"],
+    deps = select({
+        "@xla//xla/tsl:is_cuda_enabled_and_oss": [
+            # keep sorted
+            "//xla/tsl/platform:logging",
+            "@local_config_cuda//cuda:cuda_headers",
+            "@tsl//tsl/platform:dso_loader",
+            "@tsl//tsl/platform:load_library",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+alias(
+    name = "nvjitlink",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_nvjitlink//:nvjitlink", ":nvjitlink_stub"),
+    visibility = ["//visibility:public"],
+)
+
+cuda_stub(
     name = "nvml",
     srcs = ["nvml.symbols"],
 )

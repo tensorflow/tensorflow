@@ -41,6 +41,7 @@ absl::StatusOr<void*> GetNcclDsoHandle();
 absl::StatusOr<void*> GetNvshmemDsoHandle();
 absl::StatusOr<void*> GetNvInferDsoHandle();
 absl::StatusOr<void*> GetNvInferPluginDsoHandle();
+absl::StatusOr<void*> GetNvJitLinkDsoHandle();
 absl::StatusOr<void*> GetNvmlDsoHandle();
 absl::StatusOr<void*> GetNvrtcDsoHandle();
 
@@ -69,6 +70,7 @@ absl::StatusOr<void*> GetCusolverDsoHandle();
 absl::StatusOr<void*> GetCusparseDsoHandle();
 absl::StatusOr<void*> GetCuptiDsoHandle();
 absl::StatusOr<void*> GetCudnnDsoHandle();
+absl::StatusOr<void*> GetNvJitLinkDsoHandle();
 }  // namespace CachedDsoLoader
 
 }  // namespace internal
