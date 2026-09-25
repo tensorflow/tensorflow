@@ -304,14 +304,15 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       if (orig_input_tensor.NumElements() == 0 ||
           grad_tensor.NumElements() == 0) {
+        // Unlike AvgPoolGrad, whose first input holds the original input
+        // shape as an int32 vector, MaxPoolGrad's first input is the
+        // original input tensor itself, so its data must not be read as
+        // shape metadata. The gradient has the same shape as the original
+        // input, so allocate a zeroed output of that shape. This matches
+        // the native kernel's behavior for an empty gradient.
         Tensor* output = nullptr;
-        TensorShape output_shape;
-        auto shape_vec = orig_input_tensor.vec<int32>();
-        for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
-          OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
-        }
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(0, output_shape, &output));
+        OP_REQUIRES_OK(context, context->allocate_output(
+                                    0, orig_input_tensor.shape(), &output));
         output->flat<T>().setZero();
         return;
       }
