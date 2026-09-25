@@ -83,8 +83,8 @@ inline std::string GetFilePath(const std::string& cache_dir,
 }  // namespace
 
 std::string StrFingerprint(const void* data, const size_t num_bytes) {
-  return std::to_string(
-      ::util::Fingerprint64(reinterpret_cast<const char*>(data), num_bytes));
+  return std::to_string(::util::Fingerprint64(
+      absl::string_view(reinterpret_cast<const char*>(data), num_bytes)));
 }
 
 SerializationEntry::SerializationEntry(const std::string& cache_dir,
@@ -251,12 +251,12 @@ uint64_t Serialization::GetFingerprint(
   // First incorporate model_token.
   // We use Fingerprint64 instead of std::hash, since the latter isn't
   // guaranteed to be stable across runs. See b/172237993.
-  uint64_t fingerprint =
-      ::util::Fingerprint64(model_token.c_str(), model_token.size());
+  uint64_t fingerprint = ::util::Fingerprint64(
+      absl::string_view(model_token.c_str(), model_token.size()));
 
   // Incorporate custom_key.
-  const uint64_t custom_str_fingerprint =
-      ::util::Fingerprint64(custom_key.c_str(), custom_key.size());
+  const uint64_t custom_str_fingerprint = ::util::Fingerprint64(
+      absl::string_view(custom_key.c_str(), custom_key.size()));
   fingerprint = CombineFingerprints(fingerprint, custom_str_fingerprint);
 
   // Incorporate context details, if provided.
@@ -273,9 +273,9 @@ uint64_t Serialization::GetFingerprint(
     for (int i = 0; i < tensors_to_consider; ++i) {
       context_data.push_back(context->tensors[i].bytes);
     }
-    const uint64_t context_fingerprint =
-        ::util::Fingerprint64(reinterpret_cast<char*>(context_data.data()),
-                                context_data.size() * sizeof(int32_t));
+    const uint64_t context_fingerprint = ::util::Fingerprint64(
+        absl::string_view(reinterpret_cast<char*>(context_data.data()),
+                          context_data.size() * sizeof(int32_t)));
     fingerprint = CombineFingerprints(fingerprint, context_fingerprint);
   }
 
@@ -299,9 +299,9 @@ uint64_t Serialization::GetFingerprint(
       auto& tensor = context->tensors[output_tensors->data[i]];
       partition_data.push_back(tensor.bytes);
     }
-    const uint64_t partition_fingerprint =
-        ::util::Fingerprint64(reinterpret_cast<char*>(partition_data.data()),
-                                partition_data.size() * sizeof(int32_t));
+    const uint64_t partition_fingerprint = ::util::Fingerprint64(
+        absl::string_view(reinterpret_cast<char*>(partition_data.data()),
+                          partition_data.size() * sizeof(int32_t)));
     fingerprint = CombineFingerprints(fingerprint, partition_fingerprint);
   }
   return fingerprint;
