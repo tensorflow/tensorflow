@@ -354,6 +354,21 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   ];
 }
 
+def FoldStablehloConstantTransformsPass : Pass<"tfl-fold-stablehlo-constant-transforms", "mlir::func::FuncOp"> {
+  let summary = "Folds stablehlo.transpose and stablehlo.reshape operations on constants.";
+  let description = [{
+      Unlike the upstream folders, this handles `DenseResourceElementsAttr`
+      operands, which is what large weights are stored as by the time they
+      reach this point in the pipeline.
+  }];
+  let constructor = "CreateFoldStablehloConstantTransformsPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::arith::ArithDialect",
+    "stablehlo::StablehloDialect"
+  ];
+}
+
 def PropagateQParamsPass : Pass<"tfl-propagate-qparams", "mlir::ModuleOp"> {
   let summary = "Propagates Quantization Parameters (scale and zero point) information through the graph.";
   let description = [{
