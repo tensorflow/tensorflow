@@ -124,6 +124,45 @@ std::string BuildMultiAxisQuantizationModelBuffer(
                      builder.GetSize());
 }
 
+std::string BuildBlockwiseQuantizationModelBuffer(
+    const std::vector<int32_t>& block_shape, int32_t block_size = 32) {
+  flatbuffers::FlatBufferBuilder builder;
+
+  std::vector<int32_t> scale_shape = {2, 4, 1};
+  auto scale_tensor = CreateTensorDirect(builder, &scale_shape,
+                                         TensorType_FLOAT32, 0, "scales");
+  std::vector<int32_t> zero_point_shape = {2, 4, 1};
+  auto zero_point_tensor = CreateTensorDirect(
+      builder, &zero_point_shape, TensorType_INT32, 0, "zero_points");
+  auto blockwise_quantization = CreateBlockwiseQuantizationDirect(
+      builder, /*scales=*/0, /*zero_points=*/1, block_size, &block_shape);
+  auto quantization = CreateQuantizationParameters(
+      builder, /*min=*/0, /*max=*/0, /*scale=*/0, /*zero_point=*/0,
+      QuantizationDetails_BlockwiseQuantization, blockwise_quantization.Union(),
+      /*quantized_dimension=*/0);
+  std::vector<int32_t> weight_shape = {2, 4, 3};
+  auto weight_tensor = CreateTensorDirect(
+      builder, &weight_shape, TensorType_INT8, 0, "moe_weight", quantization);
+
+  std::vector<flatbuffers::Offset<Tensor>> tensors = {
+      scale_tensor, zero_point_tensor, weight_tensor};
+  std::vector<int32_t> inputs = {2};
+  std::vector<int32_t> outputs = {2};
+  std::vector<flatbuffers::Offset<Operator>> operators;
+  auto subgraph =
+      CreateSubGraphDirect(builder, &tensors, &inputs, &outputs, &operators);
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {
+      CreateBufferDirect(builder)};
+  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes;
+  auto model =
+      CreateModelDirect(builder, TFLITE_SCHEMA_VERSION, &operator_codes,
+                        &subgraphs, "blockwise quantization test", &buffers);
+  FinishModelBuffer(builder, model);
+  return std::string(reinterpret_cast<const char*>(builder.GetBufferPointer()),
+                     builder.GetSize());
+}
+
 }  // namespace
 
 TEST(BasicFlatBufferModel, TestNonExistentFiles) {
@@ -213,6 +252,90 @@ TEST(BasicFlatBufferModel,
      TestRejectsMultiAxisQuantizationOutOfRangeZeroPointTensor) {
   std::string model_buffer = BuildMultiAxisQuantizationModelBuffer(
       /*scales=*/0, /*zero_points=*/3, /*quantized_dimensions=*/{0, 2});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_NE(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  EXPECT_EQ(interpreter, nullptr);
+}
+
+TEST(BasicFlatBufferModel, TestBlockwiseQuantizationBlockShapeInInterpreter) {
+  // Weight is {2, 4, 3}, so a block_shape of {1, 1, 3} means one scale per
+  // (dim0, dim1) pair, i.e. the scale tensor shape {2, 4, 1}.
+  std::string model_buffer =
+      BuildBlockwiseQuantizationModelBuffer(/*block_shape=*/{1, 1, 3});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  TfLiteTensor* tensor = interpreter->tensor(2);
+  ASSERT_NE(tensor, nullptr);
+  EXPECT_EQ(tensor->quantization.type, kTfLiteBlockwiseQuantizationV2);
+  ASSERT_NE(tensor->quantization.params, nullptr);
+  auto* quantization = reinterpret_cast<TfLiteBlockwiseQuantizationV2*>(
+      tensor->quantization.params);
+  EXPECT_EQ(quantization->scale, 0);
+  EXPECT_EQ(quantization->zero_point, 1);
+  ASSERT_NE(quantization->block_shape, nullptr);
+  TfLiteIntArray* expected_block_shape = TfLiteIntArrayCreate(3);
+  expected_block_shape->data[0] = 1;
+  expected_block_shape->data[1] = 1;
+  expected_block_shape->data[2] = 3;
+  EXPECT_TRUE(
+      TfLiteIntArrayEqual(quantization->block_shape, expected_block_shape));
+  TfLiteIntArrayFree(expected_block_shape);
+}
+
+// Models written before block_shape existed must keep working, and must be
+// distinguishable from models that set it.
+TEST(BasicFlatBufferModel, TestBlockwiseQuantizationWithoutBlockShape) {
+  std::string model_buffer =
+      BuildBlockwiseQuantizationModelBuffer(/*block_shape=*/{});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  TfLiteTensor* tensor = interpreter->tensor(2);
+  ASSERT_NE(tensor, nullptr);
+  EXPECT_EQ(tensor->quantization.type, kTfLiteBlockwiseQuantization);
+  auto* quantization = reinterpret_cast<TfLiteBlockwiseQuantization*>(
+      tensor->quantization.params);
+  ASSERT_NE(quantization, nullptr);
+  EXPECT_EQ(quantization->blocksize, 32);
+}
+
+TEST(BasicFlatBufferModel, TestRejectsBlockwiseQuantizationBadRankBlockShape) {
+  // The weight is rank 3, so a rank 2 block_shape is ambiguous and must be
+  // rejected rather than silently falling back to block_size.
+  std::string model_buffer =
+      BuildBlockwiseQuantizationModelBuffer(/*block_shape=*/{1, 3});
+  auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
+                                                model_buffer.size());
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_NE(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
+            kTfLiteOk);
+  EXPECT_EQ(interpreter, nullptr);
+}
+
+TEST(BasicFlatBufferModel,
+     TestRejectsBlockwiseQuantizationNonPositiveBlockShape) {
+  std::string model_buffer =
+      BuildBlockwiseQuantizationModelBuffer(/*block_shape=*/{1, 0, 3});
   auto model = FlatBufferModel::BuildFromBuffer(model_buffer.data(),
                                                 model_buffer.size());
   ASSERT_TRUE(model);
