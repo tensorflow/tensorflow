@@ -130,7 +130,8 @@ int RunningSignBit(const TfLiteTensor* input, const TfLiteTensor* weight,
     memcpy(key.get(), &seed, seed_size);
     memcpy(key.get() + seed_size, input_ptr, input_item_bytes);
 
-    int64_t hash_signature = ::util::Fingerprint64(key.get(), key_bytes);
+    int64_t hash_signature =
+        ::util::Fingerprint64(absl::string_view(key.get(), key_bytes));
     double running_value = static_cast<double>(hash_signature);
     input_ptr += input_item_bytes;
     if (weight_ptr == nullptr) {
