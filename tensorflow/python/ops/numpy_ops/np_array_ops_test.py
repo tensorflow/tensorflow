@@ -1276,6 +1276,12 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(
         np.take(a, indices, axis=axis),
         np_array_ops.take(a, indices, axis=axis))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take([1, 2, 3], [0], axis=1)
 
   def testTakeAlongAxis(self):
     rng = np.random.default_rng()
