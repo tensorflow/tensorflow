@@ -479,17 +479,20 @@ def LowerScatterNdOp :
 // Xdivy, Xlog1p and Xlogy op patterns.
 //===----------------------------------------------------------------------===//
 
+// Selects zero rather than $x when $x == 0, like BinaryNoNanPat above: $x can
+// compare equal to zero without being +0, as -0 does and as a subnormal does
+// when denormals are flushed.
 class BinaryXopyPat<dag From, dag To> : Pat<
   From,
   (TF_SelectV2Op
     (TF_EqualOp
       $x,
-      (TF_ConstOp
+      (TF_ConstOp:$zero
         (GetScalarOfType<0> $x)
       ),
       /*incompatible_shape_error*/ConstBoolAttrTrue
     ),
-    $x,
+    $zero,
     To
   )>;
 

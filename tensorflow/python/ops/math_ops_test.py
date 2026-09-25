@@ -1105,6 +1105,48 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class XopsGpuKernelTest(test_util.TensorFlowTestCase):
+  """The zero branch of the MLIR-generated GPU kernels for xlogy and friends.
+
+  On CPU these ops run the Eigen functors in cwise_ops.h instead.
+  """
+
+  @test_util.run_gpu_only
+  def testNegativeZeroGivesPositiveZero(self):
+    for op, y in ((math_ops.xlogy, 2.), (math_ops.xlog1py, 1.),
+                  (math_ops.xdivy, 3.)):
+      for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        x = constant_op.constant(np.full((16,), -0.), dtype=dtype)
+        y_t = constant_op.constant(np.full((16,), y), dtype=dtype)
+        with test_util.force_gpu():
+          result = self.evaluate(op(x, y_t))
+        self.assertAllEqual(result, np.zeros(16))
+        self.assertFalse(np.signbit(result).any())
+
+  @test_util.run_gpu_only
+  def testSubnormalIsNotReturned(self):
+    # The GPU kernels flush denormals, so a subnormal x compares equal to zero
+    # and the result is 0; without flushing, x / x is 1. It must never be x.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      tiny = np.finfo(dtype.as_numpy_dtype).tiny / 4
+      x = constant_op.constant(np.full((16,), tiny), dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xdivy(x, x))
+      self.assertTrue(np.isin(result, [0., 1.]).all(), result)
+
+  @test_util.run_gpu_only
+  def testComplexXlog1pyComparesXAgainstZero(self):
+    # The complex kernel compared x against 1 rather than 0, so xlog1py(1, y)
+    # returned 1 and xlog1py(0, -1) returned nan.
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1., 0.], dtype=dtype)
+      y = constant_op.constant([1., -1.], dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xlog1py(x, y))
+      self.assertAllClose(result, [np.log(2.), 0.])
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class XlogyTest(test_util.TensorFlowTestCase):
 
   def testXlogyNoZero(self):
