@@ -17,7 +17,7 @@ fusion {
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<42x5xi8, #xtile.layout<[0, 1]>>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<5x42xi8>,
-// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 83 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 
 // CHECK:           %[[OFFSET0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
 // CHECK:           %[[OFFSET1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])
