@@ -1501,9 +1501,8 @@ class GroupConnectedBoundaries {
   HloInstruction* conditional_;
   HloComputation* conditional_parent_;
   bool is_layout_sensitive_;
-  bool has_outfeed_;
-  // Instructions that have been visited but are not going to be moved.
-  absl::flat_hash_map<HloInstruction*, int>& visited_count_;
+  // Shared by the analyses of all boundaries of conditional_.
+  ConditionalAnalysisState& analysis_;
   // The following four lines are configurations of the cost model, which will
   // be used to determine whether to move an instruction (move_config_) and
   // how strongly preferred it is to keep a pair of ops together
@@ -1573,6 +1572,25 @@ class GroupConnectedBoundaries {
     return *loc;
   }
 
+  // Number of distinct operands of hlo other than constants. Every boundary
+  // that reaches hlo asks for it, so it is counted once per conditional.
+  int64_t NonLeafOperandCount(const HloInstruction* hlo) {
+    auto [it, inserted] = analysis_.non_leaf_operand_count.try_emplace(hlo);
+    if (inserted) {
+      it->second = CountNonLeafOps(hlo->operands());
+    }
+    return it->second;
+  }
+  // Number of distinct users of hlo other than constants, counted once per
+  // conditional like NonLeafOperandCount.
+  int64_t NonLeafUserCount(const HloInstruction* hlo) {
+    auto [it, inserted] = analysis_.non_leaf_user_count.try_emplace(hlo);
+    if (inserted) {
+      it->second = CountNonLeafOps(hlo->users());
+    }
+    return it->second;
+  }
+
   static std::vector<int64_t>& EnsureSearchConfig(
       std::vector<int64_t>& search_config) {
     if (search_config.empty()) {
@@ -1584,20 +1602,14 @@ class GroupConnectedBoundaries {
  public:
   explicit GroupConnectedBoundaries(
       HloInstruction* conditional, bool is_layout_sensitive,
-      absl::flat_hash_map<HloInstruction*, int>& visited_count,
+      ConditionalAnalysisState& analysis,
       std::vector<std::vector<int64_t>>* move_config,
       std::vector<std::vector<int64_t>>* reuse_config,
       std::vector<int64_t>& search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
-        has_outfeed_(absl::c_any_of(
-            conditional->called_computations(),
-            [](HloComputation* computation) {
-              return absl::c_any_of(computation->instructions(),
-                                    HloPredicateIsOp<HloOpcode::kOutfeed>);
-            })),
-        visited_count_(visited_count),
+        analysis_(analysis),
         move_config_(*move_config),
         reuse_config_(*reuse_config),
         search_config_vec_(EnsureSearchConfig(search_config)),
@@ -1626,15 +1638,15 @@ class GroupConnectedBoundaries {
             << "\n";
     if (config < 0) {
       // Assume the reuse decreases with increasing user count.
-      int count1 = CountNonLeafOps(op->users());
-      int count2 = CountNonLeafOps(user->operands());
+      int64_t count1 = NonLeafUserCount(op);
+      int64_t count2 = NonLeafOperandCount(user);
       return (-config) / count1 / count2;
     }
     return config;
   }
   void clear_recently_visited() {
     for (const auto& boundary : new_boundaries_) {
-      visited_count_.erase(boundary[0]);
+      analysis_.visited_count.erase(boundary[0]);
     }
   }
   // Returns true if `instruction` is worth hoisting.
@@ -1741,7 +1753,7 @@ class GroupConnectedBoundaries {
       // The operand must be an instruction that is not going to be moved (if
       // user is inside the conditional); otherwise it must be the conditional
       // itself and its user must be outside of the conditional.
-      if (!ContainsKey(visited_count_, op) && op != conditional_) {
+      if (!ContainsKey(analysis_.visited_count, op) && op != conditional_) {
         continue;
       }
       if (auto tuple_gte = DynCast<HloGetTupleElementInstruction>(user)) {
@@ -1868,7 +1880,7 @@ class GroupConnectedBoundaries {
             }
           }
         }
-      } else if (ContainsKey(visited_count_, op)) {
+      } else if (ContainsKey(analysis_.visited_count, op)) {
         reuses += ReusesCarriedBy(user, op);
       }
       VLOG(2) << "reuses after instruction " << user->ToString() << ":"
@@ -1991,11 +2003,10 @@ class GroupConnectedBoundaries {
   // dependent already considered for moving.
   bool IsSafeToMoveBoundary(const Boundary& next_boundary) {
     VLOG(1) << "Check is safe to move boundary.\n";
-    int64_t next_boundary_count =
-        (next_boundary.IsInsideBranch() ||
-         next_boundary.IsOutsideBranchOperand())
-            ? next_boundary[0]->user_count()
-            : CountNonLeafOps(next_boundary[0]->operands());
+    int64_t next_boundary_count = (next_boundary.IsInsideBranch() ||
+                                   next_boundary.IsOutsideBranchOperand())
+                                      ? next_boundary[0]->user_count()
+                                      : NonLeafOperandCount(next_boundary[0]);
     if (next_boundary_count <= 1) {
       if (next_boundary.IsOutsideBranchOperand() &&
           next_boundary[0]->users()[0] == conditional_ &&
@@ -2008,20 +2019,20 @@ class GroupConnectedBoundaries {
       // If boundary has only a single or no dependent, safe to move.
       return true;
     }
-    if (!ContainsKey(visited_count_, next_boundary[0])) {
+    if (!ContainsKey(analysis_.visited_count, next_boundary[0])) {
       VLOG(1) << "Skip next boundary " << next_boundary.ToString() << "\n"
               << " because it has multiple dependents: " << next_boundary_count
               << "\n";
-      visited_count_[next_boundary[0]] = 1;
+      analysis_.visited_count[next_boundary[0]] = 1;
       new_boundaries_.push_back(next_boundary);
     } else if (next_boundary.size() == 1 ||
                absl::c_linear_search(new_boundaries_, next_boundary)) {
-      if (++visited_count_[next_boundary[0]] == next_boundary_count) {
+      if (++analysis_.visited_count[next_boundary[0]] == next_boundary_count) {
         VLOG(2) << "Recovering next boundary " << next_boundary.ToString()
                 << "\n"
                 << " because all of its dependents have been visited: "
                 << next_boundary_count << "\n";
-        visited_count_.erase(next_boundary[0]);
+        analysis_.visited_count.erase(next_boundary[0]);
         EraseElementFromVector(&new_boundaries_, next_boundary);
         return true;
       }
@@ -2033,7 +2044,7 @@ class GroupConnectedBoundaries {
 
   int64_t CalculateMemorySize(const HloInstruction* hlo) {
     if (hlo->shape().IsTuple() ||
-        (!has_outfeed_ && hlo->opcode() != HloOpcode::kReduce &&
+        (!analysis_.has_outfeed && hlo->opcode() != HloOpcode::kReduce &&
          absl::c_none_of(hlo->users(), HloPredicateIsOp<HloOpcode::kReduce>))) {
       return 0;
     }
@@ -2095,7 +2106,7 @@ class GroupConnectedBoundaries {
         VLOG(1) << "boundary can be moved.";
       } else {
         VLOG(1) << "boundary cannot be moved\n";
-        visited_count_[b[0]] = 1;
+        analysis_.visited_count[b[0]] = 1;
         new_boundaries_.push_back(b);
       }
     }
@@ -2155,9 +2166,9 @@ class GroupConnectedBoundaries {
 ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     HloInstruction* conditional, const Boundary& cur_boundary,
     std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
-    absl::flat_hash_map<HloInstruction*, int>& visited_count) {
-  GroupConnectedBoundaries connect(conditional, is_layout_sensitive_,
-                                   visited_count, &move_config_, &reuse_config_,
+    ConditionalAnalysisState& analysis) {
+  GroupConnectedBoundaries connect(conditional, is_layout_sensitive_, analysis,
+                                   &move_config_, &reuse_config_,
                                    search_config_);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
@@ -2281,8 +2292,14 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
     std::vector<std::vector<Boundary>> to_move_out, to_move_in;
     std::vector<std::vector<Boundary>> new_boundaries_for_moveout;
     std::vector<std::vector<Boundary>> new_boundaries_for_movein;
-    // Number of times each instruction has been visited for moving.
-    absl::flat_hash_map<HloInstruction*, int> visited_count;
+    // Shared by the analyses of all boundaries of this conditional.
+    ConditionalAnalysisState analysis;
+    analysis.has_outfeed = absl::c_any_of(
+        conditional->called_computations(),
+        [](const HloComputation* computation) {
+          return absl::c_any_of(computation->instructions(),
+                                HloPredicateIsOp<HloOpcode::kOutfeed>);
+        });
     int benefit_move_out = 0, benefit_move_in = 0;
     Decision::Direction final_d = Decision::Direction::kNoChange;
     // The conditional is moved into a worklist as the seed (starting point).
@@ -2301,7 +2318,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
       Boundary boundary = visitor.PopNextBoundary();
       VLOG(2) << "Analyzing boundary:" << boundary.ToString() << "\n";
       auto d = ConsiderCodeMotion(conditional, boundary, to_move, next_boundary,
-                                  visited_count);
+                                  analysis);
       switch (d.GetDirection()) {
         case Decision::Direction::kMoveOutOfBranch:
           VLOG(2) << "Local Decision is move out of branch\n";

@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 #define XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -82,6 +85,21 @@ class Boundary : public std::vector<HloInstruction*> {
   // Boundary instructions in the conditional branches, one from each branch
   // of the conditional; or a single operand from outside the conditional.
   Position position_;
+};
+
+// State of the boundary analysis of one conditional, shared by the
+// ConsiderCodeMotion calls for its boundaries. The HLO does not change while a
+// conditional is analyzed, so the facts cached here stay valid until the
+// decision for the conditional is applied.
+struct ConditionalAnalysisState {
+  // Whether a branch of the conditional contains an outfeed.
+  bool has_outfeed = false;
+  // Number of times each instruction has been visited for moving.
+  absl::flat_hash_map<HloInstruction*, int> visited_count;
+  // Number of distinct operands, respectively users, of an instruction that
+  // are not constants, by instruction.
+  absl::flat_hash_map<const HloInstruction*, int64_t> non_leaf_operand_count;
+  absl::flat_hash_map<const HloInstruction*, int64_t> non_leaf_user_count;
 };
 
 // HLO pass that moves identical ops in/out of conditional.
@@ -207,10 +225,12 @@ class ConditionalCodeMotion : public HloModulePass {
   };
   // If the optimization decision is NO_CHANGE, new_boundary is set to nullptr;
   // otherwise, it is set to the new boundary after proposed optimization.
-  virtual Decision ConsiderCodeMotion(
-      HloInstruction* conditional, const Boundary& cur_boundary,
-      std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
-      absl::flat_hash_map<HloInstruction*, int>& visited_count);
+  // analysis is shared by all calls for the boundaries of conditional.
+  virtual Decision ConsiderCodeMotion(HloInstruction* conditional,
+                                      const Boundary& cur_boundary,
+                                      std::vector<Boundary>& to_move,
+                                      std::vector<Boundary>& new_boundaries,
+                                      ConditionalAnalysisState& analysis);
 
  protected:
   absl::StatusOr<bool> RunImpl(
