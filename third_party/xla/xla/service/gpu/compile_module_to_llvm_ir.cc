@@ -97,12 +97,15 @@ CompileModuleResults InitializeResults(const HloModule* hlo_module) {
           hlo_module,
           ExecutionStreamAssignment::Options{
               kDefaultNumComputeStreams,
-              /*number_of_collective_execution_streams=*/
+              /*number_of_communication_execution_streams=*/
               hlo_module->config()
                       .debug_options()
                       .xla_gpu_experimental_enable_collective_multi_streaming()
                   ? kDefaultNumCommunicationStreams
                   : 1,
+              // Keep disabled by default until the 14-day AOT
+              // forward-compatibility window has elapsed (9th of October 2026).
+              /*enable_dedicated_memcpy_streams=*/false,
           });
   return results;
 }

@@ -35,6 +35,20 @@ py_library(
 )
 """
 
+def _llvm_xz_compat_impl(repository_ctx):
+    repository_ctx.file("BUILD", """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+alias(
+    name = "lzma",
+    actual = "@xz//:lzma",
+    visibility = ["//visibility:public"],
+)
+""")
+
+_llvm_xz_compat = repository_rule(
+    implementation = _llvm_xz_compat_impl,
+)
+
 def _llvm_zlib_compat_impl(repository_ctx):
     repository_ctx.file("BUILD", """
 alias(
@@ -64,6 +78,7 @@ _llvm_zstd_compat = repository_rule(
 def _llvm_extension_impl(mctx):  # @unused
     _llvm_zlib_compat(name = "llvm_zlib")
     _llvm_zstd_compat(name = "llvm_zstd")
+    _llvm_xz_compat(name = "llvm_xz")
     linux_uapi_setup(name = "linux_uapi")
     http_archive(
         name = "pyyaml",

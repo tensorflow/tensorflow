@@ -1,0 +1,171 @@
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:private"])
+
+licenses(["unencumbered"])
+
+exports_files(["COPYING"])
+
+cc_library(
+    name = "lzma",
+    srcs = glob(
+        include = [
+            "src/**/*.h",
+            "src/liblzma/**/*.c",
+        ],
+        exclude = [
+            "src/**/*_tablegen.c",
+            "src/liblzma/check/sha256.c",
+            "src/liblzma/check/crc*_small.c",
+            "src/liblzma/common/stream_decoder_mt.c",
+            "src/liblzma/common/stream_encoder_mt.c",
+        ],
+    ) + select({
+        "@platforms//os:osx": [],
+        "@platforms//os:ios": [],
+        "//conditions:default": [
+            "src/liblzma/check/sha256.c",
+        ],
+    }) + select({
+        "@platforms//os:none": [],
+        "//conditions:default": [
+            "src/common/tuklib_cpucores.c",
+            "src/common/tuklib_physmem.c",
+            "src/liblzma/common/stream_decoder_mt.c",
+            "src/liblzma/common/stream_encoder_mt.c",
+        ],
+    }),
+    hdrs = glob(["src/liblzma/api/**/*.h"]),
+    copts = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["-std=c99"],
+    }),
+    defines = select({
+        "@platforms//os:windows": ["LZMA_API_STATIC"],
+        "//conditions:default": [],
+    }),
+    implementation_deps = [
+        ":config",
+        ":src_common",
+        ":src_liblzma",
+        ":src_liblzma_check",
+        ":src_liblzma_common",
+        ":src_liblzma_delta",
+        ":src_liblzma_lz",
+        ":src_liblzma_lzma",
+        ":src_liblzma_rangecoder",
+        ":src_liblzma_simple",
+    ],
+    linkopts = select({
+        "@platforms//os:android": [],
+        "@platforms//os:windows": [],
+        "@platforms//os:none": [],
+        "//conditions:default": ["-lpthread"],
+    }),
+    linkstatic = select({
+        "@platforms//os:windows": True,
+        "//conditions:default": False,
+    }),
+    strip_include_prefix = "src/liblzma/api",
+    visibility = ["//visibility:public"],
+)
+
+# Generate config.h from config_generic.h
+copy_file(
+    name = "config_copy",
+    src = "@xla//third_party:xz/config/config_generic.h",
+    out = "lzma_config/config.h",
+)
+
+cc_library(
+    name = "config",
+    hdrs = ["lzma_config/config.h"],
+)
+
+cc_library(
+    name = "src_common",
+    srcs = select({
+        "@platforms//os:none": [],
+        "//conditions:default": [
+            "src/common/tuklib_exit.c",
+            "src/common/tuklib_progname.c",
+        ],
+    }),
+    hdrs = glob(["src/common/*.h"]),
+    defines = select({
+        "@platforms//os:windows": ["LZMA_API_STATIC"],
+        "//conditions:default": [],
+    }),
+    local_defines = select({
+        "@platforms//os:windows": ["TUKLIB_GETTEXT=0"],
+        "//conditions:default": [],
+    }),
+    strip_include_prefix = "src/common",
+    deps = [
+        ":config",
+        ":src_liblzma",
+        ":src_liblzma_api",
+        ":src_liblzma_common",
+    ],
+)
+
+cc_library(
+    name = "src_liblzma",
+    hdrs = glob([
+        "src/liblzma/common/*.h",
+        "src/liblzma/lzma/*.h",
+    ]),
+    strip_include_prefix = "src/liblzma",
+)
+
+cc_library(
+    name = "src_liblzma_api",
+    hdrs = glob(
+        include = ["src/liblzma/api/**/*.h"],
+        exclude = ["src/liblzma/api/lzma.h"],
+    ),
+    strip_include_prefix = "src/liblzma/api",
+)
+
+cc_library(
+    name = "src_liblzma_check",
+    hdrs = glob(["src/liblzma/check/*.h"]),
+    strip_include_prefix = "src/liblzma/check",
+)
+
+cc_library(
+    name = "src_liblzma_common",
+    hdrs = glob(["src/liblzma/common/*.h"]),
+    strip_include_prefix = "src/liblzma/common",
+)
+
+cc_library(
+    name = "src_liblzma_delta",
+    hdrs = glob(["src/liblzma/delta/*.h"]),
+    strip_include_prefix = "src/liblzma/delta",
+)
+
+cc_library(
+    name = "src_liblzma_lz",
+    hdrs = glob(["src/liblzma/lz/*.h"]),
+    strip_include_prefix = "src/liblzma/lz",
+)
+
+cc_library(
+    name = "src_liblzma_lzma",
+    hdrs = glob(["src/liblzma/lzma/*.h"]),
+    strip_include_prefix = "src/liblzma/lzma",
+)
+
+cc_library(
+    name = "src_liblzma_rangecoder",
+    hdrs = glob(["src/liblzma/rangecoder/*.h"]),
+    strip_include_prefix = "src/liblzma/rangecoder",
+)
+
+cc_library(
+    name = "src_liblzma_simple",
+    hdrs = glob(["src/liblzma/simple/*.h"]),
+    strip_include_prefix = "src/liblzma/simple",
+)
