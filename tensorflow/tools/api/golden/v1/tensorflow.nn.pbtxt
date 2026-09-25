@@ -357,6 +357,10 @@ tf_module {
     argspec: "args=[\'input\', \'depthwise_filter\', \'pointwise_filter\', \'strides\', \'padding\', \'rate\', \'name\', \'data_format\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "separable_conv2d_transpose"
+    argspec: "args=[\'value\', \'depthwise_filter\', \'pointwise_filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\', \'input\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'SAME\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "sigmoid"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
