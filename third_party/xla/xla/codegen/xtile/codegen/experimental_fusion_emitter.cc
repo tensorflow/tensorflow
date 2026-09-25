@@ -2192,6 +2192,11 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   b.setInsertionPointToStart(&fn.front());
   Value program_id = fn.getProgramId();
   Value tile_id = program_id;
+  // Record the bounds of the program id on the function argument. Otherwise
+  // they only live in the domains of the apply_indexing ops using it, and get
+  // lost when identity apply_indexing ops are folded.
+  fn.setArgAttr(mlir::cast<mlir::BlockArgument>(program_id).getArgNumber(),
+                "xla.range", b.getIndexArrayAttr({0, schedule.num_pids - 1}));
 
   // If there are more than one tile per pid, we need to add a scf.for loop to
   // iterate through the tiles.

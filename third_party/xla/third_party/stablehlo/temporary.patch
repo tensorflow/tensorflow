@@ -2176,3 +2176,14 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/Passes.h b/stablehlo/st
  
  }  // namespace stablehlo
  }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -1766,6 +1766,7 @@
+ void populateStablehloHloImportCanonicalizationPatterns(
+     MLIRContext* context, RewritePatternSet* patterns,
+     const StablehloAggressiveSimplificationPassOptions& options) {
++  patterns->add<ConcatenateOpNoop, ConcatenateOpRemoveEmpty>(context, options);
+   patterns->add<ReshapeOp_RemoveNoop, GetTupleElementOp_UnpackTuple>(context);
+   patterns->add<TupleIsRepacking, WhileOpImplicitCapture>(context, options);
+ }

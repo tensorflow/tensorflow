@@ -942,6 +942,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "requires-gpu-sm90",
     ],
     deps = [
@@ -2407,6 +2408,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
     ],
     deps = [
         ":compilation_provider_test_lib",
@@ -2420,6 +2422,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "notsan",
         "requires-gpu-sm90",
     ],
