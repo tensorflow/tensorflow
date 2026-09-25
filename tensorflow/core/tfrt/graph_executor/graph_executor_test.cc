@@ -24,7 +24,9 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -447,6 +449,151 @@ TEST_P(GraphExecutorTest, Cancellation) {
 
     EXPECT_THAT(GetTfTensorData<bool>(outputs[0]),
                 ::testing::ElementsAreArray({false}));
+  }
+}
+
+struct DeferredAsyncTestSync {
+  absl::Mutex mu;
+  bool async_started ABSL_GUARDED_BY(mu) = false;
+  bool async_finished ABSL_GUARDED_BY(mu) = false;
+};
+
+DeferredAsyncTestSync& GetDeferredAsyncTestSync() {
+  static auto* const sync = new DeferredAsyncTestSync();
+  return *sync;
+}
+
+REGISTER_OP("TestDeferredAsync")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {int32}")
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
+
+class TestDeferredAsyncKernel : public AsyncOpKernel {
+ public:
+  explicit TestDeferredAsyncKernel(OpKernelConstruction* context)
+      : AsyncOpKernel(context),
+        thread_pool_(context->env(), "test_deferred_async", 1) {}
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    auto& sync = GetDeferredAsyncTestSync();
+    {
+      absl::MutexLock lock(&sync.mu);
+      sync.async_started = true;
+    }
+    const Tensor& input = ctx->input(0);
+    thread_pool_.Schedule([ctx, input, done = std::move(done)]() {
+      absl::SleepFor(absl::Milliseconds(100));
+      ctx->set_output(0, input);
+      {
+        absl::MutexLock lock(&GetDeferredAsyncTestSync().mu);
+        GetDeferredAsyncTestSync().async_finished = true;
+      }
+      done();
+    });
+  }
+
+ private:
+  tsl::thread::ThreadPool thread_pool_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TestDeferredAsync").Device(DEVICE_CPU),
+                        TestDeferredAsyncKernel);
+
+REGISTER_OP("TestCancelAfterAsyncStarted")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {int32}")
+    .SetShapeFn(::tensorflow::shape_inference::UnchangedShape);
+
+class TestCancelAfterAsyncStartedKernel : public OpKernel {
+ public:
+  explicit TestCancelAfterAsyncStartedKernel(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    auto& sync = GetDeferredAsyncTestSync();
+    {
+      absl::MutexLock lock(&sync.mu);
+      sync.mu.AwaitWithTimeout(absl::Condition(&sync.async_started),
+                               absl::Seconds(5));
+      EXPECT_TRUE(sync.async_started);
+    }
+    auto status = absl::CancelledError("Cancelled after async started");
+    ctx->cancellation_manager()->StartCancelWithStatus(status);
+    ctx->SetStatus(status);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TestCancelAfterAsyncStarted").Device(DEVICE_CPU),
+                        TestCancelAfterAsyncStartedKernel);
+
+TEST_P(GraphExecutorTest, WaitsForDeferredAsyncOpOnCancellation) {
+  auto& sync = GetDeferredAsyncTestSync();
+  {
+    absl::MutexLock lock(&sync.mu);
+    sync.async_started = false;
+    sync.async_finished = false;
+  }
+
+  GraphDef graph_def;
+  tensorflow::GraphDefBuilder builder(
+      tensorflow::GraphDefBuilder::kFailImmediately);
+
+  const tensorflow::TensorShape tensor_shape({1, 3});
+  tensorflow::Node* input = tensorflow::ops::SourceOp(
+      "Placeholder", builder.opts()
+                         .WithName("input")
+                         .WithAttr("dtype", tensorflow::DT_INT32)
+                         .WithAttr("shape", tensor_shape));
+  tensorflow::ops::UnaryOp("TestDeferredAsync", input,
+                           builder.opts()
+                               .WithName("deferred_async")
+                               .WithAttr("T", tensorflow::DT_INT32));
+  tensorflow::ops::UnaryOp(
+      "TestCancelAfterAsyncStarted", input,
+      builder.opts().WithName("cancel_op").WithAttr("T", tensorflow::DT_INT32));
+
+  TF_ASSERT_OK(builder.ToGraphDef(&graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/2);
+  GraphExecutor::Options options(runtime.get());
+  options.enable_mlrt = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), std::move(fallback_state),
+                            std::move(resource_context), graph_def,
+                            GetKernelRegistry()));
+
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+  EXPECT_THAT(graph_executor->Run(
+                  /*run_options=*/{}, inputs,
+                  /*output_tensor_names=*/{"cancel_op:0", "deferred_async:0"},
+                  /*target_tensor_names=*/{}, &outputs),
+              StatusIs(absl::StatusCode::kCancelled));
+
+  // GraphExecutor::Run must not return until all launched AsyncOpKernels
+  // (e.g. MlrtBatchResource::ProcessFuncBatchImpl) have invoked their done
+  // callbacks, otherwise per-request objects (RequestInfo, RequestCost) are
+  // destroyed while async threads still access them (b/566035803).
+  {
+    absl::MutexLock lock(&sync.mu);
+    EXPECT_TRUE(sync.async_started);
+    EXPECT_TRUE(sync.async_finished);
+    if (sync.async_started) {
+      sync.mu.AwaitWithTimeout(absl::Condition(&sync.async_finished),
+                               absl::Seconds(5));
+    }
   }
 }
 

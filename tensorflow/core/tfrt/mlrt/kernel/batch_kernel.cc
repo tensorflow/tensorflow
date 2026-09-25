@@ -24,6 +24,8 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "absl/base/optimization.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -90,7 +93,11 @@ class ScopedBatchFunctionMlrtContext {
 
 template <typename Frame>
 void BatchFunctionInvokeHelper(Frame& frame) {
-  ScopedBatchFunctionMlrtContext scoped_context(&frame.execution_context());
+  mlrt::ExecutionContext* root_execution_context =
+      frame.context().root_execution_context() != nullptr
+          ? frame.context().root_execution_context()
+          : &frame.execution_context();
+  ScopedBatchFunctionMlrtContext scoped_context(root_execution_context);
 
   const auto& fallback_request_state = frame.context().fallback_request_state();
 
@@ -345,13 +352,14 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_runtime_config(
       caller_fallback_request_state.runtime_config());
 
+  const uint64_t batch_activity_id = tsl::profiler::TraceMe::NewActivityId();
   tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
         return tsl::profiler::TraceMeEncode("RunMlrtFunction",
                                             {{"id", step_id}, {"_r", 1}});
       },
-      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::ContextType::kTfrtExecutor, batch_activity_id,
       tsl::profiler::TraceMeLevel::kInfo);
   auto trace_me_context_id = activity.GetContextId();
 
@@ -367,10 +375,8 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   DCHECK(work_queue);
   execution_context.set_work_queue(work_queue);
 
-  auto chain = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
-
-  execution_context.set_exit_handler(
-      [chain]() mutable { chain.SetStateConcrete(); });
+  tsl::RCReference<tsl::AsyncValue> chain =
+      SetUpExitAndDeferredOpsHandler(execution_context);
 
   execution_context.CallByMove(batch_function_, absl::MakeSpan(arguments),
                                absl::MakeSpan(results));
@@ -382,7 +388,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
     mlrt::Execute(execution_context);
   });
 
-  work_queue->Await(chain.CopyRCRef());
+  work_queue->Await(chain);
 
   if (execution_context.status().ok()) {
     combined_outputs->reserve(results.size());

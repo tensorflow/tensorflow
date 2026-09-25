@@ -133,6 +133,7 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kShuffle:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kTranspose:
