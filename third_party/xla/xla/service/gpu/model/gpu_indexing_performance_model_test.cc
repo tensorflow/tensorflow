@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -1281,6 +1282,52 @@ ENTRY entry_computation {
   ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
 }
 )");
+}
+
+TEST_P(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  c0 = f32[] constant(0)
+  exp = f32[128,256] exponential(p0)
+  dot = f32[128,64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reduce = f32[128] reduce(dot, c0), dimensions={1}, to_apply=add
+  ROOT tuple = (f32[128,64], f32[128]) tuple(dot, reduce)
+}
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  ROOT fusion = (f32[128,64], f32[128]) fusion(p0, p1), kind=kCustom,
+    calls=fused_computation
+}
+)"));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+
+  auto flops_map = internal::PrecomputeFlopsMap(
+      *fusion_adaptor, [this](const HloInstruction* instr) {
+        return indexing_cost_model_.FlopsPerElement(instr);
+      });
+
+  HloComputation* fused_comp = fusion->fused_instructions_computation();
+  const HloInstruction* dot = fused_comp->GetInstructionWithName("dot");
+  const HloInstruction* reduce = fused_comp->GetInstructionWithName("reduce");
+  const HloInstruction* exp = fused_comp->GetInstructionWithName("exp");
+
+  EXPECT_EQ(flops_map.at(dot), indexing_cost_model_.FlopsPerElement(dot));
+  EXPECT_EQ(flops_map.at(reduce), indexing_cost_model_.FlopsPerElement(reduce));
+  EXPECT_EQ(flops_map.at(exp), indexing_cost_model_.FlopsPerElement(exp));
 }
 
 }  // namespace
