@@ -18,7 +18,11 @@
 
 ### Bug Fixes and Other Changes
 
-*   <BUG FIXES GO HERE>
+*   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
+    number of rows or columns of the input are now clamped to the matrix
+    dimensions instead of raising an `InvalidArgumentError`. This matches the
+    documented definition of the op and the behavior of the XLA lowering used by
+    `tf.function(jit_compile=True)`.
 
 ## Thanks to our Contributors
 
