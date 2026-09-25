@@ -153,6 +153,26 @@ class TfLiteFlatbufferModelBuilder {
         /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS));
   }
 
+  // Adds a custom operator whose options live outside the flatbuffer,
+  // addressed by (large_custom_options_offset, large_custom_options_size).
+  void AddOperatorWithLargeCustomOptions(const std::vector<int32_t>& inputs,
+                                         const std::vector<int32_t>& outputs,
+                                         const char* custom_op, uint64_t offset,
+                                         uint64_t size) {
+    operator_codes_.push_back(
+        CreateOperatorCodeDirect(builder_, BuiltinOperator_CUSTOM, custom_op));
+    // Vectors have to be serialized before the Operator table is started.
+    auto inputs_offset = builder_.CreateVector(inputs);
+    auto outputs_offset = builder_.CreateVector(outputs);
+    OperatorBuilder op_builder(builder_);
+    op_builder.add_opcode_index(operator_codes_.size() - 1);
+    op_builder.add_inputs(inputs_offset);
+    op_builder.add_outputs(outputs_offset);
+    op_builder.add_large_custom_options_offset(offset);
+    op_builder.add_large_custom_options_size(size);
+    operators_.push_back(op_builder.Finish());
+  }
+
   enum BuilderMode {
     kBuilderModeEmptyVectorIsEmpty,
     kBuilderModeEmptyVectorIsNull,
@@ -673,6 +693,68 @@ TEST(VerifyModel, InputIsBufferOffset) {
   ASSERT_TRUE(builder.VerifyWithOpResolver());
   EXPECT_EQ("", builder.GetErrorString());
 }
+
+// (offset, size) pairs for the external-offset bounds checks. The in-range
+// pair lies inside the model bytes and must pass. The other two have a uint64
+// sum that wraps below any test model's length (to 0, and to 8 with a size
+// that fits in the model on its own, so only the `offset > len - size` clause
+// can reject it); the old `offset + size > len` form accepted both.
+struct ExternalOffsetCase {
+  uint64_t offset;
+  uint64_t size;
+  bool valid;
+};
+constexpr ExternalOffsetCase kExternalOffsetCases[] = {
+    {8, 4, true},
+    {0xFFFFFFFFFFFFFF00ULL, 0x100ULL, false},
+    {0xFFFFFFFFFFFFFFF8ULL, 0x10ULL, false},
+};
+
+TEST(VerifyModel, BufferOffsetBoundsCheckHandlesUint64Wrap) {
+  for (const auto& c : kExternalOffsetCases) {
+    SCOPED_TRACE(::testing::Message()
+                 << "offset=" << c.offset << " size=" << c.size);
+    TfLiteFlatbufferModelBuilder builder({}, {"test"});
+    builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+    builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+    builder.AddBufferOffsetTensor({2, 2}, TensorType_UINT8, c.offset, c.size,
+                                  "offset_weight");
+    builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+    builder.FinishModel({0}, {2});
+    EXPECT_EQ(builder.Verify(), c.valid);
+    EXPECT_EQ(builder.VerifyWithOpResolver(), c.valid);
+    if (c.valid) {
+      EXPECT_EQ("", builder.GetErrorString());
+    } else {
+      EXPECT_THAT(builder.GetErrorString(),
+                  ::testing::ContainsRegex("Tensor offset_weight buffer 2 "
+                                           "specified an out of range offset"));
+    }
+  }
+}
+
+TEST(VerifyModel, LargeCustomOptionsBoundsCheckHandlesUint64Wrap) {
+  for (const auto& c : kExternalOffsetCases) {
+    SCOPED_TRACE(::testing::Message()
+                 << "offset=" << c.offset << " size=" << c.size);
+    TfLiteFlatbufferModelBuilder builder({}, {"test"});
+    builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+    builder.AddTensor({2, 2}, TensorType_INT32, {}, "output");
+    builder.AddOperatorWithLargeCustomOptions({0}, {1}, "test", c.offset,
+                                              c.size);
+    builder.FinishModel({0}, {1});
+    EXPECT_EQ(builder.Verify(), c.valid);
+    EXPECT_EQ(builder.VerifyWithOpResolver(), c.valid);
+    if (c.valid) {
+      EXPECT_EQ("", builder.GetErrorString());
+    } else {
+      EXPECT_THAT(builder.GetErrorString(),
+                  ::testing::ContainsRegex(
+                      "Operator's large_custom_options is out of bound"));
+    }
+  }
+}
+
 TEST(VerifyModel, TypedTensorShapeMismatchWithTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
