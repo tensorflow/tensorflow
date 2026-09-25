@@ -200,6 +200,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
 #include "xla/hlo/transforms/expanders/rng_expander.h"
+#include "xla/hlo/transforms/expanders/shuffle_expander.h"
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/host_offload_legalize.h"
@@ -806,6 +807,7 @@ absl::Status RunOptimizationPasses(
     return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
   });
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
+  pipeline.AddPass<ShuffleExpander>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
   }

@@ -1742,6 +1742,7 @@ cc_library(
         ":alias_info",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:alias_passthrough_params",
+        "//xla/backends/gpu/transforms:constant_fill_copy_rewriter",
         "//xla/backends/gpu/transforms:copy_fusion",
         "//xla/backends/gpu/transforms:sanitize_constant_names",
         "//xla/hlo/ir:hlo",
@@ -1966,6 +1967,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:reshape_decomposer",
         "//xla/hlo/transforms/expanders:rng_bit_generator_expander",
         "//xla/hlo/transforms/expanders:rng_expander",
+        "//xla/hlo/transforms/expanders:shuffle_expander",
         "//xla/hlo/transforms/expanders:stable_sort_expander",
         "//xla/hlo/transforms/expanders:stochastic_convert_decomposer",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
@@ -2308,7 +2310,6 @@ cc_library(
     deps = [
         ":gpu_executable",
         ":gpu_executable_proto_cc",
-        "//xla:debug_options_flags",
         "//xla:printer",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -2428,9 +2429,7 @@ xla_test(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_module_config",
-        "//xla/service:pattern_matcher",
         "//xla/tests:xla_internal_test_main",
         "//xla/tests/restricted:hlo_test_base_legacy",
         "@com_google_absl//absl/log",
@@ -3631,6 +3630,7 @@ cc_library(
     hdrs = ["execution_stream_assignment.h"],
     deps = [
         ":gpu_latency_hiding_scheduler",
+        "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/transforms/collectives:collective_domain",

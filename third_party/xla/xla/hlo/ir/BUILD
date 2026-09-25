@@ -86,6 +86,7 @@ cc_library(
         "//xla:shape_pool",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:shuffle",
         "//xla:side_effect_util",
         "//xla:sort_json",
         "//xla:status_macros",
