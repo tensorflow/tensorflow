@@ -31,14 +31,10 @@ package_group(
     ],
 )
 
-cc_library(
+alias(
     name = "api",
-    hdrs = ["//xla/ffi/api:api_headers"],
+    actual = "//xla/ffi/api:api",
     visibility = [":ffi_internal"],
-    deps = [
-        "//xla/ffi/api:c_api",
-        "@com_google_absl//absl/strings:string_view",
-    ],
 )
 
 cc_library(

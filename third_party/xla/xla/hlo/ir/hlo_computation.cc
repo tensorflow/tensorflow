@@ -206,6 +206,12 @@ HloComputation::~HloComputation() {
     CHECK(FusionInstruction()->fused_instructions_computation() == this);
     FusionInstruction()->ClearCalledComputations();
   }
+  // Every live instruction dies below, so only the edges that leave the
+  // computation are unlinked; the call also makes ~HloInstruction skip the
+  // rest. Instructions in to_be_deleted_ were detached at removal.
+  for (HloInstruction* instruction : instructions()) {
+    instruction->DetachFromOperandsAndUsersOutside(this);
+  }
   Cleanup();
   ClearCalledComputations();
 
