@@ -1590,9 +1590,19 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       input_tangents = forwardprop_util.TangentInfo()
     need_gradients_for_jvps = record.should_record_backprop(
         input_tangents.tangents)
+    forwardprop_input_aliases = ()
+    if input_tangents.tangents:
+      # JVP wrappers capture inputs by tensor identity, so generated functions
+      # depend on which inputs and tangents alias. Normalize the IDs to keep
+      # cache entries reusable across calls with fresh tensors.
+      tensor_indices = {}
+      forwardprop_input_aliases = tuple(
+          tensor_indices.setdefault(ops.tensor_id(t), len(tensor_indices))
+          for t in args + input_tangents.tangents)
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
-    cache_key = (need_gradients_for_jvps, input_tangents.indices)
+    cache_key = (need_gradients_for_jvps, input_tangents.indices,
+                 forwardprop_input_aliases)
     if (possible_gradient_type
         == gradients_util.POSSIBLE_GRADIENT_TYPES_FIRST_ORDER):
       if input_tangents.indices or executing_eagerly:

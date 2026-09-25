@@ -657,6 +657,81 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.5 * 2.5 * 1.1**1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
 
+  @parameterized.product(
+      shared_first=[True, False], record_backprop=[True, False])
+  def testFunctionJVPWithChangingTangentAliasing(self, shared_first,
+                                              record_backprop):
+
+    @def_function.function
+    def multiply(x, y):
+      return x * y
+
+    x = constant_op.constant(2.)
+    y = constant_op.constant(5.)
+    concrete = multiply.get_concrete_function(x, y)
+    cache_sizes = []
+    for shared in (shared_first, not shared_first, shared_first):
+      tangent_x = constant_op.constant(2.)
+      tangent_y = tangent_x if shared else constant_op.constant(3.)
+      with backprop.GradientTape() as tape:
+        if record_backprop:
+          tape.watch((x, y))
+        with forwardprop.ForwardAccumulator(
+            (x, y), (tangent_x, tangent_y)) as acc:
+          result = multiply(x, y)
+        jvp = acc.jvp(result)
+      self.assertAllClose(14. if shared else 16., jvp)
+      if record_backprop:
+        self.assertAllClose([5., 2.], tape.gradient(result, (x, y)))
+      cache_sizes.append(
+          len(concrete._first_order_tape_functions) +
+          len(concrete._higher_order_tape_functions))
+    # Fresh tensors with the same aliasing pattern should reuse the cache.
+    self.assertEqual(cache_sizes[1], cache_sizes[2])
+
+  @parameterized.product(
+      dtype=[dtypes.float32, dtypes.float64],
+      transform=["identity", "sin", "square"],
+      compiled=[False, True])
+  def testNestedForwardWithReusedIntermediate(self, dtype, transform, compiled):
+    transforms = {
+        "identity": array_ops.identity,
+        "sin": math_ops.sin,
+        "square": math_ops.square,
+    }
+
+    def second_derivative(x):
+      with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as outer:
+        with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as inner:
+          m = transforms[transform](x)
+          result = (m * m) * m
+        first_derivative = inner.jvp(result)
+      return outer.jvp(first_derivative)
+
+    if compiled:
+      second_derivative = def_function.function(second_derivative)
+    for value in (0.7, 1.1):
+      expected = {
+          "identity": 6 * value,
+          "sin": 6 * np.sin(value) * np.cos(value)**2 - 3 * np.sin(value)**3,
+          "square": 30 * value**4,
+      }[transform]
+      self.assertAllClose(
+          expected, second_derivative(constant_op.constant(value, dtype=dtype)))
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testNestedForwardWithReusedMatrixIntermediate(self, dtype):
+    x = constant_op.constant(0.7, dtype=dtype)
+    with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as outer:
+      with forwardprop.ForwardAccumulator(x, array_ops.ones_like(x)) as inner:
+        one = constant_op.constant(1., dtype=dtype)
+        m = array_ops_stack.stack([
+            array_ops_stack.stack([x, one]),
+            array_ops_stack.stack([-one, x])])
+        result = math_ops.matmul(math_ops.matmul(m, m), m)
+      first_derivative = inner.jvp(result)
+    self.assertAllClose(6 * m, outer.jvp(first_derivative))
+
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testJVPPacking(self):
     two = constant_op.constant(2.)
