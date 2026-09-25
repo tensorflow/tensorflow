@@ -635,9 +635,13 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
                                                  int64_t size) {
-  current_heap_size_ += size;
-  if (current_heap_size_ > max_heap_size_) {
-    max_heap_size_ = current_heap_size_;
+  BufferInfo& info = buffer_info_[buffer];
+  info.ref_count++;
+  if (info.ref_count == 1) {
+    current_heap_size_ += size;
+    if (current_heap_size_ > max_heap_size_) {
+      max_heap_size_ = current_heap_size_;
+    }
   }
 }
 
@@ -660,9 +664,47 @@ void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
 }
 
 template <typename BufferType>
+const BufferType* NoFragmentationStatsHeap<BufferType>::FindRoot(
+    const BufferType* buffer) {
+  const BufferType* root = buffer;
+  while (buffer_info_[root].underlying != nullptr) {
+    root = buffer_info_[root].underlying;
+  }
+  const BufferType* curr = buffer;
+  while (curr != root) {
+    const BufferType* next = buffer_info_[curr].underlying;
+    buffer_info_[curr].underlying = root;
+    curr = next;
+  }
+  return root;
+}
+
+template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::Free(const BufferType* buffer,
                                                 int64_t size) {
-  current_heap_size_ -= size;
+  const BufferType* root = FindRoot(buffer);
+  BufferInfo& root_info = buffer_info_[root];
+  root_info.ref_count--;
+  if (root_info.ref_count == 0) {
+    current_heap_size_ -= size;
+  }
+}
+
+template <typename BufferType>
+void NoFragmentationStatsHeap<BufferType>::ShareWith(
+    const BufferType* buffer, const BufferType* share_with, int64_t size) {
+  const BufferType* root = FindRoot(share_with);
+  if (buffer != root) {
+    buffer_info_[buffer].underlying = root;
+  }
+  BufferInfo& root_info = buffer_info_[root];
+  root_info.ref_count++;
+  if (root_info.ref_count == 1) {
+    current_heap_size_ += size;
+    if (current_heap_size_ > max_heap_size_) {
+      max_heap_size_ = current_heap_size_;
+    }
+  }
 }
 
 template <typename BufferType>

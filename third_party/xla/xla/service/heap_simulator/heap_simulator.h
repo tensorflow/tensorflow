@@ -340,9 +340,20 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
 
   void Free(const BufferType* buffer, int64_t size) override;
 
+  void ShareWith(const BufferType* buffer, const BufferType* share_with,
+                 int64_t size) override;
+
   absl::StatusOr<Result> Finish() override;
 
  private:
+  struct BufferInfo {
+    const BufferType* underlying = nullptr;
+    int64_t ref_count = 0;
+  };
+
+  const BufferType* FindRoot(const BufferType* buffer);
+
+  absl::flat_hash_map<const BufferType*, BufferInfo> buffer_info_;
   int64_t current_heap_size_ = 0;
   int64_t max_heap_size_ = 0;
 };
