@@ -201,6 +201,14 @@ class FFTBase : public OpKernel {
         uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
                            ? fft_shape[i] / 2 + 1
                            : fft_shape[i];
+        // An empty FFT axis is passed through by the check above. Keep it
+        // empty in the output too. Sizing it from `fft_length` instead would
+        // give a non-empty output for an empty input, and the
+        // `num_elements() == 0` early return below would then hand back the
+        // output buffer without ever writing it.
+        if (input_shape.dim_size(input_index) == 0) {
+          dim = 0;
+        }
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     } else {
@@ -329,6 +337,14 @@ class FFTNBase : public OpKernel {
         uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
                            ? fft_shape[i] / 2 + 1
                            : fft_shape[i];
+        // An empty FFT axis is passed through by the check above. Keep it
+        // empty in the output too. Sizing it from `fft_length` instead would
+        // give a non-empty output for an empty input, and the
+        // `num_elements() == 0` early return below would then hand back the
+        // output buffer without ever writing it.
+        if (input_shape.dim_size(input_index) == 0) {
+          dim = 0;
+        }
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       } else {
         output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
