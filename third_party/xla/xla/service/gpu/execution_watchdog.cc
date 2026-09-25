@@ -93,9 +93,11 @@ void ExecutionWatchdogScope::Arm(HangWatchdog::CancelCallback pre_abort) {
     std::weak_ptr<GuardHolder> weak_guard_holder = guard_holder_;
     auto watchdog_name = watchdog_name_;
     auto watchdog_timeout = watchdog_timeout_;
-    auto* gpu_run_options = gpu_run_options_;
+    ExecutionTimeoutHandler timeout_handler =
+        gpu_run_options_->execution_timeout_handler();
     on_timeout = [watchdog_name, watchdog_timeout,
-                  pre_abort = std::move(pre_abort), gpu_run_options,
+                  pre_abort = std::move(pre_abort),
+                  timeout_handler = std::move(timeout_handler),
                   weak_guard_holder]() mutable {
       if (pre_abort) {
         std::move(pre_abort)();
@@ -109,8 +111,7 @@ void ExecutionWatchdogScope::Arm(HangWatchdog::CancelCallback pre_abort) {
             HangWatchdog::Abort("post-abort ...", absl::Minutes(1)));
       }
 
-      gpu_run_options->execution_timeout_handler()(watchdog_name,
-                                                   watchdog_timeout);
+      timeout_handler(watchdog_name, watchdog_timeout);
     };
   } else {
     on_timeout = HangWatchdog::Abort(watchdog_name_, watchdog_timeout_,
