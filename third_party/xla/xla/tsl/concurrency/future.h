@@ -653,7 +653,7 @@ class PromiseOnceMaker;
 // Future<T> is a copyable type, although all copies share the same underlying
 // async value.
 template <class T>
-class Future : public internal::FutureBase<absl::StatusOr<T>> {
+class [[nodiscard]] Future : public internal::FutureBase<absl::StatusOr<T>> {
   using Base = internal::FutureBase<absl::StatusOr<T>>;
 
   static constexpr bool is_move_only = Base::IsMoveOnly();  // NOLINT
@@ -1719,7 +1719,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();
@@ -1743,7 +1743,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();
