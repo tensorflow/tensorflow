@@ -155,5 +155,39 @@ TEST(BitcastOpModel, BitcastInt16ToUint32WrongShape) {
 #endif
 }
 
+class BitcastConstInputOpModel : public SingleOpModel {
+ public:
+  BitcastConstInputOpModel(const TensorData& input, const TensorData& output,
+                           const std::vector<int8_t>& data) {
+    input_ = AddConstInput(input, data);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_BITCAST, BuiltinOptions_BitcastOptions,
+                 CreateBitcastOptions(builder_).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  int output() const { return output_; }
+
+ private:
+  int input_;
+  int output_;
+};
+
+// A constant tensor's raw FlatBuffer buffer may legally be larger than
+// its logical shape requires; the model loader only validates
+// required_bytes <= buffer_size. The copy into the output must be
+// bounded by the output allocation, not by the raw buffer length.
+TEST(BitcastOpModel, ConstantInputWithOversizedBuffer) {
+  std::vector<int8_t> input_data(1 << 12);
+  for (int i = 0; i < 4; ++i) {
+    input_data[i] = i + 1;
+  }
+  BitcastConstInputOpModel m({TensorType_INT8, {4}}, {TensorType_UINT8, {4}},
+                             input_data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<uint8_t>(m.output()),
+              ElementsAreArray({1, 2, 3, 4}));
+}
+
 }  // namespace
 }  // namespace tflite

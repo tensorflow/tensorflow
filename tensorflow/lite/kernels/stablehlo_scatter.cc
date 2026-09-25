@@ -220,7 +220,12 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   // First copy all of the data to the output before applying the updates.
-  memcpy(output->data.data, input->data.data, input->bytes);
+    // Clamp the copy length to the destination size. `input->bytes` is
+    // derived from the raw FlatBuffer buffer size for constant tensors
+    // and may be inflated relative to the logical shape, so it must be
+    // bounded by `output->bytes` to avoid an out-of-bounds write.
+  memcpy(output->data.data, input->data.data,
+         std::min(input->bytes, output->bytes));
 
   RuntimeShape input_shape = GetTensorShape(input);
   int input_rank = input_shape.DimensionsCount();
