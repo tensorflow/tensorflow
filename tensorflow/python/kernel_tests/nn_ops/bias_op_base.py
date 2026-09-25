@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
@@ -111,6 +112,34 @@ class BiasAddTestBase(test.TestCase):
       nn_ops.bias_add(
           array_ops.reshape([1, 2], shape=[1, 2]),
           array_ops.reshape([1], shape=[1]))
+
+  def testNCHWRankTooLow(self):
+    # A rank-2 NCHW input aborted the GPU kernel with a CHECK failure
+    # (issue #94379); the added OP_REQUIRES makes the kernel raise
+    # InvalidArgumentError instead. Checked in eager only: in graph mode
+    # BiasAddShape rejects rank-2 NCHW at construction (WithRankAtLeast 3, a
+    # ValueError) before the kernel runs, so a graph-mode test would exercise
+    # the pre-existing shape function rather than this guard. Eager places the
+    # op on GPU when one is present and on CPU otherwise.
+    if not context.executing_eagerly():
+      self.skipTest("kernel guard is reachable only in eager mode")
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "at least 3D"):
+      nn_ops.bias_add(
+          array_ops.ones([2, 6], dtype=dtypes.float32),
+          array_ops.ones([6], dtype=dtypes.float32),
+          data_format="NCHW")
+
+  def testNCHWRankTooLowGrad(self):
+    # BiasAddGrad has the same NCHW rank requirement and the same eager-only
+    # kernel guard as the forward op (see testNCHWRankTooLow).
+    if not context.executing_eagerly():
+      self.skipTest("kernel guard is reachable only in eager mode")
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "at least 3D"):
+      gen_nn_ops.bias_add_grad(
+          array_ops.ones([2, 6], dtype=dtypes.float32),
+          data_format="NCHW")
 
   def testIntTypes(self):
     for t in [np.int8, np.int16, np.int32, np.int64]:
