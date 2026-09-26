@@ -417,17 +417,19 @@ class DequantizeOpTest(test_util.TensorFlowTestCase):
     # Regression test for GitHub issue 100175: the kernel accepted axis
     # values below -1 in eager mode and silently treated them as per-tensor
     # dequantization, while the shape function already rejected them at
-    # graph construction time.
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError), "at least -1"):
-      self.evaluate(
-          gen_array_ops.dequantize(
-              input=constant_op.constant(
-                  np.uint8(74), shape=[3], dtype=dtypes.quint8),
-              min_range=0.0,
-              max_range=1.0,
-              mode="MIN_COMBINED",
-              axis=-5))
+    # graph construction time. -2 is the first invalid value below the -1
+    # sentinel.
+    for axis in (-2, -5):
+      with self.subTest(axis=axis), self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), "at least -1"):
+        self.evaluate(
+            gen_array_ops.dequantize(
+                input=constant_op.constant(
+                    np.uint8(74), shape=[3], dtype=dtypes.quint8),
+                min_range=0.0,
+                max_range=1.0,
+                mode="MIN_COMBINED",
+                axis=axis))
 
   @test_util.run_in_graph_and_eager_modes
   def test_per_tensor_sentinel_axis_valid(self):
@@ -449,17 +451,32 @@ class QuantizeV2OpTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_axis_below_minus_one_raises(self):
     # Same missing lower-bound validation as Dequantize; see GitHub issue
-    # 100175.
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError), "at least -1"):
-      self.evaluate(
-          gen_array_ops.quantize_v2(
-              input=constant_op.constant([0.1, 0.5, 0.9]),
-              min_range=0.0,
-              max_range=1.0,
-              T=dtypes.quint8,
-              mode="MIN_COMBINED",
-              axis=-5))
+    # 100175. -2 is the first invalid value below the -1 sentinel.
+    for axis in (-2, -5):
+      with self.subTest(axis=axis), self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), "at least -1"):
+        self.evaluate(
+            gen_array_ops.quantize_v2(
+                input=constant_op.constant([0.1, 0.5, 0.9]),
+                min_range=0.0,
+                max_range=1.0,
+                T=dtypes.quint8,
+                mode="MIN_COMBINED",
+                axis=axis))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_per_tensor_sentinel_axis_valid(self):
+    # axis=-1 is the per-tensor sentinel at the op level and must keep
+    # working with scalar ranges.
+    output, _, _ = self.evaluate(
+        gen_array_ops.quantize_v2(
+            input=constant_op.constant([0.1, 0.5, 0.9]),
+            min_range=0.0,
+            max_range=1.0,
+            T=dtypes.quint8,
+            mode="MIN_COMBINED",
+            axis=-1))
+    self.assertEqual((3,), output.shape)
 
 
 class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
