@@ -19,10 +19,12 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import auto_control_deps as acd
+from tensorflow.python.framework import auto_control_deps_utils as acd_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from unittest import mock
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_switch_case
@@ -990,6 +992,30 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertNotIn(input2, reads3)
     self.assertIn(input2, writes3)
     self.assertNotIn(input0, writes3)
+
+  def testOverlappingReadWriteResourceInputs(self):
+    attr = acd_utils.READ_ONLY_RESOURCE_INPUTS_ATTR
+
+    def get_attr_returning(indices):
+      def _get_attr(name):
+        if name == attr:
+          return indices
+        raise ValueError()
+
+      return _get_attr
+
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      op = mock.MagicMock()
+      op.type = "SomeOp"
+      op.inputs = [v.handle, v.handle]
+      op.get_attr.side_effect = get_attr_returning([0])
+
+      resource_inputs = list(acd._get_resource_inputs(op))
+      self.assertEqual(len(resource_inputs), 1)
+      self.assertEqual(
+          resource_inputs[0], (v.handle, acd.ResourceType.READ_WRITE)
+      )
 
 
 if __name__ == "__main__":
