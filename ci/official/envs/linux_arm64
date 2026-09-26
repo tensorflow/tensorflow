@@ -18,6 +18,9 @@ TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_arm64
 # to tensorflow_cpu. These ARM builds are supposed to have the name "tensorflow"
 # despite lacking Nvidia CUDA support.
 TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
+# The same wheel is also published as tensorflow_cpu, so that the package name
+# works on every platform TensorFlow ships. See the note in ci_default.
+TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="tensorflow_cpu"
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_IMAGE=us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest
 TFCI_DOCKER_PULL_ENABLE=1
