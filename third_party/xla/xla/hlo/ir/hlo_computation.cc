@@ -206,6 +206,12 @@ HloComputation::~HloComputation() {
     CHECK(FusionInstruction()->fused_instructions_computation() == this);
     FusionInstruction()->ClearCalledComputations();
   }
+  // Every live instruction dies below, so only the edges that leave the
+  // computation are unlinked; the call also makes ~HloInstruction skip the
+  // rest. Instructions in to_be_deleted_ were detached at removal.
+  for (HloInstruction* instruction : instructions()) {
+    instruction->DetachFromOperandsAndUsersOutside(this);
+  }
   Cleanup();
   ClearCalledComputations();
 
@@ -739,10 +745,10 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
   }
   // Sort into decreasing order by parameter number, otherwise the renumbering
   // of parameters when one parameter is deleted will cause issues.
-  std::sort(parameters_to_be_removed.begin(), parameters_to_be_removed.end(),
-            [](HloInstruction* a, HloInstruction* b) {
-              return a->parameter_number() > b->parameter_number();
-            });
+  absl::c_sort(parameters_to_be_removed,
+               [](HloInstruction* a, HloInstruction* b) {
+                 return a->parameter_number() > b->parameter_number();
+               });
   std::vector<HloInstruction*> callers;
   if (!parameters_to_be_removed.empty()) {
     if (parent != nullptr && computation_callers.has_value()) {

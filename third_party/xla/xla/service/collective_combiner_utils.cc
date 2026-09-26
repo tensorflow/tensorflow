@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/strings/match.h"
@@ -53,8 +54,8 @@ int64_t FindMostFrequentGatherDim(
                         static_cast<int64_t>(it->shape().dimensions().size()));
   }
 
-  int64_t most_frequent_dim = std::distance(
-      frequency.begin(), std::max_element(frequency.begin(), frequency.end()));
+  int64_t most_frequent_dim =
+      std::distance(frequency.begin(), absl::c_max_element(frequency));
   return most_frequent_dim < min_rank ? most_frequent_dim : 0;
 }
 

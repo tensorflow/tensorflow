@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status_macros.h"
@@ -51,7 +52,7 @@ absl::StatusOr<bool> ShardingRemover::RunImpl(
 
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
-    std::reverse(instructions.begin(), instructions.end());
+    absl::c_reverse(instructions);
     for (HloInstruction* instruction : instructions) {
       if (instruction->opcode() != HloOpcode::kCustomCall) {
         continue;

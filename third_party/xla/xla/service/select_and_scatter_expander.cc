@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
@@ -193,7 +194,7 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
 
   // Prepare scatter inputs
   std::vector<int64_t> scatter_dims(operand->shape().dimensions().size());
-  std::iota(scatter_dims.begin(), scatter_dims.end(), 0);
+  absl::c_iota(scatter_dims, 0);
   auto* broadcasted_init_value = computation->AddInstruction(
       HloInstruction::CreateBroadcast(instruction->shape(), init_value, {}));
 

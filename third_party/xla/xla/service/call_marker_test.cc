@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -415,19 +416,15 @@ TEST_F(CallMarkerTest, ControlDependenciesSplitBetweenMarkers) {
   ASSERT_NE(call, nullptr);
 
   // Control predecessors: other1 should point to before, not call.
-  EXPECT_NE(std::find(before->control_predecessors().begin(),
-                      before->control_predecessors().end(), other1),
+  EXPECT_NE(absl::c_find(before->control_predecessors(), other1),
             before->control_predecessors().end());
-  EXPECT_EQ(std::find(call->control_predecessors().begin(),
-                      call->control_predecessors().end(), other1),
+  EXPECT_EQ(absl::c_find(call->control_predecessors(), other1),
             call->control_predecessors().end());
 
   // Control successors: after should point to other2, not call.
-  EXPECT_NE(std::find(other2->control_predecessors().begin(),
-                      other2->control_predecessors().end(), after),
+  EXPECT_NE(absl::c_find(other2->control_predecessors(), after),
             other2->control_predecessors().end());
-  EXPECT_EQ(std::find(other2->control_predecessors().begin(),
-                      other2->control_predecessors().end(), call),
+  EXPECT_EQ(absl::c_find(other2->control_predecessors(), call),
             other2->control_predecessors().end());
 }
 

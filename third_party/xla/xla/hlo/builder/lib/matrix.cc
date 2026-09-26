@@ -457,9 +457,14 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
         } else if (x_shape.dimensions(i) == 1) {
           rhs_outer_dims.push_back(rhs_dim);
           lhs_delete_dims.push_back(i);
-        } else {
+        } else if (y_shape.dimensions(rhs_dim) == 1) {
           lhs_outer_dims.push_back(i);
           rhs_delete_dims.push_back(rhs_dim);
+        } else {
+          return InvalidArgument(
+              "Batch dimensions %d of LHS and %d of RHS must match or be 1. "
+              "Got %d and %d.",
+              i, rhs_dim, x_shape.dimensions(i), y_shape.dimensions(rhs_dim));
         }
       } else if (is_contracting(dim_name)) {
         if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
@@ -468,9 +473,15 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
         } else if (x_shape.dimensions(i) == 1) {
           rhs_outer_dims.push_back(rhs_dim);
           lhs_delete_dims.push_back(i);
-        } else {
+        } else if (y_shape.dimensions(rhs_dim) == 1) {
           lhs_outer_dims.push_back(i);
           rhs_delete_dims.push_back(rhs_dim);
+        } else {
+          return InvalidArgument(
+              "Contracting dimensions %d of LHS and %d of RHS must match or be "
+              "1. "
+              "Got %d and %d.",
+              i, rhs_dim, x_shape.dimensions(i), y_shape.dimensions(rhs_dim));
         }
       } else {
         lhs_outer_dims.push_back(i);

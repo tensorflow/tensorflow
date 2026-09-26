@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
@@ -613,7 +614,7 @@ ENTRY cluster {
               absl_testing::IsOkAndHolds(true));
   const size_t source_size = 1234;
   std::vector<float> source(source_size);
-  std::iota(source.begin(), source.end(), 80000);
+  absl::c_iota(source, 80000);
   auto input = LiteralUtil::CreateR1<float>(source);
   std::vector<float> top_k({81233, 81232, 81231, 81230, 81229});
   // Ensure all 3 modules produce the same output on the same input.

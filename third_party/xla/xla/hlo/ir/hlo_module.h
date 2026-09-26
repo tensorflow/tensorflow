@@ -724,9 +724,8 @@ class HloModule {
     CHECK(spmd_parameters_shardings_.has_value());
     return *spmd_parameters_shardings_;
   }
-  void set_spmd_parameters_shardings(
-      const std::vector<HloSharding>& shardings) {
-    spmd_parameters_shardings_ = shardings;
+  void set_spmd_parameters_shardings(absl::Span<const HloSharding> shardings) {
+    spmd_parameters_shardings_.emplace(shardings.begin(), shardings.end());
   }
 
   // Checks if this config has the entry computation output's HLO sharding for
@@ -856,8 +855,8 @@ class HloModule {
   }
 
   void set_profile_info(
-      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
-    profile_info_list_ = profile_info;
+      absl::Span<const HloModuleProto::ProfileInfo> profile_info) {
+    profile_info_list_.assign(profile_info.begin(), profile_info.end());
   }
 
   const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {

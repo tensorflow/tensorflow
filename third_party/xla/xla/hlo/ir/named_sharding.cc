@@ -169,10 +169,10 @@ bool DimensionSharding::IsPrefixOf(const DimensionSharding& other,
 }
 
 int64_t DimensionSharding::getShardedSize(const Mesh& mesh) const {
-  return std::accumulate(axes_.begin(), axes_.end(), 1,
-                         [&mesh](int64_t cur, const AxisRef& axis) {
-                           return cur * axis.size(mesh);
-                         });
+  return absl::c_accumulate(axes_, 1,
+                            [&mesh](int64_t cur, const AxisRef& axis) {
+                              return cur * axis.size(mesh);
+                            });
 }
 
 std::string DimensionSharding::ToString(const Mesh* mesh) const {

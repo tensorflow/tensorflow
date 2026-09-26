@@ -4213,6 +4213,18 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorSliceOutOfRange) {
                             "range for allocation #0 of size 200")));
 }
 
+TEST(BufferAllocationSliceTest, Empty) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/100, /*color=*/0);
+  BufferAllocation::Slice default_slice;
+  EXPECT_TRUE(default_slice.empty());
+
+  BufferAllocation::Slice empty_slice(&alloc, /*offset=*/0, /*size=*/0);
+  EXPECT_TRUE(empty_slice.empty());
+
+  BufferAllocation::Slice non_empty_slice(&alloc, /*offset=*/0, /*size=*/10);
+  EXPECT_FALSE(non_empty_slice.empty());
+}
+
 TEST(BufferAllocationTest, ToProto) {
   BufferAllocation alloc{42, 64, 3};
   alloc.set_constant(true);

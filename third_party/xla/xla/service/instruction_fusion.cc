@@ -774,8 +774,7 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
     if (VLOG_IS_ON(1)) {
       int64_t fused_count = 0;
       for (auto& config_per_computation : fusion_config) {
-        fused_count += std::count(config_per_computation.begin(),
-                                  config_per_computation.end(), true);
+        fused_count += absl::c_count(config_per_computation, true);
       }
       VLOG(1) << "There are " << fused_count << " fused bits that cause "
               << fuse_count << " fusion actions.";

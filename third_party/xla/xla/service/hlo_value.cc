@@ -370,8 +370,7 @@ bool HloValueSet::AssignUnionOf(absl::Span<const HloValueSet* const> inputs) {
 }
 
 bool HloValueSet::AddValue(const HloValue* value) {
-  auto it = std::lower_bound(values_.begin(), values_.end(), value,
-                             HloValue::IdLessThan);
+  auto it = absl::c_lower_bound(values_, value, HloValue::IdLessThan);
   if (it == values_.end() || (*it)->id() != value->id()) {
     values_.insert(it, value);
     return true;

@@ -65,7 +65,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
     // singleton dimension i.e. [..., n, n] -> [..., 1, n, n]
     if (n == block_size) {
       std::vector<int64_t> permutation(ndims);
-      std::iota(permutation.begin(), permutation.end(), 1);
+      absl::c_iota(permutation, 1);
       permutation.insert(permutation.end() - 2, 0);
       return Transpose(Broadcast(a, /*broadcast_sizes=*/{1}), permutation);
     }

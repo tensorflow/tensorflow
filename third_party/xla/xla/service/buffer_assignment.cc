@@ -1665,24 +1665,24 @@ MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
            entry : allocations_by_color) {
     sorted_colors.push_back(entry.first);
   }
-  std::sort(sorted_colors.begin(), sorted_colors.end());
+  absl::c_sort(sorted_colors);
 
   for (int64_t color : sorted_colors) {
     std::vector<const BufferAllocation*>& color_allocations =
         allocations_by_color[color];
-    std::sort(color_allocations.begin(), color_allocations.end(),
-              [](const BufferAllocation* a, const BufferAllocation* b) {
-                if (a->size() > b->size()) {
-                  return true;
-                }
-                if (a->size() < b->size()) {
-                  return false;
-                }
-                return a->index() < b->index();
-              });
+    absl::c_sort(color_allocations,
+                 [](const BufferAllocation* a, const BufferAllocation* b) {
+                   if (a->size() > b->size()) {
+                     return true;
+                   }
+                   if (a->size() < b->size()) {
+                     return false;
+                   }
+                   return a->index() < b->index();
+                 });
 
-    int64_t total_size = std::accumulate(
-        color_allocations.begin(), color_allocations.end(), int64_t{0},
+    int64_t total_size = absl::c_accumulate(
+        color_allocations, int64_t{0},
         [](int64_t sum, const BufferAllocation* a) { return sum + a->size(); });
 
     MemoryUsageReportProto::AllocationEntryInMemorySpace* memory_space_entry =

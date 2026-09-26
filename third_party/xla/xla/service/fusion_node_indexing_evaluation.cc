@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/fusion_node_indexing_evaluation.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -118,7 +119,7 @@ FusionNodeIndexingEvaluation::RemoveFusionOperand(
 void FusionNodeIndexingEvaluation::RecomputeCache() {
   auto postorder =
       fusion_->fused_instructions_computation()->MakeInstructionPostOrder();
-  std::reverse(postorder.begin(), postorder.end());
+  absl::c_reverse(postorder);
   for (const auto* instruction : postorder) {
     if (instruction->opcode() == HloOpcode::kParameter) {
       continue;

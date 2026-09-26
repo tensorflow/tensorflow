@@ -252,13 +252,12 @@ GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
   // For groups with forced sequence order, we need to obtain the accurate
   // resource usage info by traversing the instructions in order and keeping a
   // running record of the resource usage.
-  std::sort(instrs.begin(), instrs.end(),
-            [&sched_state](const HloInstruction* a, const HloInstruction* b) {
-              auto& a_node = sched_state.sched_graph->GetNode(a);
-              auto& b_node = sched_state.sched_graph->GetNode(b);
-              return a_node.GetOriginalPosition() >
-                     b_node.GetOriginalPosition();
-            });
+  absl::c_sort(
+      instrs, [&sched_state](const HloInstruction* a, const HloInstruction* b) {
+        auto& a_node = sched_state.sched_graph->GetNode(a);
+        auto& b_node = sched_state.sched_graph->GetNode(b);
+        return a_node.GetOriginalPosition() > b_node.GetOriginalPosition();
+      });
   absl::flat_hash_map<int64_t, int64_t> max_resources_needed;
   absl::flat_hash_map<int64_t, int64_t> current_resources_needed;
   for (const HloInstruction* instr : instrs) {
