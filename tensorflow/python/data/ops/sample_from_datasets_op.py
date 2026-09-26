@@ -20,6 +20,7 @@ from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
@@ -63,6 +64,16 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
+      #
+      # A dataset with zero weight is never selected, so it is never found to
+      # be empty, and unless `stop_on_empty_dataset` is set, sampling would
+      # never end once the other datasets are exhausted. Skip such datasets
+      # whenever the weights are available here: a list, or a tensor with a
+      # known value, such as an eager tensor or a constant.
+      if isinstance(weights, tensor.Tensor):
+        weights_value = tensor_util.constant_value(weights)
+        if weights_value is not None:
+          weights = weights_value
       if not isinstance(weights, tensor.Tensor):
         datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
       weights = ops.convert_to_tensor(weights, name="weights")
