@@ -30,7 +30,7 @@ class VariableWatcher(object):
   with VariableWatcher() as variable_watcher:
     var.assign_add(1.0)
 
-  assert variable_watcher.watched_variables == [var]
+  assert variable_watcher.watched_variables() == [var]
   """
 
   __slots__ = ["_variable_watcher"]
