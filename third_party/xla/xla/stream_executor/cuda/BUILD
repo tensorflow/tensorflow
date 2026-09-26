@@ -942,6 +942,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "requires-gpu-sm90",
     ],
     deps = [
@@ -2407,6 +2408,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
     ],
     deps = [
         ":compilation_provider_test_lib",
@@ -2420,6 +2422,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "nomsan",
         "notsan",
         "requires-gpu-sm90",
     ],
@@ -3014,6 +3017,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu:ffi",
+        "//xla/backends/gpu/libraries/cub:cub_sort_ffi",
         "//xla/backends/gpu/libraries/cub:cub_sort_utils",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
@@ -3129,6 +3133,7 @@ cuda_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )

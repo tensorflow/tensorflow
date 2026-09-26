@@ -56,6 +56,33 @@ cc_library(
 )
 
 cc_library(
+    name = "cub_sort_ffi",
+    hdrs = ["cub_sort_ffi.h"],
+    visibility = ["//xla:internal"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+    ],
+)
+
+xla_cc_test(
+    name = "cub_sort_ffi_test",
+    srcs = ["cub_sort_ffi_test.cc"],
+    deps = [
+        ":cub_sort_ffi",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "cub_sort_utils",
     srcs = ["cub_sort_utils.cc"],
     hdrs = ["cub_sort_utils.h"],
