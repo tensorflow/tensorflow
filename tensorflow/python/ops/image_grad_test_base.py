@@ -458,16 +458,19 @@ class CropAndResizeOpTestBase(test.TestCase):
     valid_boxes = array_ops.zeros([0, 4], dtype=dtypes.float32)
     valid_box_ind = array_ops.zeros([0], dtype=dtypes.int32)
     with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError), "boxes must be 2-D"):
+        (errors_impl.InvalidArgumentError, ValueError), 'boxes must be 2-D'
+    ):
       self.evaluate(
           gen_image_ops.crop_and_resize_grad_image(
               grads=grads,
               boxes=array_ops.zeros([0], dtype=dtypes.float32),
               box_ind=valid_box_ind,
               image_size=image_size,
-              T=dtypes.float32))
+              T=dtypes.float32,
+          )
+      )
     with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError), "box_index must be 1-D"
+        (errors_impl.InvalidArgumentError, ValueError), 'box_index must be 1-D'
     ):
       self.evaluate(
           gen_image_ops.crop_and_resize_grad_image(
@@ -475,35 +478,45 @@ class CropAndResizeOpTestBase(test.TestCase):
               boxes=valid_boxes,
               box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32),
               image_size=image_size,
-              T=dtypes.float32))
+              T=dtypes.float32,
+          )
+      )
     # Empty boxes with the wrong number of columns must be rejected too.
     with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError), "4 columns|must be 4"):
+        (errors_impl.InvalidArgumentError, ValueError), '4 columns|must be 4'
+    ):
       self.evaluate(
           gen_image_ops.crop_and_resize_grad_image(
               grads=grads,
               boxes=array_ops.zeros([0, 5], dtype=dtypes.float32),
               box_ind=valid_box_ind,
               image_size=image_size,
-              T=dtypes.float32))
+              T=dtypes.float32,
+          )
+      )
     with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError), "boxes must be 2-D"):
+        (errors_impl.InvalidArgumentError, ValueError), 'boxes must be 2-D'
+    ):
       self.evaluate(
           gen_image_ops.crop_and_resize_grad_boxes(
               grads=grads,
               image=image,
               boxes=array_ops.zeros([0], dtype=dtypes.float32),
-              box_ind=valid_box_ind))
+              box_ind=valid_box_ind,
+          )
+      )
     # Rank-2 empty box_ind for the boxes gradient.
     with self.assertRaisesRegex(
-        (errors_impl.InvalidArgumentError, ValueError), "box_index must be 1-D"
+        (errors_impl.InvalidArgumentError, ValueError), 'box_index must be 1-D'
     ):
       self.evaluate(
           gen_image_ops.crop_and_resize_grad_boxes(
               grads=grads,
               image=image,
               boxes=valid_boxes,
-              box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32)))
+              box_ind=array_ops.zeros([0, 0], dtype=dtypes.int32),
+          )
+      )
     # Well-formed empty inputs must keep working.
     output = self.evaluate(
         gen_image_ops.crop_and_resize_grad_image(
@@ -511,14 +524,15 @@ class CropAndResizeOpTestBase(test.TestCase):
             boxes=valid_boxes,
             box_ind=valid_box_ind,
             image_size=image_size,
-            T=dtypes.float32))
+            T=dtypes.float32,
+        )
+    )
     self.assertEqual((2, 7, 7, 1), output.shape)
     output = self.evaluate(
         gen_image_ops.crop_and_resize_grad_boxes(
-            grads=grads,
-            image=image,
-            boxes=valid_boxes,
-            box_ind=valid_box_ind))
+            grads=grads, image=image, boxes=valid_boxes, box_ind=valid_box_ind
+        )
+    )
     self.assertEqual((0, 4), output.shape)
 
   def _randomUniformAvoidAnchors(self, low, high, anchors, radius, num_samples):

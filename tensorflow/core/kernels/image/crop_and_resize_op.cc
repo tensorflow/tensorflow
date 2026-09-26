@@ -59,8 +59,8 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
   // [num_boxes]. The ranks must be validated even when both tensors are
   // empty, since the kernels later access them as rank-2 and rank-1 tensors.
   if (boxes.dims() != 2) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "boxes must be 2-D, got ", boxes.shape().DebugString()));
+    return absl::InvalidArgumentError(
+        absl::StrCat("boxes must be 2-D, got ", boxes.shape().DebugString()));
   }
   if (box_index.dims() != 1) {
     return absl::InvalidArgumentError(absl::StrCat(
