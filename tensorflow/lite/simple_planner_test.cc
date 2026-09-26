@@ -180,11 +180,14 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
 
 class SimplePlannerTest : public ::testing::Test {
  protected:
-  void SetGraph(TestGraph* graph) {
+  void SetGraph(TestGraph* graph, bool enable_reclamation = false,
+                bool preserve_all = false,
+                TfLiteAllocator* allocator = nullptr) {
     graph_ = graph;
     context_.ReportError = ReportError;
     planner_ = std::make_unique<SimplePlanner>(
-        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)));
+        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
+        preserve_all, enable_reclamation, allocator);
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -410,6 +413,448 @@ TEST_F(SimplePlannerTest, NonPersistentMemoryLifecycle) {
 
   AcquireNonPersistentMemory();
   EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+}
+
+TEST_F(SimplePlannerTest, DeterministicChainEagerVsReclamation) {
+  // Chain: X (0) -> op0 -> A (1) -> op1 -> B (2) -> op2 -> C (3) -> op3 -> D
+  // (4) -> op4 -> Y (5)
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {}},  // op0: A = op(X)
+                      {{1}, {2}, {}},  // op1: B = op(A)
+                      {{2}, {3}, {}},  // op2: C = op(B)
+                      {{3}, {4}, {}},  // op3: D = op(C)
+                      {{4}, {5}, {}},  // op4: Y = op(D)
+                  },
+                  {5});
+  constexpr size_t kTensorBytes = 256;
+  for (int i = 0; i <= 5; ++i) {
+    (*graph.tensors())[i].bytes = kTensorBytes;
+  }
+
+  // Part 1: Eager Mode (Baseline)
+  {
+    SetGraph(&graph, /*enable_reclamation=*/false);
+    Execute(0, 4);
+
+    EXPECT_TRUE(IsAllocated(0));
+    EXPECT_TRUE(IsAllocated(1));
+    EXPECT_TRUE(IsAllocated(2));
+    EXPECT_TRUE(IsAllocated(3));
+    EXPECT_TRUE(IsAllocated(4));
+    EXPECT_TRUE(IsAllocated(5));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 6 * kTensorBytes);
+    EXPECT_EQ(planner_->peak_outstanding_bytes(), 6 * kTensorBytes);
+  }
+
+  // Part 2: Reclamation Mode (Deferred Allocation + Last-Use Reclamation)
+  {
+    SetGraph(&graph, /*enable_reclamation=*/true);
+    Execute(0, 4);
+
+    // After preparation, ONLY pinned buffers (X and Y) are allocated.
+    // Intermediates A, B, C, D are deferred!
+    EXPECT_TRUE(IsAllocated(0));
+    EXPECT_FALSE(IsAllocated(1));
+    EXPECT_FALSE(IsAllocated(2));
+    EXPECT_FALSE(IsAllocated(3));
+    EXPECT_FALSE(IsAllocated(4));
+    EXPECT_TRUE(IsAllocated(5));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 2 * kTensorBytes);
+
+    // Simulate 1st invocation
+    ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+    // op0: before node, A (1) is allocated.
+    ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(1));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+    ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(1));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+
+    // op1: before node, B (2) is allocated.
+    ASSERT_EQ(planner_->BeforeNode(1), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(2));
+    EXPECT_EQ(planner_->current_outstanding_bytes(),
+              4 * kTensorBytes);  // Peak = 4 * S!
+    ASSERT_EQ(planner_->AfterNode(1), kTfLiteOk);
+    // A (1) is freed after op1!
+    EXPECT_FALSE(IsAllocated(1));
+    EXPECT_TRUE(IsAllocated(2));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+
+    // op2: before node, C (3) is allocated.
+    ASSERT_EQ(planner_->BeforeNode(2), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(3));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 4 * kTensorBytes);  // Peak
+    ASSERT_EQ(planner_->AfterNode(2), kTfLiteOk);
+    EXPECT_FALSE(IsAllocated(2));
+    EXPECT_TRUE(IsAllocated(3));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+
+    // op3: before node, D (4) is allocated.
+    ASSERT_EQ(planner_->BeforeNode(3), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(4));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 4 * kTensorBytes);  // Peak
+    ASSERT_EQ(planner_->AfterNode(3), kTfLiteOk);
+    EXPECT_FALSE(IsAllocated(3));
+    EXPECT_TRUE(IsAllocated(4));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+
+    // op4: before node, Y (5) is already allocated (pinned).
+    ASSERT_EQ(planner_->BeforeNode(4), kTfLiteOk);
+    EXPECT_TRUE(IsAllocated(5));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 3 * kTensorBytes);
+    ASSERT_EQ(planner_->AfterNode(4), kTfLiteOk);
+    EXPECT_FALSE(IsAllocated(4));
+    EXPECT_TRUE(IsAllocated(5));
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 2 * kTensorBytes);
+
+    planner_->EndInvocation(/*completed_successfully=*/true);
+
+    // Verify final stats of 1st invocation:
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 2 * kTensorBytes);
+    EXPECT_EQ(planner_->peak_outstanding_bytes(), 4 * kTensorBytes);
+    EXPECT_EQ(planner_->total_allocations(), 6);
+    EXPECT_EQ(planner_->total_deallocations(), 4);
+
+    // Simulate 2nd invocation without calling ExecuteAllocations again:
+    ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+    for (int node = 0; node <= 4; ++node) {
+      ASSERT_EQ(planner_->BeforeNode(node), kTfLiteOk);
+      ASSERT_EQ(planner_->AfterNode(node), kTfLiteOk);
+    }
+    planner_->EndInvocation(/*completed_successfully=*/true);
+
+    // Memory between invocations is bounded to 2 * kTensorBytes!
+    EXPECT_EQ(planner_->current_outstanding_bytes(), 2 * kTensorBytes);
+    EXPECT_EQ(planner_->total_allocations(), 10);
+    EXPECT_EQ(planner_->total_deallocations(), 8);
+  }
+}
+
+TEST_F(SimplePlannerTest, FanOutLiveness) {
+  // op0: produces A (1)
+  // op1: consumes A (1), produces B (2)
+  // op2: consumes A (1) and B (2), produces Y (3)
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {}},     // op0: A = op(X)
+                      {{1}, {2}, {}},     // op1: B = op(A)
+                      {{1, 2}, {3}, {}},  // op2: Y = op(A, B)
+                  },
+                  {3});
+  for (int i = 0; i <= 3; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 2);
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+  // op0
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+
+  // op1
+  ASSERT_EQ(planner_->BeforeNode(1), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(2));
+  ASSERT_EQ(planner_->AfterNode(1), kTfLiteOk);
+  // A (1) MUST NOT be freed after op1, because op2 still consumes A!
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+
+  // op2
+  ASSERT_EQ(planner_->BeforeNode(2), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(3));  // Y is pinned
+  ASSERT_EQ(planner_->AfterNode(2), kTfLiteOk);
+  // Now that op2 has completed, BOTH A (1) and B (2) are freed!
+  EXPECT_FALSE(IsAllocated(1));
+  EXPECT_FALSE(IsAllocated(2));
+  EXPECT_TRUE(IsAllocated(3));
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+}
+
+TEST_F(SimplePlannerTest, DuplicateInputLiveness) {
+  // op0: produces A (1)
+  // op1: consumes A, A (like Add(A, A)), produces Y (2)
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {}},     // op0
+                      {{1, 1}, {2}, {}},  // op1: duplicate inputs
+                  },
+                  {2});
+  for (int i = 0; i <= 2; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 1);
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+
+  ASSERT_EQ(planner_->BeforeNode(1), kTfLiteOk);
+  ASSERT_EQ(planner_->AfterNode(1), kTfLiteOk);
+  // A (1) freed exactly once
+  EXPECT_FALSE(IsAllocated(1));
+  EXPECT_EQ(planner_->total_deallocations(), 1);
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+}
+
+TEST_F(SimplePlannerTest, UnconsumedOutputReclaimedImmediately) {
+  // op0: produces A (1) and unconsumed dead tensor (2)
+  // op1: consumes A (1), produces Y (3)
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1, 2}, {}},  // op0 produces 1 and 2
+                      {{1}, {3}, {}},     // op1 consumes 1, produces 3
+                  },
+                  {3});
+  for (int i = 0; i <= 3; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 1);
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+  // Before op0: A (1) and dead (2) are allocated
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+
+  // After op0: dead (2) has no consumers and is not a graph output,
+  // so it is reclaimed immediately after its producer!
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_FALSE(IsAllocated(2));
+
+  // op1
+  ASSERT_EQ(planner_->BeforeNode(1), kTfLiteOk);
+  ASSERT_EQ(planner_->AfterNode(1), kTfLiteOk);
+  EXPECT_FALSE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(3));
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+}
+
+TEST_F(SimplePlannerTest, TemporaryTensorLifecycle) {
+  // op0: produces A (1) with temporary (2)
+  // op1: consumes A (1), produces Y (3)
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {2}},  // op0 has temporary 2
+                      {{1}, {3}, {}},   // op1
+                  },
+                  {3});
+  for (int i = 0; i <= 3; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 1);
+
+  // After preparation, temporary 2 is NOT allocated
+  EXPECT_FALSE(IsAllocated(2));
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+  // Before op0, temporary 2 is allocated
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(2));
+
+  // After op0, temporary 2 is freed
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+  EXPECT_FALSE(IsAllocated(2));
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+}
+
+TEST_F(SimplePlannerTest, PersistentTemporaryNotReclaimed) {
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {2}},  // op0 has temporary 2
+                      {{1}, {3}, {}},   // op1
+                  },
+                  {3});
+  (*graph.tensors())[2].allocation_type = kTfLiteArenaRwPersistent;
+  for (int i = 0; i <= 3; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 1);
+
+  // Persistent temporary is allocated during preparation
+  EXPECT_TRUE(IsAllocated(2));
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+  // NOT freed after op0
+  EXPECT_TRUE(IsAllocated(2));
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+  // Still allocated between invocations
+  EXPECT_TRUE(IsAllocated(2));
+}
+
+TEST_F(SimplePlannerTest, PreserveAllTensorsOverridesReclamation) {
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {}},
+                      {{1}, {2}, {}},
+                  },
+                  {2});
+  for (int i = 0; i <= 2; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true, /*preserve_all=*/true);
+  Execute(0, 1);
+
+  // With preserve_all=true, all tensors allocated during preparation
+  EXPECT_TRUE(IsAllocated(0));
+  EXPECT_TRUE(IsAllocated(1));
+  EXPECT_TRUE(IsAllocated(2));
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  ASSERT_EQ(planner_->AfterNode(0), kTfLiteOk);
+  ASSERT_EQ(planner_->BeforeNode(1), kTfLiteOk);
+  ASSERT_EQ(planner_->AfterNode(1), kTfLiteOk);
+  // Intermediate 1 is NOT freed!
+  EXPECT_TRUE(IsAllocated(1));
+
+  planner_->EndInvocation(/*completed_successfully=*/true);
+  EXPECT_TRUE(IsAllocated(1));
+}
+
+TEST_F(SimplePlannerTest, HasNonPersistentMemoryState) {
+  TestGraph graph({0}, {{{0}, {1}, {}}}, {1});
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 0);
+
+  EXPECT_TRUE(planner_->HasNonPersistentMemory());
+  EXPECT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+  planner_->EndInvocation(/*completed_successfully=*/true);
+
+  // Release non-persistent memory
+  ReleaseNonPersistentMemory();
+  EXPECT_FALSE(planner_->HasNonPersistentMemory());
+
+  // BeginInvocation must fail when non-persistent memory is not available
+  EXPECT_NE(planner_->BeginInvocation(), kTfLiteOk);
+
+  // Reacquire
+  AcquireNonPersistentMemory();
+  EXPECT_TRUE(planner_->HasNonPersistentMemory());
+  EXPECT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+  planner_->EndInvocation(/*completed_successfully=*/true);
+}
+
+TEST_F(SimplePlannerTest, AllocationFailureRollback) {
+  // Custom allocator that fails after 2 allocations.
+  struct FailingAllocatorState {
+    int count = 0;
+    int max_success = 2;
+  };
+  static FailingAllocatorState state;
+  state.count = 0;
+  state.max_success = 2;
+
+  static TfLiteAllocator failing_allocator = {
+      &state,
+      [](void* data, size_t bytes, size_t alignment) -> void* {
+        auto* s = static_cast<FailingAllocatorState*>(data);
+        if (++s->count > s->max_success) {
+          return nullptr;  // Inject failure!
+        }
+        return malloc(bytes);
+      },
+      nullptr,
+      [](void* data, void* ptr, size_t bytes, size_t alignment) {
+        ::free(ptr);
+      }};
+
+  // op0 produces A (1) and B (2).
+  // Preparation allocates X (0) [alloc 1] and Y (3) [alloc 2].
+  // Then BeforeNode(0) allocates A (1) [alloc 3 -> FAILS!].
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1, 2}, {}},
+                      {{1, 2}, {3}, {}},
+                  },
+                  {3});
+  for (int i = 0; i <= 3; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true, /*preserve_all=*/false,
+           &failing_allocator);
+  Execute(0, 1);
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+
+  // BeforeNode(0) will attempt to allocate tensors 1 and 2.
+  // One of them will fail, and BeforeNode must return kTfLiteError
+  // and roll back any partial allocations.
+  EXPECT_EQ(planner_->BeforeNode(0), kTfLiteError);
+
+  // Pinned tensors X (0) and Y (3) remain intact
+  EXPECT_TRUE(IsAllocated(0));
+  EXPECT_TRUE(IsAllocated(3));
+
+  planner_->EndInvocation(/*completed_successfully=*/false);
+  planner_.reset();
+}
+
+TEST_F(SimplePlannerTest, EndInvocationFailureCleanup) {
+  TestGraph graph({0},
+                  {
+                      /* in, out, tmp */
+                      {{0}, {1}, {}},
+                      {{1}, {2}, {}},
+                  },
+                  {2});
+  for (int i = 0; i <= 2; ++i) {
+    (*graph.tensors())[i].bytes = 100;
+  }
+
+  SetGraph(&graph, /*enable_reclamation=*/true);
+  Execute(0, 1);
+
+  ASSERT_EQ(planner_->BeginInvocation(), kTfLiteOk);
+  ASSERT_EQ(planner_->BeforeNode(0), kTfLiteOk);
+  EXPECT_TRUE(IsAllocated(1));
+
+  // Simulate an error or cancellation before node 1 executes:
+  planner_->EndInvocation(/*completed_successfully=*/false);
+
+  // Intermediate 1 must be cleaned up to avoid leaking across invocations!
+  EXPECT_FALSE(IsAllocated(1));
+  // Pinned inputs and outputs are preserved
+  EXPECT_TRUE(IsAllocated(0));
   EXPECT_TRUE(IsAllocated(2));
 }
 

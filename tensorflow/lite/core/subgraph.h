@@ -494,6 +494,11 @@ class Subgraph {
       OptimizeMemoryForLargeTensors(
           options->GetDynamicAllocationForLargeTensors());
     }
+    if (memory_planner_ && options_) {
+      memory_planner_->SetPreserveAllTensors(options_->GetPreserveAllTensors());
+      memory_planner_->SetReclamationMode(
+          ShouldEnableSimplePlannerReclamation());
+    }
   }
 
   // WARNING: This is an experimental API and subject to change.
@@ -504,6 +509,11 @@ class Subgraph {
   bool ShouldPreserveAllTensors() const {
     return (options_ && options_->GetPreserveAllTensors());
   }
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if intermediate tensor reclamation should be enabled for
+  // SimplePlanner.
+  bool ShouldEnableSimplePlannerReclamation() const;
 
   // WARNING: This is an experimental API and subject to change.
   // True if all intermediate dynamic tensors should be released once they are
