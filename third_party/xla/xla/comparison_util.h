@@ -61,6 +61,8 @@ class Comparison {
   enum class Order : uint8_t {
     // https://en.wikipedia.org/wiki/Total_order
     kTotal,
+    // https://en.wikipedia.org/wiki/Weak_ordering
+    kWeak,
     // https://en.wikipedia.org/wiki/Partially_ordered_set
     kPartial,
   };
@@ -84,16 +86,6 @@ class Comparison {
     kLt,
   };
 
-  // (DEPRECATED) Represents the type of comparison. Prefer xla::PrimitiveType
-  // and Comparison::Order, since there are multiple floating point
-  // representations that support total ordering.
-  enum class [[deprecated("Use PrimitiveType and Order")]] Type : uint8_t {
-    kFloat,
-    kFloatTotalOrder,
-    kSigned,
-    kUnsigned,
-  };
-
   Comparison() = delete;
 
   // This will default to the expected behavior for Comparison::Order: integers
@@ -103,13 +95,6 @@ class Comparison {
   // Pass in a Comparison::Order to specify a non-default ordering, e.g., some
   // targets may support total order floating point type comparisons.
   explicit Comparison(Direction dir, PrimitiveType type, Order order);
-
-  // Returns a comparison with a primitive type matching the Comparison::Type
-  // and using a default bit width of 32. For example,
-  // Comparison(Direction::kLt, Type::kFloat).PrimitiveType()  /* F32 */
-  [[deprecated(
-      "Use Comparison(Comparison::Direction, "
-      "PrimitiveType)")]] explicit Comparison(Direction dir, Type type);
 
   inline Direction GetDirection() const { return dir_; }
   inline PrimitiveType GetPrimitiveType() const { return primitive_type_; }
@@ -122,6 +107,7 @@ class Comparison {
   inline bool IsLe() const { return dir_ == Direction::kLe; }
   inline bool IsLt() const { return dir_ == Direction::kLt; }
   inline bool IsTotalOrder() const { return order_ == Order::kTotal; }
+  bool IsWeakOrder() const { return order_ == Order::kWeak; }
   inline bool IsPartialOrder() const { return order_ == Order::kPartial; }
 
   // Returns whether this is a floating point total order comparison.
@@ -177,14 +163,27 @@ class Comparison {
       case Direction::kNe:
         return +[](T l, T r) { return std::not_equal_to<T>()(l, r); };
       case Direction::kGe:
-        return +[](T l, T r) { return std::greater_equal<T>()(l, r); };
+        if constexpr (!is_complex_v<T>) {
+          return +[](T l, T r) { return std::greater_equal<T>()(l, r); };
+        }
+        break;
       case Direction::kGt:
-        return +[](T l, T r) { return std::greater<T>()(l, r); };
+        if constexpr (!is_complex_v<T>) {
+          return +[](T l, T r) { return std::greater<T>()(l, r); };
+        }
+        break;
       case Direction::kLe:
-        return +[](T l, T r) { return std::less_equal<T>()(l, r); };
+        if constexpr (!is_complex_v<T>) {
+          return +[](T l, T r) { return std::less_equal<T>()(l, r); };
+        }
+        break;
       case Direction::kLt:
-        return +[](T l, T r) { return std::less<T>()(l, r); };
+        if constexpr (!is_complex_v<T>) {
+          return +[](T l, T r) { return std::less<T>()(l, r); };
+        }
+        break;
     }
+    LOG(FATAL) << "Unsupported comparison: " << ToString();
   }
 
   template <typename T>
@@ -203,23 +202,21 @@ class Comparison {
           return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
         }
       }
+      if (IsWeakOrder()) {
+        // -Inf < -Finite < (-0 == +0) < +Finite < +Inf < NaN
+        bool a_is_nan = Eigen::numext::isnan(a);
+        bool b_is_nan = Eigen::numext::isnan(b);
+        if (a_is_nan || b_is_nan) {
+          return GetComparator<bool>()(a_is_nan, b_is_nan);
+        }
+      }
     }
     // Applies the comparison from this Comparison's direction and ordering.
     return GetComparator<T>()(a, b);
   }
 
-  // Returns the Comparison::Order corresponding to the deprecated
-  // Comparison::Type.
-  static Comparison::Order DefaultOrdering(Type type);
-
   // Returns the expected Comparison::Order for each primitive type.
   static Comparison::Order DefaultOrdering(PrimitiveType type);
-
-  // Returns the Comparison::Type for the given primitive type. This assumes
-  // that each numerical representation follows the standard behavior, e.g.,
-  // integers are total order and floats are partial order.
-  [[deprecated("Use PrimitiveType and Order")]] static Comparison::Type
-  DefaultComparisonType(PrimitiveType type);
 
  private:
   // The direction of the Comparison, e.g., GT.
@@ -238,7 +235,6 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 }
 
 std::string ComparisonDirectionToString(Comparison::Direction direction);
-std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
 absl::string_view ComparisonOrderToString(Comparison::Order order);
 absl::string_view ComparisonOrderToShortString(Comparison::Order order);
@@ -252,8 +248,8 @@ absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
 absl::StatusOr<Comparison::Order> ShortStringToComparisonOrder(
     absl::string_view order);
-absl::StatusOr<Comparison::Type> StringToComparisonType(
-    absl::string_view comparison);
+absl::StatusOr<Comparison::Order> ComparisonTypeToOrder(
+    absl::string_view comparison_type);
 
 // Returns a comparison function using the provided key function on each value,
 // i.e. `key_fn(a) < key_fn(b)`.

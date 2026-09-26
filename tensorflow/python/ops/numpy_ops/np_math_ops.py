@@ -536,12 +536,20 @@ def logaddexp(x1, x2):
       float_dtype = np_utils.result_type(float)
       x1 = math_ops.cast(x1, float_dtype)
       x2 = math_ops.cast(x2, float_dtype)
-    amax = maximum(x1, x2)
     delta = x1 - x2
+    # `maximum` sends the whole gradient to `x1` where `x1 == x2`, so the two
+    # partial derivatives (analytically 0.5 each) come out as 1.0 and 0.0.
+    # Selecting the operands through `where` instead keeps the forward values
+    # bit-for-bit identical while giving each argument its own differentiable
+    # expression, so both gradients are 0.5 at `x1 == x2`. Selecting them once
+    # also avoids evaluating `exp` and `log1p` for both branches. The exponent
+    # is always <= 0, hence this cannot overflow.
+    max_val = np_array_ops.where(x1 > x2, x1, x2)
+    min_val = np_array_ops.where(x1 > x2, x2, x1)
     return np_array_ops.where(
         isnan(delta),
         x1 + x2,  # NaNs or infinities of the same sign.
-        amax + log1p(exp(-abs(delta))),
+        max_val + log1p(exp(min_val - max_val)),
     )
 
   return _bin_op(f, x1, x2)
