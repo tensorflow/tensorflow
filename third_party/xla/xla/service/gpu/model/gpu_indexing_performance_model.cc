@@ -810,6 +810,23 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
   return EstimateNumWarpsImpl(tiled_hlo_computation);
 }
 
+namespace internal {
+
+absl::flat_hash_map<const HloInstruction*, int64_t> PrecomputeFlopsMap(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
+  auto post_order = fusion_adaptor.MakeInstructionPostOrder();
+  absl::flat_hash_map<const HloInstruction*, int64_t> flops_map;
+  flops_map.reserve(post_order.size());
+  for (const HloInstructionAdaptor& instruction_adaptor : post_order) {
+    flops_map.emplace(&instruction_adaptor.instruction(),
+                      flops_per_element_fn(&instruction_adaptor.instruction()));
+  }
+  return flops_map;
+}
+
+}  // namespace internal
+
 absl::StatusOr<TopKTiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     const HloFusionAdaptor& fusion_adaptor, int top_k) {
@@ -836,6 +853,23 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
     VLOG(1) << absl::StrCat(
         "TryFindTopKBestTilingsForFusion tiling_space evaluating ",
         tilings.size(), " tilings.");
+
+    const absl::flat_hash_map<const HloInstruction*, int64_t> flops_map =
+        internal::PrecomputeFlopsMap(
+            fusion_adaptor,
+            [this](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
+
+    auto flops_fn = [&flops_map](const HloInstruction* hlo) -> int64_t {
+      if (hlo->opcode() == HloOpcode::kParameter ||
+          hlo->opcode() == HloOpcode::kTuple ||
+          hlo->opcode() == HloOpcode::kGetTupleElement) {
+        return 0;
+      }
+      auto it = flops_map.find(hlo);
+      CHECK(it != flops_map.end())
+          << "Missing precomputed FLOPs for " << hlo->name();
+      return it->second;
+    };
 
     for (const llvm::SmallVector<int64_t, 4>& tiling : tilings) {
       // Assign padded tile size as Triton emitter will require that.
@@ -882,12 +916,10 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindTopKBestTilingsForFusion(
         continue;
       }
 
-      ABSL_ASSIGN_OR_RETURN(std::optional<TiledRunTimeData> tiled_run_time_data,
-                       EstimateTiledRunTimeDataImpl(
-                           fusion_adaptor, *tiled_computation, *device_info_,
-                           shape_size_, [this](const HloInstruction* hlo) {
-                             return FlopsPerElement(hlo);
-                           }));
+      ABSL_ASSIGN_OR_RETURN(
+          std::optional<TiledRunTimeData> tiled_run_time_data,
+          EstimateTiledRunTimeDataImpl(fusion_adaptor, *tiled_computation,
+                                       *device_info_, shape_size_, flops_fn));
 
       if (tiled_run_time_data.has_value()) {
         VLOG(2) << "Accepted tile sizes ["
