@@ -1153,10 +1153,10 @@ class SwishTest(test_lib.TestCase, parameterized.TestCase):
   def testBroadcastGradients(self, shapes, dtype, dynamic_shapes):
     features_shape, beta_shape = shapes
     features = constant_op.constant(
-        np.linspace(-1.0, 1.0, math.prod(features_shape)).reshape(
+        np.linspace(-1.0, 1.0, int(np.prod(features_shape))).reshape(
             features_shape), dtype=dtype)
     beta = constant_op.constant(
-        np.linspace(0.5, 1.5, math.prod(beta_shape)).reshape(beta_shape),
+        np.linspace(0.5, 1.5, int(np.prod(beta_shape))).reshape(beta_shape),
         dtype=dtype)
     swish = nn_impl.swish
     if dynamic_shapes:
