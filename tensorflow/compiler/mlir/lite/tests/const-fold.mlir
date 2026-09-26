@@ -860,7 +860,40 @@ func.func @select_float() -> tensor<4xf32> {
 
   func.return %2 : tensor<4xf32>
 }
-// CHECK: %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00]> : tensor<4xf32
+// CHECK: %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00]> : tensor<4xf32>
+
+// CHECK-LABEL: select_v2_same_operands
+func.func @select_v2_same_operands(%cond: tensor<4xi1>, %x: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: return %arg1 : tensor<4xf32>
+  %0 = "tfl.select_v2"(%cond, %x, %x) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: select_v2_splat_cond_true
+func.func @select_v2_splat_cond_true(%x: tensor<4xf32>, %y: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: return %arg0 : tensor<4xf32>
+  %cond = arith.constant dense<true> : tensor<4xi1>
+  %0 = "tfl.select_v2"(%cond, %x, %y) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: select_v2_splat_cond_false
+func.func @select_v2_splat_cond_false(%x: tensor<4xf32>, %y: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: return %arg1 : tensor<4xf32>
+  %cond = arith.constant dense<false> : tensor<4xi1>
+  %0 = "tfl.select_v2"(%cond, %x, %y) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: select_v2_broadcast
+func.func @select_v2_broadcast() -> tensor<2x3xi32> {
+  // CHECK: %cst = arith.constant dense<{{\[\[}}1, 20, 1], [10, 1, 30]]> : tensor<2x3xi32>
+  %cond = arith.constant dense<[[true, false, true], [false, true, false]]> : tensor<2x3xi1>
+  %x = arith.constant dense<1> : tensor<1xi32>
+  %y = arith.constant dense<[10, 20, 30]> : tensor<3xi32>
+  %0 = "tfl.select_v2"(%cond, %x, %y) : (tensor<2x3xi1>, tensor<1xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+  func.return %0 : tensor<2x3xi32>
+}
 
 // CHECK-LABEL: ceil
 func.func @ceil() -> tensor<3xf32> {
