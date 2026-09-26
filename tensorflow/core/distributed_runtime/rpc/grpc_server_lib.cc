@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 
+#include <grpc/grpc.h>
+
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -92,12 +95,72 @@ class ReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
+// Define an option subclass in order to set the max pending requests limits
+// for the server socket.
+class MaxPendingRequestsOption : public ::grpc::ServerBuilderOption {
+ public:
+  MaxPendingRequestsOption(int max_pending_requests,
+                           int max_pending_requests_hard)
+      : max_pending_requests_(max_pending_requests),
+        max_pending_requests_hard_(max_pending_requests_hard) {}
+
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+#ifdef GRPC_ARG_SERVER_MAX_PENDING_REQUESTS
+    if (max_pending_requests_ >= 0) {
+      args->SetInt(GRPC_ARG_SERVER_MAX_PENDING_REQUESTS, max_pending_requests_);
+    }
+#endif
+#ifdef GRPC_ARG_SERVER_MAX_PENDING_REQUESTS_HARD_LIMIT
+    if (max_pending_requests_hard_ >= 0) {
+      args->SetInt(GRPC_ARG_SERVER_MAX_PENDING_REQUESTS_HARD_LIMIT,
+                   max_pending_requests_hard_);
+    }
+#endif
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+
+ private:
+  int max_pending_requests_;
+  int max_pending_requests_hard_;
+};
+
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
 }
 
 }  // namespace
+
+std::unique_ptr<::grpc::ServerBuilderOption>
+GrpcServer::MaybeCreateMaxPendingRequestsOption() {
+#if defined(GRPC_ARG_SERVER_MAX_PENDING_REQUESTS) || \
+    defined(GRPC_ARG_SERVER_MAX_PENDING_REQUESTS_HARD_LIMIT)
+  int64_t max_pending_requests = -1;
+  bool has_max_pending_requests =
+      ReadInt64FromEnvVar("TF_GRPC_MAX_PENDING_REQUESTS", -1,
+                          &max_pending_requests)
+          .ok() &&
+      max_pending_requests >= 0;
+
+  int64_t max_pending_requests_hard = -1;
+  bool has_max_pending_requests_hard =
+      ReadInt64FromEnvVar("TF_GRPC_MAX_PENDING_REQUESTS_HARD_LIMIT", -1,
+                          &max_pending_requests_hard)
+          .ok() &&
+      max_pending_requests_hard >= 0;
+
+  if (has_max_pending_requests || has_max_pending_requests_hard) {
+    return std::make_unique<MaxPendingRequestsOption>(
+        has_max_pending_requests ? static_cast<int>(max_pending_requests) : -1,
+        has_max_pending_requests_hard
+            ? static_cast<int>(max_pending_requests_hard)
+            : -1);
+  }
+#endif
+  return nullptr;
+}
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
     : env_(env), state_(NEW), server_def_(server_def) {}
@@ -258,6 +321,10 @@ absl::Status GrpcServer::Init(const GrpcServerOptions& opts) {
   builder.AddListeningPort(absl::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32_t>::max());
+
+  if (auto option = MaybeCreateMaxPendingRequestsOption()) {
+    builder.SetOption(std::move(option));
+  }
 
   bool reuse_port = false;
   const absl::Status status =
