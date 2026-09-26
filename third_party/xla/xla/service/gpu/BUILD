@@ -1742,6 +1742,7 @@ cc_library(
         ":alias_info",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:alias_passthrough_params",
+        "//xla/backends/gpu/transforms:constant_fill_copy_rewriter",
         "//xla/backends/gpu/transforms:copy_fusion",
         "//xla/backends/gpu/transforms:sanitize_constant_names",
         "//xla/hlo/ir:hlo",
@@ -3629,6 +3630,7 @@ cc_library(
     hdrs = ["execution_stream_assignment.h"],
     deps = [
         ":gpu_latency_hiding_scheduler",
+        "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/transforms/collectives:collective_domain",

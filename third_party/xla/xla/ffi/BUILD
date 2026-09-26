@@ -44,6 +44,7 @@ cc_library(
     deps = [
         ":api",
         ":attribute_map",
+        "//xla:custom_options",
         "//xla/ffi/api:c_api",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
@@ -256,6 +257,7 @@ cc_library(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = [
+        ":attributes_storage",
         ":execution_context",
         ":execution_state",
         ":ffi_internal_api",
@@ -264,6 +266,7 @@ cc_library(
         ":ffi_structs",
         ":invoke",
         ":type_registry",
+        "//xla:custom_options",
         "//xla:util",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
@@ -370,8 +373,10 @@ cc_library(
     hdrs = ["ffi_structs.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":attributes_storage",
         ":execution_context",
         ":execution_state",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
@@ -444,6 +449,7 @@ xla_cc_test(
         ":ffi_registry",
         ":invoke",
         ":type_registry",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:ffi",

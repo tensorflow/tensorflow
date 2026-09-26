@@ -634,7 +634,7 @@ class HloParserImpl : public HloParser {
   bool ParsePrimitiveType(PrimitiveType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseComparisonOrder(Comparison::Order* result);
-  bool ParseComparisonType(Comparison::Type* result);
+  bool ParseComparisonType(Comparison::Order* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseConvKind(ConvolutionKind* result);
@@ -2870,7 +2870,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
       optional<ComparisonOrder> order;
-      optional<Comparison::Type> type;
+      optional<ComparisonOrder> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
       attrs["order"] = {/*required=*/false, AttrTy::kComparisonOrder, &order};
@@ -2897,8 +2897,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (type.has_value()) {
         return builder->AddInstruction(HloInstruction::CreateCompare(
-            *shape, operands[0], operands[1], *direction,
-            Comparison::DefaultOrdering(*type)));
+            *shape, operands[0], operands[1], *direction, *type));
       }
       return builder->AddInstruction(HloInstruction::CreateCompare(
           *shape, operands[0], operands[1], *direction));
@@ -6201,11 +6200,12 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kComparisonType: {
-        Comparison::Type result;
+        Comparison::Order result;
         if (!ParseComparisonType(&result)) {
           return false;
         }
-        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
+        static_cast<optional<Comparison::Order>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kEnum: {
@@ -8507,13 +8507,13 @@ bool HloParserImpl::ParseComparisonOrder(Comparison::Order* result) {
   return true;
 }
 
-bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+bool HloParserImpl::ParseComparisonType(Comparison::Order* result) {
   VLOG(kDebugLevel) << "ParseComparisonType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison type");
   }
   std::string val = lexer_.GetStrVal();
-  auto status_or_result = StringToComparisonType(val);
+  auto status_or_result = ComparisonTypeToOrder(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }

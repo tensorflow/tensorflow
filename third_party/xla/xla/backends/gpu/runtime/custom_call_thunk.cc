@@ -351,6 +351,7 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
     const CollectiveCliques* absl_nullable collective_cliques,
     const CollectiveMemory* absl_nullable collective_memory,
     const ffi::ExecutionContext* absl_nullable execution_context,
+    const CustomOptions* absl_nullable custom_options,
     absl::Span<se::Stream* const> computation_streams) {
   int32_t device_ordinal = -1;
   se::DeviceAddressAllocator* allocator = nullptr;
@@ -394,13 +395,15 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
       InvokeContext::StateContext{execution_state_.get(), prepare_state,
                                   initialize_state},
       called_computation_,
-      execution_context};
+      execution_context,
+      custom_options};
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
     RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
     se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
     const ffi::ExecutionContext* execution_context,
+    const CustomOptions* custom_options,
     const BufferAllocations* buffer_allocations,
     const CollectiveParams* absl_nullable collective_params,
     CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -421,7 +424,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
-      collective_cliques, collective_memory, execution_context,
+      collective_cliques, collective_memory, execution_context, custom_options,
       computation_streams);
   GpuCollectivesState collectives_state{
       collective_params, collective_clique_requests, collective_cliques};
@@ -436,6 +439,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
     se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
     const ffi::ExecutionContext* execution_context,
+    const CustomOptions* custom_options,
     const BufferAllocations* buffer_allocations,
     const CollectiveParams* absl_nullable collective_params,
     CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -453,7 +457,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   InvokeContext context = BuildInvokeContext(
       run_id, stream, execution_scoped_state, buffer_allocations,
       collective_params, collective_clique_requests, collective_memory_requests,
-      collective_cliques, collective_memory, execution_context,
+      collective_cliques, collective_memory, execution_context, custom_options,
       computation_streams);
   GpuCollectivesState collectives_state{
       collective_params, collective_clique_requests, collective_cliques};
@@ -487,7 +491,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         run_id, c_bundle->prepare, XLA_FFI_ExecutionStage_PREPARE,
         /*stream=*/nullptr,
         /*execution_scoped_state=*/params.execution_scoped_state,
-        /*execution_context=*/nullptr,
+        /*execution_context=*/nullptr, params.custom_options,
         /*buffer_allocations=*/params.buffer_allocations,
         /*collective_params=*/params.collective_params,
         /*collective_clique_requests=*/params.collective_clique_requests,
@@ -502,7 +506,7 @@ absl::Status CustomCallThunk::Prepare(const PrepareParams& params) {
         run_id, *owned_bundle->prepare, xla::ffi::ExecutionStage::kPrepare,
         /*stream=*/nullptr,
         /*execution_scoped_state=*/params.execution_scoped_state,
-        /*execution_context=*/nullptr,
+        /*execution_context=*/nullptr, params.custom_options,
         /*buffer_allocations=*/params.buffer_allocations,
         /*collective_params=*/params.collective_params,
         /*collective_clique_requests=*/params.collective_clique_requests,
@@ -537,8 +541,8 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
     return ExecuteFfiHandler(
         run_id, *c_bundle->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
         params.stream, params.execution_scoped_state,
-        params.ffi_execution_context, params.buffer_allocations,
-        params.collective_params,
+        params.ffi_execution_context, params.custom_options,
+        params.buffer_allocations, params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
@@ -550,7 +554,8 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
         run_id, *owned_bundle->initialize,
         xla::ffi::ExecutionStage::kInitialize, params.stream,
         params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory,
@@ -569,7 +574,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     return ExecuteFfiHandler(
         run_id, c_bundle->execute, XLA_FFI_ExecutionStage_EXECUTE, stream,
         params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory, params.additional_compute_streams);
@@ -581,7 +587,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     return ExecuteFfiHandler(
         run_id, *owned_bundle->execute, xla::ffi::ExecutionStage::kExecute,
         stream, params.execution_scoped_state, params.ffi_execution_context,
-        params.buffer_allocations, params.collective_params,
+        params.custom_options, params.buffer_allocations,
+        params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr, params.collective_cliques,
         params.collective_memory, params.additional_compute_streams);
@@ -648,8 +655,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomCallThunk::Record(
     return ExecuteFfiHandler(
         run_id, handler, stage, execute_params.stream,
         /*execution_scoped_state=*/nullptr,
-        execute_params.ffi_execution_context, execute_params.buffer_allocations,
-        execute_params.collective_params,
+        execute_params.ffi_execution_context, execute_params.custom_options,
+        execute_params.buffer_allocations, execute_params.collective_params,
         /*collective_clique_requests=*/nullptr,
         /*collective_memory_requests=*/nullptr,
         execute_params.collective_cliques, execute_params.collective_memory,

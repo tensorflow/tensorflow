@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_FFI_FFI_STRUCTS_H_
 
 #include <cstdint>
+#include <memory>
 #include <variant>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/attributes_storage.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,6 +61,8 @@ class CollectiveMemory;
 // XLA FFI C structs definition
 //===----------------------------------------------------------------------===//
 
+struct XLA_FFI_Extension;
+
 struct XLA_FFI_Error {
   absl::Status status;
 };
@@ -65,8 +70,6 @@ struct XLA_FFI_Error {
 struct XLA_FFI_Future {
   tsl::AsyncValueRef<tsl::Chain> async_value;
 };
-
-struct XLA_FFI_Extension;
 
 // This struct corresponds to `InvokeContext` available to XLA:FFI C++ clients,
 // the the invoke context for documentation.
@@ -106,6 +109,11 @@ struct XLA_FFI_InvokeContext {
 
   const xla::HloComputation* called_computation = nullptr;
   const xla::ffi::ExecutionContext* execution_context = nullptr;
+
+  // Borrowed options are encoded on first access. The invocation owns the
+  // encoded storage until the handler returns, even if it returns a future.
+  const xla::CustomOptions* custom_options = nullptr;
+  std::unique_ptr<const xla::ffi::AttributesStorage> encoded_custom_options;
 
   const XLA_FFI_Extension* extension_start = nullptr;
 };
