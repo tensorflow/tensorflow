@@ -66,10 +66,6 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
     return absl::InvalidArgumentError(absl::StrCat(
         "box_index must be 1-D, got ", box_index.shape().DebugString()));
   }
-  if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
-    *num_boxes = 0;
-    return absl::OkStatus();
-  }
   *num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
     return absl::InvalidArgumentError("boxes must have 4 columns");
