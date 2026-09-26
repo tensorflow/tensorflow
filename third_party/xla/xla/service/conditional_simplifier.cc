@@ -475,10 +475,9 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   // We can always inline a 1-branch conditional due to default branch fallback.
   auto computation = conditional->parent();
   auto create_call = [&](int64_t branch) {
-    auto call = computation->AddInstruction(HloInstruction::CreateCall(
+    auto call = conditional->AddInstruction(HloInstruction::CreateCall(
         conditional->shape(), {conditional->mutable_operand(1 + branch)},
         conditional->branch_computation(branch)));
-    conditional->SetupDerivedInstruction(call);
     // Copy frontend attributes to the new call instruction.
     call->set_frontend_attributes(conditional->frontend_attributes());
     return call;

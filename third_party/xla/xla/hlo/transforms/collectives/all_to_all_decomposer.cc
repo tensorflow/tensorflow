@@ -100,30 +100,25 @@ absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   slices.reserve(all_to_all_group_size);
   HloInstruction* operand = all_to_all->mutable_operand(0);
   for (int64_t i = 0; i < all_to_all_group_size; ++i) {
-    slices.push_back(
-        all_to_all->parent()->AddInstruction(HloInstruction::CreateSlice(
-            slice_shape, operand, slice_starts, slice_limits, slice_strides)));
-    all_to_all->SetupDerivedInstruction(slices.back());
+    slices.push_back(all_to_all->AddInstruction(HloInstruction::CreateSlice(
+        slice_shape, operand, slice_starts, slice_limits, slice_strides)));
     slice_starts[split_dim] = slice_limits[split_dim];
     slice_limits[split_dim] += split_size;
   }
   Shape all_to_all_shape = ShapeUtil::MakeTupleShapeWithPtrs(
       std::vector<const Shape*>(all_to_all_group_size, &slice_shape));
   HloInstruction* new_all_to_all =
-      all_to_all->parent()->AddInstruction(HloInstruction::CreateAllToAll(
+      all_to_all->AddInstruction(HloInstruction::CreateAllToAll(
           all_to_all_shape, slices, all_to_all->device_list(), false,
           all_to_all->channel_id(), std::nullopt));
   std::vector<HloInstruction*> gtes;
   gtes.reserve(all_to_all_group_size);
   for (int64_t i = 0; i < all_to_all_group_size; ++i) {
-    gtes.push_back(all_to_all->parent()->AddInstruction(
+    gtes.push_back(all_to_all->AddInstruction(
         HloInstruction::CreateGetTupleElement(slice_shape, new_all_to_all, i)));
-    all_to_all->SetupDerivedInstruction(new_all_to_all);
   }
-  HloInstruction* concat = all_to_all->parent()->AddInstruction(
+  return all_to_all->AddInstruction(
       HloInstruction::CreateConcatenate(all_to_all->shape(), gtes, split_dim));
-  all_to_all->SetupDerivedInstruction(concat);
-  return concat;
 }
 
 }  // namespace xla

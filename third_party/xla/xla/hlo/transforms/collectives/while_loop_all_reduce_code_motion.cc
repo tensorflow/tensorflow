@@ -1284,11 +1284,10 @@ absl::Status AddSinkedAllReducesAndReplaceWhile(
 
   // Step 2) create the new while instruction.
   HloInstruction* new_while_instruction =
-      while_instruction->parent()->AddInstruction(HloInstruction::CreateWhile(
+      while_instruction->AddInstruction(HloInstruction::CreateWhile(
           new_while_init_context.while_init->shape(),
           while_instruction->while_condition(), while_instruction->while_body(),
           new_while_init_context.while_init));
-  while_instruction->SetupDerivedInstruction(new_while_instruction);
   // Step 3) create the new all-reduce instructions after the while loop.
   absl::flat_hash_map<int, HloInstruction*> tuple_index_to_new_buffer =
       CreateSinkedAllReduces(new_while_instruction, all_reduce_to_accumulations,

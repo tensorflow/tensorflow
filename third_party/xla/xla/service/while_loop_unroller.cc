@@ -376,9 +376,8 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
           config.induction_var_idx, config.init));
 
   HloInstruction* new_while_op =
-      computation->AddInstruction(HloInstruction::CreateWhile(
+      while_op->AddInstruction(HloInstruction::CreateWhile(
           while_op->shape(), new_cond, new_body, while_op->mutable_operand(0)));
-  while_op->SetupDerivedInstruction(new_while_op);
   CHECK_OK(computation->ReplaceInstruction(while_op, new_while_op));
   for (HloInstruction* call : new_calls) {
     ABSL_RETURN_IF_ERROR(CallInliner::Inline(call).status());

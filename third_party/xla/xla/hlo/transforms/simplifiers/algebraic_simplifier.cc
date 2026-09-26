@@ -535,6 +535,15 @@ int64_t GetReduceFlops(const HloInstruction* reduce) {
   return ShapeUtil::ElementsIn(reduce->shape()) * (reduce_product - 1);
 }
 
+// Returns true if any edge padding is negative, i.e. the pad crops its operand.
+bool HasNegativePadding(const PaddingConfig& config) {
+  return absl::c_any_of(config.dimensions(),
+                        [](const PaddingConfig::PaddingConfigDimension& dim) {
+                          return dim.edge_padding_low() < 0 ||
+                                 dim.edge_padding_high() < 0;
+                        });
+}
+
 }  // namespace
 
 bool AlgebraicSimplifierVisitor::IsNonNegative(
@@ -2863,7 +2872,6 @@ AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
       reorder_operands
           ? SwapOperandsInDotPrecisionConfig(dot->precision_config())
           : dot->precision_config()));
-  dot->SetupDerivedInstruction(new_dot);
   ABSL_RETURN_IF_ERROR(ReplaceWithNewInstruction(
       dot,
       HloInstruction::CreateTranspose(dot->shape(), new_dot, permutation)));
@@ -3099,7 +3107,6 @@ AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
     auto* new_dot = dot->AddInstruction(
         HloInstruction::CreateDot(dot->shape(), new_dot_lhs, new_dot_rhs,
                                   new_dot_dnums, dot->precision_config()));
-    dot->SetupDerivedInstruction(new_dot);
 
     if (add_result) {
       add_result = dot->AddInstruction(HloInstruction::CreateBinary(
@@ -3206,7 +3213,6 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   auto* memoized_inst = dot->AddInstruction(
       HloInstruction::CreateDot(memoized_shape, left_operand, right_operand,
                                 dnums, dot->precision_config()));
-  dot->SetupDerivedInstruction(memoized_inst);
   // Get pair {start, 0} or {0, start}.
   // Position of start:
   int index_of_non_zero_start = lhs_is_dynamic_slice
@@ -4192,6 +4198,9 @@ AlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
 
 absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
+  if (dot->operand_count() > 2) {
+    return absl::OkStatus();
+  }
   HloDotInstruction* dot_cast = Cast<HloDotInstruction>(dot);
   const auto& dnums = dot->dot_dimension_numbers();
 
@@ -9648,6 +9657,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return absl::OkStatus();
   }
 
+  // A cropping pad does not compose with the window padding by addition.
+  if (HasNegativePadding(pad_config)) {
+    VLOG(10) << "Not folding negative pad into reduce-window.";
+    return absl::OkStatus();
+  }
+
   // If reduce_window already has padding, the pad value of the pad op and the
   // init value of reduce_window must match to allow folding the pad.
   const HloInstruction* pad_value = pad->operand(1);
@@ -10417,6 +10432,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
           p.interior_padding() != 0) {
         return false;
       }
+    }
+
+    // A cropping pad does not compose with the window padding by addition.
+    if (HasNegativePadding(padding)) {
+      return false;
     }
 
     // Compute the window which is the result of merging the kPad and the
