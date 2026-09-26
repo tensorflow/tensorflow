@@ -21,6 +21,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -202,8 +205,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_any, np.any, np.bool_, self.BOOL_DATA,
                         index_dtype)
 
-  @test_util.disable_mlir_bridge('Error messages differ')
   def testReduceSumWithDuplicateAxes(self, index_dtype):
+    # Regression test for GitHub issue 119360. The eager kernel and the
+    # tf2xla bridge reject duplicate reduction axes; the MLIR bridge used to
+    # silently deduplicate them, so auto-clustering accepted input that the
+    # other two execution paths rejected.
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
@@ -213,6 +219,30 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
+
+  def testReduceSumWithDuplicateAxesAutoClustering(self, index_dtype):
+    # Auto-clustering must reject duplicate axes just like eager execution
+    # and jit_compile=True do. The input is the one from GitHub issue
+    # 119360: with all-ones dimensions the unfixed lowering silently
+    # accepted the duplicates instead of raising.
+    del index_dtype  # Unused; the axes are compile-time constants.
+    x = np.full((1, 1, 1, 1, 1, 1), 3.5, dtype=np.float32)
+    axis = [-2, -1, -2, -1, -2, -1]
+
+    previous_jit = config.get_optimizer_jit()
+    config.set_optimizer_jit('autoclustering')
+    try:
+
+      @def_function.function
+      def f(t):
+        return math_ops.reduce_sum(t, axis)
+
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          'Axes contains duplicate dimension'):
+        f(constant_op.constant(x))
+    finally:
+      config.set_optimizer_jit(previous_jit)
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
