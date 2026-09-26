@@ -1034,24 +1034,23 @@ class MultiProcessPoolRunner(object):
       recv_thread = threading.Thread(target=recv_with_timeout)
       recv_thread.daemon = True
       recv_thread.start()
-      recv_thread.join(
-          timeout=min(remaining_time, 120)
-      )  # Max 2 minutes run per process
+      recv_thread.join(timeout=remaining_time)
 
       if recv_thread.is_alive():
+        wait_time = int(time.time() - start_time)
         # Timeout occurred
         logging.info(
             '[%s-%d] Timeout waiting for process result after %d s',
             task_type,
             task_id,
-            min(remaining_time, 120),
+            wait_time,
         )
         # Try to get process status for debugging
         with self._runner._process_lock if self._runner else threading.Lock():
           if self._runner and (task_type, task_id) in self._runner._processes:
             process = self._runner._processes[(task_type, task_id)]
             logging.info(
-                '[%s-%d] Process state: exitcode=%d, pid=%d',
+                '[%s-%d] Process state: exitcode=%s, pid=%s',
                 task_type,
                 task_id,
                 process.exitcode,
@@ -1060,7 +1059,7 @@ class MultiProcessPoolRunner(object):
         # Terminate the process if it is still running
         raise RuntimeError(
             f'Timeout waiting for {task_type}-{task_id} '
-            f'after {min(remaining_time, 120):.1f}s. '
+            f'after {wait_time}s. '
             'This often indicates a subprocess is stuck '
             'in initialization or pipe reading. '
             'Try increasing Docker container resources '
