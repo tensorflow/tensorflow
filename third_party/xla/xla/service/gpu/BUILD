@@ -3629,6 +3629,7 @@ cc_library(
     hdrs = ["execution_stream_assignment.h"],
     deps = [
         ":gpu_latency_hiding_scheduler",
+        "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/transforms/collectives:collective_domain",
