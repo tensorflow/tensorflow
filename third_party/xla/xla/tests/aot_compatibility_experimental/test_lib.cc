@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
