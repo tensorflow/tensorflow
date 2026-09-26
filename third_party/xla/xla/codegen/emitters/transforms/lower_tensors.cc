@@ -493,7 +493,9 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 };
 
 struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+  RewriteTensorInsert(mlir::MLIRContext* context, const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::tensor::InsertOp>(context),
+        device_spec_(device_spec) {}
 
   LogicalResult matchAndRewrite(
       mlir::tensor::InsertOp op,
@@ -512,24 +514,11 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
     Type element_type = tensor_dest.getType().getElementType();
     std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
     if (sub_byte_width) {
-      // We need to use directly op.getDest() as input, otherwise the following
-      // rewrite might remove the only user of it.
-      tensor_dest = op.getDest();
-      // Value is_low_nibble;
       Value sub_byte_shift = nullptr;
       std::tie(linear_index, sub_byte_shift) =
           GetSubByteIndex(linear_index, *sub_byte_width, b);
 
-      // Technically we should half the number of elements when going to i8
-      // element type, but it doesn't really matter because we only actually use
-      // the element type. Indexing is done by linear index, and GEP ops don't
-      // care about the number of elements. The tensor types will disappear
-      // completely after the LowerTensors pass.
       Type ty = b.getI8Type();
-      Type tensor_ty = tensor_dest.getType().clone(ty);
-      auto tensor_dest_i8 =
-          UnrealizedConversionCastOp::create(b, tensor_ty, tensor_dest)
-              .getResult(0);
       if (scalar_value.getType() != b.getIntegerType(*sub_byte_width)) {
         scalar_value = arith::BitcastOp::create(
             b, b.getIntegerType(*sub_byte_width), scalar_value);
@@ -548,22 +537,56 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       Value shifted_value =
           mlir::arith::ShLIOp::create(b, scalar_value, sub_byte_shift);
 
-      // We need AtomicRMWOp because it can happen that different threads try to
-      // access the same memory location.
-      auto atomic_rmw = AtomicRMWOp::create(b, tensor_dest_i8, linear_index);
-      mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
-                                              atomic_rmw.getBodyBuilder());
-      Value current_value = atomic_rmw.getCurrentValue();
-      Value masked_out_current_value = mlir::arith::AndIOp::create(
-          body_builder, current_value, inverse_mask);
-      Value new_value = mlir::arith::OrIOp::create(
-          body_builder, masked_out_current_value, shifted_value);
-      scf::YieldOp::create(body_builder, new_value);
-      Value casted_result =
-          UnrealizedConversionCastOp::create(b, tensor_dest.getType(),
-                                             atomic_rmw.getResult())
-              .getResult(0);
-      op.replaceAllUsesWith(casted_result);
+      if (device_spec_.IsCpu()) {
+        // On CPU, workgroup tiles are byte-aligned (see `GetWorkDimensions`),
+        // so distinct threads never access the same byte.
+        auto gep = CreateGep(tensor_dest, linear_index, b);
+        Value current_value = ml::LoadOp::create(b, ty, gep);
+        Value masked_out_current_value =
+            mlir::arith::AndIOp::create(b, current_value, inverse_mask);
+        Value new_value = mlir::arith::OrIOp::create(
+            b, masked_out_current_value, shifted_value);
+        auto store_op = ml::StoreOp::create(b, new_value, gep);
+        if (auto alias_scope_attr = op->getAttrOfType<mlir::ArrayAttr>(
+                ml::LLVMDialect::getAliasScopesAttrName())) {
+          store_op.setAliasScopesAttr(alias_scope_attr);
+        }
+        if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+                ml::LLVMDialect::getNoAliasAttrName())) {
+          store_op.setNoaliasScopesAttr(no_alias_attr);
+        }
+        op.replaceAllUsesWith(op.getDest());
+      } else {
+        // We need to use directly op.getDest() as input, otherwise the
+        // following rewrite might remove the only user of it.
+        tensor_dest = op.getDest();
+        // Technically we should halve the number of elements when going to i8
+        // element type, but it doesn't really matter because we only actually
+        // use the element type. Indexing is done by linear index, and GEP ops
+        // don't care about the number of elements. The tensor types will
+        // disappear completely after the LowerTensors pass.
+        Type tensor_ty = tensor_dest.getType().clone(ty);
+        auto tensor_dest_i8 =
+            UnrealizedConversionCastOp::create(b, tensor_ty, tensor_dest)
+                .getResult(0);
+
+        // We need AtomicRMWOp because it can happen that different threads try
+        // to access the same memory location.
+        auto atomic_rmw = AtomicRMWOp::create(b, tensor_dest_i8, linear_index);
+        mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
+                                                atomic_rmw.getBodyBuilder());
+        Value current_value = atomic_rmw.getCurrentValue();
+        Value masked_out_current_value = mlir::arith::AndIOp::create(
+            body_builder, current_value, inverse_mask);
+        Value new_value = mlir::arith::OrIOp::create(
+            body_builder, masked_out_current_value, shifted_value);
+        scf::YieldOp::create(body_builder, new_value);
+        Value casted_result =
+            UnrealizedConversionCastOp::create(b, tensor_dest.getType(),
+                                               atomic_rmw.getResult())
+                .getResult(0);
+        op.replaceAllUsesWith(casted_result);
+      }
     } else {
       auto gep = CreateGep(tensor_dest, linear_index, b);
       mlir::LLVMTypeConverter converter(getContext());
@@ -588,6 +611,9 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
     op.erase();
     return success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
@@ -1230,12 +1256,18 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   // values from the memory. This can avoid out of bound memory accesses if
   // tensor buffers are 4 byte aligned and have a size of 4N, an assumption
   // that the runtime can guarantee.
+  //
+  // On CPUs, 8-bit and 16-bit atomic compare-and-swap operations are supported
+  // natively, and runtime buffers are not guaranteed to have a size of 4N. We
+  // therefore use a minimum atomic width of 8 bits on CPU and only widen
+  // sub-byte types to i8 without rounding the byte address down.
   void rewriteAsAtomicCAS(AtomicRMWOp op,
                           mlir::PatternRewriter& rewriter) const {
     Location loc = op.getLoc();
     auto input = op.getInput();
 
-    // Use 32-bit atomic type for small input types.
+    // Use 32-bit atomic type for small input types on GPU, and 8-bit minimum
+    // atomic type on CPU.
     Type result_ty = op.getResult().getType().getElementType();
     int result_size;
     if (auto complex_ty = mlir::dyn_cast<mlir::ComplexType>(result_ty)) {
@@ -1244,9 +1276,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       result_size = result_ty.getIntOrFloatBitWidth();
     }
 
-    bool small_type = result_size < 32;
-    Type atomic_ty =
-        mlir::IntegerType::get(op.getContext(), small_type ? 32 : result_size);
+    int min_atomic_size = device_spec_.IsCpu() ? 8 : 32;
+    bool small_type = result_size < min_atomic_size;
+    Type atomic_ty = mlir::IntegerType::get(
+        op.getContext(), small_type ? min_atomic_size : result_size);
 
     // Calculate load address for the input.
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -1261,29 +1294,37 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     Value addr = CreateGep(input, linear_index, b);
     Value shift, mask;
     if (small_type) {
-      // Update input pointer by discarding the last two bits - i.e. align to
-      // 32-bit boundary for small input types (will not result in OOB, as the
-      // input alignment is at least 32 bits).
-      Type addr_int_ty = rewriter.getI64Type();
-      Value addr_int = ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
-      Value addr_offset = ml::AndOp::create(
-          rewriter, loc, addr_int,
-          ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
-      Value index = ml::MulOp::create(
-          rewriter, loc, addr_offset,
-          ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
-      addr =
-          ml::GEPOp::create(rewriter, loc, addr.getType(), rewriter.getI8Type(),
-                            addr, index, mlir::LLVM::GEPNoWrapFlags::inbounds);
+      if (min_atomic_size > 8) {
+        // Update input pointer by discarding the last two bits - i.e. align to
+        // 32-bit boundary for small input types (will not result in OOB, as the
+        // input alignment is at least 32 bits).
+        Type addr_int_ty = rewriter.getI64Type();
+        Value addr_int =
+            ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
+        Value addr_offset = ml::AndOp::create(
+            rewriter, loc, addr_int,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
+        Value index = ml::MulOp::create(
+            rewriter, loc, addr_offset,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
+        addr = ml::GEPOp::create(rewriter, loc, addr.getType(),
+                                 rewriter.getI8Type(), addr, index,
+                                 mlir::LLVM::GEPNoWrapFlags::inbounds);
 
-      Value offset = ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
-      shift = ml::MulOp::create(
-          rewriter, loc, offset,
-          ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
-      if (sub_byte_bit_width) {
-        sub_byte_shift =
-            ml::ZExtOp::create(rewriter, loc, shift.getType(), sub_byte_shift);
-        shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
+        Value offset =
+            ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
+        shift = ml::MulOp::create(
+            rewriter, loc, offset,
+            ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
+        if (sub_byte_bit_width) {
+          sub_byte_shift = ml::ZExtOp::create(rewriter, loc, shift.getType(),
+                                              sub_byte_shift);
+          shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
+        }
+      } else {
+        shift = sub_byte_bit_width
+                    ? sub_byte_shift
+                    : ml::ConstantOp::create(rewriter, loc, atomic_ty, 0);
       }
 
       // Compose the update mask.
@@ -1436,12 +1477,13 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
 
-    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, device_spec_);
-    tensor_patterns.add<RewriteAllocateShared, RewriteGetDynamicDimSize,
-                        RewriteNonScalarConstants, RewriteSyncThreads,
-                        RewriteTensorExtract, RewriteTensorInsert,
-                        RewriteTransferRead, RewriteTransferWrite>(
-        mlir_context);
+    tensor_patterns.add<RewriteAtomicRMW, RewriteTensorInsert>(mlir_context,
+                                                               device_spec_);
+    tensor_patterns
+        .add<RewriteAllocateShared, RewriteGetDynamicDimSize,
+             RewriteNonScalarConstants, RewriteSyncThreads,
+             RewriteTensorExtract, RewriteTransferRead, RewriteTransferWrite>(
+            mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(tensor_patterns)))) {
       signalPassFailure();
