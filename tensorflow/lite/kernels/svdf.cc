@@ -94,6 +94,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  input->type == kTfLiteFloat32 || input->type == kTfLiteInt8);
 
+  TF_LITE_ENSURE(context, NumDimensions(input) >= 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_feature), 2);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(weights_time), 2);
+
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
   const int rank = params->rank;
@@ -109,6 +113,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
+    TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
     TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
   }
 
@@ -134,6 +139,31 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The weights are of consistent type, so it suffices to check one.
   const bool is_hybrid_op = IsHybridOp(input, weights_feature);
   const bool is_full_integer = input->type == kTfLiteInt8;
+
+  if (is_hybrid_op) {
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_time->type, weights_feature->type);
+    if (bias) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  } else if (is_full_integer) {
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_feature->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_time->type, kTfLiteInt16);
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteInt16);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+    if (bias) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
+    }
+  } else {
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_feature->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights_time->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, state->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+    if (bias) {
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteFloat32);
+    }
+  }
 
   // Resize scratch.
   TfLiteIntArrayFree(node->temporaries);
