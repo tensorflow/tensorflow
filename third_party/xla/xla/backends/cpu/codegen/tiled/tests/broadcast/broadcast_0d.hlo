@@ -28,7 +28,7 @@ ENTRY main {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<i32>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<128x64xi32>,
-// CHECK-SAME:     %{{.*}}: index)
+// CHECK-SAME:     %{{.*}}: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:        scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK:          %[[EXT:.*]] = xtile.extract %[[ARG0]][] [] [] : memref<i32> -> tensor<i32>
@@ -38,7 +38,7 @@ ENTRY main {
 // NEW-VECTOR:    func.func @wrapped_fusion_impl(
 // NEW-VECTOR-SAME: %[[ARG0:[^:]+]]: memref<i32>,
 // NEW-VECTOR-SAME: %[[ARG1:[^:]+]]: memref<128x64xi32>,
-// NEW-VECTOR-SAME: %{{.*}}: index)
+// NEW-VECTOR-SAME: %{{.*}}: index {xla.range = [0 : index, 0 : index]})
 // NEW-VECTOR:      scf.for %[[IDX:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
 // NEW-VECTOR:        %[[READ:.*]] = vector.transfer_read %[[ARG0]][], %{{.*}} : memref<i32>, vector<i32>
 // NEW-VECTOR:        %[[BCAST:.*]] = vector.broadcast %[[READ]] : vector<i32> to vector<4x4xi32>
