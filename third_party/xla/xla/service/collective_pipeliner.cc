@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -739,6 +740,42 @@ std::string ToString(const WhileMoveInfo& move_info) {
       move_info.sliced_idx);
 }
 
+// Maps a move info of a loop body onto the clone of that body. Every
+// instruction a move info refers to is a body instruction other than the
+// parameter and the root, the two the clone replaces: a moved collective has
+// an operand and a user, a dynamic-update-slice or a sink has the root as its
+// user, a formatting op is a user of the chain or a broadcast or constant
+// feeding one, and an index is a scalar. The context has a clone for each.
+WhileMoveInfo MapMoveInfoToClone(const WhileMoveInfo& move_info,
+                                 const HloCloneContext& clone_context) {
+  WhileMoveInfo mapped;
+  mapped.collectives_to_move.reserve(move_info.collectives_to_move.size());
+  for (HloInstruction* collective : move_info.collectives_to_move) {
+    mapped.collectives_to_move.push_back(
+        clone_context.GetInstruction(collective));
+  }
+  mapped.dynamic_update_slices.reserve(move_info.dynamic_update_slices.size());
+  for (HloDynamicUpdateSliceInstruction* dyn_update :
+       move_info.dynamic_update_slices) {
+    mapped.dynamic_update_slices.push_back(
+        Cast<HloDynamicUpdateSliceInstruction>(
+            clone_context.GetInstruction(dyn_update)));
+  }
+  mapped.formatting_ops.reserve(move_info.formatting_ops.size());
+  for (HloInstruction* formatting_op : move_info.formatting_ops) {
+    mapped.formatting_ops.push_back(
+        clone_context.GetInstruction(formatting_op));
+  }
+  mapped.sliced_idx = move_info.sliced_idx;
+  mapped.output_indices = move_info.output_indices;
+  mapped.sink_instruction =
+      move_info.sink_instruction == nullptr
+          ? nullptr
+          : clone_context.GetInstruction(move_info.sink_instruction);
+  mapped.invalidated = move_info.invalidated;
+  return mapped;
+}
+
 // Set channel_id of instruction to next available to avoid collisions, if
 // necessary.
 void UpdateInstructionChannelId(HloInstruction* cloned_instr,
@@ -846,11 +883,9 @@ class WhileLoopAnalysis {
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
       HloDataflowAnalysis* dataflow_analysis,
-      std::optional<ConstantValue> known_start = std::nullopt,
       bool delay_sinking_large_collectives = false,
       int64_t collective_size_threshold = INT64_MAX)
       : while_(while_instr),
-        loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
         dataflow_analysis_(dataflow_analysis),
         pipeline_use_tree_(pipeline_use_tree),
@@ -864,12 +899,10 @@ class WhileLoopAnalysis {
   std::optional<int64_t> GetLoopIterationIdx() const {
     return loop_iteration_idx_;
   }
-  int64_t GetDUSIndex(const HloInstruction* dus) const;
   const absl::flat_hash_map<HloInstruction*, int64_t>& GetDUSIndices() const {
     return dus_index_map_;
   }
   int64_t GetUniqueDUSIndices() const { return dus_index_map_.size(); }
-  int64_t GetMaxPipeliningPerLoop() const { return max_pipelining_per_loop_; }
 
   bool ComputeLoopStatistics();
   // Checks if the given dynamic-update-slice is supported for pipelining and
@@ -902,7 +935,8 @@ class WhileLoopAnalysis {
       HloInstruction* instr, std::vector<HloInstruction*> formatting_ops,
       std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
       HloInstruction* sink_instruction, std::vector<int64_t> indices_to_merge,
-      absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order);
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_order);
   // Merges the new collective (inst) and the existing collectives in
   // indices_to_merge into a single entry in move_infos_. This is done because
   // they mutually share at least one dynamic-update-slice so their dynamic
@@ -916,7 +950,8 @@ class WhileLoopAnalysis {
       std::vector<int64_t> indices_to_merge,
       absl::flat_hash_map<const HloInstruction*, int64_t>&
           index_per_dyn_update_slice,
-      absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order);
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_order);
   void MergeIntoExistingCollectives(
       HloInstruction* instr, std::vector<HloInstruction*> formatting_ops,
       std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
@@ -925,7 +960,8 @@ class WhileLoopAnalysis {
       std::vector<int64_t> indices_to_merge,
       absl::flat_hash_map<const HloInstruction*, int64_t>&
           index_per_dyn_update_slice,
-      absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
+          instruction_order,
       collective_pipeliner_utils::PipeliningDirection direction);
   void CollectCollectivesToMove(
       int64_t level_to_operate_on,
@@ -960,12 +996,6 @@ class WhileLoopAnalysis {
   bool delay_sinking_large_collectives_;
   int64_t collective_size_threshold_;
 };
-
-int64_t WhileLoopAnalysis::GetDUSIndex(const HloInstruction* dus) const {
-  auto it = dus_index_map_.find(dus);
-  CHECK(it != dus_index_map_.end());
-  return it->second;
-}
 
 void WhileLoopAnalysis::ExtractLoopInvariantOps() {
   for (HloInstruction* inst :
@@ -1226,7 +1256,8 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForward(
     HloInstruction* instr, std::vector<HloInstruction*> formatting_ops,
     std::vector<HloDynamicUpdateSliceInstruction*> dyn_updates,
     HloInstruction* sink_instruction, std::vector<int64_t> indices_to_merge,
-    absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order) {
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_order) {
   CHECK_EQ(indices_to_merge.size(), 1);
   CHECK(dyn_updates.size() == 1 || sink_instruction != nullptr);
   int64_t target_idx = indices_to_merge[0];
@@ -1259,7 +1290,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForward(
   }
   absl::c_sort(move_infos_[target_idx].formatting_ops,
                [&](const HloInstruction* a, const HloInstruction* b) {
-                 return instruction_order[a] < instruction_order[b];
+                 return instruction_order.at(a) < instruction_order.at(b);
                });
 }
 
@@ -1270,7 +1301,8 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
     std::vector<int64_t> indices_to_merge,
     absl::flat_hash_map<const HloInstruction*, int64_t>&
         index_per_dyn_update_slice,
-    absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order) {
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_order) {
   CHECK(!indices_to_merge.empty());
   // Always pick the smallest group index to absorb the others.
   const int64_t target_idx = *absl::c_min_element(indices_to_merge);
@@ -1333,7 +1365,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
 
   absl::c_sort(move_infos_[target_idx].formatting_ops,
                [&](const HloInstruction* a, const HloInstruction* b) {
-                 return instruction_order[a] < instruction_order[b];
+                 return instruction_order.at(a) < instruction_order.at(b);
                });
 }
 
@@ -1344,7 +1376,8 @@ void WhileLoopAnalysis::MergeIntoExistingCollectives(
     std::vector<int64_t> output_indices, std::vector<int64_t> indices_to_merge,
     absl::flat_hash_map<const HloInstruction*, int64_t>&
         index_per_dyn_update_slice,
-    absl::flat_hash_map<const HloInstruction*, int64_t> instruction_order,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_order,
     collective_pipeliner_utils::PipeliningDirection direction) {
   if (direction ==
       collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
@@ -1535,7 +1568,7 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
         // as a new entry to move_infos_.
         absl::c_sort(formatting_ops,
                      [&](const HloInstruction* a, const HloInstruction* b) {
-                       return instruction_order[a] < instruction_order[b];
+                       return instruction_order.at(a) < instruction_order.at(b);
                      });
         for (HloDynamicUpdateSliceInstruction* dyn_update : dyn_updates) {
           index_per_dyn_update_slice[dyn_update] = move_infos_.size();
@@ -1868,9 +1901,7 @@ HloInstruction* ProjectNestedLoopCounter(
 // yg_last = all-reduce(y)
 absl::StatusOr<HloInstruction*> TransformLoopForward(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
-    int64_t level_to_operate_on, bool pipeline_use_tree,
-    bool process_different_sized_ops, HloPredicate should_process,
-    HloPredicate acceptable_formatting, HloPredicate reuse_output_buffer,
+    int64_t level_to_operate_on, HloPredicate reuse_output_buffer,
     int64_t& next_channel_id, bool update_collective_channel_id,
     CollectivePipeliner::HloPostprocessor post_processing_fn) {
   // Defining some maps/sets to keep track of instructions duplicated.
@@ -2062,9 +2093,30 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   HloComputation* new_while_condition =
       loop_computation->parent()->AddEmbeddedComputation(
           while_loop->while_condition()->CloneWithReplacements(&replacements));
+  // The context maps the body's instructions to their clones. Its suffix is the
+  // one CloneWithReplacements uses on its own, so cloned callees are named as
+  // before.
+  HloCloneContext clone_context(loop_computation->parent(),
+                                /*suffix=*/"clone");
   HloComputation* new_while_body =
       loop_computation->parent()->AddEmbeddedComputation(
-          while_body->CloneWithReplacements(&replacements));
+          while_body->CloneWithReplacements(
+              &replacements, /*extra_parameters=*/{}, &clone_context));
+  // The peel and the new loop state above were built for the moves of
+  // loop_analysis, so the loop rewrite below must use those moves, mapped
+  // through the clone. Analyzing the clone instead is not equivalent: its
+  // induction range starts one step later, and the index range checks can
+  // decide differently on it.
+  std::vector<WhileMoveInfo> new_move_infos;
+  new_move_infos.reserve(loop_analysis.GetMoveInfos().size());
+  for (const WhileMoveInfo& move_info : loop_analysis.GetMoveInfos()) {
+    new_move_infos.push_back(MapMoveInfoToClone(move_info, clone_context));
+  }
+  absl::flat_hash_map<const HloInstruction*, int64_t> new_dus_indices;
+  new_dus_indices.reserve(loop_analysis.GetDUSIndices().size());
+  for (const auto& [dus_index, position] : loop_analysis.GetDUSIndices()) {
+    new_dus_indices[clone_context.GetInstruction(dus_index)] = position;
+  }
   HloInstruction* new_init = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
   while_body_to_peeled[while_body->root_instruction()] = new_init;
@@ -2077,28 +2129,6 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   ABSL_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   ABSL_RETURN_IF_ERROR(new_while_loop->GetModule()->RemoveUnusedComputations());
-  // Run WhileLoopAnalysis again on the new loop to collect the position of the
-  // all-reduces in the new cloned loop as they aren't the same of the old.
-  // Loop analysis should result exactly the same, because the loop is the same
-  // except some new scalar unused parameters added at the end.
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> new_dataflow_analysis,
-                   HloDataflowAnalysis::Run(*(new_while_loop->GetModule()),
-                                            /*ssa_form=*/true,
-                                            /*bitcast_defines_value=*/false,
-                                            /*execution_threads=*/{},
-                                            /*propagate_through_calls=*/false));
-  WhileLoopAnalysis new_loop_analysis(
-      new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
-      pipeline_use_tree, process_different_sized_ops,
-      new_dataflow_analysis.get(),
-      loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
-  new_loop_analysis.ComputeLoopStatistics();
-  new_loop_analysis.CollectCollectivesToMove(
-      level_to_operate_on,
-      collective_pipeliner_utils::PipeliningDirection::kForward, should_process,
-      acceptable_formatting);
-  CHECK_EQ(new_loop_analysis.GetMoveInfos().size(),
-           loop_analysis.GetMoveInfos().size());
   for (int64_t i = new_loop_tuple_operand_count;
        i < new_parameter_shapes.size(); ++i) {
     HloInstruction* pipelined_value_load_inloop =
@@ -2218,8 +2248,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     return computation->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
         dyn_update->shape(), stacked_data, sliced_data, indices));
   };
-  for (int i = 0; i < new_loop_analysis.GetMoveInfos().size(); ++i) {
-    auto& move_info = new_loop_analysis.GetMoveInfos()[i];
+  for (int i = 0; i < new_move_infos.size(); ++i) {
+    const WhileMoveInfo& move_info = new_move_infos[i];
     HloInstruction* parameter_instr =
         new_while_body->parameter_instructions()[0];
     std::vector<HloInstruction*> loop_output_to_replace;
@@ -2300,8 +2330,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     const HloInstruction* dus_index_curr_iteration = dyn_update->operand(
         dyn_update->first_index_operand_number() + move_info.sliced_idx);
     const int64_t offset_for_index =
-        new_loop_analysis.GetDUSIndex(dus_index_curr_iteration) +
-        initial_inputs;
+        new_dus_indices.at(dus_index_curr_iteration) + initial_inputs;
     Shape index_shape = dus_index_curr_iteration->shape();
     HloInstruction* input_dus_idx =
         new_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -3467,16 +3496,31 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
 absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis;
+  return RunPipeliner(module, execution_threads, dataflow_analysis);
+}
+
+absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    std::unique_ptr<HloDataflowAnalysis>& reusable_dataflow_analysis) {
   bool changed = false;
 
   // Precompute module-scoped analysis. Because we are running a while-loop
   // analysis over all while instructions in the module, computing it here and
-  // passing it in avoids recomputing it once for each while instruction.
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                   HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+  // passing it in avoids recomputing it once for each while instruction. The
+  // caller's analysis describes the module as it is now; it is handed back at
+  // the end only when this run left the module unchanged, so a stale one is
+  // never reused.
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      std::move(reusable_dataflow_analysis);
+  if (dataflow_analysis == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(dataflow_analysis, HloDataflowAnalysis::Run(
+                                            *module, /*ssa_form=*/true,
                                             /*bitcast_defines_value=*/false,
                                             /*execution_threads=*/{},
                                             /*propagate_through_calls=*/false));
+  }
 
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
@@ -3496,8 +3540,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
           instruction, config_.max_pipelining_per_loop,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          dataflow_analysis.get(), /*known_start=*/std::nullopt,
-          config_.delay_sinking_large_collectives,
+          dataflow_analysis.get(), config_.delay_sinking_large_collectives,
           config_.collective_size_threshold_to_delay_sinking);
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
@@ -3541,8 +3584,6 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           transformed_while_loop,
           TransformLoopForward(
               *loop_analysis, !config_.last_run, config_.level_to_operate_on,
-              config_.pipeline_use_tree, config_.process_different_sized_ops,
-              config_.should_process, config_.acceptable_formatting,
               config_.reuse_pipelined_op_buffer, next_channel_id,
               config_.unique_channel_id, config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
@@ -3602,6 +3643,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   // Run necessary cleanup to make sure unused code doesn't trigger HloVerifier.
   if (changed) {
     ABSL_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+  } else {
+    reusable_dataflow_analysis = std::move(dataflow_analysis);
   }
 
   return changed;
@@ -3622,17 +3665,22 @@ absl::StatusOr<bool> CollectivePipeliner::RunImpl(
   // small collectives iteratively until it does not change the module anymore.
   // In each iteration, we pipeline the last pipelineable collectives, which do
   // not have any other pipelineable collectives in their user subtrees. Then
-  // run the pipeliner one last time on the large collectives.
+  // run the pipeliner one last time on the large collectives. The last
+  // iteration leaves the module unchanged, so its dataflow analysis serves the
+  // run on the large collectives as well.
   bool changed = true;
   int64_t iter = 0;
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis;
   while (changed) {
-    ABSL_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+    ABSL_ASSIGN_OR_RETURN(
+        changed, RunPipeliner(module, execution_threads, dataflow_analysis));
     VLOG(1) << "Finished running pipeliner's iteration for small collectives: "
             << iter;
     iter++;
   }
   config_.delay_sinking_large_collectives = false;
-  ABSL_ASSIGN_OR_RETURN(changed, RunPipeliner(module, execution_threads));
+  ABSL_ASSIGN_OR_RETURN(changed,
+                   RunPipeliner(module, execution_threads, dataflow_analysis));
   VLOG(1) << "Finished running pipeliner's iteration for large collectives: "
           << iter;
   return iter > 1 || changed;

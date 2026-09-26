@@ -70,7 +70,16 @@ AsyncExecution::ExecutionGuard::ExecutionGuard(se::Event* event,
                                                se::Stream* async_stream)
     : event_(event), async_stream_(async_stream) {}
 
+AsyncExecution::ExecutionGuard::ExecutionGuard(ExecutionGuard&& other) noexcept
+    : event_(std::exchange(other.event_, nullptr)),
+      async_stream_(std::exchange(other.async_stream_, nullptr)) {}
+
 AsyncExecution::ExecutionGuard::~ExecutionGuard() {
+  // Nothing to do for moved-from ExecutionGuards.
+  if (async_stream_ == nullptr) {
+    return;
+  }
+
   // If we fail to record completion event on a stream it is unsafe to continue
   // as the following computations might not see all the updates done by the
   // async execution.
