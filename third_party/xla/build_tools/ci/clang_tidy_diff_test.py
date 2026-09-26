@@ -644,6 +644,20 @@ class TestClangTidyDiff(parameterized.TestCase):
 
     self.assertLen(staged_dirs, 1)
 
+  @parameterized.parameters("_main", "xla")
+  def test_resolve_clang_apply_replacements_runfiles(self, repo_dir):
+    tmpdir = self.create_tempdir().full_path
+    bin_file = (
+        pathlib.Path(tmpdir)
+        / repo_dir
+        / "build_tools/ci/clang_apply_replacements_bin"
+    )
+    self.create_tempfile(bin_file.as_posix(), content="")
+    with absltest.mock.patch.dict("os.environ", {"RUNFILES_DIR": tmpdir}):
+      self.assertEqual(
+          clang_tidy_diff._resolve_clang_apply_replacements(None), bin_file
+      )
+
 
 if __name__ == "__main__":
   absltest.main()
