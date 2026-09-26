@@ -136,6 +136,24 @@ TEST(PerImageStandardizationDeathTest, WrongOutputTypeFails) {
   const Algo* per_image_standardization = Impl_PerImageStandardization();
   EXPECT_DEATH(per_image_standardization->process({&img}, {&output}), "");
 }
+
+TEST(PerImageStandardizationTest, InvalidRankIgnoredGracefully) {
+  const Algo* per_image_standardization = Impl_PerImageStandardization();
+
+  for (const std::vector<dim_t>& invalid_dims : {
+           std::vector<dim_t>{2, 3, 4},
+           std::vector<dim_t>{2, 3, 4, 5, 6},
+       }) {
+    OwningVectorRef img(etype_t::f32);
+    img.Resize(dims_t(invalid_dims));
+
+    OwningVectorRef output(etype_t::f32);
+    output.Resize({1, 1, 1, 1});
+
+    per_image_standardization->process({&img}, {&output});
+    EXPECT_EQ(output.Dims(), dims_t({1, 1, 1, 1}));
+  }
+}
 }  // namespace
 }  // namespace per_image_standardization
 }  // namespace ml_adj
