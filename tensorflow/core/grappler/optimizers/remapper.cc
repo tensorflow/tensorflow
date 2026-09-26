@@ -1870,7 +1870,9 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
       mulmax_pattern, {}, ctx->graph_view.GetNode(node_index),
       matched_nodes_map, remove_node_indices);
 
-  // Check if the value of alpha >= 0 as required for LeakyRelu
+  // maximum(x, alpha * x) equals LeakyRelu(x, alpha) only for alpha in [0, 1].
+  // For alpha > 1 the maximum picks alpha * x on the positive side, which
+  // LeakyRelu (identity for x > 0) does not reproduce.
   if (found_op_type_match) {
     const auto* alpha_node_view =
         ctx->graph_view.GetNode(matched_nodes_map->at("alpha"));
@@ -1902,7 +1904,8 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
       return false;
     }
 
-    if (alpha_val < 0) return false;
+    // Written so that a NaN alpha is rejected as well.
+    if (!(alpha_val >= 0 && alpha_val <= 1)) return false;
     *alpha = alpha_val;
   }
   return found_op_type_match;
