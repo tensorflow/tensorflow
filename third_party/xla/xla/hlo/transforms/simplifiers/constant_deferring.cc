@@ -35,7 +35,8 @@ namespace {
 bool IsConstant(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kConstant ||
          (instr->opcode() == HloOpcode::kBroadcast &&
-          instr->operand(0)->opcode() == HloOpcode::kConstant);
+          instr->operand(0)->opcode() == HloOpcode::kConstant) ||
+         instr->IsCustomCall("AllocateBuffer");
 }
 
 }  // namespace
