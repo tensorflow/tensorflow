@@ -13,6 +13,9 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: emitters_opt %s -split-input-file -xla-lower-xla-intrinsic-lib | FileCheck %s
+// RUN: emitters_opt %s -split-input-file \
+// RUN:   -xla-lower-xla-intrinsic-lib="cpu_features=+avx,+avx2,+avx512f" \
+// RUN:   | FileCheck %s --check-prefix=AVX512
 
 module {
   func.func @exp_f64(%arg0: f64) -> f64 {
@@ -307,12 +310,60 @@ module {
 // CHECK: %[[S0:.*]] = vector.extract_strided_slice %arg0 offsets = [0], sizes = [16], strides = [1] : vector<32xbf16> to vector<16xbf16>
 // CHECK: %[[EXT0:.*]] = arith.extf %[[S0]] : vector<16xbf16> to vector<16xf32>
 // CHECK: %[[C0:.*]] = call @xla.tanh.v16f32(%[[EXT0]])
-// CHECK: %[[TR0:.*]] = call @xla.fptrunc.v8f32.to.v8bf16
+// CHECK: %[[TR0:.*]] = call @xla.fptrunc.v16f32.to.v16bf16(%[[C0]])
 // CHECK: %[[S1:.*]] = vector.extract_strided_slice %arg0 offsets = [16], sizes = [16], strides = [1] : vector<32xbf16> to vector<16xbf16>
 // CHECK: %[[EXT1:.*]] = arith.extf %[[S1]] : vector<16xbf16> to vector<16xf32>
 // CHECK: %[[C1:.*]] = call @xla.tanh.v16f32(%[[EXT1]])
-// CHECK: %[[TR1:.*]] = call @xla.fptrunc.v8f32.to.v8bf16
+// CHECK: %[[TR1:.*]] = call @xla.fptrunc.v16f32.to.v16bf16(%[[C1]])
 // CHECK: return
+
+// -----
+
+func.func @log1p_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
+  %ret = math.log1p %arg0 : vector<16xf32>
+  return %ret : vector<16xf32>
+}
+// CHECK-LABEL: @log1p_f32_vector_16
+// CHECK-NOT: vector.extract_strided_slice
+// CHECK: %[[CALL:.*]] = call @xla.log1p.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// CHECK: return %[[CALL]]
+
+// -----
+
+func.func @erf_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
+  %ret = math.erf %arg0 : vector<16xf32>
+  return %ret : vector<16xf32>
+}
+// CHECK-LABEL: @erf_f32_vector_16
+// CHECK-NOT: vector.extract_strided_slice
+// CHECK: %[[CALL:.*]] = call @xla.erf.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// CHECK: return %[[CALL]]
+
+// -----
+
+func.func @trunc_vector_16(%arg0: vector<16xf32>) -> vector<16xbf16> {
+  %ret = arith.truncf %arg0 : vector<16xf32> to vector<16xbf16>
+  return %ret : vector<16xbf16>
+}
+// CHECK-LABEL: @trunc_vector_16
+// CHECK-NOT: vector.extract_strided_slice
+// CHECK: %[[CALL:.*]] = call @xla.fptrunc.v16f32.to.v16bf16(%arg0) : (vector<16xf32>) -> vector<16xbf16>
+// CHECK: return %[[CALL]]
+
+// -----
+
+// rsqrt vector variants are gated on CPU features.
+func.func @rsqrt_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
+  %ret = math.rsqrt %arg0 : vector<16xf32>
+  return %ret : vector<16xf32>
+}
+// CHECK-LABEL: @rsqrt_f32_vector_16
+// CHECK-NOT: @xla.rsqrt.v
+// CHECK-COUNT-16: call @xla.rsqrt.f32
+
+// AVX512-LABEL: @rsqrt_f32_vector_16
+// AVX512: %[[CALL:.*]] = call @xla.rsqrt.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// AVX512: return %[[CALL]]
 
 
 
