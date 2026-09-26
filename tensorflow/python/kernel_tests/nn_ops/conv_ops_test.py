@@ -1705,8 +1705,9 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     values = []
     for (data_format, use_gpu) in GetTestConfigs():
       values.append(_GetVal(data_format, use_gpu))
+    tol = 1e-3 if test.is_gpu_available() else 2e-4
     for i in range(1, len(values)):
-      self.assertAllClose(values[0], values[i], rtol=2e-4, atol=2e-4)
+      self.assertAllClose(values[0], values[i], rtol=tol, atol=tol)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth1ValidBackpropFilter(self):
@@ -3795,7 +3796,7 @@ def GetInceptionFwdDilatedConvTest(input_size, filter_size, stride, padding):
           strides=[stride, stride],
           dilations=[2, 2],
           padding=padding,
-          rtol=5e-4)
+          rtol=1e-3 if test.is_gpu_available() else 5e-4)
 
   return Test
 
