@@ -83,6 +83,8 @@ class GpuExecutable : public Executable {
   struct NumAdditionalStreams {
     int compute = 0;
     int communication = 0;
+    bool need_d2h_stream = false;
+    bool need_h2d_stream = false;
   };
 
   using ConstantInfo = GpuModuleGlobals::ConstantInfo;
