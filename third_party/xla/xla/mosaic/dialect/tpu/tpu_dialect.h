@@ -46,6 +46,12 @@ class TPUDialect;
 #define GET_TYPEDEF_CLASSES
 #include "xla/mosaic/dialect/tpu/tpu_type_defs.h.inc"
 
+namespace mlir::OpTrait {
+template <typename ConcreteType>
+class CompilerInternalOp
+    : public OpTrait::TraitBase<ConcreteType, CompilerInternalOp> {};
+}  // namespace mlir::OpTrait
+
 #define GET_OP_CLASSES
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h.inc"
 #include "xla/mosaic/dialect/tpu/tpu_ops.h.inc"
