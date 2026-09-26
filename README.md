@@ -47,13 +47,16 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
-To install the current release, which includes support for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
-Windows)*:
+To install the current release:
 
 ```
  pip install tensorflow
 ```
+
+For GPU support, follow the platform-specific
+[installation instructions](https://www.tensorflow.org/install/gpu). Native
+Windows GPU support is limited to TensorFlow 2.10; use WSL2 for GPU support
+with newer releases.
 
 Other devices (DirectX and MacOS-metal) are supported using
 [Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
