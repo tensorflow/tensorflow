@@ -237,5 +237,16 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(SimpleCacheOp2Test, OutOfBoundsCacheSlotIndex) {
+  SimpleCacheOpModel m({TensorType_INT64, {2}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}});
+
+  m.SetPosition({4100, 4101});
+  m.SetKey({1, 0, -6, 2, 4, 3, 1, 0, -6, 2, 4, 3});
+  m.SetValue({4, 2, -4, 2, 4, 2, 4, 2, -4, 2, 4, 2});
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
