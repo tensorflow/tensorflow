@@ -69,12 +69,12 @@ option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 
 # The TFLite runtime builds from this repository plus a few header-only TensorFlow
 # files (see tools/cmake/modules/Findtensorflow_headers.cmake). A full TensorFlow
-# source tree is only needed by the benchmark_model tool and the kernel tests.
+# source tree is only needed by the kernel tests.
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project. Only needed when \
-TFLITE_ENABLE_BENCHMARK_MODEL or TFLITE_KERNEL_TEST is ON."
+TFLITE_KERNEL_TEST is ON."
 )
-if(TFLITE_ENABLE_BENCHMARK_MODEL OR TFLITE_KERNEL_TEST)
+if(TFLITE_KERNEL_TEST)
   if(NOT TENSORFLOW_SOURCE_DIR)
     message(STATUS "Downloading TensorFlow repository...")
     include(FetchContent)
@@ -816,21 +816,8 @@ if(TFLITE_KERNEL_TEST)
   add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
 endif()
 
-# Add the generated headers directory. Required for maintaining the
-# tensorflow/lite directory structure for generated headers.
-set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
-
+# The benchmark tool.
 if(TFLITE_ENABLE_BENCHMARK_MODEL)
-  # Add the profiling proto directory.
-  add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
-
-  # Add the benchmark result proto directory.
-  add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark/proto)
-
-  # Add the tf example directory.
-  add_subdirectory(${TF_SOURCE_DIR}/core/example ${CMAKE_BINARY_DIR}/example_proto_generated)
-
-  # The benchmark tool.
   add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
 endif()
 
