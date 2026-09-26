@@ -117,12 +117,16 @@ class MatrixSolveOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testInvalidRank(self):
+    valid_matrix = constant_op.constant(np.eye(2, dtype=np.float32))
     for fn in (linalg_ops.matrix_solve, gen_linalg_ops.matrix_solve):
       for bad_shape in ([], [2]):
-        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
+        bad_val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
         with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
           with test_util.use_gpu():
-            self.evaluate(fn(val, val))
+            self.evaluate(fn(bad_val, bad_val))
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+          with test_util.use_gpu():
+            self.evaluate(fn(valid_matrix, bad_val))
 
   def testNotInvertible(self):
     # The input should be invertible.
