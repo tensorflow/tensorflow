@@ -50,3 +50,8 @@ def ifrt_package_groups(name = "ifrt_package_groups"):
         name = "serdes_week_4_old_version_users",
         packages = ["//..."],
     )
+
+    native.package_group(
+        name = "mock_users",
+        packages = ["//..."],
+    )
