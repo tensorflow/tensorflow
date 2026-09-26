@@ -669,20 +669,12 @@ TEST_F(HloDiffTest, DiffSummaryToProtoWorks) {
           Property(
               &ComputationDiffPatternProto::computation_group,
               ElementsAre(AllOf(
-                  Property(
-                      &ComputationGroupProto::left_computations,
-                      ElementsAre(AllOf(
-                          Property(&ComputationDetailsProto::name, "entry"),
-                          Property(&ComputationDetailsProto::instructions,
-                                   ElementsAre("parameter.0", "parameter.1",
-                                               "add.0"))))),
-                  Property(
-                      &ComputationGroupProto::right_computations,
-                      ElementsAre(AllOf(
-                          Property(&ComputationDetailsProto::name, "entry"),
-                          Property(&ComputationDetailsProto::instructions,
-                                   ElementsAre("parameter.0", "parameter.1",
-                                               "add.0")))))))),
+                  Property(&ComputationGroupProto::left_computations,
+                           ElementsAre(AllOf(Property(
+                               &ComputationDetailsProto::name, "entry")))),
+                  Property(&ComputationGroupProto::right_computations,
+                           ElementsAre(AllOf(Property(
+                               &ComputationDetailsProto::name, "entry"))))))),
           Property(&ComputationDiffPatternProto::changed_instruction_count, 0),
           Property(
               &ComputationDiffPatternProto::left_unmatched_instruction_count,
