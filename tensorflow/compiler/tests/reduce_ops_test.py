@@ -232,15 +232,16 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     previous_jit = config.get_optimizer_jit()
     config.set_optimizer_jit('autoclustering')
     try:
+      with self.test_scope():
 
-      @def_function.function
-      def f(t):
-        return math_ops.reduce_sum(t, axis)
+        @def_function.function
+        def f(t):
+          return math_ops.reduce_sum(t, axis)
 
-      with self.assertRaisesWithPredicateMatch(
-          errors_impl.InvalidArgumentError,
-          'Axes contains duplicate dimension'):
-        f(constant_op.constant(x))
+        with self.assertRaisesWithPredicateMatch(
+            errors_impl.InvalidArgumentError,
+            'Axes contains duplicate dimension'):
+          f(constant_op.constant(x))
     finally:
       config.set_optimizer_jit(previous_jit)
 
