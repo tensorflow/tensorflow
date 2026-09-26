@@ -642,6 +642,46 @@ class TensorArrayTest(test.TestCase):
             r"dynamically resizeable"):
           self.evaluate(ta.split([1.0], [1]).flow)
 
+  def testTensorArraySplitRejectsNegativeLengths(self):
+    if context.executing_eagerly():
+      self.skipTest("TensorArraySplitOp requires graph mode")
+
+    for lengths, index in [([-1, 1], 0), ([1, -1], 1)]:
+      with self.subTest(lengths=lengths), self.session():
+        handle, flow = gen_data_flow_ops.tensor_array_v3(
+            size=2, dtype=dtypes.float32, tensor_array_name="negative_lengths"
+        )
+        with self.assertRaisesOpError(
+            "Expected lengths to be non-negative, but found -1 at index "
+            f"{index}"
+        ):
+          self.evaluate(
+              gen_data_flow_ops.tensor_array_split_v3(
+                  handle=handle,
+                  value=constant_op.constant([], dtype=dtypes.float32),
+                  lengths=lengths,
+                  flow_in=flow,
+              )
+          )
+
+  def testTensorArraySplitRejectsOverflowingLengths(self):
+    if context.executing_eagerly():
+      self.skipTest("TensorArraySplitOp requires graph mode")
+
+    with self.session():
+      handle, flow = gen_data_flow_ops.tensor_array_v3(
+          size=2, dtype=dtypes.float32, tensor_array_name="overflowing_lengths"
+      )
+      with self.assertRaisesOpError("TensorArraySplit lengths overflowed"):
+        self.evaluate(
+            gen_data_flow_ops.tensor_array_split_v3(
+                handle=handle,
+                value=constant_op.constant([], dtype=dtypes.float32),
+                lengths=[np.iinfo(np.int64).max, 1],
+                flow_in=flow,
+            )
+        )
+
   def _testTensorArrayWriteGradientAddMultipleAdds(self, dtype):
     with self.cached_session():
       ta = tensor_array_ops.TensorArray(

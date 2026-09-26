@@ -22,7 +22,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
+#include "absl/base/casts.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
@@ -65,6 +67,26 @@ __device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
   return res.v;
 }
 
+// Converts IEEE 754 floating-point keys (e.g., 32-bit float and 16-bit
+// bfloat16) to order-preserving unsigned integers. This establishes a
+// well-defined total ordering, properly handling special values such as NaNs
+// and signed zeroes during integer sorting.
+namespace details {
+template <typename T>
+__device__ __forceinline__ auto ToOrdered(T x) {
+  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
+    uint32_t val = absl::bit_cast<uint32_t>(x);
+    return (val & 0x80000000u) ? ~val : (val | 0x80000000u);
+  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+    uint16_t val = absl::bit_cast<uint16_t>(x);
+    return (val & 0x8000u) ? static_cast<uint16_t>(~val)
+                           : static_cast<uint16_t>(val | 0x8000u);
+  } else {
+    return x;
+  }
+}
+}  // namespace details
+
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
 // implementations below.
@@ -76,7 +98,9 @@ struct Descending {
   };
 
   __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
-    return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
+    auto l = details::ToOrdered(lhs.key);
+    auto r = details::ToOrdered(rhs.key);
+    return l == r ? lhs.idx < rhs.idx : l > r;
   }
 };
 
