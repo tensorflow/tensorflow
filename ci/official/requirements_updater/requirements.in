@@ -10,7 +10,7 @@ astunparse == 1.6.3
 dill == 0.3.7
 astor == 0.7.1
 typing_extensions ~= 4.14.1
-gast == 0.4.0
+gast == 0.6.0
 termcolor == 2.3.0
 wrapt == 1.16.0
 tblib == 2.0.0

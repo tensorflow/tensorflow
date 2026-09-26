@@ -14,6 +14,9 @@
 # ==============================================================================
 """Tests for activity module."""
 
+import sys
+import textwrap
+
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -127,6 +130,23 @@ class ActivityAnalyzerTestBase(test.TestCase):
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
         name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
+    node = qual_names.resolve(node)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
+    node = activity.resolve(node, ctx)
+    return node, entity_info
+
+  def _parse_match_and_analyze(self, source):
+    if sys.version_info < (3, 10):
+      self.skipTest('Pattern matching requires Python 3.10 or newer.')
+    source = textwrap.dedent(source)
+    node = parser.parse(source)
+    entity_info = transformer.EntityInfo(
+        name=node.name,
         source_code=source,
         source_file=None,
         future_features=(),
@@ -311,6 +331,70 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     self.assertScopeIs(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent,
         ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
+
+  def test_match_subject_and_guard(self):
+    node, _ = self._parse_match_and_analyze("""
+        def test_fn(subject, guard):
+          match subject:
+            case _ if guard:
+              return True
+          return False
+        """)
+    match_node = node.body[0]
+    self.assertScopeIs(
+        anno.getanno(match_node.subject, anno.Static.SCOPE), ('subject',), ())
+    self.assertScopeIs(
+        anno.getanno(match_node.cases[0].guard, anno.Static.SCOPE),
+        ('guard',), ())
+
+  def test_match_as_binds_name(self):
+    node, _ = self._parse_match_and_analyze("""
+        def test_fn(subject):
+          match subject:
+            case captured:
+              return captured
+        """)
+    pattern = node.body[0].cases[0].pattern
+    pattern_scope = anno.getanno(pattern, anno.Static.SCOPE)
+    self.assertScopeIs(pattern_scope, (), ('captured',))
+    self.assertSymbolSetsAre(('captured',), pattern_scope.bound, 'bound')
+
+  def test_match_star_binds_name(self):
+    node, _ = self._parse_match_and_analyze("""
+        def test_fn(subject):
+          match subject:
+            case [*rest]:
+              return rest
+        """)
+    pattern = node.body[0].cases[0].pattern
+    pattern_scope = anno.getanno(pattern, anno.Static.SCOPE)
+    self.assertScopeIs(pattern_scope, (), ('rest',))
+    self.assertSymbolSetsAre(('rest',), pattern_scope.bound, 'bound')
+
+  def test_match_mapping_binds_names(self):
+    node, _ = self._parse_match_and_analyze("""
+        def test_fn(subject):
+          match subject:
+            case {'key': value, **rest}:
+              return value, rest
+        """)
+    pattern = node.body[0].cases[0].pattern
+    pattern_scope = anno.getanno(pattern, anno.Static.SCOPE)
+    self.assertScopeIs(pattern_scope, (), ('value', 'rest'))
+    self.assertSymbolSetsAre(('value', 'rest'), pattern_scope.bound, 'bound')
+
+  def test_match_class_reads_class_and_binds_names(self):
+    node, _ = self._parse_match_and_analyze("""
+        def test_fn(subject):
+          match subject:
+            case shapes.Point(x, coord=y):
+              return x, y
+        """)
+    pattern = node.body[0].cases[0].pattern
+    pattern_scope = anno.getanno(pattern, anno.Static.SCOPE)
+    self.assertScopeIs(
+        pattern_scope, ('shapes', 'shapes.Point'), ('x', 'y'))
+    self.assertSymbolSetsAre(('x', 'y'), pattern_scope.bound, 'bound')
 
   def test_if_attributes(self):
 
@@ -803,7 +887,7 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
 
     def test_fn():
       a: b
-      return a
+      return a  # pylint: disable=used-before-assignment
 
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
