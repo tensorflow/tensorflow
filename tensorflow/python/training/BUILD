@@ -377,6 +377,7 @@ py_library(
 py_library(
     name = "optimizer",
     srcs = ["optimizer.py"],
+    lazy_imports = True,
     strict_deps = True,
     visibility = [
         "//tensorflow:internal",
