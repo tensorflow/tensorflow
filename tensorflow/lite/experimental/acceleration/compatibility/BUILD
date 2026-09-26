@@ -19,6 +19,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow/lite:special_rules.bzl", "gpu_compatibility_without_gl_deps_internal_visibility_allowlist", "tflite_extra_gles_deps", "tflite_portable_test_suite")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -273,6 +274,39 @@ cc_test(
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "mldrift_compatibility",
+    srcs = ["mldrift_compatibility.cc"],
+    hdrs = ["mldrift_compatibility.h"],
+    linkopts = gpu_delegate_linkopts(),
+    deps = select({
+        "//tensorflow:android": [
+            ":android_info",
+            ":gpu_compatibility",
+            ":mldrift_compatibility_binary_embed",
+            "//tensorflow/lite:minimal_logging",
+            "//tensorflow/lite/delegates/gpu/common:gpu_info",
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_test(
+    name = "mldrift_compatibility_test",
+    srcs = ["mldrift_compatibility_test.cc"],
+    linkopts = gpu_delegate_linkopts(),
+    deps = [
+        ":android_info",
+        ":gpu_compatibility",
+        ":mldrift_compatibility",
+        ":mldrift_compatibility_binary_embed",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
