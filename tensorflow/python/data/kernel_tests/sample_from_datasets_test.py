@@ -150,10 +150,12 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(sample_dataset, [],
                                requires_initialization=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSkippingDatasetsWithZeroWeight(self, weights_type):
     # Sampling skips the first dataset.
-    weights = np.asarray([0., 1.])
+    weights = _get_weights_of_type(np.asarray([0., 1.]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1)
@@ -162,10 +164,12 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [1])
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsAllWeightsAreZero(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsAllWeightsAreZero(self, weights_type):
     # Sampling skips both datasets.
-    weights = np.asarray([0., 0.])
+    weights = _get_weights_of_type(np.asarray([0., 0.]), weights_type)
     datasets = [
         dataset_ops.Dataset.from_tensors(-1).repeat(),
         dataset_ops.Dataset.from_tensors(1).repeat()
