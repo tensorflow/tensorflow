@@ -16,6 +16,7 @@
 #define XLA_HLO_TRANSFORMS_HOST_OFFLOADER_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -28,6 +29,7 @@
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/host_offload_utils.h"
 
 namespace xla {
@@ -88,6 +90,13 @@ class HostOffloader : public HloModulePass {
       std::pair<host_offload_utils::InstructionAndShapeIndex, int64_t>>
       already_inserted_copy_before_;
   const AliasInfo* alias_info_;
+
+  // Call graph of the module of the current run, built on first use and
+  // dropped when RunImpl returns. One graph serves the whole run: until the
+  // final HloCSE, the pass only adds and removes instructions that call no
+  // computation, so the call sites never change while the graph is in use.
+  std::unique_ptr<CallGraph> call_graph_;
+  const CallGraph& GetOrBuildCallGraph(const HloModule* module);
 
   // DynamicUpdateSlices are a bit special because they are the only op which
   // has multiple operands that host memory offloading supports. As a result,
