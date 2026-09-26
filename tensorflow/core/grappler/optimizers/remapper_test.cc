@@ -2732,8 +2732,11 @@ TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
 
 class RemapperLeakyReluTest : public GrapplerTest {
  protected:
+  // `epsilon` is the alpha of y = maximum(x, alpha * x). The pattern is only
+  // equivalent to LeakyRelu for alpha in [0, 1], so `expect_fused` is false
+  // outside that range.
   template <DataType DTYPE>
-  void RunTest() {
+  void RunTest(float epsilon = 0.3f, bool expect_fused = true) {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
@@ -2742,7 +2745,6 @@ class RemapperLeakyReluTest : public GrapplerTest {
 
     // y = maximum(x, alpha * x)
     auto input = Placeholder(s.WithOpName("input"), DTYPE, max_shape);
-    float epsilon = 0.3f;
 
     typedef typename EnumToDataType<DTYPE>::Type CType;
     auto leakyrelu_alpha = ops::Const<CType>(s.WithOpName("alpha"), epsilon);
@@ -2770,9 +2772,14 @@ class RemapperLeakyReluTest : public GrapplerTest {
     int found = 0;
     for (const NodeDef& node : output.node()) {
       if (node.name() == "Maximum") {
-        EXPECT_EQ(node.op(), "LeakyRelu");
-        ASSERT_EQ(node.input_size(), 1);
-        EXPECT_EQ(node.input(0), "input");
+        if (expect_fused) {
+          EXPECT_EQ(node.op(), "LeakyRelu");
+          ASSERT_EQ(node.input_size(), 1);
+          EXPECT_EQ(node.input(0), "input");
+        } else {
+          EXPECT_EQ(node.op(), "Maximum");
+          EXPECT_EQ(node.input_size(), 2);
+        }
         ++found;
       }
     }
@@ -2797,6 +2804,21 @@ TEST_F(RemapperLeakyReluTest, BF16) {
     GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "RemapperLeakyRelu with bfloat16.";
   RunTest<DT_BFLOAT16>();
+}
+
+// alpha == 1 is the upper edge of the valid range: maximum(x, x) == x.
+TEST_F(RemapperLeakyReluTest, F32_AlphaOne) { RunTest<DT_FLOAT>(1.0f); }
+
+// alpha > 1 must not be fused: maximum(x, 2 * x) is 2 * x for x > 0, but
+// LeakyRelu(x, 2) is x there.
+TEST_F(RemapperLeakyReluTest, F32_AlphaAboveOneNotFused) {
+  RunTest<DT_FLOAT>(2.0f, /*expect_fused=*/false);
+}
+TEST_F(RemapperLeakyReluTest, BF16_AlphaAboveOneNotFused) {
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "RemapperLeakyRelu with bfloat16.";
+  RunTest<DT_BFLOAT16>(2.0f, /*expect_fused=*/false);
 }
 
 class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
