@@ -49,8 +49,9 @@ class MultiplexDenseOp : public OpKernel {
     // `N` Attr is consistent.
     const int64_t expected_inputs = 2 * num_cond_a_ + 1;
     OP_REQUIRES(ctx, expected_inputs == ctx->num_inputs(),
-                Internal("expected_inputs != num_inputs(): ", expected_inputs,
-                         " != ", ctx->num_inputs()));
+                absl::InternalError(absl::StrCat(
+                    "expected_inputs != num_inputs(): ", expected_inputs,
+                    " != ", ctx->num_inputs())));
     VLOG(1) << "N " << num_cond_a_;
 
     const auto& first_cond_tensor = ctx->input(0);
@@ -66,20 +67,20 @@ class MultiplexDenseOp : public OpKernel {
       const auto& a_values_tensor_i = ctx->input(num_cond_a_ + i);
       OP_REQUIRES(
           ctx, a_values_tensor_i.shape() == b_values_tensor.shape(),
-          InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "a_values[", i,
               "] and b_values must have the same shape. "
               "a_values[",
               i, "] shape: ", a_values_tensor_i.DebugString(),
-              " b_values shape: ", b_values_tensor.shape().DebugString()));
+              " b_values shape: ", b_values_tensor.shape().DebugString())));
       OP_REQUIRES(
           ctx, cond_tensor_i.shape() == b_values_tensor.shape(),
-          InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "cond_values[", i,
               "] and b_valuesmust have the same shape. "
               "cond_values[",
               i, "] shape: ", first_a_values_tensor.shape().DebugString(),
-              " b_values shape: ", first_cond_tensor.shape().DebugString()));
+              " b_values shape: ", first_cond_tensor.shape().DebugString())));
     }
 
     // Create an output tensor
