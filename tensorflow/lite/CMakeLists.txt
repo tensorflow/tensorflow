@@ -40,32 +40,6 @@ cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Use FetchContent to download TensorFlow if not provided
-include(FetchContent)
-
-set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
-  "Directory that contains the TensorFlow project"
-)
-if(NOT TENSORFLOW_SOURCE_DIR)
-  message(STATUS "Downloading TensorFlow repository...")
-  FetchContent_Declare(
-    tensorflow
-    GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
-    # v2.21.0-rc0 has updated schema_generated.h file.
-    GIT_TAG v2.21.0-rc0
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE
-    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
-  )
-  FetchContent_GetProperties(tensorflow)
-  if(NOT tensorflow_POPULATED)
-    FetchContent_Populate(tensorflow)
-  endif()
-  set(TENSORFLOW_SOURCE_DIR "${tensorflow_SOURCE_DIR}")
-endif()
-set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
-set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
-set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -92,6 +66,36 @@ option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
+
+# The TFLite runtime builds from this repository plus a few header-only TensorFlow
+# files (see tools/cmake/modules/Findtensorflow_headers.cmake). A full TensorFlow
+# source tree is only needed by the kernel tests.
+set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
+  "Directory that contains the TensorFlow project. Only needed when \
+TFLITE_KERNEL_TEST is ON."
+)
+if(TFLITE_KERNEL_TEST)
+  if(NOT TENSORFLOW_SOURCE_DIR)
+    message(STATUS "Downloading TensorFlow repository...")
+    include(FetchContent)
+    FetchContent_Declare(
+      tensorflow
+      GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
+      GIT_TAG v2.21.0-rc0
+      GIT_SHALLOW TRUE
+      GIT_PROGRESS TRUE
+      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
+    )
+    FetchContent_GetProperties(tensorflow)
+    if(NOT tensorflow_POPULATED)
+      FetchContent_Populate(tensorflow)
+    endif()
+    set(TENSORFLOW_SOURCE_DIR "${tensorflow_SOURCE_DIR}")
+  endif()
+  set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
+  set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
+  set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")
+endif()
 
 if(${CMAKE_CROSSCOMPILING})
   set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
@@ -190,11 +194,17 @@ endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
-# Include TSL, which is in tensorflow/third_party
-include_directories(
-  ${TSL_SOURCE_DIR}
-  ${XLA_SOURCE_DIR}
-)
+# Header-only TensorFlow dependencies (xla/tsl/..., third_party/fft2d/...).
+find_package(tensorflow_headers REQUIRED)
+include_directories(${TENSORFLOW_HEADERS_INCLUDE_DIR})
+if(TENSORFLOW_SOURCE_DIR)
+  include_directories(
+    AFTER
+    ${TENSORFLOW_SOURCE_DIR}
+    ${TSL_SOURCE_DIR}
+    ${XLA_SOURCE_DIR}
+  )
+endif()
 # Download necessary dependencies.
 if(TFLITE_ENABLE_XNNPACK)
   # pthreadpool is used by XNNPACK.
@@ -410,7 +420,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
     ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
-    ${TF_SOURCE_DIR}/compiler/mlir/lite/tools/versioning/op_signature.cc
+    ${TFLITE_SOURCE_DIR}/converter/tools/versioning/op_signature.cc
   )
   include_directories(
     AFTER
@@ -439,7 +449,7 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
-      PRIVATE ${TENSORFLOW_SOURCE_DIR}
+      PRIVATE ${TFLITE_SOURCE_DIR}/..
       PRIVATE ${PROJECT_BINARY_DIR}
     )
     #
@@ -455,7 +465,7 @@ if(TFLITE_ENABLE_GPU)
         OUTPUT ${METAL_GENERATED_DIR}/inference_context_generated.h
         COMMAND ${CMAKE_COMMAND} -E make_directory ${METAL_GENERATED_DIR}
         COMMAND ${FLATC} --scoped-enums
-        -I ${TENSORFLOW_SOURCE_DIR}
+        -I ${TFLITE_SOURCE_DIR}/..
         -o ${METAL_GENERATED_DIR}
         -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
         DEPENDS ${FLATC_TARGET}
@@ -533,7 +543,7 @@ if(TFLITE_ENABLE_XNNPACK)
     "${PROJECT_BINARY_DIR}/tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
   )
   target_include_directories(xnnpack-delegate
-    PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PUBLIC $<BUILD_INTERFACE:${TFLITE_SOURCE_DIR}/..> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE "${PROJECT_BINARY_DIR}"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/.."
     PRIVATE "${PROJECT_BINARY_DIR}/tensorflow"
@@ -683,26 +693,26 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
   ${TFLITE_SRCS}
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/flatbuffer_conversions.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/c/tflite_types.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
+  ${TFLITE_SOURCE_DIR}/converter/allocation.cc
+  ${TFLITE_SOURCE_DIR}/converter/allocation.h
+  ${TFLITE_SOURCE_DIR}/converter/core/api/error_reporter.cc
+  ${TFLITE_SOURCE_DIR}/converter/core/api/error_reporter.h
+  ${TFLITE_SOURCE_DIR}/converter/core/api/flatbuffer_conversions.cc
+  ${TFLITE_SOURCE_DIR}/converter/core/api/verifier.h
+  ${TFLITE_SOURCE_DIR}/converter/core/c/tflite_types.h
+  ${TFLITE_SOURCE_DIR}/converter/core/macros.h
+  ${TFLITE_SOURCE_DIR}/converter/core/model_builder_base.cc
+  ${TFLITE_SOURCE_DIR}/converter/core/model_builder_base.h
+  ${TFLITE_SOURCE_DIR}/converter/experimental/remat/metadata_util.cc
+  ${TFLITE_SOURCE_DIR}/converter/experimental/remat/metadata_util.h
+  ${TFLITE_SOURCE_DIR}/converter/mmap_allocation.cc
+  ${TFLITE_SOURCE_DIR}/converter/mmap_allocation_disabled.cc
+  ${TFLITE_SOURCE_DIR}/converter/schema/conversion_metadata_generated.h
+  ${TFLITE_SOURCE_DIR}/converter/schema/schema_generated.h
+  ${TFLITE_SOURCE_DIR}/converter/schema/schema_utils.cc
+  ${TFLITE_SOURCE_DIR}/converter/utils/control_edges.h
+  ${TFLITE_SOURCE_DIR}/converter/utils/string_utils.cc
+  ${TFLITE_SOURCE_DIR}/converter/utils/string_utils.h
   # go/keep-sorted end
 )
 
@@ -719,7 +729,6 @@ set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
   PUBLIC
-    $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
@@ -807,21 +816,10 @@ if(TFLITE_KERNEL_TEST)
   add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
 endif()
 
-# Add the generated headers directory. Required for maintaining the
-# tensorflow/lite directory structure for generated headers.
-set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
-
-# Add the profiling proto directory.
-add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
-
-# Add the benchmark result proto directory.
-add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark/proto)
-
-# Add the tf example directory.
-add_subdirectory(${TF_SOURCE_DIR}/core/example ${CMAKE_BINARY_DIR}/example_proto_generated)
-
 # The benchmark tool.
-add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
+if(TFLITE_ENABLE_BENCHMARK_MODEL)
+  add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
+endif()
 
 # The label_image example.
 add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image)
@@ -837,11 +835,6 @@ add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
 
 # To remove "lib" prefix.
 set_target_properties(_pywrap_tensorflow_interpreter_wrapper PROPERTIES PREFIX "")
-
-target_include_directories(_pywrap_tensorflow_interpreter_wrapper
-  PUBLIC
-    ${TENSORFLOW_SOURCE_DIR}
-)
 
 target_link_libraries(_pywrap_tensorflow_interpreter_wrapper
   tensorflow-lite
