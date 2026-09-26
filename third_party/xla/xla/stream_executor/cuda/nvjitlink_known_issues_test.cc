@@ -16,18 +16,24 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 
 #include <gtest/gtest.h>
+#include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace {
 
-TEST(NvJitLinkKnownIssuesTest, ReturnsFalseWhenNvJitLinkIsNotAvailable) {
-  if (stream_executor::IsLibNvJitLinkSupported()) {
-    GTEST_SKIP();
+TEST(NvJitLinkKnownIssuesTest, ReturnsExpectedResultForLoadedVersion) {
+  if (!stream_executor::IsLibNvJitLinkSupported()) {
+    EXPECT_FALSE(stream_executor::LoadedNvJitLinkHasKnownIssues());
+    return;
   }
-  // This is the only invariance we can test without writing a pointless change
-  // detector test.
-  EXPECT_FALSE(stream_executor::LoadedNvJitLinkHasKnownIssues());
+  ASSERT_OK_AND_ASSIGN(stream_executor::NvJitLinkVersion version,
+                       stream_executor::GetNvJitLinkVersion());
+  constexpr stream_executor::NvJitLinkVersion kMinVersionWithoutKnownIssues{12,
+                                                                            5};
+  EXPECT_EQ(stream_executor::LoadedNvJitLinkHasKnownIssues(),
+            version < kMinVersionWithoutKnownIssues);
 }
 
 }  // namespace

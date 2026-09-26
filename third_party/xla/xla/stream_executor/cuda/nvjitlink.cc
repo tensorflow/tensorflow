@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/nvjitlink.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -36,15 +38,30 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#define NVJITLINK_NO_INLINE
 #include "third_party/gpus/cuda/include/nvJitLink.h"
+#undef NVJITLINK_NO_INLINE
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel_stats.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+
+// When NVJITLINK_NO_INLINE is defined, CUDA < 13.5 headers omit the
+// unversioned function declarations instead of declaring them extern.
+extern "C" {
+nvJitLinkResult nvJitLinkCreate(nvJitLinkHandle*, uint32_t, const char**);
+nvJitLinkResult nvJitLinkDestroy(nvJitLinkHandle*);
+nvJitLinkResult nvJitLinkAddData(nvJitLinkHandle, nvJitLinkInputType,
+                                 const void*, size_t, const char*);
+nvJitLinkResult nvJitLinkComplete(nvJitLinkHandle);
+nvJitLinkResult nvJitLinkGetLinkedCubinSize(nvJitLinkHandle, size_t*);
+nvJitLinkResult nvJitLinkGetLinkedCubin(nvJitLinkHandle, void*);
+nvJitLinkResult nvJitLinkGetErrorLogSize(nvJitLinkHandle, size_t*);
+nvJitLinkResult nvJitLinkGetErrorLog(nvJitLinkHandle, char*);
+nvJitLinkResult nvJitLinkGetInfoLogSize(nvJitLinkHandle, size_t*);
+nvJitLinkResult nvJitLinkGetInfoLog(nvJitLinkHandle, char*);
+}  // extern "C"
 
 namespace stream_executor {
 

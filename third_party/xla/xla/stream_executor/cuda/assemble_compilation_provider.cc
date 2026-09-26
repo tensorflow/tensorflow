@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/defer_relocatable_compilation_compilation_provider.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
+#include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -62,6 +63,14 @@ absl::Status HasNvJitLinkSupport(const CompilationProviderOptions& options) {
       CompilationProviderOptions::NvJitLinkMode::kEnabled) {
     VLOG(4) << "Considering NvJitLink since it was explicitly enabled.";
     return absl::OkStatus();
+  }
+
+  if (absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+      !version.ok()) {
+    return absl::UnavailableError(
+        absl::StrCat("LibNvJitLink is disabled in auto mode because the "
+                     "library could not be loaded: ",
+                     version.status().message()));
   }
 
   if (LoadedNvJitLinkHasKnownIssues()) {
