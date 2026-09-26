@@ -12,7 +12,7 @@ fusion {
 // CHECK-LABEL:  xtile.entry_func @triton_fn(
 // CHECK-SAME:     %[[ARG0:.*]]: memref<16xf32>,
 // CHECK-SAME:     %[[ARG1:.*]]: memref<1x4x4xf32>,
-// CHECK-SAME:     %[[ARG2:.*]]: index)
+// CHECK-SAME:     %[[ARG2:.*]]: index {xla.range = [0 : index, 1 : index]})
 // CHECK:          %[[C0:.*]] = arith.constant 0 : index
 // CHECK:          %[[INDEX0:.*]] = xla.apply_indexing #indexing_map(%[[ARG2]])
 // CHECK:          %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[INDEX0]]] [8] [1] : memref<16xf32> -> tensor<8xf32>
