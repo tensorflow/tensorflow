@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_C_PJRT_C_API_STATUS_UTILS_H_
 
 #include <functional>
+#include <memory>  // IWYU pragma: keep
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
