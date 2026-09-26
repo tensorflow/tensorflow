@@ -191,12 +191,73 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
 
+absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
+  if (hlo->operand_count() < 2) {
+    return InvalidArgument("%s must have at least 2 operands, got %d",
+                           HloOpcodeString(hlo->opcode()),
+                           hlo->operand_count());
+  }
+  std::vector<char> seen_indices(hlo->operand_count(), false);
+  int64_t seen_count = 0;
+  auto check_idx = [&](int32_t idx, absl::string_view desc) -> absl::Status {
+    if (idx < 2 || idx >= hlo->operand_count()) {
+      return InvalidArgument("%s %d out of bounds", desc, idx);
+    }
+    if (!hlo->operand(idx)->shape().IsArray()) {
+      return InvalidArgument(
+          "Expected array argument for %s at index %d, but got %s", desc, idx,
+          ShapeUtil::HumanString(hlo->operand(idx)->shape()));
+    }
+    if (seen_indices[idx]) {
+      return InvalidArgument("Duplicate index %d for %s", idx, desc);
+    }
+    seen_indices[idx] = true;
+    ++seen_count;
+    return absl::OkStatus();
+  };
+
+  if (hlo->sparsity_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().lhs().idx(), "Sparsity idx for lhs"));
+  }
+  if (hlo->sparsity_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(
+        check_idx(hlo->sparsity_config().rhs().idx(), "Sparsity idx for rhs"));
+  }
+  if (hlo->block_scaling_config().has_lhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().scale_idx(),
+                              "Block scaling scale_idx for lhs"));
+    if (hlo->block_scaling_config().lhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().lhs().zero_idx(),
+                                "Block scaling zero_idx for lhs"));
+    }
+  }
+  if (hlo->block_scaling_config().has_rhs()) {
+    ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().scale_idx(),
+                              "Block scaling scale_idx for rhs"));
+    if (hlo->block_scaling_config().rhs().has_zero_idx()) {
+      ABSL_RETURN_IF_ERROR(check_idx(hlo->block_scaling_config().rhs().zero_idx(),
+                                "Block scaling zero_idx for rhs"));
+    }
+  }
+  if (seen_count != hlo->operand_count() - 2) {
+    return InvalidArgument(
+        "Expected all %d extra operands to be referenced by sparsity_config or "
+        "block_scaling_config, but %d were referenced",
+        hlo->operand_count() - 2, seen_count);
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(dot));
   ABSL_ASSIGN_OR_RETURN(const Shape expected,
                    ShapeInference::InferDotOpShape(
                        dot->operand(0)->shape(), dot->operand(1)->shape(),
                        dot->dot_dimension_numbers(),
-                       /*preferred_element_type=*/dot->shape().element_type()));
+                       /*preferred_element_type=*/dot->shape().element_type(),
+                       dot->sparsity_config()));
 
   return CheckShape(dot, expected);
 }
@@ -303,65 +364,7 @@ absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
 }
 
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
-  auto check_idx_in_range = [&](int32_t idx, int32_t low, int32_t high,
-                                absl::string_view desc) -> absl::Status {
-    if (idx < low || idx >= high) {
-      return InvalidArgument("%s %d out of bounds", desc, idx);
-    }
-    return absl::OkStatus();
-  };
-
-  if (convolution->sparsity_config().has_lhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->sparsity_config().lhs().idx(), 2,
-        convolution->operand_count(), "Sparsity idx for lhs"));
-  }
-  if (convolution->sparsity_config().has_rhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->sparsity_config().rhs().idx(), 2,
-        convolution->operand_count(), "Sparsity idx for rhs"));
-  }
-  if (convolution->block_scaling_config().has_lhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->block_scaling_config().lhs().scale_idx(), 2,
-        convolution->operand_count(), "Block scaling scale_idx for lhs"));
-    if (convolution->block_scaling_config().lhs().has_zero_idx()) {
-      ABSL_RETURN_IF_ERROR(check_idx_in_range(
-          convolution->block_scaling_config().lhs().zero_idx(), 2,
-          convolution->operand_count(), "Block scaling zero_idx for lhs"));
-      if (convolution->block_scaling_config().lhs().scale_idx() ==
-          convolution->block_scaling_config().lhs().zero_idx()) {
-        return InvalidArgument(
-            "LHS block scaling scale_idx and zero_idx cannot be the same (%d)",
-            convolution->block_scaling_config().lhs().scale_idx());
-      }
-    }
-  }
-  if (convolution->block_scaling_config().has_rhs()) {
-    ABSL_RETURN_IF_ERROR(check_idx_in_range(
-        convolution->block_scaling_config().rhs().scale_idx(), 2,
-        convolution->operand_count(), "Block scaling scale_idx for rhs"));
-    if (convolution->block_scaling_config().rhs().has_zero_idx()) {
-      ABSL_RETURN_IF_ERROR(check_idx_in_range(
-          convolution->block_scaling_config().rhs().zero_idx(), 2,
-          convolution->operand_count(), "Block scaling zero_idx for rhs"));
-      if (convolution->block_scaling_config().rhs().scale_idx() ==
-          convolution->block_scaling_config().rhs().zero_idx()) {
-        return InvalidArgument(
-            "RHS block scaling scale_idx and zero_idx cannot be the same (%d)",
-            convolution->block_scaling_config().rhs().scale_idx());
-      }
-    }
-  }
-  if (convolution->block_scaling_config().has_lhs() &&
-      convolution->block_scaling_config().has_rhs()) {
-    if (convolution->block_scaling_config().lhs().scale_idx() ==
-        convolution->block_scaling_config().rhs().scale_idx()) {
-      return InvalidArgument(
-          "LHS and RHS block scaling scale_idx cannot be the same (%d)",
-          convolution->block_scaling_config().lhs().scale_idx());
-    }
-  }
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(convolution));
 
   ABSL_ASSIGN_OR_RETURN(
       Shape expected,

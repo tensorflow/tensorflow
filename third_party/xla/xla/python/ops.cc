@@ -570,9 +570,17 @@ NB_MODULE(_ops, m) {
   m.def("Dot", &Dot, nb::arg("lhs"), nb::arg("rhs"),
         nb::arg("precision_config") = nullptr,
         nb::arg("preferred_element_type") = std::nullopt);
-  m.def("DotGeneral", &DotGeneral, nb::arg("lhs"), nb::arg("rhs"),
-        nb::arg("dimension_numbers"), nb::arg("precision_config") = nullptr,
-        nb::arg("preferred_element_type") = std::nullopt);
+  m.def(
+      "DotGeneral",
+      [](XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
+         const PrecisionConfig* precision_config,
+         std::optional<PrimitiveType> preferred_element_type) {
+        return DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+                          preferred_element_type);
+      },
+      nb::arg("lhs"), nb::arg("rhs"), nb::arg("dimension_numbers"),
+      nb::arg("precision_config") = nullptr,
+      nb::arg("preferred_element_type") = std::nullopt);
   m.def("DynamicReshape",
         static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                               absl::Span<const int64_t>,
