@@ -1195,6 +1195,160 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+def _check_dilated_convolution_shapes(
+    input_tensor,
+    filters,
+    dilations,
+    padding,
+    num_batch_dims,
+    channels_first,
+    num_spatial_dims,
+):
+  """Raises a descriptive error if a dilated convolution has no window.
+
+  `tf.nn.convolution` evaluates dilated convolutions with
+  `with_space_to_batch`, which subsamples the input into blocks and convolves
+  each block densely. When the dilated filter is larger than the input, no
+  valid window exists. `tf.function` then fails with an opaque
+  negative-dimension error, while eager mode silently returns a tensor of the
+  wrong shape, because the inner convolution returns a tensor shaped like its
+  input instead of the empty output (#113319). Validating the shapes up front
+  gives both execution modes the same descriptive error.
+
+  Shapes that are not statically known are left for the run-time assertion in
+  `_assert_dilated_convolution_fits`. "SAME" padding always admits an output
+  and is not checked. A malformed `input`, `filters` or `padding` (unknown or
+  too small a rank, or a padding list that is too short) is left for the core
+  convolution code, which already reports it with a better message than an
+  `IndexError` from here would.
+
+  Args:
+    input_tensor: The `input` argument of `convolution_internal`.
+    filters: The `filters` argument of `convolution_internal`.
+    dilations: The dilation rate, a list of `num_spatial_dims` positive ints.
+    padding: The `padding` argument of `convolution_internal`.
+    num_batch_dims: The number of leading batch dimensions of `input`.
+    channels_first: Whether the channel dimension precedes the spatial ones.
+    num_spatial_dims: The number of spatial dimensions, 1, 2 or 3.
+
+  Raises:
+    ValueError: If the dilated filter does not fit in the padded input.
+  """
+  if all(d == 1 for d in dilations):
+    return
+
+  spatial_start = num_batch_dims + 1 if channels_first else num_batch_dims
+  if isinstance(padding, str):
+    if padding == "SAME":
+      # `with_space_to_batch` pads enough for an output to always exist.
+      return
+    if padding != "VALID":
+      return
+    spatial_pads = [(0, 0)] * num_spatial_dims
+  else:
+    # Drop the batch and channel dimensions, keep the spatial ones.
+    spatial_pads = [
+        list(p)
+        for p in padding[spatial_start : spatial_start + num_spatial_dims]
+    ]
+    if len(spatial_pads) < num_spatial_dims:
+      return
+
+  if input_tensor.shape.rank is None or filters.shape.rank is None:
+    return
+  if (
+      input_tensor.shape.rank < num_spatial_dims + num_batch_dims + 1
+      or filters.shape.rank < num_spatial_dims
+  ):
+    # Let the core convolution code report the rank error it already raises.
+    return
+  in_shape = input_tensor.shape.as_list()
+  f_shape = filters.shape.as_list()
+  if None in in_shape or None in f_shape:
+    return
+
+  in_spatial = in_shape[spatial_start : spatial_start + num_spatial_dims]
+  # The spatial dimensions of `filters` come first regardless of the data
+  # format.
+  f_spatial = f_shape[:num_spatial_dims]
+
+  for i in range(num_spatial_dims):
+    available = in_spatial[i] + spatial_pads[i][0] + spatial_pads[i][1]
+    dilated = (f_spatial[i] - 1) * dilations[i] + 1
+    if available < dilated:
+      raise ValueError(
+          f"Input spatial dimension {i} ({in_spatial[i]}) plus padding "
+          f"({spatial_pads[i][0] + spatial_pads[i][1]}) is too small for "
+          f"dilation rate {dilations[i]} with filter size {f_spatial[i]}: the "
+          f"dilated filter spans {dilated} values but only {available} are "
+          "available, so the convolution has no valid window."
+      )
+
+
+def _assert_dilated_convolution_fits(
+    input_tensor,
+    filters,
+    dilations,
+    padding,
+    num_batch_dims,
+    channels_first,
+    num_spatial_dims,
+):
+  """Guards a dilated convolution whose spatial shapes are dynamic.
+
+  `_check_dilated_convolution_shapes` cannot see shapes that are unknown at
+  tracing time (a `tf.function` accepting a `TensorSpec` with `None`
+  dimensions). Without a run-time check, an input too small for the dilated
+  filter makes the convolution silently return a wrongly shaped result instead
+  of failing, which is the eager half of #113319.
+
+  Args:
+    input_tensor: The `input` argument of `convolution_internal`.
+    filters: The `filters` argument of `convolution_internal`.
+    dilations: The dilation rate, a list of `num_spatial_dims` positive ints.
+    padding: The `padding` argument of `convolution_internal`.
+    num_batch_dims: The number of leading batch dimensions of `input`.
+    channels_first: Whether the channel dimension precedes the spatial ones.
+    num_spatial_dims: The number of spatial dimensions, 1, 2 or 3.
+
+  Returns:
+    `input`, with a control dependency on the shape assertion.
+  """
+  spatial_start = num_batch_dims + 1 if channels_first else num_batch_dims
+  if isinstance(padding, str):
+    pads = [0] * num_spatial_dims
+  else:
+    spatial_pads = [
+        list(p)
+        for p in padding[spatial_start : spatial_start + num_spatial_dims]
+    ]
+    if len(spatial_pads) < num_spatial_dims:
+      # The core convolution code reports the malformed padding already.
+      return input
+    pads = [p[0] + p[1] for p in spatial_pads]
+
+  in_shape = array_ops.shape(input_tensor)
+  f_shape = array_ops.shape(filters)
+  in_spatial = in_shape[spatial_start : spatial_start + num_spatial_dims]
+  f_spatial = f_shape[:num_spatial_dims]
+
+  pads_tensor = ops.convert_to_tensor(pads, dtype=in_spatial.dtype)
+  available = in_spatial + pads_tensor
+  dilated = (f_spatial - 1) * ops.convert_to_tensor(
+      dilations, dtype=f_spatial.dtype
+  ) + 1
+  check = check_ops.assert_greater_equal(
+      available,
+      dilated,
+      message=(
+          "Dilated convolution: the input (plus padding) is smaller than "
+          "the dilated filter, so there is no valid window."
+      ),
+  )
+  with ops.control_dependencies([check]):
+    return array_ops.identity(input_tensor)
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -1333,6 +1487,37 @@ def convolution_internal(
       else:
         strides = strides[1:-1]
         dilations = dilations[1:-1]
+
+      channels_first = channel_index == num_batch_dims
+      _check_dilated_convolution_shapes(
+          input,
+          filters,
+          dilations,
+          padding,
+          num_batch_dims,
+          channels_first,
+          num_spatial_dims,
+      )
+
+      # The check above only sees static shapes. When tracing a `tf.function`
+      # whose spatial dimensions are unknown, fall back to a run-time
+      # assertion so that an oversized dilated filter fails instead of
+      # silently producing a wrongly shaped result. "SAME" padding always
+      # admits an output.
+      if not (isinstance(padding, str) and padding == "SAME"):
+        in_shape = (
+            input.shape.as_list() if input.shape.rank is not None else None
+        )
+        if in_shape is None or None in in_shape:
+          input = _assert_dilated_convolution_fits(
+              input,
+              filters,
+              dilations,
+              padding,
+              num_batch_dims,
+              channels_first,
+              num_spatial_dims,
+          )
 
       op = Convolution(
           tensor_shape.as_shape(input.shape),

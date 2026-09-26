@@ -27,10 +27,6 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/service/hlo_module_config.h"
 
-namespace Eigen {
-struct ThreadPoolDevice;
-}  // namespace Eigen
-
 namespace xla {
 
 // Options for creating an XLA:CPU PjRtClient.
@@ -74,10 +70,6 @@ struct CpuClientOptions {
   // detected from the host and will try to use cpu_device_count and process_id
   // to build the topology.
   const CpuTopologyDescription* topology = nullptr;
-
-  // Intra-op thread pool device. Optional. If not provided, a default thread
-  // pool will be created. Does not take ownership. Must outlive the client.
-  const Eigen::ThreadPoolDevice* intra_op_device = nullptr;
 };
 
 }  // namespace xla

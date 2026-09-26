@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -231,6 +232,15 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           ExecutableBuildOptionsProto::descriptor()->FindFieldByName(
               "debug_options"),
           HloModuleConfigProto::descriptor()->FindFieldByName("debug_options"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cuda_toolkit_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cudnn_version"),
+          stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
+              descriptor()
+                  ->FindFieldByName("cub_version"),
       });
 }
 

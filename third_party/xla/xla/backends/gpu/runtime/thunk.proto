@@ -68,6 +68,8 @@ message AsyncStartThunkProto {
   oneof execution_stream_id {
     uint64 computation_stream_id = 4;
     uint64 communication_stream_id = 5;
+    // 0 = D2H (device_to_host_stream), 1 = H2D (host_to_device_stream).
+    uint64 memcpy_stream_id = 6;
   }
 
   reserved 2;

@@ -2182,6 +2182,37 @@ xla_test(
 )
 
 xla_test(
+    name = "topk_special_floats_test",
+    srcs = ["topk_special_floats_test.cc"],
+    backend_tags = {
+        "gpu": [
+            # Skip P100/V100 GPUs due to 0.0 and -0.0 interleaving bug in sort.
+            "requires-gpu-sm80",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:array2d",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "runtime_topk_test",
     srcs = ["runtime_topk_test.cc"],
     backends = ["cpu"],
@@ -3662,6 +3693,7 @@ cc_library(
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/util/split_proto:human_readable_aot_executable_proto_cc",

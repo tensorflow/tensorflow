@@ -80,3 +80,24 @@ func.func @skip_call_and_region_ops(%arg0: tensor<i1>, %arg1: tensor<2x2xbf16>) 
 func.func private @callee(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
   return %arg0 : tensor<2x2xbf16>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @skip_composite_and_impl
+func.func @skip_composite_and_impl(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  // CHECK: %[[COMP:.*]] = stablehlo.composite "odml.test" %arg0 {decomposition = @test.impl} : (tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  // CHECK: return %[[COMP]] : tensor<2x2xbf16>
+  %0 = "stablehlo.composite"(%arg0) <{name = "odml.test"}> {decomposition = @test.impl} : (tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+}
+
+// CHECK-LABEL: func.func private @test.impl
+func.func private @test.impl(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
+  // CHECK-DAG: %[[CAST0:.*]] = "tfl.cast"(%arg0) : (tensor<2x2xbf16>) -> tensor<2x2xf32>
+  // CHECK-DAG: %[[CAST1:.*]] = "tfl.cast"(%arg0) : (tensor<2x2xbf16>) -> tensor<2x2xf32>
+  // CHECK: %[[ADD:.*]] = tfl.add %[[CAST0]], %[[CAST1]] {fused_activation_function = "NONE"} : tensor<2x2xf32>
+  // CHECK: %[[CAST_OUT:.*]] = "tfl.cast"(%[[ADD]]) : (tensor<2x2xf32>) -> tensor<2x2xbf16>
+  // CHECK: return %[[CAST_OUT]] : tensor<2x2xbf16>
+  %0 = "tfl.add"(%arg0, %arg0) <{fused_activation_function = "NONE"}> : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
+  return %0 : tensor<2x2xbf16>
+}

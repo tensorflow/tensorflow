@@ -25,6 +25,13 @@ def LowerXTileEntryPass : Pass<"xtile-cpu-lower-xtile-entry", "mlir::ModuleOp"> 
     "xla::cpu::XlaCpuDialect",
     "xla::xtile::XTileDialect"
   ];
+
+  let options = [
+    Option<"prefer_vector_width_", "prefer_vector_width", "int32_t",
+           /*default=*/"0",
+           "prefer-vector-width value to set on the kernel function. "
+           "Not set if 0.">,
+  ];
 }
 
 def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
