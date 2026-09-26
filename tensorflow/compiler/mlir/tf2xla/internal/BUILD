@@ -335,7 +335,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:types",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:enable_tf2_utils",
         # "//tensorflow/core/platform:resource_loader",
