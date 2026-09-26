@@ -237,5 +237,35 @@ TEST(SimpleCacheOp2Test, ShiftSlotsInCache) {
   ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
+TEST(SimpleCacheOp2Test, UnderflowNumSlotsNeeded) {
+  SimpleCacheOpModel m({TensorType_INT64, {2050}},
+                       {TensorType_FLOAT32, {1, 2050, 2, 3}},
+                       {TensorType_FLOAT32, {1, 2050, 2, 3}});
+
+  std::vector<int64_t> pos(2050);
+  for (int i = 0; i < 2050; ++i) {
+    pos[i] = i;
+  }
+  m.SetPosition(pos);
+  std::vector<float> key(1 * 2050 * 2 * 3, 1.0f);
+  std::vector<float> value(1 * 2050 * 2 * 3, 2.0f);
+  m.SetKey(key);
+  m.SetValue(value);
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(SimpleCacheOp2Test, OverflowPositionOffset) {
+  SimpleCacheOpModel m({TensorType_INT64, {2}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}},
+                       {TensorType_FLOAT32, {1, 2, 2, 3}});
+
+  m.SetPosition({1000000000, 1000000001});
+  std::vector<float> key = {1, 5, -6, 2, 4, 3, 8, 9, -8, 7, 2, 11};
+  std::vector<float> value = {2, 3, -4, 5, 6, 7, 1, 8, -12, 11, 14, 21};
+  m.SetKey(key);
+  m.SetValue(value);
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
