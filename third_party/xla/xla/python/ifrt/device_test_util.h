@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_TEST_UTIL_H_
 
 #include <memory>
+#include <vector>
 
 #include "absl/types/span.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -33,6 +35,14 @@ namespace test_util {
 struct DeviceTestParam {
   int num_devices;
   int num_addressable_devices;
+
+  // Optional: device IDs. If empty, defaults to DeviceId(i + 10).
+  // If non-empty, must have size `num_devices`.
+  std::vector<DeviceId> device_ids;
+
+  // Optional: per-device attributes. If non-empty, must have size
+  // `num_devices`.
+  std::vector<AttributeMap::Map> device_attributes;
 };
 
 // Test fixture for device tests.
