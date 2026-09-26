@@ -494,6 +494,13 @@ class HloInstruction {
       const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
+  static std::unique_ptr<HloInstruction> CreateDot(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {},
+      const BlockScalingConfig& block_scaling_config = {});
+
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
   // 'dimension_numbers'.
@@ -2751,6 +2758,16 @@ class HloInstruction {
   // Has this instruction been marked as dead? Accessed by friend class
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
+
+  // Implementation of DetachFromOperandsAndUsers that leaves the edges to
+  // instructions of the given computation (the parent, or null for none) in
+  // place and still marks this instruction cleaned up, so ~HloInstruction does
+  // not unlink them either. ~HloComputation uses it because unlinking an
+  // instruction scans every operand slot of each of its users, and the edges
+  // among instructions that die together are never read again.
+  // REQUIRES: every instruction of the given computation is deleted before any
+  // of those edges is read again.
+  void DetachFromOperandsAndUsersOutside(const HloComputation* computation);
 
   // Set the unique id for this instruction to "id". Should only be called by
   // the instruction's parent computation to set an internal unique id that fits

@@ -3771,6 +3771,23 @@ ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
   EXPECT_EQ(compare->order(), ComparisonOrder::kTotal);
 }
 
+TEST_F(HloParserTest, CompareWithWeakOrder) {
+  const std::string original = R"(HloModule CompareWithWeakOrder
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=LT, order=WEAK
+})";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_OK(result.status());
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  const auto* compare = static_cast<const HloCompareInstruction*>(root);
+  EXPECT_EQ(compare->direction(), ComparisonDirection::kLt);
+  EXPECT_EQ(compare->order(), ComparisonOrder::kWeak);
+}
+
 TEST_F(HloParserTest, CompareBothTypeAndOrderFails) {
   const std::string original = R"(HloModule CompareBothTypeAndOrderFails
 ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
@@ -7475,6 +7492,34 @@ ENTRY BlockScalingConfig {
                           ->root_instruction()
                           ->block_scaling_config();
   EXPECT_EQ(config_after.DebugString(), config_before.DebugString());
+}
+
+TEST_F(HloParserTest, DotBlockScalingAndSparsityConfig_RoundTrip) {
+  const char* const hlo_string = R"(
+HloModule DotBlockScalingConfigModule
+ENTRY DotBlockScalingConfig {
+  %lhs = bf16[64,64] parameter(0)
+  %rhs = bf16[128,64] parameter(1)
+  %lhs_scale = f8e8m0fnu[64,2] parameter(2)
+  %lhs_indices = s8[64,16] parameter(3)
+  ROOT %dot = bf16[64,64] dot(%lhs, %rhs, %lhs_scale, %lhs_indices),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    sparsity_config={lhs={sparsity=2x4 dimension=1 stride=1 idx=3}},
+    block_scaling_config={lhs={scale_idx=2 strides=1x32 steps=1x1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* dot_before = module->entry_computation()->root_instruction();
+  auto bs_before = dot_before->block_scaling_config();
+  auto sp_before = dot_before->sparsity_config();
+  std::string printed = module->ToString();
+  ASSERT_OK_AND_ASSIGN(auto parsed_module,
+                       ParseAndReturnUnverifiedModule(printed));
+  auto* dot_after = parsed_module->entry_computation()->root_instruction();
+  EXPECT_EQ(dot_after->block_scaling_config().DebugString(),
+            bs_before.DebugString());
+  EXPECT_EQ(dot_after->sparsity_config().DebugString(),
+            sp_before.DebugString());
 }
 
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {

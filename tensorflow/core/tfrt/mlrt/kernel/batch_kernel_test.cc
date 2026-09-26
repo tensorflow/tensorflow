@@ -28,6 +28,11 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/preprocess_xplane.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
@@ -38,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
+#include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
@@ -498,6 +505,107 @@ TEST(KernelTest, BatchFunctionWithDeviceOp) {
   ExpectEqual(result.Get<tfrt_stub::FallbackTensor>().tensor(), expected);
   // Two input tensors; hence two allocator uses.
   EXPECT_EQ(test_device->allocator_uses(), 2);
+}
+
+// Verifies that two batches sharing the same step_id (as in split-batch
+// execution) get separate XProf event groups:
+//   1. Run 2 batches (max_batch_size=1) with the same step_id under
+//      ProfilerSession.
+//   2. Run XProf's PreprocessXSpace + GroupTfEvents on the captured XSpace.
+//   3. Check kGroupId on the 2 "RunMlrtFunction::Execute" worker events:
+//      - With step_id as context_id: both get group_id=0 ([0, 0] -> FAILS).
+//      - With NewActivityId(): they get distinct group_ids ([0, 1] -> PASSES).
+TEST(KernelTest, SplitBatchesProduceDisjointXProfEventGroups) {
+  auto buffer = CreateExecutableForBatchFunctionOp();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  RegisterTfMlrtBatchKernels(registry);
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+
+  // Both calls share this ResourceContext (and batching queue). With
+  // max_batch_size=1, each call forms a separate batch.
+  tfrt::ResourceContext resource_context;
+
+  auto run_one_batch = [&]() {
+    tfrt_stub::OpKernelRunnerTable runner_table;
+    tfd::FallbackResourceArray resource_array;
+    tfd::KernelFallbackCompatRequestState fallback_request_state(
+        &runner, &fallback_state->device_manager(), /*step_id=*/0,
+        &runner_table, &resource_array, /*user_intra_op_threadpool=*/nullptr,
+        /*model_metadata=*/std::nullopt,
+        &fallback_state->process_function_library_runtime());
+
+    mlrt::ExecutionContext execution_context(&loaded_executable);
+    execution_context.set_work_queue(work_queue.get());
+    execution_context.AddUserContext(
+        std::make_unique<Context>(&fallback_request_state, &resource_context));
+
+    tensorflow::Tensor input_tensor(tensorflow::DT_INT32, {1});
+    input_tensor.flat<int32_t>()(0) = 100;
+    mlrt::Value arg(tfrt_stub::FallbackTensor(std::move(input_tensor)));
+    mlrt::Value result;
+
+    absl::Notification notification;
+    execution_context.set_exit_handler(
+        [&notification]() { notification.Notify(); });
+
+    std::vector<uint8_t> last_uses = {true};
+    execution_context.Call(executable.functions()[0], last_uses,
+                           absl::MakeSpan(&arg, 1), absl::MakeSpan(&result, 1));
+    mlrt::Execute(execution_context);
+
+    notification.WaitForNotification();
+    TF_ASSERT_OK(execution_context.status());
+  };
+
+  std::unique_ptr<tsl::ProfilerSession> profiler =
+      tsl::ProfilerSession::Create(tsl::ProfilerSession::DefaultOptions());
+
+  run_one_batch();
+  run_one_batch();
+
+  tensorflow::profiler::XSpace space;
+  TF_ASSERT_OK(profiler->CollectData(&space));
+
+  tsl::profiler::PreprocessXSpace(&space);
+  tsl::profiler::GroupTfEvents(&space);
+
+  int num_process_batch_events = 0;
+  std::vector<int64_t> execute_group_ids;
+  for (const tensorflow::profiler::XPlane& plane : space.planes()) {
+    if (plane.name() != tsl::profiler::kHostThreadsPlaneName) continue;
+    tsl::profiler::XPlaneVisitor plane_visitor =
+        tsl::profiler::CreateTfXPlaneVisitor(&plane);
+    plane_visitor.ForEachLine([&](const tsl::profiler::XLineVisitor& line) {
+      line.ForEachEvent([&](const tsl::profiler::XEventVisitor& event) {
+        if (event.Name() == "ProcessBatch") ++num_process_batch_events;
+        if (event.Name() != "RunMlrtFunction::Execute") return;
+        std::optional<tsl::profiler::XStatVisitor> group_id =
+            event.GetStat(tsl::profiler::StatType::kGroupId);
+        if (group_id.has_value()) {
+          execute_group_ids.push_back(group_id->IntValue());
+        }
+      });
+    });
+  }
+
+  ASSERT_EQ(num_process_batch_events, 2);
+  ASSERT_EQ(execute_group_ids.size(), 2);
+  EXPECT_NE(execute_group_ids[0], execute_group_ids[1]);
 }
 
 }  // namespace

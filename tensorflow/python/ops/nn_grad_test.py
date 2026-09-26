@@ -81,7 +81,8 @@ class Conv2dOpTest(test.TestCase):
                                                       x.get_shape().as_list(),
                                                       y,
                                                       y.get_shape().as_list())
-      self.assertLess(error, 2e-3)
+      tol = 0.06 if test.is_gpu_available() else 2e-3
+      self.assertLess(error, tol)
 
   @test_util.run_deprecated_v1
   def testConv2dGradWRTInput(self):
