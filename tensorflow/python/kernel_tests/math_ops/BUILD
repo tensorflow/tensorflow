@@ -434,7 +434,9 @@ cuda_py_strict_test(
         "no_cuda_asan",  # times out
         "no_windows_gpu",
     ],
+    xla_enabled = True,
     deps = [
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
