@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
@@ -35,56 +34,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-namespace functor {
-
-// Applies backend-independent corrections to a functor's output. Most types
-// and devices do not require any correction.
-template <typename Device, typename T>
-struct XentGradientCorrector {
-  static void Correct(const Device&, const Eigen::DSizes<Eigen::DenseIndex, 2>&,
-                      typename TTypes<T>::ConstMatrix,
-                      typename TTypes<T>::Matrix) {}
-};
-
-template <>
-struct XentGradientCorrector<CPUDevice, double> {
-  static void Correct(const CPUDevice& d,
-                      const Eigen::DSizes<Eigen::DenseIndex, 2>& shape,
-                      TTypes<double>::ConstMatrix labels,
-                      TTypes<double>::Matrix backprop) {
-    const Eigen::Index num_classes = shape[1];
-    const bool broadcast_batch = labels.dimension(0) == 1;
-    const bool broadcast_class = labels.dimension(1) == 1;
-
-    // The CPU functor's device assignments complete before returning, and
-    // parallelFor waits for all rows to finish. Keep each row's reduction and
-    // update in the same worker so no deferred expression aliases backprop.
-    d.parallelFor(
-        shape[0],
-        Eigen::TensorOpCost(3 * sizeof(double) * num_classes,
-                            sizeof(double) * num_classes, 4 * num_classes),
-        [&](Eigen::Index begin, Eigen::Index end) {
-          for (Eigen::Index row = begin; row < end; ++row) {
-            double residual = 0.0;
-            for (Eigen::Index col = 0; col < num_classes; ++col) {
-              residual += backprop(row, col);
-            }
-            const Eigen::Index label_row = broadcast_batch ? 0 : row;
-            for (Eigen::Index col = 0; col < num_classes; ++col) {
-              const double gradient = backprop(row, col);
-              const double probability =
-                  gradient + labels(label_row, broadcast_class ? 0 : col);
-              // Remove the rounding residual along the probability vector to
-              // preserve small tail gradients when a probability rounds to one.
-              backprop(row, col) = gradient - residual * probability;
-            }
-          }
-        });
-  }
-};
-
-}  // namespace functor
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -132,6 +81,16 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
         context, context->allocate_temp(DataTypeToEnum<T>::value,
                                         TensorShape({shape_in.dim_size(0), 1}),
                                         &scratch));
+    // Only float64 needs a separate reduction of non-maximal probabilities.
+    Tensor tail_scratch;
+    T* tail_data = nullptr;
+    if constexpr (std::is_same_v<T, double>) {
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                          TensorShape({shape_in.dim_size(0)}),
+                                          &tail_scratch));
+      tail_data = tail_scratch.flat<T>().data();
+    }
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
@@ -150,11 +109,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
               BCast::ToIndexArray<2>(bcast.y_bcast()),
               logits_in.template shaped<T, 2>(bcast.x_reshape()),
               labels_in.template shaped<T, 2>(bcast.y_reshape()),
-              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
-      functor::XentGradientCorrector<Device, T>::Correct(
-          d, shape_in.AsEigenDSizes<2>(),
-          labels_in.template shaped<T, 2>(bcast.y_reshape()),
-          back_out->matrix<T>());
+              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>(),
+              tail_data);
     }
   }
 };
@@ -172,11 +128,11 @@ struct XentFunctorBase {
                   typename TTypes<T>::ConstMatrix labels,
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
-                  typename TTypes<T>::Matrix backprop) {
+                  typename TTypes<T>::Matrix backprop, T* tail_scratch) {
     if (shape[0] > 0) {
       XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
                                         logits, labels, scratch, loss,
-                                        backprop);
+                                        backprop, tail_scratch);
     }
   }
 };

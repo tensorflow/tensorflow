@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_XENT_OP_H_
 // Functor definition for XentOp, must be compilable by nvcc.
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/tensor_types.h"
@@ -34,6 +36,7 @@ struct XentFunctor {
   // scratch: temporary tensor, dims: batch_size, 1
   // loss: output tensor for the loss, dims: batch_size.
   // backprop: output tensor for the backprop, dims: batch_size, num_classes.
+  // tail_scratch: per-row temporary for double, null for other types.
   void operator()(const Device &d,
                   const Eigen::DSizes<Eigen::DenseIndex, 2> &shape,
                   const Eigen::array<Eigen::DenseIndex, 2> &logits_bcast,
@@ -42,7 +45,8 @@ struct XentFunctor {
                   typename TTypes<T>::ConstMatrix labels,
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
-                  typename TTypes<T>::Matrix backprop);
+                  typename TTypes<T>::Matrix backprop,
+                  T* tail_scratch);
 };
 
 // Eigen code implementing XentFunctor::operator().
@@ -58,7 +62,8 @@ struct XentEigenImpl {
                       typename TTypes<T>::ConstMatrix labels,
                       typename TTypes<T>::Matrix scratch,
                       typename TTypes<T>::Vec loss,
-                      typename TTypes<T>::Matrix backprop) {
+                      typename TTypes<T>::Matrix backprop,
+                      T* tail_scratch) {
     // NOTE(touts): This duplicates some of the computations in softmax_op
     // because we need the intermediate (logits -max(logits)) values to
     // avoid a log(exp()) in the computation of the loss.
@@ -102,10 +107,33 @@ struct XentEigenImpl {
                          .eval()
                          .sum(along_class);
 
-    // backprop: prob - labels, where
-    //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
-    backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
-                         labels.broadcast(labels_bcast);
+    // When a float64 probability rounds to one, subtracting a unit label
+    // erases its tail gradient. Sum the non-maximal terms separately so the
+    // complement remains representable. Other labels retain prob - labels,
+    // including unnormalized and zero-masked distributions.
+    if constexpr (std::is_same_v<T, double>) {
+      typename TTypes<T>::Vec tail(tail_scratch, batch_size);
+      tail.device(d) =
+          (backprop == backprop.constant(T(0)))
+              .select(backprop.constant(T(0)), backprop.exp())
+              .sum(along_class);
+      const auto labels_broadcast = labels.broadcast(labels_bcast);
+      const auto denominator = scratch.broadcast(one_by_class);
+      const auto tail_broadcast =
+          tail.reshape(batch_by_one).broadcast(one_by_class);
+      const auto dominant_unit_label =
+          (backprop == backprop.constant(T(0))) &&
+          (denominator < denominator.constant(T(2))) &&
+          (labels_broadcast == labels_broadcast.constant(T(1)));
+      backprop.device(d) = dominant_unit_label.select(
+          -tail_broadcast / (tail_broadcast + T(1)),
+          backprop.exp() / denominator - labels_broadcast);
+    } else {
+      // backprop: prob - labels, where
+      //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
+      backprop.device(d) = (backprop.exp() / scratch.broadcast(one_by_class)) -
+                           labels.broadcast(labels_bcast);
+    }
   }
 };
 
