@@ -29,7 +29,7 @@ fusion {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<1x56x56x256xf32>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<1x256x56x56xbf16>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 11 : index]})
 
 // CHECK:        %[[C0:.*]] = arith.constant 0 : index
 // CHECK:        %[[C1:.*]] = arith.constant 1 : index

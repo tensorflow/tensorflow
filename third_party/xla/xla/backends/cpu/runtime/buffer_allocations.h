@@ -106,7 +106,7 @@ BufferAllocations::GetDeviceAddress(BufferAllocation::Slice slice) const {
   // Handle empty slices explicitly and return a null pointer device memory to
   // guarantee that we do not accidentally write through the empty slice which
   // would hide a real bug in the code.
-  if (ABSL_PREDICT_FALSE(slice.size() == 0)) {
+  if (ABSL_PREDICT_FALSE(slice.empty())) {
     return se::DeviceAddressBase(nullptr, 0);
   }
 

@@ -16,10 +16,12 @@
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -1170,3 +1172,62 @@ class DepthwiseConv2DBase(test.TestCase):
         self._CompareForward(
             input_size, filter_size, output_size, stride, padding, "float64"
         )
+
+  def testDilatedDepthwiseConv2DFailsWhenFilterExceedsInput(self):
+    """A dilated filter larger than the input fails in every mode (#113320).
+
+    With unit strides the dilated filter can still exceed the input, leaving no
+    valid window. Eager silently returned a result of the wrong shape while
+    `tf.function` failed; both must now fail, including for unknown spatial
+    shapes that only the run-time assertion can catch.
+    """
+    x = array_ops.ones([2, 4, 4, 3])
+    # Dilation 4 expands the 2x2 filter to 5x5, which does not fit in 4x4.
+    f = array_ops.ones([2, 2, 3, 1])
+    with self.assertRaisesRegex(ValueError, "no valid window"):
+      nn_impl.depthwise_conv2d(x, f, [1, 1, 1, 1], "VALID", dilations=[4, 4])
+
+    @def_function.function
+    def dilated(a, b):
+      return nn_impl.depthwise_conv2d(
+          a, b, [1, 1, 1, 1], "VALID", dilations=[4, 4]
+      )
+
+    with self.assertRaises(ValueError):
+      dilated(x, f)
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec([None, None, None, 3], dtypes.float32),
+            tensor_spec.TensorSpec([2, 2, 3, 1], dtypes.float32),
+        ]
+    )
+    def dilated_dynamic(a, b):
+      return nn_impl.depthwise_conv2d(
+          a, b, [1, 1, 1, 1], "VALID", dilations=[4, 4]
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      dilated_dynamic(x, f)
+
+  def testDilatedDepthwiseConv2DWithUnitStrides(self):
+    """Dilated depthwise conv with unit strides still matches numpy."""
+    x_np = (np.arange(1 * 9 * 9 * 2, dtype=np.float32) % 5 + 1).reshape(
+        [1, 9, 9, 2]
+    )
+    f_np = (np.arange(3 * 3 * 2 * 1, dtype=np.float32) % 3 + 1).reshape(
+        [3, 3, 2, 1]
+    )
+    for rate in (2, 3):
+      for padding in ("VALID", "SAME"):
+        expected = _DepthwiseConv2dNumpy(
+            x_np, f_np, [1, 1, 1, 1], padding, "NHWC", [rate, rate]
+        )
+        actual = nn_impl.depthwise_conv2d(
+            constant_op.constant(x_np),
+            constant_op.constant(f_np),
+            [1, 1, 1, 1],
+            padding,
+            dilations=[rate, rate],
+        )
+        self.assertAllClose(expected, actual, rtol=1e-5, atol=1e-5)
