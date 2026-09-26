@@ -102,70 +102,35 @@ template <typename OperandT>
 absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
                                 LiteralSlice lhs_literal,
                                 LiteralSlice rhs_literal) {
-  auto populate = [&](auto compare_op) -> absl::StatusOr<Literal> {
-    Literal result(shape);
-
-    // If layout is the same, we can use linear indexing into the literals.
-    const Layout& lhs_layout = lhs_literal.shape().layout();
-    const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(lhs_layout, shape.layout());
-
-    if (same_layout) {
-      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
-          [&](int64_t linear_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.GetLinear<OperandT>(linear_index);
-            auto rhs = rhs_literal.GetLinear<OperandT>(linear_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
-    } else {
-      ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
-          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.Get<OperandT>(multi_index);
-            auto rhs = rhs_literal.Get<OperandT>(multi_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
+  if constexpr (is_complex_v<OperandT>) {
+    if (comparison.GetDirection() != ComparisonDirection::kEq &&
+        comparison.GetDirection() != ComparisonDirection::kNe) {
+      return Unimplemented("Unsupported comparison: %s", comparison.ToString());
     }
-    return result;
-  };
-  switch (comparison.GetDirection()) {
-    case ComparisonDirection::kEq:
-      return populate([](auto lhs, auto rhs) { return lhs == rhs; });
-    case ComparisonDirection::kNe:
-      return populate([](auto lhs, auto rhs) { return lhs != rhs; });
-    case ComparisonDirection::kGe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs >= rhs; });
-      }
-      break;
-    case ComparisonDirection::kGt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs > rhs; });
-      }
-      break;
-    case ComparisonDirection::kLe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs <= rhs; });
-      }
-      break;
-    case ComparisonDirection::kLt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs < rhs; });
-      }
-      break;
   }
+  Literal result(shape);
 
-  return Unimplemented("Unsupported comparison: %s", comparison.ToString());
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                     LayoutUtil::Equal(lhs_layout, shape.layout());
+
+  if (same_layout) {
+    ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
+        [&](int64_t linear_index, int /*thread_id*/) {
+          return comparison.Compare(
+              lhs_literal.GetLinear<OperandT>(linear_index),
+              rhs_literal.GetLinear<OperandT>(linear_index));
+        }));
+  } else {
+    ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
+        [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+          return comparison.Compare(lhs_literal.Get<OperandT>(multi_index),
+                                    rhs_literal.Get<OperandT>(multi_index));
+        }));
+  }
+  return result;
 }
 
 std::optional<bool> GetInstructionStaticValueAsBool(
