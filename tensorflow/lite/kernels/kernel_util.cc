@@ -634,7 +634,8 @@ TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
         context,
         checked_count == 0 ||
             static_cast<size_t>(d) <=
-                std::numeric_limits<size_t>::max() / checked_count,
+                static_cast<size_t>(std::numeric_limits<int>::max()) /
+                    checked_count,
         "%s", error_message);
     checked_count *= d;
   }
