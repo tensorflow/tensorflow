@@ -15,6 +15,7 @@
 """Tests for sharing datasets across training jobs."""
 
 import multiprocessing
+import os
 
 from absl.testing import parameterized
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
@@ -108,8 +109,9 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
     num_cpus = multiprocessing.cpu_count()
     cluster = self._create_cluster(
         num_workers=1, cross_trainer_cache_size_bytes=(num_cpus + 8) * 423)
-    num_readers = 20
-    num_elements = 50
+    # Fewer readers and elements on Windows to avoid timeouts (b/566176114).
+    num_readers = 8 if os.name == "nt" else 20
+    num_elements = 20 if os.name == "nt" else 50
     dataset = dataset_ops.Dataset.range(10000000).repeat()
 
     datasets = []
