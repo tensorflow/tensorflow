@@ -33,7 +33,7 @@ ENTRY main {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<16x40x40x64xf32>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<64x40x40x16xf32>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 7 : index]})
 
 // CHECK:        %[[C0:.*]] = arith.constant 0 : index
 // CHECK:        %[[C1:.*]] = arith.constant 1 : index
