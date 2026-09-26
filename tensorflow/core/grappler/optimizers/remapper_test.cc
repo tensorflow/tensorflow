@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
+#include <limits>
+
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -2813,6 +2815,12 @@ TEST_F(RemapperLeakyReluTest, F32_AlphaOne) { RunTest<DT_FLOAT>(1.0f); }
 // LeakyRelu(x, 2) is x there.
 TEST_F(RemapperLeakyReluTest, F32_AlphaAboveOneNotFused) {
   RunTest<DT_FLOAT>(2.0f, /*expect_fused=*/false);
+}
+// A NaN alpha must not be fused either: maximum(x, NaN * x) is NaN, while
+// LeakyRelu(x, NaN) is x for x > 0.
+TEST_F(RemapperLeakyReluTest, F32_AlphaNaNNotFused) {
+  RunTest<DT_FLOAT>(std::numeric_limits<float>::quiet_NaN(),
+                    /*expect_fused=*/false);
 }
 TEST_F(RemapperLeakyReluTest, BF16_AlphaAboveOneNotFused) {
   if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))

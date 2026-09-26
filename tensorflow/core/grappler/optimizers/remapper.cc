@@ -1904,7 +1904,8 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
       return false;
     }
 
-    if (alpha_val < 0 || alpha_val > 1) return false;
+    // Written so that a NaN alpha is rejected as well.
+    if (!(alpha_val >= 0 && alpha_val <= 1)) return false;
     *alpha = alpha_val;
   }
   return found_op_type_match;
