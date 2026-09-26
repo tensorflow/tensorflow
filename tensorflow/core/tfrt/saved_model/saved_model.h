@@ -36,12 +36,15 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tsl/platform/protobuf.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tfrt {
 class BEFFile;
@@ -234,9 +237,9 @@ class SavedModelImpl final : public SavedModel {
       absl::string_view saved_model_dir);
 
   SavedModelImpl(
-      Options options, SymbolUids symbol_uids,
-      tensorflow::MetaGraphDef meta_graph_def, tfrt::BefBuffer bef,
-      tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
+      Options options, tensorflow::MetaGraphDef meta_graph_def,
+      tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
+      mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
@@ -276,7 +279,6 @@ class SavedModelImpl final : public SavedModel {
   // The result of loading signature(s).
   struct LoadingResult {
     std::string name;
-    SymbolUids symbol_uids;
 
     // For the MLRT path.
     mlrt::bc::Buffer bytecode_buffer;
@@ -318,7 +320,6 @@ class SavedModelImpl final : public SavedModel {
 
   void IncrementInferredModelTypePerRequestCount();
 
-  SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
   // is removed.
   //
