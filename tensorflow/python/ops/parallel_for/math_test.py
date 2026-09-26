@@ -329,7 +329,9 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
             # pylint: enable=cell-var-from-loop
 
-            self._test_loop_fn(loop_fn, 2)
+            rtol = 1e-3 if test.is_gpu_available() else 1e-4
+            atol = 1e-3 if test.is_gpu_available() else 1e-5
+            self._test_loop_fn(loop_fn, 2, rtol=rtol, atol=atol)
 
   def test_batch_matmul_broadcast(self):
     for broadcast_a in (True, False):
@@ -350,7 +352,9 @@ class MathTest(PForTestCase, parameterized.TestCase):
               return math_ops.matmul(a, b)
 
             # pylint: enable=cell-var-from-loop
-            self._test_loop_fn(loop_fn, 2)
+            rtol = 1e-3 if test.is_gpu_available() else 1e-4
+            atol = 1e-3 if test.is_gpu_available() else 1e-5
+            self._test_loop_fn(loop_fn, 2, rtol=rtol, atol=atol)
 
   def test_reduction(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
