@@ -1921,7 +1921,6 @@ def TPU_TransposeOp : TPU_Op<"transpose", [Pure]> {
     }
   }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 def TPU_LogOp : TPU_Op<"log"> {

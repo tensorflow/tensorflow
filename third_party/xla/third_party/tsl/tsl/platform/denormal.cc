@@ -35,6 +35,9 @@ limitations under the License.
 #define X86_DENORM_USE_INTRINSICS
 #endif
 
+// Test change: verify bazel-diff impacted target detection for TSL platform
+// library.
+
 #ifdef X86_DENORM_USE_INTRINSICS
 #include <pmmintrin.h>
 #endif
