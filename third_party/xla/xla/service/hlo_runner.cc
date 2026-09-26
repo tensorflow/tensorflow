@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -670,13 +671,40 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         }
         // Aggregate results.
         std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results;
+        std::vector<std::string> failure_messages;
+        absl::Status first_failure_status = absl::OkStatus();
         for (int64_t i = 0; i < options.num_devices; ++i) {
           absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>&
               replica_result = per_replica_results[i];
           if (!replica_result.ok()) {
-            return replica_result.status();
+            if (first_failure_status.ok()) {
+              first_failure_status = replica_result.status();
+            }
+            std::string device_name =
+                (i < id_to_device_ptr.size() && id_to_device_ptr[i] != nullptr)
+                    ? std::string(id_to_device_ptr[i]->DebugString())
+                    : absl::StrFormat("Device %d", i);
+            failure_messages.push_back(absl::StrFormat(
+                "%s: %s", device_name, replica_result.status().message()));
+          } else if (failure_messages.empty()) {
+            results.push_back(*std::move(replica_result));
           }
-          results.push_back(*std::move(replica_result));
+        }
+        if (!failure_messages.empty()) {
+          if (failure_messages.size() == 1) {
+            return first_failure_status;
+          }
+          absl::Status combined_status(
+              first_failure_status.code(),
+              absl::StrCat("Execution failed on ", failure_messages.size(),
+                           " devices:\n\n",
+                           absl::StrJoin(failure_messages, "\n\n")));
+          first_failure_status.ForEachPayload(
+              [&combined_status](absl::string_view type_url,
+                                 const absl::Cord& payload) {
+                combined_status.SetPayload(type_url, payload);
+              });
+          return combined_status;
         }
         return results;
       },
