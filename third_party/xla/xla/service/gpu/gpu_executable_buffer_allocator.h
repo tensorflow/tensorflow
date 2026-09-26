@@ -94,7 +94,9 @@ class GpuExecutableBufferAllocator {
     // Builds the BufferAllocations for an execution. Entry-computation
     // parameter buffers are obtained from `get_parameter_buffer`; all other
     // allocations are resolved internally, including alignment checking and
-    // any subclass allocation-address policy.
+    // any subclass allocation-address policy. Collective memory (S(1))
+    // buffers are allocated before all other transient buffers, in allocation
+    // index order within each group.
     absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
         const ServiceExecutableRunOptions* run_options,
         ParameterBufferResolver get_parameter_buffer,
