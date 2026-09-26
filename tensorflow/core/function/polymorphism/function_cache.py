@@ -38,6 +38,8 @@ class FunctionCache:
   ]
 
   def __init__(self, max_capacity: Optional[int] = None):
+    if max_capacity is not None and max_capacity <= 0:
+      raise ValueError("max_capacity must be greater than 0")
     # Maps (FunctionContext, FunctionType) to a function.
     self._primary = collections.OrderedDict()
 
@@ -54,9 +56,10 @@ class FunctionCache:
       dispatch_type = self._dispatch_dict[context].dispatch(function_type)
       if dispatch_type:
         key = (context, dispatch_type)
-        if key in self._primary:
+        fn = self._primary.get(key)
+        if fn is not None:
           self._primary.move_to_end(key)
-        return self._primary[key]
+        return fn
 
     return None
 
