@@ -150,7 +150,7 @@ absl::Status EagerOperation::SetAttrFloatList(const char* attr_name,
                                               const float* values,
                                               int num_values) {
   MutableAttrs()->Set(attr_name,
-                      gtl::ArraySlice<const float>(values, num_values));
+                      absl::Span<const const float>(values, num_values));
   return absl::OkStatus();
 }
 
