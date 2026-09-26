@@ -115,6 +115,8 @@ toc:
     path: /xla/build_from_source
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
+  - title: "Avoiding #ifdefs"
+    path: /xla/avoiding_ifdefs
   - title: Copybara quirks
     path: /xla/copybara
 
