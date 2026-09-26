@@ -94,6 +94,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
+    // Validate inputs.
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
     const int64_t n = input.dim_size(ndims - 1);
 #if GOOGLE_CUDA
     cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
@@ -104,11 +109,6 @@ class CholeskyOpGpu : public AsyncOpKernel {
     rocblas_fill fill = rocblas_fill_upper;
 #endif
 #endif
-    // Validate inputs.
-    OP_REQUIRES_ASYNC(context, ndims >= 2,
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "Input must have rank >= 2, got ", ndims)),
-                      done);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
                           absl::StrCat("Input matrices must be squares, got",

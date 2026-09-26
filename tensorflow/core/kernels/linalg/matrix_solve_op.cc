@@ -133,8 +133,6 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = input.dims();
-    const int64_t n = input.dim_size(ndims - 1);
-    const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
@@ -145,6 +143,8 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                           "Input and right-hand side must have same rank, got ",
                           ndims, " != ", rhs.dims())),
                       done);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t nrhs = rhs.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
                           absl::StrCat("Input matrices must be squares, got ",

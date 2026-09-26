@@ -19,9 +19,11 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -120,6 +122,15 @@ class InverseOpTest(test.TestCase):
     tensor3 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       linalg_ops.matrix_inverse(tensor3)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testInvalidRank(self):
+    for fn in (linalg_ops.matrix_inverse, gen_linalg_ops.matrix_inverse):
+      for bad_shape in ([], [2]):
+        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+          with test_util.use_gpu():
+            self.evaluate(fn(val))
 
   def testNotInvertible(self):
     # The input should be invertible.

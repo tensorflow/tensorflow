@@ -142,17 +142,16 @@ class QrOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64_t m = input.dim_size(ndims - 2);
-    const int64_t n = input.dim_size(ndims - 1);
-    const int64_t min_size = std::min(m, n);
-    const int64_t batch_size =
-        input.template flat_inner_dims<Scalar, 3>().dimension(0);
-
     // Validate inputs.
     OP_REQUIRES_ASYNC(context, ndims >= 2,
                       absl::InvalidArgumentError(absl::StrCat(
                           "Input must have rank >= 2, got ", ndims)),
                       done);
+    const int64_t m = input.dim_size(ndims - 2);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t min_size = std::min(m, n);
+    const int64_t batch_size =
+        input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Allocate output.
     // If full_matrices_ is true then Q is m x m and R is m x n.
