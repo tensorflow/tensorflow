@@ -600,5 +600,83 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
   }
 }
 
+TEST(SVDFOpSecurityTest, MismatchedStateTypeFloatMode) {
+  class MismatchedStateModel : public SingleOpModel {
+   public:
+    MismatchedStateModel() {
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_FLOAT32);
+      AddNullInput();
+      AddVariableInput(TensorData{TensorType_INT8, {2, 10}});
+      AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(
+          BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+          CreateSVDFOptions(builder_, /*rank=*/1, ActivationFunctionType_NONE,
+                            /*asymmetric_quantize_inputs=*/false)
+              .Union());
+      BuildInterpreter({{2, 3}, {1, 3}, {1, 10}, {2, 10}},
+                       /*num_threads=*/1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false,
+                       /*allocate_and_delegate=*/false);
+    }
+  };
+  MismatchedStateModel m;
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SVDFOpSecurityTest, MismatchedOutputTypeFloatMode) {
+  class MismatchedOutputModel : public SingleOpModel {
+   public:
+    MismatchedOutputModel() {
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_FLOAT32);
+      AddNullInput();
+      AddVariableInput(TensorData{TensorType_FLOAT32, {2, 10}});
+      AddOutput(TensorType_INT8);
+      SetBuiltinOp(
+          BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+          CreateSVDFOptions(builder_, /*rank=*/1, ActivationFunctionType_NONE,
+                            /*asymmetric_quantize_inputs=*/false)
+              .Union());
+      BuildInterpreter({{2, 3}, {1, 3}, {1, 10}, {2, 10}},
+                       /*num_threads=*/1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false,
+                       /*allocate_and_delegate=*/false);
+    }
+  };
+  MismatchedOutputModel m;
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(SVDFOpSecurityTest, MismatchedWeightsTimeTypeFloatMode) {
+  class MismatchedWeightsTimeModel : public SingleOpModel {
+   public:
+    MismatchedWeightsTimeModel() {
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_FLOAT32);
+      AddInput(TensorType_INT8);
+      AddNullInput();
+      AddVariableInput(TensorData{TensorType_FLOAT32, {2, 10}});
+      AddOutput(TensorType_FLOAT32);
+      SetBuiltinOp(
+          BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+          CreateSVDFOptions(builder_, /*rank=*/1, ActivationFunctionType_NONE,
+                            /*asymmetric_quantize_inputs=*/false)
+              .Union());
+      BuildInterpreter({{2, 3}, {1, 3}, {1, 10}, {2, 10}},
+                       /*num_threads=*/1,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false,
+                       /*allocate_and_delegate=*/false);
+    }
+  };
+  MismatchedWeightsTimeModel m;
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
