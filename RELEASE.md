@@ -16,6 +16,8 @@
 
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+* `tf.signal`:
+    * Adds `tf.signal.blackman_window` for generating Blackman windows.
 
 ### Bug Fixes and Other Changes
 
