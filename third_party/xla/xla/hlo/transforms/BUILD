@@ -141,6 +141,7 @@ cc_library(
     srcs = ["defuser.cc"],
     hdrs = ["defuser.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
