@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function_metadata.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace tensorflow {
 
 SignatureDefParam::SignatureDefParam(std::string name, TensorSpec spec)
