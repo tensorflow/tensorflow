@@ -3662,6 +3662,7 @@ cc_library(
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/stream_executor:kernel_spec_proto_cc",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/util/split_proto:human_readable_aot_executable_proto_cc",
