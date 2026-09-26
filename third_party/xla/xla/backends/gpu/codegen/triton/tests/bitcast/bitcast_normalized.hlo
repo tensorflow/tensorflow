@@ -22,7 +22,7 @@ fusion {
 // CHECK-LABEL:   xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<8x48xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<8x3x16xf32>,
-// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-SAME:      %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 23 : index\]\})?}}) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[OFFSET0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
 // CHECK:           %[[OFFSET1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])
 // CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[OFFSET0]], %[[OFFSET1]]] [2, 8] [1, 1] : memref<8x48xf32> -> tensor<2x8xf32>

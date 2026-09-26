@@ -110,10 +110,11 @@ namespace detail {
 template <typename T>
 class GpuGridRange {
   struct Iterator {
-    __device__ Iterator(T index, T delta) : index_(index), delta_(delta) {}
+    __device__ Iterator(T index, T delta, T end)
+        : index_(index), delta_(delta), end_(end) {}
     __device__ T operator*() const { return index_; }
     __device__ Iterator& operator++() {
-      index_ += delta_;
+      index_ += (delta_ < end_ - index_) ? delta_ : (end_ - index_);
       return *this;
     }
     __device__ bool operator!=(const Iterator& other) const {
@@ -133,14 +134,15 @@ class GpuGridRange {
    private:
     T index_;
     const T delta_;
+    const T end_;
   };
 
  public:
   __device__ GpuGridRange(T begin, T delta, T end)
       : begin_(begin), delta_(delta), end_(end) {}
 
-  __device__ Iterator begin() const { return Iterator{begin_, delta_}; }
-  __device__ Iterator end() const { return Iterator{end_, 0}; }
+  __device__ Iterator begin() const { return Iterator{begin_, delta_, end_}; }
+  __device__ Iterator end() const { return Iterator{end_, 0, end_}; }
 
  private:
   T begin_;
