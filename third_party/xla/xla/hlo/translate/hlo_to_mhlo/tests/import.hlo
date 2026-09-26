@@ -2219,3 +2219,19 @@ add_original_value {
   // CHECK:  }) {mhlo.original_value = #mhlo.original_value<false, [<[], <"c", []>>]>}
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add_original_value, origin={{"c"}}
 }
+
+// Test tuple parameter original value
+// CHECK-LABEL: func.func private @test_tuple_original_value
+// CHECK-SAME:    %arg0: tuple<tensor<f32>, tensor<f32>> {mhlo.original_value = #mhlo.original_value<false, [<[0], <"p0", []>>, <[1], <"p1", []>>]>}
+// FLATTEN-CHECK-LABEL: func private @test_tuple_original_value
+// FLATTEN-CHECK-SAME:    %arg0: tensor<f32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"p0", []>>]>}
+// FLATTEN-CHECK-SAME:    %arg1: tensor<f32> {mhlo.original_value = #mhlo.original_value<false, [<[], <"p1", []>>]>}
+%test_tuple_original_value (param.1: (f32[], f32[])) -> f32[] {
+  %param.1 = (f32[], f32[]) parameter(0), origin={({"p0"}, {"p1"})}
+  %gte.0 = f32[] get-tuple-element(%param.1), index=0
+  %gte.1 = f32[] get-tuple-element(%param.1), index=1
+  ROOT %add = f32[] add(%gte.0, %gte.1)
+}
+
+
+

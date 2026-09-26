@@ -243,6 +243,8 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   // Clamp explicitly requested stream counts to non-negative values.
   compute = std::max(0, compute);
   comm = std::max(0, comm);
+  bool need_d2h_stream = false;
+  bool need_h2d_stream = false;
 
   // Then traverse all thunks to see if anyone requested more streams. This
   // also sizes sparse collective-domain stream pools from their assigned IDs.
@@ -252,14 +254,20 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
         ExecutionStreamId id = async_start->execution_stream_id();
         if (id.is_computation()) {
           compute = std::max<int>(compute, id.computation_id().value() + 1);
-        } else {
+        } else if (id.is_communication()) {
           comm = std::max<int>(comm, id.communication_id().value() + 1);
+        } else if (id.is_memcpy()) {
+          if (id.memcpy_id() == kMemcpyD2HStreamId) {
+            need_d2h_stream = true;
+          } else if (id.memcpy_id() == kMemcpyH2DStreamId) {
+            need_h2d_stream = true;
+          }
         }
       }
     });
   }
 
-  return {compute, comm};
+  return {compute, comm, need_d2h_stream, need_h2d_stream};
 }
 
 GpuExecutable::BorrowedStreams GpuExecutable::BorrowedStreams::Assign(
@@ -452,7 +460,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+    std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
     BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -791,6 +799,35 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(compute_streams.streams),
       &execution_scoped_state, persistent_alloc_indices);
+
+  // device_to_host_stream/host_to_device_stream above come from run_options,
+  // which are only populated when running through PJRT. Fall back to a
+  // borrowed stream (or main_stream, if no stream borrower is available) so
+  // that async host<->device copy thunks also work for non-PJRT clients.
+  StreamPool::Ptr borrowed_device_to_host_stream;
+  if (num_additional_streams.need_d2h_stream &&
+      execute_params.device_to_host_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_device_to_host_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.device_to_host_stream =
+          borrowed_device_to_host_stream.get();
+    } else {
+      execute_params.device_to_host_stream = main_stream;
+    }
+  }
+  StreamPool::Ptr borrowed_host_to_device_stream;
+  if (num_additional_streams.need_h2d_stream &&
+      execute_params.host_to_device_stream == nullptr) {
+    if (run_options->HasStreamBorrower()) {
+      ABSL_ASSIGN_OR_RETURN(borrowed_host_to_device_stream,
+                       run_options->BorrowStream(executor->device_ordinal()));
+      execute_params.host_to_device_stream =
+          borrowed_host_to_device_stream.get();
+    } else {
+      execute_params.host_to_device_stream = main_stream;
+    }
+  }
 
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
@@ -1416,17 +1453,21 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
     absl::string_view platform_name, DebugOptions debug_options,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    std::shared_ptr<HloModule> debug_module) {
   Params params;
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
-  if (proto.has_hlo_module_with_config()) {
+  if (debug_module != nullptr) {
+    params.debug_module = std::move(debug_module);
+  } else if (proto.has_hlo_module_with_config()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
+  }
+  if (params.debug_module != nullptr) {
     // The HLO module deserialized from the proto carries xla_dump_to from the
     // process that originally compiled it. Override with the current process's
     // dump path so that runtime dumps (checksum logs, etc.) land in the correct
