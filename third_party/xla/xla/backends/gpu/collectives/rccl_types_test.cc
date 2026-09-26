@@ -80,6 +80,23 @@ TEST(NcclTypesTest, ToNcclDataTypeNoOcpFp8Support) {
   se::RocmComputeCapability cc("gfx942");
   EXPECT_THAT(ToNcclDataType(F8E5M2, false, cc), IsOkAndHolds(ncclInt8));
   EXPECT_THAT(ToNcclDataType(F8E4M3FN, false, cc), IsOkAndHolds(ncclInt8));
+  EXPECT_THAT(ToNcclDataType(F8E8M0FNU, false, cc), IsOkAndHolds(ncclInt8));
+  EXPECT_THAT(ToNcclDataType(F8E5M2FNUZ, false, cc), IsOkAndHolds(ncclInt8));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FNUZ, false, cc), IsOkAndHolds(ncclInt8));
+}
+
+TEST(NcclTypesTest, ToNcclDataTypeNoOcpFp8SupportReductionFails) {
+  se::RocmComputeCapability cc("gfx942");
+  EXPECT_THAT(ToNcclDataType(F8E5M2, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FN, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E8M0FNU, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E5M2FNUZ, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FNUZ, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(NcclTypesTest, ToNcclDataTypeOcpFp8Support) {
@@ -87,6 +104,21 @@ TEST(NcclTypesTest, ToNcclDataTypeOcpFp8Support) {
   EXPECT_THAT(ToNcclDataType(F8E5M2, false, cc), IsOkAndHolds(ncclFloat8e5m2));
   EXPECT_THAT(ToNcclDataType(F8E4M3FN, false, cc),
               IsOkAndHolds(ncclFloat8e4m3));
+  EXPECT_THAT(ToNcclDataType(F8E8M0FNU, false, cc), IsOkAndHolds(ncclInt8));
+  EXPECT_THAT(ToNcclDataType(F8E5M2FNUZ, false, cc), IsOkAndHolds(ncclInt8));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FNUZ, false, cc), IsOkAndHolds(ncclInt8));
+}
+
+TEST(NcclTypesTest, ToNcclDataTypeOcpFp8SupportReductionFails) {
+  se::RocmComputeCapability cc("gfx950");
+  EXPECT_THAT(ToNcclDataType(F8E5M2, true, cc), IsOkAndHolds(ncclFloat8e5m2));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FN, true, cc), IsOkAndHolds(ncclFloat8e4m3));
+  EXPECT_THAT(ToNcclDataType(F8E8M0FNU, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E5M2FNUZ, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(ToNcclDataType(F8E4M3FNUZ, true, cc),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(NcclTypesTest, ToNcclDataTypeUnsupported) {
