@@ -498,6 +498,55 @@ class Array {
       for (int64_t i = 0; i < result.num_elements(); ++i) {
         result.values_[i] = out_of_bounds_value.value();
       }
+    } else if (starts.size() > 0) {
+      bool only_dim_0_sliced = true;
+      for (int64_t i = 1; i < starts.size(); ++i) {
+        if (starts[i] != 0 || limits[i] != dim(i)) {
+          only_dim_0_sliced = false;
+          break;
+        }
+      }
+      if (only_dim_0_sliced) {
+        const int64_t stride = num_elements() / dim(0);
+        std::copy(begin() + starts[0] * stride, begin() + limits[0] * stride,
+                  result.begin());
+        return result;
+      }
+
+      std::vector<int64_t> strides(starts.size(), 1);
+      for (int64_t i = starts.size() - 2; i >= 0; --i) {
+        strides[i] = strides[i + 1] * dim(i + 1);
+      }
+      int64_t src_idx = 0;
+      for (int64_t i = 0; i < starts.size(); ++i) {
+        src_idx += starts[i] * strides[i];
+      }
+
+      std::vector<int64_t> dims(starts.size());
+      std::vector<int64_t> deltas(starts.size());
+      int64_t accumulated_wrap = 0;
+      for (int64_t i = starts.size() - 1; i >= 0; --i) {
+        dims[i] = limits[i] - starts[i];
+        deltas[i] = strides[i] - accumulated_wrap;
+        accumulated_wrap += (dims[i] - 1) * strides[i];
+      }
+
+      std::vector<int64_t> index(starts.size(), 0);
+      int64_t dest_idx = 0;
+      const int64_t total_elements = result.num_elements();
+      const int64_t rank = starts.size();
+      while (dest_idx < total_elements) {
+        result.values_[dest_idx++] = values_[src_idx];
+        for (int64_t i = rank - 1; i >= 0; --i) {
+          index[i]++;
+          if (index[i] < dims[i]) {
+            src_idx += deltas[i];
+            break;
+          }
+          index[i] = 0;
+        }
+      }
+      return result;
     }
 
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
@@ -517,6 +566,43 @@ class Array {
   void UpdateSlice(const Array<T>& from,
                    absl::Span<const int64_t> start_indices) {
     CHECK_EQ(from.num_dimensions(), num_dimensions());
+    if (start_indices.size() > 0) {
+      std::vector<int64_t> strides(start_indices.size(), 1);
+      for (int64_t i = start_indices.size() - 2; i >= 0; --i) {
+        strides[i] = strides[i + 1] * dim(i + 1);
+      }
+      int64_t dest_idx = 0;
+      for (int64_t i = 0; i < start_indices.size(); ++i) {
+        dest_idx += start_indices[i] * strides[i];
+      }
+
+      std::vector<int64_t> dims(start_indices.size());
+      std::vector<int64_t> deltas(start_indices.size());
+      int64_t accumulated_wrap = 0;
+      for (int64_t i = start_indices.size() - 1; i >= 0; --i) {
+        dims[i] = from.sizes_[i];
+        deltas[i] = strides[i] - accumulated_wrap;
+        accumulated_wrap += (dims[i] - 1) * strides[i];
+      }
+
+      std::vector<int64_t> index(start_indices.size(), 0);
+      int64_t from_i = 0;
+      const int64_t total_elements = from.num_elements();
+      const int64_t rank = start_indices.size();
+      while (from_i < total_elements) {
+        values_[dest_idx] = from.values_[from_i++];
+        for (int64_t i = rank - 1; i >= 0; --i) {
+          index[i]++;
+          if (index[i] < dims[i]) {
+            dest_idx += deltas[i];
+            break;
+          }
+          index[i] = 0;
+        }
+      }
+      return;
+    }
+
     OwnedBuffer<int64_t> limit_indices(start_indices.size());
     for (int64_t i = 0; i < start_indices.size(); ++i) {
       limit_indices[i] = from.sizes_[i] + start_indices[i];
