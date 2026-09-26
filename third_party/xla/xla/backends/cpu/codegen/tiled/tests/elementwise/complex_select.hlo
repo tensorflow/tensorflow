@@ -21,7 +21,7 @@ fusion {
 // CHECK-SAME:     %[[ON_TRUE:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[ON_FALSE:[^:]+]]: memref<128x256xcomplex<f32>>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<128x256xcomplex<f32>>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[COND]]
 // CHECK-SAME:    : memref<128x256xi8> -> tensor<1x4xi8>
@@ -39,7 +39,7 @@ fusion {
 // NEW-VECTOR-SAME:    %[[ON_TRUE:[^:]+]]: memref<128x256x2xf32>,
 // NEW-VECTOR-SAME:    %[[ON_FALSE:[^:]+]]: memref<128x256x2xf32>,
 // NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<128x256x2xf32>,
-// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index {xla.range = [0 : index, 3 : index]})
 
 // NEW-VECTOR:       vector.transfer_read %[[COND]]
 // NEW-VECTOR:       vector.transfer_read %[[ON_TRUE]]

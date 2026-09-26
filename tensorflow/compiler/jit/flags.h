@@ -22,7 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -88,7 +90,7 @@ struct MarkForCompilationPassFlags {
   bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
 
   // If true names of clustered operations will be computed deterministically
-  // so that they remain stable from run to run of auto clustering.
+  // so that they remain stable from run to run of auto clusteing.
   bool tf_xla_deterministic_cluster_names;
 
   // If non-empty, JIT-compiled executables are saved to and loaded from the
@@ -107,7 +109,7 @@ struct MarkForCompilationPassFlags {
   // for debugging. Defaults to false.
   bool tf_xla_disable_strict_signature_checks;
 
-  // Specifies the persistence cache prefix. Default is "xla_compile_cache"
+  // Specifies the persistance cache prefix. Default is "xla_compile_cache"
   std::string tf_xla_persistent_cache_prefix;
 };
 
@@ -161,9 +163,7 @@ struct XlaOpsCommonFlags {
     }
 
     bool IsEnabledInXlaLaunchForDevice(const DeviceType& device_type) const {
-      if (device_type.type_string() == "GPU") {
-        return true;
-      }
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ ||
              (enabled_for_xla_launch_ &&
               xla_launch_allowed_devices_.contains(device_type.type_string()));
@@ -180,9 +180,7 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileOnDemandForDevice(
         const DeviceType& device_type) const {
-      if (device_type.type_string() == "GPU") {
-        return true;
-      }
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ ||
              (enabled_for_compile_on_demand_ &&
               xla_compile_on_demand_allowed_devices_.contains(
@@ -200,13 +198,13 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileAndRunForDevice(
         const DeviceType& device_type) const {
-      if (device_type.type_string() == "GPU") {
-        return true;
-      }
+      if (!enabled_for_gpu_ && device_type.type_string() == "GPU") return false;
       return enabled_for_all_ || (enabled_for_compile_and_run_ &&
                                   xla_compile_and_run_allowed_devices_.contains(
                                       device_type.type_string()));
     }
+
+    bool IsEnabledForGpu() const { return enabled_for_gpu_; }
 
     // If true, uses Device API (PjRt) for single device compilation and
     // execution of functions marked for JIT compilation i.e. jit_compile=True.
@@ -279,7 +277,7 @@ struct BuildXlaOpsPassFlags {
   // TensorCore sequencing will be used.
   bool tf_xla_disable_full_embedding_pipelining;
 
-  // Whether to enable automatic embedding pipelining when summary ops are
+  // Whether to enable automatical embedding pipelining when summary ops are
   // detected in the graph.
   bool tf_xla_disable_full_embedding_pipelining_with_summaries;
 
