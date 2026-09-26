@@ -593,7 +593,12 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
         **kwargs)
 
-  @test_util.disable_xla("XLA MaxPool does not propagate NaN")
+  # XLA lowers MaxPool to a max reduction, which propagates NaN, but XLA:CPU
+  # defaults to --xla_cpu_enable_fast_min_max=true, which drops NaN here as it
+  # does for tf.maximum and tf.reduce_max (b/205140614). set_xla_env_flag
+  # cannot turn it off for this test alone: XLA reads XLA_FLAGS once per
+  # process.
+  @test_util.disable_xla("XLA:CPU fast min/max does not propagate NaN")
   def testMaxPoolNanPropagatesForAllDepths(self):
     # Regression test for GitHub issue 125965. The reduction runs over the
     # depth dimension, which Eigen vectorizes, so a depth that is not a
