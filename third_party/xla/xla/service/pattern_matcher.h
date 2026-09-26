@@ -684,17 +684,37 @@ class AnyOfPattern {
   }
 
  private:
+  template <typename ItemType, typename SubPattern>
+  static bool MatchSinglePattern(ItemType* item, MatchOption option,
+                                 const SubPattern& subpattern) {
+    MatchOption new_option = option;
+    new_option.capture = false;
+    if (!subpattern.Match(item, new_option)) {
+      return false;
+    }
+    if (option.capture) {
+      bool matched = subpattern.Match(item, option);
+      DCHECK(matched);
+    }
+    return true;
+  }
+
   template <typename ItemType>
   bool MatchImpl(ItemType* item, MatchOption option) const {
+    if (!option.explain_os) {
+      return std::apply(
+          [&](const auto&... patterns) {
+            return (MatchSinglePattern(item, option, patterns) || ...);
+          },
+          patterns_);
+    }
     // If we're generating an explanation, buffer it until we know we failed.
     std::optional<std::stringstream> explanation;
     MatchOption new_option = option;
-    if (option.explain_os) {
-      new_option.explain_os = &explanation.emplace();
-    }
+    new_option.explain_os = &explanation.emplace();
     bool rv = MatchRecursiveImpl(item, new_option,
                                  std::integral_constant<size_t, 0>());
-    if (!rv && option.explain_os) {
+    if (!rv) {
       XLA_PATTERN_MATCHER_EXPLAIN
           << "None of the following matchers succeeded:";
       XLA_PATTERN_MATCHER_EXPLAIN << explanation->str();
@@ -717,20 +737,6 @@ class AnyOfPattern {
     if (std::get<index>(patterns_).Match(item, new_option)) {
       // Capture the branch.
       if (option.capture) {
-        // TODO(timshen): Currently the behavior can be exponential. Optimize it
-        // with memoization or recording the matched sub-pattern index, if it
-        // takes too long to run.
-        //
-        // Specifically, the "memoization" approach is to create an empty
-        // container with the key (pattern, instruction), and value as whether
-        // matched or not.
-        //
-        // Alternatively, we may run the pattern matching with captures off, but
-        // instead record a "trace" somewhere, indicating how exactly the
-        // pattern matches the input. For example, the trace information for
-        // AnyOf will be a runtime number indicate which sub-pattern is matched.
-        // Then we run another pass to do captures only with the help of the
-        // trace.
         bool matched = std::get<index>(patterns_).Match(item, option);
         DCHECK(matched);
       }
@@ -1610,6 +1616,92 @@ class HloInstructionPatternOperandIfPresentImpl {
   HloInstructionPattern<OperandType, OperandImpl> operand_;
 };
 
+inline bool ExplainBinaryOperandsAnyOrder(MatchOption option, const void* ctx,
+                                          bool (*match_fn)(const void*, int,
+                                                           int, MatchOption),
+                                          void (*describe_fn)(const void*, int,
+                                                              std::ostream*)) {
+  // First, try all four operand/matcher combinations, recording the
+  // failure explanations separately from option.explain_os. matches[i][j]
+  // tells us if matcher_i matches operand j.
+  bool matches[/*matcher*/ 2][/*operand*/ 2];
+  std::stringstream explanations[/*matcher*/ 2][/*operand*/ 2];
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      MatchOption new_option = option;
+      new_option.capture = false;
+      new_option.explain_os = &explanations[i][j];
+      matches[i][j] = match_fn(ctx, i, j, new_option);
+    }
+  }
+
+  // Check if the match succeeded.
+  for (int i = 0; i < 2; ++i) {
+    if (matches[0][i] && matches[1][(i + 1) % 2]) {
+      // Rerun the matches with capture enabled if necessary.
+      if (option.capture) {
+        bool matched = match_fn(ctx, 0, i, option) &&
+                       match_fn(ctx, 1, (i + 1) % 2, option);
+        DCHECK(matched);
+      }
+      return true;
+    }
+  }
+
+  auto describe_matcher = [&](int matcher_idx) {
+    XLA_PATTERN_MATCHER_EXPLAIN << "\n - ";
+    describe_fn(ctx, matcher_idx, option.explain_os);
+    for (int i = 0; i < 2; ++i) {
+      if (matches[matcher_idx][/*operand*/ i]) {
+        continue;
+      }
+      XLA_PATTERN_MATCHER_EXPLAIN << "\ndoes not match "
+                                  << (i == 0 ? "LHS" : "RHS") << ":\n";
+      XLA_PATTERN_MATCHER_EXPLAIN << " - ";
+      XLA_PATTERN_MATCHER_EXPLAIN << absl::StrReplaceAll(
+          explanations[matcher_idx][/*operand*/ i].str(), {{"\n", "\n   "}});
+    }
+  };
+
+  // If we failed to match, one of the following is true:
+  //  1. op1 (op2) matches neither LHS nor RHS, or
+  //  2. op1 and op2 both match LHS (RHS), but neither matches RHS (LHS).
+  // We print different explanations depending on which case we're in.
+
+  // Case 1.
+  bool wrote_explanation = false;
+  for (int i = 0; !wrote_explanation && i < 2; ++i) {
+    if (!matches[i][0] && !matches[i][1]) {
+      XLA_PATTERN_MATCHER_EXPLAIN
+          << "HloInstruction's operands (ignoring order) did not match "
+          << (i == 0 ? "first" : "second") << " matcher. Specifically,";
+      describe_matcher(i);
+      wrote_explanation = true;
+    }
+  }
+
+  // Case 2.
+  for (int i = 0; !wrote_explanation && i < 2; ++i) {
+    if (matches[/*matcher*/ 0][/*operand*/ i] &&
+        matches[/*matcher*/ 1][/*operand*/ i]) {
+      CHECK(!matches[0][(i + 1) % 2]);
+      CHECK(!matches[1][(i + 1) % 2]);
+      CHECK(!wrote_explanation);
+      XLA_PATTERN_MATCHER_EXPLAIN
+          << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
+          << " operand did not match either of the two matchers. "
+             "Specifically,";
+      describe_matcher(0);
+      XLA_PATTERN_MATCHER_EXPLAIN << "\nand";
+      describe_matcher(1);
+      wrote_explanation = true;
+    }
+  }
+
+  CHECK(wrote_explanation);
+  return false;
+}
+
 // Matches a binary instruction whose operands come in any order.
 template <typename OperandType1, typename OperandImpl1, typename OperandType2,
           typename OperandImpl2>
@@ -1687,96 +1779,28 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
       return try_match(0, 1) || try_match(1, 0);
     }
 
-    // If we are generating explanations, we have some work to do in order to
-    // generate a helpful error.
-    //
-    // First, try all four operand/matcher combinations, recording the
-    // failure explanations separately from option.explain_os. matches[i][j]
-    // tells us if matcher_i matches operand j.
-    bool matches[/*matcher*/ 2][/*operand*/ 2];
-    std::stringstream explanations[/*matcher*/ 2][/*operand*/ 2];
-    for (int i = 0; i < 2; ++i) {
-      for (int j = 0; j < 2; ++j) {
-        MatchOption new_option = option;
-        new_option.capture = false;
-        new_option.explain_os = &explanations[i][j];
-        matches[i][j] = i == 0 ? op1_.Match(operand(inst, j), new_option)
-                               : op2_.Match(operand(inst, j), new_option);
-      }
-    }
-
-    // Check if the match succeeded.
-    for (int i = 0; i < 2; ++i) {
-      if (matches[0][i] && matches[1][(i + 1) % 2]) {
-        // Rerun the matches with capture enabled if necessary.
-        if (option.capture) {
-          auto* operand1 = operand(inst, i);
-          auto* operand2 = operand(inst, (i + 1) % 2);
-          bool matched =
-              op1_.Match(operand1, option) && op2_.Match(operand2, option);
-          DCHECK(matched);
-        }
-        return true;
-      }
-    }
-
-    auto describe_matcher = [&](int matcher_idx) {
-      XLA_PATTERN_MATCHER_EXPLAIN << "\n - ";
-      if (matcher_idx == 0) {
-        op1_.DescribeTo(option.explain_os, /*indent=*/3);
-      } else {
-        CHECK_EQ(matcher_idx, 1);
-        op2_.DescribeTo(option.explain_os, /*indent=*/3);
-      }
-      for (int i = 0; i < 2; ++i) {
-        if (matches[matcher_idx][/*operand*/ i]) {
-          continue;
-        }
-        XLA_PATTERN_MATCHER_EXPLAIN << "\ndoes not match "
-                                    << (i == 0 ? "LHS" : "RHS") << ":\n";
-        XLA_PATTERN_MATCHER_EXPLAIN << " - ";
-        XLA_PATTERN_MATCHER_EXPLAIN << absl::StrReplaceAll(
-            explanations[matcher_idx][/*operand*/ i].str(), {{"\n", "\n   "}});
-      }
-    };
-
-    // If we failed to match, one of the following is true:
-    //  1. op1 (op2) matches neither LHS nor RHS, or
-    //  2. op1 and op2 both match LHS (RHS), but neither matches RHS (LHS).
-    // We print different explanations depending on which case we're in.
-
-    // Case 1.
-    bool wrote_explanation = false;
-    for (int i = 0; !wrote_explanation && i < 2; ++i) {
-      if (!matches[i][0] && !matches[i][1]) {
-        XLA_PATTERN_MATCHER_EXPLAIN
-            << "HloInstruction's operands (ignoring order) did not match "
-            << (i == 0 ? "first" : "second") << " matcher. Specifically,";
-        describe_matcher(i);
-        wrote_explanation = true;
-      }
-    }
-
-    // Case 2.
-    for (int i = 0; !wrote_explanation && i < 2; ++i) {
-      if (matches[/*matcher*/ 0][/*operand*/ i] &&
-          matches[/*matcher*/ 1][/*operand*/ i]) {
-        CHECK(!matches[0][(i + 1) % 2]);
-        CHECK(!matches[1][(i + 1) % 2]);
-        CHECK(!wrote_explanation);
-        XLA_PATTERN_MATCHER_EXPLAIN
-            << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
-            << " operand did not match either of the two matchers. "
-               "Specifically,";
-        describe_matcher(0);
-        XLA_PATTERN_MATCHER_EXPLAIN << "\nand";
-        describe_matcher(1);
-        wrote_explanation = true;
-      }
-    }
-
-    CHECK(wrote_explanation);
-    return false;
+    struct MatchContext {
+      const HloInstructionPatternBinaryOperandsAnyOrderImpl* self;
+      HloInstructionType* inst;
+    } ctx{this, inst};
+    return ExplainBinaryOperandsAnyOrder(
+        option, &ctx,
+        +[](const void* raw_ctx, int matcher_idx, int operand_idx,
+            MatchOption opt) {
+          const auto* c = static_cast<const MatchContext*>(raw_ctx);
+          auto* op = c->self->operand(c->inst, operand_idx);
+          return matcher_idx == 0 ? c->self->op1_.Match(op, opt)
+                                  : c->self->op2_.Match(op, opt);
+        },
+        +[](const void* raw_ctx, int matcher_idx, std::ostream* os) {
+          const auto* c = static_cast<const MatchContext*>(raw_ctx);
+          if (matcher_idx == 0) {
+            c->self->op1_.DescribeTo(os, /*indent=*/3);
+          } else {
+            CHECK_EQ(matcher_idx, 1);
+            c->self->op2_.DescribeTo(os, /*indent=*/3);
+          }
+        });
   }
 
   HloInstructionPattern<OperandType1, OperandImpl1> op1_;
