@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <memory>
+#include <ostream>
+#include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -27,12 +33,17 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -195,6 +206,368 @@ ENTRY root {
   EXPECT_EQ(PeakMemoryUseOfEntryComputation(module.get(), &size_fn),
             peak_memory);
 }
+
+// Knobs of a generated tuple heavy while body. Every element the loop carries
+// has its own size, so the priorities of its consumers differ.
+struct TupleHeavyWhileBodySpec {
+  std::string name;
+  int tuple_width;
+  // Results are tupled again and read back through get-tuple-element, so
+  // consumers use a buffer through an alias of its defining instruction.
+  bool read_through_aliases;
+  // An add whose two operands hold the same buffer.
+  bool overlapping_operands;
+  // A multiply of a value with itself.
+  bool duplicated_operands;
+  // Elements that also combine with constants. Two instructions share one
+  // constant: one on the main chain and an early userless one that reads the
+  // element through a tuple, so its priority goes stale until the constant's
+  // other use refreshes it. A second constant feeds a userless negate alone.
+  int constants;
+  // Slices without users, which compete with the root for the last slots.
+  int dead_instructions;
+  uint32_t seed;
+};
+
+void PrintTo(const TupleHeavyWhileBodySpec& spec, std::ostream* os) {
+  *os << spec.name;
+}
+
+// Builds the HLO text of a while loop whose body follows the spec. The seed
+// picks the element sizes, the pairs of elements that mix, the sizes of the
+// dead slices and the elements the root passes through unchanged.
+std::string TupleHeavyWhileBodyHlo(const TupleHeavyWhileBodySpec& spec) {
+  CHECK_GE(spec.tuple_width, 2);
+  CHECK_LE(spec.constants, spec.tuple_width);
+  std::mt19937 rng(spec.seed);
+  const int width = spec.tuple_width;
+  std::vector<int> sizes(width);
+  for (int i = 0; i < width; ++i) {
+    sizes[i] = 8 * (i + 1);
+    std::swap(sizes[i], sizes[rng() % (i + 1)]);
+  }
+  auto array = [&](int i) { return absl::StrFormat("f32[%d]", sizes[i]); };
+  std::vector<std::string> element_shapes;
+  for (int i = 0; i < width; ++i) {
+    element_shapes.push_back(array(i));
+  }
+  const std::string carried_shape =
+      absl::StrCat("(", absl::StrJoin(element_shapes, ", "), ", s32[])");
+
+  std::string hlo = absl::StrFormat(
+      "HloModule tuple_heavy_while_%s\n\nbody {\n  p = %s parameter(0)\n",
+      spec.name, carried_shape);
+  auto line = [&](absl::string_view name, absl::string_view shape,
+                  absl::string_view op) {
+    absl::StrAppend(&hlo, "  ", name, " = ", shape, " ", op, "\n");
+  };
+  for (int i = 0; i < width; ++i) {
+    line(absl::StrCat("g", i), array(i),
+         absl::StrFormat("get-tuple-element(p), index=%d", i));
+  }
+  line("counter", "s32[]",
+       absl::StrFormat("get-tuple-element(p), index=%d", width));
+  line("one", "s32[]", "constant(1)");
+  line("next", "s32[]", "add(counter, one)");
+  for (int i = 0; i < width; ++i) {
+    line(absl::StrCat("a", i), array(i), absl::StrFormat("negate(g%d)", i));
+  }
+  std::vector<std::string> reads(width);
+  for (int i = 0; i < width; ++i) {
+    reads[i] = absl::StrCat("a", i);
+  }
+  if (spec.read_through_aliases) {
+    std::vector<std::string> operands;
+    for (int i = 0; i < width; ++i) {
+      operands.push_back(reads[i]);
+    }
+    line("t", absl::StrCat("(", absl::StrJoin(element_shapes, ", "), ")"),
+         absl::StrFormat("tuple(%s)", absl::StrJoin(operands, ", ")));
+    for (int i = 0; i < width; ++i) {
+      reads[i] = absl::StrCat("ta", i);
+      line(reads[i], array(i),
+           absl::StrFormat("get-tuple-element(t), index=%d", i));
+    }
+  }
+  for (int i = 0; i < width; ++i) {
+    line(absl::StrCat("b", i), array(i),
+         spec.overlapping_operands
+             ? absl::StrFormat("add(%s, a%d)", reads[i], i)
+             : absl::StrFormat("exponential(%s)", reads[i]));
+    line(absl::StrCat("c", i), array(i),
+         spec.duplicated_operands ? absl::StrFormat("multiply(b%d, b%d)", i, i)
+                                  : absl::StrFormat("negate(b%d)", i));
+    if (i < spec.constants) {
+      std::vector<int> literal(sizes[i]);
+      absl::c_iota(literal, 0);
+      line(absl::StrCat("k", i), array(i),
+           absl::StrFormat("constant({%s})", absl::StrJoin(literal, ", ")));
+      line(absl::StrCat("ts", i), absl::StrCat("(", array(i), ")"),
+           absl::StrFormat("tuple(a%d)", i));
+      line(absl::StrCat("gs", i), array(i),
+           absl::StrFormat("get-tuple-element(ts%d), index=0", i));
+      line(absl::StrCat("r", i), array(i),
+           absl::StrFormat("subtract(gs%d, k%d)", i, i));
+      line(absl::StrCat("kk", i), array(i),
+           absl::StrFormat("constant({%s})", absl::StrJoin(literal, ", ")));
+      line(absl::StrCat("kd", i), array(i), absl::StrFormat("negate(kk%d)", i));
+      line(absl::StrCat("d", i), array(i),
+           absl::StrFormat("add(c%d, k%d)", i, i));
+    } else {
+      line(absl::StrCat("d", i), array(i), absl::StrFormat("negate(c%d)", i));
+    }
+  }
+  for (int i = 0; i < width; ++i) {
+    const int partner = (i + 1 + rng() % (width - 1)) % width;
+    line(absl::StrCat("cat", i),
+         absl::StrFormat("f32[%d]", sizes[i] + sizes[partner]),
+         absl::StrFormat("concatenate(d%d, d%d), dimensions={0}", i, partner));
+    line(absl::StrCat("e", i), array(i),
+         absl::StrFormat("slice(cat%d), slice={[0:%d]}", i, sizes[i]));
+  }
+  for (int k = 0; k < spec.dead_instructions; ++k) {
+    const int i = k % width;
+    const int size = 1 + rng() % (sizes[i] - 1);
+    line(absl::StrCat("dead", k), absl::StrFormat("f32[%d]", size),
+         absl::StrFormat("slice(e%d), slice={[0:%d]}", i, size));
+  }
+  std::vector<std::string> results;
+  for (int i = 0; i < width; ++i) {
+    results.push_back(rng() % 3 == 0 ? absl::StrCat("g", i)
+                                     : absl::StrCat("e", i));
+  }
+  results.push_back("next");
+  absl::StrAppend(&hlo, "  ROOT out = ", carried_shape, " tuple(",
+                  absl::StrJoin(results, ", "), ")\n}\n\n");
+
+  absl::StrAppend(&hlo, "cond {\n  cp = ", carried_shape, " parameter(0)\n");
+  absl::StrAppendFormat(&hlo, "  ci = s32[] get-tuple-element(cp), index=%d\n",
+                        width);
+  absl::StrAppend(&hlo,
+                  "  limit = s32[] constant(3)\n"
+                  "  ROOT lt = pred[] compare(ci, limit), direction=LT\n}\n\n");
+
+  absl::StrAppend(&hlo, "ENTRY main {\n");
+  std::vector<std::string> parameters;
+  for (int i = 0; i < width; ++i) {
+    parameters.push_back(absl::StrCat("p", i));
+    absl::StrAppendFormat(&hlo, "  p%d = %s parameter(%d)\n", i, array(i), i);
+  }
+  parameters.push_back("zero");
+  absl::StrAppend(&hlo, "  zero = s32[] constant(0)\n  init = ", carried_shape,
+                  " tuple(", absl::StrJoin(parameters, ", "), ")\n");
+  absl::StrAppend(&hlo, "  ROOT loop = ", carried_shape,
+                  " while(init), condition=cond, body=body\n}\n");
+  return hlo;
+}
+
+// The list scheduling heuristic written the direct way, as the reference for
+// ListMemoryScheduler: the unscheduled use count of every buffer lives in a
+// map keyed by HloValue, and an entry's priority is recomputed by scanning the
+// buffers it uses whenever the heuristic consults it.
+HloInstructionSequence ReferenceListSchedule(
+    HloComputation* computation, const HloAliasAnalysis& alias_analysis,
+    const BufferValue::SizeFunction& size_function) {
+  const HloDataflowAnalysis& dataflow = alias_analysis.dataflow_analysis();
+  auto ignored = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kParameter ||
+           instruction.opcode() == HloOpcode::kConstant;
+  };
+
+  // An instruction uses every value in the flattened value sets of its
+  // unique operands; the root's values have one more use, the live out.
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloValue*>>
+      uses;
+  absl::flat_hash_map<const HloValue*, int64_t> unscheduled_uses;
+  absl::flat_hash_map<const HloInstruction*, int64_t> bytes_defined;
+  for (HloInstruction* instruction : computation->instructions()) {
+    absl::flat_hash_set<const HloValue*>& used = uses[instruction];
+    for (const HloInstruction* operand : instruction->unique_operands()) {
+      const HloValueSet value_set = dataflow.GetFlattenedValueSet(operand);
+      used.insert(value_set.values().begin(), value_set.values().end());
+    }
+    for (const HloValue* value : used) {
+      ++unscheduled_uses[value];
+    }
+    int64_t& defined = bytes_defined[instruction];
+    if (!ignored(*instruction)) {
+      dataflow.GetInstructionValueSet(instruction)
+          .ForEachElement([&](const ShapeIndex& index, const HloValueSet&) {
+            if (dataflow.ValueIsDefinedAt(instruction, index)) {
+              defined +=
+                  size_function(dataflow.GetValueDefinedAt(instruction, index));
+            }
+          });
+    }
+  }
+  const HloValueSet live_out =
+      dataflow.GetFlattenedValueSet(computation->root_instruction());
+  for (const HloValue* value : live_out.values()) {
+    ++unscheduled_uses[value];
+  }
+
+  using Priority = std::pair<int64_t, int64_t>;
+  auto priority = [&](const HloInstruction* instruction) -> Priority {
+    if (ShapeUtil::IsEffectiveScalar(instruction->shape())) {
+      return {std::numeric_limits<int64_t>::max(),
+              std::numeric_limits<int64_t>::max()};
+    }
+    int64_t freed = 0;
+    if (instruction->opcode() == HloOpcode::kOutfeed &&
+        !instruction->outfeed_config().empty()) {
+      freed = INT_MAX;
+    } else if (instruction->opcode() == HloOpcode::kInfeed &&
+               !instruction->infeed_config().empty()) {
+      freed = INT_MIN;
+    } else {
+      for (const HloValue* value : uses.at(instruction)) {
+        if (!ignored(*value->instruction()) &&
+            unscheduled_uses.at(value) == 1) {
+          freed += size_function(*value);
+        }
+      }
+      freed -= bytes_defined.at(instruction);
+    }
+    return {freed, instruction->user_count()};
+  };
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> unscheduled_predecessors;
+  for (HloInstruction* instruction : computation->instructions()) {
+    for (HloInstruction* user : instruction->users()) {
+      ++unscheduled_predecessors[user];
+    }
+    for (HloInstruction* successor : instruction->control_successors()) {
+      ++unscheduled_predecessors[successor];
+    }
+  }
+
+  // Ready instructions ordered by priority; among equal priorities the most
+  // recently inserted one is scheduled first.
+  std::multimap<Priority, HloInstruction*> ready;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::multimap<Priority, HloInstruction*>::iterator>
+      ready_entry;
+  auto make_ready = [&](HloInstruction* instruction) {
+    ready_entry[instruction] =
+        ready.emplace(priority(instruction), instruction);
+  };
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->operands().empty() &&
+        instruction->control_predecessors().empty()) {
+      make_ready(instruction);
+    }
+  }
+
+  HloInstructionSequence sequence;
+  while (!ready.empty()) {
+    auto best_it = std::prev(ready.end());
+    HloInstruction* best = best_it->second;
+    ready.erase(best_it);
+    ready_entry.erase(best);
+    sequence.push_back(best);
+
+    bool refresh = false;
+    for (const HloValue* value : uses.at(best)) {
+      int64_t& count = unscheduled_uses.at(value);
+      --count;
+      if (count == 1) {
+        refresh = true;
+      }
+    }
+    auto release = [&](HloInstruction* instruction) {
+      if (--unscheduled_predecessors.at(instruction) == 0) {
+        make_ready(instruction);
+      }
+    };
+    for (HloInstruction* user : best->users()) {
+      release(user);
+    }
+    for (HloInstruction* successor : best->control_successors()) {
+      release(successor);
+    }
+    if (!refresh) {
+      continue;
+    }
+    // Only the ready users of the scheduled instruction's operands get a
+    // fresh priority; a changed one moves behind the entries of equal
+    // priority. Every other ready instruction keeps its stale priority.
+    for (HloInstruction* operand : best->operands()) {
+      for (HloInstruction* user : operand->users()) {
+        auto it = ready_entry.find(user);
+        if (it == ready_entry.end()) {
+          continue;
+        }
+        const Priority fresh = priority(user);
+        if (fresh == it->second->first) {
+          continue;
+        }
+        auto stale = it->second;
+        it->second = ready.emplace(fresh, user);
+        ready.erase(stale);
+      }
+    }
+  }
+  return sequence;
+}
+
+std::string InstructionNames(const HloInstructionSequence& sequence) {
+  std::vector<absl::string_view> names;
+  for (const HloInstruction* instruction : sequence.instructions()) {
+    names.push_back(instruction->name());
+  }
+  return absl::StrJoin(names, " ");
+}
+
+class ListSchedulerStressTest
+    : public HloSchedulingTest,
+      public ::testing::WithParamInterface<TupleHeavyWhileBodySpec> {};
+
+// ListMemoryScheduler must produce the reference's sequence on every
+// computation of a generated tuple heavy while loop: same buffer use counts
+// at every step, same bytes freed, same refresh points, same tie breaking.
+TEST_P(ListSchedulerStressTest, MatchesReference) {
+  const std::string hlo = TupleHeavyWhileBodyHlo(GetParam());
+  SCOPED_TRACE(hlo);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     ListMemoryScheduler(&alias_info_, &size_fn)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    EXPECT_EQ(InstructionNames(schedule.sequence(computation)),
+              InstructionNames(
+                  ReferenceListSchedule(computation, *alias_analysis, size_fn)))
+        << "computation " << computation->name();
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TupleHeavyWhileBodies, ListSchedulerStressTest,
+    ::testing::ValuesIn(std::vector<TupleHeavyWhileBodySpec>{
+        {"plain_w2", 2, false, false, false, 0, 0, 1},
+        {"aliases_w4", 4, true, false, false, 0, 0, 2},
+        {"overlap_w4", 4, true, true, false, 0, 0, 3},
+        {"duplicates_w4", 4, true, true, true, 0, 0, 4},
+        {"constants_w6", 6, true, true, true, 3, 0, 5},
+        {"dead_w6", 6, true, true, true, 3, 4, 6},
+        {"all_w8_seed7", 8, true, true, true, 4, 5, 7},
+        {"all_w8_seed8", 8, true, true, true, 8, 6, 8},
+        {"all_w8_seed9", 8, true, true, true, 8, 6, 9},
+        {"all_w8_seed10", 8, true, true, true, 5, 8, 10},
+        {"all_w12_seed11", 12, true, true, true, 6, 8, 11},
+        {"all_w12_seed12", 12, true, true, true, 12, 10, 12},
+        {"all_w16_seed13", 16, true, true, true, 8, 12, 13},
+    }),
+    [](const ::testing::TestParamInfo<TupleHeavyWhileBodySpec>& info) {
+      return info.param.name;
+    });
 
 TEST_F(HloSchedulingTest, DefaultSchedulerRunsThreeSchedulers) {
   const char* module_str = R"(
