@@ -18,3 +18,5 @@ immutabledict ~= 4.2.1
 
 # For MLIR's stubgen.py script
 typing-extensions
+tensorboardX
+
