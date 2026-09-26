@@ -127,7 +127,7 @@ class GpuExecutable : public Executable {
     std::unique_ptr<GpuAliasInfo> alias_info;
     DebugOptions debug_options;
     se::DeviceDescription device_description;
-    std::unique_ptr<HloModule> debug_module = nullptr;
+    std::shared_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     se::ExecutableAbiVersion executable_abi_version;
@@ -247,7 +247,8 @@ class GpuExecutable : public Executable {
       const se::DeviceDescription& device_description,
       absl::string_view platform, DebugOptions debug_options,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-          symbol_resolver = std::nullopt);
+          symbol_resolver = std::nullopt,
+      std::shared_ptr<HloModule> debug_module = nullptr);
 
   absl::StatusOr<GpuExecutableProto> ToProto() const;
 
@@ -277,7 +278,7 @@ class GpuExecutable : public Executable {
 
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
-      std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+      std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
       BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
       std::unique_ptr<ThunkExecutor> executable, std::string module_name,
       ProgramShape program_shape, std::vector<BufferAllocation> allocations,

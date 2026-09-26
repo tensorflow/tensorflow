@@ -126,7 +126,7 @@ GpuAotCompilationResult::LoadExecutable(
 
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
                                   platform_id->ToName(), debug_options,
-                                  symbol_resolver);
+                                  symbol_resolver, std::move(hlo_module_));
 }
 
 const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {

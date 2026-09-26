@@ -452,7 +452,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::unique_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
+    std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
     BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape, std::vector<BufferAllocation> allocations,
@@ -1416,15 +1416,24 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
     absl::string_view platform_name, DebugOptions debug_options,
-    const std::optional<se::KernelLoaderSpec::SymbolResolver>&
-        symbol_resolver) {
+    const std::optional<se::KernelLoaderSpec::SymbolResolver>& symbol_resolver,
+    std::shared_ptr<HloModule> debug_module) {
+  int64_t t0_us = tsl::EnvTime::NowMicros();
   Params params;
   params.debug_options = std::move(debug_options);
   params.enable_debug_info_manager =
       params.debug_options.xla_gpu_executable_embed_debug_info();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());
-  if (proto.has_hlo_module_with_config()) {
+  int64_t t1_us = tsl::EnvTime::NowMicros();
+  if (debug_module != nullptr) {
+    params.debug_module = std::move(debug_module);
+    if (params.debug_options.has_xla_dump_to()) {
+      params.debug_module->mutable_config()
+          .mutable_debug_options()
+          .set_xla_dump_to(params.debug_options.xla_dump_to());
+    }
+  } else if (proto.has_hlo_module_with_config()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
     // The HLO module deserialized from the proto carries xla_dump_to from the
@@ -1437,6 +1446,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
           .set_xla_dump_to(params.debug_options.xla_dump_to());
     }
   }
+  int64_t t2_us = tsl::EnvTime::NowMicros();
   if (!proto.has_buffer_assignment()) {
     return absl::InvalidArgumentError(
         "Serialized GpuExecutableProto must have buffer_assignment.");
@@ -1460,15 +1470,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       se::GpuComputeCapability gpu_compute_capability,
       se::GpuComputeCapability::FromProto(proto.gpu_compute_capability()));
 
-  if (gpu_compute_capability != device_description.gpu_compute_capability()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "GPU compute capability of serialized executable doesn't match target "
-        "device capability. (serialized: %s, target: %s)",
-        gpu_compute_capability.ToString(),
-        device_description.gpu_compute_capability().ToString()));
-  }
-
   params.device_description = device_description;
+  if (gpu_compute_capability != device_description.gpu_compute_capability()) {
+    params.device_description.set_gpu_compute_capability(
+        gpu_compute_capability);
+  }
 
   if (proto.has_cpu_target_machine_options()) {
     ABSL_ASSIGN_OR_RETURN(params.cpu_target_machine_options,
@@ -1517,7 +1523,13 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       params.executable_abi_version,
       se::ExecutableAbiVersion::FromProto(proto.executable_abi_version()));
 
-  return Create(std::move(params));
+  auto res = Create(std::move(params));
+  int64_t t3_us = tsl::EnvTime::NowMicros();
+  LOG(INFO) << "[BENCHMARK] GpuExecutable::FromProto: "
+            << "HloModule::CreateFromProtoWithConfig(#2)="
+            << (t2_us - t1_us) / 1000.0
+            << " ms, Total=" << (t3_us - t0_us) / 1000.0 << " ms";
+  return res;
 }
 
 static absl::StatusOr<ExecutableBuildOptionsProto>
