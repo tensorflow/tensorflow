@@ -60,4 +60,17 @@ std::deque<std::string> HloPayloadDeduplicator::TakePayloads() {
   return result;
 }
 
+const std::string& HloPayloadDeduplicator::GetPayload(int64_t id) const {
+  static const std::string* empty_payload = new std::string("");
+  if (id < offset_ || id >= offset_ + static_cast<int64_t>(payloads_.size())) {
+    return *empty_payload;
+  }
+  int64_t index = id - offset_;
+  return payloads_[index];
+}
+
+int64_t HloPayloadDeduplicator::size() const {
+  return static_cast<int64_t>(payloads_.size());
+}
+
 }  // namespace xla
