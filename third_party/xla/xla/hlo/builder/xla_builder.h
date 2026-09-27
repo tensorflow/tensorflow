@@ -1528,10 +1528,6 @@ class XlaBuilder {
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64_t> broadcast_dimensions,
                        ComparisonDirection direction, ComparisonOrder order);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
-                       absl::Span<const int64_t> broadcast_dimensions,
-                       ComparisonDirection direction,
-                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config,
                    std::optional<PrimitiveType> preferred_element_type);
@@ -2588,9 +2584,6 @@ XlaOp LeTotalOrder(XlaOp lhs, XlaOp rhs,
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
               ComparisonDirection direction, ComparisonOrder order);
-XlaOp Compare(XlaOp lhs, XlaOp rhs,
-              absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
               ComparisonDirection direction);

@@ -15,7 +15,7 @@
 // CHECK-LABEL: xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG:[^:]+]]: memref<1x9xf16>,
 // CHECK-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 
 // CHECK:       %[[T_0:.*]] = xtile.extract %[[ARG]]
 // CHECK-SAME:    : memref<1x9xf16> -> tensor<1x16xf16>
@@ -29,7 +29,7 @@
 // CHECK-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // CHECK-VECTOR-SAME:     %[[ARG:[^:]+]]: memref<1x9xf16>,
 // CHECK-VECTOR-SAME:     %[[OUT:[^:]+]]: memref<1x9xi8>,
-// CHECK-VECTOR-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-VECTOR-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 0 : index]})
 // CHECK-VECTOR:        %[[ALLOCA_ARG:.*]] = memref.alloca() : memref<1x16xf16>
 // CHECK-VECTOR:        %[[ALLOCA_OUT:.*]] = memref.alloca() alignment = 64 : memref<1x16xi8>
 // CHECK-VECTOR:        memref.copy %[[ARG]],
