@@ -162,7 +162,6 @@ class CastOpTest(test.TestCase):
     self._compare(-np.inf, np.float32, -np.inf, True)
     self._compare(-np.inf, np.float64, -np.inf, True)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float32, True)), True)
-
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, True)), True)
 
   def _OpError(self, x, dtype, err):
