@@ -56,6 +56,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:codegen_utils",
         "//xla/tests:hlo_pjrt_test_base",

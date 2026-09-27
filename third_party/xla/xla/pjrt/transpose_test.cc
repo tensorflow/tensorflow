@@ -1301,19 +1301,53 @@ static void* benchmarks = []() {
   return nullptr;
 }();
 
-template <typename T, int bs, bool kWideStride = false>
+enum class StrideMode {
+  kTight,          // lda = ldb <= 64B (exercises SseSquare / 128-bit kernel)
+  kWideSymmetric,  // lda = ldb > 64B (exercises AvxRectangular gather)
+  kWideScatter,    // lda < ldb (exercises AvxRectangular scatter)
+};
+
+template <typename T, int bs>
+constexpr int BenchmarkOuterBlockSize() {
+  int max_by_elems = kMaxOuterBlockElems / bs;
+  int max_by_bytes = kMaxSquare128StrideBytes / (bs * sizeof(T));
+  return std::max(1, std::min(max_by_elems, max_by_bytes));
+}
+
+template <typename T, int bs, StrideMode kStrideMode = StrideMode::kTight>
 void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
-  constexpr int64_t kRowBytes = bs * sizeof(T);
-  constexpr int64_t kLda = kWideStride ? kRowBytes + 64 : kRowBytes;
-  constexpr int64_t kLdb = kRowBytes;
-  ABSL_CACHELINE_ALIGNED std::array<char, bs * kLda> src = {};
-  ABSL_CACHELINE_ALIGNED std::array<char, bs * kLdb> dst = {};
+  constexpr int kOuterBs = BenchmarkOuterBlockSize<T, bs>();
+  constexpr int64_t kBlockBytes = kOuterBs * bs * sizeof(T);
+  constexpr int64_t kWideBytes = std::max<int64_t>(kBlockBytes, 1024) + 64;
+  constexpr int64_t kLda =
+      kStrideMode == StrideMode::kWideSymmetric ? kWideBytes : kBlockBytes;
+  constexpr int64_t kLdb =
+      kStrideMode == StrideMode::kTight ? kBlockBytes : kWideBytes;
+
+  ABSL_CACHELINE_ALIGNED std::array<char, kOuterBs * bs * kLda> src = {};
+  ABSL_CACHELINE_ALIGNED std::array<char, kOuterBs * bs * kLdb> dst = {};
+  const char* a = src.data();
+  char* b = dst.data();
+  int64_t lda = kLda;
+  int64_t ldb = kLdb;
+  int outer_bs = kOuterBs;
   for (auto _ : state) {
-    tsl::testing::DoNotOptimize(src);
-    TransposeMicroKernel<T, bs>::Apply(src.data(), kLda, dst.data(), kLdb);
-    tsl::testing::DoNotOptimize(dst);
+    benchmark::DoNotOptimize(a);
+    benchmark::DoNotOptimize(b);
+    benchmark::DoNotOptimize(lda);
+    benchmark::DoNotOptimize(ldb);
+    benchmark::DoNotOptimize(outer_bs);
+    for (int i = 0; i < outer_bs; ++i) {
+      for (int j = 0; j < outer_bs; ++j) {
+        TransposeMicroKernel<T, bs>::Apply(
+            a + bs * j * lda + i * bs * sizeof(T), lda,
+            b + bs * i * ldb + j * bs * sizeof(T), ldb);
+      }
+    }
+    benchmark::ClobberMemory();
   }
-  state.SetBytesProcessed(state.iterations() * bs * bs * sizeof(T));
+  state.SetBytesProcessed(state.iterations() * kOuterBs * kOuterBs * bs * bs *
+                          sizeof(T));
 }
 
 // 256-bit (32-byte) rows:
@@ -1329,11 +1363,24 @@ BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8);
 BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4);
 BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2);
 
-// 128-bit (16-byte) rows, wide stride (lda > 64):
-BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16, /*kWideStride=*/true);
-BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8, /*kWideStride=*/true);
-BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4, /*kWideStride=*/true);
-BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2, /*kWideStride=*/true);
+// 128-bit (16-byte) rows, wide symmetric stride (lda > 64):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2,
+                   StrideMode::kWideSymmetric);
+
+// 128-bit (16-byte) rows, wide scatter stride (lda < ldb):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16,
+                   StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8,
+                   StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4, StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2,
+                   StrideMode::kWideScatter);
 
 // Sub-128-bit (8B, 4B, 2B) rows:
 BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 8);

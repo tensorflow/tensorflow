@@ -21,20 +21,16 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/device_compilation_profiler.h"
-#include "tensorflow/compiler/jit/variable_info.h"
-#include "tensorflow/compiler/jit/variable_info_util.h"
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -49,25 +45,11 @@ class XlaCompileOnDemandOp : public OpKernel {
  private:
   absl::Status Compile(const std::vector<XlaCompiler::Argument>& args,
                        OpKernelContext* ctx,
-                       DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
-                           xla_device_compiler,
-                       DeviceCompilationProfiler** profiler,
-                       const XlaCompiler::CompilationResult** result,
-                       xla::LocalExecutable** executable);
-
-  absl::Status Compile(const std::vector<XlaCompiler::Argument>& args,
-                       OpKernelContext* ctx,
                        DeviceCompiler<xla::PjRtLoadedExecutable,
                                       xla::PjRtClient>** pjrt_device_compiler,
                        DeviceCompilationProfiler** profiler,
                        const XlaCompiler::CompilationResult** result,
                        xla::PjRtLoadedExecutable** executable);
-
-  absl::Status Run(const ResourceVarsSnapshot& variable_args,
-                   const XlaCompiler::CompilationResult* result,
-                   const DeviceCompiler<xla::LocalExecutable, xla::LocalClient>*
-                       xla_device_compiler,
-                   xla::LocalExecutable* executable, OpKernelContext* ctx);
 
   const XlaPlatformInfo platform_info_;
 

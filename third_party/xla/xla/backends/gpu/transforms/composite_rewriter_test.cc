@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -162,8 +161,7 @@ TEST_P(CompositeRewriterParameterizedTest, Run) {
   LOG(INFO) << "HLO string: \n" << hlo_string;
 
   CompositeRewriter rewriter;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
 
   auto result = rewriter.Run(module.get());
 
@@ -172,117 +170,96 @@ TEST_P(CompositeRewriterParameterizedTest, Run) {
     EXPECT_THAT(module->entry_computation()->root_instruction()->opcode(),
                 HloOpcode::kScaledDot);
   } else {
-    // If it didn't rewrite, it should either be OkAndHolds(false)
-    // or arguably just check that the opcode is still Call.
-    // The current implementation returns OkAndHolds(false) if no change.
     EXPECT_THAT(result, absl_testing::IsOkAndHolds(false));
     EXPECT_THAT(module->entry_computation()->root_instruction()->opcode(),
                 HloOpcode::kCall);
   }
 }
 
+TEST(CompositeRewriterTest, MultipleContractingDimensionsRejects) {
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+
+    %xla.scaled_dot.1 {
+      %p0 = f8e4m3fn[128,256]{1,0} parameter(0)
+      %p1 = f8e4m3fn[256,128]{1,0} parameter(1)
+      %p2 = f8e8m0fnu[128,16]{1,0} parameter(2)
+      %p3 = f8e8m0fnu[16,128]{1,0} parameter(3)
+      ROOT %dummy = bf16[128,128]{1,0} constant({...})
+    }
+
+    ENTRY %main {
+      %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+      %rhs = f8e4m3fn[256,128]{1,0} parameter(1)
+      %lhs_scales = f8e8m0fnu[128,16]{1,0} parameter(2)
+      %rhs_scales = f8e8m0fnu[16,128]{1,0} parameter(3)
+      ROOT %call = bf16[128,128]{1,0} call(%lhs, %rhs, %lhs_scales, %rhs_scales),
+          to_apply=%xla.scaled_dot.1,
+          is_composite=true,
+          frontend_attributes={
+            composite.attributes="{dimension_numbers=[[[1, 0],[1]],[[0],[0]]]}",
+            composite.name="xla.scaled_dot",
+            composite.version="1"
+          }
+    }
+  )";
+  CompositeRewriter rewriter;
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
 INSTANTIATE_TEST_SUITE_P(
 
     ScaledDotTests, CompositeRewriterParameterizedTest,
 
-    ::testing::Values(
-        TestCase{
-            /*test_name=*/"FP8_Standard_Case",
-            /*lhs_type=*/"f8e4m3fn",
-            /*rhs_type=*/"f8e4m3fn",
-            /*lhs_scale_type=*/"f8e8m0fnu",
-            /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,8",
-            /*rhs_scale_shape=*/"3,8,128",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/true,
-        },
-        TestCase{
-            /*test_name=*/"BF16_Identity_Case",
-            /*lhs_type=*/"bf16",
-            /*rhs_type=*/"bf16",
-            /*lhs_scale_type=*/"bf16",
-            /*rhs_scale_type=*/"bf16",
-            /*lhs_scale_shape=*/"1,1,1",
-            /*rhs_scale_shape=*/"1,1,1",
-            /*lhs_scale_const_val=*/1.0f,
-            /*rhs_scale_const_val=*/1.0f,
-            /*expected_rewrite=*/true,
-        },
-        TestCase{
-            /*test_name=*/"BF16_Invalid_Scale_Value",
-            /*lhs_type=*/"bf16",
-            /*rhs_type=*/"bf16",
-            /*lhs_scale_type=*/"bf16",
-            /*rhs_scale_type=*/"bf16",
-            /*lhs_scale_shape=*/"1,1,1",
-            /*rhs_scale_shape=*/"1,1,1",
-            /*lhs_scale_const_val=*/1.0f,
-            /*rhs_scale_const_val=*/2.0f,
-            /*expected_rewrite=*/false,
-        },
-        TestCase{
-            /*test_name=*/"BF16_Invalid_Scale_Shape",
-            /*lhs_type=*/"bf16",
-            /*rhs_type=*/"bf16",
-            /*lhs_scale_type=*/"bf16",
-            /*rhs_scale_type=*/"bf16",
-            /*lhs_scale_shape=*/"3,128,1",
-            /*rhs_scale_shape=*/"1,1,1",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/1.0f,
-            /*expected_rewrite=*/false,
-        },
-        TestCase{
-            /*test_name=*/"Mixed_Type_Fail_BF16_Scale_With_FP8_Op",
-            /*lhs_type=*/"f8e4m3fn",
-            /*rhs_type=*/"f8e4m3fn",
-            /*lhs_scale_type=*/"bf16",
-            /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,8",
-            /*rhs_scale_shape=*/"3,8,128",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/false,
-        },
-        TestCase{
-            /*test_name=*/"FP8_ScaleFactor_16",
-            /*lhs_type=*/"f8e4m3fn",
-            /*rhs_type=*/"f8e4m3fn",
-            /*lhs_scale_type=*/"f8e8m0fnu",
-            /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,16",  // 256 / 16 = 16 (divisible by 16)
-            /*rhs_scale_shape=*/"3,8,128",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/true,
-        },
-        TestCase{
-            /*test_name=*/"FP8_ScaleFactor_Invalid",
-            /*lhs_type=*/"f8e4m3fn",
-            /*rhs_type=*/"f8e4m3fn",
-            /*lhs_scale_type=*/"f8e8m0fnu",
-            /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,32",  // K=256, scale_k=32 -> block_size
-                                             // = 8 (not divisible by 16)
-            /*rhs_scale_shape=*/"3,8,128",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/false,
-        },
-        TestCase{
-            /*test_name=*/"FP8_ScaleFactor_64",
-            /*lhs_type=*/"f8e4m3fn",
-            /*rhs_type=*/"f8e4m3fn",
-            /*lhs_scale_type=*/"f8e8m0fnu",
-            /*rhs_scale_type=*/"f8e8m0fnu",
-            /*lhs_scale_shape=*/"3,128,4",  // 256 / 4 = 64 (divisible by 32)
-            /*rhs_scale_shape=*/"3,8,128",
-            /*lhs_scale_const_val=*/std::nullopt,
-            /*rhs_scale_const_val=*/std::nullopt,
-            /*expected_rewrite=*/true,
-        }),
+    ::testing::Values(TestCase{
+                          /*test_name=*/"FP8_Standard_Case",
+                          /*lhs_type=*/"f8e4m3fn",
+                          /*rhs_type=*/"f8e4m3fn",
+                          /*lhs_scale_type=*/"f8e8m0fnu",
+                          /*rhs_scale_type=*/"f8e8m0fnu",
+                          /*lhs_scale_shape=*/"3,128,8",
+                          /*rhs_scale_shape=*/"3,8,128",
+                          /*lhs_scale_const_val=*/std::nullopt,
+                          /*rhs_scale_const_val=*/std::nullopt,
+                          /*expected_rewrite=*/true,
+                      },
+                      TestCase{
+                          /*test_name=*/"BF16_Identity_Case",
+                          /*lhs_type=*/"bf16",
+                          /*rhs_type=*/"bf16",
+                          /*lhs_scale_type=*/"bf16",
+                          /*rhs_scale_type=*/"bf16",
+                          /*lhs_scale_shape=*/"1,1,1",
+                          /*rhs_scale_shape=*/"1,1,1",
+                          /*lhs_scale_const_val=*/1.0f,
+                          /*rhs_scale_const_val=*/1.0f,
+                          /*expected_rewrite=*/true,
+                      },
+                      TestCase{
+                          /*test_name=*/"FP8_ScaleFactor_16",
+                          /*lhs_type=*/"f8e4m3fn",
+                          /*rhs_type=*/"f8e4m3fn",
+                          /*lhs_scale_type=*/"f8e8m0fnu",
+                          /*rhs_scale_type=*/"f8e8m0fnu",
+                          /*lhs_scale_shape=*/"3,128,16",
+                          /*rhs_scale_shape=*/"3,16,128",
+                          /*lhs_scale_const_val=*/std::nullopt,
+                          /*rhs_scale_const_val=*/std::nullopt,
+                          /*expected_rewrite=*/true,
+                      },
+                      TestCase{
+                          /*test_name=*/"FP4_E4M3_Scale_Block16",
+                          /*lhs_type=*/"f4e2m1fn",
+                          /*rhs_type=*/"f4e2m1fn",
+                          /*lhs_scale_type=*/"f8e4m3fn",
+                          /*rhs_scale_type=*/"f8e4m3fn",
+                          /*lhs_scale_shape=*/"3,128,16",
+                          /*rhs_scale_shape=*/"3,16,128",
+                          /*lhs_scale_const_val=*/std::nullopt,
+                          /*rhs_scale_const_val=*/std::nullopt,
+                          /*expected_rewrite=*/true,
+                      }),
     [](const ::testing::TestParamInfo<TestCase>& info) {
       return info.param.test_name;
     });

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -114,11 +115,24 @@ class CopyInsertion : public HloModulePass {
       CustomBufferAnalysisFn custom_buffer_analysis = nullptr);
 
  protected:
-  // Override which requires the caller to pass in a call graph.
+  // Override which requires the caller to pass in a call graph. Runs the alias
+  // analysis, then ComputeSpecialCaseCopies and InsertSpecialCaseCopies.
   virtual absl::Status AddSpecialCaseCopies(
       const CallGraph& call_graph,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
       HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis);
+
+  // Records the shape indices that need special case copies without inserting
+  // them. `alias_analysis` must be current for `module`.
+  absl::StatusOr<HloInstructionMap<ShapeTree<bool>>> ComputeSpecialCaseCopies(
+      const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      HloModule* module, const HloAliasAnalysis& alias_analysis,
+      CustomBufferAnalysisFn custom_buffer_analysis);
+
+  // Inserts the copies computed by ComputeSpecialCaseCopies.
+  static absl::Status InsertSpecialCaseCopies(
+      const HloInstructionMap<ShapeTree<bool>>& instructions_to_copy);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(

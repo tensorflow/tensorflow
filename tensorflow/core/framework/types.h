@@ -206,8 +206,8 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
     ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN) |
     ToSet(DT_FLOAT8_E4M3FNUZ) | ToSet(DT_FLOAT8_E4M3B11FNUZ) |
-    ToSet(DT_FLOAT8_E5M2FNUZ) | ToSet(DT_INT4) | ToSet(DT_UINT4) |
-    ToSet(DT_INT2) | ToSet(DT_UINT2);
+    ToSet(DT_FLOAT8_E5M2FNUZ) | ToSet(DT_FLOAT8_E8M0FNU) | ToSet(DT_INT4) |
+    ToSet(DT_UINT4) | ToSet(DT_INT2) | ToSet(DT_UINT2);
 
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
@@ -347,6 +347,7 @@ MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
 MATCH_TYPE_AND_ENUM(float8_e4m3fnuz, DT_FLOAT8_E4M3FNUZ);
 MATCH_TYPE_AND_ENUM(float8_e4m3b11fnuz, DT_FLOAT8_E4M3B11FNUZ);
 MATCH_TYPE_AND_ENUM(float8_e5m2fnuz, DT_FLOAT8_E5M2FNUZ);
+MATCH_TYPE_AND_ENUM(float8_e8m0fnu, DT_FLOAT8_E8M0FNU);
 MATCH_TYPE_AND_ENUM(float4_e2m1fn, DT_FLOAT4_E2M1FN);
 MATCH_TYPE_AND_ENUM(int4, DT_INT4);
 MATCH_TYPE_AND_ENUM(uint4, DT_UINT4);
@@ -431,8 +432,8 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
     ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_FLOAT8_E4M3FNUZ) |
     ToSet(DT_FLOAT8_E4M3B11FNUZ) | ToSet(DT_FLOAT8_E5M2FNUZ) |
-    ToSet(DT_FLOAT4_E2M1FN) | ToSet(DT_INT4) | ToSet(DT_UINT4) |
-    ToSet(DT_INT2) | ToSet(DT_UINT2);
+    ToSet(DT_FLOAT8_E8M0FNU) | ToSet(DT_FLOAT4_E2M1FN) | ToSet(DT_INT4) |
+    ToSet(DT_UINT4) | ToSet(DT_INT2) | ToSet(DT_UINT2);
 
 constexpr bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
@@ -443,7 +444,8 @@ constexpr DataTypeSet kDataTypeIsFloating =
     ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) |
     ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_FLOAT8_E5M2) |
     ToSet(DT_FLOAT8_E4M3FNUZ) | ToSet(DT_FLOAT8_E4M3B11FNUZ) |
-    ToSet(DT_FLOAT8_E5M2FNUZ) | ToSet(DT_FLOAT4_E2M1FN);
+    ToSet(DT_FLOAT8_E5M2FNUZ) | ToSet(DT_FLOAT8_E8M0FNU) |
+    ToSet(DT_FLOAT4_E2M1FN);
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }

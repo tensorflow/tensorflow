@@ -172,7 +172,10 @@ TEST_F(HipblasLtBackendTest, GetDefaultConfig) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()->operand(0)));
-  EXPECT_THAT(config, absl_testing::IsOk());
+  ASSERT_THAT(config, absl_testing::IsOk());
+  ASSERT_TRUE((*config)->has_gemm());
+  EXPECT_THAT((*config)->gemm().algorithm(), 0);
+  EXPECT_NE((*config)->gemm().autotune_workspace_size(), 0);
 }
 
 TEST_F(HipblasLtBackendTest, GetDefaultConfigFailsWithoutAHipblasLtCustomCall) {

@@ -609,8 +609,9 @@ cc_library(
 
 xla_cc_test(
     name = "support_test",
+    timeout = "long",  # TODO: b/514293537 - remove after disabling symbolic analysis.
     srcs = ["support_test.cc"],
-    shard_count = 50,  # TODO: b/514293537 - change to 25 after disabling symblic analysis.
+    shard_count = 50,  # TODO: b/514293537 - change to 25 after disabling symbolic analysis.
     deps = [
         ":support",
         ":support_test_base",

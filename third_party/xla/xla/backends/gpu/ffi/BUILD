@@ -159,3 +159,21 @@ xla_cc_binary(
         "h100",
     ]
 ]
+
+cc_library(
+    name = "ffi_attributes_from_backend_config",
+    srcs = ["ffi_attributes_from_backend_config.cc"],
+    hdrs = ["ffi_attributes_from_backend_config.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla/ffi:attribute_map",
+        "//xla/ffi:attributes",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)

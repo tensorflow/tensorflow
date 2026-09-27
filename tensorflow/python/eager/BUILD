@@ -754,6 +754,7 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager/polymorphic_function:tracing_compilation",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:unconnected_gradients",

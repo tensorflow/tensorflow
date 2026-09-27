@@ -15516,7 +15516,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned
+for num_segments more than the expected output size, last elements are assigned 
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15686,7 +15686,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned
+for num_segments more than the expected output size, last elements are assigned 
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15792,7 +15792,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is,
+With inconsistent num_segments, the op still runs. only difference is, 
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.
@@ -21456,6 +21456,9 @@ values. These keys should be in byte format.}]>:$keys,
     Arg<Variadic<TF_Float32Tensor>, [{A list of float tensors containing prediction values.}]>:$predictions_list,
     Arg<TF_Int64Tensor, [{An int that speficies at which step the predictions are generated.}]>:$step,
     Arg<TF_Int64Tensor, [{The utc timestamp in microseconds of when the predictions were created.}]>:$timestamp_usec,
+    Arg<TF_StrTensor, [{An optional tensor of alternate Woodshed Keys corresponding to
+each of the prediction values. These keys should be in byte format. Must
+either be empty or have the same number of elements as `keys`.}]>:$alternate_keys,
 
     StrArrayAttr:$prediction_names,
     BoolAttr:$training,

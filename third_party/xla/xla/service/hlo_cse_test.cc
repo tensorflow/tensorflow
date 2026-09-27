@@ -1089,6 +1089,60 @@ TEST_F(HloCseTest, ResultAccuracyCseKey) {
   EXPECT_EQ(root->operand(2), root->operand(3));
 }
 
+TEST_F(HloCseTest, FusionCseKey) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m
+
+    fused_comp.0 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p0, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    fused_comp.1 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p0, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    fused_comp.2 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      sub = f32[4] subtract(p0, p1)
+      ROOT add = f32[4] add(p0, sub)
+    }
+
+    fused_comp.3 {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      mul = f32[4] multiply(p1, p1)
+      ROOT add = f32[4] add(p0, mul)
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      f0 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.0
+      f1 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.1
+      f2 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.2
+      f3 = f32[4] fusion(p0, p1), kind=kLoop, calls=fused_comp.3
+      ROOT t = tuple(f0, f1, f2, f3)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> m,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 4);
+  EXPECT_EQ(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(0), root->operand(2));
+  EXPECT_NE(root->operand(0), root->operand(3));
+  EXPECT_NE(root->operand(2), root->operand(3));
+}
+
 TEST_F(HloCseTest, ScalarCustomCallNoOperands) {
   constexpr absl::string_view kHlo = R"(
 HloModule main

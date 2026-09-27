@@ -407,6 +407,7 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm) {
   pm.addPass(xtile::createExpandXtileComplexOpsPass());
   pm.addPass(xtile::createStablehloLowerToArithPass());
   pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+  pm.addPass(cpu::createLegalizeNarrowFloatStoragePass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(cpu::createVectorizeXTilePass());
   pm.addPass(cpu::createLowerXTileEntryPass());
@@ -484,6 +485,8 @@ void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
   options.vectorTransposeLowering =
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
+  pm.addPass(cpu::createLowerMemRefBitcastPass());
+  pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
   pm.addPass(emitters::createSafeIntegerArithmeticPass());
 

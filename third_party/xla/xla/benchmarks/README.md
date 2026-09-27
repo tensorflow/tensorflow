@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- Python >= 3.12 (required by JAX >= 0.11)
+These benchmarks are intended to run on a TPU v6e or 7x Cloud VM running Python
+\>= 3.12 (required by JAX \>= 0.11).
 
 ## Quickstart
 

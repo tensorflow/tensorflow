@@ -472,7 +472,7 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
             tsl::ThreadOptions options;
             // Use a larger stack size since XLA often requires larger stacks
             // for compilation.
-            options.stack_size = 240 * 1024;
+            options.stack_size = 2 * 1024 * 1024;
             return options;
           }(),
           "IfrtBackend",

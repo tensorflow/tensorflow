@@ -3706,6 +3706,39 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   return operand_shape;
 }
 
+/*static */ absl::StatusOr<Shape> ShapeInference::InferShuffleShape(
+    const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+    const ShuffleMode& mode) {
+  ABSL_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of shuffle"));
+  if (dimensions.empty()) {
+    return InvalidArgument("A shuffle must shuffle at least one dimension.");
+  }
+  if (!AllUnique(dimensions)) {
+    return InvalidArgument("A dimension number is duplicated in shuffle.");
+  }
+  for (int64_t dimension : dimensions) {
+    if (dimension < 0 || dimension >= operand_shape.dimensions().size()) {
+      return InvalidArgument(
+          "One of the shuffle dimensions (%d) is out-of-bounds in shape %s.",
+          dimension, ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  // Constraints on the attributes that are specific to the shuffle mode.
+  switch (mode.mode_case()) {
+    case ShuffleMode::kRotate:
+      if (dimensions.size() != mode.rotate().shifts().size()) {
+        return InvalidArgument(
+            "dimensions and shifts must have the same size, got %d and %d.",
+            dimensions.size(), mode.rotate().shifts().size());
+      }
+      break;
+    case ShuffleMode::MODE_NOT_SET:
+      return InvalidArgument("A shuffle must specify a mode.");
+  }
+  // A shuffle only moves elements around, so the shape is preserved.
+  return operand_shape;
+}
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferGetTupleElementShape(
     const Shape& arg, int64_t index) {
   if (!arg.IsTuple()) {

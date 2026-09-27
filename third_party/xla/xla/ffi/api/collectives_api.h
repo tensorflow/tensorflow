@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_FFI_API_COLLECTIVES_API_H_
 #define XLA_FFI_API_COLLECTIVES_API_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -31,6 +32,17 @@ enum class GroupMode {
   kCrossPartition = XLA_FFI_GROUP_CROSS_PARTITION,
   kCrossReplicaAndPartition = XLA_FFI_GROUP_CROSS_REPLICA_AND_PARTITION,
   kFlattenedId = XLA_FFI_GROUP_FLATTENED_ID,
+};
+
+struct CollectiveMemoryRegion {
+  const void* buffer;
+  size_t byte_size;
+  uint64_t flags = 0;
+};
+
+struct WindowLookup {
+  XLA_FFI_Window* window;
+  size_t offset;
 };
 
 namespace internal {
@@ -85,6 +97,62 @@ class CommunicatorContextBase {
       return StatusOr<XLA_FFI_Communicator*>(ErrorPolicy::TakeError(api_, err));
     }
     return args.communicator;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Collective memory window
+  //===--------------------------------------------------------------------===//
+  //
+  // Request window registration for a batch of already-allocated buffers in
+  // Prepare; look up an opaque backend-defined window handle per buffer in
+  // Init/Execute. The handler reinterprets the window and calls the backend's
+  // collective device APIs directly to obtain local, peer, and multicast
+  // pointers. Allocation stays on the JAX-side.
+
+  Status RequestWindow(GroupMode group_mode,
+                       const std::vector<std::vector<int64_t>>& groups,
+                       int64_t communication_id,
+                       const std::vector<CollectiveMemoryRegion>& regions) {
+    std::vector<XLA_FFI_ReplicaGroup> raw_groups = ToRawGroups(groups);
+    std::vector<XLA_FFI_CollectiveMemoryRegion> raw_regions;
+    raw_regions.reserve(regions.size());
+    for (const CollectiveMemoryRegion& r : regions) {
+      raw_regions.push_back(
+          XLA_FFI_CollectiveMemoryRegion{r.buffer, r.byte_size, r.flags});
+    }
+    XLA_FFI_Window_Request_Args args;
+    args.struct_size = XLA_FFI_Window_Request_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.group_mode = static_cast<XLA_FFI_CollectiveGroupMode>(group_mode);
+    args.groups = raw_groups.data();
+    args.num_groups = raw_groups.size();
+    args.communication_id = communication_id;
+    args.regions = raw_regions.data();
+    args.num_regions = raw_regions.size();
+    if (XLA_FFI_Error* err = ext_->request_window(ext_, &args)) {
+      return ErrorPolicy::TakeError(api_, err);
+    }
+    return ErrorPolicy::Ok();
+  }
+
+  StatusOr<WindowLookup> GetWindow(
+      GroupMode group_mode, const std::vector<std::vector<int64_t>>& groups,
+      int64_t communication_id, const void* buffer) {
+    std::vector<XLA_FFI_ReplicaGroup> raw_groups = ToRawGroups(groups);
+    XLA_FFI_Window_Get_Args args;
+    args.struct_size = XLA_FFI_Window_Get_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.group_mode = static_cast<XLA_FFI_CollectiveGroupMode>(group_mode);
+    args.groups = raw_groups.data();
+    args.num_groups = raw_groups.size();
+    args.communication_id = communication_id;
+    args.buffer = buffer;
+    args.window = nullptr;
+    args.window_offset = 0;
+    if (XLA_FFI_Error* err = ext_->get_window(ext_, &args)) {
+      return StatusOr<WindowLookup>(ErrorPolicy::TakeError(api_, err));
+    }
+    return WindowLookup{args.window, args.window_offset};
   }
 
  private:

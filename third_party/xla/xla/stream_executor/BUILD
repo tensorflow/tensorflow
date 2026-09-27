@@ -485,7 +485,7 @@ cc_library(
     hdrs = ["launch_dim.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":launch_dim_proto_cc",
@@ -874,14 +874,13 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":kernel",
         ":kernel_args",
         ":kernel_args_packing_spec",
         ":kernel_spec_proto_cc",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

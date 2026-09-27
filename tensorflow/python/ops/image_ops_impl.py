@@ -3312,9 +3312,59 @@ def encode_png(image, compression=-1, name=None):
 
 
 @tf_export(
+    'io.encode_jxl',
+    'image.encode_jxl',
+    v1=['io.encode_jxl', 'image.encode_jxl'],
+)
+@dispatch.add_dispatch_support
+def encode_jxl(image, quality=95.0, effort=7, name=None):
+  r"""JPEG XL-encode an image.
+
+  `image` is a rank-N Tensor of type uint8 or uint16 with shape `batch_dims +
+  [height, width, channels]`, where `channels` is:
+
+  *   1: for grayscale.
+  *   3: for RGB.
+  *   4: for RGBA.
+
+  `quality` is a JPEG-style quality factor in `[0.0, 100.0]`. It is mapped
+  internally to a JPEG XL Butteraugli distance using the same mapping as
+  `cjxl -q`: `100.0` encodes losslessly, `95.0` (the default) is high-quality
+  lossy encoding matching `encode_jpeg`, `90.0` is visually lossless, and
+  lower values compress more. Quality factors are not comparable across
+  codecs, so a given `quality` will not produce the same file size or visual
+  quality as the same value passed to `tf.io.encode_jpeg`.
+
+  The `effort` parameter (1 to 9) controls compression effort (default 7).
+
+  Args:
+    image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
+      Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
+    quality: An optional `float`. Defaults to `95.0`. Quality factor in `[0.0,
+      100.0]`; `100.0` encodes losslessly, `95.0` is high-quality lossy, and
+      lower values compress more.
+    effort: An optional `int`. Defaults to `7`. Effort setting from 1 (fastest)
+      to 9 (slowest, best compression).
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `string`.
+  """
+  image = ops.convert_to_tensor(image)
+  image = _AssertAtLeast3DImage(image)
+  return gen_image_ops.encode_jxl(
+      image,
+      quality=quality,
+      effort=effort,
+      name=name,
+  )
+
+
+@tf_export(
     'io.decode_image',
     'image.decode_image',
-    v1=['io.decode_image', 'image.decode_image'])
+    v1=['io.decode_image', 'image.decode_image'],
+)
 @dispatch.add_dispatch_support
 def decode_image(contents,
                  channels=None,

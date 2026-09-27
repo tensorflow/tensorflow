@@ -61,16 +61,18 @@ fusion {
 // CHECK-LLVM:         llvm.alloca
 
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
-// NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0.000000e+00 : bf16
+// NEW-VECTOR:         %[[PAD:.*]] = arith.constant 0 : i16
+// NEW-VECTOR:         %[[IN:.*]] = xtile.memref_bitcast %{{.*}} : memref<1x256x56x56xbf16> -> memref<1x256x56x56xi16>
 // NEW-VECTOR:         scf.for
-// NEW-VECTOR:           %[[READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]] {in_bounds = [true, true, true, true]} : memref<1x256x56x56xbf16>, vector<1x8x1x8xbf16>
-// NEW-VECTOR:           %[[EXT:.*]] = arith.extf %[[READ]] : vector<1x8x1x8xbf16> to vector<1x8x1x8xf32>
+// NEW-VECTOR:           %[[READ:.*]] = vector.transfer_read %[[IN]][%{{.*}}], %[[PAD]] {in_bounds = [true, true, true, true]} : memref<1x256x56x56xi16>, vector<1x8x1x8xi16>
+// NEW-VECTOR:           %[[CAST:.*]] = arith.bitcast %[[READ]] : vector<1x8x1x8xi16> to vector<1x8x1x8xbf16>
+// NEW-VECTOR:           %[[EXT:.*]] = arith.extf %[[CAST]] : vector<1x8x1x8xbf16> to vector<1x8x1x8xf32>
 // NEW-VECTOR:           %[[TRANS:.*]] = vector.transpose %[[EXT]], [0, 2, 3, 1] : vector<1x8x1x8xf32> to vector<1x1x8x8xf32>
 // NEW-VECTOR:           vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}] {in_bounds = [true, true, true, true]} : vector<1x1x8x8xf32>, memref<1x56x56x256xf32>
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 // NEW-VECTOR-LLVM-NOT:     llvm.alloca
-// NEW-VECTOR-LLVM-COUNT-8: llvm.load %{{.*}} <alignment = 2> : !llvm.ptr -> vector<8xbf16>
+// NEW-VECTOR-LLVM-COUNT-8: llvm.load %{{.*}} <alignment = 2> : !llvm.ptr -> vector<8xi16>
 // NEW-VECTOR-LLVM:         llvm.shufflevector
 // NEW-VECTOR-LLVM-COUNT-8: llvm.store %{{.*}}, %{{.*}} <alignment = 4> : vector<8xf32>, !llvm.ptr
 

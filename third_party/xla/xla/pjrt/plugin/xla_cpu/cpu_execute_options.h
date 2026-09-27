@@ -21,6 +21,10 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/pjrt/pjrt_executable.h"
 
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
 namespace xla {
 
 // ExecuteContext for XLA:CPU PjRtLoadedExecutable::Execute calls.
@@ -47,9 +51,21 @@ class CpuExecuteContext : public ExecuteContext {
   cpu::CpuCollectives*& collectives() { return collectives_; }
   cpu::CpuCollectives* collectives() const { return collectives_; }
 
+  // If specified, override the intra-op thread pool for a particular call of
+  // PjRtLoadedExecutable::Execute. Must remain valid until the execution
+  // finishes.
+  const Eigen::ThreadPoolDevice* intra_op_thread_pool() const {
+    return intra_op_thread_pool_;
+  }
+  void set_intra_op_thread_pool(
+      const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
+    intra_op_thread_pool_ = intra_op_thread_pool;
+  }
+
  private:
   std::optional<int> process_index_;
   cpu::CpuCollectives* collectives_ = nullptr;
+  const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
 };
 
 }  // namespace xla

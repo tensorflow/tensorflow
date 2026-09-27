@@ -410,6 +410,13 @@ class RaggedCrossOp : public OpKernel {
         return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
       }
+      if (sparse_indices_list[i].shape().dim_size(0) !=
+          sparse_values_list[i].shape().dim_size(0)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected size of values to be ",
+            sparse_indices_list[i].shape().dim_size(0), " got ",
+            sparse_values_list[i].shape().dim_size(0), " at position ", i));
+      }
     }
     for (int i = 0; i < dense_list.size(); ++i) {
       if (!TensorShapeUtils::IsMatrix(dense_list[i].shape())) {
