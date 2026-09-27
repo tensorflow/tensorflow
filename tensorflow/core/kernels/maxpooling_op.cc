@@ -866,10 +866,7 @@ class MaxPoolingNoMaskOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -960,10 +957,7 @@ class MaxPoolingNoMaskV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -1043,10 +1037,7 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -1336,10 +1327,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     TensorShape out_shape;
     OP_REQUIRES_OK(
@@ -1477,10 +1465,7 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     TensorShape out_shape;
     OP_REQUIRES_OK(

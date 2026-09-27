@@ -83,18 +83,18 @@ struct PoolParameters {
   TensorFormat data_format;
 };
 
-// Forward pooling only: oversized VALID windows must raise InvalidArgument.
-// Gradient ops may receive zero-sized spatial outputs and return zeros.
-inline void RequirePositiveSpatialOutput(OpKernelContext* context,
-                                         const PoolParameters& params) {
-  OP_REQUIRES(
-      context, params.out_height > 0 && params.out_width > 0,
-      absl::InvalidArgumentError(absl::StrCat(
-          "Pooling would produce zero-sized spatial output. "
-          "input: ",
-          params.tensor_in_rows, "x", params.tensor_in_cols, " window: ",
-          params.window_rows, "x", params.window_cols, " stride: ",
-          params.row_stride, "x", params.col_stride)));
+inline absl::Status RequirePositiveSpatialOutput(
+    const PoolParameters& params) {
+  if ((params.tensor_in_rows == 0 || params.out_height > 0) &&
+      (params.tensor_in_cols == 0 || params.out_width > 0)) {
+    return absl::OkStatus();
+  }
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Pooling would produce zero-sized spatial output. "
+      "input: ",
+      params.tensor_in_rows, "x", params.tensor_in_cols, " window: ",
+      params.window_rows, "x", params.window_cols, " stride: ",
+      params.row_stride, "x", params.col_stride));
 }
 
 // An implementation of MaxPooling (forward).
@@ -150,10 +150,7 @@ class MaxPoolingOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     Tensor* output = nullptr;
     TensorShape params_forward_output_shape;
@@ -432,10 +429,7 @@ class MaxPoolingV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    RequirePositiveSpatialOutput(context, params);
-    if (!context->status().ok()) {
-      return;
-    }
+    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
 
     Tensor* output = nullptr;
     TensorShape params_forward_output_shape;
