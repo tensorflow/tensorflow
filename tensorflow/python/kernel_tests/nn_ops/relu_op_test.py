@@ -458,12 +458,14 @@ class EluTest(test.TestCase):
       self._testElu(np.array([-1, np.nan, 1, np.nan]).astype(t))
 
   def testSmallNegativeInputs(self):
-    for t in [np.float32]:
-      with ops.device("/device:CPU:0"):
-        x = np.array([-1e-8, -1e-7]).astype(t)
-        y = self.evaluate(nn_ops.elu(x))
-        self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
-        self.assertAllClose(y, self._npElu(x), rtol=1e-5, atol=0)
+    # exp(x) - 1 cancels to 0 for |x| below the dtype's epsilon; expm1 keeps
+    # full relative precision. Use a purely relative tolerance, since the
+    # expected values are far below the default absolute tolerance.
+    for t, value in [(np.float32, -1e-8), (np.float64, -1e-16)]:
+      x = np.array([value, 10 * value]).astype(t)
+      y = self.evaluate(nn_ops.elu(x))
+      self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+      self.assertAllClose(y, self._npElu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
@@ -583,12 +585,14 @@ class SeluTest(test.TestCase):
         self._testSelu(np.array([-1, np.nan, 1, np.nan]).astype(t))
 
   def testSmallNegativeInputs(self):
-    for t in [np.float32]:
-      with ops.device("/device:CPU:0"):
-        x = np.array([-1e-8, -1e-7]).astype(t)
-        y = self.evaluate(nn_ops.selu(x))
-        self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
-        self.assertAllClose(y, self._npSelu(x), rtol=1e-5, atol=0)
+    # exp(x) - 1 cancels to 0 for |x| below the dtype's epsilon; expm1 keeps
+    # full relative precision. Use a purely relative tolerance, since the
+    # expected values are far below the default absolute tolerance.
+    for t, value in [(np.float32, -1e-8), (np.float64, -1e-16)]:
+      x = np.array([value, 10 * value]).astype(t)
+      y = self.evaluate(nn_ops.selu(x))
+      self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+      self.assertAllClose(y, self._npSelu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
