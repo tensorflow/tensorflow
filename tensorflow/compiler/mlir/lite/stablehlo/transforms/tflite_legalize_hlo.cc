@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/case.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -72,23 +72,31 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
   return arith::ConstantOp::create(rewriter, value.getLoc(), attr_type, attr);
 }
 
+Value CreateI32ConstFromI64Array(ArrayRef<int64_t> array, Location loc,
+                                 OpBuilder& builder) {
+  SmallVector<int32_t> i32_vec;
+  for (int64_t v : array) {
+    i32_vec.push_back(static_cast<int32_t>(v));
+  }
+  auto attr = builder.getI32TensorAttr(i32_vec);
+  return arith::ConstantOp::create(builder, loc, attr);
+}
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
-bool IsTFLStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
-                         Value output) {
+bool IsTFLStyleBroadcast(ArrayRef<int64_t> broadcast_dimensions, Value output) {
   // broadcast_dimensions is an increasing list by definition, thus it suffices
   // to check the first element.
-  int64_t input_rank = broadcast_dimensions.getNumElements();
+  int64_t input_rank = broadcast_dimensions.size();
   int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
   return input_rank == 0 ||
-         (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
-          output_rank - input_rank);
+         (broadcast_dimensions[0] == output_rank - input_rank);
 }
 
 // Returns the intermediate shape that input tensor should be reshaped to during
 // legalization of BroadcastInDimOp.
 arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
-                                DenseIntElementsAttr broadcast_dimensions,
+                                ArrayRef<int64_t> broadcast_dimensions,
                                 Value output) {
   // Initialize expanded shape with output rank and dimensions of 1.
   llvm::SmallVector<Attribute> expanded_shape(
@@ -99,7 +107,7 @@ arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
   auto input_shape = llvm::cast<ShapedType>(input.getType()).getShape();
 
   for (auto x : llvm::enumerate(broadcast_dimensions)) {
-    expanded_shape[x.value().getSExtValue()] =
+    expanded_shape[x.value()] =
         b.getI32IntegerAttr(static_cast<int32_t>(input_shape[x.index()]));
   }
 
@@ -111,14 +119,14 @@ arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
 }
 
 Value ExpandedDynamicShape(OpBuilder& b, Value input,
-                           DenseIntElementsAttr broadcast_dimensions,
+                           ArrayRef<int64_t> broadcast_dimensions,
                            Value output) {
   int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
   llvm::SmallVector<int64_t, 4> expanded_dimensions;
   llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
 
-  for (auto x : llvm::enumerate(broadcast_dimensions)) {
-    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  for (int64_t dim : broadcast_dimensions) {
+    broadcast_dimensions_values.insert(dim);
   }
 
   for (int64_t i = 0; i < output_rank; i++) {
@@ -218,16 +226,16 @@ bool TensorIsSign(PatternRewriter& rewriter, ElementsAttr float_or_int,
   return false;
 }
 
-bool SameTypeOrDefaultCompare(mhlo::ComparisonTypeAttr comparison_type_attr,
-                              ElementsAttr cst) {
+bool SameTypeOrDefaultCompare(
+    stablehlo::ComparisonTypeAttr comparison_type_attr, ElementsAttr cst) {
   if (!comparison_type_attr) return true;
   auto comparison_type_attr_value = comparison_type_attr.getValue();
-  if (comparison_type_attr_value == mhlo::ComparisonType::FLOAT &&
+  if (comparison_type_attr_value == stablehlo::ComparisonType::FLOAT &&
       IsDenseSplatFloatAttr(cst)) {
     return true;
   }
-  if ((comparison_type_attr_value == mhlo::ComparisonType::SIGNED ||
-       comparison_type_attr_value == mhlo::ComparisonType::UNSIGNED) &&
+  if ((comparison_type_attr_value == stablehlo::ComparisonType::SIGNED ||
+       comparison_type_attr_value == stablehlo::ComparisonType::UNSIGNED) &&
       IsDenseSplatIntAttr(cst)) {
     return true;
   }
@@ -265,13 +273,13 @@ bool ValueGreaterThanZero(ElementsAttr float_or_int) {
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
-bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
+bool SupportedComparisonType(stablehlo::ComparisonTypeAttr comp_type) {
   if (!comp_type) return true;
   auto c_ty = comp_type.getValue();
-  return c_ty == mhlo::ComparisonType::FLOAT ||
-         c_ty == mhlo::ComparisonType::SIGNED ||
-         c_ty == mhlo::ComparisonType::UNSIGNED ||
-         c_ty == mhlo::ComparisonType::NOTYPE;
+  return c_ty == stablehlo::ComparisonType::FLOAT ||
+         c_ty == stablehlo::ComparisonType::SIGNED ||
+         c_ty == stablehlo::ComparisonType::UNSIGNED ||
+         c_ty == stablehlo::ComparisonType::NOTYPE;
 }
 
 class LegalizeHloToTfLitePass
@@ -282,19 +290,19 @@ class LegalizeHloToTfLitePass
   void runOnOperation() override;
 };
 
-std::optional<bool> IsCbrtLegal(mhlo::CbrtOp op) {
+std::optional<bool> IsCbrtLegal(stablehlo::CbrtOp op) {
   return !op.getType().getElementType().isF32();
 }
 
-bool IsNotOpLegal(mhlo::NotOp op) {
+bool IsNotOpLegal(stablehlo::NotOp op) {
   return op.getType().getElementType().isInteger(64);
 }
 
-bool IsCompareLegal(mhlo::CompareOp op) {
+bool IsCompareLegal(stablehlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
 
-bool IsAbsOpLegal(mhlo::AbsOp op) {
+bool IsAbsOpLegal(stablehlo::AbsOp op) {
   return !llvm::cast<ShapedType>(op.getOperand().getType())
               .getElementType()
               .isIntOrFloat() &&
@@ -302,7 +310,7 @@ bool IsAbsOpLegal(mhlo::AbsOp op) {
              op.getOperand().getType().getElementType());
 }
 
-bool IsImagOpLegal(mhlo::ImagOp op) {
+bool IsImagOpLegal(stablehlo::ImagOp op) {
   return llvm::cast<ShapedType>(op.getOperand().getType())
              .getElementType()
              .isIntOrFloat() ||
@@ -310,7 +318,7 @@ bool IsImagOpLegal(mhlo::ImagOp op) {
              op.getOperand().getType().getElementType());
 }
 
-bool IsRealOpLegal(mhlo::RealOp op) {
+bool IsRealOpLegal(stablehlo::RealOp op) {
   return llvm::cast<ShapedType>(op.getOperand().getType())
              .getElementType()
              .isIntOrFloat() ||
@@ -319,21 +327,21 @@ bool IsRealOpLegal(mhlo::RealOp op) {
 }
 
 // shlo reference add kernel supports u32 which tfl does not.
-bool IsAddOpLegal(mhlo::AddOp op) {
+bool IsAddOpLegal(stablehlo::AddOp op) {
   return llvm::cast<ShapedType>(op.getOperand(0).getType())
       .getElementType()
       .isUnsignedInteger(32);
 }
 
 // shlo reference sub kernel support u32 which tfl does not.
-bool IsSubtractOpLegal(mhlo::SubtractOp op) {
+bool IsSubtractOpLegal(stablehlo::SubtractOp op) {
   return llvm::cast<ShapedType>(op.getOperand(0).getType())
       .getElementType()
       .isUnsignedInteger(32);
 }
 
 // shlo reference min kernels supports bool which tfl does not.
-bool IsMinimumOpLegal(mhlo::MinOp op) {
+bool IsMinimumOpLegal(stablehlo::MinOp op) {
   return llvm::cast<ShapedType>(op.getOperand(0).getType())
       .getElementType()
       .isInteger(1);
@@ -348,29 +356,29 @@ void SetUnaryOpLegal(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::BitcastConvertOp,
-      mhlo::CeilOp,
-      mhlo::ConvertOp,
-      mhlo::CosineOp,
-      mhlo::ExpOp,
-      mhlo::Expm1Op,
-      mhlo::FloorOp,
-      mhlo::IsFiniteOp,
-      mhlo::Log1pOp,
-      mhlo::LogOp,
-      mhlo::LogisticOp,
-      mhlo::NegOp,
-      mhlo::RsqrtOp,
-      mhlo::SignOp,
-      mhlo::SineOp,
-      mhlo::SqrtOp,
-      mhlo::TanhOp
+      stablehlo::BitcastConvertOp,
+      stablehlo::CeilOp,
+      stablehlo::ConvertOp,
+      stablehlo::CosineOp,
+      stablehlo::ExpOp,
+      stablehlo::Expm1Op,
+      stablehlo::FloorOp,
+      stablehlo::IsFiniteOp,
+      stablehlo::Log1pOp,
+      stablehlo::LogOp,
+      stablehlo::LogisticOp,
+      stablehlo::NegOp,
+      stablehlo::RsqrtOp,
+      stablehlo::SignOp,
+      stablehlo::SineOp,
+      stablehlo::SqrtOp,
+      stablehlo::TanhOp
       // clang-format on
       // go/keep-sorted end
       >(is_legal);
 }
 
-// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// stablehlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
 // TFL ops are only one of logical or bitwise.
 void SetBinaryBitwiseLegal(ConversionTarget& target) {
   auto is_logical = [](Operation* op) {
@@ -379,8 +387,8 @@ void SetBinaryBitwiseLegal(ConversionTarget& target) {
         .isInteger(1);
   };
   auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
-  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
-  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
+  target.addDynamicallyLegalOp<stablehlo::OrOp, stablehlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<stablehlo::XorOp>(is_logical);
 }
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
@@ -418,46 +426,47 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   }
 
   ConversionTarget target(*context);
-  target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
+  target.addLegalDialect<TFL::TensorFlowLiteDialect,
+                         stablehlo::StablehloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
 
-  target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addDynamicallyLegalOp<mhlo::AbsOp>(IsAbsOpLegal);
-  target.addDynamicallyLegalOp<mhlo::ImagOp>(IsImagOpLegal);
-  target.addDynamicallyLegalOp<mhlo::RealOp>(IsRealOpLegal);
-  target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
-  target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
-  target.addDynamicallyLegalOp<mhlo::AddOp>(IsAddOpLegal);
-  target.addDynamicallyLegalOp<mhlo::SubtractOp>(IsSubtractOpLegal);
-  target.addDynamicallyLegalOp<mhlo::MinOp>(IsMinimumOpLegal);
-  target.addDynamicallyLegalOp<mhlo::TupleOp>(
-      [](mhlo::TupleOp op) { return std::nullopt; });
+  target.addDynamicallyLegalOp<stablehlo::CbrtOp>(IsCbrtLegal);
+  target.addDynamicallyLegalOp<stablehlo::AbsOp>(IsAbsOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::ImagOp>(IsImagOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::RealOp>(IsRealOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::NotOp>(IsNotOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::CompareOp>(IsCompareLegal);
+  target.addDynamicallyLegalOp<stablehlo::AddOp>(IsAddOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::SubtractOp>(IsSubtractOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::MinOp>(IsMinimumOpLegal);
+  target.addDynamicallyLegalOp<stablehlo::TupleOp>(
+      [](stablehlo::TupleOp op) { return std::nullopt; });
 
   target.addIllegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::Atan2Op,
-      mhlo::BroadcastInDimOp,
-      mhlo::ClampOp,
-      mhlo::ConcatenateOp,
-      mhlo::ConstantOp,
-      mhlo::DivOp,
-      mhlo::DotGeneralOp,
-      mhlo::DotOp,
-      mhlo::DynamicBroadcastInDimOp,
-      mhlo::DynamicReshapeOp,
-      mhlo::MaxOp,
-      mhlo::MulOp,
-      mhlo::PowOp,
-      mhlo::RemOp,
-      mhlo::ReshapeOp,
-      mhlo::ReverseOp,
-      mhlo::RoundNearestEvenOp,
-      mhlo::RoundOp,
-      mhlo::SelectOp,
-      mhlo::ShiftRightArithmeticOp,
-      mhlo::ShiftRightLogicalOp,
-      mhlo::TransposeOp
+      stablehlo::Atan2Op,
+      stablehlo::BroadcastInDimOp,
+      stablehlo::ClampOp,
+      stablehlo::ConcatenateOp,
+      stablehlo::ConstantOp,
+      stablehlo::DivOp,
+      stablehlo::DotGeneralOp,
+      stablehlo::DotOp,
+      stablehlo::DynamicBroadcastInDimOp,
+      stablehlo::DynamicReshapeOp,
+      stablehlo::MaxOp,
+      stablehlo::MulOp,
+      stablehlo::PowOp,
+      stablehlo::RemOp,
+      stablehlo::ReshapeOp,
+      stablehlo::ReverseOp,
+      stablehlo::RoundNearestEvenOp,
+      stablehlo::RoundOp,
+      stablehlo::SelectOp,
+      stablehlo::ShiftRightArithmeticOp,
+      stablehlo::ShiftRightLogicalOp,
+      stablehlo::TransposeOp
       // clang-format on
       // go/keep-sorted end
       >();
@@ -488,7 +497,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
-    getOperation().emitError("mhlo to TFLite legalization failed.");
+    getOperation().emitError("stablehlo to TFLite legalization failed.");
     signalPassFailure();
   }
 }

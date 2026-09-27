@@ -16,59 +16,51 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
-ShapedType GetPaddingAttrType(mhlo::PadOp op) {
-  return op.getEdgePaddingLow().getType();
-}
-
-DenseIntElementsAttr SliceStartFromNegPadLows(mhlo::PadOp op) {
-  auto vals = UnrollI64Splat(op.getEdgePaddingLow());
+DenseI64ArrayAttr SliceStartFromNegPadLows(stablehlo::PadOp op) {
+  auto vals = op.getEdgePaddingLow();
   auto starts = llvm::map_range(
       vals, [](auto v) -> int64_t { return (v >= 0) ? 0 : -1 * v; });
-  return DenseIntElementsAttr::get(GetPaddingAttrType(op),
-                                   llvm::to_vector(starts));
+  return DenseI64ArrayAttr::get(op.getContext(), llvm::to_vector(starts));
 }
 
-DenseIntElementsAttr SliceEndFromNegPadHighs(mhlo::PadOp op) {
-  auto vals = UnrollI64Splat(op.getEdgePaddingHigh());
+DenseI64ArrayAttr SliceEndFromNegPadHighs(stablehlo::PadOp op) {
+  auto vals = op.getEdgePaddingHigh();
   auto zip = llvm::zip(vals, op.getOperand().getType().getShape());
   auto ends = llvm::map_range(zip, [](auto it) -> int64_t {
     return (std::get<0>(it) >= 0) ? std::get<1>(it)
                                   : std::get<1>(it) + std::get<0>(it);
   });
-  return DenseIntElementsAttr::get(GetPaddingAttrType(op),
-                                   llvm::to_vector(ends));
+  return DenseI64ArrayAttr::get(op.getContext(), llvm::to_vector(ends));
 }
 
-DenseIntElementsAttr ReplaceNegsWithZero(DenseElementsAttr data) {
-  auto vals = UnrollI64Splat(data);
+DenseI64ArrayAttr ReplaceNegsWithZero(llvm::ArrayRef<int64_t> data,
+                                      MLIRContext* ctx) {
   auto res =
-      llvm::map_range(vals, [](auto v) -> int64_t { return (v < 0) ? 0 : v; });
-  return DenseIntElementsAttr::get(data.getType(), llvm::to_vector(res));
+      llvm::map_range(data, [](auto v) -> int64_t { return (v < 0) ? 0 : v; });
+  return DenseI64ArrayAttr::get(ctx, llvm::to_vector(res));
 }
 
-bool AnyNegativePads(mhlo::PadOp op) {
+bool AnyNegativePads(stablehlo::PadOp op) {
   auto is_neg = [](int64_t v) { return v < 0; };
-  auto lows_data = UnrollI64Splat(op.getEdgePaddingLow());
-  auto highs_data = UnrollI64Splat(op.getEdgePaddingHigh());
+  auto lows_data = op.getEdgePaddingLow();
+  auto highs_data = op.getEdgePaddingHigh();
   return llvm::any_of(lows_data, is_neg) || llvm::any_of(highs_data, is_neg);
 }
 
-bool TrivialInterior(mhlo::PadOp op) {
+bool TrivialInterior(stablehlo::PadOp op) {
   auto interior = op.getInteriorPadding();
-  const bool trivial_splat =
-      interior.isSplat() && interior.getSplatValue<int64_t>() == 0;
-  const bool all_trivial = llvm::all_of(interior.getValues<int64_t>(),
-                                        [](auto v) { return v == 0; });
-  return trivial_splat || all_trivial;
+  return llvm::all_of(interior, [](auto v) { return v == 0; });
 }
 
 }  // namespace mlir::odml

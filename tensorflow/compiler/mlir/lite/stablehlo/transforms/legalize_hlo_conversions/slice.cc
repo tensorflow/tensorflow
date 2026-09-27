@@ -29,13 +29,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
-// mhlo encodes ND indice arguments as a variadiac of scalars. Pack them
+// stablehlo encodes ND indice arguments as a variadiac of scalars. Pack them
 // into a single tensor for use in TFL.
 Value PackScalarIndices(mlir::ValueRange indices, OpBuilder& b) {
   auto e_type =
@@ -51,7 +51,7 @@ Value PackScalarIndices(mlir::ValueRange indices, OpBuilder& b) {
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.slice
+// stablehlo.slice
 //===----------------------------------------------------------------------===//
 
 // Cast the value to i32.
@@ -65,19 +65,19 @@ Value BuildTFLCastOp(OpBuilder& b, Value value) {
       value);
 }
 
-class LegalizeSliceOp : public OpConversionPattern<mhlo::SliceOp> {
+class LegalizeSliceOp : public OpConversionPattern<stablehlo::SliceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SliceOp slice_op, OpAdaptor adaptor,
+      stablehlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto input = adaptor.getOperand();
 
-    auto convert_to_i32 = [&](DenseIntElementsAttr attr) {
-      return attr.mapValues(rewriter.getI32Type(), [](const APInt& val) {
-        return val.sextOrTrunc(32);
-      });
+    auto convert_to_i32 = [&](ArrayRef<int64_t> values) {
+      SmallVector<int32_t> res;
+      for (int64_t v : values) res.push_back(static_cast<int32_t>(v));
+      return rewriter.getI32TensorAttr(res);
     };
 
     auto begin_const =
@@ -218,20 +218,20 @@ class CollapseStridedSliceRank : public OpRewritePattern<TFL::StridedSliceOp> {
 };
 
 //===----------------------------------------------------------------------===//
-// mhlo.dynamic_slice
+// stablehlo.dynamic_slice
 //===----------------------------------------------------------------------===//
 
 class CastSliceIndicesToSignless
-    : public OpRewritePattern<mhlo::DynamicSliceOp> {
+    : public OpRewritePattern<stablehlo::DynamicSliceOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::DynamicSliceOp op,
+  LogicalResult matchAndRewrite(stablehlo::DynamicSliceOp op,
                                 PatternRewriter& rewriter) const final;
 };
 
 LogicalResult CastSliceIndicesToSignless::matchAndRewrite(
-    mhlo::DynamicSliceOp op, PatternRewriter& rewriter) const {
+    stablehlo::DynamicSliceOp op, PatternRewriter& rewriter) const {
   // All start inds have the same element type.
   auto start_type =
       llvm::cast<ShapedType>(op.getStartIndices().front().getType());
@@ -245,12 +245,12 @@ LogicalResult CastSliceIndicesToSignless::matchAndRewrite(
 
   llvm::SmallVector<Value> casted_start_inds;
   for (auto start_ind_opr : op.getStartIndices()) {
-    auto casted_start_ind_opr = mhlo::ConvertOp::create(
+    auto casted_start_ind_opr = stablehlo::ConvertOp::create(
         rewriter, start_ind_opr.getLoc(), start_ind_opr, new_start_e_type);
     casted_start_inds.push_back(casted_start_ind_opr.getResult());
   }
 
-  auto new_op = mhlo::DynamicSliceOp::create(
+  auto new_op = stablehlo::DynamicSliceOp::create(
       rewriter, op.getLoc(), op.getType(), op.getOperand(), casted_start_inds,
       op.getSliceSizes());
   rewriter.replaceOp(op, new_op);
@@ -258,22 +258,22 @@ LogicalResult CastSliceIndicesToSignless::matchAndRewrite(
   return success();
 }
 
-bool IsDynamicSliceLegal(mhlo::DynamicSliceOp op) {
+bool IsDynamicSliceLegal(stablehlo::DynamicSliceOp op) {
   return !llvm::cast<ShapedType>(op.getOperand().getType()).hasStaticShape();
 }
 
 class LegalizeDynamicSliceOp
-    : public OpConversionPattern<mhlo::DynamicSliceOp> {
+    : public OpConversionPattern<stablehlo::DynamicSliceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DynamicSliceOp op, OpAdaptor adaptor,
+      stablehlo::DynamicSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
-    mhlo::DynamicSliceOp op, OpAdaptor adaptor,
+    stablehlo::DynamicSliceOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto start_type =
       llvm::cast<ShapedType>(op.getStartIndices().front().getType());
@@ -297,10 +297,8 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
 
   llvm::SmallVector<Value> new_start_indices;
 
-  for (auto [dim_size, start_ind_opr, stride_size] :
-       llvm::zip(input_type.getShape(), op.getStartIndices(),
-                 mlir::cast<DenseIntElementsAttr>(op.getSliceSizes())
-                     .getValues<int64_t>())) {
+  for (auto [dim_size, start_ind_opr, stride_size] : llvm::zip(
+           input_type.getShape(), op.getStartIndices(), op.getSliceSizes())) {
     const int64_t clamp_right_val = dim_size - stride_size;
     auto clamp_right_cst = arith::ConstantOp::create(
         rewriter, op->getLoc(),
@@ -321,8 +319,8 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
 
   auto packed_indices = PackScalarIndices(new_start_indices, rewriter);
 
-  auto slice_sizes_cst =
-      arith::ConstantOp::create(rewriter, op->getLoc(), op.getSliceSizes());
+  auto slice_sizes_cst = arith::ConstantOp::create(
+      rewriter, op->getLoc(), rewriter.getI64TensorAttr(op.getSliceSizes()));
 
   auto slice_op =
       TFL::SliceOp::create(rewriter, op.getLoc(), op.getType(), op.getOperand(),
@@ -333,21 +331,21 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.real_dynamic_slice
+// stablehlo.real_dynamic_slice
 //===----------------------------------------------------------------------===//
 
 class LegalizeRealDynamicSliceOp
-    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+    : public OpConversionPattern<stablehlo::RealDynamicSliceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::RealDynamicSliceOp op, OpAdaptor adaptor,
+      stablehlo::RealDynamicSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeRealDynamicSliceOp::matchAndRewrite(
-    mhlo::RealDynamicSliceOp op, OpAdaptor adaptor,
+    stablehlo::RealDynamicSliceOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto start_indices_type =
       mlir::cast<RankedTensorType>(op.getStartIndices().getType());
@@ -375,21 +373,21 @@ LogicalResult LegalizeRealDynamicSliceOp::matchAndRewrite(
 };
 
 //===----------------------------------------------------------------------===//
-// mhlo.dynamic_update_slice
+// stablehlo.dynamic_update_slice
 //===----------------------------------------------------------------------===//
 
 class LegalizeDynamicUpdateSliceOp
-    : public OpConversionPattern<mhlo::DynamicUpdateSliceOp> {
+    : public OpConversionPattern<stablehlo::DynamicUpdateSliceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
+      stablehlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeDynamicUpdateSliceOp::matchAndRewrite(
-    mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
+    stablehlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto packed_indices = PackScalarIndices(op.getStartIndices(), rewriter);
   auto dus_op = TFL::DynamicUpdateSliceOp::create(
@@ -408,9 +406,9 @@ void PopulateLegalizeSlicePatterns(MLIRContext* ctx,
                LegalizeDynamicUpdateSliceOp, LegalizeRealDynamicSliceOp,
                CollapseStridedSliceRank>(ctx);
 
-  target.addIllegalOp<mhlo::SliceOp, mhlo::DynamicUpdateSliceOp,
-                      mhlo::RealDynamicSliceOp>();
-  target.addDynamicallyLegalOp<mhlo::DynamicSliceOp>(IsDynamicSliceLegal);
+  target.addIllegalOp<stablehlo::SliceOp, stablehlo::DynamicUpdateSliceOp,
+                      stablehlo::RealDynamicSliceOp>();
+  target.addDynamicallyLegalOp<stablehlo::DynamicSliceOp>(IsDynamicSliceLegal);
   // This dynamic legality check is crucial. It correctly marks
   // `tfl.strided_slice` operations with rank > 5 as illegal, allowing the
   // `CollapseStridedSliceRank` pattern to kick in and perform the necessary

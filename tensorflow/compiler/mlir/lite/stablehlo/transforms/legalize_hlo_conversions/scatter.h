@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -77,30 +77,30 @@ LogicalResult CanonicalizeScatterUpdates(
     ShapedType& updates_type, ConversionPatternRewriter& rewriter);
 
 template <typename BinaryOp, typename TfOp>
-class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
+class ConvertScatterOp : public OpConversionPattern<stablehlo::ScatterOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
+      stablehlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 using ConvertScatterAddOp =
-    ConvertScatterOp<mhlo::AddOp, TF::TensorScatterAddOp>;
+    ConvertScatterOp<stablehlo::AddOp, TF::TensorScatterAddOp>;
 using ConvertScatterMaxOp =
-    ConvertScatterOp<mhlo::MaxOp, TF::TensorScatterMaxOp>;
+    ConvertScatterOp<stablehlo::MaxOp, TF::TensorScatterMaxOp>;
 using ConvertScatterMinOp =
-    ConvertScatterOp<mhlo::MinOp, TF::TensorScatterMinOp>;
+    ConvertScatterOp<stablehlo::MinOp, TF::TensorScatterMinOp>;
 using ConvertScatterSubOp =
-    ConvertScatterOp<mhlo::SubtractOp, TF::TensorScatterSubOp>;
+    ConvertScatterOp<stablehlo::SubtractOp, TF::TensorScatterSubOp>;
 using ConvertScatterUpdateOp =
     ConvertScatterOp<void, TF::TensorScatterUpdateOp>;
 
-template class ConvertScatterOp<mhlo::AddOp, TF::TensorScatterAddOp>;
-template class ConvertScatterOp<mhlo::MaxOp, TF::TensorScatterMaxOp>;
-template class ConvertScatterOp<mhlo::MinOp, TF::TensorScatterMinOp>;
-template class ConvertScatterOp<mhlo::SubtractOp, TF::TensorScatterSubOp>;
+template class ConvertScatterOp<stablehlo::AddOp, TF::TensorScatterAddOp>;
+template class ConvertScatterOp<stablehlo::MaxOp, TF::TensorScatterMaxOp>;
+template class ConvertScatterOp<stablehlo::MinOp, TF::TensorScatterMinOp>;
+template class ConvertScatterOp<stablehlo::SubtractOp, TF::TensorScatterSubOp>;
 template class ConvertScatterOp<void, TF::TensorScatterUpdateOp>;
 
 }  // end namespace odml

@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -137,7 +137,7 @@ LogicalResult MatchBinaryReduceFunction(mlir::Region& function) {
   Block& body = function.front();
   if (body.getNumArguments() != 2) return failure();
 
-  mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+  stablehlo::ReturnOp return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
   if (!return_op) return failure();
   if (return_op.getNumOperands() != 1) return failure();
 

@@ -28,26 +28,26 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
 //===------------------------------------------------------------------------===
-// mhlo.iota -> tfl.range
+// stablehlo.iota -> tfl.range
 //===------------------------------------------------------------------------===
 
-class LegalizeIota : public OpConversionPattern<mhlo::IotaOp> {
+class LegalizeIota : public OpConversionPattern<stablehlo::IotaOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::IotaOp op, OpAdaptor adaptor,
+      stablehlo::IotaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
-bool IsIotaLegal(mhlo::IotaOp op) {
+bool IsIotaLegal(stablehlo::IotaOp op) {
   auto e_type = llvm::cast<ShapedType>(op.getType()).getElementType();
   return !(e_type.isF32() || e_type.isSignlessInteger(32) ||
            e_type.isSignlessInteger(64));
@@ -70,7 +70,7 @@ BuildRangeParams(Type e_type, int64_t iota_dim_size, OpBuilder& b) {
 }
 
 LogicalResult LegalizeIota::matchAndRewrite(
-    mhlo::IotaOp op, OpAdaptor adaptor,
+    stablehlo::IotaOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (IsIotaLegal(op)) {
     return rewriter.notifyMatchFailure(op, "Must be i32, i64 or f32");
@@ -96,7 +96,7 @@ LogicalResult LegalizeIota::matchAndRewrite(
     return success();
   }
 
-  // mhlo.iota allows filling ND tensors iota-style. Reshape and broadcast
+  // stablehlo.iota allows filling ND tensors iota-style. Reshape and broadcast
   // tfl 1D range output.
 
   llvm::SmallVector<int64_t> reshape_shape(type.getRank(), 1);
@@ -123,19 +123,20 @@ LogicalResult LegalizeIota::matchAndRewrite(
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.dynamic_iota -> tfl.range
+// stablehlo.dynamic_iota -> tfl.range
 //===------------------------------------------------------------------------===
 
-class LegalizeDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
+class LegalizeDynamicIotaOp
+    : public OpConversionPattern<stablehlo::DynamicIotaOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DynamicIotaOp op, OpAdaptor adaptor,
+      stablehlo::DynamicIotaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
-bool IsDynamicIotaLegal(mhlo::DynamicIotaOp op) {
+bool IsDynamicIotaLegal(stablehlo::DynamicIotaOp op) {
   auto type = llvm::cast<ShapedType>(op.getType());
   auto element_type = type.getElementType();
   return (!element_type.isF32() && !element_type.isSignlessInteger(32) &&
@@ -144,7 +145,7 @@ bool IsDynamicIotaLegal(mhlo::DynamicIotaOp op) {
 }
 
 LogicalResult LegalizeDynamicIotaOp::matchAndRewrite(
-    mhlo::DynamicIotaOp op, OpAdaptor adaptor,
+    stablehlo::DynamicIotaOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (IsDynamicIotaLegal(op)) {
     return failure();
@@ -191,8 +192,8 @@ LogicalResult LegalizeDynamicIotaOp::matchAndRewrite(
 void PopulateIotaPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                           ConversionTarget& target) {
   patterns.add<LegalizeIota, LegalizeDynamicIotaOp>(ctx);
-  target.addDynamicallyLegalOp<mhlo::IotaOp>(IsIotaLegal);
-  target.addDynamicallyLegalOp<mhlo::DynamicIotaOp>(IsDynamicIotaLegal);
+  target.addDynamicallyLegalOp<stablehlo::IotaOp>(IsIotaLegal);
+  target.addDynamicallyLegalOp<stablehlo::DynamicIotaOp>(IsDynamicIotaLegal);
 }
 
 }  // namespace mlir::odml
