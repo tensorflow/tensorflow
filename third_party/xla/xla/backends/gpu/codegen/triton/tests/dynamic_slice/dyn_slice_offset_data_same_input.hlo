@@ -13,7 +13,7 @@ fusion {
 // CHECK:         xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:[A-Za-z0-9]+]]: memref<64xi32>,
 // CHECK-SAME:      %[[ARG1:[A-Za-z0-9]+]]: memref<10xi32>,
-// CHECK-SAME:      %[[PID:[A-Za-z0-9]+]]: index) attributes {num_opaque_args = 0 : i32}
+// CHECK-SAME:      %[[PID:[A-Za-z0-9]+]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}}) attributes {num_opaque_args = 0 : i32}
 // CHECK-DAG: %[[C54_I32:.*]] = arith.constant 54 : i32
 // CHECK-DAG: %[[C0_I32:.*]] = arith.constant 0 : i32
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
