@@ -117,9 +117,9 @@ class OriginalValue {
   }
 
   bool IsEmpty() const {
-    return std::all_of(
-        tree().leaves().begin(), tree().leaves().end(),
-        [](const auto& pair) { return !pair.second.has_value(); });
+    return absl::c_all_of(tree().leaves(), [](const auto& pair) {
+      return !pair.second.has_value();
+    });
   }
 
   bool IsCompatibleWith(const Shape& shape) const;
