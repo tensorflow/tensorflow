@@ -14,6 +14,8 @@
 # ==============================================================================
 """Functional tests for coefficient-wise operations."""
 
+import os
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -1056,6 +1058,10 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testNegativeFloat32SubnormalsFloorToMinusOne(self):
+    if os.name == 'nt':
+      self.skipTest(
+          'MSVC scalar FTZ flushing flushes negative subnormals to -0.0f '
+          'before bit_cast can read the original bits.')
     values = np.array(
         [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
 

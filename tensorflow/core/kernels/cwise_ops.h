@@ -930,15 +930,25 @@ struct functor_traits<igamma_op<Scalar>> {
 // never goes through an FP register) and test whether the sign bit is set and
 // the value is not negative zero (0x80000000).
 //
-// Packet path: SIMD vectorization is re-enabled.  The correction is applied
-// in the integer SIMD domain so it is immune to FTZ/DAZ: after computing
-// r = pfloor(x), we reinterpret r's bits as a signed-integer packet and
-// compare them with 0x80000000 (the bit pattern of -0.0f).  Under FTZ/DAZ a
-// negative float32 subnormal is flushed to -0.0f in the XMM register before
-// pfloor sees it, so pfloor also produces -0.0f — and the integer comparison
-// catches it correctly.  preinterpret<IPacket>(r) uses _mm_castps_si128 (or
-// equivalent) which is a zero-cost bit-reinterpretation; it never passes the
-// value through the FP pipeline again.
+// Packet path: SIMD vectorization is re-enabled.  The correction uses two
+// integer-domain comparisons that are immune to FTZ/DAZ flushing:
+//
+//   1. r_bits == 0x80000000 : r is exactly -0.0f (pfloor of a subnormal or
+//      a genuine -0.0f input both land here, so we need the second guard).
+//
+//   2. x_bits > 0x80000000 (unsigned): x was a negative non-zero value.
+//      Genuine -0.0f has bits == 0x80000000, so this guard is false for it,
+//      preventing floor(-0.0f) from being incorrectly changed to -1.0f.
+//      pload does not trigger DAZ flushing, so x's original bits are intact.
+//
+// Unsigned ">" is not directly available for integer packets in Eigen; we
+// implement it via the standard bias trick:
+//   a >_u b  iff  (a ^ 0x80000000) >_s (b ^ 0x80000000)  iff  (a ^ 0x80000000) >_s 0
+// i.e. pcmp_lt(pzero<IPacket>(), pxor(x_bits, neg_zero_bits)).
+//
+// preinterpret<IPacket>(x) uses _mm_castps_si128 (or equivalent) — a
+// zero-cost register rename that never passes the value through the FP
+// pipeline, so FTZ/DAZ flushing cannot affect the result.
 struct scalar_cpu_floor_float_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
@@ -952,21 +962,26 @@ struct scalar_cpu_floor_float_op {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     const Packet r = pfloor(x);
-    // Detect r == -0.0f using a bitwise integer comparison that is safe under
-    // FTZ/DAZ.  preinterpret reinterprets the float bits as a same-width
-    // signed integer packet without any value conversion (e.g. on SSE this is
-    // a single _mm_castps_si128 instruction).
+    // Reinterpret both r and x as integer packets (zero-cost bit cast,
+    // e.g. _mm_castps_si128 on SSE).  This is safe under FTZ/DAZ because
+    // pload does not flush subnormals — they remain intact in the packet.
     using IPacket = typename unpacket_traits<Packet>::integer_packet;
     const IPacket r_bits = preinterpret<IPacket>(r);
-    // 0x80000000 is the bit pattern of -0.0f; use static_cast<int32_t> so the
-    // constant has the same signed type as IPacket's element type.
+    const IPacket x_bits = preinterpret<IPacket>(x);
     const IPacket neg_zero_bits =
         pset1<IPacket>(static_cast<int32_t>(0x80000000u));
-    // Integer pcmp_eq produces an all-ones mask for matching lanes, which we
-    // reinterpret back as a float mask for pselect.
-    const Packet is_neg_zero =
-        preinterpret<Packet>(pcmp_eq(r_bits, neg_zero_bits));
-    return pselect(is_neg_zero, pset1<Packet>(-1.0f), r);
+    // Guard 1: r == -0.0f (bit pattern 0x80000000).
+    const IPacket r_is_neg_zero = pcmp_eq(r_bits, neg_zero_bits);
+    // Guard 2: x_bits > 0x80000000 (unsigned), i.e. x was a negative non-zero
+    // value.  Eigen has no unsigned pcmp_gt for integer packets; implement via
+    // the bias trick: a >_u b  iff  (a XOR 0x80000000) >_s 0.
+    const IPacket x_is_neg_nonzero =
+        pcmp_lt(pzero(x_bits), pxor(x_bits, neg_zero_bits));
+    // Apply correction only when both guards hold: floor output was -0.0f AND
+    // the original x was a genuine negative subnormal (not -0.0f itself).
+    const Packet correction_mask =
+        preinterpret<Packet>(pand(r_is_neg_zero, x_is_neg_nonzero));
+    return pselect(correction_mask, pset1<Packet>(-1.0f), r);
   }
 };
 
