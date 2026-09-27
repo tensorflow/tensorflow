@@ -757,15 +757,6 @@ class UnaryOpTest(test.TestCase):
           expected, self.evaluate(grad_grad), rtol=1e-14, atol=1e-18
       )
 
-
-  @test_util.run_in_graph_and_eager_modes
-  def testRoundInt(self):
-    # CPU kernel registers int32 and int64 only.
-    for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
-      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
-      outputs = gen_math_ops.round(x=inputs)
-      self.assertAllEqual([-3, 1, 0, -1], self.evaluate(outputs))
-
   def testRoundIntXLA(self):
     # XLA kernel registers int8, int16, int32, int64.
     @def_function.function(jit_compile=True)
@@ -776,8 +767,9 @@ class UnaryOpTest(test.TestCase):
         dtypes_lib.int8, dtypes_lib.int16,
         dtypes_lib.int32, dtypes_lib.int64,
     ]:
-      inputs = constant_op.constant([-3, 1, 0, -1], dtype=dtype)
-      self.assertAllEqual([-3, 1, 0, -1], round_fn(inputs))
+      for values in ([-3, 1, 0, -1], [], 42):
+        inputs = constant_op.constant(values, dtype=dtype)
+        self.assertAllEqual(values, round_fn(inputs))
 
 
 if __name__ == "__main__":

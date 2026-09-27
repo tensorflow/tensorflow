@@ -311,6 +311,7 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
