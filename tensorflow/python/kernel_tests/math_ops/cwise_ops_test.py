@@ -1062,14 +1062,25 @@ class RoundingTest(test.TestCase):
       self.skipTest(
           'MSVC scalar FTZ flushing flushes negative subnormals to -0.0f '
           'before bit_cast can read the original bits.')
-    values = np.array(
-        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
-
+    base = np.array(
+        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45,  # neg subnormals
+         -0.0, 0.0, 1e-40, 1.40129846e-45,  # signed zeros, pos subnormals
+         -0.5, -1.0, 2.5, -np.inf, np.inf],
+        dtype=np.float32)
+    expected_base = np.array(
+        [-1.0, -1.0, -1.0, -1.0, -0.0, 0.0, 0.0, 0.0,
+         -1.0, -1.0, 2.0, -np.inf, np.inf],
+        dtype=np.float32)
+    # 8 * 13 + 5 = 109 elements: full SIMD packets plus a scalar tail.
+    x = np.concatenate([np.tile(base, 8), base[:5]])
+    expected = np.concatenate([np.tile(expected_base, 8), expected_base[:5]])
     with test_util.force_cpu():
-      # Explicitly expected to be -1.0; avoid np.floor on Windows as it deviates.
-      expected = np.array([-1.0, -1.0, -1.0, -1.0], dtype=np.float32)
-      self.assertAllEqual(
-          expected, self.evaluate(math_ops.floor(values)))
+      for inp, exp in ((x, expected),
+                       (np.tile(base, (8, 1)), np.tile(expected_base, (8, 1)))):
+        out = self.evaluate(math_ops.floor(inp))
+        self.assertAllEqual(exp, out)
+        # assertAllEqual treats -0.0 == 0.0; check the sign bit explicitly.
+        self.assertAllEqual(np.signbit(exp), np.signbit(out))
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,
