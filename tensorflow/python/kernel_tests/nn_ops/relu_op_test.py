@@ -460,9 +460,10 @@ class EluTest(test.TestCase):
   def testSmallNegativeInputs(self):
     for t in [np.float32]:
       with ops.device("/device:CPU:0"):
-        x = np.array([-1e-8]).astype(t)
-        y = nn_ops.elu(x)
-        self.assertNotEqual(self.evaluate(y)[0], 0.0)
+        x = np.array([-1e-8, -1e-7]).astype(t)
+        y = self.evaluate(nn_ops.elu(x))
+        self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+        self.assertAllClose(y, self._npElu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
@@ -584,9 +585,10 @@ class SeluTest(test.TestCase):
   def testSmallNegativeInputs(self):
     for t in [np.float32]:
       with ops.device("/device:CPU:0"):
-        x = np.array([-1e-8]).astype(t)
-        y = nn_ops.selu(x)
-        self.assertNotEqual(self.evaluate(y)[0], 0.0)
+        x = np.array([-1e-8, -1e-7]).astype(t)
+        y = self.evaluate(nn_ops.selu(x))
+        self.assertTrue(np.all(y < 0), msg="dtype=%s: %s" % (t, y))
+        self.assertAllClose(y, self._npSelu(x), rtol=1e-5, atol=0)
 
   def testGradientFloat32(self):
     with self.cached_session():
