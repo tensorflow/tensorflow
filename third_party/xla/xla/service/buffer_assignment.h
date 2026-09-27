@@ -222,6 +222,7 @@ class BufferAllocation {
     Index index() const { return allocation_->index(); }
     int64_t offset() const { return offset_; }
     int64_t size() const { return size_; }
+    bool empty() const { return size_ == 0; }
     PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {

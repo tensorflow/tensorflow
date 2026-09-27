@@ -5273,5 +5273,89 @@ ENTRY main {
   }
 }
 
+TEST_F(HostOffloaderTest, SecondRunUsesItsOwnCallGraph) {
+  // Both modules cross a computation boundary, so each run queries the call
+  // graph the pass keeps for a run; module_a offloads through an annotation,
+  // module_b through a host memory entry parameter. The second run must see
+  // its own module's graph, not the graph of the first module. The call graph
+  // is the only per run state the pass drops between runs, so module_b is
+  // shaped to read none of the rest: no annotation, no DynamicUpdateSlice, no
+  // copy insertion.
+  const std::string& hlo_string_a = R"(
+HloModule module_a
+
+callee {
+  callee_param = f32[2048] parameter(0)
+  ROOT callee_root = (f32[2048]) tuple(callee_param)
+}
+
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  call = (f32[2048]) call(offload), to_apply=callee
+  gte = f32[2048] get-tuple-element(call), index=0
+  ROOT load = f32[2048] custom-call(gte), custom_call_target="MoveToDevice"
+}
+)";
+  const std::string& hlo_string_b = R"(
+HloModule module_b, entry_computation_layout={(f32[2048]{0:S(5)})->f32[2048]{0}}
+
+while_condition {
+  cond_param = (s32[], f32[2048]) parameter(0)
+  i = s32[] get-tuple-element(cond_param), index=0
+  limit = s32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+while_body {
+  body_param = (s32[], f32[2048]) parameter(0)
+  i = s32[] get-tuple-element(body_param), index=0
+  data = f32[2048] get-tuple-element(body_param), index=1
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  ROOT body_root = (s32[], f32[2048]) tuple(next, data)
+}
+
+ENTRY main {
+  param = f32[2048] parameter(0)
+  zero = s32[] constant(0)
+  init = (s32[], f32[2048]) tuple(zero, param)
+  loop = (s32[], f32[2048]) while(init), condition=while_condition, body=while_body
+  gte = f32[2048] get-tuple-element(loop), index=1
+  ROOT load = f32[2048] custom-call(gte), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_a,
+                       ParseAndReturnVerifiedModule(hlo_string_a));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_b,
+                       ParseAndReturnVerifiedModule(hlo_string_b));
+  HostOffloader host_offloader(&alias_info_);
+
+  ASSERT_OK_AND_ASSIGN(bool changed_a, host_offloader.Run(module_a.get()));
+  EXPECT_TRUE(changed_a);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module_a.get()));
+  HloInstruction* copy_to_host;
+  HloInstruction* call;
+  ASSERT_THAT(module_a->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::GetTupleElement(
+                  m::Call(&call, m::Copy(&copy_to_host, m::Parameter(0)))))));
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(call->shape().tuple_shapes(0),
+                          Layout::kHostMemorySpace);
+
+  ASSERT_OK_AND_ASSIGN(bool changed_b, host_offloader.Run(module_b.get()));
+  EXPECT_TRUE(changed_b);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module_b.get()));
+  HloInstruction* loop;
+  ASSERT_THAT(module_b->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::GetTupleElement(m::While(&loop)))));
+  TestShapeHasMemorySpace(loop->shape().tuple_shapes(1),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(
+      loop->while_body()->parameter_instruction(0)->shape().tuple_shapes(1),
+      Layout::kHostMemorySpace);
+}
+
 }  // namespace
 }  // namespace xla
