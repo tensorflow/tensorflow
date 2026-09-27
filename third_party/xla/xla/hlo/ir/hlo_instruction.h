@@ -875,7 +875,7 @@ class HloInstruction {
   // is a tuple containing the infeed_shape and the TOKEN.
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
-      const std::string& config);
+      absl::string_view config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -1817,12 +1817,12 @@ class HloInstruction {
   // the instruction to form the name of the cloned instruction.
   // Ignores the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(
-      const std::string& suffix = "clone",
+      absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape.
   std::unique_ptr<HloInstruction> CloneWithNewShape(
-      const Shape& shape, const std::string& suffix = "clone",
+      const Shape& shape, absl::string_view suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -1833,7 +1833,7 @@ class HloInstruction {
   // Clones the HLO instruction with new shape, operands and suffix.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      const std::string& suffix, HloCloneContext* context = nullptr) const;
+      absl::string_view suffix, HloCloneContext* context = nullptr) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   // CloneWithNewOperands forwards to this method for some of the intstruction
@@ -2011,10 +2011,9 @@ class HloInstruction {
 
   // Adds a single attribute only if it not already present in the
   // HloInstruction. Returns false if the attribute was already present.
-  bool add_frontend_attribute(const std::string& key,
-                              const std::string& value) {
-    auto it =
-        mutable_rare()->frontend_attributes.mutable_map()->insert({key, value});
+  bool add_frontend_attribute(absl::string_view key, absl::string_view value) {
+    auto it = mutable_rare()->frontend_attributes.mutable_map()->insert(
+        {std::string(key), std::string(value)});
     return it.second;
   }
 
@@ -2422,13 +2421,13 @@ class HloInstruction {
   std::string infeed_config() const;
 
   // Delegates to HloInfeedInstruction::set_infeed_config.
-  void set_infeed_config(const std::string& config);
+  void set_infeed_config(absl::string_view config);
 
   // Returns the config for the Outfeed instruction.
   const std::string& outfeed_config() const;
 
   // Delegates to HloOutfeedInstruction::set_outfeed_config.
-  void set_outfeed_config(const std::string& config);
+  void set_outfeed_config(absl::string_view config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
@@ -2984,16 +2983,15 @@ std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 std::string BlockScalingConfigToString(
     const BlockScalingConfig& block_scaling_config);
 
-absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name);
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(absl::string_view name);
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<ShuffleMode::ModeCase> StringToShuffleMode(
     absl::string_view mode);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name);
+    absl::string_view name);
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(

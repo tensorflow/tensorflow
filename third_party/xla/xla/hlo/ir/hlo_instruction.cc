@@ -2106,9 +2106,9 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
-    const std::string& config) {
+    absl::string_view config) {
   return std::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
-                                                config);
+                                                std::string(config));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
@@ -2829,7 +2829,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    const std::string& suffix, HloCloneContext* context) const {
+    absl::string_view suffix, HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -3100,7 +3100,7 @@ void HloInstruction::DetachFromOperandsAndUsersOutside(
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
-    const Shape& shape, const std::string& suffix,
+    const Shape& shape, absl::string_view suffix,
     HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
@@ -3113,7 +3113,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const std::string& suffix, HloCloneContext* context) const {
+    absl::string_view suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewShape(shape(), suffix, context);
   return clone;
@@ -5879,19 +5879,19 @@ absl::StatusOr<T> StringToEnum(absl::string_view value_name, F enum_to_string,
 }  // namespace
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<RandomAlgorithm>(name, RandomAlgorithmToString,
                                        "algorithm");
 }
 
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<RandomDistribution>(name, RandomDistributionToString,
                                           "distribution");
 }
 
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<PrecisionConfig::Precision>(name, PrecisionToString,
                                                   "precision");
 }
@@ -5913,7 +5913,7 @@ absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
 }
 
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<PrecisionConfig::Algorithm>(name, AlgorithmToString,
                                                   "algorithm");
 }
@@ -6289,8 +6289,9 @@ std::string HloInstruction::infeed_config() const {
   return Cast<HloInfeedInstruction>(this)->infeed_config();
 }
 
-void HloInstruction::set_infeed_config(const std::string& config) {
-  return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
+void HloInstruction::set_infeed_config(absl::string_view config) {
+  return Cast<HloInfeedInstruction>(this)->set_infeed_config(
+      std::string(config));
 }
 
 const Shape& HloInstruction::outfeed_shape() const {
@@ -6305,8 +6306,9 @@ const std::string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 
-void HloInstruction::set_outfeed_config(const std::string& config) {
-  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
+void HloInstruction::set_outfeed_config(absl::string_view config) {
+  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(
+      std::string(config));
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
