@@ -1043,6 +1043,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
     ],
@@ -1481,6 +1482,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
