@@ -50,6 +50,17 @@ def is_nan(x):
     return math.isnan(x)  # pyrefly: ignore[bad-argument-type]
 
 
+def _signs(x):
+  """Returns the signs of a float's or complex's parts, else None."""
+  if isinstance(x, numbers.Integral) or not isinstance(x, numbers.Complex):
+    return None
+
+  if isinstance(x, numbers.Real):
+    return math.copysign(1.0, x)
+  else:
+    return (math.copysign(1.0, x.real), math.copysign(1.0, x.imag))
+
+
 class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""
 
@@ -60,6 +71,12 @@ class Literal(trace.TraceType, serialization.Serializable):
 
     self.value = value
     self._value_hash = hash(value)
+    # Values that compare equal can still trace differently: 1, 1.0 and True
+    # give tensors of different dtypes, and math.copysign or a division tells
+    # 0.0 and -0.0 apart. So a Literal only matches values of the same type
+    # and sign.
+    self._value_type = type(value)
+    self._value_signs = _signs(value)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     return self == other
@@ -127,16 +144,20 @@ class Literal(trace.TraceType, serialization.Serializable):
     if self.value is NanMarker and is_nan(value):
       return value
 
-    if value == self.value:
+    if self._matches(value):
       return value
     else:
       raise ValueError(f"Can not cast {value!r} to {self!r}")
+
+  def _matches(self, value: Any) -> bool:
+    return (type(value) is self._value_type and value == self.value and
+            _signs(value) == self._value_signs)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    return isinstance(other, Literal) and self.value == other.value
+    return isinstance(other, Literal) and self._matches(other.value)
 
   def __hash__(self) -> int:
     return self._value_hash

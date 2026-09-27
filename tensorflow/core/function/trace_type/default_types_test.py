@@ -104,6 +104,28 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(nan_literal, complex_nan)
     self.assertEqual(nan_literal, complex_nan_other)
 
+  def testLiteralDistinguishesTypes(self):
+    # 1, 1.0 and True compare equal but give tensors of different dtypes.
+    literals = [default_types.Literal(v) for v in (1, 1.0, True)]
+    for i, a in enumerate(literals):
+      for j, b in enumerate(literals):
+        self.assertEqual(a == b, i == j)
+
+  def testLiteralDistinguishesSignedZeros(self):
+    self.assertEqual(default_types.Literal(-0.0), default_types.Literal(-0.0))
+    self.assertNotEqual(default_types.Literal(0.0), default_types.Literal(-0.0))
+    self.assertNotEqual(
+        default_types.Literal(complex(0.0, 0.0)),
+        default_types.Literal(complex(0.0, -0.0)),
+    )
+
+  def testLiteralCastRejectsEqualValuesThatDiffer(self):
+    self.assertEqual(default_types.Literal(1).cast(1, None), 1)
+    with self.assertRaises(ValueError):
+      default_types.Literal(1).cast(True, None)
+    with self.assertRaises(ValueError):
+      default_types.Literal(0.0).cast(-0.0, None)
+
   def testLiteralSupertypes(self):
     literal_a = default_types.Literal(1)
     literal_b = default_types.Literal(2)

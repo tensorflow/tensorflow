@@ -2073,6 +2073,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(z1, z2)
     self.assertLen(self._total_function_cache_def_func(defined), 3)
 
+  def testRetracingOnEqualPythonValuesThatDiffer(self):
+    # Regression test for GitHub issue 128160. These values compare equal in
+    # Python, so a call with one used to reuse the trace of the other.
+
+    @polymorphic_function.function
+    def sign(x):
+      return constant_op.constant(numpy.copysign(1.0, x))
+
+    self.assertEqual(self.evaluate(sign(0.0)), 1.0)
+    self.assertEqual(self.evaluate(sign(-0.0)), -1.0)
+
+    @polymorphic_function.function
+    def to_tensor(x):
+      return constant_op.constant(x)
+
+    self.assertEqual(to_tensor(1).dtype, dtypes.int32)
+    self.assertEqual(to_tensor(1.0).dtype, dtypes.float32)
+    self.assertEqual(to_tensor(True).dtype, dtypes.bool)
+
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`
     # since it cannot even be "defunned" in the first place
