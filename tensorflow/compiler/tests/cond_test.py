@@ -313,6 +313,43 @@ class CondTest(xla_test.XLATestCase):
 
       xla_context.Exit()
 
+  # The tests below compile whole functions with jit_compile=True, which is
+  # what makes the predicate a compile-time constant; compiling the If on its
+  # own under test_scope() would pass the predicate in as a parameter.
+
+  def testIfBranchIsPruned(self):
+    # With a constant predicate only the taken branch is compiled, so an
+    # untaken branch that XLA cannot compile does not fail compilation. The
+    # branch returns the unsupported op's result so that it is not pruned as
+    # dead code before it reaches XLA.
+    with context.eager_mode():
+
+      @def_function.function(jit_compile=True)
+      def f():
+
+        def uncompilable():
+          return array_ops.size(
+              image_ops.decode_image(io_ops.read_file('/tmp/bmp')))
+
+        return cond.cond(
+            constant_op.constant(True), lambda: constant_op.constant(17),
+            uncompilable)
+
+      self.assertEqual(f().numpy(), 17)
+
+  def testConstantPredicateKeepsTakenBranchShape(self):
+    # rot90 builds nested conds over k whose branches have different static
+    # shapes. Compiling every branch pads the result to a dynamic shape, which
+    # the Roll in fftshift cannot slice.
+    with context.eager_mode():
+      x = random_ops.random_uniform([2, 16, 3], dtype=dtypes.float64)
+      for k in range(4):
+
+        def f(x, k=k):
+          return fft_ops.fftshift(image_ops.rot90(x, k))
+
+        self.assertAllClose(def_function.function(f, jit_compile=True)(x), f(x))
+
 
 if __name__ == '__main__':
   test.main()
