@@ -28,9 +28,12 @@ limitations under the License.
 #include "rocm/include/hip/hip_fp16.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/libraries/cub/cub_sort_ffi.h"
+#include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/xla_data.pb.h"
 
@@ -122,22 +125,6 @@ absl::StatusOr<SortPairsFn> GetSortPairsFn(xla::PrimitiveType key_type,
   }
 }
 
-absl::Status VerifySortKeysBuffers(ffi::AnyBuffer keys,
-                                   ffi::Result<ffi::AnyBuffer> keys_out) {
-  return ffi::Verify("keys output", *keys_out, ffi::match::Buffer().Like(keys));
-}
-
-absl::Status VerifySortPairsBuffers(ffi::AnyBuffer keys, ffi::AnyBuffer values,
-                                    ffi::Result<ffi::AnyBuffer> keys_out,
-                                    ffi::Result<ffi::AnyBuffer> values_out) {
-  ABSL_RETURN_IF_ERROR(ffi::Verify("values input", values,
-                              ffi::match::Buffer().WithShapeOf(keys)));
-  ABSL_RETURN_IF_ERROR(
-      ffi::Verify("keys output", *keys_out, ffi::match::Buffer().Like(keys)));
-  return ffi::Verify("values output", *values_out,
-                     ffi::match::Buffer().Like(values));
-}
-
 // Computes the scratch buffer size needed for CUB sort, including batch
 // offsets if batch_size > 1.
 absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
@@ -146,11 +133,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
   ABSL_RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, num_items, false,
                      batch_size, nullptr));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
-  return scratch_size;
+  return xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size,
+                                                        batch_size);
 }
 
 absl::StatusOr<int64_t> ComputeScratchSize(SortPairsFn fn, int64_t num_items,
@@ -159,16 +143,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortPairsFn fn, int64_t num_items,
   ABSL_RETURN_IF_ERROR(fn(nullptr, temp_bytes, nullptr, nullptr, nullptr, nullptr,
                      num_items, false, batch_size, nullptr));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
-  return scratch_size;
-}
-
-// N pairs of [start_offset, end_offset) require (N+1) storage.
-int64_t GetOffsetsSize(int64_t batch_size) {
-  return (batch_size + 1) * sizeof(int32_t);
+  return xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size,
+                                                        batch_size);
 }
 
 // Copies segment offsets [0, segment_size, 2*segment_size, ...] to device
@@ -176,13 +152,11 @@ int64_t GetOffsetsSize(int64_t batch_size) {
 absl::Status CopyOffsets(void* scratch, size_t scratch_bytes,
                          int64_t batch_size, int64_t segment_size,
                          hipStream_t stream) {
-  int64_t offsets_size = GetOffsetsSize(batch_size);
+  int64_t offsets_size = xla::gpu::GetCubSortOffsetsSize(batch_size);
   char* offsets_buffer =
       static_cast<char*>(scratch) + scratch_bytes - offsets_size;
-  std::vector<int32_t> h_offsets(batch_size + 1);
-  for (int32_t i = 0; i <= batch_size; ++i) {
-    h_offsets[i] = i * segment_size;
-  }
+  std::vector<int32_t> h_offsets =
+      xla::gpu::MakeCubSortSegmentOffsets(batch_size, segment_size);
   return gpu::ToStatus(hipMemcpyAsync(offsets_buffer, h_offsets.data(),
                                       offsets_size, hipMemcpyHostToDevice,
                                       stream));
@@ -200,7 +174,7 @@ absl::StatusOr<std::unique_ptr<int64_t>> CubSortKeysInstantiate(
     ffi::AnyBuffer d_keys_in, ffi::Result<ffi::AnyBuffer> d_keys_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size) {
-  ABSL_RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
+  ABSL_RETURN_IF_ERROR(xla::gpu::VerifyCubSortKeysBuffers(d_keys_in, d_keys_out));
 
   ABSL_ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
   int64_t num_items = d_keys_in.element_count();
@@ -213,7 +187,7 @@ absl::Status CubSortKeysExecute(
     ffi::AnyBuffer d_keys_in, ffi::Result<ffi::AnyBuffer> d_keys_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size, hipStream_t stream) {
-  ABSL_RETURN_IF_ERROR(VerifySortKeysBuffers(d_keys_in, d_keys_out));
+  ABSL_RETURN_IF_ERROR(xla::gpu::VerifyCubSortKeysBuffers(d_keys_in, d_keys_out));
 
   ABSL_ASSIGN_OR_RETURN(auto fn, GetSortKeysFn(d_keys_in.element_type()));
   size_t num_items = d_keys_in.element_count();
@@ -221,7 +195,7 @@ absl::Status CubSortKeysExecute(
   if (batch_size > 1) {
     ABSL_RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
                                 batch_size, num_items / batch_size, stream));
-    temp_bytes -= GetOffsetsSize(batch_size);
+    temp_bytes -= xla::gpu::GetCubSortOffsetsSize(batch_size);
   }
   return fn(d_temp_storage->untyped_data(), temp_bytes,
             d_keys_in.untyped_data(), d_keys_out->untyped_data(), num_items,
@@ -229,24 +203,13 @@ absl::Status CubSortKeysExecute(
 }
 
 XLA_FFI_DEFINE_HANDLER(kCubSortKeysInstantiate, CubSortKeysInstantiate,
-                       ffi::Ffi::BindInstantiate()
-                           .Arg<ffi::AnyBuffer>()          // d_keys_in
-                           .Ret<ffi::AnyBuffer>()          // d_keys_out
-                           .Ret<ffi::BufferR1<xla::U8>>()  // d_temp_storage
-                           .Attr<bool>("descending")
-                           .Attr<int64_t>("batch_size"));
+                       xla::gpu::BindCubSortKeysInstantiate());
 
 XLA_FFI_DEFINE_HANDLER(kCubSortKeysExecute, CubSortKeysExecute,
-                       ffi::Ffi::Bind()
-                           .Arg<ffi::AnyBuffer>()          // d_keys_in
-                           .Ret<ffi::AnyBuffer>()          // d_keys_out
-                           .Ret<ffi::BufferR1<xla::U8>>()  // d_temp_storage
-                           .Attr<bool>("descending")
-                           .Attr<int64_t>("batch_size")
-                           .Ctx<ffi::PlatformStream<hipStream_t>>());
+                       xla::gpu::BindCubSortKeysExecute<hipStream_t>());
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys",
-                         "ROCM",
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceRadixSortKeysTarget.data(), "ROCM",
                          {/* .instantiate = */ kCubSortKeysInstantiate,
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
@@ -266,8 +229,8 @@ absl::StatusOr<std::unique_ptr<int64_t>> CubSortPairsInstantiate(
     ffi::Result<ffi::AnyBuffer> d_values_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size) {
-  ABSL_RETURN_IF_ERROR(
-      VerifySortPairsBuffers(d_keys_in, d_values_in, d_keys_out, d_values_out));
+  ABSL_RETURN_IF_ERROR(xla::gpu::VerifyCubSortPairsBuffers(
+      d_keys_in, d_values_in, d_keys_out, d_values_out));
 
   ABSL_ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
                                            xla::primitive_util::BitWidth(
@@ -284,8 +247,8 @@ absl::Status CubSortPairsExecute(
     ffi::Result<ffi::AnyBuffer> d_values_out,
     ffi::Result<ffi::BufferR1<xla::U8>> d_temp_storage, bool descending,
     int64_t batch_size, hipStream_t stream) {
-  ABSL_RETURN_IF_ERROR(
-      VerifySortPairsBuffers(d_keys_in, d_values_in, d_keys_out, d_values_out));
+  ABSL_RETURN_IF_ERROR(xla::gpu::VerifyCubSortPairsBuffers(
+      d_keys_in, d_values_in, d_keys_out, d_values_out));
 
   ABSL_ASSIGN_OR_RETURN(auto fn, GetSortPairsFn(d_keys_in.element_type(),
                                            xla::primitive_util::BitWidth(
@@ -295,7 +258,7 @@ absl::Status CubSortPairsExecute(
   if (batch_size > 1) {
     ABSL_RETURN_IF_ERROR(CopyOffsets(d_temp_storage->untyped_data(), temp_bytes,
                                 batch_size, num_items / batch_size, stream));
-    temp_bytes -= GetOffsetsSize(batch_size);
+    temp_bytes -= xla::gpu::GetCubSortOffsetsSize(batch_size);
   }
   return fn(d_temp_storage->untyped_data(), temp_bytes,
             d_keys_in.untyped_data(), d_keys_out->untyped_data(),
@@ -304,27 +267,13 @@ absl::Status CubSortPairsExecute(
 }
 
 XLA_FFI_DEFINE_HANDLER(kCubSortPairsInstantiate, CubSortPairsInstantiate,
-                       ffi::Ffi::BindInstantiate()
-                           .Arg<ffi::AnyBuffer>()          // d_keys_in
-                           .Arg<ffi::AnyBuffer>()          // d_values_in
-                           .Ret<ffi::AnyBuffer>()          // d_keys_out
-                           .Ret<ffi::AnyBuffer>()          // d_values_out
-                           .Ret<ffi::BufferR1<xla::U8>>()  // d_temp_storage
-                           .Attr<bool>("descending")
-                           .Attr<int64_t>("batch_size"));
+                       xla::gpu::BindCubSortPairsInstantiate());
 
 XLA_FFI_DEFINE_HANDLER(kCubSortPairsExecute, CubSortPairsExecute,
-                       ffi::Ffi::Bind()
-                           .Arg<ffi::AnyBuffer>()          // d_keys_in
-                           .Arg<ffi::AnyBuffer>()          // d_values_in
-                           .Ret<ffi::AnyBuffer>()          // d_keys_out
-                           .Ret<ffi::AnyBuffer>()          // d_values_out
-                           .Ret<ffi::BufferR1<xla::U8>>()  // d_temp_storage
-                           .Attr<bool>("descending")
-                           .Attr<int64_t>("batch_size")
-                           .Ctx<ffi::PlatformStream<hipStream_t>>());
+                       xla::gpu::BindCubSortPairsExecute<hipStream_t>());
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs",
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceRadixSortPairsTarget.data(),
                          "ROCM",
                          {/* .instantiate = */ kCubSortPairsInstantiate,
                           /* .prepare = */ nullptr,

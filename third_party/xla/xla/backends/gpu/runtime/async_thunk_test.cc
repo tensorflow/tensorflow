@@ -26,16 +26,21 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -146,6 +151,135 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
   }
 }
 
+// Test that AsyncStartThunk dispatches to device_to_host_stream when
+// execution_stream_id is kMemcpyD2HStreamId, and to host_to_device_stream
+// when it is kMemcpyH2DStreamId.  We do this by running a no-op thunk on each
+// memcpy stream and confirming execution completes without error.
+TEST(AsyncThunkTest, MemcpyStreamDispatch) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto main_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto d2h_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto h2d_stream, executor->CreateStream());
+
+  Thunk::ThunkInfo d2h_info;
+  d2h_info.thunk_id = ThunkId(10);
+  d2h_info.profile_annotation = "d2h_start";
+
+  Thunk::ThunkInfo h2d_info;
+  h2d_info.thunk_id = ThunkId(11);
+  h2d_info.profile_annotation = "h2d_start";
+
+  ThunkSequence thunks;
+  thunks.Emplace<AsyncStartThunk>(d2h_info, kMemcpyD2HStreamId,
+                                  ThunkSequence{});
+  auto* d2h_start = static_cast<AsyncStartThunk*>(thunks[0].get());
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                 d2h_start->async_execution());
+
+  thunks.Emplace<AsyncStartThunk>(h2d_info, kMemcpyH2DStreamId,
+                                  ThunkSequence{});
+  auto* h2d_start = static_cast<AsyncStartThunk*>(thunks[2].get());
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                 h2d_start->async_execution());
+
+  ThunkExecutor thunk_executor(std::move(thunks));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecutionScopedState state;
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, main_stream.get(), main_stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state);
+
+  params.device_to_host_stream = d2h_stream.get();
+  params.host_to_device_stream = h2d_stream.get();
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor;
+  init_params.execution_scoped_state = &state;
+  ASSERT_OK(thunk_executor.Initialize(init_params));
+  ASSERT_OK(thunk_executor.ExecuteOnStream(params));
+  ASSERT_OK(main_stream->BlockHostUntilDone());
+}
+
+TEST(AsyncThunkTest, MemcpyStreamNullReturnsError) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto main_stream, executor->CreateStream());
+
+  AsyncStartThunk d2h_start(Thunk::ThunkInfo(), kMemcpyD2HStreamId,
+                            ThunkSequence{});
+  AsyncStartThunk h2d_start(Thunk::ThunkInfo(), kMemcpyH2DStreamId,
+                            ThunkSequence{});
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecutionScopedState state;
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, main_stream.get(), main_stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state);
+  ASSERT_EQ(params.device_to_host_stream, nullptr);
+  ASSERT_EQ(params.host_to_device_stream, nullptr);
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor;
+  init_params.execution_scoped_state = &state;
+  ASSERT_OK(d2h_start.Initialize(init_params));
+  ASSERT_OK(h2d_start.Initialize(init_params));
+
+  EXPECT_FALSE(d2h_start.ExecuteOnStream(params).ok());
+  EXPECT_FALSE(h2d_start.ExecuteOnStream(params).ok());
+}
+
+TEST(AsyncThunkTest, GpuExecutableFallsBackToMainStreamForMemcpyStreams) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto main_stream, executor->CreateStream());
+
+  ThunkSequence thunks;
+  thunks.Emplace<AsyncStartThunk>(Thunk::ThunkInfo(), kMemcpyD2HStreamId,
+                                  ThunkSequence{});
+  auto* d2h_start = static_cast<AsyncStartThunk*>(thunks[0].get());
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                 d2h_start->async_execution());
+  thunks.Emplace<AsyncStartThunk>(Thunk::ThunkInfo(), kMemcpyH2DStreamId,
+                                  ThunkSequence{});
+  auto* h2d_start = static_cast<AsyncStartThunk*>(thunks[2].get());
+  thunks.Emplace<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                 h2d_start->async_execution());
+
+  GpuExecutable::Params params;
+  params.executable = std::make_unique<ThunkExecutor>(std::move(thunks));
+  params.debug_options = GetDebugOptionsFromFlags();
+  params.buffer_assignment_proto = BufferAssignmentProto();
+  params.buffer_allocations_debug_summary = "dummy";
+  params.module_name = "memcpy_stream_fallback_test";
+  params.device_description = executor->GetDeviceDescription();
+  params.enable_debug_info_manager = false;
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ExecutableRunOptions run_options;
+  run_options.set_stream(main_stream.get());
+  run_options.set_allocator(&allocator);
+  run_options.set_device_ordinal(executor->device_ordinal());
+  // No stream_borrower is installed, so GpuExecutable must fall back to
+  // main_stream for device_to_host_stream/host_to_device_stream.
+  ServiceExecutableRunOptions service_run_options(run_options);
+
+  ASSERT_OK(executable
+                ->ExecuteAsyncOnStream(&service_run_options,
+                                       absl::Span<const ShapedBuffer* const>{})
+                .status());
+  ASSERT_OK(main_stream->BlockHostUntilDone());
+}
+
 // Test that AsyncDoneThunk::Record() creates an empty command buffer node and
 // is a no-op on update.
 TEST(AsyncThunkTest, AsyncDoneRecordCommandBuffer) {
@@ -165,7 +299,8 @@ TEST(AsyncThunkTest, AsyncDoneRecordCommandBuffer) {
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       run_options, allocations, stream.get(), stream.get(),
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
-      /*collective_memory=*/nullptr, /*additional_streams=*/{}, &thunk_state);
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
+      &thunk_state);
 
   ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
