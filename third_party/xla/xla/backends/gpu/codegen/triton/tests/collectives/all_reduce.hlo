@@ -19,7 +19,7 @@ fusion{
 // CHECK-SAME:    %[[ARG3:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:    %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
 // CHECK-SAME:    %[[ARG5:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
-// CHECK-SAME:    %[[PID:[a-zA-Z0-9_]+]]: index)
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9_]+]]: index{{( \{xla.range = \[0 : index, 15 : index\]\})?}})
 // CHECK-SAME:    attributes {num_opaque_args = 4 : i32} {
 
 // CHECK:        %[[EXTRACT_0:.*]] = xtile.extract

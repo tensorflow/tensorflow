@@ -805,6 +805,64 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
+  def testMaxPool1DOversizedWindowRaises(self):
+    # GitHub issue 125509.
+    if test_util.is_xla_enabled():
+      self.skipTest("XLA compiles 0-sized output tensor without raising")
+    input_data = constant_op.constant(
+        [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=dtypes.float32
+    )
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            r"Negative dimension size|zero-sized spatial output|"
+            r"ksize dimension",
+        ):
+          self.evaluate(
+              nn_ops.max_pool1d(input_data, ksize=3, strides=1, padding="VALID")
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolOversizedWindowRaises(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("XLA compiles 0-sized output tensor without raising")
+    t = constant_op.constant(1.0, shape=[1, 2, 1, 3])
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            r"Negative dimension size|zero-sized spatial output|"
+            r"ksize dimension",
+        ):
+          self.evaluate(
+              nn_ops.max_pool(
+                  t, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
+              )
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolEmptySpatialDimReturnsEmpty(self):
+    x = array_ops.zeros([1, 0, 8, 8], dtype=dtypes.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        for pool_fn in (nn_ops.max_pool, gen_nn_ops.max_pool_v2):
+          y = pool_fn(
+              x, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
+          )
+          values = self.evaluate(y)
+          self.assertEqual(values.shape, (1, 0, 8, 8))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
