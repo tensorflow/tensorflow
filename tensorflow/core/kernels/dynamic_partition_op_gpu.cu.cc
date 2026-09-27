@@ -61,7 +61,9 @@ namespace {
 template <typename T>
 __global__ void RangeInitKernel(const T start, const T delta,
                                 const int32_t size, T* out) {
-  GPU_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
+  for (int32_t i : GpuGridRangeX<int32_t>(size)) {
+    out[i] = start + i * delta;
+  }
 }
 
 __global__ void MoveValuesKernel(const int32_t* keys, const int32_t* values,

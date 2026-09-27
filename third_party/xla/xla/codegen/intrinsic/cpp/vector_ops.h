@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 #include "Eigen/Core"
 
@@ -45,6 +46,7 @@ typedef double Vec8d __attribute__((vector_size(64)));
 // Corresponding integer types
 typedef uint32_t Vec4i __attribute__((vector_size(16)));
 typedef uint32_t Vec8i __attribute__((vector_size(32)));
+typedef uint32_t Vec16i __attribute__((vector_size(64)));
 typedef uint64_t Vec2q __attribute__((vector_size(16)));
 typedef uint64_t Vec4q __attribute__((vector_size(32)));
 typedef uint64_t Vec8q __attribute__((vector_size(64)));
@@ -61,6 +63,10 @@ struct MakeIntVec<uint32_t, 4> {
 template <>
 struct MakeIntVec<uint32_t, 8> {
   using type = Vec8i;
+};
+template <>
+struct MakeIntVec<uint32_t, 16> {
+  using type = Vec16i;
 };
 template <>
 struct MakeIntVec<uint64_t, 2> {
@@ -86,6 +92,19 @@ struct CorrespondingIntVector {
 
  public:
   using type = typename MakeIntVec<ScalarInt, kWidth>::type;
+  using scalar_type = ScalarInt;
+};
+
+template <>
+struct CorrespondingIntVector<float> {
+  using type = uint32_t;
+  using scalar_type = uint32_t;
+};
+
+template <>
+struct CorrespondingIntVector<double> {
+  using type = uint64_t;
+  using scalar_type = uint64_t;
 };
 }  // namespace internal
 
@@ -130,6 +149,23 @@ struct ArrayMap<Vec8d> {
   using type = Eigen::Array<double, 8, 1>;
 };
 
+namespace internal {
+template <typename T, typename S, size_t... Is>
+constexpr T SplatImpl(S val, std::index_sequence<Is...>) {
+  return T{(static_cast<void>(Is), static_cast<decltype(T{}[0])>(val))...};
+}
+}  // namespace internal
+
+template <typename T, typename S>
+constexpr T Splat(S val) {
+  if constexpr (std::is_fundamental_v<T>) {
+    return static_cast<T>(val);
+  } else {
+    constexpr size_t kWidth = sizeof(T) / sizeof(decltype(T{}[0]));
+    return internal::SplatImpl<T>(val, std::make_index_sequence<kWidth>{});
+  }
+}
+
 // Computes the absolute value of a vector using bitwise operations.
 // FloatVec: The floating-point vector type (e.g., Vec4f).
 // x: The input vector.
@@ -137,13 +173,13 @@ struct ArrayMap<Vec8d> {
 template <typename FloatVec>
 FloatVec BitwiseAbs(FloatVec x) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  // Get the underlying scalar integer type (e.g., int from Vec4i).
-  using ScalarInt = decltype(IntVec{}[0]);
+  using ScalarInt =
+      typename internal::CorrespondingIntVector<FloatVec>::scalar_type;
 
-  // Create a mask to clear the sign bit (e.g., 0x7FFFFFFF for int).
-  // This is a vector where every element is the mask.
-  const IntVec abs_mask =
-      IntVec{~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1))};
+  // Create a scalar mask to clear the sign bit (e.g., 0x7FFFFFFF for int).
+  // Clang vector extensions broadcast scalar operands across all vector lanes.
+  const ScalarInt abs_mask =
+      ~(static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1));
 
   // Reinterpret float as int, apply the mask, and reinterpret back.
   return __builtin_bit_cast(FloatVec, __builtin_bit_cast(IntVec, x) & abs_mask);
@@ -158,9 +194,10 @@ FloatVec BitwiseAbs(FloatVec x) {
 template <typename FloatVec>
 FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
   using IntVec = typename internal::CorrespondingIntVector<FloatVec>::type;
-  using ScalarInt = decltype(IntVec{}[0]);
-  const IntVec sign_mask =
-      IntVec{static_cast<ScalarInt>(1) << (sizeof(ScalarInt) * 8 - 1)};
+  using ScalarInt =
+      typename internal::CorrespondingIntVector<FloatVec>::scalar_type;
+  const ScalarInt sign_mask = static_cast<ScalarInt>(1)
+                              << (sizeof(ScalarInt) * 8 - 1);
   FloatVec value_abs = BitwiseAbs<FloatVec>(value);
   IntVec sign_bits = __builtin_bit_cast(IntVec, sign_source) & sign_mask;
   return __builtin_bit_cast(FloatVec,
@@ -170,6 +207,15 @@ FloatVec BitwiseCopysign(FloatVec value, FloatVec sign_source) {
 template <typename Vec, typename Scalar>
 Vec Clamp(Vec x, Scalar min, Scalar max) {
   return x < min ? min : x > max ? max : x;
+}
+
+// Evaluates a polynomial c_0 * x^n + c_1 * x^(n-1) + ... + c_n using Horner's
+// method, where `coeffs` are given in descending degree order.
+template <typename T, typename S, typename... Coeffs>
+constexpr T HornerPoly(T x, S c0, Coeffs... coeffs) {
+  T acc = Splat<T>(c0);
+  ((acc = acc * x + Splat<T>(coeffs)), ...);
+  return acc;
 }
 }  // namespace codegen
 }  // namespace xla

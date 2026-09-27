@@ -146,13 +146,13 @@ bool IsSupportedReductionOpcode(HloOpcode opcode) {
 
 CodegenDecision CheckCompareInstruction(const HloInstruction& instr) {
   auto compare = Cast<HloCompareInstruction>(&instr);
-  if (compare->order() == ComparisonOrder::kTotal &&
-      primitive_util::IsFloatingPointType(
-          compare->operand(0)->shape().element_type())) {
-    return CodegenDecision::Forbid(
-        "Total order comparison is not supported for floating-point types");
+  if (!primitive_util::IsFloatingPointType(
+          compare->operand(0)->shape().element_type()) ||
+      compare->order() == ComparisonOrder::kPartial) {
+    return CodegenDecision::Allow();
   }
-  return CodegenDecision::Allow();
+  return CodegenDecision::Forbid(
+      "Only partial order comparison is supported for floating-point types");
 }
 
 CodegenDecision IsSupportedReductionInstruction(const HloInstruction& instr) {
