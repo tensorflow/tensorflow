@@ -20,6 +20,7 @@ limitations under the License.
 #include <unistd.h>
 
 #include <cstring>
+#include <string>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"

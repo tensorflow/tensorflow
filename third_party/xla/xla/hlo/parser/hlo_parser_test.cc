@@ -3771,6 +3771,23 @@ ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
   EXPECT_EQ(compare->order(), ComparisonOrder::kTotal);
 }
 
+TEST_F(HloParserTest, CompareWithWeakOrder) {
+  const std::string original = R"(HloModule CompareWithWeakOrder
+ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %cmp = pred[] compare(f32[] %p0, f32[] %p1), direction=LT, order=WEAK
+})";
+  auto result = ParseAndReturnVerifiedModule(original);
+  ASSERT_OK(result.status());
+  const HloInstruction* root =
+      result.value()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  const auto* compare = static_cast<const HloCompareInstruction*>(root);
+  EXPECT_EQ(compare->direction(), ComparisonDirection::kLt);
+  EXPECT_EQ(compare->order(), ComparisonOrder::kWeak);
+}
+
 TEST_F(HloParserTest, CompareBothTypeAndOrderFails) {
   const std::string original = R"(HloModule CompareBothTypeAndOrderFails
 ENTRY %entry(p0: f32[], p1: f32[]) -> pred[] {

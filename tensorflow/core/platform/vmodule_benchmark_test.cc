@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
