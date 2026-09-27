@@ -484,12 +484,16 @@ class UnaryOpTest(test.TestCase):
     reference = np.array(
         1.0 / np.sqrt(np.float64(value)), dtype=bfloat16)
 
-    for length in (1, 7, 8, 9, 16, 32):
-      x = np.full([length], value, dtype=bfloat16)
-      y = self.evaluate(math_ops.rsqrt(x))
-      self.assertAllEqual(
-          y, np.full([length], reference, dtype=bfloat16),
-          msg="length=%d" % length)
+    # Pin to CPU: the length dependence comes from CPU SIMD packet
+    # boundaries (8 lanes for AVX, 16 for AVX-512).
+    with ops.device("/cpu:0"):
+      for length in (0, 1, 7, 8, 9, 15, 16, 17, 32):
+        x = np.full([length], value, dtype=bfloat16)
+        y = self.evaluate(math_ops.rsqrt(x))
+        self.assertAllEqual(
+            y,
+            np.full([length], reference, dtype=bfloat16),
+            msg="length=%d" % length)
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
