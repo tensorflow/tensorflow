@@ -151,7 +151,7 @@ class Literal(trace.TraceType, serialization.Serializable):
 
   def _matches(self, value: Any) -> bool:
     return (type(value) is self._value_type and value == self.value and
-            _signs(value) == self._value_signs)
+            (self._value_signs is None or _signs(value) == self._value_signs))
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
