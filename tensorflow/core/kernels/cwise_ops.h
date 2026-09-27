@@ -876,20 +876,16 @@ struct functor_traits<scalar_erfinv_op<float>> {
   };
 };
 
-// Specialization of Eigen's scalar_erf_op for double.
-//
-// Eigen's generic_fast_erf for double (as of the Eigen pin used by TensorFlow)
-// does not clamp large inputs the way generic_fast_erfc does.  For |x| large
-// enough that intermediate x*x overflows, the result is NaN instead of +/-1.
-// Upstream Eigen fixed this in 3e5a2f9 ("Fix vectorized erf returning NaN at
-// +/-inf instead of +/-1"); specialize here until TensorFlow's Eigen pin
-// includes that fix.  See tensorflow/tensorflow#124773.
-//
-// Clamp domain matches Eigen erfc: beyond |x| >= 28, |erf(x)| is 1 within
-// double precision (erfc underflows).
+// TF-owned wrapper avoids specializing Eigen's scalar_erf_op across translation
+// units. TODO: Remove this wrapper once the Eigen pin includes 3e5a2f92 (MR
+// !2306), which fixes erf returning NaN for large double inputs (GitHub issue
+// #124773).
+template <typename Scalar>
+struct erf_op : scalar_erf_op<Scalar> {};
+
 template <>
-struct scalar_erf_op<double> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
+struct erf_op<double> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
       const double& a) const {
     // Saturate outside the safe domain.  Comparisons with NaN are false, so
     // NaN falls through to numext::erf and stays NaN.  +/-inf saturate to +/-1.
@@ -904,8 +900,18 @@ struct scalar_erf_op<double> {
     constexpr double kClamp = 28.0;
     const Packet x =
         pmin(pmax(a, pset1<Packet>(-kClamp)), pset1<Packet>(kClamp));
+#if defined(EIGEN_GPUCC)
+    // GPU min/max may replace NaN with a clamp bound. CPU keeps the NaN first
+    // operand through both min/max operations without this extra select.
     return pselect(pcmp_eq(a, a), perf(x), a);
+#else
+    return perf(x);
+#endif
   }
+};
+
+template <typename Scalar>
+struct functor_traits<erf_op<Scalar>> : functor_traits<scalar_erf_op<Scalar>> {
 };
 
 }  // end namespace internal
@@ -1048,7 +1054,7 @@ template <typename T>
 struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
 
 template <typename T>
-struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
+struct erf : base<T, Eigen::internal::erf_op<T>> {};
 
 template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
