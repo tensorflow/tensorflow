@@ -401,6 +401,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       """Returns the specified slice or element of this variable."""
       ...
 
+    def __setitem__(self, slice_spec: Any, value: Any) -> None:
+      """Assigns `value` to the specified slice of this variable."""
+      ...
+
     def __add__(self, other: Any) -> tensor_lib.Tensor:
       """Returns the element-wise sum of this variable and `other`."""
       ...
