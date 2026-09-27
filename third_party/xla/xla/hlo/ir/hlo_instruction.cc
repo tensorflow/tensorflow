@@ -124,7 +124,7 @@ void HloInstruction::Users::Clear() {
 
 bool HloInstruction::Users::Contains(const HloInstruction* instruction) const {
   if (user_map_ == nullptr) {
-    return std::find(users_.begin(), users_.end(), instruction) != users_.end();
+    return absl::c_linear_search(users_, instruction);
   }
   return user_map_->contains(instruction);
 }
@@ -150,7 +150,7 @@ void HloInstruction::Users::AddUser(HloInstruction* user) {
 
 int64_t HloInstruction::Users::UserId(HloInstruction* user) {
   if (user_map_ == nullptr) {
-    auto it = std::find(users_.begin(), users_.end(), user);
+    auto it = absl::c_find(users_, user);
     CHECK(it != users_.end());
     return it - users_.begin();
   }
@@ -3414,12 +3414,9 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
 }
 
 bool HloInstruction::HasConstantOperand() const {
-  for (const HloInstruction* operand : operands_) {
-    if (operand->IsConstant()) {
-      return true;
-    }
-  }
-  return false;
+  return absl::c_any_of(operands_, [](const HloInstruction* operand) {
+    return operand->IsConstant();
+  });
 }
 
 bool HloInstruction::IdenticalSlowPath(
@@ -3608,8 +3605,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   RemoveUser(user);
 
   TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
-  std::replace(user->operands_.begin(), user->operands_.end(), this,
-               new_producer);
+  absl::c_replace(user->operands_, this, new_producer);
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
@@ -3825,8 +3821,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       // graph. new_producer remains the only user of this instruction.
       new_producer_is_user = true;
     } else {
-      std::replace(user->operands_.begin(), user->operands_.end(), this,
-                   new_producer);
+      absl::c_replace(user->operands_, this, new_producer);
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
         ABSL_RETURN_IF_ERROR(
