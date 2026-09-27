@@ -1,0 +1,26 @@
+--- a/test/Conversion/amd/builtin_func_to_llvm.mlir
++++ b/test/Conversion/amd/builtin_func_to_llvm.mlir
+@@ -1,7 +1,7 @@
+-// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=True" --convert-builtin-func-to-llvm="ftz=True" | FileCheck %s --check-prefix=LLVM_FTZ
+-// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx950 ftz=True" --convert-builtin-func-to-llvm="ftz=True" | FileCheck %s --check-prefix=LLVM_FTZ
+-// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=False" --convert-builtin-func-to-llvm="ftz=False" | FileCheck %s --check-prefix=LLVM_NO_FTZ
+-// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx950 ftz=False" --convert-builtin-func-to-llvm="ftz=False" | FileCheck %s --check-prefix=LLVM_NO_FTZ
++// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=true" --convert-builtin-func-to-llvm="ftz=true" | FileCheck %s --check-prefix=LLVM_FTZ
++// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx950 ftz=true" --convert-builtin-func-to-llvm="ftz=true" | FileCheck %s --check-prefix=LLVM_FTZ
++// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=false" --convert-builtin-func-to-llvm="ftz=false" | FileCheck %s --check-prefix=LLVM_NO_FTZ
++// RUN: triton-opt %s --convert-triton-amdgpu-to-llvm="gfx-arch=gfx950 ftz=false" --convert-builtin-func-to-llvm="ftz=false" | FileCheck %s --check-prefix=LLVM_NO_FTZ
+ 
+ #blocked = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [64], warpsPerCTA = [1], order = [0]}>
+ 
+
+--- a/test/Conversion/amd/math-denorm-handling.mlir
++++ b/test/Conversion/amd/math-denorm-handling.mlir
+@@ -1,5 +1,5 @@
+-// RUN: triton-opt %s -split-input-file --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=True" | FileCheck %s --check-prefixes=COMMON,LLVM_FTZ
+-// RUN: triton-opt %s -split-input-file --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=False" | FileCheck %s --check-prefixes=COMMON,LLVM_NO_FTZ
++// RUN: triton-opt %s -split-input-file --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=true" | FileCheck %s --check-prefixes=COMMON,LLVM_FTZ
++// RUN: triton-opt %s -split-input-file --convert-triton-amdgpu-to-llvm="gfx-arch=gfx942 ftz=false" | FileCheck %s --check-prefixes=COMMON,LLVM_NO_FTZ
+ 
+ 
+ #blocked = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [64], warpsPerCTA = [1], order = [0]}>
+

@@ -146,12 +146,13 @@ cc_library(
         ":pjrt_state",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/platform:errors",
         "@xla//xla/pjrt:pjrt_client",
-        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -207,10 +208,12 @@ tf_cc_test(
         ":pjrt_util",
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:test",
         "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "@xla//xla/tsl/lib/core:status_test_util",
-        "@xla//xla/tsl/platform:statusor",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
@@ -271,13 +274,12 @@ cc_library(
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/platform:statusor",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = True,
 )
