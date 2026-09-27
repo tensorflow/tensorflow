@@ -241,10 +241,23 @@ def dense_matmul_kernel(
     rhs = memory_utils.with_large_2nd_minor_layout(rhs)
     return pallas_func(lhs, rhs)
 
+  compiler_args: dict[str, Any] = {
+      "xla_detailed_logging": True,
+      "xla_tpu_control_large_2nd_minor_layout_for_x16": True,
+  }
+  if (
+      cfg.lhs_mem == pltpu.VMEM
+      and cfg.rhs_mem == pltpu.VMEM
+      and cfg.out_mem == pltpu.VMEM
+  ):
+    # For VMEM matmuls, if scoped VMEM is too high then we may hit OOM since we
+    # need space for the input operands outside of scoped VMEM. So set it to a
+    # relatively low value.
+    compiler_args["xla_tpu_scoped_vmem_limit_kib"] = 8 * 1024
   return _target_fn.lower(
       jax.ShapeDtypeStruct((m, k), lhs_dtype),
       jax.ShapeDtypeStruct((k, n), rhs_dtype),
-  ).compile({"xla_detailed_logging": True})
+  ).compile(compiler_args)
 
 
 def dense_matmul_reference(cfg: DenseMatmulConfig) -> Callable[..., Any]:
