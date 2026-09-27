@@ -30,7 +30,7 @@ ENTRY main {
 // CHECK-SAME:    %[[LHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
 // CHECK-SAME:    %[[RHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
 // CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: memref<8x4xf32>,
-// CHECK-SAME:    %[[PID:[a-zA-Z0-9]*]]: index)
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9]*]]: index {xla.range = [0 : index, 2 : index]})
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
