@@ -112,6 +112,13 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
       OP_REQUIRES(
           ctx, ctx->num_inputs() == 4,
           errors::Internal("Expected 4 inputs to QuantizeAndDequantize"));
+      int64_t num_bits_val;
+      if (ctx->ConstantInputAsIntScalar(3, &num_bits_val).ok()) {
+        OP_REQUIRES(
+            ctx, num_bits_val > 0 && num_bits_val < (signed_input_ ? 62 : 63),
+            errors::InvalidArgument("num_bits is out of range: ", num_bits_val,
+                                    " with signed_input_ ", signed_input_));
+      }
       num_bits = ctx->Input(3);
     } else {
       num_bits = xla::ConstantR0<int32_t>(b, num_bits_);
