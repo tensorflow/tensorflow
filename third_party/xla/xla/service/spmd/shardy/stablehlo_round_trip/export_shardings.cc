@@ -136,6 +136,11 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       if (ManualAxesAttr manualAxesAttr =
               funcOp.getArgAttrOfType<ManualAxesAttr>(argNum, kManualAxes)) {
         manualAxes = manualAxesAttr.getValue();
+        if (mlir::isa<stablehlo::TokenType>(
+                funcOp.getArgument(argNum).getType()) &&
+            getMeshAttr(sdySharding).getAxes().size() != manualAxes.size()) {
+          manualAxes = {};
+        }
         attrs.erase(kManualAxes);
       }
       attrs.set(kXlaShardingAttr,
@@ -161,6 +166,10 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       if (auto manualAxesAttr =
               mlir::dyn_cast_or_null<ManualAxesAttr>(attrs.get(kManualAxes))) {
         manualAxes = manualAxesAttr.getValue();
+        if (mlir::isa<stablehlo::TokenType>(funcOp.getResultTypes()[resNum]) &&
+            getMeshAttr(sdySharding).getAxes().size() != manualAxes.size()) {
+          manualAxes = {};
+        }
         attrs.erase(kManualAxes);
       }
       attrs.set(kXlaShardingAttr,
@@ -319,24 +328,38 @@ HloSharding getHloShardingForOp(
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes, bool enableHloShardingV3,
     bool simplifyReplicatedShardings) {
+  auto getManualAxesForType = [&](mlir::Type type,
+                                  TensorShardingAttr sdySharding) {
+    if (mlir::isa<stablehlo::TokenType>(type) &&
+        getMeshAttr(sdySharding).getAxes().size() != manualAxes.size()) {
+      return ArrayRef<StringAttr>();
+    }
+    return manualAxes;
+  };
+
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
                            (getMeshAttr(shardings.front()).isMaximal() ||
                             shardings.front().isFullyReplicated());
   CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
   if (op->getNumResults() == 1 || isNoResultMaximal) {
-    return convertToHloSharding(shardings.front(), getMeshAttr, manualAxes,
-                                enableHloShardingV3,
+    ArrayRef<StringAttr> resultManualAxes =
+        op->getNumResults() == 1
+            ? getManualAxesForType(op->getResultTypes().front(),
+                                   shardings.front())
+            : manualAxes;
+    return convertToHloSharding(shardings.front(), getMeshAttr,
+                                resultManualAxes, enableHloShardingV3,
                                 simplifyReplicatedShardings);
   }
 
   std::vector<HloSharding> newShardings;
   newShardings.reserve(shardings.size());
-  llvm::transform(shardings, std::back_inserter(newShardings),
-                  [&](TensorShardingAttr sdySharding) {
-                    return convertToHloSharding(sdySharding, getMeshAttr,
-                                                manualAxes, enableHloShardingV3,
-                                                simplifyReplicatedShardings);
-                  });
+  for (auto [type, sdySharding] :
+       llvm::zip_equal(op->getResultTypes(), shardings)) {
+    newShardings.push_back(convertToHloSharding(
+        sdySharding, getMeshAttr, getManualAxesForType(type, sdySharding),
+        enableHloShardingV3, simplifyReplicatedShardings));
+  }
 
   std::vector<xla::Shape> shapes;
   shapes.reserve(op->getNumResults());
@@ -502,11 +525,6 @@ HloSharding convertToHloSharding(
   if (mesh.getAxes().size() == manualAxes.size()) {
     return HloSharding::Manual();
   }
-  // TODO(b/438306205): Remove this check once we support both unreduced and
-  // manual axes in subgroup sharding.
-  CHECK(sdySharding.getUnreducedAxes().empty() || manualAxes.empty())
-      << "Only one of unreduced and manual axes can be present: "
-      << mlir::sdy::attributeToString(sdySharding);
 
   // Iterate the dim shardings.
   for (auto [index, dimSharding] :
