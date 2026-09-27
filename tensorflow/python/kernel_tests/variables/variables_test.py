@@ -56,6 +56,62 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
     v = variable_v1.VariableV1(0.0)
     self.assertIsNone(v._distribute_strategy)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignment(self):
+    v = variables.Variable(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+
+    # Assign via slice
+    assign_op = v[:2, :2].assign(22. * array_ops.ones((2, 2)))
+    self.evaluate(assign_op)
+
+    # Also test syntactic sugar
+    def assign_sugar():
+      v[:2, :2] = 33. * array_ops.ones((2, 2))
+
+    if context.executing_eagerly():
+      assign_sugar()
+      self.assertAllEqual(
+          v.numpy(), [[33., 33., 3.], [33., 33., 6.], [7., 8., 9.]])
+    else:
+      # In legacy TF1 graph mode, `v[...] = x` is a Python statement and cannot
+      # return the assign op for `sess.run()`, so it is not executed.
+      assign_sugar()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignmentInFunction(self):
+    v = variables.Variable(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtypes.float32
+    )
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def mutate():
+      v[:2, :2] = 44.0 * array_ops.ones((2, 2))
+      return v.read_value()
+
+    self.assertAllEqual(
+        self.evaluate(mutate()),
+        [[44.0, 44.0, 3.0], [44.0, 44.0, 6.0], [7.0, 8.0, 9.0]],
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSliceAssignment1DAndScalarIndex(self):
+    v = variables.Variable([1.0, 2.0, 3.0])
+    m = variables.Variable([[1.0, 2.0], [3.0, 4.0]])
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def mutate():
+      v[1:] = [20.0, 30.0]
+      m[0, 1] = 99.0
+      return v.read_value(), m.read_value()
+
+    v_val, m_val = self.evaluate(mutate())
+    self.assertAllEqual(v_val, [1.0, 20.0, 30.0])
+    self.assertAllEqual(m_val, [[1.0, 99.0], [3.0, 4.0]])
+
   @test_util.run_v1_only("b/120545219")
   def testInitialization(self):
     with self.cached_session():
