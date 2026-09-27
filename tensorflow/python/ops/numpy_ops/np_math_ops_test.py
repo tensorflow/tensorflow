@@ -827,12 +827,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
     a = np.arange(6).reshape(2, 3)
     self.match(np_math_ops.trace(a), np.trace(a))
     self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+    self.match(
+        np_math_ops.trace(a, axis1=0, axis2=-1), np.trace(a, axis1=0, axis2=-1))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=0, axis2=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=-3, axis2=1)
     with self.assertRaisesRegex(ValueError, 'same axis'):
       np_math_ops.trace(a, axis1=1, axis2=1)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_math_ops.trace(a, axis1=1, axis2=-1)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(np.array([1, 2, 3]))
 

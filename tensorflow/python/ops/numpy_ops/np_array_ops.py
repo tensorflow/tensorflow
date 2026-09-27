@@ -366,6 +366,7 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
 
   maybe_rank = a.shape.rank
   if maybe_rank is not None:
+    normalized_axes = []
     for name, axis in (('axis1', axis1), ('axis2', axis2)):
       normalized = axis + maybe_rank if axis < 0 else axis
       if normalized < 0 or normalized >= maybe_rank:
@@ -373,8 +374,9 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
             f'Argument `{name}` (received {name}={axis}) is out of bounds '
             f'for input {a} of rank {maybe_rank}.'
         )
-  if maybe_rank is not None and axis1 == axis2:
-    raise ValueError('axis1 and axis2 cannot be the same axis')
+      normalized_axes.append(normalized)
+    if normalized_axes[0] == normalized_axes[1]:
+      raise ValueError('axis1 and axis2 cannot be the same axis')
 
   if (
       maybe_rank is not None

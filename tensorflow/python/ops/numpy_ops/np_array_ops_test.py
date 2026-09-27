@@ -501,6 +501,9 @@ class ArrayCreationTest(test.TestCase):
       self.match(
           np_array_ops.diagonal(arr, axis1=-1, axis2=-2),
           np.diagonal(arr, axis1=-1, axis2=-2))
+      self.match(
+          np_array_ops.diagonal(arr, axis1=0, axis2=-1),
+          np.diagonal(arr, axis1=0, axis2=-1))
     b = np.arange(6).reshape(2, 3)
     for fn in self.array_transforms:
       arr = fn(b)
@@ -514,6 +517,11 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(np.array([1, 2, 3]))
     with self.assertRaisesRegex(ValueError, 'same axis'):
       np_array_ops.diagonal(a, axis1=0, axis2=0)
+    # Mixed-sign duplicates normalize to the same axis.
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=0, axis2=-3)
+    with self.assertRaisesRegex(ValueError, 'same axis'):
+      np_array_ops.diagonal(a, axis1=-1, axis2=2)
 
   def testDiagFlat(self):
     array_transforms = [
