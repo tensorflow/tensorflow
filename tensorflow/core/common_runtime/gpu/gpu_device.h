@@ -20,6 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+// TODO(b/282059652): Merge google internal and open-source code path once TF
+// dependency issue is resolved.
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include <functional>
 #include <memory>
 #include <optional>
@@ -30,10 +36,12 @@ limitations under the License.
 #include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#ifdef TF_GPU_USE_PJRT
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#endif  // TF_GPU_USE_PJRT
 #include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -102,8 +110,12 @@ class BaseGPUDevice : public LocalDevice {
   };
 
   // Initialize the device and return the status of initialization.
+#ifdef TF_GPU_USE_PJRT
   absl::Status Init(const SessionOptions& options,
                     xla::LocalDeviceState* xla_local_device_state);
+#else
+  absl::Status Init(const SessionOptions& options);
+#endif  // TF_GPU_USE_PJRT
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
@@ -410,6 +422,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // Creates a BaseGPUDevice associated with 'tf_device_id', and adds it to the
   // 'devices' vector. The 'gpu_allocator' is created by the caller and usually
   // preallocates a set amount of GPU memory.
+#ifdef TF_GPU_USE_PJRT
   absl::Status CreateGPUDevice(const SessionOptions& options,
                                const std::string& name_prefix,
                                tsl::TfDeviceId tf_device_id,
@@ -417,6 +430,14 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                                xla::LocalDeviceState* xla_local_device_state,
                                Allocator* gpu_allocator,
                                std::vector<std::unique_ptr<Device>>* devices);
+#else
+  absl::Status CreateGPUDevice(const SessionOptions& options,
+                               const std::string& name_prefix,
+                               tsl::TfDeviceId tf_device_id,
+                               const DeviceLocality& dev_locality,
+                               Allocator* gpu_allocator,
+                               std::vector<std::unique_ptr<Device>>* devices);
+#endif  // TF_GPU_USE_PJRT
 
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const std::string& name,
