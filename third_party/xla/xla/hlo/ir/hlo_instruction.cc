@@ -4017,7 +4017,7 @@ std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
   while (!dfs.empty() && result.empty()) {
     bool found_next_instr = false;
     auto process_users_or_successors =
-        [&](const std::vector<HloInstruction*>& users_or_successors) {
+        [&](absl::Span<HloInstruction* const> users_or_successors) {
           for (const auto& user : users_or_successors) {
             if (user == child) {
               dfs.push_back(child);
