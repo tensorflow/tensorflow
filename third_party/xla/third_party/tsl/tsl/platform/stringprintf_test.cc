@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/stringprintf.h"
 
+#include <cerrno>
+#include <clocale>
+#include <cstring>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
@@ -24,7 +28,7 @@ namespace strings {
 namespace {
 
 TEST(PrintfTest, Empty) {
-  EXPECT_EQ("", absl::StrFormat("%s", string().c_str()));
+  EXPECT_EQ("", absl::StrFormat("%s", std::string().c_str()));
   EXPECT_EQ("", absl::StrFormat("%s", ""));
 }
 

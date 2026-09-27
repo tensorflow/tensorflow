@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 // A simple logging device to test custom device registration.
+#include <cstddef>
 #include <memory>
 
 #include "absl/strings/match.h"
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/custom_device_testutil.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -46,6 +48,10 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   ASSERT_TRUE(arrived);
   ASSERT_FALSE(executed);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  size_t size = TFE_TensorHandleDeviceMemorySize(hdevice, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(4 * sizeof(float), size);
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> matmul(
       MatMulOp(context, hcpu, hdevice), TFE_DeleteOp);
   TFE_OpSetDevice(matmul.get(), name, status.get());
@@ -83,14 +89,14 @@ TEST(CUSTOM_DEVICE, ResetOperation) {
       TFE_NewOp(context.get(), "Identity", status.get()), TFE_DeleteOp);
   TFE_OpReset(reused_op.get(), "Identity", custom_device_name, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  ASSERT_EQ(tensorflow::string(TFE_OpGetDevice(reused_op.get(), status.get())),
-            tensorflow::string(custom_device_name));
+  ASSERT_EQ(std::string(TFE_OpGetDevice(reused_op.get(), status.get())),
+            std::string(custom_device_name));
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   TFE_OpReset(reused_op.get(), "Identity",
               "/job:localhost/replica:0/task:0/device:CPU:0", status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  ASSERT_EQ(tensorflow::string(TFE_OpGetDevice(reused_op.get(), status.get())),
-            tensorflow::string("/job:localhost/replica:0/task:0/device:CPU:0"));
+  ASSERT_EQ(std::string(TFE_OpGetDevice(reused_op.get(), status.get())),
+            std::string("/job:localhost/replica:0/task:0/device:CPU:0"));
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 }
 
@@ -157,9 +163,8 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   ASSERT_TRUE(executed);
   auto value_cleaner = tensorflow::gtl::MakeCleanup(
       [var_value]() { TFE_DeleteTensorHandle(var_value); });
-  ASSERT_EQ(tensorflow::string(name),
-            tensorflow::string(
-                TFE_TensorHandleBackingDeviceName(var_value, status.get())));
+  ASSERT_EQ(std::string(name), std::string(TFE_TensorHandleBackingDeviceName(
+                                   var_value, status.get())));
   TFE_TensorHandle* var_value_unpacked =
       UnpackTensorHandle(var_value, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
@@ -240,9 +245,8 @@ TEST(CUSTOM_DEVICE, AccessVariableOnCustomDevice) {
   TFE_Execute(op.get(), &var_value, &num_retvals, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   ASSERT_TRUE(executed);
-  ASSERT_EQ(
-      tensorflow::string(name),
-      tensorflow::string(TFE_TensorHandleDeviceName(var_value, status.get())));
+  ASSERT_EQ(std::string(name),
+            std::string(TFE_TensorHandleDeviceName(var_value, status.get())));
   TFE_DeleteTensorHandle(var_value);
 
   // Free the backing buffer for the variable.

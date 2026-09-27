@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/tsl/platform/statusor.h"
@@ -25,8 +26,8 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<std::string> GetRegisteredPluginName() {
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
-                      pjrt::GetRegisteredPjrtApis());
+  ABSL_ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
+                   pjrt::GetRegisteredPjrtApis());
   if (pjrt_apis.size() != 1) {
     return absl::InvalidArgumentError(
         "Expected exactly one plugin to be registered.");

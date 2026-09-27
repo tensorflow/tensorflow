@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 
-#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -24,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -48,9 +48,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/compile_only_client.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -144,7 +144,7 @@ absl::Status PopulateInputOutputAliasing(
 
   xla::ProgramShape& program_shape = program_shape_or_status.value();
   if (!program_shape.result().IsTuple())
-    return errors::Internal("Expect result to have tuple shape");
+    return absl::InternalError("Expect result to have tuple shape");
 
   xla::HloInputOutputAliasConfig config(program_shape.result());
   for (auto alias : output_to_input_alias) {
@@ -217,13 +217,13 @@ absl::Status CompileTFFunctionWithoutMlir(
     const DeviceType& device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client,
+    xla::PjRtCompiler* compiler,
     XlaCompiler::CompilationResult* compilation_result) {
   absl::Status comp_status = CompileTFFunctionToHlo(
       *function_computation.flib_def, function_computation.graph_def_version,
       shape_determination_funcs, arg_shapes, device_type,
       function_computation.guaranteed_constants, *function_computation.function,
-      metadata, client, arg_core_mapping, per_core_arg_shapes, use_tuple_args,
+      metadata, compiler, arg_core_mapping, per_core_arg_shapes, use_tuple_args,
       compilation_result);
   if (comp_status.ok()) {
     phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirSuccess)
@@ -245,10 +245,10 @@ absl::Status CompileMLIRTFFunction(
     const DeviceType& device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client,
+    xla::PjRtCompiler* compiler,
     XlaCompiler::CompilationResult* compilation_result) {
   if (!mlir::SetTPUInfeedLayout(mlir_module))
-    return errors::Internal("Failed to set layouts attribute");
+    return absl::InternalError("Failed to set layouts attribute");
 
   if (VLOG_IS_ON(2)) {
     tensorflow::DumpMlirOpToFile("legalize_with_old_bridge", mlir_module);
@@ -256,7 +256,7 @@ absl::Status CompileMLIRTFFunction(
   constexpr char kEntryFuncName[] = "main";
   auto main_fn = mlir_module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
   if (!main_fn) {
-    return errors::Internal(
+    return absl::InternalError(
         "TPU compile op requires module with a entry function main");
   }
 
@@ -271,7 +271,7 @@ absl::Status CompileMLIRTFFunction(
   }
   VersionDef versions;
   if (mlir::failed(ExtractTfVersions(mlir_module, &versions))) {
-    return errors::Internal(
+    return absl::InternalError(
         "module attribute in _TPUCompileMlir op is missing tf versions.");
   }
 
@@ -283,8 +283,16 @@ absl::Status CompileMLIRTFFunction(
 
   TF_RETURN_IF_ERROR(CompileTFFunctionToHlo(
       *flib_def, versions.producer(), shape_determination_funcs, arg_shapes,
-      device_type, consts, func, metadata, client, arg_core_mapping,
+      device_type, consts, func, metadata, compiler, arg_core_mapping,
       per_core_arg_shapes, use_tuple_args, compilation_result));
+
+  if (compilation_result != nullptr &&
+      compilation_result->computation != nullptr) {
+    if (auto module_name = mlir_module.getName()) {
+      compilation_result->computation->mutable_proto()->set_name(
+          module_name->str());
+    }
+  }
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,
                                      use_tuple_args);
@@ -299,13 +307,13 @@ absl::Status CompileMLIRTFFunction(
     const DeviceType& device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client,
+    xla::PjRtCompiler* compiler,
     XlaCompiler::CompilationResult* compilation_result) {
   if (mlir_computation.mlir_module_op.has_value()) {
     return CompileMLIRTFFunction(
         mlir_computation.mlir_module_op.value(), metadata, use_tuple_args,
         shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
-        per_core_arg_shapes, client, compilation_result);
+        per_core_arg_shapes, compiler, compilation_result);
   }
 
   mlir::DialectRegistry registry;
@@ -317,10 +325,10 @@ absl::Status CompileMLIRTFFunction(
   TF_RETURN_IF_ERROR(DeserializeMlirModule(mlir_computation.mlir_module,
                                            &context, &mlir_module));
 
-  return CompileMLIRTFFunction(*mlir_module, metadata, use_tuple_args,
-                               shape_determination_funcs, arg_shapes,
-                               device_type, arg_core_mapping,
-                               per_core_arg_shapes, client, compilation_result);
+  return CompileMLIRTFFunction(
+      *mlir_module, metadata, use_tuple_args, shape_determination_funcs,
+      arg_shapes, device_type, arg_core_mapping, per_core_arg_shapes, compiler,
+      compilation_result);
 }
 
 }  // namespace
@@ -334,7 +342,7 @@ absl::Status CompileTensorflowGraphToHlo(
     tsl::DeviceType device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client,
+    xla::PjRtCompiler* compiler,
     XlaCompiler::CompilationResult* compilation_result) {
   LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
                           "old (non-MLIR) tf2xla bridge";
@@ -351,14 +359,14 @@ absl::Status CompileTensorflowGraphToHlo(
     TF_RETURN_IF_ERROR(CompileMLIRTFFunction(
         std::get<0>(computation), metadata, use_tuple_args,
         shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
-        per_core_arg_shapes, client, compilation_result));
+        per_core_arg_shapes, compiler, compilation_result));
 
   } else {
     FunctionToHloArgs function_computation = std::get<1>(computation);
     TF_RETURN_IF_ERROR(CompileTFFunctionWithoutMlir(
         function_computation, metadata, use_tuple_args,
         shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
-        per_core_arg_shapes, client, compilation_result));
+        per_core_arg_shapes, compiler, compilation_result));
   }
 
   phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)

@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "rocprofiler-sdk/agent.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -49,8 +50,16 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
            grid_z = kernel_info.workgroup_z != 0
                         ? kernel_info.grid_z / kernel_info.workgroup_z
                         : 0;
+  const uint32_t dynamic_group_segment_size =
+      kernel_info.group_segment_size > kernel_info.static_group_segment_size
+          ? kernel_info.group_segment_size -
+                kernel_info.static_group_segment_size
+          : 0;
 
-  return absl::StrCat(" grid:", grid_x, ",", grid_y, ",", grid_z,
+  return absl::StrCat("regs:", kernel_info.registers_per_work_item,
+                      " static_shared:", kernel_info.static_group_segment_size,
+                      " dynamic_shared:", dynamic_group_segment_size,
+                      " grid:", grid_x, ",", grid_y, ",", grid_z,
                       " block:", kernel_info.workgroup_x, ",",
                       kernel_info.workgroup_y, ",", kernel_info.workgroup_z,
                       " private_mem:", kernel_info.private_segment_size,
@@ -63,6 +72,8 @@ struct RocmDeviceOccupancyParams {
   int block_size = 0;
   size_t dynamic_smem_size = 0;
   void* func_ptr;
+  uint32_t max_waves_per_cu = 0;
+  uint32_t wave_front_size = 0;
 
   friend bool operator==(const RocmDeviceOccupancyParams& a,
                          const RocmDeviceOccupancyParams& b) noexcept {
@@ -78,7 +89,9 @@ struct RocmDeviceOccupancyParams {
                       a.attributes.ptxVersion,
                       a.block_size,
                       a.dynamic_smem_size,
-                      a.func_ptr} ==
+                      a.func_ptr,
+                      a.max_waves_per_cu,
+                      a.wave_front_size} ==
            std::tuple{b.attributes.binaryVersion,
                       b.attributes.cacheModeCA,
                       b.attributes.constSizeBytes,
@@ -90,7 +103,9 @@ struct RocmDeviceOccupancyParams {
                       b.attributes.ptxVersion,
                       b.block_size,
                       b.dynamic_smem_size,
-                      b.func_ptr};
+                      b.func_ptr,
+                      b.max_waves_per_cu,
+                      b.wave_front_size};
   }
 
   friend bool operator!=(const RocmDeviceOccupancyParams& a,
@@ -105,7 +120,8 @@ struct RocmDeviceOccupancyParams {
         std::move(hash_state), params.attributes.maxThreadsPerBlock,
         params.attributes.numRegs, params.attributes.sharedSizeBytes,
         params.attributes.maxDynamicSharedSizeBytes, params.block_size,
-        params.dynamic_smem_size, params.func_ptr);
+        params.dynamic_smem_size, params.func_ptr, params.max_waves_per_cu,
+        params.wave_front_size);
   }
 };
 
@@ -122,11 +138,15 @@ class RocmTraceCollector {
       : options_(options) {}
   virtual ~RocmTraceCollector() {}
 
+  // Agent data used by GetDeviceCapabilities instead of hipGetDeviceProperties
+  // (which can set sticky hipGetLastError for non-visible devices on ROCm 7+).
+  virtual void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> /*agents*/) {}
   virtual void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) = 0;
   virtual void OnEventsDropped(const std::string& reason,
-                               uint32_t num_events) = 0;
+                               uint64_t num_events) = 0;
   virtual void Flush() = 0;
   virtual void Export(tsl::profiler::XSpace* space) = 0;
+  virtual void SetScopeRangeIdTree(ScopeRangeIdTree tree) {}
 
  protected:
   RocmTraceCollectorOptions options_;
@@ -142,12 +162,13 @@ class PerDeviceCollector {
   void Export(uint64_t start_walltime_ns, uint64_t start_gputime_ns,
               uint64_t end_gputime_ns,
               tsl::profiler::XPlaneBuilder* device_plane,
+              tsl::profiler::XPlaneBuilder* marker_plane,
               tsl::profiler::XPlaneBuilder* host_plane);
 
   PerDeviceCollector() = default;
 
   void AddEvent(RocmTracerEvent&& event);
-  void GetDeviceCapabilities(int32_t device_ordinal,
+  void GetDeviceCapabilities(const rocprofiler_agent_v0_t& agent,
                              tsl::profiler::XPlaneBuilder* device_plane);
 
  private:
@@ -163,7 +184,6 @@ class PerDeviceCollector {
   std::vector<RocmTracerEvent> events_ ABSL_GUARDED_BY(events_mutex_);
   absl::flat_hash_map<RocmDeviceOccupancyParams, OccupancyStats>
       occupancy_cache_;
-  hipDeviceProp_t device_properties_;
 };  // PerDeviceCollector
 
 class RocmTraceCollectorImpl : public RocmTraceCollector {
@@ -177,12 +197,19 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
         start_gputime_ns_(start_gputime_ns),
         num_gpus_(options.num_gpus) {}
 
+  void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> agents) override {
+    gpu_agents_ = std::move(agents);
+  }
+
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override;
   void Flush() override;
   void Export(tsl::profiler::XSpace* space) override;
+  void SetScopeRangeIdTree(ScopeRangeIdTree tree) override {
+    scope_range_id_tree_ = std::move(tree);
+  }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32_t correlation_id) override {
+                       uint64_t correlation_id) override {
     VLOG(2) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
             << ",) : " << reason << ".";
   }
@@ -193,26 +220,36 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   uint64_t start_walltime_ns_;
   uint64_t start_gputime_ns_;
   int num_gpus_;
+  std::vector<rocprofiler_agent_v0_t> gpu_agents_;
 
   absl::Mutex event_maps_mutex_;
-  absl::flat_hash_map<uint32_t, RocmTracerEvent> api_events_map_
+  absl::flat_hash_map<uint64_t, RocmTracerEvent> api_events_map_
       ABSL_GUARDED_BY(event_maps_mutex_);
 
   /* Some apis such as MEMSETD32 (based on an observation with ResNet50),
    trigger multiple HIP ops domain activities. We keep them in a vector and
    merge them with api activities at flush time.
  */
-  absl::flat_hash_map<uint32_t, std::vector<RocmTracerEvent>>
+  absl::flat_hash_map<uint64_t, std::vector<RocmTracerEvent>>
       activity_ops_events_map_ ABSL_GUARDED_BY(event_maps_mutex_);
   // This is for the APIs that we track because we need some information from
   // them to populate the corresponding activity that we actually track.
-  absl::flat_hash_map<uint32_t, RocmTracerEvent> auxiliary_api_events_map_
+  absl::flat_hash_map<uint64_t, RocmTracerEvent> auxiliary_api_events_map_
+      ABSL_GUARDED_BY(event_maps_mutex_);
+
+  // Host-side events that need no API↔Activity join (e.g. ROCTX markers).
+  // Flushed directly to per_device_collector_ without going through
+  // ApiActivityInfoExchange.
+  std::vector<RocmTracerEvent> standalone_events_
       ABSL_GUARDED_BY(event_maps_mutex_);
 
   std::vector<RocmTracerEvent> ApiActivityInfoExchange()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
+  void ExportScopeRangeIdTree(tsl::profiler::XSpace* space);
+
   absl::node_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
+  ScopeRangeIdTree scope_range_id_tree_;
 };  // RocmTraceCollectorImpl
 
 std::unique_ptr<RocmTraceCollector> CreateRocmCollector(

@@ -46,7 +46,7 @@ using SliceSpecByName = absl::flat_hash_map<int64_t, std::vector<std::string>>;
 StatusOr<SliceSpecByName> BuildSliceSpecDeviceMap(
     absl::Span<const int64_t> global_shape, Layout layout) {
   if (!layout.mesh().is_cpu_mesh())
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Saving tensors on non CPU mesh needs explicit send/receive and isn't "
         "implemented yet");
 

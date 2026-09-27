@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements logic for bufferizing HLO dialect to memref dialect.
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"

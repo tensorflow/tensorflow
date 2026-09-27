@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/alias_info.h"
@@ -33,14 +32,7 @@ std::optional<bool> NVPTXAliasInfo::MayAlias(
     const HloInstruction* user, const ShapeIndex& user_index) const {
   switch (user->opcode()) {
     // NCCL all-reduce and collective-broadcast can be performed in-place.
-    // NVSHMEM all-reduce needs out-of-place buffers.
-    case HloOpcode::kAllReduce: {
-      if (absl::StrContainsIgnoreCase(user->raw_backend_config_string(),
-                                      "nvshmem")) {
-        return false;
-      }
-      [[fallthrough]];
-    }
+    case HloOpcode::kAllReduce:
     case HloOpcode::kCollectiveBroadcast:
       return user->operand_count() == 1 ||
              (user_index.size() == 1 &&

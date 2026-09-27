@@ -3,7 +3,11 @@ tf_class {
   is_instance: "<class \'tf_keras.initializers.initializers.LecunNormal\'>"
   is_instance: "<class \'tf_keras.initializers.initializers.VarianceScaling\'>"
   is_instance: "<class \'tf_keras.initializers.initializers.Initializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -11,6 +15,7 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"

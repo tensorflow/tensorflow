@@ -71,6 +71,8 @@ extern const std::array<RefPoint, 251> kGoldenAcosh;
 extern const std::array<RefPoint, 251> kGoldenAtanh;
 // expm1: 251 reference points
 extern const std::array<RefPoint, 251> kGoldenExpm1;
+// cbrt: 326 reference points
+extern const std::array<RefPoint, 326> kGoldenCbrt;
 
 }  // namespace xla::codegen::intrinsic::accuracy
 

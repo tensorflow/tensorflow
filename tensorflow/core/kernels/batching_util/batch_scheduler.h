@@ -32,6 +32,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -39,11 +40,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -104,6 +107,13 @@ class BatchTask {
   virtual bool is_warmup() const { return false; }
 
   virtual bool is_subtask() const { return false; }
+
+  // Returns true if the task's deadline has expired.
+  // `now` is passed by the caller to amortize absl::Now() across iterations.
+  virtual bool IsDeadlineExceeded(absl::Time now) const { return false; }
+
+  // Returns true if the RPC has been cancelled by the client.
+  virtual bool IsCancelled() const { return false; }
 
   // Called when the task is finished, either successfully or with an error.
   //
@@ -381,6 +391,23 @@ class Batch {
   void operator=(const Batch&) = delete;
 };
 
+// A snapshot of the per-criticality state of a priority-aware task queue.
+// Used by schedulers that maintain a criticality-ordered queue (i.e. when
+// `enable_priority_aware_batch_scheduler` is true) to export per-criticality
+// queue utilization metrics.
+//
+// A criticality band that is absent from a map has no enqueued tasks;
+// consumers must treat a missing key as zero.
+struct PriorityQueueState {
+  // Current number of enqueued tasks per criticality.
+  absl::flat_hash_map<tsl::criticality::Criticality, int> num_tasks;
+  // Current summed size (sum of task sizes) of enqueued tasks per criticality.
+  absl::flat_hash_map<tsl::criticality::Criticality, size_t> size;
+  // The maximum queue depth (capacity, in summed task size), shared across all
+  // criticalities.
+  size_t max_queue_depth = 0;
+};
+
 // An abstract batch scheduler class. Collects individual tasks into batches,
 // and processes each batch on a pool of "batch threads" that it manages. The
 // actual logic for processing a batch is accomplished via a callback.
@@ -435,6 +462,14 @@ class BatchScheduler {
   // Returns the maximum allowed size of tasks submitted to the scheduler. (This
   // is typically equal to a configured maximum batch size.)
   virtual size_t max_task_size() const = 0;
+
+  // Returns a snapshot of the per-criticality state of the scheduler's
+  // priority-aware task queue, or nullopt if this scheduler does not maintain
+  // such a queue (e.g. `enable_priority_aware_batch_scheduler` is false).
+  // Intended for monitoring/metrics export.
+  virtual std::optional<PriorityQueueState> GetPriorityQueueState() const {
+    return std::nullopt;
+  }
 };
 
 //////////

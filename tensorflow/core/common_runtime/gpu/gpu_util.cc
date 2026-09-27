@@ -16,50 +16,47 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
-#include <memory>
-#include <utility>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
-#include "xla/layout_util.h"
-#include "xla/shape.h"
-
-// TODO(b/282059652): Merge google internal and open-source code path once TF
-// dependency issue is resolved.
-#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
-#define TF_GPU_USE_PJRT
-#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
-
-#ifdef TF_GPU_USE_PJRT
-#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "xla/future.h"
-#include "xla/literal.h"
-#endif  // TF_GPU_USE_PJRT
-
+#include "xla/stream_executor/device_memory.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tensor_coding.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/util.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
+#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "xla/future.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // IMPLEMENTATION NOTE:
 //
@@ -88,42 +85,43 @@ absl::Status PrepareCopy(Device* device, const DeviceContext* ctx,
                          const DeviceBase::AcceleratorDeviceInfo** dev_info,
                          se::Stream** stream) {
   if (device == nullptr) {
-    return errors::Internal("Unexpected null device.");
+    return absl::InternalError("Unexpected null device.");
   }
   auto di = device->tensorflow_accelerator_device_info();
   if (di == nullptr) {
-    return errors::Internal("Unexpected null device info.");
+    return absl::InternalError("Unexpected null device info.");
   }
   *dev_info = di;
   if (ctx == nullptr) {
-    return errors::Internal("Unexpected null device context.");
+    return absl::InternalError("Unexpected null device context.");
   }
   auto gs = static_cast<const GPUDeviceContext*>(ctx)->stream();
   if (gs == nullptr) {
-    return errors::Internal("No gpu stream is available.");
+    return absl::InternalError("No gpu stream is available.");
   }
   *stream = gs;
   if (dst != nullptr) {
     if (src.dtype() != dst->dtype()) {
-      return errors::Internal("Can't copy a tensor of ",
-                              DataTypeString(src.dtype()), " into a tensor of ",
-                              DataTypeString(dst->dtype()));
+      return absl::InternalError(
+          absl::StrCat("Can't copy a tensor of ", DataTypeString(src.dtype()),
+                       " into a tensor of ", DataTypeString(dst->dtype())));
     }
     if (src.TotalBytes() != dst->TotalBytes()) {
-      return errors::Internal("Can't copy ", src.TotalBytes(),
-                              " bytes of a tensor into another with ",
-                              dst->TotalBytes(), " bytes buffer.");
+      return absl::InternalError(
+          absl::StrCat("Can't copy ", src.TotalBytes(),
+                       " bytes of a tensor into another with ",
+                       dst->TotalBytes(), " bytes buffer."));
     }
     if ((src.TotalBytes() > 0) && !src.IsInitialized()) {
-      return errors::Internal("Src tensor is not initialized.");
+      return absl::InternalError("Src tensor is not initialized.");
     }
     if ((dst->TotalBytes() > 0) && !dst->IsInitialized()) {
-      return errors::Internal("Dst tensor is not initialized.");
+      return absl::InternalError("Dst tensor is not initialized.");
     }
   }
   if (!DMAHelper::CanUseDMA(&src)) {
-    return errors::Internal("GPU copy from non-DMA ",
-                            DataTypeString(src.dtype()), " tensor");
+    return absl::InternalError(absl::StrCat(
+        "GPU copy from non-DMA ", DataTypeString(src.dtype()), " tensor"));
   }
   return absl::OkStatus();
 }
@@ -153,7 +151,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
       static_cast<const GPUDeviceContext*>(device_context)
           ->device_to_host_stream();
   if (send_device_to_host_stream == nullptr) {
-    done(errors::Internal("No send gpu copy-out-stream is available."));
+    done(absl::InternalError("No send gpu copy-out-stream is available."));
     return;
   }
   // Wait for the sender's main stream to make sure the data are available.
@@ -265,7 +263,7 @@ void GPUUtil::DeviceToDeviceCopy(
             dst->tensorflow_accelerator_device_info()->default_context)
             ->stream();
     if (recv_stream == nullptr) {
-      done(errors::Internal("No recv gpu stream is available."));
+      done(absl::InternalError("No recv gpu stream is available."));
       return;
     }
     // Since we want to use the memory from recv_stream in the
@@ -352,12 +350,13 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     }
   }
 
-#ifdef TF_GPU_USE_PJRT
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   // The above `WaitFor(send_stream)` for the PjRt case eliminates race
   // conditions caused by either non-XLA ops that have not finished or a case in
   // the PJRT client implementation where an event on the buffer is not sent
   // properly. A possible future improvement is to specifically handle the
-  // relevant case(s) and move this TF_GPU_USE_PJRT codeblock to the start of
+  // relevant case(s) and move this codeblock to the start of
   // this function (avoiding the need for `WaitFor(send_stream)` for the
   // PjRt case).
   const PjRtTensorBuffer* pjrt_tensor_buffer =
@@ -369,6 +368,10 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
       literal = std::make_unique<xla::MutableBorrowingLiteral>();
       auto status = tensorflow::HostTensorToMutableBorrowingLiteral(
           cpu_tensor, literal.get());
+      if (!status.ok()) {
+        done(status);
+        return;
+      }
     } else {
       xla::Shape shape = pjrt_tensor_buffer->pjrt_buffer()->on_device_shape();
       *shape.mutable_layout() =
@@ -382,7 +385,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                     done](const absl::Status& status) { done(status); });
     return;
   }
-#endif  // TF_GPU_USE_PJRT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   VLOG(1) << "CopyGPUTensorToCPU using AcceleratorDeviceInfo";
   const int64_t total_bytes = gpu_tensor->TotalBytes();
@@ -530,7 +533,7 @@ absl::Status GPUUtil::Sync(Device* gpu_device) {
   VLOG(1) << "GPUUtil::Sync";
   auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
-    return errors::Internal("Failed to find dest device GPUDeviceInfo");
+    return absl::InternalError("Failed to find dest device GPUDeviceInfo");
   }
   return dev_info->stream->BlockHostUntilDone();
 }
@@ -539,11 +542,11 @@ absl::Status GPUUtil::SyncAll(Device* gpu_device) {
   VLOG(1) << "GPUUtil::SyncAll";
   auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
-    return errors::Internal("Failed to find dest device GPUDeviceInfo");
+    return absl::InternalError("Failed to find dest device GPUDeviceInfo");
   }
   if (!dev_info->stream->parent()->SynchronizeAllActivity() ||
       !dev_info->stream->ok()) {
-    return errors::Internal("GPU sync failed");
+    return absl::InternalError("GPU sync failed");
   }
   return absl::OkStatus();
 }
@@ -591,11 +594,14 @@ uint64_t GPUUtil::Checksum(Device* gpu_device,
 }
 
 uint64_t GPUUtil::Checksum(const Tensor& tensor) {
-  const float* fptr = reinterpret_cast<const float*>(GetBase(&tensor));
-  size_t num_bytes = tensor.TotalBytes();
-  size_t num_floats = num_bytes / sizeof(float);
-  for (size_t i = 0; i < num_floats; ++i) {
-    CHECK(!std::isnan(fptr[i])) << " i " << i;
+  if (tensor.dtype() == DT_FLOAT) {
+    const float* fptr = reinterpret_cast<const float*>(GetBase(&tensor));
+    size_t num_bytes = tensor.TotalBytes();
+    size_t num_floats = num_bytes / sizeof(float);
+    for (size_t i = 0; i < num_floats; ++i) {
+      CHECK(!std::isnan(fptr[i]))  // Crash OK
+          << "NaN detected in float tensor at index i: " << i;
+    }
   }
   // TODO(tucker): consider using crc32c instead.
   return Hash64(reinterpret_cast<const char*>(GetBase(&tensor)),

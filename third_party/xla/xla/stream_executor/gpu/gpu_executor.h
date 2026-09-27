@@ -18,14 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
-#include <variant>
-#include <vector>
+#include <string>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/string_view.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -44,28 +42,6 @@ class GpuExecutor : public StreamExecutorCommon {
 
   int device_ordinal() const override { return device_ordinal_; };
 
-  absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
-    absl::MutexLock lock(logger_mu_);
-    return std::move(argument_logs_);
-  }
-
-  absl::Status RecordApiTrace(ApiTrace call) override {
-    absl::MutexLock lock(logger_mu_);
-    if (std::holds_alternative<GemmCallTrace>(call) &&
-        (argument_logging_mode_ & kLogGemm)) {
-      argument_logs_.push_back(call);
-    }
-    return absl::OkStatus();
-  }
-
-  bool SetArgumentLoggingMode(uint64_t mode) override {
-    absl::MutexLock lock(logger_mu_);
-    argument_logging_mode_ = mode;
-    return true;
-  }
-
-  uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
-
   virtual absl::StatusOr<std::unique_ptr<MulticastMemory>>
   CreateMulticastMemory(uint64_t size, int num_devices) const {
     return absl::UnimplementedError(
@@ -74,16 +50,32 @@ class GpuExecutor : public StreamExecutorCommon {
 
   virtual bool is_multicast_supported() const { return false; }
 
+  // Returns the allocation range that contains the given pointer.
+  virtual absl::StatusOr<DeviceAddressBase> GetAllocationRange(
+      void* ptr) const {
+    return absl::UnimplementedError("GetAllocationRange is not implemented.");
+  }
+
+  // Exports the given memory as a fabric handle that can be imported by another
+  // host via `ImportFabricHandle`. `ptr` must have been allocated with VMM API.
+  //
+  // Note: The returned handle represents the entire allocation containing
+  // `ptr`, rather than starting at `ptr`.
+  virtual absl::StatusOr<std::string> ExportFabricHandle(void* ptr) const {
+    return absl::UnimplementedError("ExportFabricHandle is not implemented.");
+  }
+
+  // Imports a fabric handle that had been exported by another host via
+  // `ExportFabricHandle`. The returned memory can be free'd with `Deallocate`.
+  virtual absl::StatusOr<DeviceAddressBase> ImportFabricHandle(
+      absl::string_view serialized) {
+    return absl::UnimplementedError("ImportFabricHandle is not implemented.");
+  }
+
  private:
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
-
-  absl::Mutex logger_mu_;
-
-  mutable std::vector<ApiTrace> argument_logs_ ABSL_GUARDED_BY(logger_mu_);
-
-  uint64_t argument_logging_mode_ = 0;
 
   GpuExecutor(const GpuExecutor&) = delete;
   void operator=(const GpuExecutor&) = delete;

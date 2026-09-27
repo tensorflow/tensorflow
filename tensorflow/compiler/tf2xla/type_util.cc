@@ -87,6 +87,9 @@ absl::Status DataTypeToPrimitiveType(DataType data_type,
     case tensorflow::DT_FLOAT8_E5M2FNUZ:
       *type = xla::F8E5M2FNUZ;
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E8M0FNU:
+      *type = xla::F8E8M0FNU;
+      return absl::OkStatus();
     case tensorflow::DT_FLOAT4_E2M1FN:
       *type = xla::F4E2M1FN;
       return absl::OkStatus();
@@ -109,9 +112,9 @@ absl::Status DataTypeToPrimitiveType(DataType data_type,
       *type = xla::C128;
       return absl::OkStatus();
     default:
-      return errors::InvalidArgument(
-          "Unsupported type in DataTypeToPrimitiveType: '",
-          DataTypeString(data_type), "'");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported type in DataTypeToPrimitiveType: '",
+                       DataTypeString(data_type), "'"));
   }
 }
 
@@ -125,6 +128,7 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
           {xla::F8E4M3FNUZ, DT_FLOAT8_E4M3FNUZ},
           {xla::F8E4M3B11FNUZ, DT_FLOAT8_E4M3B11FNUZ},
           {xla::F8E5M2FNUZ, DT_FLOAT8_E5M2FNUZ},
+          {xla::F8E8M0FNU, DT_FLOAT8_E8M0FNU},
           {xla::F4E2M1FN, DT_FLOAT4_E2M1FN},
           {xla::BF16, DT_BFLOAT16},
           {xla::F16, DT_HALF},
@@ -148,8 +152,8 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
 
   auto it = data_type_map.find(type);
   if (it == data_type_map.end()) {
-    return errors::InvalidArgument(
-        "Unsupported type in PrimitiveTypeToDataType ", type);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported type in PrimitiveTypeToDataType ", type));
   }
   return it->second;
 }

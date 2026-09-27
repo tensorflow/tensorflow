@@ -60,33 +60,36 @@ class OneHotOp : public OpKernel {
     const int output_dims = indices_dims + 1;
 
     // Preliminary validation of sizes.
+    OP_REQUIRES(ctx, axis_ == -1 || (axis_ >= 0 && axis_ < output_dims),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected axis to be -1 or between [0, ",
+                                 output_dims, ").  But received: ", axis_)));
     OP_REQUIRES(
-        ctx, axis_ == -1 || (axis_ >= 0 && axis_ < output_dims),
-        errors::InvalidArgument("Expected axis to be -1 or between [0, ",
-                                output_dims, ").  But received: ", axis_));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(depth.shape()),
-                errors::InvalidArgument("depth must be a scalar, but got: ",
-                                        depth.shape().DebugString()));
+        ctx, TensorShapeUtils::IsScalar(depth.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "depth must be a scalar, but got: ", depth.shape().DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(on_value.shape()),
-                errors::InvalidArgument("on_value must be a scalar, but got: ",
-                                        on_value.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("on_value must be a scalar, but got: ",
+                                 on_value.shape().DebugString())));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(off_value.shape()),
-                errors::InvalidArgument("off_value must be a scalar, but got: ",
-                                        off_value.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("off_value must be a scalar, but got: ",
+                                 off_value.shape().DebugString())));
 
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
     const int32_t depth_v = depth.scalar<int32_t>()();
-    OP_REQUIRES(
-        ctx, depth_v >= 0,
-        errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
+    OP_REQUIRES(ctx, depth_v >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "depth must be non-negative, got: ", depth_v)));
     OP_REQUIRES(
         ctx,
         MultiplyWithoutOverflow(indices_shape.num_elements(), depth_v) >= 0,
-        errors::InvalidArgument("OneHot result would have shape ",
-                                indices_shape.DebugString(), " + [", depth_v,
-                                "], which exceeds 2**63 - 1 elements"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "OneHot result would have shape ", indices_shape.DebugString(),
+            " + [", depth_v, "], which exceeds 2**63 - 1 elements")));
 
     TensorShape output_shape = indices_shape;
     output_shape.InsertDim(axis, depth_v);

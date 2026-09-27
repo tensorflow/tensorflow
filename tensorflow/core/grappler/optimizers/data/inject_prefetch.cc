@@ -96,9 +96,9 @@ absl::Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   if (item.fetch.size() != 1) {
-    return errors::InvalidArgument(
-        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
-        absl::StrJoin(item.fetch, ", "));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected only one fetch node but there were ",
+                     item.fetch.size(), ": ", absl::StrJoin(item.fetch, ", ")));
   }
 
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));

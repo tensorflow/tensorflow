@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/pjrt/mlir_to_hlo.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -53,8 +57,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/compatibility.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
+#include "riegeli/bytes/string_writer.h"
+#include "riegeli/bytes/writer.h"
 #include "stablehlo/api/PortableApi.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
@@ -79,8 +86,30 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 using mlir::mhlo::ChloLegalizeToHighLevelMhloPassOptions;
-}
+
+class RiegeliRawOstream : public llvm::raw_ostream {
+ public:
+  explicit RiegeliRawOstream(riegeli::Writer* writer) : writer_(writer) {
+    SetUnbuffered();
+  }
+  ~RiegeliRawOstream() override = default;
+
+ private:
+  uint64_t current_pos() const override { return writer_->pos(); }
+
+  void write_impl(const char* ptr, size_t size) override {
+    if (size == 0) {
+      return;
+    }
+    writer_->Write(absl::string_view(ptr, size));
+  }
+
+  riegeli::Writer* writer_;
+};
+
+}  // namespace
 
 void RegisterAllHloDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::arith::ArithDialect>();
@@ -109,7 +138,11 @@ absl::Status MlirToXlaComputation(
           << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
              "Shardy and falling back to using GSPMD propagation.";
       exec_build_options->set_use_shardy_partitioner(false);
-      TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+      // HloShardingV3 is enabled with Shardy so in case of GSPMD fallback we
+      // disable it.
+      exec_build_options->mutable_debug_options()
+          ->set_xla_enable_hlo_sharding_v3(false);
+      ABSL_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
     // Export a StableHLO + Shardy module into a pure StableHLO module, to
@@ -165,9 +198,9 @@ absl::Status MlirToXlaComputation(
     use_tuple_args = false;
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      xla::ConvertStablehloToHloWithOptions(
-                          module, use_tuple_args, return_tuple));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                   xla::ConvertStablehloToHloWithOptions(module, use_tuple_args,
+                                                         return_tuple));
 
   xla_computation = XlaComputation(hlo_module->ToProto());
   return absl::OkStatus();
@@ -194,7 +227,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     return diagnostic_handler.ConsumeStatus();
   }
 
-  TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
+  ABSL_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
   return std::move(module);
 }
 
@@ -202,8 +235,8 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      xla::ParseMlirModuleString(mlir_module_str, context));
+  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                   xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple,
                                    /*exec_build_options=*/nullptr);
@@ -249,13 +282,20 @@ absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
 
 std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
     mlir::ModuleOp module) {
+  // Stable dialects that may not be registered in current mlir context
+  mlir::DenseSet<mlir::StringRef> stable_dialects{"mpmd"};
+
+  // Check that all ops are from known stable dialects.
   std::optional<mlir::StringRef> unstable_dialect = std::nullopt;
   module->walk([&](mlir::Operation* op) {
-    if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
-                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
-            op->getDialect())) {
-      unstable_dialect = op->getDialect()->getNamespace();
+    mlir::Dialect* dialect = op->getDialect();
+    if (!dialect ||
+        (!llvm::isa<mlir::stablehlo::StablehloDialect, mlir::chlo::ChloDialect,
+                    mlir::sdy::SdyDialect>(dialect) &&
+         !llvm::isa<mlir::ModuleOp, mlir::func::FuncOp, mlir::func::CallOp,
+                    mlir::func::ReturnOp>(op) &&
+         !stable_dialects.contains(dialect->getNamespace()))) {
+      unstable_dialect = op->getName().getStringRef();
       return mlir::WalkResult::interrupt();
     }
     return mlir::WalkResult::advance();
@@ -269,19 +309,30 @@ absl::StatusOr<T> ExpectSuccess(mlir::FailureOr<T> result, std::string msg) {
   if (mlir::failed(result)) {
     return absl::InvalidArgumentError(msg);
   }
-  return result.value();
+  return *result;
 }
 
-absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
-    mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace, bool allow_mixed_serialization) {
+absl::Status SerializeToRiegeli(mlir::ModuleOp mlir_module,
+                                absl::string_view requested_target,
+                                absl::string_view sdy_version, bool inplace,
+                                bool allow_mixed_serialization,
+                                riegeli::Writer* writer) {
+  if (writer == nullptr) {
+    return absl::InvalidArgumentError("Writer cannot be null.");
+  }
+
+  // If we are already in a failed state, no need to do anything else.
+  if (!writer->ok()) {
+    return writer->status();
+  }
+
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
 
   // Usually the plugin is older than the framework, but occasionally a plugin's
   // nightly build will use the latest public release of a framework. Serialize
   // using the framework's version in these cases.
-  TF_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       std::string target,
       ExpectSuccess(mlir::stablehlo::getSmallerVersion(
                         requested_target, mlir::stablehlo::getCurrentVersion()),
@@ -290,6 +341,12 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
   mlir::PassManager pm(context);
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
   // Expand stablehlo complex math functions such as log_plus_one, etc.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloComplexMathExpanderPass());
@@ -311,13 +368,6 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());  // not required
-  if (!mlir::succeeded(pm.run(mlir_module))) {
-    const absl::Status status = diagnostic_handler.ConsumeStatus();
-    return absl::InvalidArgumentError(absl::StrCat(
-        "CHLO => [StableHLO+Shape] => StableHLO failed;\n\nDetailed "
-        "error from MLIR: ",
-        status.message()));
-  }
 
   // Avoid mutating the original module if it will be reused elsewhere
   mlir::OwningOpRef<mlir::ModuleOp> cloned;
@@ -326,55 +376,93 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir_module = *cloned;
   }
 
+  if (!mlir::succeeded(pm.run(mlir_module))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(absl::StrCat(
+        "CHLO => [StableHLO+Shape] => StableHLO failed;\n\nDetailed "
+        "error from MLIR: ",
+        status.message()));
+  }
+
+  // Only allow mixed serialization of stable dialects.
+  if (allow_mixed_serialization) {
+    auto unstable_dialect_op = FindPotentiallyUnstableDialects(mlir_module);
+    if (unstable_dialect_op.has_value()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to serialize StableHLO with mixed dialects to plugin "
+          "version ",
+          target, "; found unstable op: ", unstable_dialect_op->str()));
+    }
+
+    auto sdy_version_val =
+        mlir::sdy::SdyDialectVersion::fromString(sdy_version);
+    if (mlir::failed(sdy_version_val)) {
+      return absl::InvalidArgumentError(
+          "Invalid SDY target version requested.");
+    }
+    if (mlir::failed(
+            mlir::sdy::downgradeModule(mlir_module, *sdy_version_val))) {
+      return absl::InvalidArgumentError(
+          "Failed to downgrade the module to use the SDY target version "
+          "requested.");
+    }
+  }
+
   // Serialize portable artifact
-  std::string buffer;
-  llvm::raw_string_ostream os(buffer);
-  // TODO(gleasonk): make `allowOtherDialects` an allow-list of dialects instead
-  // of a boolean.
+  RiegeliRawOstream os(writer);
   if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
           mlir_module, target, os,
           /*allowOtherDialects=*/allow_mixed_serialization))) {
+    // If we have an I/O error, return it specifically before we return the
+    // generic serialization error.
+    if (!writer->ok()) {
+      return writer->status();
+    }
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to serialize StableHLO to plugin version ", target,
                      ";\n\nDetailed error from MLIR: ", status.message()));
   }
+
+  // The raw_ostream APIs don't have support for reporting I/O errors, so we
+  // have to check them ourselves.
+  if (!writer->ok()) {
+    return writer->status();
+  }
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    absl::string_view sdy_version, bool inplace,
+    bool allow_mixed_serialization) {
+  std::string buffer;
+  riegeli::StringWriter<> writer(&buffer);
+  ABSL_RETURN_IF_ERROR(SerializeToRiegeli(mlir_module, requested_target, sdy_version,
+                                     inplace, allow_mixed_serialization,
+                                     &writer));
+  if (!writer.Close()) {
+    return writer.status();
+  }
   return buffer;
 }
 
-// TODO (b/344930098): Delete this method when mixed serialization is supported
-// by all plugins in the 12w compat window (Sep 2025, StableHLO v1.11.0).
-absl::StatusOr<std::string> LegacySerialize(mlir::ModuleOp module,
-                                            mlir::vhlo::Version target,
-                                            bool inplace) {
-  if (!FindPotentiallyUnstableDialects(module).has_value()) {
-    // No unstable dialects, still need to convert SDY to custom calls.
-    return SerializeUsingVersionedStablehlo(
-        module, target.toString(), inplace,
-        /*allow_mixed_serialization=*/false);
-  }
-
-  // Use native bytecode, no stability.
-  std::string bytecode;
-  llvm::raw_string_ostream os(bytecode);
-  mlir::BytecodeWriterConfig config;
-  auto version = target.getBytecodeVersion();
-  if (mlir::failed(version)) {
-    return absl::InvalidArgumentError("Failed to get bytecode version");
-  }
-  config.setDesiredBytecodeVersion(version.value());
-  if (mlir::failed(mlir::writeBytecodeToFile(module, os, config))) {
-    return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
-  }
-  return bytecode;
+absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    bool inplace, bool allow_mixed_serialization) {
+  return SerializeUsingVersionedStablehlo(mlir_module, requested_target,
+                                          GetDefaultSdyVersion(), inplace,
+                                          allow_mixed_serialization);
 }
 
 absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   // Upgrade if VHLO
   mlir::PassManager pm(mlir_module->getContext());
   mlir::stablehlo::createStablehloDeserializePipeline(pm);
-  if (!mlir::succeeded(pm.run(mlir_module)))
+  if (!mlir::succeeded(pm.run(mlir_module))) {
     return xla::InvalidArgument("Failed to upgrade versioned StableHLO.");
+  }
   return absl::OkStatus();
 }
 
@@ -385,25 +473,31 @@ std::string GetDefaultStablehloVersion() {
       .toString();
 }
 
+std::string GetDefaultSdyVersion() {
+  // This version must be >=12w old.
+  return mlir::sdy::SdyDialectVersion::fromCompatibilityRequirement(
+             mlir::sdy::SdyDialectVersion::CompatibilityRequirement::WEEK_12)
+      .toString();
+}
+
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
                                       absl::string_view target,
+                                      absl::string_view sdy_version,
                                       bool inplace) {
-  // Current PJRT users expect 12 weeks forward compat, VHLO provides this
-  // compat.
-  TF_ASSIGN_OR_RETURN(
-      auto version,
-      ExpectSuccess(mlir::vhlo::Version::fromString(target),
-                    "Invalid StableHLO target version requested."));
-
-  // TODO (b/344930098): Once v1.11.0 is >=12w old, only use mixed serialization
-  // ~Sep 2025, can delete legacy path.
-  bool supports_mixed_serialization = mlir::vhlo::Version(1, 11, 0) <= version;
-  if (!supports_mixed_serialization) {
-    return LegacySerialize(module, version, inplace);
-  }
-
-  return SerializeUsingVersionedStablehlo(module, target, inplace,
+  return SerializeUsingVersionedStablehlo(module, target, sdy_version, inplace,
                                           /*allow_mixed_serialization=*/true);
+}
+
+absl::Status Serialize(mlir::ModuleOp module, absl::string_view target,
+                       absl::string_view sdy_version, riegeli::Writer* writer,
+                       bool inplace) {
+  return SerializeToRiegeli(module, target, sdy_version, inplace,
+                            /*allow_mixed_serialization=*/true, writer);
+}
+
+absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
+                                      absl::string_view target, bool inplace) {
+  return Serialize(mlir_module, target, GetDefaultSdyVersion(), inplace);
 }
 
 }  // namespace xla

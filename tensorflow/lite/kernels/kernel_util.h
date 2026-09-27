@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
+#include <initializer_list>
 #include <limits>
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
@@ -24,9 +26,6 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
-#ifndef NDEBUG
-#include "tensorflow/lite/kernels/op_macros.h"
-#endif
 
 namespace tflite {
 
@@ -171,17 +170,6 @@ inline int NumIntermediates(const TfLiteNode* node) {
 inline int64_t NumElements(const int* dims, int num_dims) {
   int64_t count = 1;
   for (int i = 0; i < num_dims; ++i) {
-#ifndef NDEBUG
-    if (count <= 0) {
-      break;
-    }
-    // Check that number of elements can fit in 32 bit int. Most of tflite
-    // assumes the result of `NumElements` is < MAX_INT and static or implicit
-    // casts to `int32_t` without any checks. It is more meaningful to check
-    // that the result fits into 32 bits than for standard overflow on 64 bit
-    // type.
-    TF_LITE_ASSERT(dims[i] < std::numeric_limits<int>::max() / count);
-#endif
     count *= dims[i];
   }
   return count;
@@ -340,6 +328,44 @@ bool IsMobilePlatform();
 
 // Returns whether there is unspecified dimension in the tensor's dim signature.
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
+                                 std::initializer_list<int> dims,
+                                 const char* error_message, size_t& product);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param count The length of the dims array.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context, const int* dims,
+                                 int count, const char* error_message,
+                                 size_t& product);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows. (Same as above
+ * function with dims built on the fly)
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
+                                      std::initializer_list<int> dims,
+                                      const char* error_message, int& product);
 
 }  // namespace tflite
 

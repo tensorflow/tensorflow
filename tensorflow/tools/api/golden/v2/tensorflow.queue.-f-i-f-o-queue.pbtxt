@@ -2,26 +2,26 @@ path: "tensorflow.queue.FIFOQueue"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.FIFOQueue\'>"
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "dtypes"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "names"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "queue_ref"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "shapes"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
@@ -54,6 +54,7 @@ tf_class {
   member_method {
     name: "from_list"
     argspec: "args=[\'index\', \'queues\'], varargs=None, keywords=None, defaults=None"
+    method_kind: STATIC
   }
   member_method {
     name: "is_closed"

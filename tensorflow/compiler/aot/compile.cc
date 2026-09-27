@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/shape.h"
@@ -84,8 +85,8 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
-    return errors::Unknown("Couldn't get XLA program shape: ",
-                           pshape_or.status().message());
+    return absl::UnknownError(absl::StrCat("Couldn't get XLA program shape: ",
+                                           pshape_or.status().message()));
   }
   compile_result->program_shape = pshape_or.value()->ToProto();
   xla::ProgramShapeProto* pshape = &compile_result->program_shape;
@@ -106,11 +107,11 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   TF_ASSIGN_OR_RETURN(xla::Shape result_shape,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
-  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime(instance, aot_opts);
+  absl::StatusOr<std::vector<std::unique_ptr<xla::CompiledModule>>> aot_or =
+      client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
-    return errors::Unknown("XLA compilation failed: ",
-                           aot_or.status().message());
+    return absl::UnknownError(
+        absl::StrCat("XLA compilation failed: ", aot_or.status().message()));
   }
   compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
@@ -164,7 +165,8 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       if (component == "Bridge") {
         use_mlir_bridge = true;
       } else {
-        return errors::Unknown("Unknown mlir_component ", component);
+        return absl::UnknownError(
+            absl::StrCat("Unknown mlir_component ", component));
       }
     }
   }
@@ -173,8 +175,10 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
         graph_def, config, &computation, flags.debug_info,
         flags.debug_info_path_begin_marker));
   } else {
+    TF_ASSIGN_OR_RETURN(auto* pjrt_compiler,
+                        xla::GetDefaultPjRtCompiler(xla::CpuName()));
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
-                                            client, &computation));
+                                            pjrt_compiler, &computation));
   }
 
   if (flags.experimental_quantize && *quantize_xla) {
@@ -197,8 +201,7 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
-      xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic,
-      /*compile_copy_as_llvm_kernel=*/true);
+      xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   if (flags.sanitize_dataflow) {
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
@@ -292,7 +295,7 @@ absl::Status Main(const MainFlags& flags) {
   // Process config.
   tf2xla::Config config;
   if (flags.config.empty()) {
-    return errors::InvalidArgument("Must specify --config");
+    return absl::InvalidArgumentError("Must specify --config");
   }
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
@@ -307,7 +310,7 @@ absl::Status Main(const MainFlags& flags) {
 
   // Read and initialize the graph.
   if (flags.graph.empty()) {
-    return errors::InvalidArgument("Must specify --graph");
+    return absl::InvalidArgumentError("Must specify --graph");
   }
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
@@ -344,7 +347,7 @@ absl::Status Main(const MainFlags& flags) {
   }
 
   if (flags.cpp_class.empty()) {
-    return errors::InvalidArgument("Must specify --cpp_class");
+    return absl::InvalidArgumentError("Must specify --cpp_class");
   }
   codegen_opts.gen_hlo_profile_printer_data =
       xla::GetDebugOptionsFromFlags().xla_hlo_profile();

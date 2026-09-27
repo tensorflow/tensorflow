@@ -83,9 +83,9 @@ absl::Status ShapeRefiner::InferShapesForFunctionSubNode(
     TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
 
     if (index < 0 || outer_context->num_inputs() <= index) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Function instantiation included invalid input index: ", index,
-          " not in [0, ", outer_context->num_inputs(), ").");
+          " not in [0, ", outer_context->num_inputs(), ")."));
     }
 
     // TODO(b/134547156): TEMPORARY WORKAROUND. If input shape handle is not set
@@ -111,9 +111,9 @@ absl::Status ShapeRefiner::InferShapesForFunctionSubNode(
     TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
 
     if (index < 0 || outer_context->num_outputs() <= index) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Function instantiation included invalid output index: ", index,
-          " not in [0, ", outer_context->num_outputs(), ").");
+          " not in [0, ", outer_context->num_outputs(), ")."));
     }
 
     // outer_context outlives node_context, therefore we need to create
@@ -227,8 +227,8 @@ absl::Status ShapeRefiner::AddNodeInternal(
     if (e->IsControlEdge()) continue;
 
     if (e->dst_input() < 0) {
-      return tensorflow::errors::Internal(
-          "Index ", e->dst_input(), " is negative but not a control edge.");
+      return absl::InternalError(absl::StrCat(
+          "Index ", e->dst_input(), " is negative but not a control edge."));
     }
 
     const Node* input = e->src();
@@ -258,9 +258,9 @@ absl::Status ShapeRefiner::AddNodeInternal(
   TF_RETURN_IF_ERROR(ops_registry_->LookUp(node->type_string(), &op_reg_data));
   if (op_reg_data->shape_inference_fn == nullptr &&
       require_shape_inference_fns_) {
-    return errors::InvalidArgument(
-        "No shape inference function exists for op '", node->type_string(),
-        "', did you forget to define it?");
+    return absl::InvalidArgumentError(
+        absl::StrCat("No shape inference function exists for op '",
+                     node->type_string(), "', did you forget to define it?"));
   }
 
   // Run the shape inference function, and return if there was an error.
@@ -276,13 +276,14 @@ absl::Status ShapeRefiner::SetShape(const Node* node, int output_port,
                                     ShapeHandle shape) {
   auto c = GetContext(node);
   if (c == nullptr) {
-    return errors::Internal("Could not find context for ", node->name());
+    return absl::InternalError(
+        absl::StrCat("Could not find context for ", node->name()));
   }
 
   if (output_port < 0 || output_port >= node->num_outputs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "output_port '", output_port, "' is out of range, ", "node '",
-        node->name(), "' has ", node->num_outputs(), " outputs");
+        node->name(), "' has ", node->num_outputs(), " outputs"));
   }
   // Note: it's possible, if the node's been updated, that the shape inference
   // context doesn't have the right number of outputs.
@@ -328,9 +329,9 @@ absl::Status ShapeRefiner::UpdateNode(const Node* node, bool relax,
     Node* input = e->src();
     auto iter = node_to_context_.find(input);
     if (iter == node_to_context_.end()) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(absl::StrCat(
           "Input ", dst_input, " ('", input->name(), "') for '", node->name(),
-          "' was not previously added to ShapeRefiner.");
+          "' was not previously added to ShapeRefiner."));
     }
 
     InferenceContext* c = iter->second.get();
@@ -396,9 +397,9 @@ absl::Status ShapeRefiner::UpdateNode(const Node* node, bool relax,
   TF_RETURN_IF_ERROR(ops_registry_->LookUp(node->type_string(), &op_reg_data));
   if (op_reg_data->shape_inference_fn == nullptr &&
       require_shape_inference_fns_) {
-    return errors::InvalidArgument(
-        "No shape inference function exists for op '", node->type_string(),
-        "', did you forget to define it?");
+    return absl::InvalidArgumentError(
+        absl::StrCat("No shape inference function exists for op '",
+                     node->type_string(), "', did you forget to define it?"));
   }
 
   if (!op_reg_data->shape_inference_fn) {
@@ -471,17 +472,17 @@ absl::Status ShapeRefiner::EvaluateConstantIntScalarEdge(
                                                    &scalar, outer_context));
   if (*evaluated) {
     if (scalar.NumElements() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "EvaluateConstantIntScalarEdge called on non-scalar edge: ",
-          scalar.NumElements());
+          scalar.NumElements()));
     }
     if (scalar.dtype() == DT_INT32) {
       *result = scalar.scalar<int32_t>()();
     } else {
       if (scalar.dtype() != DT_INT64) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "EvaluateConstantIntScalarEdge called on non-integer edge: ",
-            scalar.dtype());
+            scalar.dtype()));
       }
       *result = scalar.scalar<int64_t>()();
     }
@@ -496,7 +497,7 @@ absl::Status ShapeRefiner::ConstantPartialShape(
   TF_RETURN_IF_ERROR(node->input_edge(dst_idx, &input_edge));
 
   InferenceContext* src_context = GetContext(input_edge->src());
-  if (src_context == nullptr) return errors::Internal("Missing src context");
+  if (src_context == nullptr) return absl::InternalError("Missing src context");
   ShapeHandle src_shape = src_context->output(input_edge->src_output());
 
   // All shapes are expected to be 1D integer tensors with the exception of the
@@ -510,7 +511,7 @@ absl::Status ShapeRefiner::ConstantPartialShape(
     TF_RETURN_IF_ERROR(EvaluateConstantTensorForEdge(node, dst_idx, &evaluated,
                                                      &t, outer_context));
     if (!evaluated) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Received a shape scalar with unknown static value.  A static value "
           "of '-1' is required to represent an unknown shape.");
     }
@@ -523,10 +524,10 @@ absl::Status ShapeRefiner::ConstantPartialShape(
         return absl::OkStatus();
       }
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Received an invalid shape scalar with a static value that is not "
         "'-1': ",
-        t.DebugString());
+        t.DebugString()));
   }
 
   TF_RETURN_IF_ERROR(src_context->WithRank(src_shape, 1, &src_shape));

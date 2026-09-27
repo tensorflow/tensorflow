@@ -19,6 +19,7 @@ the repository, and create a pull request.
 
 1.  Create a fork of the [XLA repository](https://github.com/openxla/xla).
 2.  Clone your fork of the repo, replacing `{USER}` with your GitHub username:
+
     ```sh
     git clone https://github.com/{USER}/xla.git
     ```
@@ -26,6 +27,7 @@ the repository, and create a pull request.
 3.  Change into the `xla` directory: `cd xla`
 
 4.  Configure the remote upstream repo:
+
     ```sh
     git remote add upstream https://github.com/openxla/xla.git
     ```
@@ -130,3 +132,33 @@ When you're ready to send changes for review, create a
 
 To learn about the XLA code review philosophy, see
 [Review Process](contributing.md#review-process).
+
+## Static Analysis (Clang-Tidy)
+
+To maintain code quality, XLA uses `clang-tidy` for static analysis and include
+verification.
+
+### How to Run
+
+There are two ways to execute checks. Running it against specific targets can be
+done with:
+
+```sh
+bazel build --config=clang-tidy //path/to:target1 //path/to:target2
+```
+
+There is a helper script that is also used in CI workflows that runs it against
+git diff from feature branch against the upstream main.
+
+```sh
+# Make sure the main is updated.
+git fetch origin main
+bazel run //build_tools/ci:run_clang_tidy
+```
+
+The helper script also allows to automagically fix clang-tidy errors where
+possible.
+
+```sh
+bazel run //build_tools/ci:run_clang_tidy -- --fix
+```

@@ -163,7 +163,7 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
-  const int elements_count = src_depth * dst_depth * 4;
+  const size_t elements_count = static_cast<size_t>(src_depth) * dst_depth * 4;
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
   const int float4_size = f32_weights ? 16 : 8;
@@ -198,7 +198,8 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
     TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
         f32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
         TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth, data.data());
-    args_.AddObject("weights", std::make_unique<TensorDescriptor>(desc));
+    args_.AddObject("weights",
+                    std::make_unique<TensorDescriptor>(std::move(desc)));
   }
 }
 

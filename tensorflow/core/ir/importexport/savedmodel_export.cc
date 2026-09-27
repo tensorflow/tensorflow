@@ -29,7 +29,7 @@ absl::Status ExportMlirToSavedModel(
     mlir::ModuleOp module, const tensorflow::SavedModel &original_saved_model,
     tensorflow::SavedModel *output_saved_model) {
   if (original_saved_model.meta_graphs_size() == 0) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Original saved model has no meta graphs");
   }
 

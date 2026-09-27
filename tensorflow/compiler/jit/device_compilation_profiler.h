@@ -76,7 +76,8 @@ class DeviceCompilationProfiler : public ResourceBase {
   // XlaJitCompilationActivity.
   virtual absl::Status RegisterCompilation(const NameAttrList& function,
                                            int64_t compile_time_us,
-                                           bool used_persistent_cache);
+                                           bool used_persistent_cache,
+                                           int64_t compile_end_us = 0);
 
   void IncrementOngoingAsyncCompilations();
   void DecrementOngoingAsyncCompilations();

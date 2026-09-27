@@ -23,6 +23,8 @@ namespace xla {
 // A pass which rewrites scan operations into a while loop.
 class ScanExpander : public OpExpanderPass {
  public:
+  explicit ScanExpander(bool expand_associative_scans = true)
+      : expand_associative_scans_(expand_associative_scans) {}
   absl::string_view name() const override { return "scan_expander"; }
 
  protected:
@@ -30,6 +32,9 @@ class ScanExpander : public OpExpanderPass {
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+
+ private:
+  bool expand_associative_scans_;
 };
 
 }  // namespace xla

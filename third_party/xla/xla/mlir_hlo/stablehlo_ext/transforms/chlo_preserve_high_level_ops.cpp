@@ -235,6 +235,7 @@ struct ChloPreserveHighLevelOpsPass
                  ChloOpToCompositePattern<chlo::CoshOp>,
                  ChloOpToCompositePattern<chlo::SinhOp>,
                  ChloOpToCompositePattern<chlo::ErfOp>,
+                 ChloOpToCompositePattern<chlo::MulhiOp>,
                  ChloOpToCompositePattern<chlo::RaggedDotOp>,
                  ChloOpToCompositePattern<chlo::TopKOp>,
                  ChloOpToCompositePattern<chlo::ScanOp>>(

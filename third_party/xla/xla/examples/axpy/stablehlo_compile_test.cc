@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -85,7 +86,7 @@ class StableHloAxpyTest : public ::testing::Test {
 
     // Read StableHLO program to string.
     std::string program_string;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+    ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(program_path), &program_string));
 
     std::cerr << "Loaded StableHLO program from " << program_path << ":\n"

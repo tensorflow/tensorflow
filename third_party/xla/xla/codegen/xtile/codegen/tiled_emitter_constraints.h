@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/AffineMap.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 
 namespace xla {
@@ -48,7 +48,7 @@ class TiledEmitterConstraints : public EmitterSpecificConstraints {
   // Holds a constraint expression over derived parameters (d'0, ..., d'm) where
   //   (d'0, ..., d'm) = tile_parameters_transform(tile_parameters).
   struct CustomConstraints {
-    mlir::AffineMap tile_parameters_transform;
+    SymbolicMap tile_parameters_transform;
     ConstraintExpression constraints;
   };
 

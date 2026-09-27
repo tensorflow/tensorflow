@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model_test_util.h"
 
 #include <cmath>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cast.h"

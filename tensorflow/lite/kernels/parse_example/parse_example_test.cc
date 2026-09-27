@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/example/feature_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -316,6 +320,17 @@ TEST(ParseExampleOpsTest, SimpleTest) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDenseOutput<float>(0),
               ElementsAreArray(ArrayFloatNear({1.5f, 1.5f})));
+}
+
+TEST(ParseExampleOpsTest, BatchSizeMismatchTest) {
+  tf::Example example;
+  tf::AppendFeatureValues<float>({1.5f, 1.5f}, "time", &example);
+  ParseExampleOpModel<float> m({example.SerializeAsString()}, {}, {"time"},
+                               {0.f, 0.f}, {TensorType_FLOAT32}, {},
+                               kNodeDefTxt);
+  m.PopulateStringTensor(m.string_indices_[0], {example.SerializeAsString(),
+                                                example.SerializeAsString()});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
 }
 
 TEST(ParseExampleOpsTest, SparseTest) {

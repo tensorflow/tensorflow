@@ -98,7 +98,7 @@ absl::Status WeakSetAllocAttrsForRets(
     std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for args (inputs to functions, "_Arg" ops)
-// for a single device funtion based on dtype. Raises an error if an int32 arg
+// for a single device function based on dtype. Raises an error if an int32 arg
 // does not have expected full_type information. If an error raised about bad
 // full time information causes a breakage, changing
 // `SingleDeviceSetAllocAttrsForArgs` to `WeakSingleDeviceSetAllocAttrsForArgs`
@@ -144,12 +144,12 @@ MemoryType MemoryTypeFromFullTypeId(FullTypeId id);
 // Check that use_host_memory is true iff FT has type_id TFT_SHAPE_TENSOR
 // and logging of a warning if not can be enabled. Returns true if check passes.
 // Note the FT is expected to be the full type information for a tensor, not for
-// the whole ouput of an op, i.e. it should not have an outer TFT_PRODUCT.
+// the whole output of an op, i.e. it should not have an outer TFT_PRODUCT.
 bool LogMemoryTypeMismatch(bool use_host_memory, const FullTypeDef& ft);
 
 // Check that use_host_memory is true iff FT has type_id TFT_SHAPE_TENSOR
 // and raise an error if not. Note the FT is expected to be the full type
-// information for a tensor, not for the whole ouput of an op, i.e. it should
+// information for a tensor, not for the whole output of an op, i.e. it should
 // not have an outer TFT_PRODUCT.
 absl::Status CheckMemoryType(bool use_host_memory, const FullTypeDef& ft);
 

@@ -109,9 +109,9 @@ absl::Status TensorSliceWriter::Add(const std::string& name,
                                     const TensorSlice& slice, const T* data) {
   // The tensor and the slice have to be compatible
   if (shape.dims() != slice.dims()) {
-    return errors::Internal("Incompatible tensor shape and slice: ", "shape = ",
-                            shape.DebugString(),
-                            ", slice = ", slice.DebugString());
+    return absl::InternalError(
+        absl::StrCat("Incompatible tensor shape and slice: ", "shape = ",
+                     shape.DebugString(), ", slice = ", slice.DebugString()));
   }
   DataType dt = DataTypeToEnum<T>::value;
   // We need to add an entry for "name" if there isn't an entry already.
@@ -123,14 +123,14 @@ absl::Status TensorSliceWriter::Add(const std::string& name,
     CHECK_EQ(name, ssm.name()) << ssm.ShortDebugString();
     TensorShape ssm_shape(ssm.shape());
     if (!shape.IsSameSize(ssm_shape)) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Mismatching shapes: existing tensor = ", ssm_shape.DebugString(),
-          ", trying to add name ", name, ", shape = ", shape.DebugString());
+          ", trying to add name ", name, ", shape = ", shape.DebugString()));
     }
     if (dt != ssm.type()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Mismatching types: existing type = ", DataTypeString(ssm.type()),
-          ", trying to add name ", name, ", type = ", DataTypeString(dt));
+          ", trying to add name ", name, ", type = ", DataTypeString(dt)));
     }
   } else {
     // Insert the new tensor name with the shape information
@@ -161,7 +161,8 @@ absl::Status TensorSliceWriter::Add(const std::string& name,
     // set the data. Need to figure out if the interface works well.
     std::pair<std::string, std::string> key_value(key, "");
     if (!sts.AppendToString(&key_value.second)) {
-      return errors::Internal("Error writing Tensor. Possible size overflow.");
+      return absl::InternalError(
+          "Error writing Tensor. Possible size overflow.");
     }
     data_.insert(key_value);
   }
@@ -182,9 +183,9 @@ absl::Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (max_bytes_per_element * num_elements);
   if (size_bound > kMaxMessageBytes) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tensor slice is too large to serialize (conservative estimate: ",
-        size_bound, " bytes)");
+        size_bound, " bytes)"));
   }
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);

@@ -393,6 +393,47 @@ TEST_P(DynamicallyQuantizedFullyConnectedTest, WeightsCache) {
   tester.Test(xnnpack_delegate.get());
 }
 
+TEST_P(DynamicallyQuantizedFullyConnectedTest, Float16InputOutput) {
+  auto rng = std::mt19937(0);
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
+  const auto output_channels = channels_rng();
+
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.Float16(true)
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .WeightsType(weights_type);
+  tester.Test(xnnpack_delegate.get());
+}
+
+TEST_P(DynamicallyQuantizedFullyConnectedTest, Float16InputOutputNoBias) {
+  auto rng = std::mt19937(0);
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  WeightsType weights_type = GetParam();
+  const auto input_channels = GenInputChannels(channels_rng, weights_type);
+  const auto output_channels = channels_rng();
+
+  DynamicallyQuantizedFullyConnectedTester tester;
+  tester.Float16(true)
+      .NoBias()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .WeightsType(weights_type);
+  tester.Test(xnnpack_delegate.get());
+}
+
 // Returns a human readable string representation of the test parameter.
 std::string TestParamToString(testing::TestParamInfo<WeightsType> param) {
   switch (param.param) {

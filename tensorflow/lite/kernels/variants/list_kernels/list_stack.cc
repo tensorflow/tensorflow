@@ -60,6 +60,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kListInput, &list_input));
   TF_LITE_ENSURE_EQ(context, list_input->allocation_type, kTfLiteVariantObject);
+  TF_LITE_ENSURE(context, list_input->data.data != nullptr);
+
   TensorArray* arr = static_cast<TensorArray*>(
       static_cast<VariantData*>(list_input->data.data));
 
@@ -78,10 +80,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // If succeeds and result not nullptr, guaranteed to be fully defined.
   TF_LITE_ENSURE_OK(context, GetShapeIfAllEqual(*arr, cur_shape_suffix));
 
+  IntArrayUniquePtr shape_input_arr;
+  TF_LITE_ENSURE_OK(context,
+                    TensorAsShape(context, *shape_input, shape_input_arr));
+  TF_LITE_ENSURE(context, shape_input_arr != nullptr);
+
   // Confirm that input shape, shape of elements and list shape are all
   // compatible.
   cur_shape_suffix = MergeShapesOrNull(
-      MergeShapesOrNull(TensorAsShape(*shape_input),
+      MergeShapesOrNull(std::move(shape_input_arr),
                         BuildTfLiteArray(*arr->ElementShape())),
       std::move(cur_shape_suffix));
 
@@ -109,7 +116,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     final_output_shape = BuildTfLiteArray({arr->NumElements()});
   }
 
-  context->ResizeTensor(context, output, final_output_shape.release());
+  TF_LITE_ENSURE_OK(
+      context,
+      context->ResizeTensor(context, output, final_output_shape.release()));
 
   const auto num_elements = static_cast<int>(NumElements(output));
   if (num_elements == 0) {
@@ -125,13 +134,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Copy buffer of constituent element tensors to output if they are present.
   // Otherwise, zero that chunk of memory.
   char* raw_data_offset = output->data.raw;
-  for (int i = 0; i < arr->NumElements(); ++i) {
-    if (arr->At(i) == nullptr) {
-      memset(raw_data_offset, 0, bytes_per_element);
-    } else {
-      memcpy(raw_data_offset, arr->At(i)->data.data, bytes_per_element);
+  if (bytes_per_element > 0) {
+    TF_LITE_ENSURE(context, raw_data_offset != nullptr);
+    for (int i = 0; i < arr->NumElements(); ++i) {
+      if (arr->At(i) == nullptr) {
+        memset(raw_data_offset, 0, bytes_per_element);
+      } else {
+        TF_LITE_ENSURE(context, arr->At(i)->data.data != nullptr);
+        memcpy(raw_data_offset, arr->At(i)->data.data, bytes_per_element);
+      }
+      raw_data_offset = raw_data_offset + bytes_per_element;
     }
-    raw_data_offset = raw_data_offset + bytes_per_element;
   }
 
   return kTfLiteOk;

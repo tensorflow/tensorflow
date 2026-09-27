@@ -15,42 +15,43 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 
-#include <deque>
-#include <numeric>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/client_library.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/validate.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -111,7 +112,7 @@ absl::Status PrepareArguments(
         break;
       }
       case XlaExpression::Kind::kInvalid:
-        return errors::InvalidArgument("Invalid function argument");
+        return absl::InvalidArgumentError("Invalid function argument");
     }
   }
   return absl::OkStatus();
@@ -199,8 +200,9 @@ absl::Status GraphCompiler::Compile() {
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
       if (outputs[o].tensor == nullptr) {
-        return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                FormatNodeForError(*n));
+        return absl::InternalError(absl::StrCat("Missing xla_context ", o,
+                                                "-th output from ",
+                                                FormatNodeForError(*n)));
       }
     }
   }
@@ -216,9 +218,9 @@ absl::Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
     TF_RETURN_IF_ERROR(
         node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
     if (!attr_value->has_func()) {
-      return errors::InvalidArgument(
-          "The attribute value for attribute 'f' in node ", node.DebugString(),
-          " does not have 'func' field set");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The attribute value for attribute 'f' in node ",
+                       node.DebugString(), " does not have 'func' field set"));
     }
     *func = attr_value->func();
     return absl::OkStatus();

@@ -15,6 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <type_traits>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/xent_op.h"
@@ -50,20 +54,21 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                 /*fewer_dims_optimization=*/false);
     if (!logits_in.IsSameSize(labels_in)) {
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "logits and labels must be broadcastable: logits_size=",
                       logits_in.shape().DebugString(),
-                      " labels_size=", labels_in.shape().DebugString()));
+                      " labels_size=", labels_in.shape().DebugString())));
       shape_in = BCast::ToShape(bcast.output_shape());
     }
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(shape_in),
-                errors::InvalidArgument("logits and labels must be either "
-                                        "2-dimensional, or broadcasted to be "
-                                        "2-dimensional"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(shape_in),
+        absl::InvalidArgumentError("logits and labels must be either "
+                                   "2-dimensional, or broadcasted to be "
+                                   "2-dimensional"));
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(context, !OpDeterminismRequired(),
-                  errors::Unimplemented(
+                  absl::UnimplementedError(
                       "The GPU implementation of SoftmaxCrossEntropyWithLogits"
                       " that would have been executed is not deterministic."
                       " Note that the Python API uses an alternative,"

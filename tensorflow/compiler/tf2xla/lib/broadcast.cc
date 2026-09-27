@@ -48,7 +48,7 @@ absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
     tensorflow::BCast bcast(tensorflow::BCast::FromShape(lhs_tf_shape),
                             tensorflow::BCast::FromShape(rhs_tf_shape));
     if (!bcast.IsValid()) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Dimensions cannot be made to match through broadcasting");
     }
     TF_ASSIGN_OR_RETURN(*lhs, xla::BroadcastTo(*lhs, bcast.output_shape()));

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/message.h"
 
+#include <istream>
 #include <stack>
 #include <string>
 

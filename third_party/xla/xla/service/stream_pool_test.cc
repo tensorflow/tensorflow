@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -45,13 +46,13 @@ TEST_F(StreamPoolTest, OneStreamPool) {
   StreamPool pool(executor);
 
   // Borrow and return a stream.
-  StreamPool::Ptr stream1 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream1, pool.BorrowStream());
   se::Stream* stream1_ptr = stream1.get();
   EXPECT_TRUE(stream1->ok());
   stream1 = nullptr;
 
   // Borrow and return another stream.
-  StreamPool::Ptr stream2 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream2, pool.BorrowStream());
   se::Stream* stream2_ptr = stream2.get();
   EXPECT_TRUE(stream2->ok());
   stream2 = nullptr;
@@ -66,10 +67,10 @@ TEST_F(StreamPoolTest, TwoStreamPool) {
   StreamPool pool(executor);
 
   // Borrow two streams.
-  StreamPool::Ptr stream1 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream1, pool.BorrowStream());
   se::Stream* stream1_ptr = stream1.get();
   EXPECT_TRUE(stream1->ok());
-  StreamPool::Ptr stream2 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream2, pool.BorrowStream());
   se::Stream* stream2_ptr = stream2.get();
   EXPECT_TRUE(stream2->ok());
 
@@ -79,7 +80,7 @@ TEST_F(StreamPoolTest, TwoStreamPool) {
 
   // Return stream1 and borrow stream3.
   stream1 = nullptr;
-  StreamPool::Ptr stream3 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream3, pool.BorrowStream());
   se::Stream* stream3_ptr = stream3.get();
   EXPECT_TRUE(stream3->ok());
 
@@ -89,7 +90,7 @@ TEST_F(StreamPoolTest, TwoStreamPool) {
 
   // Return stream2, and borrow stream4.
   stream2 = nullptr;
-  StreamPool::Ptr stream4 = pool.BorrowStream();
+  ASSERT_OK_AND_ASSIGN(auto stream4, pool.BorrowStream());
   se::Stream* stream4_ptr = stream4.get();
   EXPECT_TRUE(stream4->ok());
 

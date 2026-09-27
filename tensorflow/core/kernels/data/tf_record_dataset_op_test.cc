@@ -11,8 +11,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -122,7 +125,7 @@ absl::Status CreateTestFiles(
     const std::vector<std::vector<std::string>>& contents,
     CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The number of files does not match with the contents");
   }
   for (int i = 0; i < filenames.size(); ++i) {

@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -88,7 +90,8 @@ StatusOr<std::string> DeviceTypeFromMesh(const Mesh& mesh) {
       mesh.is_remote() ? mesh.global_devices()[0] : mesh.local_devices()[0];
   size_t device_path_pos = device_path.find_last_of(':');
   if (device_path_pos == std::string::npos) {
-    return errors::InvalidArgument("Unexpected device path: ", device_path);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unexpected device path: ", device_path));
   }
   return device_path.substr(0, device_path_pos);
 }

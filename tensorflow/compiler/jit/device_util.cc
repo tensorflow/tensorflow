@@ -91,7 +91,8 @@ absl::Status DeviceNameToDeviceType(const std::string& device,
                                     DeviceType* device_type) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-    return errors::Internal("Malformed assigned device '", device, "'");
+    return absl::InternalError(
+        absl::StrCat("Malformed assigned device '", device, "'"));
   }
   *device_type = DeviceType(parsed.type);
   return absl::OkStatus();
@@ -172,33 +173,33 @@ absl::StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
   });
 
   if (multiple_cpu_devices) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Multiple CPU devices ", device_info_cache.DebugString(devices)));
+    FAILED_TO_PICK_DEVICE(absl::InternalError(absl::StrCat(
+        "Multiple CPU devices ", device_info_cache.DebugString(devices))));
   }
 
   if (multiple_gpu_devices) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Multiple GPU devices ", device_info_cache.DebugString(devices)));
+    FAILED_TO_PICK_DEVICE(absl::InternalError(absl::StrCat(
+        "Multiple GPU devices ", device_info_cache.DebugString(devices))));
   }
 
   if (multiple_unknown_devices) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Multiple unknown devices ", device_info_cache.DebugString(devices)));
+    FAILED_TO_PICK_DEVICE(absl::InternalError(absl::StrCat(
+        "Multiple unknown devices ", device_info_cache.DebugString(devices))));
   }
 
   if (maybe_unknown_device && maybe_gpu_device) {
-    FAILED_TO_PICK_DEVICE(errors::Internal(
-        "Found both unknown and GPU devices: ",
-        device_info_cache.GetNameFor(*maybe_unknown_device), ", ",
-        device_info_cache.GetNameFor(*maybe_gpu_device)));
+    FAILED_TO_PICK_DEVICE(absl::InternalError(
+        absl::StrCat("Found both unknown and GPU devices: ",
+                     device_info_cache.GetNameFor(*maybe_unknown_device), ", ",
+                     device_info_cache.GetNameFor(*maybe_gpu_device))));
   }
 
   if (!allow_mixing_unknown_and_cpu) {
     if (maybe_unknown_device && maybe_cpu_device) {
-      FAILED_TO_PICK_DEVICE(errors::Internal(
-          "Found both unknown and CPU devices: ",
-          device_info_cache.GetNameFor(*maybe_unknown_device), ", ",
-          device_info_cache.GetNameFor(*maybe_cpu_device)));
+      FAILED_TO_PICK_DEVICE(absl::InternalError(
+          absl::StrCat("Found both unknown and CPU devices: ",
+                       device_info_cache.GetNameFor(*maybe_unknown_device),
+                       ", ", device_info_cache.GetNameFor(*maybe_cpu_device))));
     }
   }
 
@@ -210,7 +211,7 @@ absl::StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     return {*maybe_cpu_device};
   }
 
-  FAILED_TO_PICK_DEVICE(errors::Internal("Empty device set!"));
+  FAILED_TO_PICK_DEVICE(absl::InternalError("Empty device set!"));
 
 #undef FAILED_TO_PICK_DEVICE
 }

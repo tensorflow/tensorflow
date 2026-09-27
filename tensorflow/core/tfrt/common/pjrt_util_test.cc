@@ -22,12 +22,10 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -62,6 +60,27 @@ TEST(PjRtGpuClientCreationInfoTest, SetAndGet) {
                           GetPjRtGpuClientCreationInfo());
 
   EXPECT_THAT(retrieved_info->allowed_devices, ElementsAre(123));
+}
+
+TEST(PjRtUtilTest, TestOnlyResetPjRtClientInTFGlobalResourceManager) {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
+  TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU,
+                                                      std::move(pjrt_client)));
+  TF_ASSERT_OK(TestOnlyResetPjRtClientInTFGlobalResourceManager(DEVICE_CPU));
+  EXPECT_THAT(GetPjRtClient(DEVICE_CPU),
+              absl_testing::StatusIs(error::NOT_FOUND));
+
+  auto info = std::make_unique<PjRtGpuClientCreationInfo>();
+  info->allowed_devices.insert(123);
+  TF_ASSERT_OK(
+      SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(std::move(info)));
+  TF_ASSERT_OK(TestOnlyResetPjRtClientInTFGlobalResourceManager(DEVICE_GPU));
+  TF_ASSERT_OK_AND_ASSIGN(PjRtGpuClientCreationInfo * retrieved_info,
+                          GetPjRtGpuClientCreationInfo());
+  EXPECT_EQ(retrieved_info, nullptr);
 }
 
 }  // namespace

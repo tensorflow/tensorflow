@@ -56,27 +56,28 @@ class PadOp : public OpKernel {
     const int dims = in0.dims();
     static const int kMinDims = 0;
     static const int kMaxDims = 8;
-    OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
-                errors::Unimplemented("inputs rank not in [", kMinDims, ",",
-                                      kMaxDims, "]: ", dims));
     OP_REQUIRES(
-        context,
-        TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                in1.shape().DebugString()));
+        context, kMinDims <= dims && dims <= kMaxDims,
+        absl::UnimplementedError(absl::StrCat("inputs rank not in [", kMinDims,
+                                              ",", kMaxDims, "]: ", dims)));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("paddings must be a matrix with 2 columns: ",
+                                 in1.shape().DebugString())));
     OP_REQUIRES(
         context, dims == in1.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            in1.shape().DebugString(), " ", in0.shape().DebugString()));
+            in1.shape().DebugString(), " ", in0.shape().DebugString())));
 
     T pad_value = T();
     if (context->num_inputs() == 3) {
       const Tensor& constant_values = context->input(2);
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsScalar(constant_values.shape()),
-          errors::InvalidArgument("constant_values must be a scalar. Found: ",
-                                  constant_values.shape().DebugString()));
+      OP_REQUIRES(context, TensorShapeUtils::IsScalar(constant_values.shape()),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("constant_values must be a scalar. Found: ",
+                                   constant_values.shape().DebugString())));
       pad_value = context->input(2).scalar<T>()();
     }
 
@@ -238,8 +239,9 @@ class PadOp : public OpKernel {
         break;
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 6 supported: ",
-                                            input.shape().DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Only ranks up to 6 supported: ",
+                                     input.shape().DebugString())));
     }
   }
 

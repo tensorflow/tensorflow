@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tensorflow {
 

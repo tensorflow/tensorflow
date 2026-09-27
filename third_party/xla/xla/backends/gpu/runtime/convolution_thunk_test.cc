@@ -35,10 +35,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(ConvolutionThunkTest, ProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
-    thunk_info {
-      profile_annotation: "conv_thunk_profile"
-      execution_stream_id: 0
-    }
+    thunk_info { profile_annotation: "conv_thunk_profile" }
     convolution_thunk {
       conv_descriptor {
         kind: FORWARD

@@ -146,7 +146,7 @@ absl::Status XlaCompilationDevice::Sync() { return absl::OkStatus(); }
 absl::Status XlaCompilationDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
 }
 

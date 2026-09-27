@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -70,10 +71,24 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
+  //
+  //   propagate_through_calls : If false, kCall instructions are treated as
+  //     opaque instructions that define their own output values, and dataflow
+  //     across kCall boundaries is ignored.
+  //
+  //   precompute_uses : If set, the values this predicate accepts get their
+  //     uses (HloValue::GetUses) before Run returns, in one pass that shares
+  //     the per instruction work between them. Every other value computes its
+  //     uses on the first GetUses, one value at a time, which is quadratic in
+  //     the width of a tuple. Set it when the uses of many values are read
+  //     before the module is mutated.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      absl::flat_hash_set<absl::string_view> execution_threads = {});
+      absl::flat_hash_set<absl::string_view> execution_threads = {},
+      bool propagate_through_calls = true,
+      std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses =
+          std::nullopt);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -109,11 +124,25 @@ class HloDataflowAnalysis {
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
-    return GetValueSet(instruction, index).GetUniqueValue();
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return value_set.GetUniqueValue();
   }
   HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                              const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
+    const HloValueSet& value_set = GetValueSet(instruction, index);
+    if (value_set.values().size() != 1) {
+      LOG(FATAL) << "GetUniqueValueAt failed on instruction: "
+                 << instruction->name() << " at index " << index
+                 << " with value set size " << value_set.values().size() << ": "
+                 << value_set;
+    }
+    return GetValue(value_set.GetUniqueValue().id());
   }
 
   // Returns the HloValue with the given Id.
@@ -189,7 +218,8 @@ class HloDataflowAnalysis {
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
-                      absl::flat_hash_set<absl::string_view> execution_threads);
+                      absl::flat_hash_set<absl::string_view> execution_threads,
+                      bool propagate_through_calls = true);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
@@ -254,6 +284,15 @@ class HloDataflowAnalysis {
   bool UpdateAsyncStartValueSet(HloInstruction* async_start);
   bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
   bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
+  // Updates the value set at `operand_index` with the value set of
+  // `operand` for the async_op in the async chain (only for
+  // async-start/async-update).
+  bool UpdateAsyncChainOperandValueSet(HloInstruction* async_op,
+                                       int64_t operand_index,
+                                       const HloInstruction* operand);
+  // Updates the value set for element {1} of the async operation's output,
+  // which corresponds to the wrapped computation's root.
+  bool UpdateAsyncChainOutputValueSet(HloInstruction* async_op);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);
@@ -295,6 +334,7 @@ class HloDataflowAnalysis {
   const absl::flat_hash_set<absl::string_view> execution_threads_;
   const bool ssa_form_;
   const bool bitcast_defines_value_;
+  bool propagate_through_calls_ = true;
 
   std::unique_ptr<CallGraph> call_graph_;
 

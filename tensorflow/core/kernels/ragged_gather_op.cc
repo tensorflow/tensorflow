@@ -128,6 +128,7 @@ class RaggedGatherOpBase : public OpKernel {
       std::vector<std::pair<SPLITS_TYPE, SPLITS_TYPE>>* value_slices,
       SPLITS_TYPE* num_values) {
     *num_values = 0;
+    int64_t total_values = 0;
     value_slices->clear();
 
     int num_splits = indices_in.dims() - 1 + params_nested_splits_in.size();
@@ -188,9 +189,17 @@ class RaggedGatherOpBase : public OpKernel {
       }
       if (limit != start) {
         value_slices->emplace_back(start, limit);
-        *num_values += limit - start;
+        total_values += limit - start;
       }
     }
+    // The value count is accumulated in a wide type and validated before it is
+    // narrowed to SPLITS_TYPE, so an int32 Tsplits cannot silently wrap and
+    // drive an undersized output allocation in WriteValues.
+    if (total_values > std::numeric_limits<SPLITS_TYPE>::max()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of values ", total_values, " exceeds limits of Tsplits"));
+    }
+    *num_values = static_cast<SPLITS_TYPE>(total_values);
     return absl::OkStatus();
   }
 
@@ -200,9 +209,13 @@ class RaggedGatherOpBase : public OpKernel {
     // Validate
     for (int dim = 0; dim < params_nested_splits.size(); ++dim) {
       const auto& splits = params_nested_splits[dim];
+      // For an intermediate ragged dimension, the split values are used as
+      // indices into the next dimension's splits tensor by MakeSplits, so the
+      // largest valid value is one less than that tensor's length. Only the
+      // innermost dimension may reference num_params_dense_values directly.
       SPLITS_TYPE last_split = (dim == params_nested_splits.size() - 1)
                                    ? num_params_dense_values
-                                   : params_nested_splits[dim + 1].size();
+                                   : params_nested_splits[dim + 1].size() - 1;
       if (splits.size() == 0) {
         return absl::InvalidArgumentError("Ragged splits may not be empty");
       }

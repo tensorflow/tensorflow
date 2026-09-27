@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <ostream>
 #include <string>
@@ -30,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/base/optimization.h"
 #include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -43,8 +46,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array.h"
+#include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
+#include "xla/pjrt/transpose_kernels.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -52,12 +57,83 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/types.h"
 #include "xla/util.h"
 
 ABSL_FLAG(int, transpose_num_random_testcases, 10,
           "Number of random testcases");
 
 namespace xla {
+
+template <typename T, int bs>
+void TestMicroKernelEquivalence() {
+  // Test both tightly-packed tiles (0 padding) and tiles with 64 bytes of
+  // padding between rows (which exercises wide-stride / rectangular kernels).
+  static_assert(64 % sizeof(T) == 0);
+
+  for (int input_stride : {bs, bs + static_cast<int>(64 / sizeof(T))}) {
+    for (int output_stride : {bs, bs + static_cast<int>(64 / sizeof(T))}) {
+      std::vector<T> input(bs * input_stride);
+      std::vector<T> expected_output(bs * output_stride);
+      std::vector<T> actual_output(bs * output_stride);
+
+      // Initialize input
+      for (int i = 0; i < bs * input_stride; ++i) {
+        input[i] = static_cast<T>(static_cast<float>(i % 100));
+      }
+
+      // Compute reference
+      for (int row = 0; row < bs; ++row) {
+        for (int col = 0; col < bs; ++col) {
+          expected_output[col * output_stride + row] =
+              input[row * input_stride + col];
+        }
+      }
+
+      const int64_t lda = input_stride * sizeof(T);
+      const int64_t ldb = output_stride * sizeof(T);
+      TransposeMicroKernel<T, bs>::Apply(
+          reinterpret_cast<const char*>(input.data()), lda,
+          reinterpret_cast<char*>(actual_output.data()), ldb);
+
+      EXPECT_EQ(0, std::memcmp(expected_output.data(), actual_output.data(),
+                               bs * ldb))
+          << "Mismatch for sizeof(T)=" << sizeof(T) << " bs=" << bs
+          << " lda=" << lda << " ldb=" << ldb;
+    }
+  }
+}
+
+TEST(TransposeMicroKernelTest, ExactEquivalence) {
+  // AvxSquareTransposeMicroKernelImpl is triggered when a logical row of the
+  // tile (bs * sizeof(T)) is exactly 256 bits to fit in __m256i.
+  TestMicroKernelEquivalence<int8_t, 32>();
+  TestMicroKernelEquivalence<int16_t, 16>();
+  TestMicroKernelEquivalence<float, 8>();
+  TestMicroKernelEquivalence<int64_t, 4>();
+  TestMicroKernelEquivalence<absl::uint128, 2>();
+
+  // SseSquareTransposeMicroKernelImpl or AvxRectangularTransposeMicroKernelImpl
+  // is triggered when a logical row of the tile (bs * sizeof(T)) is exactly
+  // 128 bits. SseSquare operates directly on __m128i when gathering from memory
+  // (lda >= ldb && lda <= 64B) while AvxRectangular packs two rows into __m256i
+  // when scattering to memory (ldb > lda) or for large strides.
+  TestMicroKernelEquivalence<int8_t, 16>();
+  TestMicroKernelEquivalence<int16_t, 8>();
+  TestMicroKernelEquivalence<bfloat16, 8>();
+  TestMicroKernelEquivalence<float, 4>();
+  TestMicroKernelEquivalence<int64_t, 2>();
+
+  // Smaller or larger cases fall back to either Vec128 or a for loop.
+  TestMicroKernelEquivalence<int8_t, 8>();
+  TestMicroKernelEquivalence<int16_t, 4>();
+  TestMicroKernelEquivalence<bfloat16, 4>();
+  TestMicroKernelEquivalence<float, 2>();
+  TestMicroKernelEquivalence<int8_t, 4>();
+  TestMicroKernelEquivalence<int16_t, 2>();
+  TestMicroKernelEquivalence<int8_t, 2>();
+  TestMicroKernelEquivalence<int8_t, 64>();
+}
 
 class TestTransposePlan : public TransposePlan {
  public:
@@ -1112,6 +1188,85 @@ static void BM_Transpose_float(const TransposeTestCase& bm, int parallelism,
   BM_Transpose<float>(bm, parallelism, state);
 }
 
+template <int bits_per_element>
+void BM_TransposePack(const TransposeTestCase& bm, int parallelism,
+                      ::testing::benchmark::State& state) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = bm.dims;
+  options.permutation = bm.permutation;
+  options.dest_bits_per_element = bits_per_element;
+  options.num_threads = parallelism;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  int64_t num_elems = plan->InputNumElems();
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  int elements_per_byte = 8 / bits_per_element;
+  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(packed_size);
+
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
+  for (auto s : state) {
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()), output.data(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+    tsl::testing::DoNotOptimize(output);
+  }
+}
+
+template <int bits_per_element>
+void BM_TransposeUnfusedPack(const TransposeTestCase& bm, int parallelism,
+                             ::testing::benchmark::State& state) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = bm.dims;
+  options.permutation = bm.permutation;
+  options.num_threads = parallelism;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  int64_t num_elems = plan->InputNumElems();
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  int elements_per_byte = 8 / bits_per_element;
+  int64_t packed_size = CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(packed_size);
+
+  tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
+                                     parallelism);
+  for (auto s : state) {
+    auto temp_buf = std::make_unique<char[]>(num_elems);
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()), temp_buf.get(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+    PackIntN(bits_per_element, absl::MakeConstSpan(temp_buf.get(), num_elems),
+             absl::MakeSpan(output));
+    tsl::testing::DoNotOptimize(output);
+  }
+}
+
+static void BM_Transpose_Pack4(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_TransposePack<4>(bm, parallelism, state);
+}
+
+static void BM_Transpose_UnfusedPack4(const TransposeTestCase& bm,
+                                      int parallelism,
+                                      ::testing::benchmark::State& state) {
+  BM_TransposeUnfusedPack<4>(bm, parallelism, state);
+}
+
 static void* benchmarks = []() {
   using BenchmarkFn =
       void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
@@ -1121,7 +1276,10 @@ static void* benchmarks = []() {
           {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
-  };
+          {"BM_Transpose_Pack4", BM_Transpose_Pack4, {1, 4, 8}},
+          //          {"BM_Transpose_Pack4", BM_Transpose_UnfusedPack4, {1, 4,
+          //          8}},
+      };
   auto benchmark_cases = BenchmarkCases();
   for (const auto& benchmark_case : benchmark_cases) {
     for (const auto& variant : variants) {
@@ -1142,6 +1300,138 @@ static void* benchmarks = []() {
   }
   return nullptr;
 }();
+
+enum class StrideMode {
+  kTight,          // lda = ldb <= 64B (exercises SseSquare / 128-bit kernel)
+  kWideSymmetric,  // lda = ldb > 64B (exercises AvxRectangular gather)
+  kWideScatter,    // lda < ldb (exercises AvxRectangular scatter)
+};
+
+template <typename T, int bs>
+constexpr int BenchmarkOuterBlockSize() {
+  int max_by_elems = kMaxOuterBlockElems / bs;
+  int max_by_bytes = kMaxSquare128StrideBytes / (bs * sizeof(T));
+  return std::max(1, std::min(max_by_elems, max_by_bytes));
+}
+
+template <typename T, int bs, StrideMode kStrideMode = StrideMode::kTight>
+void BM_TransposeMicroKernel(::testing::benchmark::State& state) {
+  constexpr int kOuterBs = BenchmarkOuterBlockSize<T, bs>();
+  constexpr int64_t kBlockBytes = kOuterBs * bs * sizeof(T);
+  constexpr int64_t kWideBytes = std::max<int64_t>(kBlockBytes, 1024) + 64;
+  constexpr int64_t kLda =
+      kStrideMode == StrideMode::kWideSymmetric ? kWideBytes : kBlockBytes;
+  constexpr int64_t kLdb =
+      kStrideMode == StrideMode::kTight ? kBlockBytes : kWideBytes;
+
+  ABSL_CACHELINE_ALIGNED std::array<char, kOuterBs * bs * kLda> src = {};
+  ABSL_CACHELINE_ALIGNED std::array<char, kOuterBs * bs * kLdb> dst = {};
+  const char* a = src.data();
+  char* b = dst.data();
+  int64_t lda = kLda;
+  int64_t ldb = kLdb;
+  int outer_bs = kOuterBs;
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(a);
+    benchmark::DoNotOptimize(b);
+    benchmark::DoNotOptimize(lda);
+    benchmark::DoNotOptimize(ldb);
+    benchmark::DoNotOptimize(outer_bs);
+    for (int i = 0; i < outer_bs; ++i) {
+      for (int j = 0; j < outer_bs; ++j) {
+        TransposeMicroKernel<T, bs>::Apply(
+            a + bs * j * lda + i * bs * sizeof(T), lda,
+            b + bs * i * ldb + j * bs * sizeof(T), ldb);
+      }
+    }
+    benchmark::ClobberMemory();
+  }
+  state.SetBytesProcessed(state.iterations() * kOuterBs * kOuterBs * bs * bs *
+                          sizeof(T));
+}
+
+// 256-bit (32-byte) rows:
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 32);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 16);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, absl::uint128, 2);
+
+// 128-bit (16-byte) rows, tight stride (lda <= 64):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2);
+
+// 128-bit (16-byte) rows, wide symmetric stride (lda > 64):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4,
+                   StrideMode::kWideSymmetric);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2,
+                   StrideMode::kWideSymmetric);
+
+// 128-bit (16-byte) rows, wide scatter stride (lda < ldb):
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 16,
+                   StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 8,
+                   StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 4, StrideMode::kWideScatter);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int64_t, 2,
+                   StrideMode::kWideScatter);
+
+// Sub-128-bit (8B, 4B, 2B) rows:
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 8);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, float, 2);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 4);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int16_t, 2);
+BENCHMARK_TEMPLATE(BM_TransposeMicroKernel, int8_t, 2);
+
+TEST(TransposeTest, F64ToEf57MemcpyRejection) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = sizeof(float);
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<int64_t> permutation = {0, 1};
+  options.dims = dims;
+  options.permutation = permutation;
+  options.transformation = TransposePlan::Transformation::kF64ToEf57;
+
+  auto plan = TransposePlan::Create(options);
+  EXPECT_EQ(plan.status().code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_THAT(plan.status().message(),
+              testing::HasSubstr(
+                  "Memcpy-based plans cannot be used with transformations"));
+}
+
+TEST(TransposeTest, F64ToEf57Execution) {
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = sizeof(float);
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<int64_t> permutation = {1, 0};
+  options.dims = dims;
+  options.permutation = permutation;
+  options.transformation = TransposePlan::Transformation::kF64ToEf57;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+
+  // Input is 2 doubles (16 bytes)
+  std::vector<double> input = {1.2345, 6.7890};
+  // Output is 4 floats (16 bytes)
+  std::vector<float> output(4, 0.0f);
+
+  plan->Execute(reinterpret_cast<const char*>(input.data()), output.data());
+
+  // Expected output
+  std::vector<float> converted(4, 0.0f);
+  ConvertF64ToEf57(input, absl::MakeSpan(converted));
+  std::vector<float> expected_output = {converted[0], converted[2],
+                                        converted[1], converted[3]};
+
+  EXPECT_EQ(output, expected_output);
+}
 
 TEST(TransposePlanCache, Basics) {
   std::vector<int64_t> dims = {1, 2, 3};
@@ -1170,6 +1460,93 @@ TEST(TransposePlanCache, Basics) {
   EXPECT_TRUE(p3.get() != p1.get());
   TF_ASSERT_OK_AND_ASSIGN(auto p1b, cache.GetOrCreate(o));
   EXPECT_TRUE(p1.get() != p1b.get());
+}
+
+void TestPackIntN(int bits_per_element, absl::Span<const int64_t> dims,
+                  absl::Span<const int64_t> permutation) {
+  int elements_per_byte = 8 / bits_per_element;
+
+  int64_t num_elems = 1;
+  for (int64_t dim : dims) {
+    num_elems *= dim;
+  }
+  std::vector<int8_t> input(num_elems);
+  absl::BitGen bitgen;
+  int max_val = (1 << bits_per_element) - 1;
+  for (int64_t i = 0; i < num_elems; ++i) {
+    input[i] = absl::Uniform<int>(bitgen, 0, max_val + 1);
+  }
+
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = 1;
+  options.dims = dims;
+  options.permutation = permutation;
+  options.dest_bits_per_element = bits_per_element;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+
+  int64_t output_size_bytes =
+      CeilOfRatio<int64_t>(num_elems, elements_per_byte);
+  std::vector<char> output(output_size_bytes, -1);
+
+  plan->Execute(reinterpret_cast<const char*>(input.data()), output.data());
+
+  std::vector<int8_t> expected_unpacked_transposed(num_elems);
+  std::vector<int64_t> output_dims = Permute(dims, permutation);
+  std::vector<int64_t> input_tiling = PadTiling(dims, {});
+  std::vector<int64_t> input_strides =
+      ComputeDefaultStrides(dims, input_tiling, 1);
+  std::vector<int64_t> output_tiling = PadTiling(output_dims, {});
+  std::vector<int64_t> output_strides =
+      ComputeDefaultStrides(output_dims, output_tiling, 1);
+  ReferenceTranspose<int8_t>(dims, permutation, input_tiling, input_strides,
+                             output_tiling, output_strides, input,
+                             absl::MakeSpan(expected_unpacked_transposed), 0);
+
+  std::vector<char> expected_output(output_size_bytes);
+  PackIntN(bits_per_element,
+           absl::MakeConstSpan(reinterpret_cast<const char*>(
+                                   expected_unpacked_transposed.data()),
+                               num_elems),
+           absl::MakeSpan(expected_output));
+
+  EXPECT_EQ(output, expected_output);
+}
+
+TEST(TransposeTest, PackInt4_2D) {
+  TestPackIntN(4, {4, 4}, {1, 0});
+  TestPackIntN(4, {4, 4}, {0, 1});
+  TestPackIntN(4, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt4_3D) {
+  TestPackIntN(4, {4, 6, 8}, {2, 0, 1});
+  TestPackIntN(4, {8, 12, 16}, {1, 2, 0});
+}
+
+TEST(TransposeTest, PackInt2_2D) {
+  TestPackIntN(2, {4, 4}, {1, 0});
+  TestPackIntN(2, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt1_2D) {
+  TestPackIntN(1, {8, 8}, {1, 0});
+  TestPackIntN(1, {16, 32}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt4_Unaligned) {
+  TestPackIntN(4, {5, 5}, {1, 0});
+  TestPackIntN(4, {15, 31}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt2_Unaligned) {
+  TestPackIntN(2, {5, 5}, {1, 0});
+  TestPackIntN(2, {15, 31}, {1, 0});
+}
+
+TEST(TransposeTest, PackInt1_Unaligned) {
+  TestPackIntN(1, {5, 5}, {1, 0});
+  TestPackIntN(1, {15, 31}, {1, 0});
 }
 
 }  // namespace xla

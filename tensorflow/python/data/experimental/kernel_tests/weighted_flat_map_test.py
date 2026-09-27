@@ -91,6 +91,30 @@ class WeightedFlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
           [dataset1, dataset2, dataset3], [0, 1.0, 1.0])
       self.getDatasetOutput(dataset, requires_initialization=True)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteWeight(self):
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10, 20)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "`weights` must be finite"
+    ):
+      dataset = weighted_flat_map_op._weighted_flat_map(
+          [dataset1, dataset2], [float("inf"), 1.0]
+      )
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleInfiniteWeights(self):
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10, 20)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "`weights` must be finite"
+    ):
+      dataset = weighted_flat_map_op._weighted_flat_map(
+          [dataset1, dataset2], [float("inf"), float("inf")]
+      )
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
 
 @unittest.skip("TODO(b/325112575): Fix incompatibility with batch dataset")
 class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):

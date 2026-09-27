@@ -55,7 +55,7 @@ struct TFE_MonitoringIntGaugeCell {
   tensorflow::monitoring::GaugeCell<int64_t> cell;
 };
 struct TFE_MonitoringStringGaugeCell {
-  tensorflow::monitoring::GaugeCell<tensorflow::string> cell;
+  tensorflow::monitoring::GaugeCell<std::string> cell;
 };
 struct TFE_MonitoringBoolGaugeCell {
   tensorflow::monitoring::GaugeCell<bool> cell;
@@ -84,19 +84,19 @@ struct TFE_MonitoringIntGauge2 : TFE_MonitoringGauge<int64_t, 2> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
 
-struct TFE_MonitoringStringGauge0 : TFE_MonitoringGauge<tensorflow::string, 0> {
+struct TFE_MonitoringStringGauge0 : TFE_MonitoringGauge<std::string, 0> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
-struct TFE_MonitoringStringGauge1 : TFE_MonitoringGauge<tensorflow::string, 1> {
+struct TFE_MonitoringStringGauge1 : TFE_MonitoringGauge<std::string, 1> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
-struct TFE_MonitoringStringGauge2 : TFE_MonitoringGauge<tensorflow::string, 2> {
+struct TFE_MonitoringStringGauge2 : TFE_MonitoringGauge<std::string, 2> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
-struct TFE_MonitoringStringGauge3 : TFE_MonitoringGauge<tensorflow::string, 3> {
+struct TFE_MonitoringStringGauge3 : TFE_MonitoringGauge<std::string, 3> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
-struct TFE_MonitoringStringGauge4 : TFE_MonitoringGauge<tensorflow::string, 4> {
+struct TFE_MonitoringStringGauge4 : TFE_MonitoringGauge<std::string, 4> {
   using TFE_MonitoringGauge::TFE_MonitoringGauge;
 };
 

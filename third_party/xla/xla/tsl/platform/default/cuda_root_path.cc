@@ -36,15 +36,35 @@ limitations under the License.
 #endif
 #include "xla/tsl/platform/logging.h"
 
+#ifndef CUDA_NVCC_REPO_NAME
+#define CUDA_NVCC_REPO_NAME "cuda_nvcc"
+#endif
+
+#ifndef CUDA_NVDISASM_REPO_NAME
+#define CUDA_NVDISASM_REPO_NAME "cuda_nvdisasm"
+#endif
+
+#ifndef NVIDIA_NVSHMEM_REPO_NAME
+#define NVIDIA_NVSHMEM_REPO_NAME "nvidia_nvshmem"
+#endif
+
+#ifndef CUDA_NVVM_REPO_NAME
+#define CUDA_NVVM_REPO_NAME "cuda_nvvm"
+#endif
+
+#ifndef CUDA_CUDART_REPO_NAME
+#define CUDA_CUDART_REPO_NAME "cuda_cudart"
+#endif
+
 namespace tsl {
 
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
   auto roots = std::vector<std::string>{};
   std::string runfiles_suffix = "runfiles";
-  std::vector<std::string> cuda_dir_names = {"cuda_nvcc", "cuda_nvdisasm",
-                                             "nvidia_nvshmem", "cuda_nvvm",
-                                             "cuda_cudart"};
+  std::vector<std::string> cuda_dir_names = {
+      CUDA_NVCC_REPO_NAME, CUDA_NVDISASM_REPO_NAME, NVIDIA_NVSHMEM_REPO_NAME,
+      CUDA_NVVM_REPO_NAME, CUDA_CUDART_REPO_NAME};
 
   // The CUDA candidate root for c++ targets.
   std::string executable_path = tsl::Env::Default()->GetExecutablePath();

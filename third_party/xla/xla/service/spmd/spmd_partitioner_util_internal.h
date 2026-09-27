@@ -81,6 +81,10 @@ GetMeshAxesPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, absl::Span<const int64_t> target_dims,
     absl::Span<const int64_t> group_sizes);
 
+// Canonicalizes the sharding by trying to translate it to an iota mesh if
+// possible.
+HloSharding CanonicalizeSharding(const HloSharding& sharding);
+
 }  // namespace spmd
 }  // namespace xla
 

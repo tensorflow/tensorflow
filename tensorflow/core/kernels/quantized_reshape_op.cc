@@ -41,7 +41,7 @@ class QuantizedReshapeOp : public ReshapeOp {
                 TensorShapeUtils::IsScalar(input_min_float_shape) ||
                     (TensorShapeUtils::IsVector(input_min_float_shape) &&
                      (input_min_float_shape.dim_size(0) == 1)),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_min must be a scalar or a vector of 1 element"));
     const float input_min_float = input_min_float_tensor.flat<float>()(0);
     const auto& input_max_float_tensor = ctx->input(3);
@@ -50,7 +50,7 @@ class QuantizedReshapeOp : public ReshapeOp {
                 TensorShapeUtils::IsScalar(input_max_float_shape) ||
                     (TensorShapeUtils::IsVector(input_max_float_shape) &&
                      (input_max_float_shape.dim_size(0) == 1)),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max must be a scalar or a vector of 1 element"));
     const float input_max_float = input_max_float_tensor.flat<float>()(0);
 

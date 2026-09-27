@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -97,11 +96,6 @@ struct CollapseElementwiseMapPass
   }
 };
 }  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>>
-createCollapseElementwiseMapPass() {
-  return std::make_unique<CollapseElementwiseMapPass>();
-}
 
 }  // namespace mhlo
 }  // namespace mlir

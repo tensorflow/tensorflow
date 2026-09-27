@@ -53,7 +53,7 @@ namespace cc_op {
 
 absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
     OpList& ops, bool include_internal,
-    const std::vector<string>& api_def_dirs) {
+    const std::vector<std::string>& api_def_dirs) {
   OpRegistry::Global()->Export(include_internal, &ops);
   ApiDefMap api_def_map(ops);
   if (!api_def_dirs.empty()) {
@@ -73,15 +73,15 @@ absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
   return api_def_map;
 }
 
-string GetPath(absl::string_view dot_h_fname) {
+std::string GetPath(absl::string_view dot_h_fname) {
   auto pos = dot_h_fname.find("/bin/");
-  string result(dot_h_fname);
-  if (pos != string::npos) {
+  std::string result(dot_h_fname);
+  if (pos != std::string::npos) {
     // - 1 account for the terminating null character (\0) in "/genfiles/".
     result = dot_h_fname.substr(pos + sizeof("/bin/") - 1);
   } else {
     pos = dot_h_fname.find("/genfiles/");
-    if (pos != string::npos) {
+    if (pos != std::string::npos) {
       result = dot_h_fname.substr(pos + sizeof("/genfiles/") - 1);
     }
   }
@@ -89,22 +89,22 @@ string GetPath(absl::string_view dot_h_fname) {
       result.compare(0, sizeof("external/") - 1, "external/") == 0) {
     result = result.substr(sizeof("external/") - 1);
     pos = result.find('/');
-    if (pos != string::npos) {
+    if (pos != std::string::npos) {
       result = result.substr(pos + 1);
     }
   }
   return result;
 }
 
-string GetFilename(absl::string_view path) {
+std::string GetFilename(absl::string_view path) {
   size_t slash_pos = path.rfind('/');
   if (slash_pos == path.npos) slash_pos = -1;
   size_t dot_pos = path.rfind('.');
-  return string(path.substr(slash_pos + 1, dot_pos - (slash_pos + 1)));
+  return std::string(path.substr(slash_pos + 1, dot_pos - (slash_pos + 1)));
 }
 
-string ToGuard(absl::string_view path) {
-  string guard;
+std::string ToGuard(absl::string_view path) {
+  std::string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
     if (absl::ascii_isupper(c)) {
@@ -119,8 +119,8 @@ string ToGuard(absl::string_view path) {
   return guard;
 }
 
-string ToTitle(absl::string_view name) {
-  string title(name);
+std::string ToTitle(absl::string_view name) {
+  std::string title(name);
   for (int i = 0; i < title.size(); ++i) {
     if (title[i] == '_') title[i] = ' ';
   }
@@ -128,8 +128,8 @@ string ToTitle(absl::string_view name) {
   return title;
 }
 
-string MakeComment(absl::string_view text, absl::string_view indent) {
-  string ret;
+std::string MakeComment(absl::string_view text, absl::string_view indent) {
+  std::string ret;
   while (!text.empty()) {
     int last_non_space = -1;
     int newline;
@@ -148,16 +148,16 @@ string MakeComment(absl::string_view text, absl::string_view indent) {
   return ret;
 }
 
-string PrintString(absl::string_view str) {
+std::string PrintString(absl::string_view str) {
   return absl::StrCat("\"", absl::CEscape(str), "\"");
 }
 
-string PrintTensorShape(const TensorShapeProto& shape_proto) {
+std::string PrintTensorShape(const TensorShapeProto& shape_proto) {
   PartialTensorShape shape(shape_proto);
   if (shape.IsIdenticalTo(PartialTensorShape())) {
     return "::tensorflow::PartialTensorShape() /* unknown */";
   }
-  string ret = "{";
+  std::string ret = "{";
   for (int d = 0; d < shape.dims(); ++d) {
     if (d > 0) absl::StrAppend(&ret, ", ");
     absl::StrAppend(&ret, shape.dim_size(d));
@@ -166,7 +166,7 @@ string PrintTensorShape(const TensorShapeProto& shape_proto) {
   return ret;
 }
 
-string PrintTensor(const TensorProto& tensor_proto) {
+std::string PrintTensor(const TensorProto& tensor_proto) {
   Tensor t(tensor_proto.dtype());
   CHECK(t.FromProto(tensor_proto));
   const int64_t num_elts = t.NumElements();
@@ -176,25 +176,25 @@ string PrintTensor(const TensorProto& tensor_proto) {
     case DT_DOUBLE:
       return PrintArray(num_elts, t.flat<double>().data());
     case DT_INT32:
-      return PrintArray(num_elts, t.flat<int32>().data());
+      return PrintArray(num_elts, t.flat<int32_t>().data());
     case DT_UINT8:
     case DT_QUINT8:
-      return PrintArray(num_elts, t.flat<uint8>().data());
+      return PrintArray(num_elts, t.flat<uint8_t>().data());
     case DT_UINT16:
     case DT_QUINT16:
-      return PrintArray(num_elts, t.flat<uint16>().data());
+      return PrintArray(num_elts, t.flat<uint16_t>().data());
     case DT_INT16:
     case DT_QINT16:
-      return PrintArray(num_elts, t.flat<int16>().data());
+      return PrintArray(num_elts, t.flat<int16_t>().data());
     case DT_INT8:
     case DT_QINT8:
-      return PrintArray(num_elts, t.flat<int8>().data());
+      return PrintArray(num_elts, t.flat<int8_t>().data());
     case DT_INT64:
       return PrintArray(num_elts, t.flat<int64_t>().data());
     case DT_BOOL:
       return PrintArray(num_elts, t.flat<bool>().data());
     case DT_STRING: {
-      string ret;
+      std::string ret;
       for (int64_t i = 0; i < num_elts; ++i) {
         if (i > 0) absl::StrAppend(&ret, " ");
         absl::StrAppend(&ret, absl::CEscape(t.flat<tstring>()(i)));
@@ -203,18 +203,18 @@ string PrintTensor(const TensorProto& tensor_proto) {
     }
     default: {
       LOG(FATAL) << "Not handling type " << DataType_Name(t.dtype());
-      return string();
+      return std::string();
     }
   }
 }
 
-string PrintTensorProto(const TensorProto& proto) {
+std::string PrintTensorProto(const TensorProto& proto) {
   return absl::StrCat("Input::Initializer(", "{", PrintTensor(proto), "}, ",
                       PrintTensorShape(proto.tensor_shape()),
                       ").AsTensorProto()");
 }
 
-string PrintAttrValue(const string& op, const AttrValue& attr_value) {
+std::string PrintAttrValue(const std::string& op, const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
       return PrintString(attr_value.s());
@@ -239,7 +239,7 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
     case AttrValue::kTensor:
       return PrintTensorProto(attr_value.tensor());
     case AttrValue::kList: {
-      string ret = "{";
+      std::string ret = "{";
       if (attr_value.list().s_size() > 0) {
         for (int i = 0; i < attr_value.list().s_size(); ++i) {
           if (i > 0) absl::StrAppend(&ret, ", ");
@@ -294,8 +294,8 @@ bool IsEmptyList(const AttrValue::ListValue& list) {
          list.shape_size() == 0 && list.tensor_size() == 0;
 }
 
-string ToCamelCase(absl::string_view str) {
-  string result;
+std::string ToCamelCase(absl::string_view str) {
+  std::string result;
   const char joiner = '_';
   size_t i = 0;
   bool cap = true;
@@ -315,8 +315,8 @@ string ToCamelCase(absl::string_view str) {
   return result;
 }
 
-string SeparateNamespaces(absl::string_view str) {
-  string result;
+std::string SeparateNamespaces(absl::string_view str) {
+  std::string result;
   const char joiner = '_';
   size_t i = 0;
   while (i < str.size()) {
@@ -488,15 +488,26 @@ bool IsCPPKeyword(absl::string_view name) {
   return kCPPReserved->count(name) > 0;
 }
 
-string AvoidCPPKeywords(absl::string_view name) {
+std::string AvoidCPPKeywords(absl::string_view name) {
   if (IsCPPKeyword(name)) {
     return absl::StrCat(name, "_");
   }
-  return string(name);
+  return std::string(name);
 }
 
-void InferArgAttributes(const OpDef::ArgDef& arg,
-                        std::unordered_map<string, string>* inferred_attrs) {
+std::string SafeRenameTo(absl::string_view name, absl::string_view rename_to) {
+  if (tensorflow::IsValidAttrOrArgName(rename_to)) {
+    return std::string(rename_to);
+  }
+  if (tensorflow::IsValidAttrOrArgName(name)) {
+    return std::string(name);
+  }
+  return tensorflow::SanitizeToIdentifier(name);
+}
+
+void InferArgAttributes(
+    const OpDef::ArgDef& arg,
+    std::unordered_map<std::string, std::string>* inferred_attrs) {
   if (!arg.type_attr().empty()) {
     gtl::InsertIfNotPresent(inferred_attrs, arg.type_attr(), arg.name());
   } else if (!arg.type_list_attr().empty()) {
@@ -509,7 +520,7 @@ void InferArgAttributes(const OpDef::ArgDef& arg,
 
 void InferOpAttributes(
     const OpDef& op_def,
-    std::unordered_map<string, string>* inferred_input_attrs) {
+    std::unordered_map<std::string, std::string>* inferred_input_attrs) {
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     const auto& arg(op_def.input_arg(i));
     InferArgAttributes(arg, inferred_input_attrs);
@@ -522,7 +533,7 @@ bool ArgIsList(const OpDef::ArgDef& arg) {
 
 bool HasOptionalAttrs(
     const ApiDef& api_def,
-    const std::unordered_map<string, string>& inferred_input_attrs) {
+    const std::unordered_map<std::string, std::string>& inferred_input_attrs) {
   for (int i = 0; i < api_def.attr_size(); ++i) {
     const auto& attr(api_def.attr(i));
     if ((inferred_input_attrs.find(attr.name()) ==
@@ -535,7 +546,7 @@ bool HasOptionalAttrs(
 }
 
 OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
-               const std::vector<string>& aliases)
+               const std::vector<std::string>& aliases)
     : graph_op_def(graph_op_def), api_def(api_def), aliases(aliases) {
   op_name = SeparateNamespaces(api_def.endpoint(0).name());
   InferOpAttributes(graph_op_def, &inferred_input_attrs);
@@ -566,20 +577,30 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto& api_def_arg = *FindInputArg(api_def.arg_order(i), api_def);
     arg_types.push_back(
         absl::StrCat("::tensorflow::", ArgIsList(arg) ? "InputList" : "Input"));
-    arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
+    // rename_to() comes from ApiDef, a separate message from the OpDef
+    // arg/attr names. Both are spliced as a raw C++ identifier (parameter
+    // name) below: prefer rename_to() when it's a safe identifier, fall
+    // back to the original arg name when THAT is safe, and only sanitize
+    // as a last resort, since IsValidAttrOrArgName is not enforced at
+    // OpDef registration and a legitimately-registered op's argument name
+    // is not guaranteed to already be a safe identifier (e.g.
+    // TFLite_Detection_PostProcess's "raw_outputs/box_encodings").
+    const std::string safe_input_name =
+        SafeRenameTo(arg.name(), api_def_arg.rename_to());
+    arg_names.push_back(AvoidCPPKeywords(safe_input_name));
 
     // TODO(keveman): Include input type information.
     absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
-      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(api_def_arg.rename_to()),
-                      ": ", api_def_arg.description(), "\n");
+      absl::StrAppend(&comment, "* ", AvoidCPPKeywords(safe_input_name), ": ",
+                      api_def_arg.description(), "\n");
     }
   }
 
   // Process attrs
-  string required_attrs_comment;
-  string optional_attrs_comment;
+  std::string required_attrs_comment;
+  std::string optional_attrs_comment;
   for (int i = 0; i < graph_op_def.attr_size(); ++i) {
     // ApiDef attributes must be in the same order as in OpDef since
     // we initialize ApiDef based on OpDef.
@@ -592,9 +613,16 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    string attr_name = AvoidCPPKeywords(api_def_attr.rename_to());
+    // See the safe_input_name comment above: rename_to() and the original
+    // attr name are both unvalidated at OpDef-registration time and both
+    // get spliced as a raw C++ identifier here, so prefer rename_to() when
+    // safe, fall back to the original name when THAT is safe, and only
+    // sanitize as a last resort.
+    const std::string safe_attr_name =
+        SafeRenameTo(attr.name(), api_def_attr.rename_to());
+    std::string attr_name = AvoidCPPKeywords(safe_attr_name);
 
-    string attr_comment;
+    std::string attr_comment;
     if (!api_def_attr.description().empty()) {
       // TODO(keveman): Word wrap and indent this, to handle multi-line
       // descriptions.
@@ -629,7 +657,10 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     bool is_list = ArgIsList(arg);
     output_types.push_back(
         absl::StrCat("::tensorflow::", is_list ? "OutputList" : "Output"));
-    output_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
+    // See the safe_input_name comment above: the output arg's name and
+    // rename_to() need the same three-tier fallback as the input case.
+    output_names.push_back(
+        AvoidCPPKeywords(SafeRenameTo(arg.name(), api_def_arg.rename_to())));
     is_list_output.push_back(is_list);
   }
 
@@ -675,10 +706,10 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
   comment = MakeComment(comment, "");
 }
 
-string OpInfo::GetOpAttrStruct() const {
-  string struct_fields;
-  string setters;
-  string defaults_static_storage;
+std::string OpInfo::GetOpAttrStruct() const {
+  std::string struct_fields;
+  std::string setters;
+  std::string defaults_static_storage;
 
   for (int i = 0; i < graph_op_def.attr_size(); ++i) {
     const auto& attr(graph_op_def.attr(i));
@@ -693,14 +724,22 @@ string OpInfo::GetOpAttrStruct() const {
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
-    const string camel_case_name = ToCamelCase(api_def_attr.rename_to());
-    const string suffix =
+    // See the safe_input_name comment in OpInfo::OpInfo: attr.name() and
+    // api_def_attr.rename_to() are both unvalidated at OpDef-registration
+    // time, and both are spliced as a raw C++ identifier multiple times
+    // below (the setter name, the field access, the static defaults
+    // function name, and the field declaration) -- computed once here so
+    // every splice site below agrees on the same identifier.
+    const std::string safe_attr_name =
+        SafeRenameTo(attr.name(), api_def_attr.rename_to());
+    const std::string camel_case_name = ToCamelCase(safe_attr_name);
+    const std::string suffix =
         (camel_case_name == op_name || camel_case_name == "Attrs") ? "_" : "";
-    const string attr_func_def =
+    const std::string attr_func_def =
         absl::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
                      attr_type_name, use_const ? "&" : "");
 
-    string attr_comment;
+    std::string attr_comment;
     if (!api_def_attr.description().empty()) {
       absl::StrAppend(&attr_comment, api_def_attr.description(), "\n\n");
     }
@@ -712,18 +751,17 @@ string OpInfo::GetOpAttrStruct() const {
     absl::StrAppend(&setters, "    TF_MUST_USE_RESULT Attrs ", attr_func_def,
                     " x) {\n");
     absl::StrAppend(&setters, "      Attrs ret = *this;\n");
-    absl::StrAppend(&setters, "      ret.", api_def_attr.rename_to(),
-                    "_ = x;\n");
+    absl::StrAppend(&setters, "      ret.", safe_attr_name, "_ = x;\n");
     absl::StrAppend(&setters, "      return ret;\n    }\n\n");
 
-    string field_initiliazer;
+    std::string field_initiliazer;
     auto& default_value = api_def_attr.default_value();
     if (default_value.value_case() == AttrValue::kList &&
         !IsEmptyList(default_value.list())) {
       // Non-empty lists need static storage for their defaults. Define a
       // function with static local variable that stores the array.
       absl::StrAppend(&defaults_static_storage, "    static ", attr_type_name,
-                      " Default_", api_def_attr.rename_to(), "() {\n");
+                      " Default_", safe_attr_name, "() {\n");
       absl::StrAppend(
           &defaults_static_storage, "      static const ",
           ListElementTypeName(attr.type()), " kStorage[] = ",
@@ -732,23 +770,22 @@ string OpInfo::GetOpAttrStruct() const {
       absl::StrAppend(&defaults_static_storage, "      return ", attr_type_name,
                       "(kStorage);\n    }\n");
       // Set the field_initializer to call the defined function.
-      absl::StrAppend(&field_initiliazer, "Default_", api_def_attr.rename_to(),
-                      "()");
+      absl::StrAppend(&field_initiliazer, "Default_", safe_attr_name, "()");
     } else {
       field_initiliazer =
           PrintAttrValue(graph_op_def.name(), api_def_attr.default_value());
     }
-    absl::StrAppend(&struct_fields, "    ", attr_type_name, " ",
-                    api_def_attr.rename_to(), "_ = ", field_initiliazer, ";\n");
+    absl::StrAppend(&struct_fields, "    ", attr_type_name, " ", safe_attr_name,
+                    "_ = ", field_initiliazer, ";\n");
   }
 
   if (struct_fields.empty()) {
     return "";
   }
 
-  string attrs_comment =
+  std::string attrs_comment =
       absl::StrCat("Optional attribute setters for ", op_name, "\n");
-  string struct_decl = MakeComment(attrs_comment, "  ");
+  std::string struct_decl = MakeComment(attrs_comment, "  ");
   absl::StrAppend(&struct_decl, "  struct Attrs {\n");
   absl::StrAppend(&struct_decl, setters, struct_fields);
   if (!defaults_static_storage.empty()) {

@@ -55,6 +55,12 @@ class PerThread {
     return Registry::Get().StopRecording();
   }
 
+  // Returns all instances of T from live and destroyed threads, without
+  // stopping.
+  static std::vector<std::shared_ptr<T>> FlushRecording() {
+    return Registry::Get().FlushRecording();
+  }
+
  private:
   // Prevent instantiation.
   PerThread() = delete;
@@ -72,6 +78,7 @@ class PerThread {
       std::vector<std::shared_ptr<T>> threads;
       absl::MutexLock lock(mutex_);
       threads.reserve(threads_.size());
+      // NOLINTNEXTLINE
       for (auto iter = threads_.begin(); iter != threads_.end(); ++iter) {
         threads.push_back(iter->first);
       }
@@ -83,8 +90,10 @@ class PerThread {
       std::vector<std::shared_ptr<T>> threads;
       absl::MutexLock lock(mutex_);
       threads.reserve(threads_.size());
+      // NOLINTNEXTLINE
       for (auto iter = threads_.begin(); iter != threads_.end();) {
-        if (!iter->second) {  // The creator thread is dead.
+        if (iter->second ==
+            ThreadState::kDead) {  // The creator thread is dead.
           threads.push_back(std::move(iter->first));
           threads_.erase(iter++);
         } else {
@@ -96,9 +105,26 @@ class PerThread {
       return threads;
     }
 
+    std::vector<std::shared_ptr<T>> FlushRecording() {
+      std::vector<std::shared_ptr<T>> threads;
+      absl::MutexLock lock(mutex_);
+      threads.reserve(threads_.size());
+      // NOLINTNEXTLINE
+      for (auto iter = threads_.begin(); iter != threads_.end();) {
+        threads.push_back(iter->first);
+        if (iter->second ==
+            ThreadState::kDead) {  // The creator thread is dead.
+          threads_.erase(iter++);
+        } else {
+          ++iter;
+        }
+      }
+      return threads;
+    }
+
     void Register(std::shared_ptr<T> thread) {
       absl::MutexLock lock(mutex_);
-      threads_.insert_or_assign(std::move(thread), true);
+      threads_.insert_or_assign(std::move(thread), ThreadState::kAlive);
     }
 
     void Unregister(const std::shared_ptr<T>& thread) {
@@ -107,7 +133,7 @@ class PerThread {
         threads_.erase(thread);
       } else {
         if (auto it = threads_.find(thread); it != threads_.end()) {
-          it->second = false;
+          it->second = ThreadState::kDead;
         }
       }
     }
@@ -118,8 +144,10 @@ class PerThread {
     Registry(const Registry&) = delete;
     void operator=(const Registry&) = delete;
 
+    enum class ThreadState { kAlive, kDead };
+
     absl::Mutex mutex_;
-    absl::flat_hash_map<std::shared_ptr<T>, bool> threads_
+    absl::flat_hash_map<std::shared_ptr<T>, ThreadState> threads_
         ABSL_GUARDED_BY(mutex_);
     bool recording_ ABSL_GUARDED_BY(mutex_) = false;
   };

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -190,6 +191,12 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
         TF_LITE_MUL(optimized_ops, Mul, float);
       }
     }
+  } else if (output->type == kTfLiteFloat16) {
+    if (need_broadcast) {
+      TF_LITE_MUL(reference_ops, BroadcastMul6DSlow, half);
+    } else {
+      TF_LITE_MUL(reference_ops, Mul, half);
+    }
   } else if (output->type == kTfLiteInt16) {
     int16_t output_activation_min, output_activation_max;
     CalculateActivationRange(params->activation, &output_activation_min,
@@ -335,8 +342,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, OpData* data,
                       TfLiteMulParams* params, const TfLiteTensor* input1,
                       const TfLiteTensor* input2, TfLiteTensor* output) {
   bool output_quantized = output->quantization.type != kTfLiteNoQuantization;
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
-      output->type == kTfLiteInt64 || output->type == kTfLiteComplex64 ||
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteFloat16 ||
+      output->type == kTfLiteInt32 || output->type == kTfLiteInt64 ||
+      output->type == kTfLiteComplex64 ||
       (!output_quantized && output->type == kTfLiteInt16) ||
       output->type == kTfLiteUInt32) {
     EvalMul<kernel_type>(context, node, params, data, input1, input2, output);

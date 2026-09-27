@@ -51,7 +51,8 @@ absl::Status ReadStringFromEnvVar(absl::string_view env_var_name,
 // "env_var_name". If it is unset, the default value is comma split and used.
 absl::Status ReadStringsFromEnvVar(absl::string_view env_var_name,
                                    absl::string_view default_val,
-                                   std::vector<std::string>* value);
+                                   std::vector<std::string>* value,
+                                   absl::string_view delimiters = ",");
 
 }  // namespace tsl
 

@@ -57,7 +57,9 @@ static std::string GetDefaultAttrExport(
     // The return type may contains qualified namespaces. Split to remove them.
     std::pair<StringRef, StringRef> splits = attr.getReturnType().rsplit("::");
     StringRef symbol = splits.second;
-    if (symbol.empty()) symbol = splits.first;
+    if (symbol.empty()) {
+      symbol = splits.first;
+    }
     return "Convert" + symbol.str();
   }
   return "Convert_" + named_attr.name.str();
@@ -73,7 +75,9 @@ static StringRef GetClientBuilder(const Operator& op) {
 
   // Default case where the client builder method names closely follow the op
   // names in the dialect. For e.g., AddOp -> xla::Add method.
-  if (!kOpToXLABuilderMap->count(op_name)) return op_name.drop_back(2);
+  if (!kOpToXLABuilderMap->count(op_name)) {
+    return op_name.drop_back(2);
+  }
 
   // Otherwise, if the op to client builder method mapping is provided.
   return kOpToXLABuilderMap->lookup(op_name);
@@ -130,7 +134,9 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
   // client API call
   if (op.getNumOperands() == op.getNumVariableLengthOperands()) {
     os << "ctx.builder";
-    if (op.getNumArgs() != 0) os << ", ";
+    if (op.getNumArgs() != 0) {
+      os << ", ";
+    }
   }
 
   // Emit each of the arguments.
@@ -156,8 +162,9 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   }
   // Convert the list to a set for faster lookups.
   std::unordered_set<std::string> custom_convert_op_names;
-  for (const auto* op_def : custom_convert_op_defs->getElements())
+  for (const auto* op_def : custom_convert_op_defs->getElements()) {
     custom_convert_op_names.insert(op_def->getAsString());
+  }
 
   // Get the list of StableHLO operations that are allowed to be directly
   // converted to HLO without intermediate MHLO step.
@@ -170,8 +177,9 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   }
   // Convert the list to a set for faster lookups.
   absl::flat_hash_set<std::string> hlo_conversion_allowed_op_names;
-  for (const auto* op_def : hlo_conversion_allowed_op_defs->getElements())
+  for (const auto* op_def : hlo_conversion_allowed_op_defs->getElements()) {
     hlo_conversion_allowed_op_names.insert(op_def->getAsString());
+  }
 
   emitSourceFileHeader("MLIR XLA Builders", os);
 
@@ -186,7 +194,9 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
         continue;
       }
 
-      if (custom_convert_op_names.count(def->getName().str()) > 0) continue;
+      if (custom_convert_op_names.count(def->getName().str()) > 0) {
+        continue;
+      }
 
       BuildOperator(op, os);
     }
@@ -231,8 +241,9 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
          << "::" << op.getCppClassName() << ">(op)) {\n";
       os << "    return ";
 
-      if (custom_convert_op_names.count(def->getName().str()) > 0)
+      if (custom_convert_op_names.count(def->getName().str()) > 0) {
         os << op.getCppNamespace() << "::";
+      }
 
       os << "ExportXlaOp(xla_op, lowering_context);\n";
       os << "  }\n";

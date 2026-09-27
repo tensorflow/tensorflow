@@ -22,47 +22,48 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/testing/testing_cpp_pjrt.h"
 
 namespace testing {
 
-// Create C++ client. Called by the C API and is the glue between the C API
-// and the C++ API.
+static PJRT_Layouts_Extension layouts_extension =
+    pjrt::CreateLayoutsExtension(nullptr);
+
+void SetTestingPjRtExtension(PJRT_Extension_Base* extension_base) {
+  layouts_extension = pjrt::CreateLayoutsExtension(extension_base);
+}
+
 PJRT_Error* PJRT_TestingClient_Create(PJRT_Client_Create_Args* args) {
   std::unique_ptr<xla::PjRtClient> client = CreateTestingPjrtClient();
-  args->client = pjrt::CreateWrapperClient(std::move(client));
+  args->client =
+      pjrt::CreateWrapperClient(GetTestingPjrtApi(), std::move(client));
   printf("Creating PJRT Client from myplugin_pjrt.cc\n");
   return nullptr;
 }
 
 PJRT_Error* PJRT_TestingExecuteContext_Create(
     PJRT_ExecuteContext_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "ExecuteContext not supported for Testing execution.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "ExecuteContext not supported for Testing execution."));
 }
 
 PJRT_Error* PJRT_TestingDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "Topology not supported for Testing compilation.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "Topology not supported for Testing compilation."));
 }
 
-const PJRT_Api* GetTestingPjrtApi(PJRT_Extension_Base* extension_base) {
+const PJRT_Api* GetTestingPjrtApi() {
   printf("C++ Calling GetPjrtApi");
-  static PJRT_Layouts_Extension layouts_extension;
-  // Static for memory storage but reassigning to avoid reusing the same
-  // extension when testing with many calls to GetPjrtApi.
-  layouts_extension = pjrt::CreateLayoutsExtension(extension_base);
-
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       testing::PJRT_TestingClient_Create,
       testing::PJRT_TestingExecuteContext_Create,
       testing::PJRT_TestingDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp, &layouts_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
-
   return &pjrt_api;
 }
 

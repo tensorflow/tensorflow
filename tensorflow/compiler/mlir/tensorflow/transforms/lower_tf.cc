@@ -461,8 +461,12 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
     auto min_scaled_sub =
         SubOp::create(rewriter, op.getLoc(), quant_min, min_scaled);
 
-    auto mid_rounded =
-        RoundOp::create(rewriter, op.getLoc(), scalar_ty, min_scaled_sub);
+    auto half_val = ConstOp::create(
+        rewriter, op.getLoc(),
+        DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
+    Value mid_added =
+        AddV2Op::create(rewriter, op.getLoc(), min_scaled_sub, half_val);
+    auto mid_rounded = FloorOp::create(rewriter, op.getLoc(), mid_added);
 
     auto nudged_zero_point_val = ClipByValueOp::create(
         rewriter, op.getLoc(), scalar_ty, mid_rounded, quant_min, quant_max);
@@ -492,10 +496,6 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
                                     quantized_input, float_to_quant);
 
     // Round the quantized input always to the positive direction.
-    auto half_val = ConstOp::create(
-        rewriter, op.getLoc(),
-        DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
-
     quantized_input = AddV2Op::create(rewriter, op.getLoc(), input_ty,
                                       quantized_input, half_val);
 

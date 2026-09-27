@@ -170,8 +170,8 @@ TEST(RepeatedStringSplitterTest, TestWrite) {
   RepeatedStringSplitter splitter = RepeatedStringSplitter(&message);
 
   std::string output_prefix = tensorflow::io::GetTempFilename("");
-  TF_ASSERT_OK(splitter.Write(output_prefix));
-  std::string expected_file = absl::StrCat(output_prefix, ".cpb");
+  TF_ASSERT_OK_AND_ASSIGN(std::string expected_file,
+                          splitter.Write(output_prefix));
 
   TF_ASSERT_OK_AND_ASSIGN(auto exists,
                           internal::FileExists(Env::Default(), expected_file));
@@ -342,8 +342,8 @@ TEST(NoOpSplitterTest, TestWrite) {
   NoOpSplitter splitter(&message);
 
   std::string output_prefix = tensorflow::io::GetTempFilename("");
-  TF_ASSERT_OK(splitter.Write(output_prefix));
-  std::string expected_file = absl::StrCat(output_prefix, ".pb");
+  TF_ASSERT_OK_AND_ASSIGN(std::string expected_file,
+                          splitter.Write(output_prefix));
 
   TF_ASSERT_OK_AND_ASSIGN(auto exists,
                           internal::FileExists(Env::Default(), expected_file));

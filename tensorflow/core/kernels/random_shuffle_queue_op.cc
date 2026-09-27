@@ -142,8 +142,8 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           1, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(errors::Cancelled(
-                  "RandomShuffleQueue '", name_, "' is closed."));
+              attempt->context->SetStatus(absl::CancelledError(
+                  absl::StrCat("RandomShuffleQueue '", name_, "' is closed.")));
               return kComplete;
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
@@ -160,7 +160,7 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Enqueue operation was cancelled"));
     callback();
   }
 }
@@ -199,8 +199,8 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
           batch_size, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(errors::Cancelled(
-                  "RandomShuffleQueue '", name_, "' is closed."));
+              attempt->context->SetStatus(absl::CancelledError(
+                  absl::StrCat("RandomShuffleQueue '", name_, "' is closed.")));
               return kComplete;
             }
             RunResult result = kNoProgress;
@@ -227,7 +227,7 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Enqueue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Enqueue operation was cancelled"));
     callback();
   }
 }
@@ -248,10 +248,10 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32_t queue_size = queues_[0].size();
             if (closed_ && queue_size == 0) {
-              attempt->context->SetStatus(errors::OutOfRange(
+              attempt->context->SetStatus(absl::OutOfRangeError(absl::StrCat(
                   "RandomShuffleQueue '", name_, "' is closed and has ",
                   "insufficient elements (requested ", 1, ", current size ",
-                  queue_size, ")"));
+                  queue_size, ")")));
               return kComplete;
             }
             if (!closed_) queue_size -= min_after_dequeue_;
@@ -269,7 +269,7 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Dequeue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Dequeue operation was cancelled"));
     callback(Tuple());
   }
 }
@@ -278,7 +278,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                                         bool allow_small_batch,
                                         CallbackWithTuple callback) {
   if (!specified_shapes()) {
-    ctx->SetStatus(errors::InvalidArgument(
+    ctx->SetStatus(absl::InvalidArgumentError(
         "RandomShuffleQueue's DequeueMany and DequeueUpTo require the "
         "components to have specified shapes."));
     callback(Tuple());
@@ -353,11 +353,11 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                     absl::Status s = GetElementComponentFromBatch(
                         attempt->tuple, i, j, attempt->context, &element);
                     if (!s.ok()) {
-                      attempt->context->SetStatus(
-                          errors::DataLoss("Failed to restore element from "
-                                           "partially-dequeued batch "
-                                           "to RandomShuffleQueue: ",
-                                           s.message()));
+                      attempt->context->SetStatus(absl::DataLossError(
+                          absl::StrCat("Failed to restore element from "
+                                       "partially-dequeued batch "
+                                       "to RandomShuffleQueue: ",
+                                       s.message())));
                     }
                     queues_[j].push_back(element);
                   }
@@ -376,11 +376,12 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   if (!enqueue_attempts_.empty()) return kProgress;
                 }
                 if (attempt->context->status().ok()) {
-                  attempt->context->SetStatus(errors::OutOfRange(
-                      "RandomShuffleQueue '", name_, "' is closed and has ",
-                      "insufficient elements (requested ",
-                      attempt->elements_requested, ", current size ",
-                      queue_size, ")"));
+                  attempt->context->SetStatus(
+                      absl::OutOfRangeError(absl::StrCat(
+                          "RandomShuffleQueue '", name_, "' is closed and has ",
+                          "insufficient elements (requested ",
+                          attempt->elements_requested, ", current size ",
+                          queue_size, ")")));
                 }
                 return kComplete;
               }
@@ -431,7 +432,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
   if (!already_cancelled) {
     FlushUnlocked();
   } else {
-    ctx->SetStatus(errors::Cancelled("Dequeue operation was cancelled"));
+    ctx->SetStatus(absl::CancelledError("Dequeue operation was cancelled"));
     callback(Tuple());
   }
 }
@@ -439,8 +440,8 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
 absl::Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   if (!MatchesNodeDefOp(node_def, "RandomShuffleQueue").ok() &&
       !MatchesNodeDefOp(node_def, "RandomShuffleQueueV2").ok()) {
-    return errors::InvalidArgument("Expected RandomShuffleQueue, found ",
-                                   node_def.op());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected RandomShuffleQueue, found ", node_def.op()));
   }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
 
@@ -448,9 +449,9 @@ absl::Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(
       GetNodeAttr(node_def, "min_after_dequeue", &min_after_dequeue));
   if (min_after_dequeue != min_after_dequeue_) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shared queue '", name_, "' has min_after_dequeue ", min_after_dequeue_,
-        " but requested min_after_dequeue was ", min_after_dequeue, ".");
+        " but requested min_after_dequeue was ", min_after_dequeue, "."));
   }
 
   int64_t seed = -1;
@@ -459,10 +460,10 @@ absl::Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "seed2", &seed2));
   if ((seed != 0 || seed2 != 0) &&
       (seed != original_seed_ || seed2 != original_seed2_)) {
-    return errors::InvalidArgument(
-        "Shared queue '", name_, "' has random seeds (", original_seed_, ", ",
-        original_seed2_, ") but requested seeds are (", seed, ", ", seed2,
-        ").");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shared queue '", name_, "' has random seeds (",
+                     original_seed_, ", ", original_seed2_,
+                     ") but requested seeds are (", seed, ", ", seed2, ")."));
   }
 
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
@@ -481,13 +482,14 @@ class RandomShuffleQueueOp : public TypedQueueOp {
       : TypedQueueOp(context) {
     OP_REQUIRES_OK(context,
                    context->GetAttr("min_after_dequeue", &min_after_dequeue_));
-    OP_REQUIRES(context, min_after_dequeue_ >= 0,
-                errors::InvalidArgument("min_after_dequeue ",
-                                        min_after_dequeue_, " must be >= 0"));
     OP_REQUIRES(
-        context, min_after_dequeue_ < capacity_,
-        errors::InvalidArgument("min_after_dequeue ", min_after_dequeue_,
-                                " must be < capacity ", capacity_));
+        context, min_after_dequeue_ >= 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "min_after_dequeue ", min_after_dequeue_, " must be >= 0")));
+    OP_REQUIRES(context, min_after_dequeue_ < capacity_,
+                absl::InvalidArgumentError(
+                    absl::StrCat("min_after_dequeue ", min_after_dequeue_,
+                                 " must be < capacity ", capacity_)));
     OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
 

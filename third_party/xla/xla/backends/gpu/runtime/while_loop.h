@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 namespace xla::gpu {
 
@@ -76,11 +77,27 @@ struct WhileLoopState {
   std::optional<size_t> loop_trip_count;
   size_t loop_depth = 0;
   size_t loop_iteration = 0;
+
+  friend bool operator==(const WhileLoopState& a, const WhileLoopState& b) {
+    return a.loop_name == b.loop_name &&
+           a.loop_trip_count == b.loop_trip_count &&
+           a.loop_depth == b.loop_depth && a.loop_iteration == b.loop_iteration;
+  }
 };
 
 // Returns the while loop state for the innermost loop. Returns nullptr if the
 // current thread is not running within a while loop.
 const WhileLoopState* IsInsideWhileLoop();
+
+// Returns the current while loop nest as a span of WhileLoopState entries, from
+// outermost to innermost loop. Returns an empty span if the current thread is
+// not running within a while loop. The back of the span is the innermost loop.
+//
+// WARNING: The returned span points into thread-local storage and is
+// invalidated by entering or exiting a while loop (i.e., constructing or
+// destroying a ScopedWhileLoop). Callers must consume the span immediately and
+// not hold it across such operations.
+absl::Span<const WhileLoopState> IsInsideWhileLoopNest();
 
 // An RAII helper that manages while loop state. Enters the loop upon
 // construction and exits it upon destruction. This is the only public API for
@@ -102,7 +119,7 @@ class ScopedWhileLoop {
   void IncLoopIteration();
 
  private:
-  const WhileLoopState* state;
+  size_t loop_depth_;
 };
 
 }  // namespace xla::gpu

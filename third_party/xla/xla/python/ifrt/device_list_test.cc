@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
@@ -142,6 +144,27 @@ TEST_P(DeviceListTest, EqualityTest) {
   EXPECT_NE(*device_list1, *device_list6);
 }
 
+TEST_P(DeviceListTest, DifferencesStringIdentical) {
+  auto a = GetDevices({0, 1});
+  auto b = GetDevices({0, 1});
+  EXPECT_EQ(DeviceListDifferencesString(*a, *b), "");
+}
+
+TEST_P(DeviceListTest, DifferencesStringDifferentSizes) {
+  auto a = GetDevices({0, 1});
+  auto b = GetDevices({0});
+  std::string diff = DeviceListDifferencesString(*a, *b);
+  EXPECT_THAT(diff, ::testing::HasSubstr("sizes: 2 vs. 1"));
+}
+
+TEST_P(DeviceListTest, DifferencesStringDifferentDevices) {
+  auto a = GetDevices({0, 1});
+  auto b = GetDevices({1, 0});
+  std::string diff = DeviceListDifferencesString(*a, *b);
+  EXPECT_THAT(diff, ::testing::HasSubstr("device #0"));
+  EXPECT_THAT(diff, ::testing::HasSubstr("device #1"));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     NumDevices, DeviceListTest,
     testing::Values(test_util::DeviceTestParam{/*num_devices=*/2,
@@ -186,7 +209,14 @@ INSTANTIATE_TEST_SUITE_P(
                                          /*num_addressable_devices=*/1},
                                      test_util::DeviceTestParam{
                                          /*num_devices=*/2,
-                                         /*num_addressable_devices=*/2})));
+                                         /*num_addressable_devices=*/2})),
+    [](const testing::TestParamInfo<DeviceListSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_devices_", std::get<1>(info.param).num_devices,
+                          "_num_addressable_devices_",
+                          std::get<1>(info.param).num_addressable_devices);
+    });
 
 }  // namespace
 }  // namespace ifrt

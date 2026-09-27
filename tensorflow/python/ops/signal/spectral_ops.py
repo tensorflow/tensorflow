@@ -74,10 +74,17 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
     frame_step.shape.assert_has_rank(0)
 
+    # Validate frame_length / fft_length statically when possible. The
+    # FFT backend (DUCC) aborts the process on a zero-length transform
+    # rather than returning an error tensor, so we have to gate the
+    # invalid configuration here. See #117843 for the matching crash in
+    # `inverse_stft`.
+    _validate_positive_static(frame_length, 'frame_length')
     if fft_length is None:
       fft_length = _enclosing_power_of_two(frame_length)
     else:
       fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
+      _validate_positive_static(fft_length, 'fft_length')
 
     framed_signals = shape_ops.frame(
         signals, frame_length, frame_step, pad_end=pad_end)
@@ -231,11 +238,18 @@ def inverse_stft(stfts,
     frame_length.shape.assert_has_rank(0)
     frame_step = ops.convert_to_tensor(frame_step, name='frame_step')
     frame_step.shape.assert_has_rank(0)
+    # Same rationale as in `stft` above: the FFT backend aborts the
+    # process on a zero-length transform, so we validate the static
+    # value here rather than letting it reach the kernel. Reported in
+    # #117843, where `frame_length=0` (or `stfts.shape[-1] == 1`) caused
+    # the inferred fft_length to be 0 and DUCC to abort.
+    _validate_positive_static(frame_length, 'frame_length')
     if fft_length is None:
       fft_length = _enclosing_power_of_two(frame_length)
     else:
       fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
       fft_length.shape.assert_has_rank(0)
+      _validate_positive_static(fft_length, 'fft_length')
 
     real_frames = fft_ops.irfft(stfts, [fft_length])
 
@@ -291,6 +305,26 @@ def _enclosing_power_of_two(value):
           math_ops.ceil(
               math_ops.log(math_ops.cast(value, dtypes.float32)) /
               math_ops.log(2.0))), value.dtype)
+
+
+def _validate_positive_static(value, arg_name):
+  """Raise ValueError if `value` is statically known to be non-positive.
+
+  Used to keep zero-length FFT configurations from reaching the FFT
+  backend (DUCC), which aborts the process on `n == 0`. See #117843.
+
+  When the value is dynamic (not constant-foldable), we skip the check
+  and let the kernel surface a runtime error: this matches the rest of
+  TF's policy for shape arguments and avoids over-eager failures in
+  `tf.function` traces where the value is symbolic.
+  """
+  static = tensor_util.constant_value(value)
+  if static is not None and int(static) <= 0:
+    raise ValueError(
+        f'`{arg_name}` must be a positive integer, got {int(static)}. '
+        'A zero or negative FFT length would crash the underlying '
+        'FFT backend.'
+    )
 
 
 @tf_export('signal.mdct')

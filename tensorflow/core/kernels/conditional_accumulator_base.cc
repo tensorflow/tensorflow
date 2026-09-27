@@ -67,8 +67,8 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
                                              OpKernelContext* ctx,
                                              DoneCallback callback) {
   if (num_required <= 0) {
-    ctx->CtxFailureWithWarning(errors::InvalidArgument(
-        "Argument num_required must be positive, but was ", num_required));
+    ctx->CtxFailureWithWarning(absl::InvalidArgumentError(absl::StrCat(
+        "Argument num_required must be positive, but was ", num_required)));
     callback();
   } else {
     CancellationManager* cm = ctx->cancellation_manager();
@@ -100,7 +100,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
     if (!already_cancelled) {
       FlushUnlocked();
     } else {
-      ctx->SetStatus(errors::Cancelled("TakeGrad operation was cancelled"));
+      ctx->SetStatus(absl::CancelledError("TakeGrad operation was cancelled"));
       callback();
     }
   }
@@ -121,7 +121,7 @@ void ConditionalAccumulatorBase::Cancel(
         if (!attempt.is_cancelled) {
           attempt.is_cancelled = true;
           attempt.context->SetStatus(
-              errors::Cancelled("TakeGrad operation was cancelled"));
+              absl::CancelledError("TakeGrad operation was cancelled"));
           std::swap(callback, attempt.done_callback);
         }
         break;

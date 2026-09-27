@@ -139,7 +139,7 @@ SmallVector<Type, 2> inferReductionInitTypes(TypeRange input_types) {
 
 LogicalResult ReduceOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    mlir::DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::DictionaryAttr attributes, mlir::PropertyRef properties,
     mlir::RegionRange regions,
     mlir::SmallVectorImpl<Type>& inferredReturnTypes) {
   ReduceOp::Adaptor adaptor(operands, attributes, properties, regions);

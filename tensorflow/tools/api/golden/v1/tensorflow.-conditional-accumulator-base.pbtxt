@@ -1,18 +1,18 @@
 path: "tensorflow.ConditionalAccumulatorBase"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.ConditionalAccumulatorBase\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "accumulator_ref"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

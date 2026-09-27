@@ -675,6 +675,20 @@ class Interpreter {
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
   TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
+  /// \brief Applies a delegate only to the specified active subgraphs.
+  ///
+  /// The complete index list is validated before any subgraph is modified.
+  /// Duplicate indices are ignored and subgraphs are visited in model order.
+  /// The caller is responsible for including any required callee subgraphs;
+  /// this method does not perform transitive dependency discovery.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus ModifyGraphWithDelegate(
+      TfLiteDelegate* delegate,
+      const std::vector<int>& active_subgraph_indices);
+  TfLiteStatus ModifyGraphWithDelegate(
+      TfLiteOpaqueDelegateStruct* delegate,
+      const std::vector<int>& active_subgraph_indices);
+
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
@@ -845,6 +859,14 @@ class Interpreter {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// \brief Sets a custom allocator for TFLite-owned CPU buffers.
+  ///
+  /// The runtime does NOT take ownership of `allocator`, and it must outlive
+  /// the interpreter. This must be called before AllocateTensors() and before
+  /// runtime-owned tensor buffers are allocated.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus SetAllocator(TfLiteAllocator* allocator);
+
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Apply InterpreterOptions which tunes behavior of the interpreter.
   TfLiteStatus ApplyOptions(InterpreterOptions* options);
@@ -929,6 +951,9 @@ class Interpreter {
   // interpreter.cc rather than in interpreter_experimental.cc, so it can be
   // used to implement other non-experimental methods.
   TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegateImpl(
+      TfLiteDelegate* delegate,
+      const std::vector<int>& active_subgraph_indices);
 
   // Same as ModifyGraphWithDelegateImpl except that it takes ownership of the
   // delegate.
@@ -1042,6 +1067,9 @@ class Interpreter {
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 
+  // Allocator used for TFLite-owned CPU buffers. Not owned.
+  TfLiteAllocator* allocator_ = nullptr;
+
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 
@@ -1104,9 +1132,7 @@ class Interpreter {
   // Stores control edges that are encoded in the metadata of the model. Updated
   // in SetMetadata; model_control_dependencies_.empty() means that there were
   // no control dependencies encoded in the metadata, or that we were unable to
-  // parse them. We assume that, if we were able to parse them, they are
-  // consistent with the model and no further consistency check (e.g., bounds
-  // checks when dereferencing by subgraph and operator index) will take place.
+  // parse or validate them.
   ModelControlDependencies model_control_dependencies_;
 
   // Flag indicating whether to continue or cancel in flight invocation.

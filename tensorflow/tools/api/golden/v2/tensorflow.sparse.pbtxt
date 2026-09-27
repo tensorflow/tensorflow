@@ -2,7 +2,7 @@ path: "tensorflow.sparse"
 tf_module {
   member {
     name: "SparseTensor"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member_method {
     name: "add"

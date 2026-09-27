@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu_gpu_shape_verifier.h"
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout_util.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla {
 
 absl::Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
         if (shape.has_layout()) {
           if (!primitive_util::IsSubByteNonPredType(shape.element_type()) &&

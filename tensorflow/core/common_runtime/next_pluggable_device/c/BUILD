@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -17,7 +32,7 @@ cc_library(
         "//tensorflow/c:tf_tensor_hdrs",
         "@xla//xla/c:c_api_decl",
         "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
+        "@xla//xla/tpu:c_api_decl",
     ],
 )
 
@@ -78,7 +93,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_rendezvous_c_api",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
+        "@xla//xla/tpu:c_api_decl",
     ],
 )
 
@@ -108,11 +123,9 @@ cc_library(
     hdrs = ["tf_rendezvous_c_api_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":outside_compilation_params",
         ":tf_device_context_c_api",
         ":tf_device_context_c_api_helper",
         ":tf_rendezvous_c_api",
-        ":tf_rendezvous_c_api_defn",
         ":tf_tensor_utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
@@ -125,9 +138,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:status",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
     ],
 )
 

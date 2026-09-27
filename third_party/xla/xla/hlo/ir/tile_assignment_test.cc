@@ -15,20 +15,30 @@ limitations under the License.
 
 #include "xla/hlo/ir/tile_assignment.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 
 TEST(IotaTileAssignmentTest, Create) {
   // Test with dims only
@@ -143,6 +153,83 @@ TEST(IotaTileAssignmentTest, ValueAt) {
   EXPECT_EQ(iota2.value_at({2, 1}), 5);
 }
 
+TEST(IotaTileAssignmentTest, IndexFor) {
+  IotaTileAssignment iota = IotaTileAssignment::Create({2, 3}, {6}, {0});
+  EXPECT_THAT(iota.index_for(0), ::testing::ElementsAre(0, 0));
+  EXPECT_THAT(iota.index_for(1), ::testing::ElementsAre(0, 1));
+  EXPECT_THAT(iota.index_for(3), ::testing::ElementsAre(1, 0));
+  EXPECT_THAT(iota.index_for(5), ::testing::ElementsAre(1, 2));
+
+  IotaTileAssignment iota2 = IotaTileAssignment::Create({3, 2}, {2, 3}, {1, 0});
+  EXPECT_THAT(iota2.index_for(0), ::testing::ElementsAre(0, 0));
+  EXPECT_THAT(iota2.index_for(3), ::testing::ElementsAre(0, 1));
+  EXPECT_THAT(iota2.index_for(1), ::testing::ElementsAre(1, 0));
+  EXPECT_THAT(iota2.index_for(5), ::testing::ElementsAre(2, 1));
+}
+
+// Generates every possible shape for an array with size `n` elements
+// containing no dimensions of size 1.
+void ForEachShape(int64_t n,
+                  absl::AnyInvocable<void(std::vector<int64_t>&)> fn) {
+  if (n == 1) {
+    std::vector<int64_t> shape;
+    fn(shape);
+    return;
+  }
+
+  std::vector<int64_t> shape{n};
+  fn(shape);
+
+  for (int64_t factor = 2; factor <= n / 2; ++factor) {
+    if (n % factor != 0) {
+      continue;
+    }
+    ForEachShape(n / factor, [&](std::vector<int64_t>& shape) {
+      shape.push_back(factor);
+      fn(shape);
+      shape.pop_back();
+    });
+  }
+}
+
+// Generates every permutation of [0, n).
+void ForEachPermutation(size_t n,
+                        absl::AnyInvocable<void(absl::Span<const int>)> fn) {
+  std::vector<int> permutation(n);
+  absl::c_iota(permutation, 0);
+  do {
+    fn(permutation);
+  } while (std::next_permutation(permutation.begin(), permutation.end()));
+}
+
+TEST(IotaTileAssignmentTest, ValueAtAndIndexForExhaustive) {
+  constexpr int64_t kTotalSize = 24;
+  ForEachShape(kTotalSize, [&](std::vector<int64_t>& dims) {
+    ForEachShape(kTotalSize, [&](std::vector<int64_t>& reshape_dims) {
+      ForEachPermutation(
+          reshape_dims.size(), [&](absl::Span<const int> transpose_perm) {
+            auto iota =
+                IotaTileAssignment::Create(dims, reshape_dims, transpose_perm);
+            SCOPED_TRACE(absl::StrFormat(
+                "dims = [%s], reshape_dims = [%s], transpose_perm = [%s], "
+                "canon_dims = [%s], canon_transpose_perm = [%s]",
+                absl::StrJoin(dims, ", "), absl::StrJoin(reshape_dims, ", "),
+                absl::StrJoin(transpose_perm, ", "),
+                absl::StrJoin(iota.dims(), ", "),
+                absl::StrJoin(iota.transpose_perm(), ", ")));
+            const Array<int64_t> array = iota.ToArray();
+            array.TemplatedEach([&](absl::Span<const int64_t> index,
+                                    int64_t value) {
+              SCOPED_TRACE(absl::StrFormat("index = [%s], value = %d",
+                                           absl::StrJoin(index, ", "), value));
+              EXPECT_EQ(iota.value_at(index), value);
+              EXPECT_EQ(iota.index_for(value), index);
+            });
+          });
+    });
+  });
+}
+
 TEST(IotaTileAssignmentTest, ToString) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
   EXPECT_EQ(iota.ArrayToString(), "[6]");
@@ -243,19 +330,6 @@ TEST(TileAssignmentTest, Transpose) {
   EXPECT_EQ(transposed2({1, 0}), 1);
 }
 
-TEST(TileAssignmentTest, UsesDevice) {
-  IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
-  TileAssignment ta(iota);
-  EXPECT_TRUE(ta.UsesDevice(0));
-  EXPECT_TRUE(ta.UsesDevice(5));
-  EXPECT_FALSE(ta.UsesDevice(6));
-
-  Array2D<int64_t> array({{1, 2}, {3, 4}});
-  TileAssignment ta2(std::make_shared<Array<int64_t>>(array));
-  EXPECT_TRUE(ta2.UsesDevice(1));
-  EXPECT_FALSE(ta2.UsesDevice(0));
-}
-
 TEST(TileAssignmentTest, MaterializeArray) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
   TileAssignment ta(iota);
@@ -292,6 +366,91 @@ TEST(TileAssignmentTest, EachStatus) {
         return absl::OkStatus();
       });
   EXPECT_FALSE(status.ok());
+}
+
+TEST(TileAssignmentTest, GetOrderedSubDims) {
+  std::vector<int64_t> dims = {6, 35};
+  std::vector<int64_t> reshape_dims = {7, 10, 3};
+  std::vector<int> transpose_perm = {2, 1, 0};
+
+  auto result = GetOrderedSubDims(dims, reshape_dims, transpose_perm);
+  ASSERT_THAT(result, IsOk());
+  ASSERT_EQ(result->size(), 4);
+
+  EXPECT_EQ((*result)[0].tile_dim_index, 1);
+  EXPECT_EQ((*result)[0].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[0].reshape_dim_index, 0);
+  EXPECT_EQ((*result)[0].size, 7);
+
+  EXPECT_EQ((*result)[1].tile_dim_index, 0);
+  EXPECT_EQ((*result)[1].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[1].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[1].size, 2);
+
+  EXPECT_EQ((*result)[2].tile_dim_index, 1);
+  EXPECT_EQ((*result)[2].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[2].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[2].size, 5);
+
+  EXPECT_EQ((*result)[3].tile_dim_index, 0);
+  EXPECT_EQ((*result)[3].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[3].reshape_dim_index, 2);
+  EXPECT_EQ((*result)[3].size, 3);
+
+  std::vector<int64_t> dims_invalid = {2, 3};
+  std::vector<int64_t> reshape_dims_invalid = {2, 3};
+  std::vector<int> transpose_perm_invalid = {1, 0};
+  auto error_result = GetOrderedSubDims(dims_invalid, reshape_dims_invalid,
+                                        transpose_perm_invalid);
+  EXPECT_THAT(error_result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(TileAssignmentTest, GetOrderedSubDimsFromIotaTileAssignment) {
+  IotaTileAssignment iota = IotaTileAssignment::Create({8, 1}, {4, 2}, {1, 0});
+  auto result = GetOrderedSubDimsFromIotaTileAssignment(iota);
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 2);
+
+  EXPECT_EQ((*result)[0].tile_dim_index, 0);
+  EXPECT_EQ((*result)[0].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[0].reshape_dim_index, 0);
+  EXPECT_EQ((*result)[0].size, 4);
+
+  EXPECT_EQ((*result)[1].tile_dim_index, 0);
+  EXPECT_EQ((*result)[1].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[1].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[1].size, 2);
+
+  IotaTileAssignment iota_invalid =
+      IotaTileAssignment::Create({2, 5}, {2, 5}, {1, 0});
+  auto result_invalid = GetOrderedSubDimsFromIotaTileAssignment(iota_invalid);
+  EXPECT_FALSE(result_invalid.has_value());
+}
+
+TEST(TileAssignmentTest, AnalyzeTileAssignment) {
+  IotaTileAssignment iota =
+      IotaTileAssignment::Create({6, 35}, {7, 10, 3}, {2, 1, 0});
+  TileAssignment ta(iota);
+  auto result = AnalyzeTileAssignment(ta);
+  ASSERT_TRUE(result.has_value());
+
+  ASSERT_EQ(result->sub_dims.size(), 4);
+  EXPECT_THAT(result->local_mesh, ::testing::ElementsAre(7, 2, 5, 3));
+
+  // V1 sharding with iota pattern.
+  Array2D<int64_t> array_iota({{0, 1}, {2, 3}});
+  TileAssignment ta_v1_iota(std::make_shared<Array<int64_t>>(array_iota));
+  auto result_v1_iota = AnalyzeTileAssignment(ta_v1_iota);
+  EXPECT_TRUE(result_v1_iota.has_value());
+  EXPECT_THAT(result_v1_iota->local_mesh, ::testing::ElementsAre(2, 2));
+
+  // V1 sharding with iota pattern and 1s in dimensions.
+  Array<int64_t> array_iota_1s({1, 2, 1, 2});
+  array_iota_1s.FillIota(0);
+  TileAssignment ta_v1_iota_1s(std::make_shared<Array<int64_t>>(array_iota_1s));
+  auto result_v1_iota_1s = AnalyzeTileAssignment(ta_v1_iota_1s);
+  EXPECT_TRUE(result_v1_iota_1s.has_value());
+  EXPECT_THAT(result_v1_iota_1s->local_mesh, ::testing::ElementsAre(2, 2));
 }
 
 }  // namespace

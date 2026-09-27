@@ -16,18 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_PATH_H_
 #define TENSORFLOW_TSL_PLATFORM_PATH_H_
 
+#include <initializer_list>
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
 std::string JoinPathImpl(std::initializer_list<absl::string_view> paths);
-}
+}  // namespace internal
 
 // Utility routines for processing filenames
 
@@ -89,6 +90,9 @@ std::string CommonPathPrefix(absl::Span<std::string const> paths);
 // paths with respect to the actual working directory.  That is, this is purely
 // string manipulation, completely independent of process state.
 std::string CleanPath(absl::string_view path);
+
+// Appends a trailing '/' to the path unless it already ends in '/' or is empty.
+std::string EnsureTrailingSlash(absl::string_view path);
 
 // Populates the scheme, host, and path from a URI. scheme, host, and path are
 // guaranteed by this function to point into the contents of uri, even if

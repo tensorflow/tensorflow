@@ -36,12 +36,12 @@ class TestCredentialsFactory : public CredentialsFactory {
 
   absl::Status CreateServerCredentials(
       std::shared_ptr<grpc::ServerCredentials>* out) override {
-    return errors::Internal(kFailedToCreateServerCredentials);
+    return absl::InternalError(kFailedToCreateServerCredentials);
   }
 
   absl::Status CreateClientCredentials(
       std::shared_ptr<grpc::ChannelCredentials>* out) override {
-    return errors::Internal(kFailedToCreateClientCredentials);
+    return absl::InternalError(kFailedToCreateClientCredentials);
   }
 };
 }  // namespace
@@ -50,11 +50,11 @@ TEST(CredentialsFactory, Register) {
   TestCredentialsFactory test_factory;
   CredentialsFactory::Register(&test_factory);
   std::shared_ptr<grpc::ServerCredentials> server_credentials;
-  ASSERT_EQ(errors::Internal(kFailedToCreateServerCredentials),
+  ASSERT_EQ(absl::InternalError(kFailedToCreateServerCredentials),
             CredentialsFactory::CreateServerCredentials(test_factory.Protocol(),
                                                         &server_credentials));
   std::shared_ptr<grpc::ChannelCredentials> client_credentials;
-  ASSERT_EQ(errors::Internal(kFailedToCreateClientCredentials),
+  ASSERT_EQ(absl::InternalError(kFailedToCreateClientCredentials),
             CredentialsFactory::CreateClientCredentials(test_factory.Protocol(),
                                                         &client_credentials));
 }

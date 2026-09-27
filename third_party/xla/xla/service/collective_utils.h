@@ -40,6 +40,9 @@ inline constexpr int64_t kDefaultCollectivePermuteCombineThreshold =
 inline constexpr int64_t kDefaultReduceScatterCombineThreshold =
     30 * 1024 * 1024 + 7;
 
+// Defines the default threshold count for collective combiners.
+inline constexpr int64_t kDefaultCollectiveCombineThresholdCount = 2048;
+
 // Defines the default coefficient for the SoL NCCL collective cost model.
 // Note: XLA flags allow a user to override the default values of the model.
 inline constexpr float kDefaultNcclCostModelCoeff = 0.45f;

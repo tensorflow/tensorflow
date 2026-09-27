@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -73,7 +74,7 @@ class DebugEventsWriterTest : public ::testing::Test {
   void SetUp() override {
     dump_root_ = io::JoinPath(
         testing::TmpDir(),
-        strings::Printf("%010lld", static_cast<long long>(env()->NowMicros())));
+        absl::StrFormat("%010lld", static_cast<long long>(env()->NowMicros())));
     tfdbg_run_id_ = "test_tfdbg_run_id";
   }
 
@@ -135,7 +136,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentGetDebugEventsWriterDiffDumpRoots) {
   mutex mu;
   auto fn = [this, &counter, &writers, &mu]() {
     const std::string new_dump_root =
-        io::JoinPath(dump_root_, strings::Printf("%ld", counter.fetch_add(1)));
+        io::JoinPath(dump_root_, absl::StrFormat("%ld", counter.fetch_add(1)));
     DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
         new_dump_root, tfdbg_run_id_,
         DebugEventsWriter::kDefaultCyclicBufferSize);
@@ -434,7 +435,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
       new thread::ThreadPool(Env::Default(), "test_pool", 8);
   std::atomic_int_fast64_t counter(0);
   auto fn = [&writer, &counter]() {
-    const std::string file_path = strings::Printf(
+    const std::string file_path = absl::StrFormat(
         "/home/tf_programs/program_%.3ld.py", counter.fetch_add(1));
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
@@ -460,7 +461,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheSameFile) {
   std::sort(file_paths.begin(), file_paths.end());
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     EXPECT_EQ(file_paths[i],
-              strings::Printf("/home/tf_programs/program_%.3ld.py", i));
+              absl::StrFormat("/home/tf_programs/program_%.3ld.py", i));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
   }
 }
@@ -475,7 +476,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
       new thread::ThreadPool(Env::Default(), "test_pool", 8);
   std::atomic_int_fast64_t counter(0);
   auto fn = [&writer, &counter]() {
-    const std::string file_path = strings::Printf(
+    const std::string file_path = absl::StrFormat(
         "/home/tf_programs/program_%.3ld.py", counter.fetch_add(1));
     SourceFile* source_file = new SourceFile();
     source_file->set_file_path(file_path);
@@ -502,9 +503,48 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteAndFlushCallsToTheSameFile) {
   std::sort(file_paths.begin(), file_paths.end());
   for (size_t i = 0; i < kConcurrentWrites; ++i) {
     EXPECT_EQ(file_paths[i],
-              strings::Printf("/home/tf_programs/program_%.3ld.py", i));
+              absl::StrFormat("/home/tf_programs/program_%.3ld.py", i));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
   }
+}
+
+TEST_F(DebugEventsWriterTest, ConcurrentWriteAndCloseCallsAreSafe) {
+  DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
+      dump_root_, tfdbg_run_id_, DebugEventsWriter::kDefaultCyclicBufferSize);
+  TF_ASSERT_OK(writer->Init());
+
+  constexpr int kWriterThreads = 8;
+  constexpr int kWritesPerThread = 100;
+  thread::ThreadPool* thread_pool =
+      new thread::ThreadPool(Env::Default(), "test_pool", kWriterThreads + 1);
+
+  absl::Notification start;
+  std::atomic_int_fast32_t writes_attempted(0);
+
+  for (int thread_id = 0; thread_id < kWriterThreads; ++thread_id) {
+    thread_pool->Schedule([writer, &start, &writes_attempted, thread_id]() {
+      start.WaitForNotification();
+      for (int i = 0; i < kWritesPerThread; ++i) {
+        SourceFile* source_file = new SourceFile();
+        source_file->set_file_path(absl::StrFormat(
+            "/home/tf_programs/program_%d_%d.py", thread_id, i));
+        source_file->set_host_name("localhost.localdomain");
+        writer->WriteSourceFile(source_file).IgnoreError();
+        writes_attempted.fetch_add(1);
+      }
+    });
+  }
+
+  thread_pool->Schedule([writer, &start]() {
+    start.WaitForNotification();
+    writer->Close().IgnoreError();
+  });
+
+  start.Notify();
+  delete thread_pool;
+
+  EXPECT_EQ(writes_attempted.load(), kWriterThreads * kWritesPerThread);
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
@@ -521,17 +561,17 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
     if (index % 3 == 0) {
       SourceFile* source_file = new SourceFile();
       source_file->set_file_path(
-          strings::Printf("/home/tf_programs/program_%.2d.py", index));
+          absl::StrFormat("/home/tf_programs/program_%.2d.py", index));
       source_file->set_host_name("localhost.localdomain");
       TF_ASSERT_OK(writer->WriteSourceFile(source_file));
     } else if (index % 3 == 1) {
       StackFrameWithId* stack_frame = new StackFrameWithId();
-      stack_frame->set_id(strings::Printf("e%.2d", index));
+      stack_frame->set_id(absl::StrFormat("e%.2d", index));
       TF_ASSERT_OK(writer->WriteStackFrameWithId(stack_frame));
     } else {
       GraphOpCreation* op_creation = new GraphOpCreation();
       op_creation->set_op_type("Log");
-      op_creation->set_op_name(strings::Printf("Log_%.2d", index));
+      op_creation->set_op_name(absl::StrFormat("Log_%.2d", index));
       TF_ASSERT_OK(writer->WriteGraphOpCreation(op_creation));
     }
   };
@@ -554,7 +594,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   std::sort(file_paths.begin(), file_paths.end());
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     EXPECT_EQ(file_paths[i],
-              strings::Printf("/home/tf_programs/program_%.2d.py", i * 3));
+              absl::StrFormat("/home/tf_programs/program_%.2d.py", i * 3));
     EXPECT_EQ(host_names[i], "localhost.localdomain");
   }
 
@@ -566,7 +606,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   }
   std::sort(stack_frame_ids.begin(), stack_frame_ids.end());
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
-    EXPECT_EQ(stack_frame_ids[i], strings::Printf("e%.2d", i * 3 + 1));
+    EXPECT_EQ(stack_frame_ids[i], absl::StrFormat("e%.2d", i * 3 + 1));
   }
 
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPHS, &actuals);
@@ -580,7 +620,7 @@ TEST_F(DebugEventsWriterTest, ConcurrentWriteCallsToTheDifferentFiles) {
   std::sort(op_names.begin(), op_names.end());
   for (int32_t i = 0; i < kConcurrentWrites / 3; ++i) {
     EXPECT_EQ(op_types[i], "Log");
-    EXPECT_EQ(op_names[i], strings::Printf("Log_%.2d", i * 3 + 2));
+    EXPECT_EQ(op_names[i], absl::StrFormat("Log_%.2d", i * 3 + 2));
   }
 }
 
@@ -692,7 +732,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
-    trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
+    trace->set_tfdbg_context_id(absl::StrFormat("graph_%.2ld", i));
     TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
@@ -717,7 +757,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithoutPreviousInitCall) {
   // debug ops are executed on a remote TF server.
 
   GraphExecutionTrace* trace = new GraphExecutionTrace();
-  trace->set_tfdbg_context_id(strings::Printf("graph_0"));
+  trace->set_tfdbg_context_id(absl::StrFormat("graph_0"));
   TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   TF_ASSERT_OK(writer->FlushExecutionFiles());
 
@@ -741,7 +781,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
-    trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
+    trace->set_tfdbg_context_id(absl::StrFormat("graph_%.2ld", i));
     TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
 
@@ -755,7 +795,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   EXPECT_EQ(actuals.size(), kCyclicBufferSize);
   for (size_t i = 0; i < kCyclicBufferSize; ++i) {
     EXPECT_EQ(actuals[i].graph_execution_trace().tfdbg_context_id(),
-              strings::Printf("graph_%.2ld", i + kCyclicBufferSize));
+              absl::StrFormat("graph_%.2ld", i + kCyclicBufferSize));
   }
 
   // Second, write more than the capacity of the circular buffer,
@@ -766,7 +806,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   auto fn = [&writer, &counter]() {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(
-        strings::Printf("new_graph_%.2ld", counter.fetch_add(1)));
+        absl::StrFormat("new_graph_%.2ld", counter.fetch_add(1)));
     TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   };
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
@@ -809,7 +849,7 @@ TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
   int device_ids[8];
   for (int i = 0; i < 8; ++i) {
     thread_pool->Schedule([i, &writer, &device_ids]() {
-      const std::string device_name = strings::Printf(
+      const std::string device_name = absl::StrFormat(
           "/job:localhost/replica:0/task:0/device:GPU:%d", i % 4);
       device_ids[i] = writer->RegisterDeviceAndGetId(device_name);
     });
@@ -869,7 +909,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
 
   for (size_t i = 0; i < kNumEvents; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
-    trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
+    trace->set_tfdbg_context_id(absl::StrFormat("graph_%.2ld", i));
     TF_ASSERT_OK(writer->WriteGraphExecutionTrace(trace));
   }
   TF_ASSERT_OK(writer->FlushExecutionFiles());
@@ -879,7 +919,7 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   EXPECT_EQ(actuals.size(), kNumEvents);
   for (size_t i = 0; i < kNumEvents; ++i) {
     EXPECT_EQ(actuals[i].graph_execution_trace().tfdbg_context_id(),
-              strings::Printf("graph_%.2ld", i));
+              absl::StrFormat("graph_%.2ld", i));
   }
 
   // Close the writer so the files can be safely deleted.

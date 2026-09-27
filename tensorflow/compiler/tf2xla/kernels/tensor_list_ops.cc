@@ -37,14 +37,40 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 namespace {
+
+// Verifies that the element type of an initialized TensorList's buffer matches
+// the element dtype the reading op expects.
+//
+// An uninitialized TensorList does not carry its element dtype: it is built by
+// BuildUninitializedTensorList(), which drops the `element_dtype` attr the
+// list was created with. Such a list is instead given a buffer derived from
+// the first element written to it, so a write whose dtype disagrees with the
+// list's declared dtype silently produces a buffer of the wrong element type
+// rather than failing the way the non-XLA kernels do. Reading that buffer back
+// as the declared dtype would reinterpret its bytes and, when the declared
+// dtype is wider, read past the end of the buffer.
+absl::Status VerifyBufferDataType(xla::XlaOp list, DataType expected_dtype) {
+  xla::Shape buffer_shape;
+  TF_RETURN_IF_ERROR(GetTensorListBufferShape(list, &buffer_shape));
+  TF_ASSIGN_OR_RETURN(DataType buffer_dtype, EncodePrimitiveTypeAsDataType(
+                                                 buffer_shape.element_type()));
+  if (buffer_dtype != expected_dtype) {
+    return errors::InvalidArgument(
+        "Invalid data types; op elements ", DataTypeString(expected_dtype),
+        " but list elements ", DataTypeString(buffer_dtype));
+  }
+  return absl::OkStatus();
+}
 
 // GetTensorListDynamicDims collects the dynamic dimensions that a tensorlist
 // may carry and returns them in a 2D vector: XlaOp[ElementSize][DimSize]. If a
@@ -374,6 +400,8 @@ class TensorListGetItemOp : public XlaOpKernel {
     xla::XlaOp list = ctx->Input(0);
     xla::XlaOp index = ctx->Input(1);
 
+    OP_REQUIRES_OK(ctx, VerifyBufferDataType(list, dtype_));
+
     xla::XlaOp result;
     OP_REQUIRES_OK(ctx, ExecuteTensorListGetItem(list, index, &result));
 
@@ -461,6 +489,9 @@ class TensorListStackOp : public XlaOpKernel {
     OP_REQUIRES(ctx, !is_nested,
                 errors::Unimplemented("Only non-nested TensorList is supported "
                                       "for TensorListGetItem."));
+
+    OP_REQUIRES_OK(ctx, VerifyBufferDataType(ctx->Input(0),
+                                             ctx->expected_output_dtype(0)));
 
     xla::XlaOp buffer;
     OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(0), &buffer));
@@ -619,7 +650,32 @@ REGISTER_XLA_OP(
 
 class TensorListSetItemOp : public XlaOpKernel {
  public:
-  explicit TensorListSetItemOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit TensorListSetItemOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    // A tf.TensorArray built with dynamic_size=True lowers to TensorListSetItem
+    // with this attribute set, and the non-XLA kernel grows the list when the
+    // index is past the end. XLA needs static shapes, so the buffer that
+    // TensorListReserve allocated cannot grow, and a write past the end is
+    // dropped in one of two ways depending on the shapes. When the element does
+    // not fit at all, as for a list reserved with size 0,
+    // ExecuteTensorListSetItem takes its early return and hands back the list
+    // unchanged with an OK status. When the element does fit but the index is
+    // past the end, the DynamicUpdateSlice it lowers to clamps its start
+    // indices rather than failing, so the element overwrites an earlier one.
+    // Either way the program returns a truncated result.
+    //
+    // This is only a warning rather than a compile error, because the attribute
+    // is set by every dynamic_size TensorArray, including the many that never
+    // actually write past the end and compile correctly today.
+    bool resize_if_index_out_of_bounds;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("resize_if_index_out_of_bounds",
+                                     &resize_if_index_out_of_bounds));
+    if (resize_if_index_out_of_bounds) {
+      LOG(WARNING) << "TensorLists that grow on an out-of-bounds write are not "
+                      "supported by XLA. This is typically a tf.TensorArray "
+                      "created with dynamic_size=True; give it a static size "
+                      "large enough to hold every write instead.";
+    }
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp list = ctx->Input(0);

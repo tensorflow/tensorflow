@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/object_manager.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"

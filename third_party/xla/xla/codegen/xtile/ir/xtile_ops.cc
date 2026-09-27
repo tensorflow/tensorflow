@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -96,8 +97,7 @@ void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
                         mlir::ArrayRef<mlir::Type> memref_arg_types,
                         mlir::ArrayRef<mlir::NamedAttribute> attrs,
                         mlir::ArrayRef<mlir::DictionaryAttr> memref_arg_attrs) {
-  state.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
-                     builder.getStringAttr(name));
+  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
   mlir::SmallVector<mlir::Type> arg_types(memref_arg_types.begin(),
                                           memref_arg_types.end());
   // Append the tile id index type.
@@ -177,6 +177,50 @@ mlir::LogicalResult EntryFuncOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult MemRefBitcastOp::verify() {
+  mlir::MemRefType source_type = getSource().getType();
+  mlir::MemRefType result_type = getResult().getType();
+
+  if (source_type.getLayout() != result_type.getLayout()) {
+    return emitOpError() << "source layout: " << source_type.getLayout()
+                         << " does not match result layout: "
+                         << result_type.getLayout();
+  }
+  if (source_type.getMemorySpace() != result_type.getMemorySpace()) {
+    return emitOpError() << "source and result memory spaces differ";
+  }
+
+  mlir::Type source_element_type = source_type.getElementType();
+  mlir::Type result_element_type = result_type.getElementType();
+  if (!source_element_type.isIntOrFloat() ||
+      !result_element_type.isIntOrFloat()) {
+    return emitOpError() << "element types must be integer or float, got: "
+                         << source_element_type << " and "
+                         << result_element_type;
+  }
+  if (source_element_type.getIntOrFloatBitWidth() !=
+      result_element_type.getIntOrFloatBitWidth()) {
+    return emitOpError() << "element bit widths differ: " << source_element_type
+                         << " vs " << result_element_type;
+  }
+  return mlir::success();
+}
+
+mlir::OpFoldResult MemRefBitcastOp::fold(FoldAdaptor) {
+  if (getSource().getType() == getType()) {
+    return getSource();
+  }
+  // bitcast(bitcast(x)) -> x, or a single bitcast from x otherwise.
+  if (auto producer = getSource().getDefiningOp<MemRefBitcastOp>()) {
+    if (producer.getSource().getType() == getType()) {
+      return producer.getSource();
+    }
+    getSourceMutable().assign(producer.getSource());
+    return getResult();
+  }
+  return {};
+}
+
 mlir::TypedValue<mlir::MemRefType> ExtractTileOp::getBuffer() {
   return getSource();
 }
@@ -240,6 +284,121 @@ mlir::OpFoldResult MaskOp::fold(FoldAdaptor) {
   }
 
   return {};
+}
+
+mlir::LogicalResult ScanOp::verify() {
+  mlir::ValueRange inputs = getInputs();
+  if (getInits().size() != inputs.size() ||
+      getOutputs().size() != inputs.size() ||
+      getCarries().size() != inputs.size()) {
+    return emitOpError() << "expects one init, output and carry per input, but "
+                            "got "
+                         << inputs.size() << " inputs, " << getInits().size()
+                         << " inits, " << getOutputs().size() << " outputs and "
+                         << getCarries().size() << " carries";
+  }
+
+  int64_t dimension = getDimension();
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    mlir::RankedTensorType input_type =
+        mlir::cast<mlir::RankedTensorType>(input.getType());
+    if (dimension < 0 || dimension >= input_type.getRank()) {
+      return emitOpError() << "scan dimension " << dimension
+                           << " is out of range for input #" << index
+                           << " of rank " << input_type.getRank();
+    }
+    if (getOutputs()[index].getType() != input_type) {
+      return emitOpError() << "output #" << index << " type "
+                           << getOutputs()[index].getType()
+                           << " does not match input type " << input_type;
+    }
+
+    // The inits and carries keep the scan dimension as a unit dimension, so
+    // that they have the same rank as the inputs and outputs.
+    llvm::SmallVector<int64_t> carry_shape(input_type.getShape());
+    carry_shape[dimension] = 1;
+    mlir::RankedTensorType carry_type =
+        mlir::RankedTensorType::get(carry_shape, input_type.getElementType());
+    if (getInits()[index].getType() != carry_type) {
+      return emitOpError() << "init #" << index << " type "
+                           << getInits()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+    if (getCarries()[index].getType() != carry_type) {
+      return emitOpError() << "carry #" << index << " type "
+                           << getCarries()[index].getType()
+                           << " does not match expected type " << carry_type;
+    }
+  }
+
+  return mlir::success();
+}
+
+static bool IsSupportedScaleElementType(mlir::Type type) {
+  return mlir::isa<mlir::Float8E8M0FNUType, mlir::Float8E4M3FNType,
+                   mlir::Float8E5M2Type>(type) ||
+         (mlir::isa<mlir::IntegerType>(type) &&
+          mlir::cast<mlir::IntegerType>(type).getWidth() == 8);
+}
+
+static bool IsSupportedOperandElementType(mlir::Type type) {
+  if (mlir::isa<mlir::FloatType>(type)) {
+    return true;
+  }
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
+    return int_type.getWidth() == 8 || int_type.getWidth() == 4;
+  }
+  return false;
+}
+
+mlir::LogicalResult DotScaledOp::verify() {
+  mlir::Type lhs_storage_type =
+      mlir::cast<mlir::ShapedType>(getLhs().getType()).getElementType();
+  if (!IsSupportedOperandElementType(lhs_storage_type)) {
+    return emitOpError() << "LHS tensor element type " << lhs_storage_type
+                         << " is not supported. Supported LHS element "
+                            "types are float or int8/uint8";
+  }
+
+  mlir::Type rhs_storage_type =
+      mlir::cast<mlir::ShapedType>(getRhs().getType()).getElementType();
+  if (!IsSupportedOperandElementType(rhs_storage_type)) {
+    return emitOpError() << "RHS tensor element type " << rhs_storage_type
+                         << " is not supported. Supported RHS element "
+                            "types are float or int8/uint8";
+  }
+
+  if (!IsSupportedOperandElementType(getLhsElemType())) {
+    return emitOpError() << "LHS logical element type " << getLhsElemType()
+                         << " is not supported. Supported LHS logical "
+                            "element types are float or int8/int4";
+  }
+
+  if (!IsSupportedOperandElementType(getRhsElemType())) {
+    return emitOpError() << "RHS logical element type " << getRhsElemType()
+                         << " is not supported. Supported RHS logical "
+                            "element types are float or int8/int4";
+  }
+
+  if (mlir::Value lhs_scale = getLhsScale()) {
+    mlir::Type scale_type =
+        mlir::cast<mlir::ShapedType>(lhs_scale.getType()).getElementType();
+    if (!IsSupportedScaleElementType(scale_type)) {
+      return emitOpError() << "LHS scale element type " << scale_type
+                           << " is not supported. Supported scale element "
+                              "types are: f8E8M0FNU, f8E4M3FN, f8E5M2, i8/s8";
+    }
+  }
+  if (mlir::Value rhs_scale = getRhsScale()) {
+    mlir::Type scale_type =
+        mlir::cast<mlir::ShapedType>(rhs_scale.getType()).getElementType();
+    if (!IsSupportedScaleElementType(scale_type)) {
+      return emitOpError() << "RHS scale element type " << scale_type
+                           << " is not supported. Supported scale element "
+                              "types are: f8E8M0FNU, f8E4M3FN, f8E5M2, i8/s8";
+    }
+  }
+  return mlir::success();
 }
 
 }  // namespace xla::xtile

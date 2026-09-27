@@ -90,7 +90,8 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
             });
 
         MatchInstructions(left_, right_, left_children, right_children,
-                          mappings, type_, MapByPositionMode::kAlways);
+                          mappings, type_, MapByPositionMode::kAlways,
+                          phase_zero_threshold_);
       },
       DfsTraversalOrder::kPreOrder, left_.GetNodeCount());
   LOG(INFO) << "Finished GreedyTopDownMatcher. Total left to right mappings: "

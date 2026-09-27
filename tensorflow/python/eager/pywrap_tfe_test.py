@@ -280,8 +280,10 @@ class Tests(test.TestCase):
     with ops.Graph().as_default():
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
-      with self.assertRaisesRegex(TypeError,
-                                  "Expected list for 'values' argument"):
+      with self.assertRaisesRegex(
+          TypeError,
+          r"Argument `values` must be a sequence of Tensor objects",
+      ):
         _ = array_ops_stack.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
@@ -361,6 +363,7 @@ class Tests(test.TestCase):
     ctx = context.context()
     ctx.ensure_initialized()
 
+    full_exception_text = ""
     try:
       math_ops.mat_mul([[1., 1.] * 2], [[1., 1.] * 3])
     except errors.InvalidArgumentError:
@@ -382,6 +385,39 @@ class Tests(test.TestCase):
     pywrap_tfe.TFE_Py_FastPathExecute(ctx, "RandomUniformInt", None,
                                       shape, minval, maxval,
                                       "seed", seed)
+
+  def testTapeAndWatcherTypeCheckAndRefcount(self):
+    dummy_obj = 100
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchVariable(dummy_obj, None)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_TapeWatchedVariables(dummy_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_VariableWatcherRemove(dummy_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_VariableWatcherWatchedVariables(dummy_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(dummy_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(dummy_obj)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(dummy_obj, None, None)
+    with self.assertRaises(TypeError):
+      pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(dummy_obj, None)
+
+    # Double remove on a tape, watcher, or accumulator should not double decref
+    t = pywrap_tfe.TFE_Py_TapeSetNew(False, False)
+    pywrap_tfe.TFE_Py_TapeSetRemove(t)
+    pywrap_tfe.TFE_Py_TapeSetRemove(t)
+
+    vw = pywrap_tfe.TFE_Py_VariableWatcherNew()
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(vw)
+    pywrap_tfe.TFE_Py_VariableWatcherRemove(vw)
+
+    acc = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(False)
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetAdd(acc)
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(acc)
+    pywrap_tfe.TFE_Py_ForwardAccumulatorSetRemove(acc)
 
 
 if __name__ == "__main__":

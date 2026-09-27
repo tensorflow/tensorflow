@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -137,8 +138,8 @@ absl::Status SubByteCollectiveNormalizationVisitor::HandleAllToAll(
                         primitive_util::BitWidth(hlo->shape().element_type());
   const auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
   if (all_to_all->split_dimension()) {
-    TF_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
-                        GetCollectiveOpGroupMode(all_to_all));
+    ABSL_ASSIGN_OR_RETURN(const CollectiveOpGroupMode group_mode,
+                     GetCollectiveOpGroupMode(all_to_all));
     const int64_t split_dimension_size =
         hlo->shape().dimensions(*all_to_all->split_dimension());
     if (split_dimension_size %
@@ -183,7 +184,7 @@ SubByteCollectiveNormalizationVisitor::ProcessCollectiveInstruction(
       hlo.parent()->AddInstruction(hlo.CloneWithNewOperands(
           new_collective_shape,
           {ReshapeAndCastToWiderType(hlo.mutable_operand(0), casted_type_)}));
-  TF_RETURN_IF_ERROR(hlo.parent()->ReplaceInstructionWithDifferentShape(
+  ABSL_RETURN_IF_ERROR(hlo.parent()->ReplaceInstructionWithDifferentShape(
       &hlo, CastToNarrowerTypeAndReshape(new_collective, hlo.shape())));
 
   MarkAsChanged();
@@ -198,7 +199,7 @@ absl::StatusOr<bool> SubByteCollectiveNormalization::RunImpl(
   SubByteCollectiveNormalizationVisitor visitor;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+    ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   }
 
   return visitor.changed();

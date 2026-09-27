@@ -28,21 +28,23 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace tsl {
 
 // This mutex allows us to unblock an alarm thread.
-static mutex alarm_mu(LINKER_INITIALIZED);
+ABSL_CONST_INIT static absl::Mutex alarm_mu(absl::kConstInit);
 static bool alarm_activated = false;
 
 static void AlarmThreadBody() {
   // Wait until the alarm_activated bool is true, sleep for 60 seconds,
   // then kill the program.
   alarm_mu.lock();
-  alarm_mu.Await(Condition(&alarm_activated));
+  alarm_mu.Await(absl::Condition(&alarm_activated));
   alarm_mu.unlock();
   Sleep(60000);
 

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
@@ -57,12 +58,12 @@ absl::StatusOr<bool> OptimizationBarrierExpander::RunImpl(
 
   for (HloInstruction* inst : barriers) {
     HloInstruction* arg = inst->mutable_operand(0);
-    TF_RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
+    ABSL_RETURN_IF_ERROR(arg->CopyAllControlDepsFrom(inst));
 
-    TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
-    TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
+    ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(arg));
+    ABSL_RETURN_IF_ERROR(inst->DropAllControlDeps());
 
-    TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
+    ABSL_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
   }
 
   return !barriers.empty();

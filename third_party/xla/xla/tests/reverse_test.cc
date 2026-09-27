@@ -83,7 +83,7 @@ void PrintTo(const ReverseSpec& spec, std::ostream* os) {
 }
 
 class FloatReverseTest : public ClientLibraryTestRunnerMixin<
-                             HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+                             HloPjRtInterpreterReferenceMixin<HloTestBase>>,
                          public ::testing::WithParamInterface<ReverseSpec> {
  public:
   FloatReverseTest() { set_float_type(GetParam().test_type); }
@@ -124,8 +124,8 @@ INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,
                         ::testing::PrintToStringParamName());
 
 // A simple test class which not templated by float precision.
-using ReverseTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ReverseTest =
+    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
 TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {

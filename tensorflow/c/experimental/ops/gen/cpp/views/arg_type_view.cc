@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_type_view.h"
 
+#include <string>
+
 #include "tensorflow/c/experimental/ops/gen/model/arg_type.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"

@@ -113,6 +113,36 @@ class PartitionerTest(test.TestCase):
     got = partitioner(tensor_shape.TensorShape([6, 1]), dtypes.float32)
     self.assertAllEqual(got, [1, 1])
 
+  def test_partitioner_invalid_args(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `min_shard_bytes` must be positive.'
+    ):
+      sharded_variable.MinSizePartitioner(min_shard_bytes=-1)
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `max_shards` must be positive.'
+    ):
+      sharded_variable.MinSizePartitioner(min_shard_bytes=4, max_shards=-1)
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `bytes_per_string` must be positive.'
+    ):
+      sharded_variable.MinSizePartitioner(
+          min_shard_bytes=4, bytes_per_string=-1
+      )
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `max_shard_bytes` must be positive.'
+    ):
+      sharded_variable.MaxSizePartitioner(max_shard_bytes=-1)
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `max_shards` must be positive.'
+    ):
+      sharded_variable.MaxSizePartitioner(max_shard_bytes=4, max_shards=-1)
+    with self.assertRaisesRegex(
+        ValueError, 'Argument `bytes_per_string` must be positive.'
+    ):
+      sharded_variable.MaxSizePartitioner(
+          max_shard_bytes=4, bytes_per_string=-1
+      )
+
 
 class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
@@ -233,12 +263,15 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(v, ops.convert_to_tensor(sv))
 
   def test_sparse_read(self):
-    v = variables_lib.Variable(array_ops.zeros((30, 1)))
-    indices = constant_op.constant([0, 10, 12, 21, 22])
+    values = array_ops.reshape(
+        math_ops.range(30, dtype=dtypes.float32), (30, 1)
+    )
+    v = variables_lib.Variable(values)
+    indices = constant_op.constant([21, 0, 12, 22, 10])
 
-    v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
-    v1 = variables_lib.Variable(array_ops.zeros((10, 1)))
-    v2 = variables_lib.Variable(array_ops.zeros((10, 1)))
+    v0 = variables_lib.Variable(values[:10])
+    v1 = variables_lib.Variable(values[10:20])
+    v2 = variables_lib.Variable(values[20:])
     sv = sharded_variable.ShardedVariable([v0, v1, v2])
 
     self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
@@ -247,8 +280,40 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     def func():
       return v.sparse_read(indices), sv.sparse_read(indices)
 
-    got, expect = func()
-    self.assertAllEqual(got, expect)
+    expect, got = func()
+    self.assertEqual(expect.shape, got.shape)
+    self.assertAllEqual(expect, got)
+
+  def test_sparse_read_out_of_order(self):
+    v = variables_lib.Variable(
+        constant_op.constant([[i] for i in range(30)], dtype=dtypes.float32)
+    )
+    indices = constant_op.constant([21, 0, 12, 22, 10])
+
+    v0 = variables_lib.Variable(
+        constant_op.constant([[i] for i in range(10)], dtype=dtypes.float32)
+    )
+    v1 = variables_lib.Variable(
+        constant_op.constant(
+            [[i] for i in range(10, 20)], dtype=dtypes.float32
+        )
+    )
+    v2 = variables_lib.Variable(
+        constant_op.constant(
+            [[i] for i in range(20, 30)], dtype=dtypes.float32
+        )
+    )
+    sv = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    self.assertAllEqual(v.sparse_read(indices), sv.sparse_read(indices))
+
+    @def_function.function
+    def func():
+      return v.sparse_read(indices), sv.sparse_read(indices)
+
+    expect, got = func()
+    self.assertEqual(expect.shape, got.shape)
+    self.assertAllEqual(expect, got)
 
   def test_control_dep_on_assign(self):
     v0 = variables_lib.Variable([[0, 0]])
@@ -265,7 +330,10 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
         b = array_ops.ones((1, 1))
       return a, b
 
-    func()
+    a, b = func()
+    self.assertAllEqual(a, [[1]])
+    self.assertAllEqual(b, [[1]])
+    self.assertAllEqual(s.variables[0], [[4, 4]])
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])
@@ -646,6 +714,9 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         sv[array_ops.newaxis, ...],
         array_ops.expand_dims_v2(array_ops.concat(v, axis=0), axis=0))
+    self.assertAllEqual(
+        sv[array_ops.newaxis, 0:5],
+        array_ops.expand_dims_v2(array_ops.concat(v, axis=0)[0:5], axis=0))
 
     # Test cases: boolean masks
     self.assertAllEqual(sv[ops.convert_to_tensor(sv) > 10],

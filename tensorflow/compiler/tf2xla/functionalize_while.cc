@@ -88,9 +88,9 @@ absl::Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
       Node* src = e->src();
       if (frame != nullptr && frame->nodes.find(src) == frame->nodes.end()) {
         // We traversed out of the loop frame, without encountering a cut node.
-        return errors::Internal("Graph traversal of loop frame ", frame->name,
-                                " escaped frame at ", src->name(),
-                                " without encountering an argument node.");
+        return absl::InternalError(absl::StrCat(
+            "Graph traversal of loop frame ", frame->name, " escaped frame at ",
+            src->name(), " without encountering an argument node."));
       }
       if ((*node_map)[src->id()] == nullptr) {
         (*node_map)[src->id()] = output->CopyNode(src);
@@ -186,9 +186,9 @@ absl::Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
       if (dtype == DT_RESOURCE) {
         // DT_RESOURCE arguments should always be loop-invariant in the graphs
         // generated from TF.
-        return errors::Unimplemented("Loop-varying DT_RESOURCE Enter node ",
-                                     arg.enter->name(), " is currently not",
-                                     " supported.");
+        return absl::UnimplementedError(absl::StrCat(
+            "Loop-varying DT_RESOURCE Enter node ", arg.enter->name(),
+            " is currently not", " supported."));
       }
       node_map[arg.switch_node->id()] = arg_node;
       // The Switch node has two outputs, but _Arg only has one. This tells
@@ -268,8 +268,8 @@ absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
             });
 
   if (frame->loop_cond == nullptr) {
-    return errors::InvalidArgument("Loop ", frame->name,
-                                   " has no LoopCond node");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Loop ", frame->name, " has no LoopCond node"));
   }
 
   // Find the set of Switch nodes that are successors of the LoopCond.
@@ -301,43 +301,43 @@ absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
           continue;
         }
         if (enter_merge != nullptr) {
-          return errors::Internal("Enter node for loop-varying argument ",
-                                  FormatNodeForError(*arg.enter),
-                                  " has multiple successors: ",
-                                  FormatNodeForError(*enter_merge->dst()),
-                                  " and ", FormatNodeForError(*e->dst()));
+          return absl::InternalError(absl::StrCat(
+              "Enter node for loop-varying argument ",
+              FormatNodeForError(*arg.enter), " has multiple successors: ",
+              FormatNodeForError(*enter_merge->dst()), " and ",
+              FormatNodeForError(*e->dst())));
         }
         enter_merge = e;
       }
       if (enter_merge == nullptr) {
-        return errors::Internal("Enter node for loop-varying argument ",
-                                FormatNodeForError(*arg.enter),
-                                " has zero successors");
+        return absl::InternalError(absl::StrCat(
+            "Enter node for loop-varying argument ",
+            FormatNodeForError(*arg.enter), " has zero successors"));
       }
       arg.merge = enter_merge->dst();
       if (!IsMerge(arg.merge)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Successor of Enter node for loop-varying argument ",
             FormatNodeForError(*arg.merge),
-            " is not a Merge node; got: ", arg.merge->type_string());
+            " is not a Merge node; got: ", arg.merge->type_string()));
       }
 
       // Find the NextIteration from the merge. There should be two inputs to
       // the Merge and the NextIteration should be the other input.
       if (arg.merge->input_types().size() != 2) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Unexpected number of inputs to Merge node for loop-varying "
             "argument ",
             FormatNodeForError(*arg.merge), "; expected 2, got ",
-            arg.merge->input_types().size());
+            arg.merge->input_types().size()));
       }
       TF_RETURN_IF_ERROR(arg.merge->input_node(1 - enter_merge->dst_input(),
                                                &arg.next_iteration));
       if (!IsNextIteration(arg.next_iteration)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Expected NextIteration node as input to Merge node; got node ",
             FormatNodeForError(*arg.next_iteration), " with kind ",
-            arg.next_iteration->type_string());
+            arg.next_iteration->type_string()));
       }
 
       // Find the Switch successor of the Merge. There should be exactly one
@@ -346,15 +346,16 @@ absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
         if (edge->dst_input() == 0 && IsSwitch(edge->dst()) &&
             switches.find(edge->dst()) != switches.end()) {
           if (arg.switch_node != nullptr) {
-            return errors::InvalidArgument("Duplicate Switch successors to ",
-                                           FormatNodeForError(*arg.merge));
+            return absl::InvalidArgumentError(
+                absl::StrCat("Duplicate Switch successors to ",
+                             FormatNodeForError(*arg.merge)));
           }
           arg.switch_node = edge->dst();
         }
       }
       if (arg.switch_node == nullptr) {
-        return errors::InvalidArgument("Missing Switch successor to ",
-                                       FormatNodeForError(*arg.merge));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Missing Switch successor to ", FormatNodeForError(*arg.merge)));
       }
       // Loop over the switch node's output to:
       // - Find the Exit successor.
@@ -378,17 +379,18 @@ absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
         possible_exit.pop_front();
         if (IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
-            return errors::InvalidArgument(
-                "Duplicate Exit successors to ",
-                FormatNodeForError(*arg.switch_node));
+            return absl::InvalidArgumentError(
+                absl::StrCat("Duplicate Exit successors to ",
+                             FormatNodeForError(*arg.switch_node)));
           }
           arg.exit = edge->dst();
         } else {
           if (!IsIdentity(edge->dst())) {
-            return errors::Unimplemented("General graph between switch (",
-                                         FormatNodeForError(*arg.switch_node),
-                                         ") and exit node of frame ",
-                                         frame->name, " not supported yet.");
+            return absl::UnimplementedError(
+                absl::StrCat("General graph between switch (",
+                             FormatNodeForError(*arg.switch_node),
+                             ") and exit node of frame ", frame->name,
+                             " not supported yet."));
           }
           for (const Edge* out : edge->dst()->out_edges()) {
             possible_exit.push_back(out);
@@ -516,9 +518,9 @@ absl::Status FunctionalizeWhileLoop(Graph* graph,
   std::vector<std::string> unreachable_nodes;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes));
   if (!unreachable_nodes.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "The following nodes are unreachable from the source in the graph: ",
-        errors::FormatNodeNamesForError(unreachable_nodes));
+        errors::FormatNodeNamesForError(unreachable_nodes)));
   }
 
   // Builds Frames, indexed by name.

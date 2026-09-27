@@ -37,7 +37,7 @@ absl::Status Constant::Create(ImmediateExecutionContext* ctx,
                               std::unique_ptr<Constant>* output) {
   ImmediateExecutionTensorHandle* handle = ctx->CreateLocalHandle(tensor);
   if (handle == nullptr) {
-    return errors::Internal("Failed to convert tensor to tensorhandle");
+    return absl::InternalError("Failed to convert tensor to tensorhandle");
   }
   output->reset(new Constant(ImmediateTensorHandlePtr(handle)));
   return absl::Status();

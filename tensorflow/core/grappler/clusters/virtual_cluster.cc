@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -119,10 +121,10 @@ absl::Status VirtualCluster::Run(const GrapplerItem& item,
     }
     int64_t peak_mem = mem_usage.second;
     if (peak_mem >= dev.memory_size()) {
-      return errors::ResourceExhausted(
+      return absl::ResourceExhaustedError(absl::StrCat(
           "Graph requires ", peak_mem, " bytes of memory on device ",
           device_name, " to run ", " but device only has ", dev.memory_size(),
-          " available.");
+          " available."));
     }
   }
 

@@ -112,6 +112,18 @@ TEST_F(IsBinaryOpSupportedTest, NotSupportedBroadcastTest) {
   }
 }
 
+TEST_F(IsBinaryOpSupportedTest, RankGreaterThan4Test) {
+  std::vector<int> base_shape = {1, 2, 3, 4};
+  std::vector<std::vector<int>> shapes = {{1, 2, 3, 4, 5}, {2, 1, 1, 4}};
+  SetInputShapes({base_shape, shapes[0]});
+  ASSERT_FALSE(IsBinaryOpSupported(nullptr, &node_, &context_));
+  FreeInputShapes();
+
+  SetInputShapes({shapes[0], base_shape});
+  ASSERT_FALSE(IsBinaryOpSupported(nullptr, &node_, &context_));
+  FreeInputShapes();
+}
+
 TEST_F(IsBinaryOpSupportedTest, SupportConstFloat16InputTest) {
   tensors_[0].allocation_type = kTfLiteMmapRo;
   tensors_[0].type = kTfLiteFloat16;

@@ -66,6 +66,7 @@ MAP_STABLEHLO_TO_HLO(ClampOp)
 MAP_STABLEHLO_TO_HLO(ClzOp)
 MAP_STABLEHLO_TO_HLO(CollectiveBroadcastOp)
 MAP_STABLEHLO_TO_HLO(CollectivePermuteOp)
+MAP_STABLEHLO_TO_HLO(CollectiveReduceOp)
 MAP_STABLEHLO_TO_HLO(CompareOp)
 MAP_STABLEHLO_TO_HLO(ComplexOp)
 MAP_STABLEHLO_TO_HLO(CompositeOp)
@@ -177,6 +178,21 @@ MAP_HLO_TO_HLO_TYPE_REWRITE(AsyncUpdateOp)
 MAP_HLO_TO_HLO_TYPE_REWRITE(AsyncDoneOp)
 
 #undef MAP_HLO_TO_HLO_TYPE_REWRITE
+
+// TODO(mwhittaker): Remove this when we translate async ops between StableHLO
+// and MHLO.
+#define MAP_STABLEHLO_TO_STABLEHLO_TYPE_REWRITE(OpName) \
+  template <>                                           \
+  struct HloToStablehloOpImpl<stablehlo::OpName> {      \
+    using Type = stablehlo::OpName;                     \
+  };                                                    \
+  template <>                                           \
+  struct StablehloToHloOpImpl<stablehlo::OpName> {      \
+    using Type = stablehlo::OpName;                     \
+  };
+MAP_STABLEHLO_TO_STABLEHLO_TYPE_REWRITE(AsyncStartOp)
+MAP_STABLEHLO_TO_STABLEHLO_TYPE_REWRITE(AsyncDoneOp)
+#undef MAP_STABLEHLO_TO_STABLEHLO_TYPE_REWRITE
 
 }  // namespace stablehlo
 }  // namespace mlir

@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -42,7 +43,8 @@ absl::Status ParseTextProto(absl::string_view text_proto,
     return absl::OkStatus();
   }
   parsed_proto->Clear();
-  return errors::InvalidArgument("Could not parse text proto: ", text_proto);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Could not parse text proto: ", text_proto));
 }
 
 TEST(TPUEmbeddingConfigurationProtoRewriteTest, FillFeatureDescriptor) {

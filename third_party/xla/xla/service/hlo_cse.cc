@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -63,7 +64,7 @@ absl::StatusOr<bool> CombineConstants(
                      [&](const HloInstruction* instr) {
                        return instr->opcode() == HloOpcode::kDomain;
                      })) {
-    TF_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
+    ABSL_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
   }
 
   // Map from the literal hash of a constant or the shape hash of an iota all
@@ -111,12 +112,14 @@ absl::StatusOr<bool> CombineConstants(
   return combined > 0;
 }
 
-// An instruction is considered to be equivalent to another only if they
-// share the exact same set of operands.
+// This differs from "normal" HLO Instruction hashing because it takes the
+// operands of an instruction into account. For the purposes of CSEs, two
+// instructions that have different operands are never equivalent, so
+// disambiguating by operands is always useful - but not always sufficient.
 struct CseKey {
   template <typename H>
-  friend H AbslHashValue(H h, const CseKey& key) {
-    auto instruction = key.hlo;
+  static H HashInstruction(H h, const HloInstruction* instruction,
+                           bool hash_operands) {
     h = instruction->shape().IsArray()
             ? H::combine(std::move(h), instruction->opcode(),
                          instruction->shape().dimensions())
@@ -143,26 +146,28 @@ struct CseKey {
     h = result_accuracy_hash(std::move(h), instruction->result_accuracy());
 
     // Hash operands, ignoring operand order on commutative ops.
-    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
-      CHECK_EQ(instruction->operand_count(), 2);
-      auto id0 = instruction->operand(0)->unique_id();
-      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
-        id0 = 0;
-      }
-      auto id1 = instruction->operand(1)->unique_id();
-      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
-        id1 = 0;
-      }
-      if (id0 > id1) {
-        std::swap(id0, id1);
-      }
-      h = H::combine(std::move(h), id0, id1);
-    } else {
-      for (auto operand : instruction->operands()) {
-        if (operand->opcode() == HloOpcode::kIota) {
-          continue;
+    if (hash_operands) {
+      if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+        CHECK_EQ(instruction->operand_count(), 2);
+        auto id0 = instruction->operand(0)->unique_id();
+        if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
+          id0 = 0;
         }
-        h = H::combine(std::move(h), operand->unique_id());
+        auto id1 = instruction->operand(1)->unique_id();
+        if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
+          id1 = 0;
+        }
+        if (id0 > id1) {
+          std::swap(id0, id1);
+        }
+        h = H::combine(std::move(h), id0, id1);
+      } else {
+        for (auto operand : instruction->operands()) {
+          if (operand->opcode() == HloOpcode::kIota) {
+            continue;
+          }
+          h = H::combine(std::move(h), operand->unique_id());
+        }
       }
     }
 
@@ -170,6 +175,31 @@ struct CseKey {
       h = H::combine(std::move(h), c->root_instruction()->opcode());
     }
     switch (instruction->opcode()) {
+      case HloOpcode::kFusion:
+        // The return post-order for two equal computations will always be the
+        // same, since it's determined purely by operand order, so we should
+        // never expect to hash two equal computations to different values. Note
+        // that the reasons this works are somewhat subtle: (a) We never
+        // consider kFusion commutative, so a dependency on operand order is
+        // safe. (b) Control dependencies may make the post-order traversal
+        // order depend on insertion order, but that's not an issue for fusion
+        // computations. (c) The post-order returned by
+        // HloComputation::MakeInstructionPostOrder() can depend on insertion
+        // order if dead instructions are present, which is why we use
+        // MakeInstructionPostOrderFrom() on the root.
+        for (const HloInstruction* fused_instruction :
+             instruction->fused_instructions_computation()
+                 ->MakeInstructionPostOrderFrom(
+                     *instruction->fused_instructions_computation()
+                          ->root_instruction())) {
+          // Internal instructions of equivalent fusions belong to different
+          // HloComputations (whose IDs are encoded into
+          // HloInstruction::unique_id()), so we can only hash operand
+          // unique_ids for top-level instructions.
+          h = HashInstruction(std::move(h), fused_instruction,
+                              /*hash_operands=*/false);
+        }
+        return H::combine(std::move(h), instruction->fusion_kind());
       case HloOpcode::kSlice:
         return H::combine(std::move(h), instruction->slice_starts(),
                           instruction->slice_strides());
@@ -226,6 +256,11 @@ struct CseKey {
         return std::move(h);
     }
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CseKey& key) {
+    return HashInstruction(std::move(h), key.hlo, /*hash_operands=*/true);
+  }
   HloInstruction* hlo;
 };
 
@@ -233,16 +268,19 @@ struct CseKey {
 
 /*static*/
 bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+
   // If the instruction has zero operands (constants, parameters, etc.) skip
   // over it.
   if (instruction->operand_count() == 0 &&
       instruction->opcode() != HloOpcode::kPartitionId &&
-      instruction->opcode() != HloOpcode::kReplicaId) {
+      instruction->opcode() != HloOpcode::kReplicaId &&
+      (!frontend_attributes.IsInitialized() ||
+       !frontend_attributes.map().contains(kXlaCseSafeZeroOperandAttr))) {
     return false;
   }
 
-  const FrontendAttributes& frontend_attributes =
-      instruction->frontend_attributes();
   if (frontend_attributes.IsInitialized()) {
     if (frontend_attributes.map().contains(kMustFuseAttr)) {
       return false;
@@ -263,13 +301,12 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      is_layout_sensitive_
-          ? CombineConstants<true>(computation,
-                                   std::move(should_combine_constant_))
-          : CombineConstants<false>(computation,
-                                    std::move(should_combine_constant_)));
+  ABSL_ASSIGN_OR_RETURN(bool changed,
+                   is_layout_sensitive_
+                       ? CombineConstants<true>(
+                             computation, std::move(should_combine_constant_))
+                       : CombineConstants<false>(
+                             computation, std::move(should_combine_constant_)));
 
   const auto eq_instructions = [&](const HloInstruction* a,
                                    const HloInstruction* b) {
@@ -318,9 +355,8 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
     auto pair = representatives.insert(CseKey{instruction});
     if (!pair.second) {
       HloInstruction* equivalent_instruction = pair.first->hlo;
-      TF_RETURN_IF_ERROR(
-          instruction->ReplaceAllUsesWith(equivalent_instruction));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+      ABSL_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(equivalent_instruction));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
           instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
       VLOG(4) << "Replaced " << instruction->name() << " with "
               << equivalent_instruction->name();
@@ -337,10 +373,10 @@ absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
         if (a == b || !eq_instructions(a, b)) {
           continue;
         }
-        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+        ABSL_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
         changed = true;
         if (b->IsDead()) {
-          TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
     }
@@ -379,8 +415,7 @@ absl::StatusOr<bool> HloCSE::RunImpl(
   bool changed = false;
 
   for (auto* computation : module->computations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool computation_changed,
-                        RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
     changed |= computation_changed;
   }
   return changed;

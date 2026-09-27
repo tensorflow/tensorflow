@@ -112,6 +112,13 @@ NativeRefT HostDigamma(NativeRefT x) {
   if (x <= 0) {
     double floor = std::floor(x);
     if (x == floor) {
+      // digamma has a pole at zero and at every negative integer. The two
+      // one-sided limits agree at zero, so the value there is -inf (this also
+      // covers -0.0); at the negative integers they disagree, so the value is
+      // nan. This matches Digamma in xla/hlo/builder/lib/math.cc.
+      if (x == 0) {
+        return -std::numeric_limits<double>::infinity();
+      }
       return std::numeric_limits<double>::quiet_NaN();
     }
     // Compute reflection term, pi * cot(pi * x).

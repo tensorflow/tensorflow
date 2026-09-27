@@ -2,7 +2,7 @@ path: "tensorflow.math"
 tf_module {
   member {
     name: "special"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "abs"

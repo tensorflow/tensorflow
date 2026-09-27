@@ -98,7 +98,8 @@ absl::Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
   }
   for (int i = 0, end = recv_at_host_dtypes->size(); i < end; i++) {
     if ((*recv_at_host_dtypes)[i] == DT_INVALID) {
-      return errors::Internal("Cannot get datatype for input ", i);
+      return absl::InternalError(
+          absl::StrCat("Cannot get datatype for input ", i));
     }
   }
   return absl::OkStatus();
@@ -198,7 +199,8 @@ absl::Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
   }
   for (int i = 0, end = send_from_host_dtypes->size(); i < end; i++) {
     if ((*send_from_host_dtypes)[i] == DT_INVALID) {
-      return errors::Internal("Cannot get datatype for output ", i);
+      return absl::InternalError(
+          absl::StrCat("Cannot get datatype for output ", i));
     }
   }
   return absl::OkStatus();
@@ -228,7 +230,8 @@ absl::StatusOr<Node*> BuildSendFromHostNode(
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
     const int num_dtypes = send_from_host_dtypes.size();
     if (index < 0 || index >= num_dtypes) {
-      return errors::Internal("Invalid _Retval index: ", index);
+      return absl::InternalError(
+          absl::StrCat("Invalid _Retval index: ", index));
     }
     for (auto edge : n->in_edges()) {
       inputs[index] =
@@ -364,7 +367,8 @@ absl::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
 
     const int input_dtypes_size = input_dtypes.size();
     if (e->dst_input() < 0 || e->dst_input() >= input_dtypes_size) {
-      return errors::Internal("Invalid dst_input: ", e->dst_input());
+      return absl::InternalError(
+          absl::StrCat("Invalid dst_input: ", e->dst_input()));
     }
     inputs[e->dst_input()] = NodeDefBuilder::NodeOut{
         e->src()->name(), e->src_output(), input_dtypes[e->dst_input()]};
@@ -431,9 +435,9 @@ absl::Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
       n->ClearAttr("_device_ordinal");
       n->AddAttr("_device_ordinal", device_ordinal_value);
     } else {
-      return errors::Internal("Unknown node marked with ",
-                              kXlaHasHostTransferAttrName, ": ",
-                              n->DebugString());
+      return absl::InternalError(absl::StrCat("Unknown node marked with ",
+                                              kXlaHasHostTransferAttrName, ": ",
+                                              n->DebugString()));
     }
   }
   return absl::OkStatus();
@@ -1079,8 +1083,8 @@ absl::Status ConstructHostGraph(
           // its output nodes' input edges.
           for (auto e : n->in_edges()) {
             if (node_map.find(e->src()) == node_map.end()) {
-              s = errors::Internal("Cannot find node image for ",
-                                   e->src()->DebugString());
+              s = absl::InternalError(absl::StrCat(
+                  "Cannot find node image for ", e->src()->DebugString()));
               return;
             }
             (*host_graph)
@@ -1189,8 +1193,8 @@ absl::Status ExpandHostGraphIntoMainGraph(
     // nodes' input edges.
     for (auto e : n->in_edges()) {
       if (node_map.find(e->src()) == node_map.end()) {
-        s = errors::Internal("Cannot find node image for ",
-                             e->src()->DebugString());
+        s = absl::InternalError(absl::StrCat("Cannot find node image for ",
+                                             e->src()->DebugString()));
         return;
       }
       main_graph->AddEdge(node_map[e->src()], e->src_output(), copy,
@@ -1240,9 +1244,9 @@ absl::Status RewriteShapeInferenceGraph(
     }
   }
   if (!send_from_host) {
-    return errors::Internal("Shape inference graph ",
-                            shape_inference_graph_name,
-                            " does not have _XlaSendFromHost node.");
+    return absl::InternalError(
+        absl::StrCat("Shape inference graph ", shape_inference_graph_name,
+                     " does not have _XlaSendFromHost node."));
   }
 
   // See if the SendFromHost node exists in `host_graph`.
@@ -1282,8 +1286,8 @@ absl::Status RewriteShapeInferenceGraph(
             for (const Edge* e : curr.n->in_edges()) {
               auto node_iter = node_map.find(e->src());
               if (node_iter == node_map.end()) {
-                return errors::Internal("Cannot find node image for ",
-                                        e->src()->DebugString());
+                return absl::InternalError(absl::StrCat(
+                    "Cannot find node image for ", e->src()->DebugString()));
               }
               g->AddEdge(node_iter->second, e->src_output(), copy,
                          e->dst_input());
@@ -1510,18 +1514,18 @@ TF_ATTRIBUTE_NOINLINE absl::Status AddSendLoopPredToLoopCond(
   for (Node* n : g->nodes()) {
     if (n->type_string() == "_Retval") {
       if (ret_node) {
-        return errors::Internal("Multiple return node for loop cond function ",
-                                loop_cond_func->name(), ": ",
-                                ret_node->DebugString(), " and ",
-                                n->DebugString());
+        return absl::InternalError(
+            absl::StrCat("Multiple return node for loop cond function ",
+                         loop_cond_func->name(), ": ", ret_node->DebugString(),
+                         " and ", n->DebugString()));
       } else {
         ret_node = n;
       }
     }
   }
   if (!ret_node) {
-    return errors::Internal("No _Retval node for loop cond function ",
-                            loop_cond_func->name());
+    return absl::InternalError(absl::StrCat(
+        "No _Retval node for loop cond function ", loop_cond_func->name()));
   }
   Node* loop_cond;
   TF_RETURN_IF_ERROR(ret_node->input_node(0, &loop_cond));
@@ -1598,9 +1602,9 @@ absl::Status RewriteHostWhileLoopCond(
     }
   }
   if (!key_arg) {
-    return errors::Internal(
-        "No _Arg node found for host compute key in function ",
-        cond_host_func_name);
+    return absl::InternalError(
+        absl::StrCat("No _Arg node found for host compute key in function ",
+                     cond_host_func_name));
   }
 
   // Add an XlaRecvAtHost node to use as cond function return value.
@@ -1676,9 +1680,9 @@ absl::Status RewriteHostWhileLoopBody(
     }
   }
   if (!key_arg) {
-    return errors::Internal(
-        "No _Arg node found for host compute key in function ",
-        body_host_func_name);
+    return absl::InternalError(
+        absl::StrCat("No _Arg node found for host compute key in function ",
+                     body_host_func_name));
   }
 
   // Add a _Retval node to loop body.
@@ -2422,7 +2426,8 @@ absl::Status ExtractOutsideCompilationForFunction(
 
           const FunctionDef* xla_fdef = fld->Find(n->name());
           if (!xla_fdef) {
-            return errors::Internal("Cannot find XLA function ", n->name());
+            return absl::InternalError(
+                absl::StrCat("Cannot find XLA function ", n->name()));
           }
           auto shape_inference_fdef = std::make_unique<FunctionDef>(*xla_fdef);
           shape_inference_fdef->mutable_signature()->set_name(

@@ -101,7 +101,7 @@ TEST(TFOpWrapper, AttributeGetterSetters) {
   OperationState state(UnknownLoc::get(&context), "tfg.A");
   state.addTypes(tfg_dialect->getControlType());
   TFOp op = Operation::create(state);
-  auto cleanup = llvm::make_scope_exit([&] { op->destroy(); });
+  auto cleanup = llvm::scope_exit([&] { op->destroy(); });
 
   // name
   {

@@ -1,10 +1,10 @@
 # Error code: E0102
 
-**Category:** Runtime: Program Input Buffer Mismatch
+**Category:** Runtime: Program Input Mismatch
 
-This error occurs when the XLA runtime detects a mismatch between the size of a
-memory buffer expected by a compiled program and the size of the buffer that is
-actually provided at execution time.
+This error occurs when the XLA runtime detects that an input buffer provided at
+execution time does not match the metadata expected by a compiled program, such
+as the buffer size or PJRT memory space kind.
 
 **Sample error message:**
 
@@ -16,11 +16,12 @@ XlaRuntimeError: INVALID_ARGUMENT: Executable(jit_embedding_pipeline_step_fn) ex
 
 ## Overview
 
-The error message indicates both the expected and actual sizes, as well as the
-tensor shapes and layouts. Note that these errors might occur even if two
-tensors have the same shape but their size in memory can be different if their
-physical layout (how the data is tiled and arranged on the hardware) is
-different.
+For buffer-size mismatches, the error message indicates both the expected and
+actual sizes, as well as the tensor shapes and layouts. Note that these errors
+might occur even if two tensors have the same shape but their size in memory can
+be different if their physical layout (how the data is tiled and arranged on the
+hardware) is different. For memory-space mismatches, the error message reports
+that the parameter buffer is in an unexpected memory space.
 
 These errors are predominantly caused by:
 

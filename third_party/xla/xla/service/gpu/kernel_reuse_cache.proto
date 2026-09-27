@@ -37,9 +37,11 @@ message CompilationCacheEntryProto {
   optional ClusterDimProto cluster_dim = 3;
   int64 shmem_bytes = 4;
   bytes binary = 5;
+  reserved 6;
 }
 
 message CompilationCacheProto {
+  int32 compatibility_version = 2;
   // Key is the kernel name.
   map<string, CompilationCacheEntryProto> entries = 1;
 }

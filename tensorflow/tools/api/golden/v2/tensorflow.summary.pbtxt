@@ -2,11 +2,11 @@ path: "tensorflow.summary"
 tf_module {
   member {
     name: "SummaryWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "experimental"
-    mtype: "<type \'module\'>"
+    mtype: "<class \'module\'>"
   }
   member_method {
     name: "audio"

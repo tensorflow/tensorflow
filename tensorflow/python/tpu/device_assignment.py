@@ -572,4 +572,4 @@ def device_assignment(
         replica_assignment.append(device_coordinates[task, device, :])
       assignment.append(replica_assignment)
 
-  return DeviceAssignment(topology, core_assignment=assignment)
+  return DeviceAssignment(topology, core_assignment=assignment)  # pyrefly: ignore[bad-argument-type]

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
@@ -24,20 +25,19 @@ limitations under the License.
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
 absl::StatusOr<std::unique_ptr<xla::PjRtRuntimeAbiVersion>>
 PjRtRuntimeAbiVersionFromProto(const xla::PjRtRuntimeAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
   return pjrt::CApiRuntimeAbiVersionFromProto(proto, c_api);
 }
 
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 PjRtExecutableAbiVersionFromProto(
     const xla::PjRtExecutableAbiVersionProto& proto) {
-  ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kGpuPjrtName));
   return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
 }
 

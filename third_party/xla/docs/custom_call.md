@@ -129,6 +129,192 @@ auto handler = Ffi::Bind().Arg<BufferR2<F32>>().Ret<BufferR2<F32>>().To(
     });
 ```
 
+### Matching And Verifying Buffers
+
+Buffer patterns can express constraints that are more specific than the argument
+and result types in an FFI binding. They are useful for refining an `AnyBuffer`
+to a concrete buffer type, checking dimension sizes, and checking relationships
+between multiple buffer shapes.
+
+Patterns are immutable and can specify dtype and rank either directly or with
+the corresponding modifiers:
+
+```c++
+namespace m = ::xla::ffi::match;
+
+m::Buffer<F32, 2>();
+m::Buffer().WithDType<F32>().WithRank<2>();
+```
+
+The `Match` function checks a pattern and returns its maximally constrained
+buffer type. To refine an `AnyBuffer`, the pattern must specify exactly one data
+type and one rank. Matching an already typed buffer verifies any additional
+constraints and preserves its type.
+
+```c++
+namespace m = ::xla::ffi::match;
+
+auto handler = Ffi::Bind().Arg<AnyBuffer>().Ret<AnyBuffer>().To(
+    [](AnyBuffer input, Result<AnyBuffer> output) -> Error {
+      int64_t rows;
+      int64_t cols;
+
+      ErrorOr<BufferR2<F32>> typed_input =
+          Match("input", input,
+                m::Buffer<F32>().WithDims(&rows, &cols));
+      if (typed_input.has_error()) {
+        return std::move(typed_input).error();
+      }
+
+      ErrorOr<Result<BufferR2<F32>>> typed_output =
+          Match("output", output,
+                m::Buffer<F32>().WithDims(rows, cols));
+      if (typed_output.has_error()) {
+        return std::move(typed_output).error();
+      }
+
+      float* input_data = typed_input->typed_data();
+      float* output_data = (*typed_output)->typed_data();
+      return Error::Success();
+    });
+```
+
+In this example matching `input` captures its two dimension sizes, and matching
+`output` verifies that it has the same shape. Captures are committed only when
+the complete pattern matches successfully.
+
+A dimension pattern can be unconstrained, fixed, or captured. Fixed values and
+capture pointers are implicitly converted to dimension patterns:
+
+```c++
+m::Dim()       // Any dimension size.
+m::Dim(16)     // A dimension whose size is 16.
+m::Dim(&rows)  // Any dimension size, captured in `rows` on success.
+
+m::Buffer<F32>().WithDims(&rows, 16);
+```
+
+`WithDims` describes a complete shape and sets its rank from the number of
+arguments. `WithDim<I>` or `WithDim(index, ...)` constrains dimensions
+positionally without fixing the complete rank. A positional constraint requires
+the referenced dimension to exist but leaves every other dimension
+unconstrained:
+
+```c++
+ErrorOr<BufferR4<F32>> MatchActivations(AnyBuffer input) {
+  return Match(
+      "input", input,
+      m::Buffer<F32, 4>().WithDim<0>(1).WithDim<3>(128));
+}
+
+Error VerifyDimension(AnyBuffer input, size_t index, int64_t size) {
+  return Verify("input", input, m::Buffer().WithDim(index, size));
+}
+```
+
+`MatchActivations` requires a rank-4 F32 buffer with dimensions 0 and 3 equal to
+1 and 128, respectively; dimensions 1 and 2 are unrestricted. Without an
+explicit `WithRank`, `WithDim(index, ...)` accepts any rank greater than
+`index`.
+
+Dimension captures can also express relationships between positions:
+
+```c++
+auto matrix = m::Buffer<F32>().WithDims(&rows, 128);
+
+int64_t n;
+ErrorOr<BufferR2<F32>> square =
+    Match("matrix", buffer,
+          m::Buffer<F32>().WithDims(&n, &n));
+```
+
+When the same capture pointer appears multiple times, all corresponding
+dimensions must have the same size. The `Match` call above therefore accepts
+only square matrices. Dimension captures are written only after the complete
+pattern succeeds and are unchanged on failure.
+
+Whole-buffer relationships do not require capturing every dimension.
+`WithShapeOf` matches the complete runtime shape of another buffer while
+allowing a different dtype. `Like` also requires the same dtype:
+
+```c++
+Error VerifySortBuffers(AnyBuffer keys, AnyBuffer values,
+                        Result<AnyBuffer> keys_output) {
+  Error error =
+      Verify("values", values, m::Buffer().WithShapeOf(keys));
+  if (error.failure()) {
+    return error;
+  }
+
+  return Verify("keys output", *keys_output, m::Buffer().Like(keys));
+}
+```
+
+Both modifiers copy the reference buffer's metadata when the pattern is built;
+the pattern does not retain a reference to the buffer. Because these are runtime
+constraints, they do not refine an `AnyBuffer` to a concrete return type. They
+are primarily useful with `Verify`, or with `Match` when the input buffer
+already has a concrete type.
+
+Use `Verify` when the buffer should keep its existing type, or when a pattern
+accepts more than one data type or rank. For example, an index buffer can accept
+either `S32` or `S64` and dispatch on its data type after verification:
+
+```c++
+namespace m = ::xla::ffi::match;
+
+Error VerifyIndices(AnyBuffer indices) {
+  auto pattern = m::Buffer().WithDType<S32, S64>().WithRank<1, 2>();
+
+  Error error = Verify("indices", indices, pattern);
+  if (error.failure()) {
+    return error;
+  }
+
+  // Dispatch an implementation based on `indices.element_type()`.
+  return Error::Success();
+}
+```
+
+Because this pattern permits multiple concrete buffer types, it cannot refine an
+`AnyBuffer` with `Match`: there is no unique return type. It can still be passed
+to `Match` with an already typed buffer, whose return type is already known. An
+already typed buffer can also be verified; this is typically useful for checking
+shape relationships:
+
+```c++
+Error VerifySameShape(BufferR2<F32> lhs, BufferR2<F32> rhs) {
+  int64_t rows;
+  int64_t cols;
+
+  Error error = Verify(
+      "lhs", lhs,
+      m::Buffer().WithDims(&rows, &cols));
+  if (error.failure()) {
+    return error;
+  }
+
+  return Verify("rhs", rhs,
+                m::Buffer().WithDims(rows, cols));
+}
+```
+
+The name passed as the first argument to `Match` and `Verify` is required and is
+included in errors, together with a description of the failed constraint.
+
+The external FFI API in `xla/ffi/api/ffi.h` returns `Error` from `Verify` and
+`ErrorOr<T>` from `Match`, as in the examples above. The internal FFI API in
+`xla/ffi/ffi.h` provides the same matching interface using `absl::Status` and
+`absl::StatusOr<T>`:
+
+```c++
+ABSL_ASSIGN_OR_RETURN(BufferR2<F32> input,
+                 Match("input", buffer, m::Buffer<F32, 2>()));
+ABSL_RETURN_IF_ERROR(Verify(
+    "input", input,
+    m::Buffer().WithDims(expected_rows, m::Dim())));
+```
+
 ### Variadic Arguments And Results
 
 If the number of arguments and result can be different in different instances of

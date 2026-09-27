@@ -1,0 +1,9 @@
+HloModule jit_topk_k10, entry_computation_layout={(bf16[1,50000]{1,0})->bf16[1,10]{1,0}}
+
+ENTRY main.1 {
+  x.1 = bf16[1,50000]{1,0} parameter(0)
+  top_k.3 = (bf16[1,10]{1,0}, s32[1,10]{1,0}) topk(x.1), k=10, largest=true, is_stable=true
+  ROOT top_k.4 = bf16[1,10]{1,0} get-tuple-element(top_k.3), index=0
+  top_k.5 = s32[1,10]{1,0} get-tuple-element(top_k.3), index=1
+}
+

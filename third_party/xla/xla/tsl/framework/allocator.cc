@@ -38,6 +38,7 @@ std::string AllocatorStats::DebugString() const {
       "MaxAllocSize:     %20s\n"
       "Reserved:         %20s\n"
       "PeakReserved:     %20s\n"
+      "PeakAllocated:        %20s\n"
       "LargestFreeBlock: %20s\n",
       strings::HumanReadableNumBytes(this->bytes_limit ? *this->bytes_limit
                                                        : 0),
@@ -47,6 +48,7 @@ std::string AllocatorStats::DebugString() const {
       strings::HumanReadableNumBytes(this->largest_alloc_size),
       strings::HumanReadableNumBytes(this->bytes_reserved),
       strings::HumanReadableNumBytes(this->peak_bytes_reserved),
+      strings::HumanReadableNumBytes(this->peak_allocated_bytes),
       strings::HumanReadableNumBytes(this->largest_free_block_bytes));
 }
 

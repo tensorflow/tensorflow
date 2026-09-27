@@ -50,9 +50,9 @@ defvar MHLO_QuantizedInt = AnyTypeOf<[HLO_QuantizedSignedInt, HLO_PerAxisQuantiz
 defvar MHLO_BroadcastDimAttr = I64ElementsAttr;
 
 // Token type.
-defvar MHLO_Token = HLO_Token;
+def MHLO_Token : Type<CPred<"::llvm::isa<::mlir::mhlo::TokenType>($_self)">, "token">;
 
-def StableHLO_TokenType : Type<CPred<"isa<::mlir::stablehlo::TokenType>($_self)">, "stablehlo token">;
+defvar StableHLO_TokenType = HLO_Token;
 defvar MHLO_AnyToken = AnyTypeOf<[MHLO_Token, StableHLO_TokenType]>;
 
 // Any integer tensor types
@@ -82,9 +82,9 @@ defvar MHLO_ComplexTensor = HLO_ComplexTensor;
 
 defvar MHLO_Buffer = HLO_Buffer;
 
-defvar MHLO_Tuple = HLO_Tuple;
+defvar MHLO_Tuple = NestedTupleOf<[MHLO_Tensor, MHLO_Buffer, MHLO_Token]>;
 
-defvar MHLO_TensorOrToken = HLO_TensorOrPerAxisQuantizedTensorOrToken;
+defvar MHLO_TensorOrToken = AnyTypeOf<[MHLO_Tensor, MHLO_Token]>;
 defvar MHLO_TensorOrTokenOrBuffer = AnyTypeOf<[MHLO_TensorOrToken, MHLO_Buffer]>;
 defvar MHLO_TensorOrAnyToken = AnyTypeOf<[MHLO_TensorOrToken, StableHLO_TokenType]>;
 
@@ -97,7 +97,8 @@ defvar MHLO_DimensionValue = HLO_DimensionValue;
 // Dynamic representation of a shape vector as a tensor.
 defvar MHLO_DimensionTensor = HLO_DimensionTensor;
 
-defvar MHLO_CustomCallValue = HLO_CustomCallValue;
+defvar MHLO_CustomCallTuple = NestedTupleOf<[MHLO_AnyTensor, MHLO_Buffer, MHLO_Token]>;
+defvar MHLO_CustomCallValue = AnyTypeOf<[MHLO_AnyTensor, MHLO_Buffer, MHLO_Token, MHLO_CustomCallTuple, HLO_Future]>;
 
 //===----------------------------------------------------------------------===//
 // MHLO combined type definitions.
@@ -139,7 +140,7 @@ defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensorOrPerAxisQuantizedTensor;
 
 defvar MHLO_StaticShapeOrBoundedDimTensor = HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor;
 
-defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken;
+defvar MHLO_StaticShapeTensorOrToken = AnyTypeOf<[HLO_StaticShapeTensor, MHLO_StaticShapeTensor, MHLO_Token]>;
 
 defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;
 

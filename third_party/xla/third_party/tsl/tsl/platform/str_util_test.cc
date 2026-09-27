@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tsl/platform/str_util.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {

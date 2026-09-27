@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/platform/threadpool_interface.h"
 
@@ -49,11 +48,6 @@ using ::testing::_;
 using ::testing::Not;
 
 class ParallelFusionEmitterTest : public HloHardwareIndependentTestBase {
- protected:
-  // Binds the mock hooks to the fusion compiler hooks and sets the number of
-  // expected calls.
-  FusionCompiler::CompilationHooks CreateMockHooks(int64_t num_calls);
-
  private:
   testing::MockFunction<void(mlir::ModuleOp)> pre_optimization_mock_;
   testing::MockFunction<void(mlir::ModuleOp)> post_optimization_mock_;
@@ -68,22 +62,6 @@ FusionCompiler::Options CreateDefaultOptions() {
   options.fast_math_flags = llvm::FastMathFlags::getFast();
 
   return options;
-}
-
-FusionCompiler::CompilationHooks ParallelFusionEmitterTest::CreateMockHooks(
-    int64_t num_calls) {
-  auto create_mock_function =
-      [num_calls](testing::MockFunction<void(mlir::ModuleOp)>& mock_function) {
-        EXPECT_CALL(mock_function, Call(_)).Times(num_calls);
-        return mock_function.AsStdFunction();
-      };
-
-  FusionCompiler::CompilationHooks hooks;
-  hooks.pre_optimization = create_mock_function(pre_optimization_mock_);
-  hooks.post_optimization = create_mock_function(post_optimization_mock_);
-  hooks.post_lowering = create_mock_function(post_lowering_mock_);
-
-  return hooks;
 }
 
 class BlockingThreadPool final : public tsl::thread::ThreadPoolInterface {
@@ -107,8 +85,8 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       ROOT root_fusion = f32[] fusion(p), kind=kLoop, calls=add1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloFusionInstruction* fusion =
       Cast<HloFusionInstruction>(computation->root_instruction());
@@ -116,13 +94,13 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
 
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), CreateMockHooks(1), nullptr, false,
-      false);
+      thread_pool, CreateDefaultOptions(), /*hlo_module=*/nullptr, nullptr,
+      false, false);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
   EXPECT_EQ(kernel_spec.name(), expected_name);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
+  ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
   ASSERT_EQ(kernels.size(), 1);
   KernelDefinition<LlvmKernelSource>& lowered_kernel = kernels[0];
   EXPECT_EQ(lowered_kernel.spec().name(), expected_name);
@@ -132,7 +110,7 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       std::move(source).thread_safe_module();
   llvm::Module* llvm_module = thread_safe_llvm_module.getModuleUnlocked();
   EXPECT_NE(llvm_module->getFunction(expected_name), nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool passed,
       RunFileCheck(llvm_ir::DumpToString(*llvm_module), "CHECK: fadd fast"));
   EXPECT_TRUE(passed);
@@ -159,8 +137,8 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
       ROOT result_tuple = (s32[], s32[]) tuple(fusion_0, fusion_1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloInstruction* root_tuple = computation->root_instruction();
   const auto* fusion_0 = Cast<HloFusionInstruction>(root_tuple->operand(0));
@@ -170,20 +148,18 @@ TEST_F(ParallelFusionEmitterTest, FusionsAreSorted) {
   tsl::thread::ThreadPool thread_pool(&blocking_thread_pool);
 
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), CreateMockHooks(2),
+      thread_pool, CreateDefaultOptions(), /*hlo_module=*/nullptr,
       /*buffer_assignment=*/nullptr, /*use_unique_c_name=*/false,
       /*enable_tiled_emitter=*/false);
 
   // Add the fusions in reverse order.
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec_1,
-                          fussion_emitter.AddFusion(fusion_1));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec_1, fussion_emitter.AddFusion(fusion_1));
   EXPECT_EQ(kernel_spec_1.name(), "fusion_1");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec_0,
-                          fussion_emitter.AddFusion(fusion_0));
+  ASSERT_OK_AND_ASSIGN(auto kernel_spec_0, fussion_emitter.AddFusion(fusion_0));
   EXPECT_EQ(kernel_spec_0.name(), "fusion_0");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
+  ASSERT_OK_AND_ASSIGN(auto kernels, fussion_emitter.ConsumeKernels());
   ASSERT_EQ(kernels.size(), 2);
   EXPECT_EQ(kernels[0].spec().name(), "fusion_0");
   EXPECT_EQ(kernels[1].spec().name(), "fusion_1");
@@ -208,16 +184,16 @@ TEST_F(ParallelFusionEmitterTest, Error) {
       ROOT result = bf16[] fusion(lhs, rhs), kind=kLoop, calls=dot_fusion
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(trivial_fusion));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(trivial_fusion));
   HloComputation* computation = hlo_module->entry_computation();
   HloFusionInstruction* fusion =
       Cast<HloFusionInstruction>(computation->root_instruction());
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), CreateMockHooks(0), nullptr, false,
-      false);
+      thread_pool, CreateDefaultOptions(), /*hlo_module=*/nullptr, nullptr,
+      false, false);
 
   EXPECT_THAT(fussion_emitter.AddFusion(fusion), Not(IsOk()));
 }

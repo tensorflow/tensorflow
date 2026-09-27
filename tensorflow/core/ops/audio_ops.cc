@@ -38,8 +38,8 @@ absl::Status DecodeWavShapeFn(InferenceContext* c) {
     channels_dim = c->UnknownDim();
   } else {
     if (desired_channels < 0) {
-      return errors::InvalidArgument("channels must be non-negative, got ",
-                                     desired_channels);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "channels must be non-negative, got ", desired_channels));
     }
     channels_dim = c->MakeDim(desired_channels);
   }
@@ -50,8 +50,8 @@ absl::Status DecodeWavShapeFn(InferenceContext* c) {
     samples_dim = c->UnknownDim();
   } else {
     if (desired_samples < 0) {
-      return errors::InvalidArgument("samples must be non-negative, got ",
-                                     desired_samples);
+      return absl::InvalidArgumentError(
+          absl::StrCat("samples must be non-negative, got ", desired_samples));
     }
     samples_dim = c->MakeDim(desired_samples);
   }
@@ -74,15 +74,15 @@ absl::Status SpectrogramShapeFn(InferenceContext* c) {
   int32_t window_size;
   TF_RETURN_IF_ERROR(c->GetAttr("window_size", &window_size));
   if (window_size <= 1) {
-    return errors::InvalidArgument("window size must be > 1, got ",
-                                   window_size);
+    return absl::InvalidArgumentError(
+        absl::StrCat("window size must be > 1, got ", window_size));
   }
 
   int32_t stride;
   TF_RETURN_IF_ERROR(c->GetAttr("stride", &stride));
   if (stride <= 0) {
-    return errors::InvalidArgument("stride must be strictly positive, got ",
-                                   stride);
+    return absl::InvalidArgumentError(
+        absl::StrCat("stride must be strictly positive, got ", stride));
   }
 
   DimensionHandle input_length = c->Dim(input, 0);

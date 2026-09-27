@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConcatenateTest = HloPjRtTestBase;
+using ConcatenateTest = HloTestBase;
 
 TEST_F(ConcatenateTest, TwoR3Axis1) {
   const std::string hlo_text_module = R"(

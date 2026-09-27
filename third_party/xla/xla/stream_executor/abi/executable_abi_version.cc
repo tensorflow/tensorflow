@@ -45,7 +45,7 @@ static absl::StatusOr<ExecutableAbiVersion> CreateForCuda(
 static absl::StatusOr<ExecutableAbiVersion> CreateForRocm(
     const DeviceDescription& /*device_description*/) {
   ExecutableAbiVersionProto proto;
-  proto.set_platform_name("ROCm");
+  proto.set_platform_name("ROCM");
   return ExecutableAbiVersion::FromProto(std::move(proto));
 }
 

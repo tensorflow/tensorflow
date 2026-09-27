@@ -10,7 +10,6 @@ load(
 )
 
 visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//third_party/mlperf:__subpackages__",
     "//tensorflow:internal",
@@ -37,9 +36,7 @@ visibility = [
     "//third_party/py/tensorflow_privacy:__subpackages__",
     "//third_party/reverb:__subpackages__",
     "//tensorflow_minigo:__subpackages__",
-    "//research/graph/fairness/inproc_fair_reg:__subpackages__",
     "//third_party/py/scenic:__subpackages__",
-    "//smartass/brain/ops:__subpackages__",
 ]
 
 package(
@@ -141,7 +138,6 @@ tf_gen_op_strict_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -528,7 +524,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
-        "//smartass/brain/configure:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
@@ -686,7 +681,6 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
-        "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
@@ -1229,6 +1223,7 @@ py_library(
 py_library(
     name = "cond",
     srcs = ["cond.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1288,7 +1283,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["control_flow_util_v2.py"],
     strict_deps = True,
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
+    visibility = visibility,
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -1378,6 +1373,7 @@ py_library(
     srcs = [
         "cond_v2.py",
     ],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1461,9 +1457,11 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1476,11 +1474,13 @@ cuda_py_strict_test(
         ":count_ops_gen",
         ":sparse_ops",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1488,6 +1488,7 @@ cuda_py_strict_test(
 py_library(
     name = "ctc_ops",
     srcs = ["ctc_ops.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -1802,9 +1803,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
+        ":array_ops_stack",
+        ":clip_ops",
         ":image_ops_gen",
         ":image_ops_impl",
-        ":linalg_ops",
+        ":math_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -1893,6 +1896,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -2206,6 +2210,7 @@ py_library(
         ":array_ops_stack",
         ":math_ops",
         ":nn_ops_gen",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
     ],
@@ -2815,6 +2820,7 @@ cuda_py_strict_test(
         ":rnn_grad",
         ":rnn_ops_gen",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -3490,6 +3496,7 @@ py_library(
     srcs = ["image_grad_test_base.py"],
     strict_deps = True,
     deps = [
+        ":array_ops",
         ":array_ops_stack",
         ":gradient_checker_v2",
         ":image_ops",
@@ -3531,7 +3538,7 @@ cuda_py_strict_test(
         ":random_ops",
         ":stateless_random_ops",
         ":variables",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:get_single_element",
@@ -3695,6 +3702,8 @@ cuda_py_strict_test(
         ":nn_grad",
         ":nn_impl",
         ":nn_ops_gen",
+        ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -3759,6 +3768,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["nn_test.py"],
     main = "nn_test.py",
+    shard_count = 20,
     tags = [
         "no_windows",
         "notap",  # TODO(b/290819913)
@@ -3779,6 +3789,7 @@ cuda_py_strict_test(
         ":stateful_random_ops",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -3839,6 +3850,7 @@ py_test(
     deps = [
         ":array_ops",
         ":tensor_array_ops",
+        ":variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -3998,6 +4010,7 @@ py_test(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":gradient_checker_v2",
         ":math_ops",
         ":random_ops",
         "//tensorflow/core/config:flags_py",
@@ -4374,9 +4387,12 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:device_context",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
@@ -4452,6 +4468,7 @@ py_library(
 py_library(
     name = "custom_gradient",
     srcs = ["custom_gradient.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -4465,6 +4482,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -4818,6 +4836,35 @@ py_test(
     deps = [
         ":math_ops",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+py_library(
+    name = "quantized_dense",
+    srcs = ["quantized_dense.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        ":nn_ops",
+        ":random_ops",
+        ":variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+    ],
+)
+
+tf_py_strict_test(
+    name = "quantized_dense_test",
+    size = "small",
+    srcs = ["quantized_dense_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":quantized_dense",
+        ":random_ops",
+        "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

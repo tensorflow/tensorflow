@@ -74,12 +74,12 @@ _tf_uses_legacy_keras = (
     _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals()))
 _module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 if _tf_uses_legacy_keras:
   _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
 else:
   _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 
 # Enable TF2 behaviors
@@ -98,13 +98,15 @@ from tensorflow.python.lib.io import file_io as _fi
 _site_packages_dirs = []
 if _site.ENABLE_USER_SITE and _site.USER_SITE is not None:
   _site_packages_dirs += [_site.USER_SITE]
-_site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
+_site_packages_dirs += [str(p) for p in _sys.path if "site-packages" in str(p)]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
 for _scheme in _sysconfig.get_scheme_names():
   for _name in ["purelib", "platlib"]:
-    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
+    _path = _sysconfig.get_path(_name, _scheme)
+    if _path is not None:
+      _site_packages_dirs.append(_path)
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

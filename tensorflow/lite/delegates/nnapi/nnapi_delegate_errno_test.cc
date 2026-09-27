@@ -30,24 +30,27 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+void StatefulNnApiDelegateDelete(TfLiteDelegate* delegate) {
+  delete static_cast<StatefulNnApiDelegate*>(delegate);
+}
+
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   explicit SingleOpModelWithNNAPI(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_ =
-        std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
-    this->SetDelegate(stateful_delegate_.get());
+    this->SetDelegate({new StatefulNnApiDelegate(nnapi, options_),
+                       StatefulNnApiDelegateDelete});
   }
-  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
+  StatefulNnApiDelegate* GetDelegate() {
+    return static_cast<StatefulNnApiDelegate*>(delegate_.get());
+  }
 
   void SetBufferHandle(int index, TfLiteBufferHandle handle) {
-    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
+    interpreter_->SetBufferHandle(index, handle, delegate_.get());
   }
 
  private:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
   StatefulNnApiDelegate::Options options_;
 };
 

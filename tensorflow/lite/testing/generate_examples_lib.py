@@ -285,6 +285,8 @@ class Options:
     self.unfold_batchmatmul = False
     # Experimental low bit options
     self.experimental_low_bit_qat = False
+    # Whether to enable experimental unsafe single batch rank reduction.
+    self.experimental_unsafe_single_batch_rank_reduction = False
 
 
 def _prepare_dir(options):

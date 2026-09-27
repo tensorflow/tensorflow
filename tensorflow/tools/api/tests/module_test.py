@@ -15,9 +15,9 @@
 # ==============================================================================
 """Smoke tests for tensorflow module."""
 
-import pkgutil
+import importlib.util
 
-import tensorflow as tf
+import tensorflow as tf  # pylint: disable=g-direct-tensorflow-import
 
 from tensorflow.python import tf2
 from tensorflow.python.platform import test
@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 class ModuleTest(test.TestCase):
 
   def testCanLoadWithPkgutil(self):
-    out = pkgutil.find_loader('tensorflow')
+    out = importlib.util.find_spec('tensorflow')
     self.assertIsNotNone(out)
 
   def testDocString(self):

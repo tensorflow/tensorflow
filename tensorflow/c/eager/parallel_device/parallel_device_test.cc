@@ -376,6 +376,23 @@ TEST(PARALLEL_DEVICE, TestInvalidPacking) {
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_INVALID_ARGUMENT)
         << TF_Message(status.get());
   }
+
+  {
+    // Try to pass 0 inputs to TPUReplicatedOutput
+    std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
+        TFE_NewOp(context.get(), "TPUReplicatedOutput", status.get()),
+        TFE_DeleteOp);
+    if (TF_GetCode(status.get()) != TF_OK) return;
+    TFE_OpSetAttrInt(op.get(), "num_replicas", 1);
+    TFE_OpSetDevice(op.get(), device_name, status.get());
+    if (TF_GetCode(status.get()) != TF_OK) return;
+
+    TFE_TensorHandle* result_handles;
+    int num_retvals = 1;
+    TFE_Execute(op.get(), &result_handles, &num_retvals, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_INVALID_ARGUMENT)
+        << TF_Message(status.get());
+  }
 }
 
 TensorHandlePtr CollectiveSum(TFE_Context* context, TFE_TensorHandle* input,

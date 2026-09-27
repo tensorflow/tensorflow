@@ -15,16 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/kernels/argmax_op.h"
-
-#include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
@@ -34,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/argmax_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -52,9 +51,9 @@ class ArgOp : public OpKernel {
     const Tensor& dimension = context->input(1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(dimension.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "dim must be a scalar, but received tensor of shape: ",
-                    dimension.shape().DebugString()));
+                    dimension.shape().DebugString())));
 
     const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
     const int input_dims = input.dims();
@@ -62,13 +61,13 @@ class ArgOp : public OpKernel {
     int axis = dim < 0 ? dim + input_dims : dim;
 
     OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
-                errors::InvalidArgument("Expected dimension in the range [",
-                                        -input_dims, ", ", input_dims,
-                                        "), but got ", dim));
-    OP_REQUIRES(
-        context, input.dim_size(axis) > 0,
-        errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",
-                                input.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected dimension in the range [", -input_dims, ", ",
+                    input_dims, "), but got ", dim)));
+    OP_REQUIRES(context, input.dim_size(axis) > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Reduction axis ", dim, " is empty in shape ",
+                                 input.shape().DebugString())));
 
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
@@ -101,11 +100,12 @@ class ArgOp : public OpKernel {
       HANDLE_DIM(7);
 
       default:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Argmax and Argmin only support up "
-                                            "to 7 input dimensions, but got ",
-                                            input_dims, ". Inputs shape: ",
-                                            input.shape().DebugString()));
+        OP_REQUIRES(
+            context, false,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Argmax and Argmin only support up "
+                "to 7 input dimensions, but got ",
+                input_dims, ". Inputs shape: ", input.shape().DebugString())));
     }
   }
 #undef HANDLE_DIM

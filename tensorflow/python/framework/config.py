@@ -128,7 +128,13 @@ def set_intra_op_parallelism_threads(num_threads):
   appropriate number.
 
   Args:
-    num_threads: Number of parallel threads
+    num_threads: Number of parallel threads. Must be a non-negative integer not
+      exceeding 10000.
+
+  Raises:
+    TypeError: If `num_threads` is not an integer.
+    ValueError: If `num_threads` is negative or exceeds 10000.
+    RuntimeError: If called after the context has been initialized.
   """
   context.context().intra_op_parallelism_threads = num_threads
 
@@ -154,7 +160,13 @@ def set_inter_op_parallelism_threads(num_threads):
   0 means the system picks an appropriate number.
 
   Args:
-    num_threads: Number of parallel threads
+    num_threads: Number of parallel threads. Must be a non-negative integer not
+      exceeding 10000. None is allowed to keep default behavior.
+
+  Raises:
+    TypeError: If `num_threads` is not an integer (None is allowed).
+    ValueError: If `num_threads` is negative or exceeds 10000.
+    RuntimeError: If called after the context has been initialized.
   """
   context.context().inter_op_parallelism_threads = num_threads
 
@@ -460,7 +472,11 @@ def list_physical_devices(device_type=None):
     List of discovered `tf.config.PhysicalDevice` objects
   """
   global _warned_windows_gpu
-  if not _warned_windows_gpu and platform.system() == 'Windows':
+  if (
+      not _warned_windows_gpu
+      and device_type == 'GPU'
+      and platform.system() == 'Windows'
+  ):
     logging.warning(
         'TensorFlow GPU support is not available on native Windows for '
         'TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will '

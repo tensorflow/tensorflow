@@ -127,6 +127,10 @@ void PopulateBatchTestAttributesHelper(
                         value { b: false }
                       }
                       attr {
+                        key: "num_warmup_batch_threads"
+                        value { i: 0 }
+                      }
+                      attr {
                         key: "Tin"
                         value { list { type: DT_INT32 type: DT_INT32 } }
                       }

@@ -1,0 +1,168 @@
+HloModule cpu_thunk_coverage
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+called_computation {
+  p0 = f32[128]{0} parameter(0)
+  constant_zero = f32[] constant(0)
+  abs_res = f32[128]{0} abs(p0)
+  exp_res = f32[128]{0} exponential(abs_res)
+  log_res = f32[128]{0} log(exp_res)
+  tanh_res = f32[128]{0} tanh(log_res)
+  ROOT reduce_res = f32[] reduce(tanh_res, constant_zero), dimensions={0},
+      to_apply=add_computation
+}
+
+compare_gt {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT res = pred[] compare(p0, p1), direction=GT
+}
+
+compare_topk {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+}
+
+branch1 {
+  p0 = f32[128]{0} parameter(0)
+  ROOT res = f32[128]{0} negate(p0)
+}
+
+branch2 {
+  p0 = f32[128]{0} parameter(0)
+  ROOT res = f32[128]{0} multiply(p0, p0)
+}
+
+branch3 {
+  p0 = f32[128]{0} parameter(0)
+  ROOT res = f32[128]{0} exponential(p0)
+}
+
+while_cond {
+  p0 = (s32[], f32[128]{0}) parameter(0)
+  iteration = s32[] get-tuple-element(p0), index=0
+  limit = s32[] constant(10)
+  ROOT res = pred[] compare(iteration, limit), direction=LT
+}
+
+while_body {
+  p0 = (s32[], f32[128]{0}) parameter(0)
+  iteration = s32[] get-tuple-element(p0), index=0
+  val = f32[128]{0} get-tuple-element(p0), index=1
+  one = s32[] constant(1)
+  next_iteration = s32[] add(iteration, one)
+  next_val = f32[128]{0} add(val, val)
+  ROOT res = (s32[], f32[128]{0}) tuple(next_iteration, next_val)
+}
+
+ENTRY main {
+  param_dot_lhs = f32[10,12]{1,0} parameter(0)
+  param_dot_rhs = f32[12,15]{1,0} parameter(1)
+  param_sort_in = s32[128]{0} parameter(2)
+  param_cond_idx = s32[] parameter(3)
+  param_cond_val = f32[128]{0} parameter(4)
+  param_call_in = f32[128]{0} parameter(5)
+  param_while_in_0 = s32[] parameter(6)
+  param_while_in_1 = f32[128]{0} parameter(7)
+  param_conv_in = f32[2,16,16,4]{3,2,1,0} parameter(8)
+  param_conv_kernel = f32[2,2,4,2]{3,2,1,0} parameter(9)
+  param_fft_in = c64[4]{0} parameter(10)
+  param_layernorm_scale = f32[2]{0} parameter(11)
+  param_layernorm_shift = f32[2]{0} parameter(12)
+
+  // Dot thunk.
+  dot_res = f32[10,15]{1,0} dot(param_dot_lhs, param_dot_rhs),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  // Sort thunk.
+  sort_res = s32[128]{0} sort(param_sort_in), dimensions={0}, is_stable=true,
+      to_apply=compare_gt
+
+  // Conditional thunk.
+  cond_res = f32[128]{0} conditional(param_cond_idx, param_cond_val,
+                                     param_cond_val, param_cond_val),
+      branch_computations={branch1, branch2, branch3},
+      frontend_attributes={inlineable="false"}
+
+  // Call thunk.
+  call_res = f32[] call(param_call_in), to_apply=called_computation,
+      frontend_attributes={inlineable="false"}
+
+  // While thunk.
+  while_init = (s32[], f32[128]{0}) tuple(param_while_in_0, param_while_in_1)
+  while_res = (s32[], f32[128]{0}) while(while_init), condition=while_cond,
+      body=while_body
+  while_res_0 = s32[] get-tuple-element(while_res), index=0
+  while_res_1 = f32[128]{0} get-tuple-element(while_res), index=1
+
+  // Copy thunk.
+  copy_res = f32[128]{0} copy(param_call_in)
+
+  // TopK thunk.
+  topk_res = (f32[10]{0}, s32[10]{0}) custom-call(param_call_in),
+      custom_call_target="TopK", called_computations={compare_topk}
+  topk_val = f32[10]{0} get-tuple-element(topk_res), index=0
+  topk_idx = s32[10]{0} get-tuple-element(topk_res), index=1
+
+  // Convolution thunk.
+  conv = f32[2,15,15,2]{3,2,1,0} convolution(param_conv_in, param_conv_kernel),
+    window={size=2x2},
+    dim_labels=b01f_01io->b01f
+
+  // FFT thunk.
+  fft = c64[4]{0} fft(param_fft_in), fft_type=FFT, fft_length={4}
+
+  // CustomCall thunk (oneDNN LayerNorm)
+  custom_call = f32[2,15,15,2]{3,2,1,0} custom-call(conv, param_layernorm_scale,
+      param_layernorm_shift),
+      custom_call_target="__onednn$layernorm", backend_config=
+          "{\"onednn_layer_norm_config\":{\"rescale\":\"SCALE_AND_SHIFT\"}}"
+
+  // Collective thunk.
+  all_reduce = f32[2]{0} all-reduce(param_layernorm_scale), replica_groups={},
+      to_apply=add_computation
+
+  // PartitionId thunk.
+  pid = u32[] partition-id()
+
+  // ReplicaId thunk.
+  rid = u32[] replica-id()
+
+  // RngSeed thunk
+  rng_seed = u64[] custom-call(), custom_call_target="GetRngSeed"
+
+  // RngGetAndUpdateState thunk.
+  rng_state = u64[2]{0} rng-get-and-update-state(), delta=1
+
+  ROOT root_tuple = (
+    f32[10,15]{1,0},          // dot
+    s32[128]{0},              // sort
+    f32[128]{0},              // cond
+    f32[],                    // call
+    s32[],                    // while_0
+    f32[128]{0},              // while_1
+    f32[128]{0},              // copy
+    f32[10]{0},               // topk val
+    s32[10]{0},               // topk idx
+    f32[2,15,15,2]{3,2,1,0},  // conv
+    c64[4]{0},                // fft
+    f32[2,15,15,2]{3,2,1,0},  // layernorm
+    f32[2]{0},                // all-reduce
+    u32[],                    // pid
+    u32[],                    // rid
+    u64[],                    // rng_seed
+    u64[2]{0}                 // rng_state
+  ) tuple(
+    dot_res, sort_res, cond_res, call_res, while_res_0, while_res_1, copy_res,
+    topk_val, topk_idx, conv, fft, custom_call, all_reduce, pid, rid,
+    rng_seed, rng_state
+  )
+}

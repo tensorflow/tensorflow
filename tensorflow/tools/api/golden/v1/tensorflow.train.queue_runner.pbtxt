@@ -2,7 +2,7 @@ path: "tensorflow.train.queue_runner"
 tf_module {
   member {
     name: "QueueRunner"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member_method {
     name: "add_queue_runner"

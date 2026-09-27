@@ -21,10 +21,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
-#include "xla/client/client_library.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -46,10 +44,8 @@ class LegalizeTFQuantTest : public Test {
     mlir_to_hlo_args.rollout_state =
         tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
     mlir_to_hlo_args.mlir_module = mlir_module_string;
-    tensorflow::se::Platform* platform =
-        tensorflow::se::PlatformManager::PlatformWithName("Host").value();
-    auto client =
-        xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
+    auto compiler = xla::GetDefaultPjRtCompiler(xla::CpuName());
+    TF_ASSERT_OK(compiler.status());
     tensorflow::tpu::TPUCompileMetadataProto metadata_proto;
     // Set up an arg per arg_shape with the specified type.
     for (int i = 0; i < arg_shapes.size(); ++i) {
@@ -69,7 +65,7 @@ class LegalizeTFQuantTest : public Test {
                      mlir_to_hlo_args, metadata_proto, use_tuple_args,
                      /*device_type=*/"XLA_TPU_JIT", custom_legalization_passes,
                      /*shape_determination_fns=*/{}, arg_shapes,
-                     &arg_core_mapping, &per_core_arg_shapes, client)
+                     &arg_core_mapping, &per_core_arg_shapes, *compiler)
                      .status());
   }
 };

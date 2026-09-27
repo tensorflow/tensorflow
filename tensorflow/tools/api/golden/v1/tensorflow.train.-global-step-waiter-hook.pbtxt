@@ -2,7 +2,7 @@ path: "tensorflow.train.GlobalStepWaiterHook"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.GlobalStepWaiterHook\'>"
   is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'wait_until_step\'], varargs=None, keywords=None, defaults=None"

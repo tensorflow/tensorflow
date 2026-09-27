@@ -426,14 +426,14 @@ absl::Status BaseCollectiveExecutor::CreateCollective(
         return CollectiveRegistry::Lookup(
             col_params.instance.impl_details.collective_name, col_impl);
       } else {
-        return errors::Internal(
+        return absl::InternalError(
             "No collective other than broadcast supports DT_BOOL");
       }
     case DT_INT32:
       if (col_params.group.device_type == DEVICE_GPU &&
           col_params.instance.type == REDUCTION_COLLECTIVE) {
         // TODO(b/139421603): enable int32 all-reduce on GPU.
-        return errors::Internal(
+        return absl::InternalError(
             "Collective all-reduce does not support datatype DT_INT32 on "
             "DEVICE_GPU");
       } else {
@@ -443,7 +443,7 @@ absl::Status BaseCollectiveExecutor::CreateCollective(
     case DT_BFLOAT16:
       if (col_params.group.device_type == DEVICE_GPU &&
           col_params.instance.type == REDUCTION_COLLECTIVE) {
-        return errors::Internal(
+        return absl::InternalError(
             "Collective all-reduce does not support datatype DT_BFLOAT16 on "
             "DEVICE_GPU");
       } else {
@@ -458,9 +458,9 @@ absl::Status BaseCollectiveExecutor::CreateCollective(
           col_params.instance.impl_details.collective_name, col_impl);
     }
     default:
-      return errors::Internal(
-          "CollectiveImplementation does not support datatype ",
-          DataTypeString(col_params.instance.data_type));
+      return absl::InternalError(
+          absl::StrCat("CollectiveImplementation does not support datatype ",
+                       DataTypeString(col_params.instance.data_type)));
   }
 }
 

@@ -41,7 +41,7 @@ absl::StatusOr<bool> ScalarConstantSinker::RunImpl(
       continue;
     }
 
-    const HloInstruction* fusion = *maybe_fusion;
+    HloInstruction* fusion = *maybe_fusion;
     if (fusion->IsCustomFusion()) {
       continue;
     }
@@ -52,15 +52,12 @@ absl::StatusOr<bool> ScalarConstantSinker::RunImpl(
         continue;
       }
 
-      const HloInstruction* operand = fusion->operand(i);
+      HloInstruction* operand = fusion->mutable_operand(i);
       if (operand->opcode() != HloOpcode::kConstant) {
         continue;
       }
 
-      // Clone the constant into the fusion, replace all uses of the parameter
-      // and remove the parameter and the operand.
-      TF_RETURN_IF_ERROR(
-          computation->ReplaceWithNewInstruction(param, operand->Clone()));
+      fusion->FuseInstruction(operand);
       changed = true;
     }
   }

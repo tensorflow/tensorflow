@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -46,10 +45,6 @@ limitations under the License.
 #include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/shape.h"
 
-struct PJRT_Error {
-  absl::Status status;
-};
-
 struct PJRT_TopologyDescription {
   // nullptr iff the PjRtTopologyDescription isn't owned by the caller. The PJRT
   // C API sometimes returns a topo desc that's owned by the caller and must be
@@ -65,7 +60,15 @@ struct PJRT_TopologyDescription {
   std::vector<PJRT_NamedValue> attributes;
 };
 
+struct PJRT_Client;
+
+struct PJRT_Memory_LocalState {
+  std::vector<struct PJRT_Device*> devices;
+  struct PJRT_Client* client;
+};
+
 struct PJRT_Client {
+  const PJRT_Api* api;
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;
   // `devices` contains the addresses of the contents of `owned_devices`.
@@ -76,19 +79,13 @@ struct PJRT_Client {
   // Map from wrapped C++ devices to C devices. The values are the same as
   // `owned_devices`.
   absl::flat_hash_map<xla::PjRtDevice*, PJRT_Device*> c_device_from_cpp_device;
-  // TODO(yueshengys): Add a `memories` member when global memories are
-  // supported.
-  std::vector<PJRT_Memory> owned_memories;
-  // `addressable_memories` contains pointers to the `owned_memories` that the
+  // `addressable_memories` contains pointers to the `PJRT_Memory` that the
   // client can transfer to and from.
   std::vector<PJRT_Memory*> addressable_memories;
-  // Map from wrapped C++ memories to C memories. The values are the same as
-  // `owned_memories`.
-  absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
-      c_memory_from_cpp_memory;
   absl::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
 
-  explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
+  explicit PJRT_Client(const PJRT_Api* api,
+                       std::unique_ptr<xla::PjRtClient> cpp_client);
 };
 
 struct PJRT_MemoryDescription {
@@ -118,13 +115,6 @@ struct PJRT_Device {
   xla::PjRtDevice* device;
   PJRT_DeviceDescription description;
   std::vector<PJRT_Memory*> addressable_memories;
-  PJRT_Client* client;
-};
-
-struct PJRT_Memory {
-  // The xla::PjRtMemorySpace* is owned by the corresponding xla::PjRtClient.
-  xla::PjRtMemorySpace* memory_space;
-  std::vector<PJRT_Device*> devices;
   PJRT_Client* client;
 };
 
@@ -176,9 +166,13 @@ struct PJRT_Executable {
   std::vector<PJRT_Layouts_MemoryLayout> parameter_layouts;
   std::vector<PJRT_Layouts_MemoryLayout*> parameter_layouts_pointers;
 
-  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
-  std::vector<const char*> memory_kinds;
-  std::vector<size_t> memory_kind_sizes;
+  bool output_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> output_memory_kinds;
+  std::vector<size_t> output_memory_kind_sizes;
+
+  bool parameter_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> parameter_memory_kinds;
+  std::vector<size_t> parameter_memory_kind_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
@@ -297,6 +291,7 @@ namespace pjrt {
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+PJRT_Error* PJRT_Error_ForEachPayload(PJRT_Error_ForEachPayload_Args* args);
 
 PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args);
 PJRT_Error* PJRT_Plugin_Attributes_Xla(PJRT_Plugin_Attributes_Args* args);
@@ -404,6 +399,8 @@ PJRT_Error* PJRT_Executable_OutputElementTypes(
     PJRT_Executable_OutputElementTypes_Args* args);
 PJRT_Error* PJRT_Executable_OutputDimensions(
     PJRT_Executable_OutputDimensions_Args* args);
+PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
@@ -485,8 +482,14 @@ PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Serialize(
     PJRT_TopologyDescription_Serialize_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Fingerprint(
+    PJRT_TopologyDescription_Fingerprint_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
+PJRT_Error* PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace(
+    PJRT_TopologyDescription_MakeCanonicalShapeForMemorySpace_Args* args);
+PJRT_Error* PJRT_TopologyDescription_GetMemorySpaceKindIds(
+    PJRT_TopologyDescription_GetMemorySpaceKindIds_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Deserialize(
@@ -503,13 +506,12 @@ PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
 
 // Helper macros and functions
 
-#define PJRT_RETURN_IF_ERROR(expr)                                \
-  do {                                                            \
-    absl::Status _status = (expr);                                \
-    if (!_status.ok()) {                                          \
-      PJRT_Error* _c_status = new PJRT_Error{std::move(_status)}; \
-      return _c_status;                                           \
-    }                                                             \
+#define PJRT_RETURN_IF_ERROR(expr)                          \
+  do {                                                      \
+    absl::Status _status = (expr);                          \
+    if (!_status.ok()) {                                    \
+      return ::pjrt::StatusToPjRtError(std::move(_status)); \
+    }                                                       \
   } while (false)
 
 #define PJRT_ASSIGN_OR_RETURN(lhs, rexpr)                                  \
@@ -520,9 +522,7 @@ PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
 #define _PJRT_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
   auto statusor = (rexpr);                                          \
   if (!statusor.ok()) {                                             \
-    PJRT_Error* c_status = new PJRT_Error();                        \
-    c_status->status = statusor.status();                           \
-    return c_status;                                                \
+    return ::pjrt::StatusToPjRtError(statusor.status());            \
   }                                                                 \
   lhs = std::move(*statusor)
 
@@ -560,7 +560,8 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 // Creates a C PJRT client from a C++ PJRT client and creates C PJRT devices
 // from cpp_client's devices. The returned client is owned by the caller and
 // should be destroyed with PJRT_Client_Destroy.
-PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
+PJRT_Client* CreateWrapperClient(const PJRT_Api* api,
+                                 std::unique_ptr<xla::PjRtClient> cpp_client);
 
 // Searches `client` for a PJRT_Memory* that wraps a provided
 // `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that

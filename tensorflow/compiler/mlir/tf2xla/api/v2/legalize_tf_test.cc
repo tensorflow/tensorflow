@@ -28,10 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/compile_mlir.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/client_library.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
@@ -254,10 +252,8 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                                          /*graph_def_version=*/0,
                                          {&guaranteed_constants}};
 
-  se::Platform* cpu_platform =
-      se::PlatformManager::PlatformWithName("Host").value();
-  auto client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
+  auto compiler = xla::GetDefaultPjRtCompiler(xla::CpuName());
+  TF_ASSERT_OK(compiler.status());
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
@@ -272,7 +268,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                         /*device_type=*/"XLA_CPU_JIT",
                         custom_legalization_passes,
                         /*shape_determination_fns=*/{}, arg_shapes,
-                        &arg_core_mapping, &per_core_arg_shapes, client);
+                        &arg_core_mapping, &per_core_arg_shapes, *compiler);
 
   EXPECT_FALSE(compile_result.ok());
 }

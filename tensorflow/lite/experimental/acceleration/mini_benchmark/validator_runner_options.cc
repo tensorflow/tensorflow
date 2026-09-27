@@ -41,10 +41,14 @@ ValidatorRunnerOptions CreateValidatorRunnerOptionsFrom(
     }
   }
   if (minibenchmark_settings.storage_paths()) {
-    options.data_directory_path =
-        minibenchmark_settings.storage_paths()->data_directory_path()->str();
-    options.storage_path =
-        minibenchmark_settings.storage_paths()->storage_file_path()->str();
+    if (minibenchmark_settings.storage_paths()->data_directory_path()) {
+      options.data_directory_path =
+          minibenchmark_settings.storage_paths()->data_directory_path()->str();
+    }
+    if (minibenchmark_settings.storage_paths()->storage_file_path()) {
+      options.storage_path =
+          minibenchmark_settings.storage_paths()->storage_file_path()->str();
+    }
   }
   if (minibenchmark_settings.validation_settings()) {
     options.per_test_timeout_ms =

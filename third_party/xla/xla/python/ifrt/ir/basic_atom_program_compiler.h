@@ -27,39 +27,43 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 // Compiles atom programs for IFRT IR programs. Fulfills the contract required
-// by `xla::ifrt::IfrtIrProgramCompiler`.
-class BasicAtomProgramCompiler final : public xla::ifrt::AtomProgramCompiler {
+// by `IfrtIrProgramCompiler`.
+class BasicAtomProgramCompiler final : public AtomProgramCompiler {
  public:
-  static absl::StatusOr<std::unique_ptr<xla::ifrt::AtomProgramCompiler>> Create(
-      xla::ifrt::Client* absl_nonnull client,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments);
+  static absl::StatusOr<std::unique_ptr<AtomProgramCompiler>> Create(
+      Client* absl_nonnull client,
+      absl::Span<const DeviceId> device_assignments,
+      bool strict_memory_reservation);
 
   tsl::Future<LoadedExecutableRef> CompileXla(
-      std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
-      xla::CompileOptions options) final;
+      std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks)
+      final;
 
   tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
-      std::vector<xla::ifrt::DType> dtypes,
-      std::vector<xla::ifrt::Shape> shapes,
-      std::vector<xla::ifrt::IfrtArrayType> in_array_types,
-      std::vector<xla::ifrt::IfrtArrayType> out_array_types) final;
+      std::vector<DType> dtypes, std::vector<Shape> shapes,
+      std::vector<IfrtArrayType> in_array_types,
+      std::vector<IfrtArrayType> out_array_types) final;
 
  private:
-  BasicAtomProgramCompiler(
-      xla::ifrt::Client* absl_nonnull client,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments);
+  BasicAtomProgramCompiler(Client* absl_nonnull client,
+                           absl::Span<const DeviceId> device_assignments,
+                           bool strict_memory_reservation);
 
-  xla::ifrt::Client* absl_nonnull const client_;
-  const std::vector<xla::ifrt::DeviceId> device_assignments_;
+  Client* absl_nonnull const client_;
+  const std::vector<DeviceId> device_assignments_;
+  const bool strict_memory_reservation_;
 };
 
 }  // namespace ifrt

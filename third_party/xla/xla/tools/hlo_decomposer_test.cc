@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -29,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloDecomposerTest : public HloPjRtTestBase {
+class HloDecomposerTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> GetModule() {
     absl::string_view kHlo = R"(
@@ -170,6 +171,133 @@ ENTRY main {
   auto new_module =
       ExtractComputationIntoNewModule(*module->entry_computation());
   EXPECT_EQ(new_module->name(), module->entry_computation()->name());
+}
+
+TEST_F(HloDecomposerTest, ExtractProducerConsumersIntoNewModule) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  dot = f32[10,10] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f32[10,10] parameter(2)
+  add = f32[10,10] add(dot, p2)
+  subtract = f32[10,10] subtract(dot, p2)
+  ROOT r = f32[10,10] add(add, subtract)
+})"));
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  auto new_module = ExtractProducerConsumersIntoNewModule(*dot);
+  TF_ASSERT_OK_AND_ASSIGN(bool check_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %parameter.0 = f32[10,10]{1,0} parameter(0)
+CHECK-THEN: %parameter.1 = f32[10,10]{1,0} parameter(1)
+CHECK-THEN: %dot.1 = f32[10,10]{1,0} dot(%parameter.0, %parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+CHECK-THEN: %parameter.2 = f32[10,10]{1,0} parameter(2)
+CHECK-THEN: %add.1 = f32[10,10]{1,0} add(%dot.1, %parameter.2)
+CHECK-THEN: %subtract.1 = f32[10,10]{1,0} subtract(%dot.1, %parameter.2)
+CHECK-THEN: ROOT %tuple.1 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(%add.1, %subtract.1)
+  )"));
+  EXPECT_TRUE(check_result);
+}
+
+TEST_F(HloDecomposerTest,
+       ExtractInstructionIntoNewModulePreservesExecutionThread) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  ROOT neg = f32[8] negate(p0)
+}, execution_thread="parallel"
+
+parallel_comp {
+  p0 = f32[8] parameter(0)
+  ROOT loop_fusion = f32[8] fusion(p0), kind=kLoop, calls=fused_computation
+}, execution_thread="parallel"
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  call-start = ((f32[8]), f32[8]) call-start(p0), async_execution_thread="parallel", to_apply=parallel_comp
+  ROOT call-done = f32[8] call-done(call-start)
+})"));
+  HloComputation* parallel_comp =
+      module->GetComputationWithName("parallel_comp");
+  ASSERT_NE(parallel_comp, nullptr);
+  HloInstruction* loop_fusion =
+      parallel_comp->GetInstructionWithName("loop_fusion");
+  ASSERT_NE(loop_fusion, nullptr);
+
+  std::unique_ptr<HloModule> new_module =
+      ExtractInstructionIntoNewModule(*loop_fusion);
+
+  EXPECT_EQ(new_module->entry_computation()->execution_thread(), "parallel");
+}
+
+TEST_F(HloDecomposerTest,
+       ExtractProducerConsumersIntoNewModulePreservesExecutionThread) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  ROOT neg = f32[8] negate(p0)
+}, execution_thread="parallel"
+
+parallel_comp {
+  p0 = f32[8] parameter(0)
+  loop_fusion = f32[8] fusion(p0), kind=kLoop, calls=fused_computation
+  ROOT result = f32[8] add(loop_fusion, p0)
+}, execution_thread="parallel"
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  call-start = ((f32[8]), f32[8]) call-start(p0), async_execution_thread="parallel", to_apply=parallel_comp
+  ROOT call-done = f32[8] call-done(call-start)
+})"));
+  HloComputation* parallel_comp =
+      module->GetComputationWithName("parallel_comp");
+  ASSERT_NE(parallel_comp, nullptr);
+  HloInstruction* loop_fusion =
+      parallel_comp->GetInstructionWithName("loop_fusion");
+  ASSERT_NE(loop_fusion, nullptr);
+
+  std::unique_ptr<HloModule> new_module =
+      ExtractProducerConsumersIntoNewModule(*loop_fusion);
+
+  EXPECT_EQ(new_module->entry_computation()->execution_thread(), "parallel");
+}
+
+TEST_F(HloDecomposerTest, ExtractProducerConsumersIntoNewModuleSingleConsumer) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  dot = f32[10,10] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f32[10,10] parameter(2)
+  ROOT add = f32[10,10] add(dot, p2)
+})"));
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  auto new_module = ExtractProducerConsumersIntoNewModule(*dot);
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %parameter.0 = f32[10,10]{1,0} parameter(0)
+CHECK-THEN: %parameter.1 = f32[10,10]{1,0} parameter(1)
+CHECK-THEN: %dot.1 = f32[10,10]{1,0} dot(%parameter.0, %parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+CHECK-THEN: %parameter.2 = f32[10,10]{1,0} parameter(2)
+CHECK-THEN: ROOT %add.1 = f32[10,10]{1,0} add(%dot.1, %parameter.2)
+  )"));
+  EXPECT_TRUE(filecheck_result);
 }
 
 }  // namespace

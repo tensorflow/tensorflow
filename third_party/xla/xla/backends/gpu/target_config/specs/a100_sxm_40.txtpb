@@ -34,11 +34,121 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  scalar_unit_description {
+    rate_infos {
+      key: 4
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 8
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 32
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+  }
+  matrix_unit_description {
+    rate_infos {
+      key: 2
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 6
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 128
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 16
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+  }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 8.0"
+  model_str: "sm_8.0 with 42298834944B RAM, 108 cores, 1410000KHz clock, 1215000KHz mem clock, 41943040B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 34359738368
+  ecc_enabled: true
+  name: "NVIDIA A100-SXM4-40GB"
+  driver_version: "13.0.0"
+  runtime_version: "12.8.0"
+  compile_time_toolkit_version: "12.8.0"
+  dnn_version: "9.10.0"
+  cub_version: "3.1.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
-}
 device_description_str: "NVIDIA A100-SXM4-40GB"

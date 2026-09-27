@@ -238,8 +238,8 @@ absl::StatusOr<std::vector<TaskInfo>> DatasetClient<T>::GetTasks(
   request.set_iteration_client_id(iteration_client_id);
   TF_RETURN_IF_ERROR(dispatcher_client_->ClientHeartbeat(request, response));
   if (response.task_info().empty()) {
-    return errors::NotFound("No task found for iteration ", iteration_client_id,
-                            ".");
+    return absl::NotFoundError(
+        absl::StrCat("No task found for iteration ", iteration_client_id, "."));
   }
   return std::vector<TaskInfo>(response.task_info().begin(),
                                response.task_info().end());

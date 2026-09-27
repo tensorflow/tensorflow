@@ -29,9 +29,9 @@ using errors::InvalidArgument;
 absl::Status QuantizeMultiplier(double double_multiplier,
                                 int32_t& quantized_multiplier, int32_t& shift) {
   if (!isfinite(double_multiplier) || double_multiplier <= 0) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "double_multiplier must be a poisitive finite number. Given ",
-        double_multiplier);
+        double_multiplier));
   }
   const double q = std::frexp(double_multiplier, &shift);
   auto q_fixed = static_cast<int64_t>(std::round(q * (1LL << 31)));

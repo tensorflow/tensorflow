@@ -284,6 +284,18 @@ class DistributedSaveTest(
       self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testInvalidSnapshotPath(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Snapshot path cannot contain path traversal characters"):
+      self.evaluate(distributed_save_op.distributed_save(
+          dataset,
+          "../invalid_dir",
+          cluster.dispatcher_address()))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testBadDispatcherAddress(self):
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(ValueError, "must be a string"):

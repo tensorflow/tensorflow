@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ absl::Status ReadProtoFile(Env* env, const std::string& fname, T* proto,
       return absl::Status();
     }
   }
-  return errors::InvalidArgument("Cannot parse proto file.");
+  return absl::InvalidArgumentError("Cannot parse proto file.");
 }
 
 void PrintHelp();

@@ -20,7 +20,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -92,19 +91,18 @@ class MergePaddingWith2DOperation : public SequenceTransformation {
 }  // namespace
 
 std::unique_ptr<SequenceTransformation> NewMergePaddingWithPooling() {
-  return absl::make_unique<MergePaddingWith2DOperation<Pooling2DAttributes>>(
+  return std::make_unique<MergePaddingWith2DOperation<Pooling2DAttributes>>(
       OperationType::POOLING_2D);
 }
 
 std::unique_ptr<SequenceTransformation> NewMergePaddingWithConvolution2D() {
-  return absl::make_unique<
-      MergePaddingWith2DOperation<Convolution2DAttributes>>(
+  return std::make_unique<MergePaddingWith2DOperation<Convolution2DAttributes>>(
       OperationType::CONVOLUTION_2D);
 }
 
 std::unique_ptr<SequenceTransformation>
 NewMergePaddingWithDepthwiseConvolution() {
-  return absl::make_unique<
+  return std::make_unique<
       MergePaddingWith2DOperation<DepthwiseConvolution2DAttributes>>(
       OperationType::DEPTHWISE_CONVOLUTION);
 }
@@ -174,7 +172,7 @@ class MergePaddingWithAddOperation : public NodeTransformation {
 };
 
 std::unique_ptr<NodeTransformation> NewMergePaddingWithAdd() {
-  return absl::make_unique<MergePaddingWithAddOperation>();
+  return std::make_unique<MergePaddingWithAddOperation>();
 }
 
 }  // namespace gpu

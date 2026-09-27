@@ -23,7 +23,8 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_py_exception_registry, m) {
+PYBIND11_MODULE(_pywrap_py_exception_registry, m,
+                pybind11::mod_gil_not_used()) {
   py::enum_<TF_Code>(m, "TF_Code", py::module_local())
       .value("TF_OK", TF_OK)
       .value("TF_CANCELLED", TF_CANCELLED)

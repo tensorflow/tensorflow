@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -171,29 +171,29 @@ std::string GetUnnestedP2PModuleString(bool is_host = false,
 
 TEST_F(P2PSchedulePreparationTest, UnnestedP2PChainHostNotTransformed) {
   std::string kModuleStr = GetUnnestedP2PModuleString(/*is_host=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(P2PSchedulePreparationTest, UnnestedP2PChainIncompleteNotTransformed) {
   std::string kModuleStr =
       GetUnnestedP2PModuleString(/*is_host=*/false, /*incomplete*/ true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
 TEST_F(P2PSchedulePreparationTest, UnnestedP2PChainTransformed) {
   std::string kModuleStr = GetUnnestedP2PModuleString();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
   VerifyUnpipelinedP2P(module.get());
 }
@@ -272,10 +272,10 @@ std::string GetNestedP2PModuleString(bool while_p2p_is_host = false,
 TEST_F(P2PSchedulePreparationTest, WhileP2PIsHostNotMainTransformed) {
   std::string kModuleStr = GetNestedP2PModuleString(/*while_p2p_is_host=*/true);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -291,10 +291,10 @@ TEST_F(P2PSchedulePreparationTest, WhileP2PIsHostNotMainTransformed) {
 TEST_F(P2PSchedulePreparationTest, MainP2PIsHostNotWhileTransformed) {
   std::string kModuleStr = GetNestedP2PModuleString(/*while_p2p_is_host=*/false,
                                                     /*main_p2p_is_host=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -304,10 +304,10 @@ TEST_F(P2PSchedulePreparationTest, MainP2PIsHostNotWhileTransformed) {
 
 TEST_F(P2PSchedulePreparationTest, NestedP2PChainTransformed) {
   std::string kModuleStr = GetNestedP2PModuleString();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -574,10 +574,10 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
 
 TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
   std::string kModuleStr = GetPipelinedP2PModuleString();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -607,10 +607,10 @@ TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
 TEST_F(P2PSchedulePreparationTest, NestedPipelinedP2PChainTransformed) {
   std::string kModuleStr =
       GetPipelinedP2PModuleString(/*nested_p2p_in_main=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -636,10 +636,10 @@ TEST_F(P2PSchedulePreparationTest,
        UnnestedPipelinedP2PChainWithOtherP2PTransformed) {
   std::string kModuleStr = GetPipelinedP2PModuleString(
       /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VLOG(10) << module->ToString();
@@ -664,10 +664,10 @@ TEST_F(P2PSchedulePreparationTest,
   std::string kModuleStr = GetPipelinedP2PModuleString(
       /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/false,
       /*test_custom_call=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Verify in the main computation, custom-call is either scheduled after
@@ -836,10 +836,10 @@ body {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
 
@@ -938,10 +938,10 @@ body {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   // Verify the unpipelined P2P chain with two channels in the while-body.
@@ -1029,10 +1029,10 @@ body {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule((kModuleStr)));
   P2PSchedulePreparation preparation;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, preparation.Run(module.get()));
   EXPECT_TRUE(changed);
 
   VerifyUnpipelinedP2P(module.get(), ".0");

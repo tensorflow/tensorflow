@@ -19,14 +19,21 @@ limitations under the License.
 #include <cstring>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
@@ -39,8 +46,9 @@ inline bool ShouldReuseTensorMemory(const TfLiteTensor* tensor) {
   // since it might be invalid after the original arena grow in size and copied
   // over to a new memory block.
   // First check alignment is consistent with Tensorflow.
-  if (EIGEN_MAX_ALIGN_BYTES != 0 &&
-      reinterpret_cast<intptr_t>(tensor->data.raw) % EIGEN_MAX_ALIGN_BYTES) {
+  if (EIGEN_MAX_ALIGN_BYTES != 0 &&  // NOLINT(misc-include-cleaner)
+      reinterpret_cast<intptr_t>(tensor->data.raw) %
+          EIGEN_MAX_ALIGN_BYTES) {  // NOLINT(misc-include-cleaner)
     return false;
   }
   return tensor->allocation_type != kTfLiteArenaRw;
@@ -76,8 +84,9 @@ void* TfLiteTensorBuffer::MaybeAllocateTensorflowBuffer(
   if (allow_reusing && ShouldReuseTensorMemory(tensor)) {
     return tensor->data.raw;
   }
-  return tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES,
-                                                  tensor->bytes);
+  return tensorflow::cpu_allocator()->AllocateRaw(
+      EIGEN_MAX_ALIGN_BYTES,  // NOLINT(misc-include-cleaner)
+      tensor->bytes);
 }
 
 TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor,
@@ -154,6 +163,16 @@ absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
     *tf_tensor = t;
     return absl::OkStatus();
   } else if (IsResourceOrVariant(tensor)) {
+    // Resource and Variant tensors are expected to be managed by the Flex
+    // delegate, which sets up the tensor->data.raw to point to a
+    // tensorflow::Tensor**. If tensor->delegate is nullptr, it means this
+    // tensor is not managed by the Flex delegate, and we cannot interpret its
+    // data as a TensorFlow tensor pointer.
+    if (tensor->delegate == nullptr) {
+      return absl::InvalidArgumentError(  // NOLINT
+          "Input tensor has resource or variant type but is not managed by "
+          "the Flex delegate.");
+    }
     // TODO(b/179094265): This is an experimental implementation, subject to
     // change. This can be re-implemented with life cycle management mechanism
     // like reference counting.
@@ -183,6 +202,63 @@ absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   // preferable to somehow reuse the buffer.
   BaseTfLiteTensorBuffer* buf;
   if (tensor->type == kTfLiteString) {
+    if (tensor->data.raw != nullptr) {
+      const char* raw_data = static_cast<const char*>(tensor->data.raw);
+      if (tensor->bytes < sizeof(int32_t)) {
+        return absl::InvalidArgumentError(
+            "String tensor buffer too small for string count");
+      }
+      int num_strings = GetStringCount(tensor);
+      if (num_strings < 0 || num_strings > INT32_MAX - 2) {
+        return absl::InvalidArgumentError(
+            "Invalid string count in string tensor");
+      }
+      uint64_t required_bytes =
+          sizeof(int32_t) * (static_cast<uint64_t>(num_strings) + 2);
+      if (tensor->bytes < required_bytes) {
+        return absl::InvalidArgumentError(
+            "String tensor buffer too small for implied structure");
+      }
+
+      auto read_int32 = [](const char* p) {
+        int32_t val;
+        std::memcpy(&val, p, sizeof(int32_t));
+        return val;
+      };
+
+      for (int i = 1; i <= num_strings; ++i) {
+        int32_t offset_i = read_int32(raw_data + i * sizeof(int32_t));
+        if (offset_i < 0) {
+          return absl::InvalidArgumentError("Invalid string start offset");
+        }
+        uint64_t u_offset_i = static_cast<uint64_t>(offset_i);
+        if (u_offset_i < required_bytes ||
+            u_offset_i > static_cast<uint64_t>(tensor->bytes)) {
+          return absl::InvalidArgumentError("Invalid string start offset");
+        }
+        if (i < num_strings) {
+          int32_t offset_i_plus_1 =
+              read_int32(raw_data + (i + 1) * sizeof(int32_t));
+          if (offset_i > offset_i_plus_1) {
+            return absl::InvalidArgumentError("Non-monotonic string offsets");
+          }
+        }
+      }
+      int32_t offset_last =
+          read_int32(raw_data + (num_strings + 1) * sizeof(int32_t));
+      if (offset_last < 0) {
+        return absl::InvalidArgumentError(
+            "Invalid total buffer length in string tensor");
+      }
+      uint64_t u_offset_last = static_cast<uint64_t>(offset_last);
+      int32_t offset_num_strings =
+          read_int32(raw_data + num_strings * sizeof(int32_t));
+      if (offset_last < offset_num_strings || u_offset_last < required_bytes ||
+          u_offset_last > static_cast<uint64_t>(tensor->bytes)) {
+        return absl::InvalidArgumentError(
+            "Invalid total buffer length in string tensor");
+      }
+    }
     buf = new StringTfLiteTensorBuffer(tensor);
   } else {
     buf = new TfLiteTensorBuffer(tensor, allow_reusing);

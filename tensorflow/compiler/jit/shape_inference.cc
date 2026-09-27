@@ -305,9 +305,9 @@ absl::StatusOr<InferredShape> MergeInferredShapes(const InferredShape& a,
   } else if (a.handle_type == b.handle_type) {
     result.handle_type = a.handle_type;
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Mismatched resource types: ", DataTypeString(a.handle_type), " vs. ",
-        DataTypeString(b.handle_type));
+        DataTypeString(b.handle_type)));
   }
   TF_RETURN_IF_ERROR(
       a.handle_shape.MergeWith(b.handle_shape, &result.handle_shape));

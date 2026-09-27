@@ -13,22 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
 
+#include <cfloat>
+#include <cstdint>
 #include <memory>
+#include <string>
 
-#include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/histogram/histogram.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/percentile_sampler.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/lib/monitoring/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace monitoring {
 
-using histogram::Histogram;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::IsEmpty;
+using ::tsl::histogram::Histogram;
+using ::tsl::monitoring::testing::HasUnorderedLabels;
+using ::tsl::monitoring::testing::HasValidTimestamps;
+using ::tsl::monitoring::testing::HistogramEquals;
+using ::tsl::monitoring::testing::OnePointSatisfies;
+using ::tsl::monitoring::testing::UnorderedPointsOneForEachConstraintSet;
 
 namespace test_util {
 
@@ -131,41 +147,42 @@ TEST(CollectMetricsTest, Counter) {
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/counter_with_labels");
     EXPECT_EQ("/tensorflow/test/counter_with_labels", lps.metric_name);
-    ASSERT_EQ(2, lps.points.size());
-    ASSERT_EQ(2, lps.points[0]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
-    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
-    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
-    EXPECT_EQ(ValueType::kInt64, lps.points[0]->value_type);
-    EXPECT_EQ(42, lps.points[0]->int64_value);
-    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
-    EXPECT_GE(lps.points[0]->end_timestamp_millis,
-              lps.points[0]->start_timestamp_millis);
-    ASSERT_EQ(2, lps.points[1]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
-    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
-    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
-    EXPECT_EQ(ValueType::kInt64, lps.points[1]->value_type);
-    EXPECT_EQ(58, lps.points[1]->int64_value);
-    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
-    EXPECT_GE(lps.points[1]->end_timestamp_millis,
-              lps.points[1]->start_timestamp_millis);
+    EXPECT_THAT(
+        lps.points,
+        UnorderedPointsOneForEachConstraintSet({
+            OnePointSatisfies{
+                HasUnorderedLabels({
+                    {.name = "MyLabel0", .value = "Label00"},
+                    {.name = "MyLabel1", .value = "Label10"},
+                }),
+                Field("value_type", &Point::value_type, Eq(ValueType::kInt64)),
+                Field("int64_value", &Point::int64_value, Eq(42)),
+                HasValidTimestamps(),
+            },
+            OnePointSatisfies{
+                HasUnorderedLabels({
+                    {.name = "MyLabel0", .value = "Label01"},
+                    {.name = "MyLabel1", .value = "Label11"},
+                }),
+                Field("value_type", &Point::value_type, Eq(ValueType::kInt64)),
+                Field("int64_value", &Point::int64_value, Eq(58)),
+                HasValidTimestamps(),
+            },
+        }));
 
     const PointSet& ups = *collected_metrics->point_set_map.at(
         "/tensorflow/test/counter_without_labels");
     EXPECT_EQ("/tensorflow/test/counter_without_labels", ups.metric_name);
-    ASSERT_EQ(1, ups.points.size());
-    EXPECT_EQ(0, ups.points[0]->labels.size());
-    EXPECT_EQ(ValueType::kInt64, ups.points[0]->value_type);
-    EXPECT_EQ(7, ups.points[0]->int64_value);
-    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
-    EXPECT_GE(ups.points[0]->end_timestamp_millis,
-              ups.points[0]->start_timestamp_millis);
+    EXPECT_THAT(
+        ups.points,
+        UnorderedPointsOneForEachConstraintSet({
+            OnePointSatisfies{
+                Field("labels", &Point::labels, IsEmpty()),
+                Field("value_type", &Point::value_type, Eq(ValueType::kInt64)),
+                Field("int64_value", &Point::int64_value, Eq(7)),
+                HasValidTimestamps(),
+            },
+        }));
   }
 }
 
@@ -221,50 +238,43 @@ TEST(CollectMetricsTest, Gauge) {
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/string_gauge_with_labels");
     EXPECT_EQ("/tensorflow/test/string_gauge_with_labels", lps.metric_name);
-    ASSERT_EQ(2, lps.points.size());
-    ASSERT_EQ(2, lps.points[0]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
-    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
-    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
-    EXPECT_EQ(ValueType::kString, lps.points[0]->value_type);
-    EXPECT_EQ("test1", lps.points[0]->string_value);
-    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
-    EXPECT_GE(lps.points[0]->end_timestamp_millis,
-              lps.points[0]->start_timestamp_millis);
-    ASSERT_EQ(2, lps.points[1]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
-    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
-    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
-    EXPECT_EQ(ValueType::kString, lps.points[1]->value_type);
-    EXPECT_EQ("test2", lps.points[1]->string_value);
-    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
-    EXPECT_GE(lps.points[1]->end_timestamp_millis,
-              lps.points[1]->start_timestamp_millis);
+    EXPECT_THAT(
+        lps.points,
+        UnorderedPointsOneForEachConstraintSet({
+            OnePointSatisfies{
+                HasUnorderedLabels({
+                    {.name = "MyLabel0", .value = "Label00"},
+                    {.name = "MyLabel1", .value = "Label10"},
+                }),
+                Field("value_type", &Point::value_type, Eq(ValueType::kString)),
+                Field("string_value", &Point::string_value, Eq("test1")),
+                HasValidTimestamps(),
+            },
+            OnePointSatisfies{
+                HasUnorderedLabels({
+                    {.name = "MyLabel0", .value = "Label01"},
+                    {.name = "MyLabel1", .value = "Label11"},
+                }),
+                Field("value_type", &Point::value_type, Eq(ValueType::kString)),
+                Field("string_value", &Point::string_value, Eq("test2")),
+                HasValidTimestamps(),
+            },
+        }));
 
     const PointSet& ups = *collected_metrics->point_set_map.at(
         "/tensorflow/test/integer_gauge_without_labels");
     EXPECT_EQ("/tensorflow/test/integer_gauge_without_labels", ups.metric_name);
-    ASSERT_EQ(1, ups.points.size());
-    EXPECT_EQ(0, ups.points[0]->labels.size());
-    EXPECT_EQ(ValueType::kInt64, ups.points[0]->value_type);
-    EXPECT_EQ(7, ups.points[0]->int64_value);
-    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
-    EXPECT_GE(ups.points[0]->end_timestamp_millis,
-              ups.points[0]->start_timestamp_millis);
+    EXPECT_THAT(
+        ups.points,
+        UnorderedPointsOneForEachConstraintSet({
+            OnePointSatisfies{
+                Field("labels", &Point::labels, IsEmpty()),
+                Field("value_type", &Point::value_type, Eq(ValueType::kInt64)),
+                Field("int64_value", &Point::int64_value, Eq(7)),
+                HasValidTimestamps(),
+            },
+        }));
   }
-}
-
-void EqHistograms(const Histogram& expected,
-                  const HistogramProto& actual_proto) {
-  Histogram actual;
-  ASSERT_TRUE(actual.DecodeFromProto(actual_proto));
-
-  EXPECT_EQ(expected.ToString(), actual.ToString());
 }
 
 TEST(CollectMetricsTest, Sampler) {
@@ -327,41 +337,46 @@ TEST(CollectMetricsTest, Sampler) {
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/sampler_with_labels");
     EXPECT_EQ("/tensorflow/test/sampler_with_labels", lps.metric_name);
-    ASSERT_EQ(2, lps.points.size());
-    ASSERT_EQ(2, lps.points[0]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
-    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
-    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
-    EXPECT_EQ(ValueType::kHistogram, lps.points[0]->value_type);
-    EqHistograms(with_labels0, lps.points[0]->histogram_value);
-    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
-    EXPECT_GE(lps.points[0]->end_timestamp_millis,
-              lps.points[0]->start_timestamp_millis);
-    ASSERT_EQ(2, lps.points[1]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
-    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
-    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
-    EXPECT_EQ(ValueType::kHistogram, lps.points[1]->value_type);
-    EqHistograms(with_labels1, lps.points[1]->histogram_value);
-    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
-    EXPECT_GE(lps.points[1]->end_timestamp_millis,
-              lps.points[1]->start_timestamp_millis);
+    EXPECT_THAT(lps.points,
+                UnorderedPointsOneForEachConstraintSet({
+                    OnePointSatisfies{
+                        HasUnorderedLabels({
+                            {.name = "MyLabel0", .value = "Label00"},
+                            {.name = "MyLabel1", .value = "Label10"},
+                        }),
+                        Field("value_type", &Point::value_type,
+                              Eq(ValueType::kHistogram)),
+                        Field("histogram_value", &Point::histogram_value,
+                              HistogramEquals(with_labels0)),
+                        HasValidTimestamps(),
+                    },
+                    OnePointSatisfies{
+                        HasUnorderedLabels({
+                            {.name = "MyLabel0", .value = "Label01"},
+                            {.name = "MyLabel1", .value = "Label11"},
+                        }),
+                        Field("value_type", &Point::value_type,
+                              Eq(ValueType::kHistogram)),
+                        Field("histogram_value", &Point::histogram_value,
+                              HistogramEquals(with_labels1)),
+                        HasValidTimestamps(),
+                    },
+                }));
 
     const PointSet& ups = *collected_metrics->point_set_map.at(
         "/tensorflow/test/sampler_without_labels");
     EXPECT_EQ("/tensorflow/test/sampler_without_labels", ups.metric_name);
-    ASSERT_EQ(1, ups.points.size());
-    EXPECT_EQ(0, ups.points[0]->labels.size());
-    EXPECT_EQ(ValueType::kHistogram, ups.points[0]->value_type);
-    EqHistograms(without_labels, ups.points[0]->histogram_value);
-    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
-    EXPECT_GE(ups.points[0]->end_timestamp_millis,
-              ups.points[0]->start_timestamp_millis);
+    EXPECT_THAT(ups.points,
+                UnorderedPointsOneForEachConstraintSet({
+                    OnePointSatisfies{
+                        Field("labels", &Point::labels, IsEmpty()),
+                        Field("value_type", &Point::value_type,
+                              Eq(ValueType::kHistogram)),
+                        Field("histogram_value", &Point::histogram_value,
+                              HistogramEquals(without_labels)),
+                        HasValidTimestamps(),
+                    },
+                }));
   }
 }
 
@@ -421,39 +436,39 @@ TEST(CollectMetricsTest, PercentileSampler) {
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/pctsampler_with_labels");
     EXPECT_EQ("/tensorflow/test/pctsampler_with_labels", lps.metric_name);
-    ASSERT_EQ(2, lps.points.size());
-    ASSERT_EQ(2, lps.points[0]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
-    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
-    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
-    EXPECT_EQ(ValueType::kPercentiles, lps.points[0]->value_type);
-
-    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
-    EXPECT_GE(lps.points[0]->end_timestamp_millis,
-              lps.points[0]->start_timestamp_millis);
-    ASSERT_EQ(2, lps.points[1]->labels.size());
-    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
-    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
-    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
-    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
-    EXPECT_EQ(ValueType::kPercentiles, lps.points[1]->value_type);
-    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
-    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
-    EXPECT_GE(lps.points[1]->end_timestamp_millis,
-              lps.points[1]->start_timestamp_millis);
+    EXPECT_THAT(lps.points,
+                UnorderedPointsOneForEachConstraintSet({
+                    OnePointSatisfies{
+                        HasUnorderedLabels({
+                            {.name = "MyLabel0", .value = "Label00"},
+                            {.name = "MyLabel1", .value = "Label10"},
+                        }),
+                        Field("value_type", &Point::value_type,
+                              Eq(ValueType::kPercentiles)),
+                        HasValidTimestamps(),
+                    },
+                    OnePointSatisfies{
+                        HasUnorderedLabels({
+                            {.name = "MyLabel0", .value = "Label01"},
+                            {.name = "MyLabel1", .value = "Label11"},
+                        }),
+                        Field("value_type", &Point::value_type,
+                              Eq(ValueType::kPercentiles)),
+                        HasValidTimestamps(),
+                    },
+                }));
 
     const PointSet& ups = *collected_metrics->point_set_map.at(
         "/tensorflow/test/pctsampler_without_labels");
     EXPECT_EQ("/tensorflow/test/pctsampler_without_labels", ups.metric_name);
-    ASSERT_EQ(1, ups.points.size());
-    EXPECT_EQ(0, ups.points[0]->labels.size());
-    EXPECT_EQ(ValueType::kPercentiles, ups.points[0]->value_type);
-    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
-    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
-    EXPECT_GE(ups.points[0]->end_timestamp_millis,
-              ups.points[0]->start_timestamp_millis);
+    EXPECT_THAT(ups.points, UnorderedPointsOneForEachConstraintSet({
+                                OnePointSatisfies{
+                                    Field("labels", &Point::labels, IsEmpty()),
+                                    Field("value_type", &Point::value_type,
+                                          Eq(ValueType::kPercentiles)),
+                                    HasValidTimestamps(),
+                                },
+                            }));
   }
 }
 
@@ -491,9 +506,15 @@ TEST(CollectionRegistryTest, WriteTimestamps) {
         collection_registry->CollectMetrics({});
     const PointSet& point_set =
         *collected_metrics->point_set_map.at("/tensorflow/cumulative/metric");
-    ASSERT_EQ(1, point_set.points.size());
-    EXPECT_EQ(25, point_set.points[0]->start_timestamp_millis);
-    EXPECT_EQ(100, point_set.points[0]->end_timestamp_millis);
+    EXPECT_THAT(point_set.points,
+                UnorderedPointsOneForEachConstraintSet({
+                    OnePointSatisfies{
+                        Field("start_timestamp_millis",
+                              &Point::start_timestamp_millis, Eq(25)),
+                        Field("end_timestamp_millis",
+                              &Point::end_timestamp_millis, Eq(100)),
+                    },
+                }));
   }
   {
     const MetricDef<MetricKind::kGauge, int64_t, 0> gauge_metric(
@@ -508,12 +529,18 @@ TEST(CollectionRegistryTest, WriteTimestamps) {
         collection_registry->CollectMetrics({});
     const PointSet& point_set =
         *collected_metrics->point_set_map.at("/tensorflow/gauge/metric");
-    ASSERT_EQ(1, point_set.points.size());
-    EXPECT_EQ(175, point_set.points[0]->start_timestamp_millis);
-    EXPECT_EQ(175, point_set.points[0]->end_timestamp_millis);
+    EXPECT_THAT(point_set.points,
+                UnorderedPointsOneForEachConstraintSet({
+                    OnePointSatisfies{
+                        Field("start_timestamp_millis",
+                              &Point::start_timestamp_millis, Eq(175)),
+                        Field("end_timestamp_millis",
+                              &Point::end_timestamp_millis, Eq(175)),
+                    },
+                }));
   }
 }
 
 }  // namespace
 }  // namespace monitoring
-}  // namespace tensorflow
+}  // namespace tsl

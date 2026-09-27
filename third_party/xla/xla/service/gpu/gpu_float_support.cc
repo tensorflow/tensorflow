@@ -106,6 +106,9 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         }
       }
       return LowPrecisionType() == BF16;
+    case HloOpcode::kConvolution:
+    case HloOpcode::kRaggedDot:
+      return true;
     // Data movement only ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
@@ -136,9 +139,39 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       return true;
     // Elementwise ops.
     case HloOpcode::kExp:
+      if (LowPrecisionType() == BF16) {
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // Every AMD GPU lowers bf16 exp as exp2(x * log2(e)) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
+        }
+      }
+      return false;
     case HloOpcode::kLog:
       if (LowPrecisionType() == BF16) {
-        return compute_capability_.IsCuda();
+        if (compute_capability_.IsCuda()) {
+          return true;
+        }
+        // Every AMD GPU lowers bf16 log as log2(x) * ln(2) in f32 and rounds
+        // to bf16 once, so it never needs upcasting here.
+        if (compute_capability_.rocm_compute_capability() != nullptr) {
+          return true;
+        }
+      }
+      return false;
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kTanh:
+      // gfx1250 has native bf16 transcendental instructions (v_sqrt_bf16,
+      // v_rsq_bf16, v_tanh_bf16), so there is no need to upcast these bf16 ops
+      // to f32.
+      if (LowPrecisionType() == BF16) {
+        if (auto* rocm_cc = compute_capability_.rocm_compute_capability()) {
+          return rocm_cc->has_bf16_transcendental_support();
+        }
       }
       return false;
     case HloOpcode::kAbs:

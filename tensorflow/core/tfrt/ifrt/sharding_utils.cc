@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#include "absl/container/inlined_vector.h"
+#include "xla/pjrt/pjrt_client.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
@@ -44,8 +43,10 @@ limitations under the License.
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 
 namespace tensorflow {
@@ -263,6 +265,24 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromDisassembledTensors(
   }
 
   return output_tensor;
+}
+
+absl::StatusOr<std::optional<tensorflow::TensorShape>> GetLogicalShapeIfDynamic(
+    xla::ifrt::Array* array) {
+  auto* pjrt_arr =
+      xla::ifrt::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(array);
+  if (pjrt_arr != nullptr) {
+    xla::PjRtBuffer* pjrt_buffer = pjrt_arr->pjrt_buffers().front().get();
+    if (pjrt_buffer->has_dynamic_dimensions()) {
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                          pjrt_buffer->logical_dimensions());
+      tensorflow::TensorShape tensor_shape;
+      TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
+          logical_dims, &tensor_shape));
+      return tensor_shape;
+    }
+  }
+  return std::nullopt;
 }
 
 absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
@@ -487,10 +507,16 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
                         input_array.FullyReplicatedShard(
                             xla::ifrt::ArrayCopySemantics::kDonateInput));
 
-    if (fully_replicated_array->shape() != ToIfrtShape(tensor_shape)) {
+    if (fully_replicated_array->shape() != input_array.shape()) {
       return absl::InternalError(absl::StrCat(
-          "Not fully replicated output. Expected ", tensor_shape.DebugString(),
+          "Not fully replicated output. Expected ", input_array.shape(),
           " but got ", fully_replicated_array->shape()));
+    }
+
+    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+                        GetLogicalShapeIfDynamic(fully_replicated_array.get()));
+    if (dynamic_shape.has_value()) {
+      tensor_shape = *dynamic_shape;
     }
 
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
@@ -508,9 +534,8 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
           std::move(promise).Set(std::move(output_tensor));
         });
     return output_tensor_future;
-  } else if (hlo_sharding.IsTileMaximal()) {
-    // Maximal implies single device
-    VLOG(1) << "Fast path for maximal";
+  } else if (hlo_sharding.IsSingleDevice()) {
+    VLOG(1) << "Fast path for single device";
     TF_ASSIGN_OR_RETURN(
         std::vector<xla::ifrt::ArrayRef> disassembled_array,
         input_array.DisassembleIntoSingleDeviceArrays(
@@ -518,6 +543,13 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
             xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
     int64_t device_id = hlo_sharding.GetUniqueDevice();
+
+    TF_ASSIGN_OR_RETURN(
+        auto dynamic_shape,
+        GetLogicalShapeIfDynamic(disassembled_array[device_id].get()));
+    if (dynamic_shape.has_value()) {
+      tensor_shape = *dynamic_shape;
+    }
 
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
     disassembled_array[device_id]
@@ -606,13 +638,21 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   input_tensors.reserve(index_domain_device_arrays.size());
   arrays_copy_status.reserve(index_domain_device_arrays.size());
   for (const auto& [index_domain, array] : index_domain_device_arrays) {
-    tensorflow::TensorShape tensor_shape = ToTensorShape(index_domain.shape());
+    tensorflow::TensorShape sub_tensor_shape;
+    TF_ASSIGN_OR_RETURN(auto dynamic_shape,
+                        GetLogicalShapeIfDynamic(array.get()));
+    if (dynamic_shape.has_value()) {
+      sub_tensor_shape = *dynamic_shape;
+    } else {
+      sub_tensor_shape = ToTensorShape(index_domain.shape());
+    }
+
     TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
                         ToTensorDataType(array->dtype()));
-    tensorflow::Tensor tensor(dtype, tensor_shape);
+    tensorflow::Tensor tensor(dtype, sub_tensor_shape);
     input_tensors.push_back(tensor);
     tsl::Future<> copy_status = array->CopyToHostBuffer(
-        tensor.data(), GetByteStrides(dtype, tensor_shape),
+        tensor.data(), GetByteStrides(dtype, sub_tensor_shape),
         xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
     copy_status.OnReady([tensor](absl::Status status) {
       VLOG(1) << "Copy of tensor " << tensor.data() << " done with status "
@@ -698,28 +738,26 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
   VLOG(1) << "Hlo sharding: " << sharding;
   VLOG(1) << "Device list size: " << device_list->size();
   // Fast path for single device sharding.
-  if (llvm::isa<const xla::ifrt::SingleDeviceSharding>(sharding.get())) {
+  if (xla::ifrt::isa<const xla::ifrt::SingleDeviceSharding>(sharding.get())) {
     return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
                                                     xla_input_layout, sharding);
   }
 
   const xla::ifrt::HloSharding* ifrt_hlo_sharding =
-      llvm::dyn_cast<const xla::ifrt::HloSharding>(sharding.get());
+      xla::ifrt::dyn_cast<const xla::ifrt::HloSharding>(sharding.get());
   if (!ifrt_hlo_sharding) {
     return absl::InvalidArgumentError("Cannot cast sharding to HloSharding.");
   }
   const xla::HloSharding& xla_hlo_sharding =
       ifrt_hlo_sharding->xla_hlo_sharding();
-  if (!xla_hlo_sharding.IsTiled() && !xla_hlo_sharding.IsReplicated() &&
-      !xla_hlo_sharding.IsTileMaximal()) {
+  if (!xla_hlo_sharding.IsTiled() &&
+      !xla_hlo_sharding.IsReplicatedOrSingleDevice()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
         xla_hlo_sharding.ToString()));
   }
 
-  // IsTileMaximal() also returns true for a replicate sharding created by
-  // xla::HloSharding::Replicate().
-  if (!xla_hlo_sharding.IsReplicated() && xla_hlo_sharding.IsTileMaximal()) {
+  if (xla_hlo_sharding.IsSingleDevice()) {
     return CreateArrayFromHostTensorForSingleDevice(
         ifrt_client, input_tensor, xla_input_layout, std::move(sharding));
   }
@@ -782,8 +820,7 @@ std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
 absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
     xla::ifrt::Client& ifrt_client, const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list) {
-  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicated() &&
-      !hlo_sharding.IsTileMaximal()) {
+  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicatedOrSingleDevice()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
         hlo_sharding.ToString()));
@@ -794,7 +831,7 @@ absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
         device_list->devices().front(), xla::ifrt::MemoryKind());
   }
 
-  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal()) {
+  if (hlo_sharding.IsSingleDevice()) {
     VLOG(1) << "Single device fast path for Maximal tiled tensor";
     xla::ifrt::Device* device;
     int unique_device_id = hlo_sharding.GetUniqueDevice();

@@ -16,11 +16,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -33,9 +35,8 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -43,9 +44,13 @@ namespace xla {
 namespace spmd {
 namespace {
 
+using ::xla::test_only::ShardingFormatPicker;
+
 namespace op = xla::testing::opcode_matchers;
 
-class DotHandlerTest : public HloHardwareIndependentTestBase {
+class DotHandlerTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
@@ -58,10 +63,15 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(
         threshold_for_windowed_einsum_mib);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    debug_options.set_xla_enable_hlo_sharding_v3(
+        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
     config.set_debug_options(debug_options);
 
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_module, config));
+    ABSL_ASSIGN_OR_RETURN(auto module,
+                     ParseAndReturnVerifiedModule(hlo_module, config));
+
+    ShardingFormatPicker format_picker(GetParam());
+    ABSL_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -80,7 +90,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
 
-    TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
+    ABSL_RETURN_IF_ERROR(pass.Run(module.get()).status());
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
@@ -96,7 +106,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
   }
 };
 
-TEST_F(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
+TEST_P(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
   // Verify that StatefulRngSpmdPartitioner correctly sets the default
   // max_windowed_einsum_iteration when not explicitly provided
 
@@ -129,7 +139,7 @@ TEST_F(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
       << "Custom max_windowed_einsum_iteration should be respected";
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationWithContractingDims) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationWithContractingDims) {
   // Test with contracting dimension sharding pattern
   // This pattern should trigger reduce-scatter windowed einsum
   absl::string_view hlo_string = R"(
@@ -147,7 +157,7 @@ ENTRY main {
   // With contracting dims sharded and matching, windowed einsum for
   // reduce-scatter pattern should respect max_windowed_einsum_iteration
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/2,
@@ -161,7 +171,7 @@ ENTRY main {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/4,
@@ -175,7 +185,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationBatchDims) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationBatchDims) {
   // Test with batch dimension sharding
   absl::string_view hlo_string = R"(
 HloModule test
@@ -192,7 +202,7 @@ ENTRY main {
 
   // Batch dims with windowed einsum should also respect max_iterations
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/3,
@@ -206,7 +216,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, DefaultMaxWindowedEinsumIterationWithReduceScatter) {
+TEST_P(DotHandlerTest, DefaultMaxWindowedEinsumIterationWithReduceScatter) {
   // Test that the default max_windowed_einsum_iteration (32) works correctly
   // for reduce-scatter pattern
 
@@ -224,7 +234,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/16,
                              /*max_windowed_einsum_iteration=*/32,
@@ -249,7 +259,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/32,
                              /*max_windowed_einsum_iteration=*/32,
@@ -275,7 +285,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/64,
                              /*max_windowed_einsum_iteration=*/32,
@@ -288,7 +298,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationEdgeCases) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationEdgeCases) {
   // Test edge cases for max_windowed_einsum_iteration
   absl::string_view hlo_string = R"(
 HloModule test
@@ -304,7 +314,7 @@ ENTRY main {
 
   // Test with max_windowed_einsum_iteration = 0 (should disable)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/0,
@@ -318,7 +328,7 @@ ENTRY main {
   // Test with max_windowed_einsum_iteration = 1 (should disable for 8
   // partitions)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/1,
@@ -332,7 +342,7 @@ ENTRY main {
 
   // Test with max_windowed_einsum_iteration = INT64_MAX (should enable)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/INT64_MAX,
@@ -345,7 +355,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchAndBatch) {
+TEST_P(DotHandlerTest, MXCustomCall_BatchAndBatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -357,15 +367,15 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[1,8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(op::Transpose(op::AllToAll(
                   op::Reshape(op::CustomCall({"__op$block_scaled_dot"}))))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchAndNonContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_BatchAndNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -377,8 +387,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall({"__op$block_scaled_dot"}, op::Parameter(0),
@@ -387,7 +397,7 @@ ENTRY entry {
                              op::Reshape(op::Transpose(op::AllToAll()))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ContractingAndContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_ContractingAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -399,8 +409,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -412,7 +422,7 @@ ENTRY entry {
           op::Constant(LiteralUtil::CreateR0<int>(0))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_NonContractingAndContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_NonContractingAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -424,8 +434,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -433,7 +443,7 @@ ENTRY entry {
                      op::AllGather(), op::Parameter(1), op::AllGather()));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ContractingAndReplicated) {
+TEST_P(DotHandlerTest, MXCustomCall_ContractingAndReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -445,47 +455,67 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_Unreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
+  lhs_scale = f8e4m3fn[1024,16]{1,0} parameter(1), sharding={devices=[1,8]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={unreduced}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall({"__op$block_scaled_dot"}));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+TEST_P(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY entry {
   lhs = f8e4m3fn[8,1024,512]{2,1,0} parameter(0), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
   lhs_scale = f8e8m0fnu[8,1024,16]{2,1,0} parameter(1), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
-  rhs = f8e4m3fn[8,128,512]{2,1,0} parameter(2), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(3), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
-  ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
+  rhs = f8e4m3fn[8,128,512]{2,1,0} parameter(2), sharding={devices=[4,2,1]<=[8]}
+  rhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(3), sharding={devices=[4,2,1]<=[8]}
+  ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CollectivePermute(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest,
+TEST_P(DotHandlerTest,
        MXCustomCall_ContractingNonContractingAndContractingNonContracting0) {
   absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY entry {
-  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[128,16] parameter(3), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[2,4]<=[8]}
+  rhs_scale = f8e8m0fnu[128,16] parameter(3), sharding={devices=[2,4]<=[8]}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -493,27 +523,27 @@ ENTRY entry {
                      op::AllGather(), op::AllGather(), op::AllGather()));
 }
 
-TEST_F(DotHandlerTest,
+TEST_P(DotHandlerTest,
        MXCustomCall_ContractingNonContractingAndContractingNonContracting1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY entry {
-  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[4,2]<=[8]}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={devices=[4,2]<=[8]}
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated0) {
+TEST_P(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated0) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -522,11 +552,11 @@ ENTRY entry {
   lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
   rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
   rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -534,7 +564,7 @@ ENTRY entry {
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated1) {
+TEST_P(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -543,17 +573,35 @@ ENTRY entry {
   lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
   rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
   rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::CustomCall({"__op$block_scaled_dot"}, op::DynamicSlice(),
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
+
+std::string TestParamToString(
+    const ::testing::TestParamInfo<ShardingFormatPicker::ShardingType>& data) {
+  switch (data.param) {
+    case ShardingFormatPicker::ShardingType::kBestEffortV2:
+      return "BestEffortV2";
+    case ShardingFormatPicker::ShardingType::kNamed:
+      return "Named";
+    default:
+      return "Unknown";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DotHandlerTestInstantiation, DotHandlerTest,
+    ::testing::Values(ShardingFormatPicker::ShardingType::kBestEffortV2,
+                      ShardingFormatPicker::ShardingType::kNamed),
+    TestParamToString);
 
 }  // namespace
 }  // namespace spmd

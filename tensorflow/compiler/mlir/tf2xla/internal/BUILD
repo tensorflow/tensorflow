@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -11,6 +26,7 @@ package(
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
 )
 
@@ -169,8 +185,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@stablehlo//:register",
         "@xla//xla:shape_util",
-        "@xla//xla/client:compile_only_client",
         "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:statusor",
     ],
@@ -190,7 +206,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
@@ -200,11 +215,11 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@stablehlo//:register",
         "@xla//xla:shape_util",
-        "@xla//xla/client:client_library",
         "@xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@xla//xla/stream_executor:platform",
-        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/tsl/lib/monitoring:cell_reader",
         "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

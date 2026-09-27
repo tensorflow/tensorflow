@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -46,7 +47,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
               << copied_operand->ToString();
 
       auto b = MakeBitcastHlo(copied_operand, s, &copied_operand->metadata());
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, b));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(reshape, b));
       DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
     } else if (auto input_aligned_output_shape =
                    ShapeUtil::AlignLayouts(s0, s)) {
@@ -57,7 +58,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
                  "transposition on the result: "
               << copied_result->ToString();
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, copied_result));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(reshape, copied_result));
     } else {
       VLOG(3) << "Both input and output of reshape are not alignable, create "
                  "two physical transposes";
@@ -69,7 +70,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       auto b = MakeBitcastHlo(c1, s_normalized, &c1->metadata());
       DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
       auto c2 = MakeCopyHlo(b, s);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, c2));
+      ABSL_RETURN_IF_ERROR(ReplaceInstruction(reshape, c2));
     }
     return absl::OkStatus();
   }

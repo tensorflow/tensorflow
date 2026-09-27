@@ -88,6 +88,9 @@ struct PassConfig {
   // have side effects e.g. reduced flatbuffer size. Only certain type
   // conversions are supported.
   bool reduce_type_precision = false;
+  // Whether to fold 16-bit (bf16/f16) to 32-bit (f32) casts on large resource
+  // constants.
+  bool fold_fp16_resource_casts = true;
   // Whether to consider this model a quantized model with quantize/dequantize
   // ops and to convert kernels to quantized kernels wherever appropriate.
   QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
@@ -112,6 +115,9 @@ struct PassConfig {
   // but it may cause incorrect results when broadcasting ops are introduced by
   // explicit broadcasting in the source model.
   bool unsafe_fuse_dynamic_shaped_broadcast = false;
+
+  // When set to true, enable unsafe single batch rank reduction.
+  bool unsafe_single_batch_rank_reduction = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -146,7 +152,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nmodel_origin_framework: "
             << tflite::ConverterFlags::ModelOriginFramework_Name(
                    pass_config.model_origin_framework)
-            << "\n";
+            << "\nunsafe_single_batch_rank_reduction: "
+            << pass_config.unsafe_single_batch_rank_reduction << "\n";
 }
 
 }  // namespace TFL

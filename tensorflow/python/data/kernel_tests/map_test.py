@@ -1104,6 +1104,20 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
             for i in range(10)
         ])
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testTfVariables(self):
+    var = variables.Variable(1)
+    dataset = dataset_ops.Dataset.from_tensor_slices([1] * 10)
+    dataset = dataset.map(lambda x: x * var, num_parallel_calls=None)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
+
+    it = iter(dataset)
+    for i in range(10):
+      var.assign(i)
+      self.assertEqual(self.evaluate(next(it)), i)
+
   @combinations.generate(_test_combinations_with_mode("graph"))
   def testParallelMapOutOfRangeError(self, apply_map):
 

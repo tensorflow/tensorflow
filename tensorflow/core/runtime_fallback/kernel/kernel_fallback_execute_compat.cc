@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -23,16 +24,32 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/logging.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
@@ -46,7 +63,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/platform/errors.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
@@ -55,14 +74,17 @@ limitations under the License.
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
-const char kOpKernelRunnerCacheResourceName[] =
+ABSL_CONST_INIT const char kOpKernelRunnerCacheResourceName[] =
     "OpKernelRunnerCacheResourceName";
 
 namespace {
@@ -124,17 +146,17 @@ static absl::Status ValidateInputTypes(
   const size_t n_inputs = input_tf_tensors.size();
 
   if (input_types.size() != n_inputs) {
-    return tensorflow::errors::InvalidArgument("expected ", input_types.size(),
-                                               " inputs, got ", n_inputs);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "expected ", input_types.size(), " inputs, got ", n_inputs));
   }
 
   for (size_t i = 0; i < n_inputs; ++i) {
     if (input_tf_tensors[i].dtype() != input_types[i]) {
-      return tensorflow::errors::InvalidArgument(
-          "cannot compute ", op_name.str(), " as input #", i, "(zero-based)",
-          " was expected to be a ", DataTypeString(input_types[i]),
-          " tensor but is a ", DataTypeString(input_tf_tensors[i].dtype()),
-          " tensor");
+      return absl::InvalidArgumentError(
+          absl::StrCat("cannot compute ", op_name.str(), " as input #", i,
+                       "(zero-based)", " was expected to be a ",
+                       DataTypeString(input_types[i]), " tensor but is a ",
+                       DataTypeString(input_tf_tensors[i].dtype()), " tensor"));
     }
   }
 
@@ -265,7 +287,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments);
   if (!expected_input_tf_tensors) {
-    status = tensorflow::errors::Internal(
+    status = absl::InternalError(
         tfrt::StrCat(expected_input_tf_tensors.takeError()));
     KernelFallbackEmitError(exec_ctx, &fallback_request_state, op_name,
                             &op_chain, results, status);
@@ -405,7 +427,7 @@ class FallbackKernelAttributeFrame {
 
 // The BEF kernel for kernel fallback compat mode. The arguments and results are
 // expected to tensorflow::tfrt_stub::FallbackTensor.
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOpInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
@@ -472,7 +494,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
 }
 
-TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
+static inline TF_ATTRIBUTE_ALWAYS_INLINE void KernelFallbackExecuteOp(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
@@ -485,7 +507,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr,
         frame.op_name().GetValue(), op_chain, results,
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }
@@ -687,7 +709,7 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr,
         attr_frame.op_name().GetValue(), op_chain, results,
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }
@@ -898,7 +920,7 @@ void BatchFunction(
     KernelFallbackEmitError(
         exec_ctx, /*fallback_request_state=*/nullptr, kTfKernelNameToFallback,
         /*op_chain=*/nullptr, results.values(),
-        tensorflow::errors::NotFound(
+        absl::NotFoundError(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
   }
@@ -987,6 +1009,21 @@ class TestAllocator : public tensorflow::AllocatorWrapper {
     std::printf("Using TestAllocator\n");
     fflush(stdout);
     return wrapped()->AllocateRaw(alignment, num_bytes, allocation_attr);
+  }
+
+  void* AllocateRawAlignedNew(size_t alignment, size_t num_bytes) override {
+    std::printf("Using TestAllocator\n");
+    fflush(stdout);
+    return wrapped()->AllocateRawAlignedNew(alignment, num_bytes);
+  }
+
+  void* AllocateRawAlignedNew(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr) override {
+    std::printf("Using TestAllocator\n");
+    fflush(stdout);
+    return wrapped()->AllocateRawAlignedNew(alignment, num_bytes,
+                                            allocation_attr);
   }
 };
 

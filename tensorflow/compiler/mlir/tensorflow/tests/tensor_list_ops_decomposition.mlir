@@ -1,3 +1,17 @@
+// Copyright 2026 Google Inc. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tensor-list-ops-decomposition | FileCheck %s
 
 // Test push and pop on a tensor list which is initially empty.
@@ -612,5 +626,24 @@ func.func @main(%arg0: tensor<*xi32>)  -> () {
   %elem = "tf._SomeOp"() : () -> tensor<f32>
   // expected-error @+1 {{cannot push on a fixed-size tensor list}}
   %push = "tf.TensorListPushBack"(%tl, %elem) : (tensor<!tf_type.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf_type.variant<tensor<f32>>>
+  func.return
+}
+
+// -----
+
+// Tests that the pass warns on a set item that is allowed to grow the list,
+// which a tf.TensorArray with dynamic_size=True emits. The buffer has a static
+// shape and cannot grow, so the write is dropped. Decomposition still proceeds,
+// since the attribute is set by every dynamic_size TensorArray including those
+// that never write past the end.
+
+func.func @main() -> () {
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  %num = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %index = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %tl = "tf.TensorListReserve"(%elem_shape, %num) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<f32>>>
+  %elem = "tf._SomeOp"() : () -> tensor<f32>
+  // expected-warning @+1 {{TensorLists that grow on an out-of-bounds write are not supported by XLA}}
+  %set = "tf.TensorListSetItem"(%tl, %index, %elem) {resize_if_index_out_of_bounds = true} : (tensor<!tf_type.variant<tensor<f32>>>, tensor<i32>, tensor<f32>) -> tensor<!tf_type.variant<tensor<f32>>>
   func.return
 }

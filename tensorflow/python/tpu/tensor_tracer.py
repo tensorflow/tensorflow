@@ -1002,9 +1002,9 @@ class TensorTracer:
         elif signature_name == _TT_SUMMARY_SIZE:
           signature_result_tensor = _show_size(tensor)
         elif signature_name == _TT_SUMMARY_MEAN:
-          signature_result_tensor = mean
+          signature_result_tensor = mean  # pyrefly: ignore[unbound-name]
         elif signature_name == _TT_SUMMARY_VAR:
-          signature_result_tensor = variance
+          signature_result_tensor = variance  # pyrefly: ignore[unbound-name]
         else:
           raise ValueError('Unknown signature type :%s.' % signature_name)
 
@@ -2251,8 +2251,8 @@ class TensorTracer:
         self._tt_config.num_replicas_per_host = 8
       if self._tt_config.num_hosts is None:
         self._tt_config.num_hosts = (
-            num_replicas // self._tt_config.num_replicas_per_host +
-            (num_replicas % self._tt_config.num_replicas_per_host > 0))
+            num_replicas // self._tt_config.num_replicas_per_host +  # pyrefly: ignore[unsupported-operation]
+            (num_replicas % self._tt_config.num_replicas_per_host > 0))  # pyrefly: ignore[unsupported-operation]
 
     if self._parameters.graph_dump_path:
       graph_io.write_graph(graph, self._parameters.graph_dump_path,

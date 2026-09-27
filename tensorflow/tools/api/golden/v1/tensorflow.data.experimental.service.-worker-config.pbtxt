@@ -2,7 +2,7 @@ path: "tensorflow.data.experimental.service.WorkerConfig"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerConfig\'>"
   is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerConfig\'>"
-  is_instance: "<type \'tuple\'>"
+  is_instance: "<class \'tuple\'>"
   member {
     name: "data_transfer_address"
     mtype: "<class \'collections._tuplegetter\'>"
@@ -36,7 +36,20 @@ tf_class {
     mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
+    name: "__getnewargs__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__new__"
+    argspec: "args=[\'cls\', \'dispatcher_address\', \'worker_address\', \'port\', \'protocol\', \'heartbeat_interval_ms\', \'dispatcher_timeout_ms\', \'data_transfer_protocol\', \'data_transfer_address\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    method_kind: STATIC
+  }
+  member_method {
+    name: "__replace__"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwds, defaults=None"
   }
   member_method {
     name: "count"

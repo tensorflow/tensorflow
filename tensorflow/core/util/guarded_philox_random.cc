@@ -28,7 +28,7 @@ absl::Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   status = context->GetAttr("seed2", &seed2);
   if (!status.ok()) return status;
   if (seed == 0 && seed2 == 0 && OpDeterminismRequired()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "When determinism is enabled, random ops "
         "must have a seed specified.");
   }

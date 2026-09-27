@@ -91,6 +91,18 @@ Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
     case tensorflow::DT_FLOAT8_E5M2:
       *type = builder.getType<Float8E5M2Type>();
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FNUZ:
+      *type = builder.getType<Float8E4M3FNUZType>();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3B11FNUZ:
+      *type = builder.getType<Float8E4M3B11FNUZType>();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2FNUZ:
+      *type = builder.getType<Float8E5M2FNUZType>();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E8M0FNU:
+      *type = builder.getType<Float8E8M0FNUType>();
+      return absl::OkStatus();
     case tensorflow::DT_INT4:
       *type = builder.getIntegerType(4, /*isSigned=*/true);
       return absl::OkStatus();
@@ -110,7 +122,7 @@ Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
 #include "tensorflow/core/ir/types/types.def"
 
     default:
-      return Unimplemented(absl::StrCat(
+      return absl::UnimplementedError(absl::StrCat(
           "Converting DataType '", DataTypeString(dtype), "' to MLIR Type"));
   }
 }
@@ -131,8 +143,20 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   } else if (llvm::isa<Float8E4M3FNType>(type)) {
     *dtype = ::tensorflow::DT_FLOAT8_E4M3FN;
     return absl::OkStatus();
-  } else if (llvm::isa<Float8E5M2FNUZType>(type)) {
+  } else if (llvm::isa<Float8E5M2Type>(type)) {
     *dtype = ::tensorflow::DT_FLOAT8_E5M2;
+    return absl::OkStatus();
+  } else if (llvm::isa<Float8E4M3FNUZType>(type)) {
+    *dtype = ::tensorflow::DT_FLOAT8_E4M3FNUZ;
+    return absl::OkStatus();
+  } else if (llvm::isa<Float8E4M3B11FNUZType>(type)) {
+    *dtype = ::tensorflow::DT_FLOAT8_E4M3B11FNUZ;
+    return absl::OkStatus();
+  } else if (llvm::isa<Float8E5M2FNUZType>(type)) {
+    *dtype = ::tensorflow::DT_FLOAT8_E5M2FNUZ;
+    return absl::OkStatus();
+  } else if (llvm::isa<Float8E8M0FNUType>(type)) {
+    *dtype = ::tensorflow::DT_FLOAT8_E8M0FNU;
     return absl::OkStatus();
   } else if (auto itype = mlir::dyn_cast<IntegerType>(type)) {
     switch (itype.getWidth()) {
@@ -164,7 +188,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
             itype.isUnsigned() ? tensorflow::DT_UINT64 : tensorflow::DT_INT64;
         return absl::OkStatus();
       default:
-        return Unimplemented(
+        return absl::UnimplementedError(
             absl::StrCat("Converting ", debugString(type), " to DataType"));
     }
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
@@ -176,7 +200,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
       *dtype = tensorflow::DT_COMPLEX128;
       return absl::OkStatus();
     }
-    return Unimplemented(
+    return absl::UnimplementedError(
         absl::StrCat("Converting ", debugString(type), " to DataType"));
   }
 
@@ -188,7 +212,7 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
 // NOLINTNEXTLINE
 #include "tensorflow/core/ir/types/types.def"
 
-  return Unimplemented(
+  return absl::UnimplementedError(
       absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
@@ -216,7 +240,7 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
   auto& dims = input_shape.dim();
   for (auto& d : dims) {
     if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return InvalidArgument("Shape element overflows");
+      return absl::InvalidArgumentError("Shape element overflows");
     }
     // This isn't really expected, but Grappler is using such shapes for its
     // symbolic shape analysis and it may spill into here.

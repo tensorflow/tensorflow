@@ -44,7 +44,7 @@ absl::Status GetBroadcastSize(const int index, const int in_size,
                               const int pad_size, int* bindex, int* bsize) {
   // Cannot have index beyond the input size.
   if (index * stride > in_size) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "index * stride must be less than or equal to input size");
   }
   *bindex = index * stride;

@@ -230,7 +230,7 @@ absl::Status BuildHloFromGraph(
     llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def);
 
 static inline absl::Status CompileToHloGraphAnalysisFailedError() {
-  return errors::Internal("disabled after graph analysis");
+  return absl::InternalError("disabled after graph analysis");
 }
 
 // Register a convenient pipeline for invoking TF/XLA lowering from the command

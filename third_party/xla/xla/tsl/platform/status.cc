@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "xla/tsl/platform/status.h"
 
-#include <stdio.h>
-
 #include <cassert>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <initializer_list>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -46,10 +44,8 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/stack_frame.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/thread_annotations.h"
 

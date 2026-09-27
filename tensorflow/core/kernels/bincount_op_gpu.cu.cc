@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <type_traits>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -42,7 +44,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
                               typename TTypes<T, 1>::Tensor& output,
                               const Tidx num_bins) {
     if (weights.size() != 0) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Weights are not yet supported by the GPU implementation of Bincount."
           " Please use unsorted_segment_sum instead or put Bincount inside"
           " tf.function(jit_compile=True).");
@@ -55,7 +57,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       // DeviceHistogram::HistogramEven is called, and it is unclear
       // if it is deterministic on floating-point inputs.
       // See https://github.com/NVIDIA/cub/issues/471#issuecomment-1194682443.
-      return errors::Unimplemented(
+      return absl::UnimplementedError(
           "Determinism is not yet supported in GPU implementation of "
           "Bincount.");
     }
@@ -118,7 +120,8 @@ __global__ void BincountReduceKernel(const Tidx* in, T* out, const int nthreads,
                                      const Tidx num_bins) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       out[bin] = T(1);
     }
   }
@@ -149,7 +152,8 @@ __global__ void BincountColReduceKernel(const Tidx* in, const T* weights,
   const int nthreads = num_rows * num_cols;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int row = index / num_cols;
       int offset = row * num_bins + bin;
       if (binary_count) {
@@ -179,7 +183,8 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
   const int nthreads = num_rows * num_cols;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     Tidx bin = ldg(in + index);
-    if (bin < num_bins) {
+    if (static_cast<std::make_unsigned_t<Tidx>>(bin) <
+        static_cast<std::make_unsigned_t<Tidx>>(num_bins)) {
       int row = index / num_cols;
       int offset = row * num_bins + bin;
       if (binary_count) {

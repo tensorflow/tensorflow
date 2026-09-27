@@ -83,8 +83,8 @@ absl::Status FlattenSignature(
 // Find the node id in `object_graph` at location `path`. `path` must be
 // a dot-delimited string of object names relative to the root object. If no
 // object is found, returns absl::nullopt.
-absl::optional<int> FindNodeAtPath(absl::string_view path,
-                                   const SavedObjectGraph& object_graph);
+std::optional<int> FindNodeAtPath(absl::string_view path,
+                                  const SavedObjectGraph& object_graph);
 
 // Maps each node in `graphdef` to its corresponding Attribute Map.
 // Callers must ensure that `graphdef` outlives the returned map.

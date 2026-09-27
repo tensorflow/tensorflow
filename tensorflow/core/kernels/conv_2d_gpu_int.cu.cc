@@ -29,9 +29,9 @@ namespace tensorflow {
 
 namespace functor {
 
-template struct MatMulConvFunctor<Eigen::GpuDevice, int32>;
-template struct TransformFilter<Eigen::GpuDevice, int32, int, 4>;
-template struct PadInput<Eigen::GpuDevice, int32, int, 4>;
+template struct MatMulConvFunctor<Eigen::GpuDevice, int32_t>;
+template struct TransformFilter<Eigen::GpuDevice, int32_t, int, 4>;
+template struct PadInput<Eigen::GpuDevice, int32_t, int, 4>;
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -20,11 +20,14 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -44,6 +47,9 @@ struct CuptiTracerCollectorOptions {
   uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
   uint32_t num_gpus;
+  // If true, only aggregate stats are collected and individual events are
+  // dropped.
+  bool aggregated_tracing = false;
 };
 // This struct will be used to store the PM Sampling data.
 // Same as CUDA 12.6.2 extras/CUPTI/samples/pm_sampling/pm_sampling.h
@@ -105,8 +111,7 @@ class CuptiTraceCollector {
   // Default behavior is direct process those cached activity events and
   // add it into this class by calling AddEvent().
   virtual void OnTracerCachedActivityBuffers(
-      std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
-          activity_buffers);
+      CuptiActivityBufferManager::CachedActivityBufferBatch activity_buffers);
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,
@@ -122,7 +127,15 @@ class CuptiTraceCollector {
 
   virtual uint64_t GetProfileStartTimeNs() const { return 0; }
 
-  uint64_t GetTracingEndTimeNs() const { return tracing_end_time_ns_; }
+  // Returns an error rather than a sentinel timestamp when tracing did not
+  // record a valid end time.
+  absl::StatusOr<uint64_t> GetTracingEndTimeNs() const {
+    if (!tracing_end_time_ns_.has_value()) {
+      return absl::FailedPreconditionError(
+          "CUPTI tracing end timestamp is unavailable");
+    }
+    return *tracing_end_time_ns_;
+  }
 
   AnnotationMap* annotation_map() { return &annotation_map_; }
 
@@ -138,7 +151,7 @@ class CuptiTraceCollector {
 
  private:
   AnnotationMap annotation_map_;
-  uint64_t tracing_end_time_ns_ = 0;
+  std::optional<uint64_t> tracing_end_time_ns_;
 
   CuptiTraceCollector(const CuptiTraceCollector&) = delete;
   void operator=(const CuptiTraceCollector&) = delete;

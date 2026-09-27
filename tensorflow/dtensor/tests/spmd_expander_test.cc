@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -36,18 +37,18 @@ using ::testing::NotNull;
 
 class DummyExpander : public SPMDExpanderBase {
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
       mlir::Operation* op,
       const llvm::DenseMap<int, Layout>& input_layouts) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
       mlir::Operation* op,
       const llvm::DenseMap<int, Layout>& output_layouts) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 };
 

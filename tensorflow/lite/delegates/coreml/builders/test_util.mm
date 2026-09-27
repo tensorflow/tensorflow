@@ -20,16 +20,14 @@ namespace coreml {
 
 const char SingleOpModelWithCoreMlDelegate::kDelegateName[] = "TfLiteCoreMlDelegate";
 
-SingleOpModelWithCoreMlDelegate::SingleOpModelWithCoreMlDelegate()
-    : delegate_(nullptr, [](TfLiteDelegate*) {}) {
+SingleOpModelWithCoreMlDelegate::SingleOpModelWithCoreMlDelegate() {
   auto* delegate_ptr = TfLiteCoreMlDelegateCreate(&params_);
   EXPECT_TRUE(delegate_ptr != nullptr);
-  delegate_ = tflite::Interpreter::TfLiteDelegatePtr(
-      delegate_ptr, [](TfLiteDelegate* delegate) { TfLiteCoreMlDelegateDelete(delegate); });
 
   // Note that tflite::SingleOpModel::BuildInterpreter(...) will apply the delegate that's set here
   // to the model graph.
-  SetDelegate(delegate_.get());
+  SetDelegate(tflite::Interpreter::TfLiteDelegatePtr(
+      delegate_ptr, [](TfLiteDelegate* delegate) { TfLiteCoreMlDelegateDelete(delegate); }));
 }
 
 }  // namespace coreml

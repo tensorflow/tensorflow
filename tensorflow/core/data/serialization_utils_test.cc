@@ -171,6 +171,20 @@ TEST(SerializationUtilsTest, VariantTensorDataWriteAfterFlushing) {
             writer.WriteTensor(full_name("Tensor"), input_tensor).code());
 }
 
+TEST(SerializationUtilsTest, VariantTensorDataReaderOOB) {
+  VariantTensorData data;
+  data.metadata_ = "Iterator@@key1";
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
+  int64_t val_int64;
+  EXPECT_EQ(reader.ReadScalar("Iterator", "key1", &val_int64).code(),
+            error::OUT_OF_RANGE);
+  Tensor val_tensor;
+  EXPECT_EQ(reader.ReadTensor("Iterator", "key1", &val_tensor).code(),
+            error::OUT_OF_RANGE);
+}
+
 class ParameterizedIteratorStateVariantTest
     : public DatasetOpsTestBase,
       public ::testing::WithParamInterface<std::vector<Tensor>> {

@@ -46,7 +46,7 @@ absl::Status LoadProtoFromBuffer(absl::string_view input,
   if (proto->ParseFromZeroCopyStream(&binary_stream)) return absl::OkStatus();
 
   LOG(ERROR) << "Error parsing Protobuf";
-  return errors::InvalidArgument("Could not parse input proto");
+  return absl::InvalidArgumentError("Could not parse input proto");
 }
 
 template <class T>
@@ -54,9 +54,8 @@ absl::Status LoadProtoFromFileImpl(absl::string_view input_filename, T* proto) {
   const auto file_or_err =
       llvm::MemoryBuffer::getFileOrSTDIN(StringViewToRef(input_filename));
   if (std::error_code error = file_or_err.getError()) {
-    return errors::InvalidArgument(
-        "Could not open input file ",
-        std::string(input_filename.data(), input_filename.size()).c_str());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not open input file ", input_filename));
   }
 
   const auto& input_file = *file_or_err;

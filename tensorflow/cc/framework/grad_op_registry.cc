@@ -24,21 +24,22 @@ GradOpRegistry* GradOpRegistry::Global() {
   return grad_op_registry;
 }
 
-bool GradOpRegistry::Register(const string& op, GradFunc func) {
+bool GradOpRegistry::Register(const std::string& op, GradFunc func) {
   CHECK(registry_.insert({op, func}).second) << "Existing gradient for " << op;
   return true;
 }
 
-absl::Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
+absl::Status GradOpRegistry::Lookup(const std::string& op,
+                                    GradFunc* func) const {
   auto iter = registry_.find(op);
   if (iter == registry_.end()) {
-    const string error_msg =
+    const std::string error_msg =
         "No gradient defined for op: " + op +
         ". Please see "
         "https://www.tensorflow.org/code/"
         "tensorflow/cc/gradients/README.md"
         " for instructions on how to add C++ gradients.";
-    return errors::NotFound(error_msg);
+    return absl::NotFoundError(error_msg);
   }
   *func = iter->second;
   return absl::OkStatus();

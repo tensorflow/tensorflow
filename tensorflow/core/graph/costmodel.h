@@ -59,7 +59,7 @@ class CostModel {
 
   bool is_global() const { return is_global_; }
 
-  inline int Id(const Node* n) const {
+  int Id(const Node* n) const {
     if (is_global_) {
       return n->cost_id();
     } else {
@@ -67,7 +67,7 @@ class CostModel {
     }
   }
 
-  inline int GlobalId(const Node* n, int offset) const {
+  int GlobalId(const Node* n, int offset) const {
     if (is_global_) {
       return n->cost_id();
     } else {

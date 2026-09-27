@@ -164,6 +164,7 @@ struct HostCallbackStates {
   std::vector<std::vector<std::unique_ptr<HostCallbackContext>>> contexts;
   std::vector<std::vector<SendCallback>> send_callbacks;
   std::vector<std::vector<RecvCallback>> recv_callbacks;
+  std::vector<HloOutputCallback> hlo_output_callbacks;
 };
 
 // Creates the execution context for the `host_callback` for one

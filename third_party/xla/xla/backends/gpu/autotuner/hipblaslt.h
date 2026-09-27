@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_HIPBLASLT_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -35,12 +37,10 @@ namespace gpu {
 // A codegen backend for hipBLASLt on ROCm.
 // This backend is used to autotune hipBLASLt algorithms.
 //
-// The HipblasLtBackend requires a fusion instruction with a cuBLASLt custom
-// call (__cublas$lt$matmul). cuBLASLt custom calls are represented as:
-// ```
-//   %custom-call.1 = .. custom-call(...),
-//   custom_call_target="__cublas$lt$matmul"
-// ```
+// Supports two instruction types:
+// 1. cuBLASLt custom calls (__cublas$lt$matmul, __cublas$lt$matmul$f8)
+// 2. __triton_gemm fusions containing kScaledDot, which are converted to
+// __cublas$lt$matmul$mx custom calls.
 class HipblasLtBackend : public GpuCodegenBackend {
  public:
   explicit HipblasLtBackend(stream_executor::StreamExecutor* stream_executor,
@@ -48,7 +48,8 @@ class HipblasLtBackend : public GpuCodegenBackend {
                             Compiler* compiler,
                             const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend(autotuner::Backend::HIPBLASLT, debug_options,
-                          compiler, target_config, stream_executor) {}
+                          compiler, target_config, stream_executor,
+                          /*uses_last_output_for_scratch=*/true) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -58,6 +59,10 @@ class HipblasLtBackend : public GpuCodegenBackend {
 
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+  std::string version() const override {
+    return target_config().device_description.runtime_version().ToString();
+  }
 
  private:
   bool IsSupported(const HloInstruction& instr) override;

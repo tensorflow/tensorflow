@@ -23,13 +23,14 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--dests` - json file with source to destination mappings for files whose original
 location does not match its destination in packaged wheel; if the destination is an
 empty string the source file will be ignored.
-7) `--xla_aot` - paths to files that should be in xla_aot directory. 
+7) `--xla_aot` - paths to files that should be in xla_aot directory.
 """
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(
     "@python_version_repo//:py_version.bzl",
     "HERMETIC_PYTHON_VERSION",
+    "HERMETIC_PYTHON_VERSION_KIND",
     "MACOSX_DEPLOYMENT_TARGET",
     "WHEEL_COLLAB",
     "WHEEL_NAME",
@@ -39,6 +40,13 @@ load(
     "TF_VERSION",
     "TF_WHEEL_VERSION_SUFFIX",
 )
+
+def get_canonical_repo_name(apparent_repo_name):
+    """Returns the canonical repo name for the given apparent repo name seen by the module this bzl file belongs to."""
+    if not apparent_repo_name.startswith("@"):
+        apparent_repo_name = "@" + apparent_repo_name
+
+    return Label(apparent_repo_name).workspace_name
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -57,11 +65,23 @@ def _get_full_wheel_name(
         platform_name,
         platform_tag,
         wheel_version):
-    python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
-    return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
+    python_version = HERMETIC_PYTHON_VERSION
+    is_freethreaded = HERMETIC_PYTHON_VERSION_KIND == "freethreaded"
+
+    for suffix in ["-freethreaded", "-ft"]:
+        if python_version.endswith(suffix):
+            python_version = python_version[:-len(suffix)]
+            is_freethreaded = True
+            break
+
+    python_version = python_version.replace(".", "")
+    abi_tag_suffix = "t" if is_freethreaded else ""
+
+    return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}{abi_tag_suffix}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
         wheel_version = wheel_version,
         python_version = python_version,
+        abi_tag_suffix = abi_tag_suffix,
         wheel_platform_tag = _get_wheel_platform_name(
             platform_name,
             platform_tag,
@@ -125,12 +145,19 @@ def _tf_wheel_impl(ctx):
 
     args.set_param_file_format("flag_per_line")
     args.use_param_file("@%s", use_always = False)
+
+    env = {}
+    for repo in ctx.attr.external_repos:
+        env[repo.upper().replace("-", "_").replace("/", "_") + "_CANONICAL_REPO_NAME"] = get_canonical_repo_name(repo)
+
     ctx.actions.run(
+        mnemonic = "TFWheel",
         arguments = [args],
         inputs = srcs + headers + xla_aot,
         outputs = [output_file],
         executable = executable,
         use_default_shell_env = True,
+        env = env,
     )
     return [DefaultInfo(files = depset(direct = [output_file]))]
 
@@ -149,9 +176,10 @@ tf_wheel = rule(
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
+        "external_repos": attr.string_list(),
     },
     implementation = _tf_wheel_impl,
 )
 
 def tf_wheel_dep():
-    return ["@pypi//{}".format(WHEEL_NAME)]
+    return "@pypi_{}//:whl".format(WHEEL_NAME)

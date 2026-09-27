@@ -19,6 +19,7 @@ import operator
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,6 +54,23 @@ class MatMulMixedType(test_lib.TestCase):
     c = math_ops.batch_mat_mul_v3(a, b, adj_y=True, Tout=np_bf16)
     self.assertAllEqual((2, 2), c.shape)
     self.assertAllEqual([[5, 11], [11, 25]], c)
+
+
+@test_util.with_eager_op_as_function
+class MatMulAddFusionTest(test_lib.TestCase):
+  """Test broadcasting behavior when MatMul and Add are fused in graph execution."""
+
+  def testMatMulAddBroadcastInTfFunction(self):
+    @def_function.function
+    def f(x):
+      return math_ops.add(
+          math_ops.matmul(x, x, transpose_a=True),
+          math_ops.matmul(array_ops.ones([1, 1], dtype=x.dtype), x),
+      )
+
+    x = constant_op.constant(np.ones([1, 7], dtype=np.float32))
+    res = f(x)
+    self.assertEqual(tuple(res.shape), (7, 7))
 
 
 @test_util.with_eager_op_as_function
@@ -212,12 +230,96 @@ except AttributeError:
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
+    # The Python-level rank check now raises ValueError with a descriptive
+    # message before hitting the C++ kernel (which used to raise
+    # InvalidArgumentError).  We accept both the old C++ patterns (for
+    # graph-mode / non-eager paths that bypass the Python guard) and the new
+    # ValueError message so the test stays green across all execution modes.
     with self.assertRaisesRegex(
-        Exception, (r"(In\[0\] and In\[1\] has different ndims|In\[0\] "
-                    r"ndims must be >= 2|Shape must be rank 2 but is rank 1)")):
+        (ValueError, Exception),
+        (
+            r"(must be at least rank 2"
+            r"|In\[0\] and In\[1\] has different ndims"
+            r"|In\[0\] ndims must be >= 2"
+            r"|Shape must be rank 2 but is rank 1)"
+        ),
+    ):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testMismatchedShapeErrorMessage(self):
+    """Verifies that the error message for rank < 2 inputs is descriptive."""
+    # --- `a` is rank-1 ---
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Argument `a` passed to `tf.linalg.matmul` must be at least rank 2",
+    ):
+      math_ops.matmul(
+          ops.convert_to_tensor([1.0, 2.0, 3.0]),
+          ops.convert_to_tensor([[4.0, 5.0], [6.0, 7.0], [8.0, 9.0]]),
+      )
+
+    # The message should show the actual shape and rank.
+    try:
+      math_ops.matmul(
+          ops.convert_to_tensor([1.0, 2.0]),
+          ops.convert_to_tensor([[3.0, 4.0], [5.0, 6.0]]),
+      )
+    except ValueError as e:
+      msg = str(e)
+      self.assertIn(
+          "(2,)", msg, "Error message should include the actual shape (2,)"
+      )
+      self.assertIn("rank 1", msg, "Error message should mention 'rank 1'")
+
+    # The message should suggest tf.expand_dims and tf.reshape for `a`.
+    try:
+      math_ops.matmul(
+          ops.convert_to_tensor([1.0, 2.0]),
+          ops.convert_to_tensor([[3.0, 4.0], [5.0, 6.0]]),
+      )
+    except ValueError as e:
+      msg = str(e)
+      self.assertIn(
+          "tf.expand_dims",
+          msg,
+          "Error should suggest tf.expand_dims as a remediation",
+      )
+      self.assertIn(
+          "tf.reshape", msg, "Error should suggest tf.reshape as a remediation"
+      )
+
+    # --- `b` is rank-1 ---
+    with self.assertRaisesRegex(
+        ValueError,
+        r"Argument `b` passed to `tf.linalg.matmul` must be at least rank 2",
+    ):
+      math_ops.matmul(
+          ops.convert_to_tensor([[1.0, 2.0], [3.0, 4.0]]),
+          ops.convert_to_tensor([5.0, 6.0]),
+      )
+
+    # The message for `b` should also suggest tf.expand_dims, tf.reshape, and
+    # tf.linalg.matvec.
+    try:
+      math_ops.matmul(
+          ops.convert_to_tensor([[1.0, 2.0], [3.0, 4.0]]),
+          ops.convert_to_tensor([5.0, 6.0]),
+      )
+    except ValueError as e:
+      msg = str(e)
+      self.assertIn(
+          "tf.expand_dims", msg, "Error for `b` should suggest tf.expand_dims"
+      )
+      self.assertIn(
+          "tf.reshape", msg, "Error for `b` should suggest tf.reshape"
+      )
+      self.assertIn(
+          "tf.linalg.matvec",
+          msg,
+          "Error for `b` should suggest tf.linalg.matvec",
+      )
 
   def testMismatchedDimensions(self):
     with self.assertRaisesRegex(

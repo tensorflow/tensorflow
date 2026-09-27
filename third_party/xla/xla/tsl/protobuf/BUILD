@@ -1,4 +1,18 @@
-# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -77,14 +91,6 @@ tf_proto_library(
     deps = ["@com_google_protobuf//:any_proto"],
 )
 
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "coordination_service_py_pb2",
-#     visibility = ["//visibility:public"],
-#     deps = [":coordination_service_proto"],
-# )
-# copybara:uncomment_end
-
 tf_proto_library(
     name = "distributed_runtime_payloads_proto",
     srcs = ["distributed_runtime_payloads.proto"],
@@ -104,7 +110,6 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
-    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 tf_proto_library(

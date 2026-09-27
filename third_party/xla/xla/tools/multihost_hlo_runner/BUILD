@@ -1,8 +1,23 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//xla:xla.default.bzl", "xla_cc_binary", "xla_py_strict_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla/tests:build_defs.bzl", "xla_py_test", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
@@ -46,6 +61,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
@@ -55,16 +71,21 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:cpu_plugin",
         "//xla/service:hlo_module_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:status",
         "@tsl//tsl/platform:statusor",
@@ -99,15 +120,17 @@ xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
     tags = [
-        "cuda-only",
         "gpu",
         "no_mac",
     ] + tf_gpu_tests_tags(),
     deps = [
         ":hlo_runner_main_lib",
         "//xla/service:gpu_plugin",
+    ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ] + if_google([
+    ]) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]) + if_google([
         "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
@@ -132,6 +155,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
@@ -161,6 +185,7 @@ cc_library(
     deps = [
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//xla:debug_options_flags",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
@@ -182,6 +207,7 @@ cc_library(
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -189,7 +215,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:device_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
@@ -206,6 +232,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -213,6 +240,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:profiler_factory_impl",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
@@ -222,7 +250,7 @@ cc_library(
 )
 
 filegroup(
-    name = "hlo_file",
+    name = "hlo_files",
     srcs = glob(["data/**"]),
 )
 
@@ -238,7 +266,6 @@ xla_test(
         ],
         "gpu": [
             "multi_gpu",
-            "no_oss",
             "nomsan",
         ],
         "nvgpu_any": [
@@ -250,7 +277,8 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    data = [":hlo_file"],
+    data = [":hlo_files"],
+    shard_count = 4,
     tags = ["no_mac"],
     deps = [
         ":create_client",
@@ -266,6 +294,8 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
@@ -289,6 +319,7 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -296,6 +327,7 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
@@ -333,6 +365,7 @@ tsl_pybind_extension(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -357,25 +390,29 @@ tsl_pybind_extension(
     ]),
 )
 
-xla_py_strict_test(
+xla_py_test(
     name = "python_hlo_runner_test",
     srcs = ["python_hlo_runner_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # backends = [
+    # "v100",
+    # "a100",
+    # "h100",
+    # "b200",
+    # "gb200",
+    # ],
+    # copybara:uncomment_end
     data = [
-        ":hlo_file",
+        ":hlo_files",
     ],
-    # Transformer engine dlopens several cuda libraries and so requires them as data dependencies.
-    need_cuda_libs = True,
     tags = [
         "gpu",
         # Transformer engine takes a long time to compile. Disabling it for CI tests.
         "no_oss",
-        "requires-gpu-sm90-only",
     ],
     deps = [
         ":py_hlo_multihost_runner",
         "@absl_py//absl/testing:absltest",
         "@transformer_engine//:transformer_engine_jax",
-    ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
-    ]),
+    ],
 )

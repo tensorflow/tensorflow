@@ -20,7 +20,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 #include "tensorflow/core/util/permutation_input_iterator.h"
 
@@ -237,7 +240,7 @@ __global__ void SegmentOffsetsKernel(
     Toffsets size, Tsegmentids nsegments,
     const Tsegmentids* __restrict__ segment_ids,  // [size]
     Toffsets* __restrict__ segment_offsets) {     // [nsegments + 1]
-  GPU_1D_KERNEL_LOOP(i, size + 1) {
+  for (Toffsets i : GpuGridRangeX(size + 1)) {
     // IDs are clipped to [-1, nsegments] so that out-of-bounds IDs are ignored.
     // Note that we can't report invalid IDs from the GPU without incurring
     // additional overhead.
@@ -267,9 +270,12 @@ absl::Status LaunchSegmentOffsetsKernel(
     const GPUDevice& d, Toffsets size, Tsegmentids nsegments,
     const Tsegmentids* segment_ids,  // [size]
     Toffsets* segment_offsets) {     // [nsegments + 1]
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      size + 1, d, &SegmentOffsetsKernel<Toffsets, Tsegmentids>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(size + 1, d,
+                           &SegmentOffsetsKernel<Toffsets, Tsegmentids>,
+                           /*dynamic_shared_memory_size=*/0,
+                           /*block_size_limit=*/0));
   return GpuLaunchKernel(SegmentOffsetsKernel<Toffsets, Tsegmentids>,
                          config.block_count, config.thread_per_block, 0,
                          d.stream(), size, nsegments, segment_ids,
@@ -444,7 +450,7 @@ __global__ void SegmentReduceEpilogueKernel(
     const Treducevec* __restrict__ output_raw,     // [nsegments]
     const Toffsets* __restrict__ segment_offsets,  // [nsegments + 1]
     Tvec* __restrict__ output) {                   // [nsegments]
-  GPU_1D_KERNEL_LOOP(seg, nsegments) {
+  for (Tsegmentids seg : GpuGridRangeX(nsegments)) {
     Toffsets segment_size = segment_offsets[seg + 1] - segment_offsets[seg];
     Treducevec val = output_raw[seg];
     if (segment_size == 0) {
@@ -473,11 +479,14 @@ absl::Status LaunchSegmentReduceEpilogueKernel(
     const Treducevec* output_raw,     // [nsegments]
     const Toffsets* segment_offsets,  // [nsegments + 1]
     Tvec* output) {                   // [nsegments]
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      nsegments, d,
-      &SegmentReduceEpilogueKernel<Tvec, Treducevec, Toffsets, Tsegmentids,
-                                   Tinit>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(
+          nsegments, d,
+          &SegmentReduceEpilogueKernel<Tvec, Treducevec, Toffsets, Tsegmentids,
+                                       Tinit>,
+          /*dynamic_shared_memory_size=*/0,
+          /*block_size_limit=*/0));
   return GpuLaunchKernel(SegmentReduceEpilogueKernel<Tvec, Treducevec, Toffsets,
                                                      Tsegmentids, Tinit>,
                          config.block_count, config.thread_per_block, 0,
@@ -607,7 +616,8 @@ absl::Status SegmentReduceGPUImpl(
     // Just set output to empty_segment_value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     int64_t output_size = static_cast<int64_t>(nsegments) * ninner_vec;
-    GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+    TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
+                        GetGpuLaunchConfig64(output_size, d));
     return GpuLaunchKernel(SetToValue<Tvec, Tinit>, config.block_count,
                            config.thread_per_block, 0, d.stream(), output_size,
                            output_vec, empty_segment_value);
@@ -705,7 +715,7 @@ __global__ void SegmentWeightsKernel(
     SegmentId nsegments, SparseSegmentReductionOperation operation,
     const Index* __restrict__ segment_offsets,  // [nsegments + 1]
     Tweights* __restrict__ weights) {           // [nsegments]
-  GPU_1D_KERNEL_LOOP(i, nsegments) {
+  for (SegmentId i : GpuGridRangeX(nsegments)) {
     Index segment_size = segment_offsets[i + 1] - segment_offsets[i];
     segment_size = max(segment_size, Index(1));  // Avoid division by zero
     if (operation == SparseSegmentReductionOperation::kMean) {
@@ -722,9 +732,12 @@ absl::Status LaunchSegmentWeightsKernel(
     SparseSegmentReductionOperation operation,
     const Index* segment_offsets,  // [nsegments + 1]
     Tweights* weights) {           // [nsegments]
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      nsegments, d, &SegmentWeightsKernel<SegmentId, Index, Tweights>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(nsegments, d,
+                           &SegmentWeightsKernel<SegmentId, Index, Tweights>,
+                           /*dynamic_shared_memory_size=*/0,
+                           /*block_size_limit=*/0));
   return GpuLaunchKernel(SegmentWeightsKernel<SegmentId, Index, Tweights>,
                          config.block_count, config.thread_per_block, 0,
                          d.stream(), nsegments, operation, segment_offsets,
@@ -782,10 +795,12 @@ void SegmentReductionFunctor<
   // non-deterministic kernels.
   if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
-    GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(output.size(), d);
+    OP_REQUIRES_OK(ctx, config.status());
     const T initial_value = InitialValueF()();
-    TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
-                                config.thread_per_block, 0, d.stream(),
+    TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config->block_count,
+                                config->thread_per_block, 0, d.stream(),
                                 output.size(), output.data(), initial_value));
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
@@ -799,13 +814,14 @@ void SegmentReductionFunctor<
     const Index total_stripe_count =
         input_inner_dim_size * input_outer_dim_num_stripe;
 
-    config = GetGpuLaunchConfig(total_stripe_count, d);
+    config = GetGpuLaunchConfig64(total_stripe_count, d);
+    OP_REQUIRES_OK(ctx, config.status());
     TF_CHECK_OK(GpuLaunchKernel(
         SortedSegmentReductionCustomKernel<
             T, Index, OuterDimTileSize,
             typename ReduceUpdateOpFor<ReductionF>::nonatomic_op,
             typename ReduceUpdateOpFor<ReductionF>::atomic_op>,
-        config.block_count, config.thread_per_block, 0, d.stream(),
+        config->block_count, config->thread_per_block, 0, d.stream(),
         input_outer_dim_size, input_inner_dim_size, output_rows,
         segment_ids.data(), data, output.data(), total_stripe_count,
         initial_value));
@@ -870,7 +886,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
         DisableSegmentReductionOpDeterminismExceptions();
     OP_REQUIRES(
         ctx, determinism_requirement_met,
-        errors::Unimplemented(
+        absl::UnimplementedError(
             "Deterministic GPU implementation of unsorted segment reduction op"
             " not available."));
 
@@ -890,19 +906,22 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
-      GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+      absl::StatusOr<GpuLaunchConfig64> config =
+          GetGpuLaunchConfig64(output.size(), d);
+      OP_REQUIRES_OK(ctx, config.status());
       TF_CHECK_OK(GpuLaunchKernel(
-          SetToValue<T>, config.block_count, config.thread_per_block, 0,
+          SetToValue<T>, config->block_count, config->thread_per_block, 0,
           d.stream(), output.size(), output.data(), InitialValueF()()));
       const int64_t data_size = data.size();
       if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
         return;
       }
-      config = GetGpuLaunchConfig(data_size, d);
+      config = GetGpuLaunchConfig64(data_size, d);
+      OP_REQUIRES_OK(ctx, config.status());
       TF_CHECK_OK(GpuLaunchKernel(
           UnsortedSegmentCustomKernel<
               T, Index, typename ReduceUpdateOpFor<ReductionF>::atomic_op>,
-          config.block_count, config.thread_per_block, 0, d.stream(),
+          config->block_count, config->thread_per_block, 0, d.stream(),
           input_outer_dim_size, input_inner_dim_size, output_outer_dim_size,
           unsorted_segment_ids.data(), data.data(), output.data()));
     } else {
@@ -969,6 +988,46 @@ absl::Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
       /*output=*/output.data());
 }
 
+// Finds the position of an out-of-range `indices` value (against `noutput`)
+// and/or `segment_ids` value (against `nsegments`), if any. `bad_index_pos`
+// and `bad_segment_pos` must already be initialized to
+// std::numeric_limits<int32_t>::max(); a value is left unchanged if no
+// violation of that kind is found, or set to the position of one such
+// violation (not necessarily the first in `i` order) otherwise.
+template <typename Index, typename SegmentId>
+__global__ void SparseSegmentGradBoundsCheckKernel(
+    Index nouter, Index noutput, SegmentId nsegments,
+    const Index* __restrict__ indices_vec,      // [nouter]
+    const SegmentId* __restrict__ segment_vec,  // [nouter]
+    int32_t* __restrict__ bad_index_pos,        // [1]
+    int32_t* __restrict__ bad_segment_pos) {    // [1]
+  for (Index i : GpuGridRangeX(nouter)) {
+    if (!FastBoundsCheck(indices_vec[i], noutput)) {
+      GpuAtomicMin(bad_index_pos, static_cast<int32_t>(i));
+    }
+    if (!FastBoundsCheck(segment_vec[i], nsegments)) {
+      GpuAtomicMin(bad_segment_pos, static_cast<int32_t>(i));
+    }
+  }
+}
+
+template <typename Index, typename SegmentId>
+absl::Status LaunchSparseSegmentGradBoundsCheckKernel(
+    const GPUDevice& d, Index nouter, Index noutput, SegmentId nsegments,
+    const Index* indices_vec, const SegmentId* segment_vec,
+    int32_t* bad_index_pos, int32_t* bad_segment_pos) {
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(
+          nouter, d, &SparseSegmentGradBoundsCheckKernel<Index, SegmentId>,
+          /*dynamic_shared_memory_size=*/0,
+          /*block_size_limit=*/0));
+  return GpuLaunchKernel(SparseSegmentGradBoundsCheckKernel<Index, SegmentId>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), nouter, noutput, nsegments, indices_vec,
+                         segment_vec, bad_index_pos, bad_segment_pos);
+}
+
 template <typename T, typename Index, typename SegmentId>
 struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
   void operator()(OpKernelContext* context,
@@ -984,6 +1043,115 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
     const Index ninner = input_flat.dimension(1);
     const Index nouter = indices_vec.dimension(0);
     const Index noutput = output_flat.dimension(0);
+
+    // The CPU functor bounds-checks every `indices` value against `noutput`
+    // and every `segment_ids` value against `nsegments` before using them to
+    // read/write `input`/`output`, returning an InvalidArgumentError on
+    // failure. This GPU path performed no such validation, so an
+    // out-of-range indices or segment_ids value caused an out-of-bounds
+    // read or write on the device instead of a normal, recoverable error.
+    // Validate here, without copying the full `indices`/`segment_ids`
+    // arrays to the host: a device-side kernel does the O(nouter) scan, and
+    // only a couple of small flags come back over the (synchronous) D2H
+    // transfer in the common, valid-input case.
+    if (nouter > 0) {
+      // The bounds-check kernel below packs each violation's position into
+      // an int32 (matching SparseSegmentGradV2Functor's existing
+      // `nouter`/`ninner` handling above, which notes that neither is
+      // expected to be huge), so reject inputs where a position wouldn't
+      // fit rather than silently truncating it.
+      OP_REQUIRES(
+          context,
+          static_cast<int64_t>(nouter) <= std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(
+              absl::StrCat("Indices vector of length ", nouter,
+                           " is too large to fit in int32.")));
+
+      se::Stream* stream = context->op_device_context()->stream();
+      OP_REQUIRES(context, stream != nullptr,
+                  absl::InternalError("No GPU stream available."));
+
+      // Fast check, matching the CPU functor: `segment_vec` is assumed
+      // sorted in non-decreasing order, so its last element is the maximum
+      // segment id. A single element is enough to validate `nsegments`
+      // against the well-formed/sorted case and produce the same
+      // "Invalid number of segments" message the CPU functor uses for it.
+      ScratchSpace<SegmentId> last_segment_id_host(context, 1,
+                                                   /*on_host=*/true);
+      OP_REQUIRES_OK(
+          context,
+          stream->Memcpy(
+              last_segment_id_host.mutable_data(),
+              stream_executor::DeviceAddressBase(
+                  const_cast<SegmentId*>(segment_vec.data()) + (nouter - 1),
+                  sizeof(SegmentId)),
+              sizeof(SegmentId)));
+      OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+      OP_REQUIRES(context, *last_segment_id_host.data() + 1 <= nsegments,
+                  absl::InvalidArgumentError("Invalid number of segments"));
+
+      // Full per-element validation, matching the CPU functor: catches
+      // malformed input that isn't actually sorted (so the fast check above
+      // can't tell it's invalid from the last element alone). Runs as a
+      // device-side scan; `bad_positions` only ever carries 2 int32s back to
+      // the host, regardless of `nouter`.
+      Tensor bad_positions;
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_INT32, TensorShape({2}),
+                                                     &bad_positions));
+      int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
+      int32_t* const bad_index_pos_ptr = bad_positions_ptr;
+      int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
+      stream_executor::DeviceAddressBase bad_positions_device(
+          bad_positions_ptr, 2 * sizeof(int32_t));
+      OP_REQUIRES_OK(context,
+                     stream->Memset32(&bad_positions_device,
+                                      std::numeric_limits<int32_t>::max(),
+                                      2 * sizeof(int32_t)));
+      OP_REQUIRES_OK(context, LaunchSparseSegmentGradBoundsCheckKernel(
+                                  device, nouter, noutput, nsegments,
+                                  indices_vec.data(), segment_vec.data(),
+                                  bad_index_pos_ptr, bad_segment_pos_ptr));
+      ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+      OP_REQUIRES_OK(context,
+                     stream->Memcpy(bad_positions_host.mutable_data(),
+                                    bad_positions_device, 2 * sizeof(int32_t)));
+      OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+      const int32_t bad_index_pos = bad_positions_host.data()[0];
+      const int32_t bad_segment_pos = bad_positions_host.data()[1];
+
+      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Index> bad_index_host(context, 1, /*on_host=*/true);
+        OP_REQUIRES_OK(
+            context, stream->Memcpy(bad_index_host.mutable_data(),
+                                    stream_executor::DeviceAddressBase(
+                                        const_cast<Index*>(indices_vec.data()) +
+                                            bad_index_pos,
+                                        sizeof(Index)),
+                                    sizeof(Index)));
+        OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+        OP_REQUIRES(context, false,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Index ", *bad_index_host.data(),
+                                     " out of range [0, ", noutput, ").")));
+      }
+      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<SegmentId> bad_segment_host(context, 1,
+                                                 /*on_host=*/true);
+        OP_REQUIRES_OK(
+            context,
+            stream->Memcpy(bad_segment_host.mutable_data(),
+                           stream_executor::DeviceAddressBase(
+                               const_cast<SegmentId*>(segment_vec.data()) +
+                                   bad_segment_pos,
+                               sizeof(SegmentId)),
+                           sizeof(SegmentId)));
+        OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
+        OP_REQUIRES(context, false,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Segment id ", *bad_segment_host.data(),
+                                     " out of range [0, ", nsegments, ").")));
+      }
+    }
 
     // Allocate and compute segment weights (for Mean/SqrtN operations only).
     Tensor weights;
@@ -1078,7 +1246,7 @@ __global__ void ScatterUniqueIndicesKernel(
     const TindicesCompact* __restrict__ sorted_indices,  // [nouter]
     const Toffsets* __restrict__ sorted_indices_ids,     // [nouter]
     Tindices* __restrict__ sorted_unique_indices) {      // [num_unique]
-  for (int i : GpuGridRangeX(nouter)) {
+  for (Toffsets i : GpuGridRangeX(nouter)) {
     if (i == 0 || sorted_indices_edge_indicator[i]) {
       sorted_unique_indices[sorted_indices_ids[i]] =
           static_cast<Tindices>(sorted_indices[i]);
@@ -1094,11 +1262,14 @@ absl::Status LaunchScatterUniqueIndicesKernel(
     const TindicesCompact* __restrict__ sorted_indices,  // [nouter]
     const Toffsets* __restrict__ sorted_indices_ids,     // [nouter]
     Tindices* __restrict__ sorted_unique_indices) {      // [num_unique]
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      nouter, d,
-      &ScatterUniqueIndicesKernel<Toffsets, EdgeIndicatorIter, TindicesCompact,
-                                  Tindices>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  TF_ASSIGN_OR_RETURN(
+      GpuLaunchConfig64 config,
+      GetGpuLaunchConfig64(
+          nouter, d,
+          &ScatterUniqueIndicesKernel<Toffsets, EdgeIndicatorIter,
+                                      TindicesCompact, Tindices>,
+          /*dynamic_shared_memory_size=*/0,
+          /*block_size_limit=*/0));
   return GpuLaunchKernel(ScatterUniqueIndicesKernel<Toffsets, EdgeIndicatorIter,
                                                     TindicesCompact, Tindices>,
                          config.block_count, config.thread_per_block, 0,

@@ -115,7 +115,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto output_layout, ExtractSingleLayoutFromOp(op));
 
   if (!output_layout || !input_layout)
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "layout of Slice op must be known before SPMD expansion.");
 
   // The dyn_cast will never be nullptr as it is checked in
@@ -123,7 +123,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto input_type =
       mlir::dyn_cast<mlir::RankedTensorType>(slice_op.getInput().getType());
   if (!input_type)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "rank of input tensor must be statically known for slice op.");
 
   TF_ASSIGN_OR_RETURN(auto global_shape,
@@ -166,7 +166,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
         continue;
       }
 
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Non-full-slicing on the sharded dimension is not allowed. "
           "internal bug.");
     }
@@ -178,7 +178,7 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // Both begin and size need to be the same type, so we must match the new
   // size input with the type of begin.
   if (!mlir::isa<mlir::ShapedType>(slice_op.getBegin().getType()))
-    return errors::Internal("type of begin is not a ShapedType");
+    return absl::InternalError("type of begin is not a ShapedType");
   mlir::ShapedType type =
       mlir::cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))

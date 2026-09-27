@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -70,8 +71,8 @@ class SourceTargetPairs {
 
   static absl::StatusOr<SourceTargetPairs> FromString(absl::string_view str) {
     // reusing replica groups parsing.
-    TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
-                        ParseReplicaGroupsOnly(str));
+    ABSL_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+                     ParseReplicaGroupsOnly(str));
     SourceTargetPairs res;
     for (const ReplicaGroup& group : groups) {
       if (group.replica_ids_size() != 2) {
@@ -87,8 +88,8 @@ class SourceTargetPairs {
     auto source_target_pairs = instruction->frontend_attributes().map().find(
         kSendRecvSourceTargetPairsAttr);
     if (source_target_pairs != instruction->frontend_attributes().map().end()) {
-      TF_ASSIGN_OR_RETURN(SourceTargetPairs res,
-                          FromString(source_target_pairs->second));
+      ABSL_ASSIGN_OR_RETURN(SourceTargetPairs res,
+                       FromString(source_target_pairs->second));
       return res;
     }
     return Internal(

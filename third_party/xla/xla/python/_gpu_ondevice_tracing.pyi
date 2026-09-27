@@ -1,4 +1,4 @@
-# Copyright 2025 The OpenXLA Authors.
+# Copyright 2026 The OpenXLA Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,22 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
-"""Utilities for GPU on-device tracing inject events into Xprof profiler."""
 
+"""Utilities for GPU on-device tracing inject events into Xprof profiler."""
 
 def active_version() -> int:
   """Returns the active version of the GPU on-device tracing.
 
   0 mean no active tracing.
   """
-  ...
-
 
 def start_injection_instance(version: int) -> int:
   """Starts a new injection instance of the GPU on-device tracing."""
-  ...
-
 
 def inject(
     version: int,
@@ -39,4 +34,3 @@ def inject(
     duration_ps: int,
 ) -> None:
   """Injects an event into the Xprof profiler."""
-  ...

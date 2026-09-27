@@ -1,22 +1,41 @@
-// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file 2>&1 | FileCheck %s
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-V2
+// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline='enable-hlo-sharding-v3=true' -split-input-file | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
 // Test ShardMap. We can assume a frontend framework like JAX will add the
 // sdy shardings on the custom calls. Make sure when we round-trip we get the
 // ManualComputationOp though.
+//
+// Note that in HloShardingV3 case mesh names might be different as meshes are
+// inlined and un-inlined during round-trip.
 
 // ***************** Basic test *****************
 
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-
-// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V2: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V3: sdy.mesh @mesh = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<16x32xf32>) -> tensor<128x32xf32> {
   // CHECK-NEXT:     %[[MANUAL_COMP:.*]]:2 = sdy.manual_computation(%arg0)
-  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, [{}, {}], replicated={"a", "b"}>] out_shardings=[<@mesh_1, [{"a", "b"}, {}]>, <@mesh_1, [{"b", "a"}, {}]>] manual_axes={"a", "b"} (%arg1: tensor<16x32xf32>) {
+  // CHECK-V2-SAME{LITERAL}: in_shardings=[<@mesh_1, [{}, {}], replicated={"a", "b"}>] out_shardings=[<@mesh_1, [{"a", "b"}, {}]>, <@mesh_1, [{"b", "a"}, {}]>] manual_axes={"a", "b"} (%arg1: tensor<16x32xf32>) {
+  // CHECK-V3-SAME{LITERAL}: in_shardings=[<@mesh, [{}, {}], replicated={"a", "b"}>] out_shardings=[<@mesh, [{"a", "b"}, {}]>, <@mesh, [{"b", "a"}, {}]>] manual_axes={"a", "b"} (%arg1: tensor<16x32xf32>) {
   // CHECK-NEXT:       sdy.return %arg1, %arg1 : tensor<16x32xf32>, tensor<16x32xf32>
   // CHECK-NEXT:     } : (tensor<16x32xf32>) -> (tensor<128x32xf32>, tensor<128x32xf32>)
   // CHECK-NEXT:     %[[ADD:.*]] = stablehlo.add %[[MANUAL_COMP]]#0, %[[MANUAL_COMP]]#1 : tensor<128x32xf32>
@@ -35,13 +54,15 @@ func.func @main(%arg0: tensor<16x32xf32>) -> tensor<128x32xf32> {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V2: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V3: sdy.mesh @mesh = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main() -> tensor<4xi64> {
   // CHECK-NEXT:     %[[MANUAL_COMP:.*]] = sdy.manual_computation()
-  // CHECK-SAME{LITERAL}: in_shardings=[] out_shardings=[<@mesh_1, [{"b"}]>] manual_axes={"b"} () {
+  // CHECK-V2-SAME{LITERAL}: in_shardings=[] out_shardings=[<@mesh_1, [{"b"}]>] manual_axes={"b"} () {
+  // CHECK-V3-SAME{LITERAL}: in_shardings=[] out_shardings=[<@mesh, [{"b"}]>] manual_axes={"b"} () {
   // CHECK-NEXT:       %[[C:.*]] = sdy.constant dense<[2, 3]> : tensor<2xi64>
   // CHECK-NEXT:       sdy.return %[[C]] : tensor<2xi64>
   // CHECK-NEXT:     } : () -> tensor<4xi64>
@@ -60,13 +81,15 @@ func.func @main() -> tensor<4xi64> {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V2: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V3: sdy.mesh @mesh = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
 func.func @main(%arg0: tensor<4xi64>) {
   // CHECK-NEXT:     sdy.manual_computation(%arg0)
-  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, [{"b"}]>] out_shardings=[] manual_axes={"b"} (%arg1: tensor<2xi64>) {
+  // CHECK-V2-SAME{LITERAL}: in_shardings=[<@mesh_1, [{"b"}]>] out_shardings=[] manual_axes={"b"} (%arg1: tensor<2xi64>) {
+  // CHECK-V3-SAME{LITERAL}: in_shardings=[<@mesh, [{"b"}]>] out_shardings=[] manual_axes={"b"} (%arg1: tensor<2xi64>) {
   // CHECK-NEXT:       stablehlo.custom_call @sdy_testonly(%arg1) {backend_config = "", has_side_effect = true, xla_shape = "()"} : (tensor<2xi64>) -> ()
   // CHECK-NEXT:       sdy.return
   // CHECK-NEXT:     } : (tensor<4xi64>) -> ()
@@ -86,17 +109,19 @@ func.func @main(%arg0: tensor<4xi64>) {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
+sdy.mesh @mesh = <["a"=2]>
+
 // CHECK-LABEL: func.func @main
-func.func @main() {
-  // CHECK-NEXT:     sdy.manual_computation()
-  // CHECK-SAME{LITERAL}: in_shardings=[] out_shardings=[] manual_axes={} () {
-  // CHECK-NEXT:       sdy.return
-  // CHECK-NEXT:     } : () -> ()
+func.func @main(%arg0 : tensor<4xi64>) -> tensor<4xi64> {
+  // CHECK-NEXT:     sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh, [{"a"}]>] out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"} (%arg1: tensor<2xi64>) {
+  // CHECK-NEXT:       sdy.return %arg1 : tensor<2xi64>
+  // CHECK-NEXT:     } : (tensor<4xi64>) -> tensor<4xi64>
   // CHECK-NEXT:     return
-  sdy.manual_computation() in_shardings=[] out_shardings=[] manual_axes={} () {
-    sdy.return
-  } : () -> ()
-  return
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{"a"}]>] out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"} (%arg1: tensor<2xi64>) {
+    sdy.return %arg1 : tensor<2xi64>
+  } : (tensor<4xi64>) -> tensor<4xi64>
+  return %0 : tensor<4xi64>
 }
 
 // -----
@@ -106,7 +131,8 @@ func.func @main() {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
-// CHECK: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V2: sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
+// CHECK-V3: sdy.mesh @mesh = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 
 // CHECK-LABEL: func.func @main
@@ -115,7 +141,8 @@ func.func @main(
     %arg1: tensor<2xi64> {sdy.sharding = #sdy.sharding<@mesh_1, [{"b"}]>}
 ) -> (!stablehlo.token, tensor<2xi64>) {
   // CHECK-NEXT:     %[[MANUAL_COMP:.*]]:2 = sdy.manual_computation(%arg0, %arg1)
-  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] out_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
+  // CHECK-V2-SAME{LITERAL}: in_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] out_shardings=[<@mesh_1, []>, <@mesh_1, [{"b"}]>] manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
+  // CHECK-V3-SAME{LITERAL}: in_shardings=[<@mesh, []>, <@mesh, [{"b"}]>] out_shardings=[<@mesh, []>, <@mesh, [{"b"}]>] manual_axes={"b"} (%arg2: !stablehlo.token, %arg3: tensor<1xi64>) {
   // CHECK-NEXT:       sdy.return %arg2, %arg3 : !stablehlo.token, tensor<1xi64>
   // CHECK-NEXT:     } : (!stablehlo.token, tensor<2xi64>) -> (!stablehlo.token, tensor<2xi64>)
   // CHECK-NEXT:     return %[[MANUAL_COMP]]#0, %[[MANUAL_COMP]]#1 : !stablehlo.token, tensor<2xi64>

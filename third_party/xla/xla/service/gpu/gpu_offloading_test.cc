@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/backends/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
@@ -55,17 +55,17 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class GpuOffloadingTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
+    : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  protected:
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
                                                int64_t min_remat_size = 0) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ::xla::ShapeUtil::ByteSizeOf(buffer.shape());
       });
-      TF_EXPECT_OK(scheduler.Run(module).status());
+      EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any
     // number of number of copies.
@@ -220,20 +220,20 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   SetFlopsPerSecond(2 * 1024);
   SetTranscendentalsPerSecond(2 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
   StreamAttributeAnnotator attr_annotator(device_description());
-  TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed_attr);
   // Verify that the stream attribute for a copy-start is annotated
   for (std::string i : {"", ".1", ".2", ".3"}) {
     const HloInstruction* cp_start =
         FindInstruction(module.get(), "copy-start" + i);
     EXPECT_TRUE(cp_start->has_backend_config());
-    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                            cp_start->backend_config<GpuBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                         cp_start->backend_config<GpuBackendConfig>());
     EXPECT_GT(gpu_config.operation_queue_id(), 0);
   }
 
@@ -285,8 +285,8 @@ TEST_F(GpuOffloadingTest, XLAHostMemoryAllocationDeallocationTest) {
   stream_executor::StreamExecutor* executor = GpuExecutor();
   stream_executor::DeviceAddressBase host_ptr =
       executor->Allocate(64, (int64_t)(stream_executor::MemorySpace::kHost));
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  ASSERT_OK_AND_ASSIGN(auto memory_space,
+                       executor->GetPointerMemorySpace(host_ptr.opaque()));
   EXPECT_EQ(memory_space, stream_executor::MemorySpace::kHost);
   executor->Deallocate(&host_ptr);
 }

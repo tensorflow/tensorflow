@@ -298,7 +298,7 @@ absl::Status SerialDeviceBatchScheduler<TaskType>::Create(
         options.target_pending);
   }
   if (!options.get_pending_on_serial_device) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "get_pending_on_serial_device must be "
         "specified");
   }
@@ -501,7 +501,7 @@ absl::Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
     if (current_batch_ &&
         current_batch_->size() + size > options_.max_batch_size) {
       if (num_enqueued_batches_ >= options_.max_enqueued_batches) {
-        return errors::Unavailable("The batch scheduling queue is full");
+        return absl::UnavailableError("The batch scheduling queue is full");
       }
       current_batch_->Close();
       current_batch_ = nullptr;

@@ -2,49 +2,53 @@ path: "tensorflow.Operation"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
   is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyOperation\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "control_inputs"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "device"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "graph"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "inputs"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "node_def"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "op_def"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "outputs"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "traceback"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "__tf_tensor__"
+    argspec: "args=[\'self\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "colocation_groups"
@@ -57,6 +61,7 @@ tf_class {
   member_method {
     name: "from_node_def"
     argspec: "args=[\'cls\', \'node_def\', \'g\', \'inputs\', \'output_types\', \'control_inputs\', \'input_types\', \'original_op\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "get_attr"

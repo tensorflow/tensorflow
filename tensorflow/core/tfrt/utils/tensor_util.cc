@@ -91,7 +91,7 @@ absl::StatusOr<DType> ConvertTFDTypeToTFRTDType(tensorflow::DataType dtype) {
     return DType(DType::TFRT_DTYPE);
 #include "tensorflow/core/tfrt/utils/dtype.def"
     default:
-      return tensorflow::errors::Internal(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "unsupported tensorflow dtype: ", tensorflow::DataType_Name(dtype)));
   }
 }
@@ -103,8 +103,7 @@ absl::StatusOr<tensorflow::DataType> ConvertTFRTDTypeToTFDType(DType dtype) {
     return tensorflow::TF_DTYPE;
 #include "tensorflow/core/tfrt/utils/dtype.def"
     default:
-      return tensorflow::errors::Internal(
-          StrCat("unsupported tfrt dtype: ", dtype));
+      return absl::InternalError(StrCat("unsupported tfrt dtype: ", dtype));
   }
 }
 
@@ -209,7 +208,7 @@ absl::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     return tensor;
   }
 
-  return tensorflow::errors::Internal("unknown host tensor type");
+  return absl::InternalError("unknown host tensor type");
 }
 
 Expected<tfrt::DenseHostTensor> ConvertTfTensorToDHT(

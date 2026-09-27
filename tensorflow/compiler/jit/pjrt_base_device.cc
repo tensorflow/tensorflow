@@ -48,11 +48,11 @@ PjRtBaseDevice::GetMetadataFromDevice(DeviceBase* device) {
   PjRtBaseDevice* pjrt_device =
       dynamic_cast<PjRtBaseDevice*>(device->UnderlyingDevice());
   if (pjrt_device == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Cannot get device metadata from non-PJRT device \"", device->name(),
         "\". GetMetadata must only be called on a device derived from "
         "PjRtBaseDevice. Either an internal bug has been triggered, or an "
-        "XLA-specific op has been placed on the wrong device.");
+        "XLA-specific op has been placed on the wrong device."));
   }
   return &pjrt_device->metadata_;
 }

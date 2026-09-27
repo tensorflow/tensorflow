@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file wraps rocblas API calls with dso loader so that we don't need to
-// have explicit linking to librocblas. All TF hipsarse API usage should route
-// through this wrapper.
-
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCBLAS_WRAPPER_H_
 
@@ -25,53 +21,11 @@ limitations under the License.
 
 #include "rocm/include/rocblas/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
-#include "tsl/platform/platform.h"
 
 namespace stream_executor {
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
-#define ROCBLAS_API_WRAPPER(__name)               \
-  struct WrapperShim__##__name {                  \
-    constexpr static const char* kName = #__name; \
-    template <typename... Args>                   \
-    rocblas_status operator()(Args... args) {     \
-      return (::__name)(args...);                 \
-    }                                             \
-  } __name;
-
-#else
-using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
-
-#define ROCBLAS_API_WRAPPER(__name)                                      \
-  static struct DynLoadShim__##__name {                                  \
-    constexpr static const char* kName = #__name;                        \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
-    static void* GetDsoHandle() {                                        \
-      auto s = GetRocblasDsoHandle();                                    \
-      return s.value();                                                  \
-    }                                                                    \
-    static FuncPtrT LoadOrDie() {                                        \
-      void* f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                         kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in rocblas DSO; dlerror: " << s.message();      \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }                                                                    \
-    static FuncPtrT DynLoad() {                                          \
-      static FuncPtrT f = LoadOrDie();                                   \
-      return f;                                                          \
-    }                                                                    \
-    template <typename... Args>                                          \
-    auto operator()(Args... args) {                                      \
-      return DynLoad()(args...);                                         \
-    }                                                                    \
-  } __name;
-
-#endif
+#define ROCBLAS_API_WRAPPER(__name) using ::__name;
 
 // clang-format off
 #define FOREACH_ROCBLAS_API(__macro)            \
@@ -279,6 +233,9 @@ using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
 // clang-format on
 
 FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
+
+#undef FOREACH_ROCBLAS_API
+#undef ROCBLAS_API_WRAPPER
 
 }  // namespace wrap
 }  // namespace stream_executor

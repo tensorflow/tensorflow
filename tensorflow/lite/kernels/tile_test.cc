@@ -60,15 +60,21 @@ class TileOpConstModel : public TileOpBaseModel {
   TileOpConstModel(std::initializer_list<int> input_shape,
                    std::initializer_list<InputType> input_data,
                    TensorType input_type, TensorType multiply_type,
-                   std::initializer_list<MultipliersType> multipliers_data) {
+                   std::initializer_list<MultipliersType> multipliers_data,
+                   bool allocate_and_delegate = true) {
     SetupInput(input_shape, input_data, input_type,
                std::is_same<std::string, InputType>());
     multipliers_ = AddConstInput(multiply_type, multipliers_data,
                                  {static_cast<int>(multipliers_data.size())});
     output_ = AddOutput(input_type);
     SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
-    BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
-    PopulateInput(input_data, std::is_same<std::string, InputType>());
+    BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, allocate_and_delegate);
+    if (allocate_and_delegate) {
+      PopulateInput(input_data, std::is_same<std::string, InputType>());
+    }
   }
 
  private:
@@ -295,13 +301,56 @@ TEST_P(TileTest, StringMatrixEmptyInputElements) {
       /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, TestEmptyInput) {
-  TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
-  m.SetInput({11, 12, 13, 21, 22, 23});
-  m.SetMultipliers({2, 0, 2});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TEST_P(TileTest, Int32EmptyInput) {
+  Check<int32_t>(/*input_shape=*/{2, 1, 3},
+                 /*input_data=*/{11, 12, 13, 21, 22, 23},
+                 /*multipliers_data=*/{2, 0, 2},
+                 /*exp_output_shape=*/{4, 0, 6},
+                 /*exp_output_data=*/{},
+                 /*input_type=*/TensorType_INT32,
+                 /*multiply_type=*/TensorType_INT32, GetParam());
+}
 
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
+TEST(TileDynamicTest, NegativeMultipliersString) {
+  TileOpDynamicModel m({2, 1, 1}, TensorType_STRING, TensorType_INT32);
+  m.SetInput<std::string>({"A", "B"});
+  m.SetMultipliers({2, -100, -10});
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
+}
+
+template <typename MultipliersType>
+void CheckInvalidMultipliers(
+    TensorType multiply_type, TestType test_type,
+    std::initializer_list<MultipliersType> multipliers_data) {
+  switch (test_type) {
+    case TestType::kConst: {
+      TileOpConstModel<int32_t, MultipliersType> m(
+          {2, 3}, {11, 12, 13, 21, 22, 23}, TensorType_INT32, multiply_type,
+          multipliers_data, /*allocate_and_delegate=*/false);
+      EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+      return;
+    }
+    case TestType::kDynamic: {
+      TileOpDynamicModel m({2, 3}, TensorType_INT32, multiply_type);
+      m.SetInput({11, 12, 13, 21, 22, 23});
+      m.SetMultipliers(multipliers_data);
+      EXPECT_NE(m.Invoke(), kTfLiteOk);
+      return;
+    }
+  }
+}
+
+TEST_P(TileTest, MultiplierOverflowInt32) {
+  CheckInvalidMultipliers<int32_t>(TensorType_INT32, GetParam(),
+                                   {1073741824, 1});
+}
+
+TEST_P(TileTest, MultiplierNegativeInt32) {
+  CheckInvalidMultipliers<int32_t>(TensorType_INT32, GetParam(), {-1, 1});
+}
+
+TEST_P(TileTest, MultiplierNegativeInt64) {
+  CheckInvalidMultipliers<int64_t>(TensorType_INT64, GetParam(), {-1LL, 1LL});
 }
 
 INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,

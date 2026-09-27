@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,18 +43,18 @@ namespace gpu {
 absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  const HloModuleConfig &config = module->config();
+  const HloModuleConfig& config = module->config();
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  for (HloComputation *computation :
+  for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction *instruction :
+    for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (HloPredicateIsNotOp<HloOpcode::kAllReduce>(instruction)) {
         continue;
       }
-      auto *ar = Cast<HloAllReduceInstruction>(instruction);
+      auto* ar = Cast<HloAllReduceInstruction>(instruction);
       auto ar_spec = MatchReduceScatter(ar, config.num_partitions(),
                                         config.replica_count(),
                                         /*allow_multiple_split_dims=*/false,
@@ -63,7 +64,7 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
         continue;
       }
 
-      HloInstruction *ds = ar_spec->dynamic_slice;
+      HloInstruction* ds = ar_spec->dynamic_slice;
 
       // Convert to all-reduce scatter. The output shape of the all-reduce
       // scatter will the same as the input shape, except the split dim size is
@@ -71,7 +72,7 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
       const int64_t split_dim = ar_spec->split_dim;
       Shape scatter_shape = ar->shape();
       const int64_t split_dim_size = scatter_shape.dimensions(split_dim);
-      HloInstruction *rs_input = ar->mutable_operand(0);
+      HloInstruction* rs_input = ar->mutable_operand(0);
       const int64_t scatter_dim_size = split_dim_size / ar_spec->group_size;
       TF_RET_CHECK(scatter_dim_size * ar_spec->group_size <= split_dim_size);
       if (split_dim_size % ar_spec->group_size != 0) {
@@ -99,13 +100,19 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
               scatter_shape, {rs_input}, ar->to_apply(), ar->device_list(),
               ar->constrain_layout(), channel_id, ar->use_global_device_ids(),
               ar_spec->split_dim));
+      ar->SetupDerivedInstruction(ars);
+
+      // SetupDerivedInstruction only copies backend configuration for matching
+      // opcodes. At this point in the GPU pipeline, all-reduce and
+      // reduce-scatter use compatible CollectiveBackendConfig fields, so
+      // explicitly preserve the source collective configuration.
       ars->CopyBackendConfigFrom(ar);
 
       // If there was an intervening reshape, reshape the non-split dimensions
       // to match that existing reshape. Basically we can just reshape the ars
       // result to the dynamic slice shape.
-      HloInstruction *result = ars;
-      HloInstruction *reshape = nullptr;
+      HloInstruction* result = ars;
+      HloInstruction* reshape = nullptr;
       if (ds->operand(0) != ar) {
         reshape = ds->mutable_operand(0);
         result = computation->AddInstruction(
@@ -115,12 +122,12 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
       // Note that RemoveInstructionAndUnusedOperands may not always remove the
       // all-reduce operand of the dynamic-slice, so remove all the dead
       // instructions manually.
-      TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
-      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ds));
+      ABSL_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(ds));
       if (reshape) {
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
+        ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
       }
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
+      ABSL_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
       changed = true;
     }
   }

@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Build rules for tf.distribute testing."""
 
 load("@xla//third_party/rules_python/python:defs.bzl", "py_test")
@@ -69,6 +84,15 @@ def distribute_py_test(
     )
 
     if "notpu" not in tags and "no_tpu" not in tags:
+        # Extract strict_deps from kwargs to avoid passing it twice when
+        # test_rule is py_strict_test (which already sets strict_deps=True).
+        strict_deps = kwargs.pop("strict_deps", None)
+
+        # Build extra_kwargs for TPU tests, including strict_deps if it was set.
+        extra_tpu_kwargs = {}
+        if strict_deps != None:
+            extra_tpu_kwargs["strict_deps"] = strict_deps
+
         _tpu_py_test(
             disable_experimental = True,
             name = name + "_tpu",
@@ -85,6 +109,7 @@ def distribute_py_test(
             disable_mlir_bridge = disable_mlir_bridge,
             disable_tfrt = disable_tpu_use_tfrt,
             test_rule = test_rule,
+            **extra_tpu_kwargs
         )
 
 def distribute_py_strict_test(**kwargs):

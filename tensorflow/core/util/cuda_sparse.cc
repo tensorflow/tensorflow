@@ -95,12 +95,12 @@ class CudaSparseHandles {
 
   ~CudaSparseHandles() { Release(); }
 
-  Status Initialize() {
-    if (initialized_) return OkStatus();
+  absl::Status Initialize() {
+    if (initialized_) return absl::OkStatus();
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreate(&cusparse_handle_));
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSetStream(cusparse_handle_, stream_));
     initialized_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   cusparseHandle_t& handle() {
@@ -160,7 +160,7 @@ GpuSparse::GpuSparse(OpKernelContext* context)
                         .stream));
 }
 
-Status GpuSparse::Initialize() {
+absl::Status GpuSparse::Initialize() {
   HandleMap* handle_map = GetHandleMapSingleton();
   DCHECK(handle_map);
   mutex_lock lock(handle_map_mutex);
@@ -176,7 +176,7 @@ Status GpuSparse::Initialize() {
   }
   gpusparse_handle_ = &it->second.handle();
   initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define TF_CALL_CUSPARSE_DTYPES(m)           \
@@ -205,14 +205,15 @@ Status GpuSparse::Initialize() {
 //=============================================================================
 
 template <typename Scalar, typename SparseFn>
-static inline Status Gtsv2Impl(SparseFn op, cusparseHandle_t cusparse_handle,
-                               int m, int n, const Scalar* dl, const Scalar* d,
-                               const Scalar* du, Scalar* B, int ldb,
-                               void* pBuffer) {
+static inline absl::Status Gtsv2Impl(SparseFn op,
+                                     cusparseHandle_t cusparse_handle, int m,
+                                     int n, const Scalar* dl, const Scalar* d,
+                                     const Scalar* du, Scalar* B, int ldb,
+                                     void* pBuffer) {
   TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(B), ldb, pBuffer));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define GTSV2_INSTANCE(Scalar, sparse_prefix)                                \
@@ -240,16 +241,14 @@ TF_CALL_LAPACK_TYPES(GTSV2_INSTANCE);
 TF_CALL_LAPACK_TYPES(GTSV2_NO_PIVOT_INSTANCE);
 
 template <typename Scalar, typename SparseFn>
-static inline Status Gtsv2BufferSizeExtImpl(SparseFn op,
-                                            cusparseHandle_t cusparse_handle,
-                                            int m, int n, const Scalar* dl,
-                                            const Scalar* d, const Scalar* du,
-                                            const Scalar* B, int ldb,
-                                            size_t* bufferSizeInBytes) {
+static inline absl::Status Gtsv2BufferSizeExtImpl(
+    SparseFn op, cusparseHandle_t cusparse_handle, int m, int n,
+    const Scalar* dl, const Scalar* d, const Scalar* du, const Scalar* B,
+    int ldb, size_t* bufferSizeInBytes) {
   TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(B), ldb, bufferSizeInBytes));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define GTSV2_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix)                     \
@@ -279,16 +278,14 @@ TF_CALL_LAPACK_TYPES(GTSV2_BUFFER_SIZE_INSTANCE);
 TF_CALL_LAPACK_TYPES(GTSV2_NO_PIVOT_BUFFER_SIZE_INSTANCE);
 
 template <typename Scalar, typename SparseFn>
-static inline Status Gtsv2StridedBatchImpl(SparseFn op,
-                                           cusparseHandle_t cusparse_handle,
-                                           int m, const Scalar* dl,
-                                           const Scalar* d, const Scalar* du,
-                                           Scalar* x, int batchCount,
-                                           int batchStride, void* pBuffer) {
+static inline absl::Status Gtsv2StridedBatchImpl(
+    SparseFn op, cusparseHandle_t cusparse_handle, int m, const Scalar* dl,
+    const Scalar* d, const Scalar* du, Scalar* x, int batchCount,
+    int batchStride, void* pBuffer) {
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
       cusparse_handle, m, AsCudaComplex(dl), AsCudaComplex(d),
       AsCudaComplex(du), AsCudaComplex(x), batchCount, batchStride, pBuffer));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define GTSV2_STRIDED_BATCH_INSTANCE(Scalar, sparse_prefix)                   \
@@ -305,7 +302,7 @@ static inline Status Gtsv2StridedBatchImpl(SparseFn op,
 TF_CALL_LAPACK_TYPES(GTSV2_STRIDED_BATCH_INSTANCE);
 
 template <typename Scalar, typename SparseFn>
-static inline Status Gtsv2StridedBatchBufferSizeImpl(
+static inline absl::Status Gtsv2StridedBatchBufferSizeImpl(
     SparseFn op, cusparseHandle_t cusparse_handle, int m, const Scalar* dl,
     const Scalar* d, const Scalar* du, const Scalar* x, int batchCount,
     int batchStride, size_t* bufferSizeInBytes) {
@@ -313,7 +310,7 @@ static inline Status Gtsv2StridedBatchBufferSizeImpl(
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(x), batchCount, batchStride,
                                   bufferSizeInBytes));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix) \
@@ -331,8 +328,8 @@ static inline Status Gtsv2StridedBatchBufferSizeImpl(
 
 TF_CALL_LAPACK_TYPES(GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE);
 
-Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
-                          int* csrRowPtr) const {
+absl::Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
+                                int* csrRowPtr) const {
   // cusparseStatus_t CUSPARSEAPI cusparseXcoo2csr(cusparseHandle_t handle,
   //                                               const int *cooRowInd,
   //                                               int nnz,
@@ -344,11 +341,11 @@ Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseXcoo2csr(*gpusparse_handle_, cooRowInd,
                                                 nnz, m, csrRowPtr,
                                                 CUSPARSE_INDEX_BASE_ZERO));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
-                          int* cooRowInd) const {
+absl::Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
+                                int* cooRowInd) const {
   // cusparseStatus_t CUSPARSEAPI cusparseXcsr2coo(cusparseHandle_t handle,
   //                                               const int *csrRowPtr,
   //                                               int nnz,
@@ -360,10 +357,10 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseXcsr2coo(*gpusparse_handle_, csrRowPtr,
                                                 nnz, m, cooRowInd,
                                                 CUSPARSE_INDEX_BASE_ZERO));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuSparse::CsrgeamNnz(
+absl::Status GpuSparse::CsrgeamNnz(
     int m, int n, const cusparseMatDescr_t descrA, int nnzA,
     const int* csrSortedRowPtrA, const int* csrSortedColIndA,
     const cusparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
@@ -382,7 +379,7 @@ Status GpuSparse::CsrgeamNnz(
       csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
       descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
 #endif
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if CUDA_VERSION < 10020
@@ -549,14 +546,12 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
 #endif  // CUDA_VERSION < 12000
 
 template <typename Scalar>
-static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
-                              cusparseHandle_t cusparse_handle,
-                              cusparseOperation_t transA, int m, int n, int nnz,
-                              const Scalar* alpha_host,
-                              const Scalar* csrSortedValA,
-                              const int* csrSortedRowPtrA,
-                              const int* csrSortedColIndA, const Scalar* x,
-                              const Scalar* beta_host, Scalar* y) {
+static inline absl::Status SpMVImpl(
+    cudaDataType_t dtype, OpKernelContext* context,
+    cusparseHandle_t cusparse_handle, cusparseOperation_t transA, int m, int n,
+    int nnz, const Scalar* alpha_host, const Scalar* csrSortedValA,
+    const int* csrSortedRowPtrA, const int* csrSortedColIndA, const Scalar* x,
+    const Scalar* beta_host, Scalar* y) {
   cusparseSpMatDescr_t matA;
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(
       &matA, m, n, nnz, const_cast<int*>(csrSortedRowPtrA),
@@ -584,7 +579,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
-  auto pBuffer = buffer.flat<int8>();
+  auto pBuffer = buffer.flat<int8_t>();
   DCHECK(pBuffer.data() != nullptr);
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV(cusparse_handle, transA, alpha_host,
@@ -594,7 +589,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if CUDA_VERSION < 12000
@@ -636,7 +631,7 @@ TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
 #endif  // CUDA_VERSION < 10020
 
 template <typename Scalar, typename SparseFnT>
-static inline Status Csrgeam2Impl(
+static inline absl::Status Csrgeam2Impl(
     SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
     int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,
     int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
@@ -651,7 +646,7 @@ static inline Status Csrgeam2Impl(
       AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, workspace));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                               \
@@ -676,7 +671,7 @@ static inline Status Csrgeam2Impl(
 TF_CALL_LAPACK_TYPES(CSRGEAM_INSTANCE);
 
 template <typename Scalar, typename SparseFnT>
-static inline Status CsrgeamBufferSizeExtImpl(
+static inline absl::Status CsrgeamBufferSizeExtImpl(
     SparseFnT op, OpKernelContext* context, cusparseHandle_t sparse_handle,
     int m, int n, const Scalar* alpha, const cusparseMatDescr_t descrA,
     int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
@@ -691,7 +686,7 @@ static inline Status CsrgeamBufferSizeExtImpl(
       AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, bufferSize));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define CSRGEAM_BUFFERSIZE_INSTANCE(Scalar, sparse_prefix)                     \
@@ -923,13 +918,11 @@ TF_CALL_CUSPARSE_DTYPES(SPGEMM_COPY_INSTANCE);
 #endif
 
 template <typename Scalar, typename BufferSizeFnT, typename SparseFnT>
-static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
-                                  OpKernelContext* context,
-                                  cusparseHandle_t cusparse_handle, int m,
-                                  int n, int nnz,
-                                  const cusparseMatDescr_t descrA,
-                                  Scalar* csrVal, const int* csrRowPtr,
-                                  int* csrColInd) {
+static inline absl::Status Csru2csrImpl(
+    SparseFnT op, BufferSizeFnT buffer_size_op, OpKernelContext* context,
+    cusparseHandle_t cusparse_handle, int m, int n, int nnz,
+    const cusparseMatDescr_t descrA, Scalar* csrVal, const int* csrRowPtr,
+    int* csrColInd) {
   GpuSparseCsrSortingConversionInfo info;
   TF_RETURN_IF_ERROR(info.Initialize());
 
@@ -943,14 +936,14 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DT_INT8, TensorShape({static_cast<int64_t>(pBufferSizeInBytes)}),
       &pBuffer_t));
-  auto pBuffer = pBuffer_t.flat<int8>();
+  auto pBuffer = pBuffer_t.flat<int8_t>();
   DCHECK(pBuffer.data() != nullptr);
 
   TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, nnz, descrA,
                                   AsCudaComplex(csrVal), csrRowPtr, csrColInd,
                                   info.info(), pBuffer.data()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                              \
@@ -1000,12 +993,14 @@ TF_CALL_LAPACK_TYPES(CSR2CSC_INSTANCE);
 #else
 
 template <typename Scalar>
-static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
-                                 cusparseHandle_t cusparse_handle, int m, int n,
-                                 int nnz, const Scalar* csrVal,
-                                 const int* csrRowPtr, const int* csrColInd,
-                                 Scalar* cscVal, int* cscRowInd, int* cscColPtr,
-                                 const cusparseAction_t copyValues) {
+static inline absl::Status Csr2cscImpl(cudaDataType_t dtype,
+                                       OpKernelContext* context,
+                                       cusparseHandle_t cusparse_handle, int m,
+                                       int n, int nnz, const Scalar* csrVal,
+                                       const int* csrRowPtr,
+                                       const int* csrColInd, Scalar* cscVal,
+                                       int* cscRowInd, int* cscColPtr,
+                                       const cusparseAction_t copyValues) {
 #if CUDA_VERSION < 12000
   cusparseCsr2CscAlg_t algo = CUSPARSE_CSR2CSC_ALG2;
 #else
@@ -1029,7 +1024,7 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
       AsCudaComplex(cscVal), cscColPtr, cscRowInd, dtype, copyValues,
       CUSPARSE_INDEX_BASE_ZERO, algo, buffer.flat<Scalar>().data()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define CSR2CSC_INSTANCE(Scalar, cudaDataType)                                \

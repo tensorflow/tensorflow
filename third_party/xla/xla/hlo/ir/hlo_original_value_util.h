@@ -16,41 +16,92 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_ORIGINAL_VALUE_UTIL_H_
 #define XLA_HLO_IR_HLO_ORIGINAL_VALUE_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <type_traits>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/tsl/util/sorted_range.h"
 
 namespace xla {
+
+// Checks if the type of the map is a matching integer map.
+template <typename T, typename = void>
+struct is_matching_integer_map : std::false_type {};
+
+template <typename T>
+struct is_matching_integer_map<
+    T, std::void_t<typename T::key_type, typename T::mapped_type>> {
+  static constexpr bool value =
+      std::is_integral<typename T::key_type>::value &&
+      std::is_same<typename T::key_type, typename T::mapped_type>::value;
+};
+
+// Copies original arrays in the source original value to the destination
+// original value according to the given mapping of old to new tuple indices.
+// Both original values must be non-null, and every mapped subtree of the source
+// must be compatible with the destination subtree it is mapped to. A violation
+// means the caller lost track of which value an element holds, which is a bug
+// in the caller rather than a value that should be forgotten.
+template <typename MapType>
+typename std::enable_if<is_matching_integer_map<MapType>::value>::type
+CopyOriginalValue(const std::shared_ptr<OriginalValue>& src_original_value,
+                  const std::shared_ptr<OriginalValue>& dest_original_value,
+                  const MapType& old_to_new_tuple_idx) {
+  CHECK_NE(src_original_value, nullptr);
+  CHECK_NE(dest_original_value, nullptr);
+  for (const auto& [old_idx, new_idx] :
+       tsl::SortedRange(old_to_new_tuple_idx)) {
+    CHECK_OK(dest_original_value->mutable_tree()->CopyCompatibleSubtreeFrom(
+        src_original_value->tree(), {old_idx}, {new_idx}))
+        << "Incompatible OriginalValue subtree when mapping from old_idx "
+        << old_idx << " to new_idx " << new_idx;
+  }
+}
 
 // Copies the original value of the source to the destination instruction.
 // Original arrays in the source original value are rearranged in the new
 // original value according to the given mapping of old to new tuple indices.
-template <typename T>
-std::enable_if_t<std::is_integral_v<T>> CopyOriginalValue(
-    const HloInstruction* src_instruction, HloInstruction* dest_instruction,
-    const absl::flat_hash_map<T, T>& old_to_new_tuple_idx) {
-  std::shared_ptr<OriginalValue> old_original_value =
+template <typename MapType>
+typename std::enable_if<is_matching_integer_map<MapType>::value>::type
+CopyOriginalValue(const HloInstruction* src_instruction,
+                  HloInstruction* dest_instruction,
+                  const MapType& old_to_new_tuple_idx) {
+  const std::shared_ptr<OriginalValue> old_original_value =
       src_instruction->original_value();
   if (!old_original_value) {
     return;
   }
-  const int64_t src_tuple_size = old_original_value->tree().num_leaves();
-  const int64_t dest_tuple_size = old_to_new_tuple_idx.size();
-  std::shared_ptr<xla::OriginalValue> new_original_value =
-      std::make_shared<xla::OriginalValue>(dest_instruction->shape());
-  for (const auto& [old_idx, new_idx] : old_to_new_tuple_idx) {
-    if (old_idx < 0 || old_idx >= src_tuple_size || new_idx < 0 ||
-        new_idx >= dest_tuple_size) {
-      return;
-    }
-    new_original_value->mutable_tree()->CopySubtreeFrom(
-        old_original_value->tree(), {old_idx}, {new_idx});
-  }
+  auto new_original_value = std::make_shared<xla::OriginalValue>(
+      dest_instruction->shape(), old_original_value->call_hierarchy());
+  CopyOriginalValue(old_original_value, new_original_value,
+                    old_to_new_tuple_idx);
   dest_instruction->set_original_value(new_original_value);
+}
+
+// Copies the original value of the source to the destination instruction.
+// Original arrays in the source original value are rearranged in the new
+// original value according to the given vector of old to new tuple indices.
+// Elements with negative values in the vector are treated as pruned/unused.
+template <typename IntType>
+std::enable_if_t<std::is_integral_v<IntType>> CopyOriginalValue(
+    const HloInstruction* src_instruction, HloInstruction* dest_instruction,
+    const std::vector<IntType>& old_to_new_tuple_idx) {
+  absl::flat_hash_map<IntType, IntType> mapping;
+  for (size_t old_idx = 0; old_idx < old_to_new_tuple_idx.size(); ++old_idx) {
+    if constexpr (std::is_signed_v<IntType>) {
+      if (old_to_new_tuple_idx[old_idx] < 0) {
+        continue;
+      }
+    }
+    mapping[static_cast<IntType>(old_idx)] = old_to_new_tuple_idx[old_idx];
+  }
+  CopyOriginalValue(src_instruction, dest_instruction, mapping);
 }
 
 // Copies the original value of the source to the destination instruction if the

@@ -64,20 +64,16 @@ def _get_read_only_resource_input_indices_op(op):
   try:
     read_only_input_indices = op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR)
   except ValueError:
-    # Attr was not set. Add all resource inputs to `writes` and return.
+    # Attr was not set, so no inputs are known to be read-only.
     return []
 
-  read_only_index = 0
+  read_only_input_indices_set = set(read_only_input_indices)
   result = []
   for i, t in enumerate(op.inputs):
-    if read_only_index >= len(read_only_input_indices):
-      break
-    if op.inputs[i].dtype != dtypes.resource:
+    if t.dtype != dtypes.resource:
       continue
-    if (read_only_index < len(read_only_input_indices) and
-        i == read_only_input_indices[read_only_index]):
+    if i in read_only_input_indices_set:
       result.append(i)
-      read_only_index += 1
 
   return result
 
@@ -108,16 +104,14 @@ def get_read_write_resource_inputs(op):
     writes.update(t for t in op.inputs if t.dtype == dtypes.resource)
     return (reads, writes)
 
-  read_only_index = 0
+  read_only_input_indices_set = set(read_only_input_indices)
   for i, t in enumerate(op.inputs):
-    if op.inputs[i].dtype != dtypes.resource:
+    if t.dtype != dtypes.resource:
       continue
-    if (read_only_index < len(read_only_input_indices) and
-        i == read_only_input_indices[read_only_index]):
-      reads.add(op.inputs[i])
-      read_only_index += 1
+    if i in read_only_input_indices_set:
+      reads.add(t)
     else:
-      writes.add(op.inputs[i])
+      writes.add(t)
   return (reads, writes)
 
 

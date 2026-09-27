@@ -35,14 +35,14 @@ class QuantizedReluOp : public OpKernel {
     const Tensor& min_input_tensor = context->input(1);
     const Tensor& max_input_tensor = context->input(2);
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_input_tensor.dims()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_input_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`min_input` must be rank 0 but is rank ",
+                                 min_input_tensor.dims())));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`max_input` must be rank 0 but is rank ",
+                                 max_input_tensor.dims())));
 
     const float min_input = min_input_tensor.scalar<float>()();
     const float max_input = max_input_tensor.scalar<float>()();
@@ -81,14 +81,14 @@ class QuantizedRelu6Op : public OpKernel {
     const Tensor& min_input_tensor = context->input(1);
     const Tensor& max_input_tensor = context->input(2);
 
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_input_tensor.dims()));
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_input_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`min_input` must be rank 0 but is rank ",
+                                 min_input_tensor.dims())));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`max_input` must be rank 0 but is rank ",
+                                 max_input_tensor.dims())));
 
     const float min_input = min_input_tensor.scalar<float>()();
     const float max_input = max_input_tensor.scalar<float>()();

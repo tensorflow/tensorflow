@@ -121,8 +121,8 @@ struct TfLiteBenchmarkListener {
 };
 
 TfLiteBenchmarkListener* TfLiteBenchmarkListenerCreate() {
-  std::unique_ptr<BenchmarkListenerAdapter> adapter(
-      new BenchmarkListenerAdapter());
+  std::unique_ptr<BenchmarkListenerAdapter> adapter =
+      std::make_unique<BenchmarkListenerAdapter>();
   return new TfLiteBenchmarkListener{std::move(adapter)};
 }
 

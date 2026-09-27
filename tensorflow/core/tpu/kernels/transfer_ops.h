@@ -17,19 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TRANSFER_OPS_H_
 
 #include <deque>
-#include <memory>
-#include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/tpu/noncopyable_buffer.h"
-#include "xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/tpu/noncopyable_buffer.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 
@@ -110,29 +103,6 @@ class TpuTransferAsyncDynamicOrdinalOpKernel
       const TpuTransferAsyncDynamicOrdinalOpKernel&) = delete;
   TpuTransferAsyncDynamicOrdinalOpKernel& operator=(
       const TpuTransferAsyncDynamicOrdinalOpKernel&) = delete;
-};
-
-class StreamExecutorTransferOpImpl : public TpuTransferOpInterface {
- public:
-  explicit StreamExecutorTransferOpImpl();
-  ~StreamExecutorTransferOpImpl() override = default;
-  void Cancel() override;
-  absl::StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) override;
-
-  absl::Status TransferBuffersToInfeed(
-      int device_ordinal,
-      const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) override;
-  absl::Status TransferLiteralToInfeed(
-      int device_ordinal, const xla::LiteralSlice& literal) override;
-
-  absl::Status TransferLiteralFromOutfeed(
-      int device_ordinal, xla::MutableBorrowingLiteral literal) override;
-
- private:
-  absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
-      int device_ordinal);
-  xla::TpuTransferManagerInterface* transfer_manager_;
-  tpu::TpuPlatformInterface* tpu_platform_;
 };
 
 }  // namespace tensorflow

@@ -25,16 +25,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Defines the optimization effort to trigger additional passes which optimize
-// communication compute overlap.
-constexpr float kExtraCollectiveOptimizations = 0.2;
-
 // Returns true if the pass is enabled via `optimization_level` at
 // the potential expense of compile time.
 template <typename Pass>
 bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
-  float exec_effort = module.config().exec_time_optimization_effort();
-
   bool is_collective_optimization_pass =
       std::is_same_v<Pass, CollectivePipeliner> ||
       std::is_same_v<Pass, DoubleBufferLoopUnrolling> ||
@@ -44,8 +38,7 @@ bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
     ExecutionOptions::EffortLevel opt_level =
         module.config().optimization_level();
 
-    return exec_effort >= kExtraCollectiveOptimizations ||
-           opt_level >= ExecutionOptions::EFFORT_O1;
+    return opt_level >= ExecutionOptions::EFFORT_O1;
   }
 
   return true;

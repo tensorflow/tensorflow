@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package xla;
+
+import "google/protobuf/any.proto";
+import "xla/hlo/transforms/simplifiers/memory_scheduler.proto";
+
+message MetricsForSingleMemoryScheduler {
+  // The type of scheduler used.
+  optional MemorySchedulerProto.Value type = 1;
+  // The estimated peak memory for this scheduler.
+  optional int64 peak_memory = 2;
+  // Whether the scheduler produced a valid schedule.
+  optional bool valid_schedule = 3;
+  // Parameters used for this scheduler.
+  google.protobuf.Any params = 4;
+}
+
+// Statistics for the HLO memory scheduling pass.
+message MemorySchedulerMetrics {
+  // Metrics for each scheduler that was run.
+  repeated MetricsForSingleMemoryScheduler schedulers = 1;
+  // The index of the scheduler that was chosen.
+  optional int32 selected_scheduler_idx = 2;
+}

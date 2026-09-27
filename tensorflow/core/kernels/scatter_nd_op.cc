@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -94,7 +96,7 @@ class ScatterOpBase : public OpKernel {
     if constexpr (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           c, bad_indices_policy_ != BadIndicesPolicy::kError,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "ERROR bad_indices_policy is not supported on GPU devices."));
     }
   }
@@ -118,13 +120,13 @@ class ScatterNdOp : public ScatterOpBase<Device> {
     const Tensor& shape_input = c->input(2);
 
     OP_REQUIRES(c, indices.shape().dims() >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Indices shape must have rank at least one. Found:",
-                    indices.shape().DebugString()));
+                    indices.shape().DebugString())));
     OP_REQUIRES(c, updates.shape().dims() >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Updates shape must have rank at least one. Found:",
-                    updates.shape().DebugString()));
+                    updates.shape().DebugString())));
 
     auto vec = shape_input.flat<Index>();
     TensorShape shape;
@@ -135,19 +137,27 @@ class ScatterNdOp : public ScatterOpBase<Device> {
                 ValidEmptyOutputShape(shape_input.NumElements(),
                                       indices.shape().num_elements(),
                                       updates.shape().num_elements()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Indices and updates specified for empty output shape"));
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (",
+                    outer_dims,
+                    "). Found: updates shape=", updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
+
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(
           c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Dimensions [0,", outer_dims,
               ") of indices[shape=", indices.shape().DebugString(),
               "] must match dimensions [0,", outer_dims,
-              ") of updates[shape=", updates.shape().DebugString(), "]"));
+              ") of updates[shape=", updates.shape().DebugString(), "]")));
     }
 
     const int64_t ix = indices.shape().dim_size(outer_dims);
@@ -168,7 +178,7 @@ class ScatterNdOp : public ScatterOpBase<Device> {
                                   updates.shape().DebugString(), "]"));
     }
     OP_REQUIRES(c, shape_input.dims() == 1,
-                errors::InvalidArgument("Shape must be a vector"));
+                absl::InvalidArgumentError("Shape must be a vector"));
 
     Tensor out;
     OP_REQUIRES_OK(
@@ -195,13 +205,13 @@ class TensorScatterOp : public ScatterOpBase<Device> {
     const Tensor& updates = c->input(2);
 
     OP_REQUIRES(c, indices.shape().dims() >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Indices shape must have rank at least one. Found:",
-                    indices.shape().DebugString()));
+                    indices.shape().DebugString())));
     OP_REQUIRES(c, updates.shape().dims() >= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Updates shape must have rank at least one. Found:",
-                    updates.shape().DebugString()));
+                    updates.shape().DebugString())));
 
     TensorShape shape = input.shape();
 
@@ -209,35 +219,43 @@ class TensorScatterOp : public ScatterOpBase<Device> {
                 ValidEmptyOutputShape(shape.num_elements(),
                                       indices.shape().num_elements(),
                                       updates.shape().num_elements()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Indices and updates specified for empty output shape"));
 
     const int64_t outer_dims = indices.shape().dims() - 1;
 
+    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Updates shape must have rank at least the number of "
+                    "outer dimensions of indices (",
+                    outer_dims,
+                    "). Found: updates shape=", updates.shape().DebugString(),
+                    ", indices shape=", indices.shape().DebugString())));
+
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Outer dimensions of indices and update must match. "
                       "Indices shape: ",
                       indices.shape().DebugString(),
-                      ", updates shape:", updates.shape().DebugString()));
+                      ", updates shape:", updates.shape().DebugString())));
     }
 
     const int64_t ix = indices.shape().dim_size(outer_dims);
     OP_REQUIRES(
         c, updates.shape().dims() - outer_dims == shape.dims() - ix,
-        errors::InvalidArgument("Inner dimensions of output shape must match "
-                                "inner dimensions of updates shape. Output: ",
-                                shape.DebugString(),
-                                " updates: ", updates.shape().DebugString()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Inner dimensions of output shape must match "
+            "inner dimensions of updates shape. Output: ",
+            shape.DebugString(), " updates: ", updates.shape().DebugString())));
     for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
       OP_REQUIRES(
           c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "The inner ", shape.dims() - ix,
               " dimensions of output.shape=", shape.DebugString(),
               " must match the inner ", updates.shape().dims() - outer_dims,
-              " dimensions of updates.shape=", updates.shape().DebugString()));
+              " dimensions of updates.shape=", updates.shape().DebugString())));
     }
 
     AllocatorAttributes alloc_attr;
@@ -300,7 +318,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
@@ -327,7 +347,9 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
 
     if (dtype_ == DT_RESOURCE) {
       core::RefCountPtr<Var> v;
-      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      ResourceHandle handle;
+      OP_REQUIRES_OK(c, HandleFromInput(c, 0, &handle));
+      OP_REQUIRES_OK(c, LookupResource(c, handle, &v));
       Tensor* t = v->tensor();
       params = *t;
       params_shape = params.shape();
@@ -336,7 +358,7 @@ class ScatterNdUpdateOp : public ScatterOpBase<Device> {
       params_shape = params.shape();
       c->forward_ref_input_to_ref_output(0, 0);
       OP_REQUIRES(c, params.IsInitialized(),
-                  errors::FailedPrecondition("Null ref for params"));
+                  absl::FailedPreconditionError("Null ref for params"));
     } else {
       Tensor* params_ptr;
       params_shape = c->input(0).shape();
@@ -847,23 +869,24 @@ absl::Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const TensorShape& updates_shape(updates.shape());
 
   if (!TensorShapeUtils::IsVectorOrHigher(params_shape)) {
-    return errors::InvalidArgument("Output must be at least 1-D, ",
-                                   "got shape: ", params_shape.DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output must be at least 1-D, ",
+                     "got shape: ", params_shape.DebugString()));
   }
 
   if (!ValidEmptyOutputShape(params_shape.num_elements(),
                              indices_shape.num_elements(),
                              updates_shape.num_elements())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Indices and updates specified for empty output.  indices shape: ",
-        indices.shape().DebugString());
+        indices.shape().DebugString()));
   }
 
   if (updates.dim_size(0) != indices.dim_size(0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Dimensions [0,1) of indices[shape=", indices_shape.DebugString(),
         "] = ", indices.dim_size(0), " must match dimensions [0,1) of updates[",
-        "shape=", updates_shape.DebugString(), "] = ", updates.dim_size(0));
+        "shape=", updates_shape.DebugString(), "] = ", updates.dim_size(0)));
   }
   TF_RETURN_IF_ERROR(ValidateScatterNdUpdateShape(params_shape, indices.shape(),
                                                   updates.shape()));
@@ -935,6 +958,13 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(
       shape, indices, updates, &slice_dim, &num_updates, &slice_size));
 
+  if (slice_dim < 1 || slice_dim > 7) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
+                     "are currently supported.  Requested rank: ",
+                     slice_dim));
+  }
+
   IndexFlattener<Device, Index> index_flattener;
   auto indices_flat = index_flattener(c, indices);
   auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
@@ -959,6 +989,11 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     functor::SetZeroFunctor<Device, T> fill;
     fill(c->eigen_device<Device>(), out->flat<T>());
   }
+
+  if (num_updates == 0) {
+    return absl::OkStatus();
+  }
+
   auto output_matrix =
       out->shaped<T, 2>({shape.num_elements() / slice_size, slice_size});
 
@@ -988,10 +1023,10 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
       PARAMS_CASE(7);
 #undef PARAMS_CASE
       default:
-        return errors::InvalidArgument(
-            "Only indices.shape[-1] values between 1 and 5 "
-            "are currently supported.  Requested rank: ",
-            slice_dim);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Only indices.shape[-1] values between 1 and 7 "
+                         "are currently supported.  Requested rank: ",
+                         slice_dim));
     }
   }
   const bool check_bad_indices =

@@ -90,7 +90,7 @@ For now let's assume that the test in question always uses the same GPU type.
     (It is OK to use sharding in tests that load autotune results.)
 
 Please also see the example tests in
-[xla/service/gpu/tests/BUILD](https://github.com/openxla/xla/blob/main/xla/service/gpu/tests/BUILD):
+[xla/backends/gpu/tests/BUILD](https://github.com/openxla/xla/blob/main/xla/backends/gpu/tests/BUILD):
 
 -   load_autotune_results_using_execpath_test
 -   load_autotune_results_from_test_workspace_test

@@ -15,6 +15,8 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Operations to stack and unstack tensors."""
 
+import warnings
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import dispatch
@@ -32,8 +34,8 @@ def stack(values, axis=0, name="stack"):
   each tensor in `values`, by packing them along the `axis` dimension.
   Given a list of length `N` of tensors of shape `(A, B, C)`;
 
-  if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-  if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+  If `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+  If `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
   Etc.
 
   For example:
@@ -68,6 +70,21 @@ def stack(values, axis=0, name="stack"):
   Raises:
     ValueError: If `axis` is out of the range [-(R+1), R+1).
   """
+  if ops.is_dense_tensor_like(values):
+    if axis == 0:
+      warnings.warn(
+          "Passing a single Tensor to tf.stack is deprecated and will be"
+          " removed in a future release. Argument `values` must be a sequence"
+          " of Tensor objects.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      return ops.convert_to_tensor(values, name=name)
+    raise TypeError(
+        "Argument `values` must be a sequence of Tensor objects, but got a "
+        f"single Tensor of type {type(values).__name__}."
+    )
+
   if axis == 0:
     try:
       # If the input is a constant list, it can be converted to a constant op

@@ -39,10 +39,17 @@ limitations under the License.
 //
 // `param_to_multimem_addresses` is a pointer to the array of the multicast root
 // pointers for each parameter.
-struct CollectiveKernelMetadata {
+// NB: Any changes to this struct must be accompanied by appropriate changes
+// to mosaic gpu custom call codegen. More specifically, at this point this is
+// the COLLECTIVE_METADATA_SIZE in mosaic/gpu/launch_context.py.
+struct alignas(16) CollectiveKernelMetadata {
   uint64_t rank;
   void** param_to_peers;
   void** param_to_multimem_addresses;
 };
 
+// Ensure that the metadata struct is 16 byte aligned.
+// The scratch buffers are copied to the device just after this struct, and to
+// enable vectorized access to them, the struct needs to be 16 byte aligned.
+static_assert(sizeof(CollectiveKernelMetadata) % 16 == 0);
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_

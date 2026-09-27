@@ -40,6 +40,7 @@ namespace xla {
 
 class IotaReplicaGroupList;
 class CollectiveDeviceList;
+class HloPrintOptions;
 
 enum class CollectiveDeviceListVersion { kListOfLists, kIota, kMeshAxes };
 
@@ -93,14 +94,13 @@ class CollectiveDeviceListBase {
   };
 
   virtual void Print(Printer* printer) const = 0;
-  virtual void Print(Printer* printer,
-                     bool print_full_replica_group_list) const {
+  virtual void Print(Printer* printer, const HloPrintOptions& options) const {
     Print(printer);
   }
   virtual std::string ToString() const = 0;
-  virtual std::string ToString(bool print_full_replica_group_list) const {
+  virtual std::string ToString(const HloPrintOptions& options) const {
     return ToString();
-  };
+  }
 
   static std::unique_ptr<CollectiveDeviceListBase> DeviceListFromProto(
       const HloInstructionProto& proto);
@@ -135,10 +135,15 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   int64_t num_devices_per_group() const override;
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
   void Print(Printer* printer) const override;
-  void Print(Printer* printer,
-             bool print_full_replica_group_list) const override;
+  void Print(Printer* printer, const HloPrintOptions& options) const override;
   std::string ToString() const override;
-  std::string ToString(bool print_full_replica_group_list) const override;
+  std::string ToString(const HloPrintOptions& options) const override;
+
+  // Returns an equivalent replica group list with mesh axes split such that
+  // no reduction sub-axes remain in the reduction list.
+  MeshAxesReplicaGroupList CanonicalizeWithoutSubaxes() const;
+  const Mesh& mesh() const { return mesh_; }
+  absl::Span<const AxisRef> axes() const { return axes_; }
   MeshAxesReplicaGroupListProto ToProto() const;
 
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
@@ -228,10 +233,9 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
 
   void Print(Printer* printer) const override;
-  void Print(Printer* printer,
-             bool print_full_replica_group_list) const override;
+  void Print(Printer* printer, const HloPrintOptions& options) const override;
   std::string ToString() const override;
-  std::string ToString(bool print_full_replica_group_list) const override;
+  std::string ToString(const HloPrintOptions& options) const override;
 
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
     return std::make_unique<IotaReplicaGroupList>(*this);
@@ -291,6 +295,27 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     return true;
   }
 
+  bool operator<(const CollectiveDeviceList& other) const {
+    const auto& groups_a = replica_groups();
+    const auto& groups_b = other.replica_groups();
+    if (groups_a.size() != groups_b.size()) {
+      return groups_a.size() < groups_b.size();
+    }
+    for (size_t i = 0; i < groups_a.size(); ++i) {
+      const auto& rg_a = groups_a[i];
+      const auto& rg_b = groups_b[i];
+      if (rg_a.replica_ids_size() != rg_b.replica_ids_size()) {
+        return rg_a.replica_ids_size() < rg_b.replica_ids_size();
+      }
+      for (int j = 0; j < rg_a.replica_ids_size(); ++j) {
+        if (rg_a.replica_ids(j) != rg_b.replica_ids(j)) {
+          return rg_a.replica_ids(j) < rg_b.replica_ids(j);
+        }
+      }
+    }
+    return false;
+  }
+
   template <typename H>
   friend H AbslHashValue(H h, const CollectiveDeviceList& c) {
     const auto& groups = c.replica_groups();
@@ -317,10 +342,9 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   }
 
   void Print(Printer* printer) const override;
-  void Print(Printer* printer,
-             bool print_full_replica_group_list) const override;
+  void Print(Printer* printer, const HloPrintOptions& options) const override;
   std::string ToString() const override;
-  std::string ToString(bool print_full_replica_group_list) const override;
+  std::string ToString(const HloPrintOptions& options) const override;
 
   CollectiveDeviceListVersion version() const override {
     return CollectiveDeviceListVersion::kListOfLists;

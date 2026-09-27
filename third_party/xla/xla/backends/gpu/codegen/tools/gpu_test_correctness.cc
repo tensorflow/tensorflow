@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -56,7 +57,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using CorrectnessTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
+using CorrectnessTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 const Shape& GetFirstArrayShape(const Shape& shape) {
   if (shape.IsArray()) {
@@ -113,7 +114,8 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
   RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<EmitterData> emitter_data,
+                          GetEmitter(*module));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
@@ -136,7 +138,7 @@ TEST_F(CorrectnessTest, OutputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
   RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module));
   for (const auto& hero_name : flags.bijection_outputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));

@@ -27,11 +27,14 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/ifrt/basic_device_list.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -39,6 +42,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::Optional;
 using ::testing::Return;
 
@@ -54,20 +58,20 @@ TEST(PjRtLayoutTest, ByteSize) {
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kToken), Shape({})),
-      absl_testing::IsOkAndHolds(std::nullopt));
+      IsOkAndHolds(std::nullopt));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout()))
           ->ByteSize(DType(DType::kOpaque), Shape({})),
-      absl_testing::IsOkAndHolds(std::nullopt));
+      IsOkAndHolds(std::nullopt));
 
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(0)))
                   ->ByteSize(DType(DType::kS32), Shape({})),
-              absl_testing::IsOkAndHolds(Optional(4)));
+              IsOkAndHolds(Optional(4)));
   EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(
                                      xla::LayoutUtil::MakeDescendingLayout(2)))
                   ->ByteSize(DType(DType::kS32), Shape({3, 2})),
-              absl_testing::IsOkAndHolds(Optional(24)));
+              IsOkAndHolds(Optional(24)));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -77,7 +81,7 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/32)))
           ->ByteSize(DType(DType::kS32), Shape({1, 127})),
-      absl_testing::IsOkAndHolds(Optional(4 * (2 * 128))));
+      IsOkAndHolds(Optional(4 * (2 * 128))));
   EXPECT_THAT(
       PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
                              /*minor_to_major=*/{1, 0},
@@ -87,7 +91,87 @@ TEST(PjRtLayoutTest, ByteSize) {
                              /*tail_padding_alignment_in_elements=*/1,
                              /*element_size_in_bits=*/4)))
           ->ByteSize(DType(DType::kS4), Shape({1, 1023})),
-      absl_testing::IsOkAndHolds(Optional(2 * 1024 / 2)));
+      IsOkAndHolds(Optional(2 * 1024 / 2)));
+}
+
+TEST(PjRtLayoutTest, ByteSizeStatic) {
+  auto client = std::make_shared<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  Shape shape({6, 2});
+  Shape shard_shape({3, 2});
+  auto device0 = std::make_unique<MockDevice>();
+  auto device1 = std::make_unique<MockDevice>();
+  ON_CALL(*device0, client()).WillByDefault(Return(client.get()));
+  ON_CALL(*device1, client()).WillByDefault(Return(client.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef device_list,
+      client->MakeDeviceList({device0.get(), device1.get()}));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape, shard_shape,
+      /*is_fully_replicated=*/false);
+
+  auto pjrt_layout = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(2));
+
+  // Using a custom layout.
+  EXPECT_THAT(
+      PjRtLayout::ByteSize(DType(DType::kS32), shape, sharding, pjrt_layout),
+      IsOkAndHolds(Optional(24)));
+
+  // Using a default layout.
+  EXPECT_CALL(*client,
+              GetDefaultPjRtLayout(DType(DType::kS32), shard_shape.dims(),
+                                   device0.get(), MemoryKind()))
+      .WillOnce(Return(pjrt_layout));
+
+  EXPECT_THAT(PjRtLayout::ByteSize(DType(DType::kS32), shape, sharding,
+                                   /*pjrt_layout=*/
+                                   std::shared_ptr<const xla::PjRtLayout>()),
+              IsOkAndHolds(Optional(24)));
+}
+
+TEST(PjRtLayoutTest, NulloptByteSizeStatic) {
+  auto client = std::make_shared<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  auto device0 = std::make_unique<MockDevice>();
+  auto device1 = std::make_unique<MockDevice>();
+  ON_CALL(*device0, client()).WillByDefault(Return(client.get()));
+  ON_CALL(*device1, client()).WillByDefault(Return(client.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef device_list,
+      client->MakeDeviceList({device0.get(), device1.get()}));
+
+  {
+    Shape shape({});
+    Shape shard_shape({});
+    ShardingRef sharding = ConcreteEvenSharding::Create(
+        device_list, MemoryKind(), shape, shard_shape,
+        /*is_fully_replicated=*/false);
+    auto pjrt_layout = std::make_shared<const xla::PjRtLayout>(
+        xla::LayoutUtil::MakeDescendingLayout(0));
+    EXPECT_THAT(PjRtLayout::ByteSize(DType(DType::kToken), shape, sharding,
+                                     pjrt_layout),
+                IsOkAndHolds(std::nullopt));
+  }
+  {
+    Shape shape({5, 2});
+    ShardingRef sharding = ConcreteSharding::Create(
+        device_list, MemoryKind(), shape,
+        /*shard_shapes=*/{Shape({3, 2}), Shape({2, 2})});
+    auto pjrt_layout = std::make_shared<const xla::PjRtLayout>(
+        xla::LayoutUtil::MakeDescendingLayout(2));
+    EXPECT_THAT(
+        PjRtLayout::ByteSize(DType(DType::kS32), shape, sharding, pjrt_layout),
+        IsOkAndHolds(std::nullopt));
+  }
 }
 
 TEST(PjRtLayoutTest, ToPjRtLayout) {

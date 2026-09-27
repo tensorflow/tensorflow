@@ -58,10 +58,12 @@ std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
     const absl::flat_hash_set<HloOpcode>& done_ops,
     const absl::flat_hash_set<HloOpcode>& non_optimized_ops, bool return_tuple);
 
-// Extracts producer and consumer HLO instruction into a new HLO module
-// replacing its operands with parameter instructions.
-std::unique_ptr<HloModule> ExtractProducerConsumerIntoNewModule(
-    const HloInstruction& producer, const HloInstruction& consumer);
+// Extracts producer and all of its consumer HLO instructions into a new HLO
+// module replacing its operands with parameter instructions. Combines results
+// of all operations into the tuple, if there are multiple consumers, and adds
+// this tuple as a root instruction of the new module.
+std::unique_ptr<HloModule> ExtractProducerConsumersIntoNewModule(
+    const HloInstruction& producer);
 
 // Extracts an HLO computation into a new HLO module, using its clone as the
 // root computation.

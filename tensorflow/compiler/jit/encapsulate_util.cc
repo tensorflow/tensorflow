@@ -217,9 +217,9 @@ absl::Status PostprocessDataEdgesBetweenOutsideCompilations(
         n->attrs(), kOutsideCompilationSrcOutputAttrName, &node_src_output));
     auto iter = node_name_index.find(node_name);
     if (iter == node_name_index.end()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Cannot find original node for oc -> host placeholder node ",
-          node_name);
+          node_name));
     }
 
     // Change all usage node to use the original node instead.
@@ -292,8 +292,8 @@ absl::Status PostprocessControlEdgesBetweenOutsideCompilations(
       for (const std::string& control_input : control_deps) {
         auto iter = node_name_index.find(control_input);
         if (iter == node_name_index.end()) {
-          return errors::Internal("Cannot find original node for ",
-                                  control_input);
+          return absl::InternalError(
+              absl::StrCat("Cannot find original node for ", control_input));
         }
         g->AddControlEdge(iter->second, n);
       }

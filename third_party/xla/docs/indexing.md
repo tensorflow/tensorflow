@@ -22,7 +22,9 @@ the indexing map from the output to input is `(i, j, k) -> (j)` for `i in
 XLA uses several bespoke solutions to reason about coalescing, operand
 utilization, and tiling schemes (more details below). The goal of indexing
 analysis is providing a reusable component for such use cases. Indexing analysis
-is built on MLIR's Affine Map infrastructure and adds HLO semantics.
+is built on
+[XLA's custom `SymbolicExpr` and `SymbolicMap`](./symbolic_expressions.md)
+infrastructure and adds HLO semantics.
 
 ### Coalescing
 
@@ -127,52 +129,59 @@ approximately.
 
 ## Implementation
 
-Since we want to minimize recomputation, we need a library for symbolic
-computations. XLA already depends on MLIR, so we use
-[mlir::AffineMap](https://github.com/llvm/llvm-project/blob/main/mlir/include/mlir/IR/AffineMap.h)
-instead of writing a yet-another symbolic arithmetic library.
+To minimize recomputation, we need a framework for symbolic computation. This is
+implemented as [`SymbolicExpr` and `SymbolicMap`](./symbolic_expr.md).
 
-A typical `AffineMap` looks like
+*Note: Previously, `mlir::AffineMap` was used for symbolic computation.*
+
+A typical `SymbolicMap` looks like:
 
 ```
 (d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)
 ```
 
-`AffineMap` has two types of parameters: *dimensions* and *symbols*.
+`SymbolicMap` has two types of parameters: *dimensions* and *symbols*.
 *Dimensions* correspond to the dimension variables *d*; *symbols* correspond to
-the range variables *r* and runtime variables *rt*. `AffineMap` does not contain
-any metadata about constraints of the parameters, so we have to provide them
-separately.
+the range variables *r* and runtime variables *rt*. `SymbolicMap` does not
+contain any metadata about constraints of the parameters, so we have to provide
+them separately.
 
 ```c
-struct Interval {
- int64_t lower;
- int64_t upper;
-};
-
 class IndexingMap {
    // Variable represents dimension, range or runtime variable.
   struct Variable {
+    // struct Interval represents a closed interval [lower_bound, upper_bound].
     Interval bounds;
     // Name of the variable is used for nicer printing.
     std::string name = "";
   };
 
-  mlir::AffineMap affine_map_;
+  SymbolicMap symbolic_map_;
 
-  // DimVars represent dimensions of a tensor or of a GPU grid.
+  // A dimension variable represents a dimension of a tensor or a GPU grid.
+  // Dimension variables correspond to the dimensions of the `symbolic_map_`.
   std::vector<Variable> dim_vars_;
 
-  // RangeVars represent ranges of values, e.g. to compute a single element of
-  // the reduction's result we need a range of values from the input tensor.
+  // A range variable represents a range of values, e.g. to compute a single
+  // element of the reduction's result we need a range of values from the input
+  // tensor. Range variables correspond to the front portion of the
+  // symbols in `symbolic_map_`.
   std::vector<Variable> range_vars_;
 
-  // RTVars represent runtime values, e.g. a dynamic offset in
-  // HLO dynamic-update-slice op.
+  // A runtime variable represents a runtime symbol, e.g. a dynamic offset in of
+  // a HLO dynamic-update-slice op. Runtime variables correspond to the back
+  // portion of the symbols in `symbolic_map_`.
   std::vector<Variable> rt_vars_;
-  llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
+
+   // Inequality constraints for symbolic expressions. They restrict the feasible
+  // set for the domain of the indexing map. It contains symbolic expressions
+  // other than SymbolicDimExpr and SymbolicSymbolExpr.
+  llvm::MapVector<SymbolicExpr, Interval> constraints_;
 };
 ```
+
+*Code reference:
+[indexing_map.h#L114](https://github.com/openxla/xla/blob/18261672d5c2704a6e1017a0b66bd70fabb7a445/xla/hlo/analysis/indexing_map.h#L114)*
 
 `dim_vars_` encode the **inclusive** box constraints for the dimension
 variables **d** of the indexing map, which usually coincide with the
@@ -193,7 +202,7 @@ have feasible values between `0` and `tensor_size - slice_size - 1`.
 `<expression> in <range>`, e.g. `d0 + s0 in [0, 20]`. Together with
 `Variable.bounds` they define the "domain" of indexing function.
 
-Let's study-by-example to understand what's all of the above actually means.
+Let's study-by-example to understand what all of the above actually means.
 
 ## Indexing Maps for Unfused Ops
 
@@ -978,16 +987,12 @@ where `s0` refers to the innermost dimension of the input.
 
 For more examples see [indexing_analysis_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_analysis_test.cc).
 
-## Indexing Map Simplifier
-
-The default simplifier for `mlir::AffineMap` upstream cannot make any
-assumptions about the ranges of dimensions/symbols. Therefore, it cannot
-simplify expressions with `mod` and `div`efficiently.
+## Indexing Map simplification
 
 We can leverage the knowledge about lower and upper bounds of the
-sub-expressions in the affine maps to simplify them even more.
+sub-expressions in the symbolic maps to simplify them even more.
 
-The simplifier can rewrite the following expressions.
+Indexing map simplification can rewrite the following expressions.
 
 1.  `(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)` for **d** in `[0,
     6] x [0, 14]` becomes `(d0, d1) -> (d0, d1)`
@@ -1000,8 +1005,8 @@ The simplifier can rewrite the following expressions.
 4.  `(d0, d1) -> (-(-11d0 - d1 + 109) floordiv 11 + 9)` for **d**
     in `[0, 9] x [0, 10]` becomes `(d0, d1) -> (d0)`.
 
-Indexing map simplifier allows us to understand that some of the chained
-reshapes in HLO cancel each other.
+It allows us to understand that some of the chained reshapes in HLO cancel each
+other. For instance:
 
 ```c
 p0 = f32[10, 10, 10] parameter(0)
@@ -1009,18 +1014,19 @@ reshape1 = f32[50, 20] reshape(p0)
 reshape2 = f32[10, 10, 10] reshape(reshape1)
 ```
 
-After the composition of indexing maps and their simplification we will get
+After the composition of indexing maps and their simplification we will get the
+following map:
 
 `(d0, d1, d2) -> (d0, d1, d2)`.
 
 Indexing map simplification also simplifies the constraints.
 
-1. Constraints of type
-`lower_bound <= affine_expr (floordiv, +, -, *) constant <= upper_bound` are
-rewritten as `updated_lower_bound <= affine_expr <= updated_upped_bound`.
-2. Constraints that are always satisfied, e.g. `d0 + s0 in [0, 20]`
-for `d0 in [0, 5]` and `s0 in [1, 3]` are eliminated.
-3. Affine expressions in the constraints are optimized as the indexing affine
-map above.
+1.  Constraints of type `lower_bound <= symbolic_expr (floordiv, ceildiv, +, -,
+    *, mod, min, max) constant <= upper_bound` are rewritten as
+    `updated_lower_bound <= symbolic_expr <= updated_upped_bound`.
+2.  Constraints that are always satisfied, e.g. `d0 + s0 in [0, 20]` for `d0 in
+    [0, 5]` and `s0 in [1, 3]` are eliminated.
+3.  Symbolic expressions in the constraints are optimized as the indexing
+    symbolic map above.
 
 For more examples see [indexing_map_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_map_test.cc).

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -293,11 +294,11 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
         HloInstruction::CreateTernary(new_input->shape(), HloOpcode::kSelect,
                                       is_first_iter, input, new_input));
     for (HloInstruction* user : original_input_users) {
-      TF_RETURN_IF_ERROR(input->ReplaceUseWith(user, new_input));
+      ABSL_RETURN_IF_ERROR(input->ReplaceUseWith(user, new_input));
     }
-    TF_RETURN_IF_ERROR(root->ReplaceOperandWith(cluster->root_tuple_index,
-                                                cp->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(
+    ABSL_RETURN_IF_ERROR(root->ReplaceOperandWith(cluster->root_tuple_index,
+                                             cp->mutable_operand(0)));
+    ABSL_RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(
         cluster->reverse_order_instructions[0]));
     VLOG(2) << "Moved " << loop->name() << " index " << i;
     changed = true;
@@ -313,8 +314,8 @@ absl::StatusOr<bool> CollectivePermuteMotion::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kWhile) {
-        TF_ASSIGN_OR_RETURN(bool moved,
-                            MoveCollectivePermutes(computation, instr));
+        ABSL_ASSIGN_OR_RETURN(bool moved,
+                         MoveCollectivePermutes(computation, instr));
         changed |= moved;
       }
     }

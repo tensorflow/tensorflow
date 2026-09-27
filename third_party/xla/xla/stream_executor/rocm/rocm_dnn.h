@@ -22,7 +22,6 @@ limitations under the License.
 #include <Eigen/Core>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <vector>
 
@@ -46,39 +45,6 @@ class MIOpenRnnDescriptor;
 class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
 class MIOpenCTCLossDescriptor;
-
-struct PoolingWorkspaceDescriptor {
-  std::vector<int64_t> input_dims;
-  std::vector<int64_t> output_dims;
-  dnn::PoolingDescriptor op;
-  int dtype;
-  uint64_t timestamp;
-  ScopedDeviceAddress<uint8_t> workspace;
-  size_t workspace_size;
-  bool IsSame(const dnn::BatchDescriptor& input_dimensions,
-              const dnn::BatchDescriptor& output_dimensions,
-              const dnn::PoolingDescriptor& pooling_dimensions, int _type);
-};
-
-struct PoolingWorkspaceCache {
-  std::map<const void*, PoolingWorkspaceDescriptor> cache;
-  const int trim_size = 1000;
-  const uint64_t memory_budget = 2e7;
-  uint64_t timestamp = 0;
-  uint64_t memory_used = 0;
-  bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
-            const dnn::BatchDescriptor& output_dimensions,
-            const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-            PoolingWorkspaceDescriptor*& pdesc);
-  void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
-              const dnn::BatchDescriptor& output_dimensions,
-              const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-              ScopedDeviceAddress<uint8_t>& workspace, size_t wsp_size,
-              hipStream_t hip_stream);
-
- private:
-  void trim(hipStream_t hip_stream);
-};
 
 // miopen-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -510,10 +476,6 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   // Provide access to the MIOpen handle.
   std::unique_ptr<class MIOpenAccess> miopen_;
-
-  PoolingWorkspaceCache m_pooling_cache;
-  bool m_pooling_cache_allowed = false;
-  bool m_pooling_cache_enabled = false;
 
   template <class T, class U>
   absl::Status DoBatchNormalizationForwardImpl(

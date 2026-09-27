@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
@@ -79,6 +81,11 @@ class BuffersDebugChecksumThunk : public Thunk {
                                  absl::StrAppend(out, id, "=",
                                                  slice.ToString());
                                }));
+  }
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    return absl::InvalidArgumentError(
+        "BuffersDebugChecksumThunk can't be serialized.");
   }
 
  private:

@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 
 namespace xla::megascale::c_api_client {
 

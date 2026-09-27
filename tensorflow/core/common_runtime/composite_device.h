@@ -32,7 +32,7 @@ extern const char* const kCompositeDeviceType;
 class CompositeDevice : public Device {
  public:
   absl::Status Sync() override {
-    return errors::Internal(
+    return absl::InternalError(
         "Sync() should never been invoked on CompositeDevice.");
   }
 

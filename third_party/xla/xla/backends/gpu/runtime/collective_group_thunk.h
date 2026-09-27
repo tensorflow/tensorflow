@@ -17,54 +17,59 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_GROUP_THUNK_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/command_buffer.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // Collective group thunk fuses together a set of arbitrary collective
 // operations into a single group call in order for them to be dispatched
 // together. Implementation is backend-specific and might not be supported by
 // all collective implementations.
-class CollectiveGroupThunk : public Thunk {
+class CollectiveGroupThunk : public TracedCommand {
  public:
-  CollectiveGroupThunk(
-      ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
-          std::make_shared<CollectiveThunk::AsyncEvents>());
+  CollectiveGroupThunk(ThunkInfo thunk_info, Thunk::Kind kind,
+                       ThunkSequence thunks);
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const ExecuteParams& execute_params, const RecordParams& record_params,
+      RecordAction record_action, se::CommandBuffer* command_buffer) override;
 
-  absl::Status WalkNested(Walker callback) override;
+  bool requires_update_on_initialize() const override { return true; }
+  bool requires_warmup() const override { return true; }
+
+  BufferUses buffer_uses() const override;
+
+  const ThunkSequence& thunks() const { return executor_.thunks(); }
+
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
 
   static absl::StatusOr<std::unique_ptr<CollectiveGroupThunk>> FromProto(
       ThunkInfo thunk_info, const CollectiveGroupThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map,
       const Deserializer& deserializer);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  std::string ToString(int indent) const override;
+
  private:
-  ThunkSequence thunks_;
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
+  ThunkExecutor executor_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_GROUP_THUNK_H_

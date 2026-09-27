@@ -34,28 +34,28 @@ absl::Status ValidateOpIsSafeForSyncExecution(
     const Node& n, bool allow_control_flow_sync_execution) {
   for (DataType dt : n.output_types()) {
     if (IsRefType(dt)) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "Single-threaded executor does not support reference-typed "
           "edges.  But saw type ",
-          DataTypeString(dt), " in outputs of node ", n.name());
+          DataTypeString(dt), " in outputs of node ", n.name()));
     }
   }
   // Executing Switch nodes requires propagating deadness which is
   // not currently supported in the SingleThreadedExecutor.
   if (n.IsSwitch()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Single-threaded executor does not support switch op, but saw node ",
         n.name(),
         ". Perhaps your graph contains old-style control flow primitives? "
-        "Try using tf.compat.v1.enable_control_flow_v2().");
+        "Try using tf.compat.v1.enable_control_flow_v2()."));
   }
   if (n.IsControlFlow() && !allow_control_flow_sync_execution) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Single-threaded executor does not support low level control flow, "
         " but saw control flow node ",
         n.name(),
         ".  Perhaps your graph contains old-style control flow primitives? "
-        "Try using tf.compat.v1.enable_control_flow_v2().");
+        "Try using tf.compat.v1.enable_control_flow_v2()."));
   }
   return absl::OkStatus();
 }
@@ -89,9 +89,9 @@ class SingleThreadedExecutorImpl : public Executor {
     GetReversePostOrder(graph, &ordered_nodes);
     int ordered_nodes_size = ordered_nodes.size();
     if (ordered_nodes_size != graph.num_nodes()) {
-      return errors::InvalidArgument("Graph had ", graph.num_nodes(),
-                                     " but reverse post-order had ",
-                                     ordered_nodes.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Graph had ", graph.num_nodes(),
+                       " but reverse post-order had ", ordered_nodes.size()));
     }
 
     // We reserve two less nodes because we do not need to create kernels for
@@ -115,8 +115,8 @@ class SingleThreadedExecutorImpl : public Executor {
         int32_t arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));
         if (arg_index < 0) {
-          return errors::InvalidArgument("Invalid argument index ", arg_index,
-                                         " in node ", n->name());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid argument index ", arg_index, " in node ", n->name()));
         }
         arg_index_to_node_map[arg_index] = n;
         // We do not create a kernel for Arg nodes, and instead inline the
@@ -172,8 +172,9 @@ class SingleThreadedExecutorImpl : public Executor {
           if (e->src_output() == Graph::kControlSlot) {
             continue;
           } else if (e->src_output() != 0) {
-            return errors::Internal("Invalid output index ", e->src_output(),
-                                    " from argument node ", arg_index);
+            return absl::InternalError(
+                absl::StrCat("Invalid output index ", e->src_output(),
+                             " from argument node ", arg_index));
           }
           arg_output_locations_[arg_index].push_back(
               kernels_[node_to_index_map[e->dst()]].input_start_index +
@@ -191,8 +192,9 @@ class SingleThreadedExecutorImpl : public Executor {
         if (e->src_output() == Graph::kControlSlot) {
           continue;
         } else if (e->src_output() != 0) {
-          return errors::Internal("Invalid output index ", e->src_output(),
-                                  " from node ", n->DebugString());
+          return absl::InternalError(
+              absl::StrCat("Invalid output index ", e->src_output(),
+                           " from node ", n->DebugString()));
         }
         kernel_state.output_locations.push_back(
             kernels_[node_to_index_map[e->dst()]].input_start_index +
@@ -347,9 +349,9 @@ class SingleThreadedExecutorImpl : public Executor {
     const size_t received_args =
         args.call_frame ? args.call_frame->num_args() : 0;
     if (TF_PREDICT_FALSE(arg_output_locations_.size() > received_args)) {
-      return errors::InvalidArgument("Expected ", arg_output_locations_.size(),
-                                     " arguments, but only received ",
-                                     received_args, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected ", arg_output_locations_.size(),
+                       " arguments, but only received ", received_args, "."));
     }
 
     // ArgOp is a relatively expensive OpKernel due to the Tensor

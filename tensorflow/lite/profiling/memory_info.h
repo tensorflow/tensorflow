@@ -130,7 +130,8 @@ struct MemoryUsage {
 };
 
 // Return the memory usage from the system.
-// Note: this currently only works on Linux-based, Apple, and Windows systems.
+// Note: this works on Linux, Mac, Windows, Android and iOS. It does not work
+// in a WASM environment.
 MemoryUsage GetMemoryUsage();
 
 }  // namespace memory

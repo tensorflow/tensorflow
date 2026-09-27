@@ -25,8 +25,6 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMCPUPass();
-
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h.inc"
 

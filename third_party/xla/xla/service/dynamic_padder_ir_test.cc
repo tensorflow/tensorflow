@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/backends/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/service/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla {

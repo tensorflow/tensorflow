@@ -17,8 +17,9 @@ limitations under the License.
 #include <tuple>
 
 #include <gtest/gtest.h>
-#include "llvm/Support/Casting.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -53,8 +54,7 @@ TEST_P(ShardingSpecSerDesTest, HloShardingSpecRoundTrip) {
       auto deserialized,
       Deserialize<ShardingSpec>(serialized, /*options=*/nullptr));
 
-  const auto* deserialized_spec =
-      llvm::dyn_cast<HloShardingSpec>(deserialized.get());
+  const auto* deserialized_spec = dyn_cast<HloShardingSpec>(deserialized.get());
   ASSERT_NE(deserialized_spec, nullptr);
   EXPECT_EQ(deserialized_spec->num_shards(), num_shards());
   EXPECT_EQ(deserialized_spec->xla_hlo_sharding(), xla_hlo_sharding);
@@ -63,7 +63,12 @@ TEST_P(ShardingSpecSerDesTest, HloShardingSpecRoundTrip) {
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumShards, ShardingSpecSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
-                     testing::Values(2, 4)));
+                     testing::Values(2, 4)),
+    [](const testing::TestParamInfo<ShardingSpecSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_shards_", std::get<1>(info.param));
+    });
 
 }  // namespace
 }  // namespace ifrt

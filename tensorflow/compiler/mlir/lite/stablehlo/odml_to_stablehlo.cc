@@ -69,7 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/tsl/platform/errors.h"
@@ -172,7 +171,7 @@ absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
   if (absl::EndsWith(input_path, ".mlir")) {
     auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(input_path.c_str());
     if (std::error_code error = file_or_err.getError()) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("Could not open input file: ", input_path,
                        ", message=", error.message()));
     }
@@ -205,7 +204,7 @@ absl::Status ExportModule(mlir::ModuleOp module,
   auto output = mlir::openOutputFile(output_filename, &error_msg);
   if (output == nullptr) {
     llvm::errs() << error_msg << '\n';
-    return tensorflow::errors::Aborted("Unable to write to output path.");
+    return absl::AbortedError("Unable to write to output path.");
   }
 
   // Export StableHLO MLIR as output
@@ -231,8 +230,7 @@ absl::Status ConvertTFToStableHLO(ModuleOp tf_module,
                                   const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
   if (failed(applyPassManagerCLOptions(pm))) {
-    return tensorflow::errors::Aborted(
-        "Failed to apply MLIR pass manager CL options.");
+    return absl::AbortedError("Failed to apply MLIR pass manager CL options.");
   }
 
   auto error_handler = [&](const Twine& msg) {
@@ -240,7 +238,7 @@ absl::Status ConvertTFToStableHLO(ModuleOp tf_module,
     return failure();
   };
   if (failed(pass_pipeline.addToPipeline(pm, error_handler))) {
-    return tensorflow::errors::Aborted("Failed to add passes to pipeline.");
+    return absl::AbortedError("Failed to add passes to pipeline.");
   }
 
   AddTFToStablehloPasses(pm, skip_resize, smuggle_disallowed_ops);
@@ -267,7 +265,7 @@ absl::Status ConvertTFToStableHLO(ModuleOp tf_module,
   }
 
   if (failed(pm.run(tf_module))) {
-    return tensorflow::errors::Aborted("Lowering to StableHLO failed.");
+    return absl::AbortedError("Lowering to StableHLO failed.");
   }
 
   return absl::OkStatus();
@@ -295,7 +293,7 @@ absl::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   bool found = std::find(std::begin(type_set), std::end(type_set),
                          export_type) != std::end(type_set);
   if (!found) {
-    return tensorflow::errors::Aborted("Export type is not supported.");
+    return absl::AbortedError("Export type is not supported.");
   }
 
   auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
@@ -321,8 +319,7 @@ absl::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
       const auto status = tensorflow::quantization::PreprocessAndFreezeGraph(
           *module, module->getContext(), session);
       if (!status.ok()) {
-        return tensorflow::errors::Aborted(
-            "Failed to preprocess & freeze TF graph");
+        return absl::AbortedError("Failed to preprocess & freeze TF graph");
       }
     }
   }
@@ -364,7 +361,6 @@ void initAllPasses() {
   // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
-  mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
 }

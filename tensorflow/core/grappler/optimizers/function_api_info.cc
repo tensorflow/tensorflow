@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_api_info.h"
 
+#include <memory>
 #include <string>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -23,8 +25,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-FunctionApiInfo::FunctionApiInfo() {}
-FunctionApiInfo::~FunctionApiInfo() {}
+FunctionApiInfo::FunctionApiInfo() = default;
+FunctionApiInfo::~FunctionApiInfo() = default;
 
 absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   function_type_ = FunctionApiInfo::FunctionType::INFERENCE;
@@ -55,9 +57,9 @@ absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   }
 
   if (interface_name_.empty() && !preferred_device_.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function '", function_def.signature().name(),
-        "' has a preferred device, but does not implement an interface");
+        "' has a preferred device, but does not implement an interface"));
   }
   return absl::OkStatus();
 }
@@ -86,8 +88,8 @@ const DataTypeVector& FunctionApiInfo::output_arg_dtypes() const {
   return output_arg_dtypes_;
 }
 
-FunctionLibraryApiInfo::FunctionLibraryApiInfo() {}
-FunctionLibraryApiInfo::~FunctionLibraryApiInfo() {}
+FunctionLibraryApiInfo::FunctionLibraryApiInfo() = default;
+FunctionLibraryApiInfo::~FunctionLibraryApiInfo() = default;
 
 namespace {
 bool IsSameArgDef(const OpDef::ArgDef& arg1, const OpDef::ArgDef& arg2) {
@@ -134,10 +136,10 @@ absl::Status ValidateSignature(
          function_type == FunctionApiInfo::FunctionType::BACKWARD);
     if (!IsSameSignature(*equiv_funcs[0], *equiv_funcs[k], check_input,
                          check_output)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Functions '", equiv_funcs[0]->signature().name(), "' and '",
           equiv_funcs[k]->signature().name(), "' both implement '",
-          interface_name, "' but their signatures do not match.");
+          interface_name, "' but their signatures do not match."));
     }
   }
   return absl::OkStatus();
@@ -160,7 +162,8 @@ absl::Status FunctionLibraryApiInfo::Init(
   std::unordered_map<std::string, std::vector<const FunctionDef*>> fwd_funcs;
   std::unordered_map<std::string, std::vector<const FunctionDef*>> bwd_funcs;
   for (const auto& function : function_library.function()) {
-    std::unique_ptr<FunctionApiInfo> func_info(new FunctionApiInfo);
+    std::unique_ptr<FunctionApiInfo> func_info =
+        std::make_unique<FunctionApiInfo>();
     TF_RETURN_IF_ERROR(func_info->Init(function));
     // Ignore the function if it does not implement any interface.
     if (func_info->interface_name().empty()) continue;
@@ -184,8 +187,8 @@ absl::Status FunctionLibraryApiInfo::Init(
         bwd_funcs[interface_name].emplace_back(&function);
         break;
       default:
-        return errors::InvalidArgument("Unrecognized function type: ",
-                                       func_info->function_type());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Unrecognized function type: ", func_info->function_type()));
     }
     func_info_[function_name] = std::move(func_info);
   }
@@ -217,8 +220,8 @@ absl::Status FunctionLibraryApiInfo::GetEquivalentImplementations(
       it = intf_to_backward_funcs_.find(func_info->interface_name());
       break;
     default:
-      return errors::InvalidArgument("Unrecognized function type: ",
-                                     func_info->function_type());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unrecognized function type: ", func_info->function_type()));
   }
 
   for (const auto& func_name : it->second) {

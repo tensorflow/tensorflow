@@ -50,21 +50,23 @@ PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
   OP_REQUIRES(
       ctx,
       deprecated_config_serialized.empty() || config_proto_serialized.empty(),
-      errors::InvalidArgument("Provided both 'config' and 'config_proto' but "
-                              "only one should be provided.  Note the "
-                              "'config' option is deprecated."));
+      absl::InvalidArgumentError(
+          "Provided both 'config' and 'config_proto' but "
+          "only one should be provided.  Note the "
+          "'config' option is deprecated."));
   if (!deprecated_config_serialized.empty()) {
-    OP_REQUIRES(ctx,
-                config_proto_->mutable_graph_options()
-                    ->mutable_rewrite_options()
-                    ->ParseFromString(deprecated_config_serialized),
-                errors::InvalidArgument("Unable to parse config string as "
-                                        "tensorflow::RewriteOptions proto."));
+    OP_REQUIRES(
+        ctx,
+        config_proto_->mutable_graph_options()
+            ->mutable_rewrite_options()
+            ->ParseFromString(deprecated_config_serialized),
+        absl::InvalidArgumentError("Unable to parse config string as "
+                                   "tensorflow::RewriteOptions proto."));
   } else {
     OP_REQUIRES(
         ctx, config_proto_->ParseFromString(config_proto_serialized),
-        errors::InvalidArgument("Unable to parse config_proto string as "
-                                "tensorflow::ConfigProto proto."));
+        absl::InvalidArgumentError("Unable to parse config_proto string as "
+                                   "tensorflow::ConfigProto proto."));
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
 }
@@ -82,7 +84,8 @@ PartitionedCallOp::~PartitionedCallOp() {
 void PartitionedCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   FunctionLibraryRuntime* lib = ctx->function_library();
   OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                    errors::Internal("No function library is provided."), done);
+                    absl::InternalError("No function library is provided."),
+                    done);
 
   // The function body's graph is placed and partitioned the first time
   // `ComputeAsync` is invoked; every subsequent invocation calls each
@@ -133,8 +136,8 @@ absl::Status PartitionedCallOp::FillOutputDevices(
   const FunctionLibraryDefinition* flib = lib.GetFunctionLibraryDefinition();
   const FunctionDef* fdef = flib->Find(func_->name());
   if (fdef == nullptr) {
-    return errors::NotFound("Failed to find definition for function \"",
-                            func_->name(), "\"");
+    return absl::NotFoundError(absl::StrCat(
+        "Failed to find definition for function \"", func_->name(), "\""));
   }
   auto func_attrs = fdef->attr();
   auto attr = func_attrs.find(FunctionLibraryDefinition::kSharedRendezvousAttr);

@@ -162,8 +162,8 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
     int parent_id = frame_parent_[frame_id];
     auto loop_cond_it = loop_cond_.find(parent_id);
     if (loop_cond_it == loop_cond_.end()) {
-      return errors::InvalidArgument("Frame ", frame_id,
-                                     " doesn't have a LoopCond node");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Frame ", frame_id, " doesn't have a LoopCond node"));
     }
     auto& loop_cond_name = loop_cond_it->second->name();
     NodeDef* switch_node = nullptr;
@@ -174,8 +174,9 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
       }
     }
     if (!switch_node) {
-      return errors::InvalidArgument("LoopCond node of Frame ", frame_id,
-                                     " doesn't connect to any Switch node");
+      return absl::InvalidArgumentError(
+          absl::StrCat("LoopCond node of Frame ", frame_id,
+                       " doesn't connect to any Switch node"));
     }
     std::string switch_output = absl::StrCat(switch_node->name(), ":1");
     const std::string ctrl_dep = ConstantFolding::AddControlDependency(
@@ -222,7 +223,7 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
           continue;
         }
         if (port < 0) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Invariant node should not have control outputs "
               "to variant node");
         }
@@ -406,10 +407,9 @@ absl::Status LoopInvariantNodeMotionOptimizer::Optimize() {
       frame_children_[frame_ids.back()] = empty_set_;
       if (node.op() == "LoopCond") {
         if (loop_cond_.count(frame_ids.back())) {
-          return errors::InvalidArgument(
-              "Loop ", frame_ids.back(),
-              " has more than one LoopCond node: ", node.name(), " and ",
-              loop_cond_[frame_ids.back()]->name());
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Loop ", frame_ids.back(), " has more than one LoopCond node: ",
+              node.name(), " and ", loop_cond_[frame_ids.back()]->name()));
         }
         loop_cond_[frame_ids.back()] = &node;
       }
@@ -737,7 +737,7 @@ absl::Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (!options_.enable_loop_invariant_node_motion &&
       !options_.enable_stack_push_removal &&
       !options_.enable_dead_branch_removal) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
   *optimized_graph = item.graph;
   // Set up helper data structures.
@@ -769,10 +769,10 @@ static absl::Status update_identity_node_type(NodeDef* sw_node) {
       (sw_node->experimental_type().type_id() == TFT_PRODUCT)) {
     FullTypeDef old_t = sw_node->experimental_type();
     if (old_t.args_size() != 2) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "When converting Switch or Merge node '", sw_node->name(),
           "' to Identity, full type of original node describes ",
-          old_t.args_size(), " outputs, not 2.\n", old_t.DebugString());
+          old_t.args_size(), " outputs, not 2.\n", old_t.DebugString()));
     }
     FullTypeDef new_t;
     new_t.set_type_id(TFT_PRODUCT);

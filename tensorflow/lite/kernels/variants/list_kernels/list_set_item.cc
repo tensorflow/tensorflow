@@ -46,7 +46,7 @@ class SetItemSemantic {
     return kTfLiteOk;
   }
 
-  TfLiteStatus GetIndexVal(const TensorArray& arr, int& result) const {
+  TfLiteStatus GetIndexVal(const TensorArray& /*arr*/, int& result) const {
     const TfLiteTensor* index_input;
     TF_LITE_ENSURE_OK(ctx_,
                       GetInputSafe(ctx_, node_, kIndexInputIdx, &index_input));
@@ -66,7 +66,7 @@ class SetItemSemantic {
 
 class PushBackSemantic {
  public:
-  PushBackSemantic(TfLiteContext* ctx, TfLiteNode* node) {}
+  PushBackSemantic(TfLiteContext* /*ctx*/, TfLiteNode* /*node*/) {}
 
   static constexpr int kItemInputIdx = 1;
 
@@ -81,12 +81,17 @@ class PushBackSemantic {
 template <class Semantic>
 TfLiteStatus Prepare(TfLiteContext* ctx, TfLiteNode* node) {
   const auto semantic = Semantic(ctx, node);
+  TF_LITE_ENSURE(ctx, NumInputs(node) >= semantic.kItemInputIdx + 1);
 
   const TfLiteTensor* list_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
   TF_LITE_ENSURE_TYPES_EQ(ctx, list_input->type, kTfLiteVariant);
 
   TF_LITE_ENSURE_OK(ctx, semantic.CheckIndexInput());
+
+  const TfLiteTensor* item_input;
+  TF_LITE_ENSURE_OK(
+      ctx, GetInputSafe(ctx, node, semantic.kItemInputIdx, &item_input));
 
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(ctx, GetOutputSafe(ctx, node, kListOutputIdx, &output));
@@ -103,9 +108,11 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
   const TfLiteTensor* list_input;
   TF_LITE_ENSURE_OK(ctx, GetInputSafe(ctx, node, kListInputIdx, &list_input));
   TF_LITE_ENSURE_EQ(ctx, list_input->allocation_type, kTfLiteVariantObject);
+  TF_LITE_ENSURE(ctx, list_input->data.data != nullptr);
 
-  TensorArray* input_arr =
-      reinterpret_cast<TensorArray*>(list_input->data.data);
+  TensorArray* input_arr = static_cast<TensorArray*>(
+      static_cast<VariantData*>(list_input->data.data));
+  TF_LITE_ENSURE(ctx, input_arr != nullptr);
 
   int index;
   TF_LITE_ENSURE_OK(ctx, semantic.GetIndexVal(*input_arr, index));
@@ -120,17 +127,34 @@ TfLiteStatus Eval(TfLiteContext* ctx, TfLiteNode* node) {
 
   TensorArray* output_arr = static_cast<TensorArray*>(
       input_arr->CloneTo(static_cast<VariantData*>(output->data.data)));
+  TF_LITE_ENSURE(ctx, output_arr != nullptr);
+  output->data.data = static_cast<VariantData*>(output_arr);
 
   // TODO(b/288302706) Skip copy when tensor is used only once.
-  TensorUniquePtr item_copy = BuildTfLiteTensor(
-      item_input->type, BuildTfLiteArray(*item_input->dims), kTfLiteDynamic);
-  TfLiteTensorCopy(item_input, item_copy.get());
+  TensorUniquePtr item_copy;
+  if (item_input->type == kTfLiteVariant) {
+    item_copy = BuildTfLiteTensor();
+    TF_LITE_ENSURE(ctx, item_copy != nullptr);
+    item_copy->type = kTfLiteVariant;
+    item_copy->bytes = item_input->bytes;
+    item_copy->allocation_type = kTfLiteVariantObject;
+  } else {
+    TF_LITE_ENSURE(ctx, item_input->dims != nullptr);
+    IntArrayUniquePtr item_dims = BuildTfLiteArray(*item_input->dims);
+    TF_LITE_ENSURE(ctx, item_dims != nullptr);
+    item_copy = BuildTfLiteTensor(item_input->type, std::move(item_dims),
+                                  kTfLiteDynamic);
+    TF_LITE_ENSURE(ctx, item_copy != nullptr);
+    if (item_copy->bytes > 0) {
+      TF_LITE_ENSURE(ctx, item_copy->data.data != nullptr);
+    }
+  }
+  TF_LITE_ENSURE_OK(ctx, TfLiteTensorCopy(item_input, item_copy.get()));
 
   if (index >= output_arr->NumElements()) {
-    output_arr->Resize(index + 1);
+    TF_LITE_ENSURE(ctx, output_arr->Resize(index + 1));
   }
   TF_LITE_ENSURE(ctx, output_arr->Set(index, std::move(item_copy)));
-  output->data.data = static_cast<VariantData*>(output_arr);
   return kTfLiteOk;
 }
 

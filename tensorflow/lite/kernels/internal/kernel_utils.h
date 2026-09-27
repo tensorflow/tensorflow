@@ -15,10 +15,135 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_KERNEL_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_KERNEL_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace kernel_utils {
+
+// Element-count range required by the caller. Use kInt when the kernel passes
+// the count to an implementation that indexes with int; otherwise kSizeT only
+// requires the count to fit size_t.
+enum class ElementCountLimit {
+  kSizeT,
+  kInt,
+};
+
+// Reads an int32 or int64 axis scalar and normalizes negative values against
+// `rank`. Validates that `rank` is non-negative, the axis data buffer is
+// present, the axis tensor type is supported, and the normalized axis is in
+// [0, rank). This does not validate that `axis_tensor` has exactly one element;
+// callers should check that when required by the op contract.
+inline TfLiteStatus ReadAndNormalizeAxis(TfLiteContext* context,
+                                         const TfLiteTensor& axis_tensor,
+                                         int rank, int& normalized_axis) {
+  TF_LITE_ENSURE(context, rank >= 0);
+  TF_LITE_ENSURE_MSG(context, axis_tensor.data.raw != nullptr,
+                     "Axis data is null.");
+
+  int64_t axis_value = 0;
+  switch (axis_tensor.type) {
+    case kTfLiteInt32:
+      axis_value = *GetTensorData<int32_t>(&axis_tensor);
+      break;
+    case kTfLiteInt64:
+      // Retrieve all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
+      axis_value = *GetTensorData<int64_t>(&axis_tensor);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Unsupported axis type: %s",
+                         TfLiteTypeGetName(axis_tensor.type));
+      return kTfLiteError;
+  }
+
+  if (axis_value < 0) {
+    axis_value += rank;
+  }
+  TF_LITE_ENSURE_MSG(context, axis_value >= 0 && axis_value < rank,
+                     "Invalid axis value.");
+  normalized_axis = static_cast<int>(axis_value);
+  return kTfLiteOk;
+}
+
+// Computes the product of tensor dimensions in the half-open range
+// [begin, end). Validates that the range is within the tensor rank, every
+// dimension in the range is non-negative, and every intermediate product fits
+// int. The intermediate overflow check is intentional: kernels that loop over
+// this product can otherwise overflow even when a later zero dimension would
+// make the final tensor element count zero.
+inline TfLiteStatus CheckedDimensionProduct(TfLiteContext* context,
+                                            const TfLiteTensor& tensor,
+                                            int begin, int end, int& product) {
+  TF_LITE_ENSURE(context, begin >= 0);
+  TF_LITE_ENSURE(context, end >= begin);
+  TF_LITE_ENSURE(context, end <= NumDimensions(&tensor));
+
+  CheckedInt<int> checked_product = 1;
+  for (int i = begin; i < end; ++i) {
+    const int dim = SizeOfDimension(&tensor, i);
+    TF_LITE_ENSURE(context, dim >= 0);
+    checked_product *= dim;
+    TF_LITE_ENSURE_MSG(context, !checked_product.Overflow(),
+                       "Dimension product overflows int.");
+  }
+  product = checked_product.Value();
+  return kTfLiteOk;
+}
+
+// Gets the checked element count for `tensor` and validates that its data
+// storage is usable. The element count must fit size_t, and when `limit` is
+// kInt it must also fit int. If the checked element count is non-zero, the
+// tensor data buffer must be non-null. Stores the checked element count in
+// `element_count`.
+inline TfLiteStatus GetTensorElementCountAndValidateData(
+    TfLiteContext* context, const TfLiteTensor& tensor, const char* tensor_name,
+    ElementCountLimit limit, size_t& element_count) {
+  TF_LITE_ENSURE_MSG(
+      context, CheckedNumElements(&tensor, element_count) == kTfLiteOk,
+      "%s tensor shape is invalid or size overflowed.", tensor_name);
+  if (limit == ElementCountLimit::kInt) {
+    TF_LITE_ENSURE_MSG(
+        context,
+        element_count <= static_cast<size_t>(std::numeric_limits<int>::max()),
+        "%s tensor shape is invalid or size overflowed.", tensor_name);
+  }
+  TF_LITE_ENSURE_MSG(context, element_count == 0 || tensor.data.raw != nullptr,
+                     "%s data is null.", tensor_name);
+  return kTfLiteOk;
+}
+
+// Validates that `tensor` has a checked element count and usable data storage,
+// but discards the checked element count. Use this when the caller only needs
+// to reject invalid shapes, oversized element counts, or missing data buffers.
+inline TfLiteStatus ValidateTensorElementsAndData(
+    TfLiteContext* context, const TfLiteTensor& tensor, const char* tensor_name,
+    ElementCountLimit limit = ElementCountLimit::kSizeT) {
+  size_t element_count = 0;
+  return GetTensorElementCountAndValidateData(context, tensor, tensor_name,
+                                              limit, element_count);
+}
+
+// Validates that `tensor` has a checked element count that fits int and, when
+// non-empty, has a non-null data buffer. Stores the checked int element count
+// in `element_count`.
+inline TfLiteStatus CheckedTensorElementsAndData(TfLiteContext* context,
+                                                 const TfLiteTensor& tensor,
+                                                 const char* tensor_name,
+                                                 int& element_count) {
+  size_t count = 0;
+  TF_LITE_ENSURE_OK(context, GetTensorElementCountAndValidateData(
+                                 context, tensor, tensor_name,
+                                 ElementCountLimit::kInt, count));
+  element_count = static_cast<int>(count);
+  return kTfLiteOk;
+}
 
 // Performs an RNN batch inference step for inputs specified by input_ptr_batch.
 // The RNN cell is specified by the pointers to its input and recurrent weights,

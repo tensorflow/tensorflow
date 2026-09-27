@@ -32,7 +32,8 @@ class Log1p : public Intrinsic<Log1p> {
 
   static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
                                                           Type type);
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     return {
         {Type::S(F16)}, {Type::V(F16, 2)}, {Type::V(F16, 4)}, {Type::V(F16, 8)},
         {Type::S(F32)}, {Type::V(F32, 2)}, {Type::V(F32, 4)}, {Type::V(F32, 8)},

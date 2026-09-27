@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/bcast.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
@@ -552,6 +554,20 @@ TEST(BCastTest, Basic_Tensor_Matrix_As_Tensor) {
             "[1,7,5,1,1][11,1,1,3,2][11,7,5,3,2][1,1,1,1,1]"
             "[11,7,5,3,2][11,7,5,3,2]"
             "[0,3,4][]");
+}
+
+TEST(BCastTest, NegativeShape) {
+  const tensorflow::BCast bcast({10, -1, 1}, {10, 1, 1}, false);
+  EXPECT_TRUE(bcast.IsValid());
+  EXPECT_EQ(bcast.output_batch_size(), -1);
+  EXPECT_EQ(bcast.output_shape(), tensorflow::BCast::Vec({10, -1, 1}));
+}
+
+TEST(BCastTest, Overflow) {
+  const int64_t large_dim = 1LL << 62;
+  const tensorflow::BCast bcast({large_dim, 2}, {1, 1}, false);
+  EXPECT_TRUE(bcast.IsValid());
+  EXPECT_EQ(bcast.output_batch_size(), -1);
 }
 
 TEST(BCastTest, Basic_SymbolicShape) {

@@ -28,9 +28,9 @@ NcclBase::NcclBase(CollectiveType type, const std::string& name)
 absl::Status NcclBase::InitializeCollectiveParams(
     CollectiveParams* col_params) {
   if (type_ != col_params->instance.type) {
-    return errors::Internal("Expected initialized type ", type_,
-                            " to match type in CollectiveParams ",
-                            col_params->instance.type);
+    return absl::InternalError(absl::StrCat(
+        "Expected initialized type ", type_,
+        " to match type in CollectiveParams ", col_params->instance.type));
   }
 
   const char* expected_name;
@@ -51,14 +51,16 @@ absl::Status NcclBase::InitializeCollectiveParams(
       expected_name = "NcclAllToAll";
       break;
     default:
-      return errors::Internal("Unexpected CollectiveType ", type_);
+      return absl::InternalError(
+          absl::StrCat("Unexpected CollectiveType ", type_));
   }
 
   if (expected_name != col_params->instance.impl_details.collective_name) {
-    return errors::Internal("Unexpected combination of collective type ",
-                            col_params->instance.type, " and collective name ",
-                            col_params->instance.impl_details.collective_name,
-                            ", expected name ", expected_name);
+    return absl::InternalError(
+        absl::StrCat("Unexpected combination of collective type ",
+                     col_params->instance.type, " and collective name ",
+                     col_params->instance.impl_details.collective_name,
+                     ", expected name ", expected_name));
   }
 
   return absl::OkStatus();

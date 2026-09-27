@@ -111,10 +111,8 @@ class Mesh {
   bool IsEmpty() const;
   Mesh() { mesh_type_ = MeshType::kTile; }
 
-  inline bool IsTile() const { return mesh_type_ == MeshType::kTile; }
-  inline bool IsSingleDevice() const {
-    return mesh_type_ == MeshType::kSingleDevice;
-  }
+  bool IsTile() const { return mesh_type_ == MeshType::kTile; }
+  bool IsSingleDevice() const { return mesh_type_ == MeshType::kSingleDevice; }
 
   // Creates fully defined mesh.
   //
@@ -309,7 +307,7 @@ class Layout {
   Layout() = default;
   Layout(const Layout& other) = default;
 
-  inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
+  bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // Returns empty layout.
   static Layout Empty();

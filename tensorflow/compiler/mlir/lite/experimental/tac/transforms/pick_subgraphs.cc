@@ -58,7 +58,7 @@ limitations under the License.
 //         |
 //      subgraph6 (CPU)
 //
-//  We want to evaluate the possible options and minize the overall costs to
+//  We want to evaluate the possible options and minimize the overall costs to
 // produce a graph like below:
 //
 //    subgraph1 (GPU)   subgraph2(CPU)
@@ -76,7 +76,7 @@ limitations under the License.
 //  2) Pick subgraphs
 //    2.1) Populate the "dp table" for (subgraph, hardware).
 //    2.2) Make decisions based on the populated dp table.
-//    2.3) Rewire the whole graph based on the desicions.
+//    2.3) Rewire the whole graph based on the decisions.
 //
 namespace mlir {
 namespace TFL {
@@ -97,7 +97,7 @@ struct Subgraph {
   // The call can be thought as an "API".
   func::CallOp call;
 
-  // available_choces can be viewed as "real implementation" assosicated with
+  // available_choices can be viewed as "real implementation" associated with
   // the hardware.
   std::unordered_map<InferenceDeviceType, func::FuncOp,
                      InferenceDeviceType::inference_device_type_hash>

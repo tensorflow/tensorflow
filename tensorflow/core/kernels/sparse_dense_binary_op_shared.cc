@@ -67,34 +67,34 @@ class SparseDenseBinaryOpShared : public OpKernel {
 
     // Validations.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(indices_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input sp_indices should be a matrix but received shape: ",
-                    indices_t->shape().DebugString()));
+                    indices_t->shape().DebugString())));
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(values_t->shape()) &&
                     TensorShapeUtils::IsVector(shape_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Inputs sp_values and sp_shape should be vectors "
                     "but received shapes: ",
                     values_t->shape().DebugString(), " and ",
-                    shape_t->shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_t->shape()),
-        errors::InvalidArgument("Input sp_shape must be a vector. Got: ",
-                                shape_t->shape().DebugString()));
+                    shape_t->shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_t->shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input sp_shape must be a vector. Got: ",
+                                 shape_t->shape().DebugString())));
     OP_REQUIRES(
         ctx, values_t->dim_size(0) == indices_t->dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of values and indices should match. (",
-            values_t->dim_size(0), " vs. ", indices_t->dim_size(0), ")"));
+            values_t->dim_size(0), " vs. ", indices_t->dim_size(0), ")")));
     OP_REQUIRES(
         ctx, shape_t->shape().dim_size(0) == indices_t->shape().dim_size(1),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of dimensions must match second dimension of indices. ",
             "Got ", shape_t->shape().dim_size(0),
-            " dimensions, indices shape: ", indices_t->shape().DebugString()));
+            " dimensions, indices shape: ", indices_t->shape().DebugString())));
     OP_REQUIRES(ctx, shape_t->NumElements() > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "The shape argument requires at least one element."));
 
     const auto indices_mat = indices_t->matrix<int64_t>();
@@ -116,11 +116,11 @@ class SparseDenseBinaryOpShared : public OpKernel {
       return true;
     };
     OP_REQUIRES(ctx, VecGreaterEq(lhs_dims, rhs_dims) && b.IsValid(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "SparseDenseBinaryOpShared broadcasts dense to sparse "
                     "only; got incompatible shapes: [",
                     absl::StrJoin(lhs_dims, ","), "] vs. [",
-                    absl::StrJoin(rhs_dims, ","), "]"));
+                    absl::StrJoin(rhs_dims, ","), "]")));
 
     Tensor *output_values = nullptr;
     Tensor dense_gathered;
@@ -178,11 +178,11 @@ class SparseDenseBinaryOpShared : public OpKernel {
       CASE(4);
       CASE(5);
       default:
-        OP_REQUIRES(
-            ctx, false,
-            errors::InvalidArgument("Only tensors with ranks between 1 and 5 "
-                                    "are currently supported.  Tensor rank: ",
-                                    ndims));
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Only tensors with ranks between 1 and 5 "
+                                     "are currently supported.  Tensor rank: ",
+                                     ndims)));
 #undef CASE
     }
 

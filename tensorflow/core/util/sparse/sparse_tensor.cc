@@ -29,8 +29,8 @@ int UnsafeGetDimsFromIx(const Tensor& ix) {
 
 absl::Status GetDimsFromIx(const Tensor& ix, int* result) {
   if (!TensorShapeUtils::IsMatrix(ix.shape())) {
-    return errors::InvalidArgument("indices must be a matrix, but got: ",
-                                   ix.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "indices must be a matrix, but got: ", ix.shape().DebugString()));
   }
   *result = UnsafeGetDimsFromIx(ix);
   return absl::Status();
@@ -43,26 +43,27 @@ absl::Status GetDimsFromIx(const Tensor& ix, int* result) {
                                                const VarDimArray order,
                                                SparseTensor* result) {
   if (ix.dtype() != DT_INT64) {
-    return errors::InvalidArgument("indices must be type int64 but got: ",
-                                   ix.dtype());
+    return absl::InvalidArgumentError(
+        absl::StrCat("indices must be type int64 but got: ", ix.dtype()));
   }
   if (!TensorShapeUtils::IsVector(vals.shape())) {
-    return errors::InvalidArgument("vals must be a vec, but got: ",
-                                   vals.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "vals must be a vec, but got: ", vals.shape().DebugString()));
   }
   if (ix.shape().dim_size(0) != vals.shape().dim_size(0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "indices and values rows (indexing "
         "dimension) must match. (indices = ",
-        ix.shape().dim_size(0), ", values = ", vals.shape().dim_size(0), ")");
+        ix.shape().dim_size(0), ", values = ", vals.shape().dim_size(0), ")"));
   }
   int dims = 0;
   TF_RETURN_IF_ERROR(GetDimsFromIx(ix, &dims));
   if (order.size() != dims) {
-    return errors::InvalidArgument("Order length must be SparseTensor rank.");
+    return absl::InvalidArgumentError(
+        "Order length must be SparseTensor rank.");
   }
   if (shape.size() != dims) {
-    return errors::InvalidArgument("Shape rank must be SparseTensor rank.");
+    return absl::InvalidArgumentError("Shape rank must be SparseTensor rank.");
   }
 
   result->ix_ = std::move(ix);
@@ -255,19 +256,19 @@ absl::Status SparseTensor::IndicesValidHelper() const {
         absl::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
       }
       if (!valid) {
-        return errors::InvalidArgument(index,
-                                       " is out of bounds: need 0 <= index < [",
-                                       absl::StrJoin(shape_, ","), "]");
+        return absl::InvalidArgumentError(
+            absl::StrCat(index, " is out of bounds: need 0 <= index < [",
+                         absl::StrJoin(shape_, ","), "]"));
       }
       if (!increasing) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             index,
             " is out of order. Many sparse ops require sorted indices.\n"
             "    Use `tf.sparse.reorder` to create a correctly ordered copy."
-            "\n\n");
+            "\n\n"));
       }
       if (!different) {
-        return errors::InvalidArgument(index, " is repeated");
+        return absl::InvalidArgumentError(absl::StrCat(index, " is repeated"));
       }
     }
   }
@@ -283,7 +284,7 @@ absl::Status SparseTensor::IndicesValid() const {
   bool standard_order = true;
   for (size_t i = 0; i < order_.size(); ++i) {
     if (order_[i] < 0) {
-      return errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Order was not provided.  Provide an order at "
           "construction time or run ReorderInPlace");
     }

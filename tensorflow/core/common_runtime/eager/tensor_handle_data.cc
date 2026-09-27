@@ -75,7 +75,7 @@ absl::Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
 
 absl::Status LocalTensorHandleData::Unprotect() {
   if (!IsReady()) {
-    return errors::Internal("Cannot unprotect a non-ready tensor");
+    return absl::InternalError("Cannot unprotect a non-ready tensor");
   }
 
   forwarding_protection_tensor_ = tensorflow::Tensor();

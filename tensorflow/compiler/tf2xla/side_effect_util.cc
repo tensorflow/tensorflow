@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -49,9 +50,9 @@ const char kXlaOriginalOutsideCompilationNodeName[] =
 
 absl::Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
-    return errors::InvalidArgument("Node ", node->DebugString(),
-                                   " does not have attribute ",
-                                   kXlaHasHostTransferAttrName);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Node ", node->DebugString(), " does not have attribute ",
+                     kXlaHasHostTransferAttrName));
   }
 
   if (node->type_string() == "_XlaRecvAtHost" ||
@@ -85,8 +86,8 @@ absl::Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
     node->ClearAttr("_device_ordinal");
     node->AddAttr("_device_ordinal", device_ordinal);
   } else {
-    return errors::Internal("Unknown node type to set 'device_ordinal': ",
-                            node->DebugString());
+    return absl::InternalError(absl::StrCat(
+        "Unknown node type to set 'device_ordinal': ", node->DebugString()));
   }
   return absl::OkStatus();
 }
@@ -142,19 +143,19 @@ absl::Status ParseHostComputeCoreList(
   for (const auto& hc_core : list_from_attr) {
     std::vector<std::string> parts = str_util::Split(hc_core, ":");
     if (parts.size() != 2) {
-      return errors::InvalidArgument(
-          "Malformed host_compute_core entry ", hc_core,
-          " should be <cluster_name>:<core_number>.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Malformed host_compute_core entry ", hc_core,
+                       " should be <cluster_name>:<core_number>."));
     }
     int core;
     if (!absl::numbers_internal::safe_strto32_base(parts[1], &core, 10)) {
-      return errors::InvalidArgument("Malformed host_compute_core entry ",
-                                     hc_core,
-                                     " part after ':' should be an integer.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Malformed host_compute_core entry ", hc_core,
+                       " part after ':' should be an integer."));
     }
     if (host_compute_core->find(parts[0]) != host_compute_core->end()) {
-      return errors::InvalidArgument(
-          "Duplicate host_compute_core entry for cluster ", parts[0]);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Duplicate host_compute_core entry for cluster ", parts[0]));
     }
     (*host_compute_core)[parts[0]] = core;
   }

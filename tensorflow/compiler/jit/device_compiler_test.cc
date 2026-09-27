@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/device_compiler.h"
 
-#include <iostream>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -26,7 +26,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -36,30 +39,37 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/hlo/builder/xla_computation.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_base.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/path.h"
 
@@ -154,7 +164,7 @@ class MockDeviceCompilationProfiler : public DeviceCompilationProfiler {
               (override));
   MOCK_METHOD(absl::Status, RegisterCompilation,
               (const NameAttrList& function, int64_t compile_time_us,
-               bool used_persistent_cache),
+               bool used_persistent_cache, int64_t compile_end_us),
               (override));
 };
 
@@ -184,7 +194,6 @@ class DeviceCompilerTest : public ::testing::Test {
   XlaCompiler::Options GetDefaultXlaOptions() {
     XlaCompiler::Options options;
     options.device_type = DeviceType(DEVICE_GPU_XLA_JIT);
-    options.client = xla_device_compiler_->client();
     options.flib_def = flib_def_.get();
     return options;
   }
@@ -311,7 +320,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_,
               ShouldCompileCluster(_, DeviceCompileMode::kAsync, 1))
       .WillOnce(Return(true));
-  EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
+  EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false, _))
       .WillOnce([&done] {
         done.Notify();
         return absl::OkStatus();
@@ -486,7 +495,7 @@ TEST_F(DeviceCompilerTest, CompileStrictPersistentCacheFailedToPersist) {
   EXPECT_CALL(*persistor,
               TryToPersistExecutable(Signature::Hash()(signature),
                                      signature.HumanString(), _, _, _, _))
-      .WillOnce(Return(errors::FailedPrecondition("Random error.")));
+      .WillOnce(Return(absl::FailedPreconditionError("Random error.")));
 
   EXPECT_THAT(xla_device_compiler->CompileIfNeeded(
                   options, fn, args, XlaCompiler::CompileOptions{},
@@ -584,14 +593,15 @@ TEST_F(DeviceCompilerTestWithDump, CompileStrictDebugInformationDumpWorks) {
   EXPECT_THAT(compile_call_args_proto.compile_options(),
               StrEq(compile_options.DebugString()));
   EXPECT_THAT(compile_call_args_proto.function(), EqualsProto(fn));
-  std::vector<std::string> xla_arguments_human_strings;
-  absl::c_transform(SampleArgsForAddXY(),
-                    std::back_inserter(xla_arguments_human_strings),
-                    [](const XlaCompiler::Argument& xla_argument) {
-                      return xla_argument.HumanString();
+  std::vector<XlaArgument> xla_arguments_from_proto;
+  absl::c_transform(compile_call_args_proto.xla_args(),
+                    std::back_inserter(xla_arguments_from_proto),
+                    [](const tf2xla::XlaArgumentProto& proto) -> XlaArgument {
+                      auto arg = XlaArgument::FromProto(proto);
+                      CHECK_OK(arg);  // Crash OK
+                      return arg.value();
                     });
-  EXPECT_THAT(compile_call_args_proto.xla_arguments(),
-              ElementsAreArray(xla_arguments_human_strings));
+  EXPECT_THAT(xla_arguments_from_proto, ElementsAreArray(SampleArgsForAddXY()));
 }
 
 TEST_F(OpsTestBase, CompileSingleOpSuccess) {
@@ -618,7 +628,6 @@ TEST_F(OpsTestBase, CompileSingleOpSuccess) {
 
   XlaCompiler::Options options;
   options.device_type = DeviceType(DEVICE_GPU_XLA_JIT);
-  options.client = GetLocalClient();
   options.flib_def = flib_def.get();
 
   std::vector<XlaCompiler::Argument> args(1);

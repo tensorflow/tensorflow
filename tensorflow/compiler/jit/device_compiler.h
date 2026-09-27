@@ -214,11 +214,11 @@ template <typename ExecutableType>
 inline absl::Status EligibleToPersist(DeviceCompileState compile_state,
                                       const ExecutableType* executable) {
   if (compile_state != DeviceCompileState::kCompiled) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cache entry to serialize is not compiled.");
   }
   if (executable == nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "LocalExecutable not found for cache entry to serialize.");
   }
   return absl::OkStatus();
@@ -332,6 +332,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     DeviceCompilationProfiler* profiler, mutex* mu) {
   tensorflow::Env* env = tensorflow::Env::Default();
   const uint64_t compile_start_us = env->NowMicros();
+  metrics::UpdateXlaCompilationStartTime(compile_start_us);
 
   TfGraphToHloCompiler compiler(options);
   cache_value.compile_state = DeviceCompileState::kCompiled;
@@ -390,7 +391,8 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
 
   device_compiler_internal::LogOnceXlaCompiledFirstCluster();
   TF_RETURN_IF_ERROR(profiler->RegisterCompilation(
-      function, compile_time_us, loaded_executable.has_value()));
+      function, compile_time_us, loaded_executable.has_value(),
+      compile_end_us));
   return cache_value;
 }
 
@@ -521,7 +523,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   // Check if the requested entry is uncompiled and return an error if
   // compilation is disabled. This will raise an error for kLazy even if we have
   // not yet hit the compilation threshold and no compilation happens this
-  // round. This is to avoid non-determanism of when compilation is disallowed,
+  // round. This is to avoid non-determinism of when compilation is disallowed,
   // for example by changing the threshold.
   if (state == DeviceCompileState::kUncompiled && FailOnXlaCompilation()) {
     VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
@@ -531,7 +533,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
                      absl::StrAppend(out, " arg: ", arg.HumanString());
                    });
 
-    return errors::Internal("XLA compilation disabled");
+    return absl::InternalError("XLA compilation disabled");
   }
 
   if (state == DeviceCompileState::kUncompiled) {

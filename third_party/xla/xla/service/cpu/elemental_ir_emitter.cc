@@ -56,11 +56,19 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsinh(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
-  if (prim_type == F32 || prim_type == F64 || prim_type == F16) {
+  if (prim_type == F32 || prim_type == F64) {
     llvm::Function* tanh =
         xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(
             module(), Type::S(prim_type));
     return b()->CreateCall(tanh, value);
+  } else if (prim_type == F16 || prim_type == BF16) {
+    llvm::Type* f32_type = b()->getFloatTy();
+    llvm::Value* f32_value = b()->CreateFPCast(value, f32_type, "upcast");
+    llvm::Function* tanh =
+        xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(module(),
+                                                               Type::S(F32));
+    llvm::Value* f32_result = b()->CreateCall(tanh, f32_value);
+    return b()->CreateFPCast(f32_result, value->getType(), "downcast");
   }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }

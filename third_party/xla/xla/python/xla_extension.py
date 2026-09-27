@@ -14,4 +14,8 @@
 # ==============================================================================
 """An XLA client in Python."""
 
+from jax.jaxlib import _jax
 from jax.jaxlib._jax import *  # pylint: disable=wildcard-import
+if not hasattr(_jax, "PrimitiveType"):
+  from ._hlo import *  # pylint: disable=g-import-not-at-top,wildcard-import
+

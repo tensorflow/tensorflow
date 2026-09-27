@@ -188,6 +188,7 @@ def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
+def TF_RecordEventMetricForTensorResource : TF_ResourceBase<"RecordEventMetricForTensor">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
 def TF_GlobalIterIdResource : TF_ResourceBase<"GlobalIterId">;
@@ -252,6 +253,7 @@ def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
+def TF_RecordEventMetricForTensor : MemoryEffects<[MemRead<TF_RecordEventMetricForTensorResource>]>;
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
@@ -330,6 +332,7 @@ def TF_Float8E5M2Ref : TF_TensorFlowType<"Float8E5M2Ref", "float8e5m2ref">;
 def TF_Float8E4M3FNUZRef : TF_TensorFlowType<"Float8E4M3FNUZRef", "float8e4m3fnuzref">;
 def TF_Float8E4M3B11FNUZRef : TF_TensorFlowType<"Float8E4M3B11FNUZRef", "float8e4m3b11fnuzref">;
 def TF_Float8E5M2FNUZRef : TF_TensorFlowType<"Float8E5M2FNUZRef", "float8e5m2fnuzref">;
+def TF_Float8E8M0FNURef : TF_TensorFlowType<"Float8E8M0FNURef", "float8e8m0fnuref">;
 
 // Complex reference types
 def TF_Complex64Ref : TF_TensorFlowType<"Complex64Ref", "complex64ref">;
@@ -455,6 +458,7 @@ def TF_Float8E5M2 : AnyTypeOf<[F8E5M2, TF_Float8E5M2Ref], "float8e5m2">;
 def TF_Float8E4M3FNUZ : AnyTypeOf<[F8E4M3FNUZ, TF_Float8E4M3FNUZRef], "float8e4m3fnuz">;
 def TF_Float8E4M3B11FNUZ : AnyTypeOf<[F8E4M3B11FNUZ, TF_Float8E4M3B11FNUZRef], "float8e4m3b11fnuz">;
 def TF_Float8E5M2FNUZ : AnyTypeOf<[F8E5M2FNUZ, TF_Float8E5M2FNUZRef], "float8e5m2fnuz">;
+def TF_Float8E8M0FNU : AnyTypeOf<[F8E8M0FNU, TF_Float8E8M0FNURef], "float8e8m0fnu">;
 
 def TF_F32OrF64 : AnyTypeOf<[TF_Float32, TF_Float64], "32/64-bit float">;
 
@@ -475,6 +479,7 @@ def TF_Float8E5M2Tensor : TensorOf<[TF_Float8E5M2]>;
 def TF_Float8E4M3FNUZTensor : TensorOf<[TF_Float8E4M3FNUZ]>;
 def TF_Float8E4M3B11FNUZTensor : TensorOf<[TF_Float8E4M3B11FNUZ]>;
 def TF_Float8E5M2FNUZTensor : TensorOf<[TF_Float8E5M2FNUZ]>;
+def TF_Float8E8M0FNUTensor : TensorOf<[TF_Float8E8M0FNU]>;
 
 //===----------------------------------------------------------------------===//
 // Complex types (including corresponding reference types)

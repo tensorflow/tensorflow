@@ -50,6 +50,7 @@ class DataServiceSplitProvider : public SplitProvider {
                     IteratorStateWriter* writer) override;
   absl::Status Restore(std::function<std::string(std::string)> full_name,
                        IteratorStateReader* reader) override;
+  void Cancel() override;
 
  private:
   const std::string address_;
@@ -59,6 +60,7 @@ class DataServiceSplitProvider : public SplitProvider {
   const int64_t timeout_ms_;
 
   mutex mu_;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
   int64_t repetition_ TF_GUARDED_BY(mu_) = 0;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_ TF_GUARDED_BY(mu_);
 };

@@ -979,7 +979,7 @@ TEST_F(MutationTest, AddNewNode) {
   NodeDef empty_node;
   mutation->AddNode(std::move(empty_node), &s);
   TF_EXPECT_OK(s);
-  s = errors::Internal("error");
+  s = absl::InternalError("error");
 
   NodeDef valid_node =
       NDef("valid", "IdentityN", {"a:1", "^b"}, {{"N", 1}}, "foo");

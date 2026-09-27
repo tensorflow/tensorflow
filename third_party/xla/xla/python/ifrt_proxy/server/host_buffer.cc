@@ -24,6 +24,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -71,7 +72,7 @@ absl::Status HostBufferStore::ReadFromDisk(uint64_t handle) {
   MemRegion value;
   {
     std::unique_ptr<tsl::ReadOnlyMemoryRegion> tsl_mmaped;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(
         *file_path, &tsl_mmaped));
 
     auto view_ptr = new absl::string_view(

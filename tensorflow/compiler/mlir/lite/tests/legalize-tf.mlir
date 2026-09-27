@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: litert-opt %s -tfl-legalize-tf --cse -split-input-file| FileCheck %s --dump-input=fail
 
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
@@ -1340,18 +1354,18 @@ func.func @concat_v2_with_bool_type(%arg0: tensor<?x1xi1>, %arg1: tensor<?x1xi1>
 // CHECK: "tfl.concatenation"(%arg0, %arg1) <{axis = -1 : i32, fused_activation_function = "NONE"}> : (tensor<?x1xi1>, tensor<?x1xi1>) -> tensor<?x2xi1>
 }
 
-func.func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
-func.func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear_with_half_pixel_centers
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
 func.func @strided_slice(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
@@ -1412,6 +1426,19 @@ func.func @strided_slice_with_i64_constant_attributes(%arg0: tensor<10x10x10xf32
   // CHECK-DAG: [[END:%cst.*]] = arith.constant dense<0> : tensor<1xi32>
   // CHECK-DAG: [[STRIDES:%cst.*]] = arith.constant dense<1> : tensor<1xi32>
   // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 1 : i32}> : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
+}
+
+func.func @strided_slice_with_i64_limits(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %begin = arith.constant dense<-9223372036854775808> : tensor<1xi64>
+  %end = arith.constant dense<9223372036854775807> : tensor<1xi64>
+  %strides = arith.constant dense<1> : tensor<1xi64>
+  %0 = "tf.StridedSlice"(%arg0, %begin, %end, %strides) {begin_mask = 1 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<3xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+  // CHECK-LABEL: strided_slice_with_i64_limits
+  // CHECK-DAG: [[BEGIN:%.*]] = arith.constant dense<-2147483648> : tensor<1xi32>
+  // CHECK-DAG: [[END:%.*]] = arith.constant dense<2147483647> : tensor<1xi32>
+  // CHECK-DAG: [[STRIDES:%.*]] = arith.constant dense<1> : tensor<1xi32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) <{begin_mask = 1 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<3xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xf32>
 }
 
 func.func @strided_slice_non_zero_ellipsis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
@@ -1578,18 +1605,18 @@ func.func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   // CHECK: return %[[RESULT]] : tensor<8x16xf32>
 }
 
-func.func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_nearest_neighbor
-  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
-func.func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+func.func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<2xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
-  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) <{align_corners = false, half_pixel_centers = true}> : (tensor<1x100x100x3xf32>, tensor<2xi32>) -> tensor<?xf32>
 }
 
 func.func @sparse_to_dense_with_scalar_sparse_indices(%arg0: tensor<i32>, %arg1: tensor<3xi32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {
@@ -2162,6 +2189,13 @@ func.func @tranpose_arg64(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi64>) -> tenso
   // CHECK: "tfl.transpose"
 }
 
+func.func @tranpose_bf16(%arg0: tensor<2x3xbf16>, %arg1: tensor<2xi32>) -> tensor<3x2xbf16> {
+  %0 = "tf.Transpose"(%arg0, %arg1): (tensor<2x3xbf16>, tensor<2xi32>) -> tensor<3x2xbf16>
+  func.return %0 : tensor<3x2xbf16>
+  // CHECK-LABEL: tranpose_bf16
+  // CHECK: "tfl.transpose"
+}
+
 func.func @cumsum(%arg0: tensor<3x3xf32>, %arg1: tensor<i32>) -> tensor<3x3xf32> {
   %0 = "tf.Cumsum"(%arg0, %arg1) {exclusive = false, reverse = false} : (tensor<3x3xf32>, tensor<i32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
@@ -2605,6 +2639,14 @@ func.func @dynamic_update_slice_f16_arg(%arg0: tensor<4x5xf16>, %arg1: tensor<1x
 
 // CHECK-LABEL:dynamic_update_slice_f16_arg
 // CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xf16>, tensor<1x5xf16>, tensor<2xi32>) -> tensor<4x5xf16>
+}
+
+func.func @dynamic_update_slice_bf16_arg(%arg0: tensor<4x5xbf16>, %arg1: tensor<1x5xbf16>, %arg2: tensor<2xi32>) -> tensor<4x5xbf16> {
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
+  func.return %0 : tensor<4x5xbf16>
+
+// CHECK-LABEL:dynamic_update_slice_bf16_arg
+// CHECK: "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4x5xbf16>, tensor<1x5xbf16>, tensor<2xi32>) -> tensor<4x5xbf16>
 }
 
 func.func @dynamic_update_slice_i16(%arg0: tensor<4x5xi16>, %arg1: tensor<1x5xi16>, %arg2: tensor<2xi32>) -> tensor<4x5xi16> {

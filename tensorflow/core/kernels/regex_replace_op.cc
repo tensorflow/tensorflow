@@ -75,19 +75,22 @@ class RegexReplaceOp : public OpKernel {
     const Tensor* pattern_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("pattern", &pattern_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pattern_tensor->shape()),
-                errors::InvalidArgument("Pattern must be scalar, but received ",
-                                        pattern_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Pattern must be scalar, but received ",
+                                 pattern_tensor->shape().DebugString())));
     const std::string& pattern = pattern_tensor->scalar<tstring>()();
     std::shared_ptr<RE2> regex = CachedRE2(pattern);
-    OP_REQUIRES(ctx, regex->ok(),
-                errors::InvalidArgument("Invalid pattern: ", pattern,
-                                        ", error: ", regex->error()));
+    OP_REQUIRES(
+        ctx, regex->ok(),
+        absl::InvalidArgumentError(absl::StrCat("Invalid pattern: ", pattern,
+                                                ", error: ", regex->error())));
 
     const Tensor* rewrite_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("rewrite", &rewrite_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rewrite_tensor->shape()),
-                errors::InvalidArgument("Rewrite must be scalar, but received ",
-                                        rewrite_tensor->shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Rewrite must be scalar, but received ",
+                                 rewrite_tensor->shape().DebugString())));
     const std::string& rewrite = rewrite_tensor->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, InternalCompute(*regex, rewrite, replace_global_, ctx));
   }
@@ -129,8 +132,8 @@ class StaticRegexReplaceOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
     re_ = std::make_unique<RE2>(pattern);
     OP_REQUIRES(ctx, re_->ok(),
-                errors::InvalidArgument("Invalid pattern: ", pattern,
-                                        ", error: ", re_->error()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid pattern: ", pattern, ", error: ", re_->error())));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("rewrite", &rewrite_str_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("replace_global", &replace_global_));
   }

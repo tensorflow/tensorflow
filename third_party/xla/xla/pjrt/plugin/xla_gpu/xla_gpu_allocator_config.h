@@ -28,10 +28,17 @@ namespace xla {
 struct GpuAllocatorConfig {
   enum class Kind {
     kDefault,   // Client picks the best option for the platform.
-    kPlatform,  // The platform's default.
+    kPlatform,  // Synchronous passthrough allocator that calls the
+                // StreamExecutor Allocate/Deallocate APIs directly via a
+                // MultiDeviceAdapter wrapping StreamExecutorAllocator
+                // instances, with no BFC caching or pooled growth.
     kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
            // only available for GPU.
     kCudaAsync,  // Use the CUDA async allocator.
+    kVmm,  // Use Virtual Memory Management (VMM) allocator. This allocator
+           // uses CUDA VMM APIs to manage virtual address space separately from
+           // physical memory, enabling features like memory oversubscription
+           // and fine-grained memory mapping control.
   };
   Kind kind = Kind::kDefault;
 

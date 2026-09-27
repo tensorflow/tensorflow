@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: gpu_test_correctness %s
 
@@ -24,7 +24,7 @@ scatter {
     unique_indices=true,
     to_apply=add
 }
-// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(th_x) -> (th_x floordiv 2)
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(th_x) -> (th_x / 2)
 
 // CHECK-LABEL: func.func @main(
 // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>

@@ -131,7 +131,9 @@ absl::StatusOr<HloInstruction*> PermutationSortExpander::ExpandInstruction(
   // Construct the updates computation, which simply replaces the operand
   // values with the update values.
   HloComputation::Builder b("update_replace_computation");
-  Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  // Use the element type of the updates to avoid S32/S64 mismatches under x64.
+  PrimitiveType elem_ty = update_shape.element_type();
+  Shape scalar_shape = ShapeUtil::MakeShape(elem_ty, {});
   b.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "scalar_lhs"));
   HloInstruction* scalar_rhs = b.AddInstruction(

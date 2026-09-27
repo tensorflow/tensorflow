@@ -15,25 +15,25 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
-#include <cstdint>
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/image/extract_image_patches_op.h"
 
+#include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/util/overflow.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -44,11 +44,12 @@ static inline void ParseAttributeVec4(OpKernelConstruction* context,
                                       const std::string& attr_name,
                                       std::vector<int32_t>* attr) {
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
+  OP_REQUIRES(context, (*attr)[0] == 1 && (*attr)[3] == 1,
+              absl::UnimplementedError(
+                  absl::StrCat("Only support ", attr_name, " across space.")));
   OP_REQUIRES(
-      context, (*attr)[0] == 1 && (*attr)[3] == 1,
-      errors::Unimplemented("Only support ", attr_name, " across space."));
-  OP_REQUIRES(context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
-              errors::OutOfRange(attr_name, " is out of range."));
+      context, (*attr)[1] >= 1 && (*attr)[2] >= 1,
+      absl::OutOfRangeError(absl::StrCat(attr_name, " is out of range.")));
 }
 
 template <typename Device, typename T>
@@ -66,26 +67,29 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
     // Input tensor is of the following dimensions:
     // [ batch, in_rows, in_cols, channels ]
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat("input must be 4-dimensional",
+                                                input.shape().DebugString())));
 
-    const int batch = input.dim_size(0);
-    const int in_rows = input.dim_size(1);
-    const int in_cols = input.dim_size(2);
-    const int depth = input.dim_size(3);
+    const int64_t batch = input.dim_size(0);
+    const int64_t in_rows = input.dim_size(1);
+    const int64_t in_cols = input.dim_size(2);
+    const int64_t depth = input.dim_size(3);
 
-    const int ksize_rows = ksizes_[1];
-    const int ksize_cols = ksizes_[2];
+    const int64_t ksize_rows = ksizes_[1];
+    const int64_t ksize_cols = ksizes_[2];
 
-    const int stride_rows = strides_[1];
-    const int stride_cols = strides_[2];
+    const int64_t stride_rows = strides_[1];
+    const int64_t stride_cols = strides_[2];
 
-    const int rate_rows = rates_[1];
-    const int rate_cols = rates_[2];
+    const int64_t rate_rows = rates_[1];
+    const int64_t rate_cols = rates_[2];
 
-    const int ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
-    const int ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
+    const int64_t ksize_rows_eff =
+        ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
+    const int64_t ksize_cols_eff =
+        ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
 
     int64_t out_rows = 0, out_cols = 0;
     int64_t pad_rows = 0, pad_cols = 0;
@@ -96,8 +100,15 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
                                 in_cols, ksize_cols_eff, /*dilation_rate=*/1,
                                 stride_cols, padding_, &out_cols, &pad_cols));
 
+    int64_t patch_size = MultiplyWithoutOverflow(
+        ksize_rows, MultiplyWithoutOverflow(ksize_cols, depth));
+    OP_REQUIRES(context, patch_size >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Output size would overflow: ", ksize_rows,
+                                 " x ", ksize_cols, " x ", depth)));
+
     const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols,
-                                            ksize_rows * ksize_cols * depth};
+                                            patch_size};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;
@@ -109,8 +120,10 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
     }
 
     functor::ExtractImagePatchesForward<Device, T>()(
-        context->eigen_device<Device>(), input.tensor<T, 4>(), ksize_rows,
-        ksize_cols, stride_rows, stride_cols, rate_rows, rate_cols,
+        context->eigen_device<Device>(), input.tensor<T, 4>(),
+        static_cast<int>(ksize_rows), static_cast<int>(ksize_cols),
+        static_cast<int>(stride_rows), static_cast<int>(stride_cols),
+        static_cast<int>(rate_rows), static_cast<int>(rate_cols),
         BrainPadding2EigenPadding(padding_), output->tensor<T, 4>());
   }
 

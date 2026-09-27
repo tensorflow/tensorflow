@@ -231,8 +231,7 @@ class ReduceWindowOpModel : public SingleOpModel {
         /*input_shapes=*/{std::vector<int>(input_shape_.begin(),
                                            input_shape_.end())},
         /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
-        /*apply_delegate=*/true, /*allocate_and_delegate=*/false,
-        /*use_simple_allocator=*/false);
+        /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
 
     int body_subgraph_index;
     AddSubgraphs(1, &body_subgraph_index);

@@ -601,11 +601,11 @@ static void SetPartitionCalleeFromCallable(CallOpClass op,
                                            mlir::CallInterfaceCallable callee) {
   // Direct call.
   if (SymbolRefAttr fAttr = op.getFAttr()) {
-    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    SymbolRefAttr calleeAttr = cast<SymbolRefAttr>(callee);
     return op.setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
   }
   // Indirect call, callee Value is the first operand.
-  return op.setOperand(0, callee.get<Value>());
+  return op.setOperand(0, cast<Value>(callee));
 }
 
 void PartitionedCallOp::setCalleeFromCallable(
@@ -719,7 +719,7 @@ int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
   // Refer to the implementation in
   // tensorflow/lite/kernels/range.cc.
   FloatOrInt diff = limit - start;
-  if (std::is_integral<FloatOrInt>::value) {
+  if (std::is_integral_v<FloatOrInt>) {
     return ((std::abs(diff) + std::abs(delta) - 1) / std::abs(delta));
   }
   return std::ceil(std::abs(diff / delta));
@@ -2890,9 +2890,9 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 LogicalResult ToBoolOp::inferReturnTypes(
-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, PropertyRef, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
   return success();
@@ -3782,10 +3782,10 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
-    MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    MLIRContext* context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef,
     RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
   Value rhs = op.getRhs();
@@ -3921,10 +3921,10 @@ LogicalResult XlaConvV2Op::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
-    MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    MLIRContext* context, std::optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes, PropertyRef,
     RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 
   TensorType operand_ty = llvm::cast<TensorType>(op.getInput().getType());

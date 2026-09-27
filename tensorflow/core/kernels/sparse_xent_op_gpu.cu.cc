@@ -78,8 +78,8 @@ struct SparseXentFunctor<GPUDevice, T, Index> {
   template struct functor::SparseXentFunctor<GPUDevice, Eigen::bfloat16,     \
                                              Index>;                         \
   template class generator::SparseXentGradGenerator<Eigen::bfloat16, Index>;
-REGISTER(int32)
-REGISTER(int64)
+REGISTER(int32_t)
+REGISTER(int64_t)
 #undef REGISTER
 
 }  // end namespace tensorflow

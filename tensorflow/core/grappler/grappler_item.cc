@@ -175,12 +175,13 @@ absl::Status GrapplerItem::AddDevice(const std::string& device) {
   DeviceNameUtils::ParsedName name;
 
   if (!DeviceNameUtils::ParseFullName(device, &name)) {
-    return errors::InvalidArgument("Invalid device name: device=", device);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid device name: device=", device));
 
   } else if (!name.has_job || !name.has_replica || !name.has_task ||
              !name.has_type || !name.has_id) {
-    return errors::InvalidArgument("Not a fully defined device name: device=",
-                                   device);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Not a fully defined device name: device=", device));
   }
 
   devices_.insert(DeviceNameUtils::ParsedNameToString(name));
@@ -195,9 +196,9 @@ absl::Status GrapplerItem::AddDevices(const GrapplerItem& other) {
   }
   return invalid_devices.empty()
              ? absl::OkStatus()
-             : errors::InvalidArgument("Skipped invalid devices: [",
-                                       absl::StrJoin(invalid_devices, ", "),
-                                       "]");
+             : absl::InvalidArgumentError(
+                   absl::StrCat("Skipped invalid devices: [",
+                                absl::StrJoin(invalid_devices, ", "), "]"));
 }
 
 absl::Status GrapplerItem::InferDevicesFromGraph() {
@@ -209,9 +210,9 @@ absl::Status GrapplerItem::InferDevicesFromGraph() {
   VLOG(2) << "Inferred device set: [" << absl::StrJoin(devices_, ", ") << "]";
   return invalid_devices.empty()
              ? absl::OkStatus()
-             : errors::InvalidArgument("Skipped invalid devices: [",
-                                       absl::StrJoin(invalid_devices, ", "),
-                                       "]");
+             : absl::InvalidArgumentError(
+                   absl::StrCat("Skipped invalid devices: [",
+                                absl::StrJoin(invalid_devices, ", "), "]"));
 }
 
 void GrapplerItem::ClearDevices() { devices_.clear(); }

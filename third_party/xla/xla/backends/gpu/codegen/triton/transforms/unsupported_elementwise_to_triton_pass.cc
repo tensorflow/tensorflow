@@ -76,8 +76,4 @@ struct UnsupportedElementwiseToTritonPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateUnsupportedElementwiseToTritonPass() {
-  return std::make_unique<UnsupportedElementwiseToTritonPass>();
-}
-
 }  // namespace mlir::triton::xla

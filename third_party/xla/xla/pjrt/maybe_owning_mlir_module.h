@@ -31,7 +31,7 @@ namespace xla {
 // compilation if it is no longer needed.
 class MaybeOwningMlirModule {
  public:
-  MaybeOwningMlirModule(std::unique_ptr<mlir::MLIRContext> context,
+  MaybeOwningMlirModule(std::shared_ptr<mlir::MLIRContext> context,
                         mlir::OwningOpRef<mlir::ModuleOp> module)
       : owned_context_(std::move(context)),
         owned_module_(std::move(module)),
@@ -59,7 +59,7 @@ class MaybeOwningMlirModule {
   mlir::ModuleOp mlir_module() { return module_; }
 
  private:
-  std::unique_ptr<mlir::MLIRContext> owned_context_;
+  std::shared_ptr<mlir::MLIRContext> owned_context_;
   mlir::OwningOpRef<mlir::ModuleOp> owned_module_;
   mlir::ModuleOp module_;
 };

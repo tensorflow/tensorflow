@@ -26,6 +26,9 @@ limitations under the License.
 namespace tsl::memfile {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::testing::Not;
+
 TEST(RegisterBuiltInFile, Works) {
   std::string data1 = "foo";
   FileToc toc1;
@@ -58,6 +61,23 @@ TEST(RegisterBuiltInFile, Works) {
   ASSERT_OK(
       ReadFileToString(tsl::Env::Default(), "embed://dir/two", &contents2));
   EXPECT_EQ(contents2, data2);
+}
+
+TEST(RegisterBuiltinFile, EmptyFileTocName) {
+  std::string data = "data";
+  FileToc toc;
+  toc.name = "";
+  toc.data = data.data();
+  toc.size = data.size();
+
+  FileToc sentinel;
+  sentinel.name = nullptr;
+  std::vector<FileToc> tocs = {
+      toc,
+      sentinel,
+  };
+
+  ASSERT_THAT(RegisterBuiltInFiles("other_dir", tocs.data()), Not(IsOk()));
 }
 
 }  // namespace

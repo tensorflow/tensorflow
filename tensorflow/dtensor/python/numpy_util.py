@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to convert data buffers to/from DTensor tensors."""
+import os
 from typing import List
+import warnings
 
 import numpy as np
 
@@ -33,10 +35,24 @@ from tensorflow.python.types.core import Tensor, TensorLike  # pylint: disable=g
 def _split(value, splits, axis=0, split_fn=np.split, stack_fn=np.stack):
   """Split `value` into a sharded nparray/tf tensor based on the number of splits.
   """
+  # During graph tracing a dimension can be dynamic (`None`), so only run the
+  # divisibility check when the size is statically known. A raw modulo on a
+  # `None` dimension would otherwise raise a confusing TypeError.
+  dim_size = value.shape[axis]
+  if hasattr(dim_size, "value"):
+    dim_size = dim_size.value
+  if dim_size is not None and dim_size % splits[0] != 0:
+    raise ValueError(
+        f"Tensor shape along dimension {axis} ({dim_size}) is not evenly "
+        f"divisible by the number of splits ({splits[0]}) for that dimension."
+    )
+
   children = split_fn(value, splits[0], axis=axis)
+
   if len(splits) > 1:
     splits = splits[1:]
     children = [_split(child, splits, axis + 1) for child in children]
+
   return stack_fn(children)
 
 
@@ -44,7 +60,22 @@ def to_numpy(tensor: TensorLike) -> np.ndarray:
   """Copy `input` DTensor to an equivalent local numpy array."""
   layout = api.fetch_layout(tensor)
   if layout.mesh.is_remote():
-    return np.array([None])
+    if os.environ.get("TF_DTENSOR_RAISE_ON_REMOTE", "0") != "1":
+      warnings.warn(
+          "to_numpy() on a remote mesh is deprecated and will raise "
+          "NotImplementedError in a future release. Use "
+          "dtensor.copy_to_client() to fetch the tensor onto the local "
+          "client mesh first.",
+          DeprecationWarning,
+          stacklevel=2,
+      )
+      return np.array([None])
+
+    raise NotImplementedError(
+        "to_numpy() is not supported on a remote mesh. Use "
+        "dtensor.copy_to_client() to fetch the tensor onto the local "
+        "client mesh first."
+    )
 
   unpacked = [tensor.numpy() for tensor in api.unpack(tensor)]
   return unpacked_to_numpy(unpacked, layout)

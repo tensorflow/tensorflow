@@ -55,7 +55,7 @@ absl::Status GetTestDevice(Session* session, std::string* test_device) {
   });
 
   if (!found_gpu && !found_cpu) {
-    return errors::Internal("Expected at least one CPU or GPU!");
+    return absl::InternalError("Expected at least one CPU or GPU!");
   }
 
   *test_device = found_gpu ? "GPU" : "CPU";

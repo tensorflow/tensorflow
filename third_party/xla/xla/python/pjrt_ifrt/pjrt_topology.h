@@ -18,23 +18,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
-class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
+class PjRtTopology final : public RTTIExtends<PjRtTopology, Topology> {
  public:
   explicit PjRtTopology(
       std::shared_ptr<const xla::PjRtTopologyDescription> description);
@@ -55,7 +54,7 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   const AttributeMap& Attributes() const override;
 

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,10 +38,6 @@ static bool Initialized = [] {
 class DeviceContextTest : public ::testing::Test {
  public:
   void SetDevice(const std::string& device_type) {
-    auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
-    rollout_config.AllowForDeviceInXlaLaunch(DeviceType(device_type));
-    rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(device_type));
-
     auto device_factory = DeviceFactory::GetFactory(device_type);
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;

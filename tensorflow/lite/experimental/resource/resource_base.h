@@ -15,12 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_BASE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_BASE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
+
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 namespace resource {
@@ -29,8 +32,17 @@ namespace resource {
 /// WARNING: Experimental interface, subject to change.
 class ResourceBase {
  public:
+  enum class ResourceType {
+    kUnknown = 0,
+    kResourceVariable = 1,
+    kHashTable = 2,
+    kInitializationStatus = 3,
+  };
+
   explicit ResourceBase() {}
   virtual ~ResourceBase() {}
+
+  virtual ResourceType GetResourceType() const = 0;
 
   // Returns true if it is initialized.
   virtual bool IsInitialized() = 0;
@@ -45,6 +57,45 @@ using ResourceMap =
     std::unordered_map<std::int32_t, std::unique_ptr<ResourceBase>>;
 
 using ResourceIDMap = std::map<std::pair<std::string, std::string>, int>;
+
+// Generic lookup helper with type safety.
+template <typename T>
+T* GetTypedResource(ResourceMap* resources, int resource_id,
+                    ResourceBase::ResourceType expected_type) {
+  if (resources == nullptr) {
+    return nullptr;
+  }
+  auto it = resources->find(resource_id);
+  if (it != resources->end() && it->second != nullptr &&
+      it->second->GetResourceType() == expected_type) {
+    return static_cast<T*>(it->second.get());
+  }
+  return nullptr;
+}
+
+// Generic creation helper with type check and factory fallback.
+template <typename Factory>
+TfLiteStatus CreateTypedResourceIfNotAvailable(
+    ResourceMap* resources, int resource_id,
+    ResourceBase::ResourceType expected_type, Factory&& factory) {
+  if (resources == nullptr) {
+    return kTfLiteError;
+  }
+  auto it = resources->find(resource_id);
+  if (it != resources->end()) {
+    if (it->second == nullptr ||
+        it->second->GetResourceType() != expected_type) {
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+  auto resource = factory();
+  if (resource == nullptr) {
+    return kTfLiteError;
+  }
+  resources->emplace(resource_id, std::move(resource));
+  return kTfLiteOk;
+}
 
 }  // namespace resource
 }  // namespace tflite

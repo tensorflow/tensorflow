@@ -100,16 +100,18 @@ class KthOrderStatistic : public XlaOpKernel {
  public:
   explicit KthOrderStatistic(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("k", &k_));
-    OP_REQUIRES(ctx, k_ >= 0, errors::InvalidArgument("Need k >= 0, got ", k_));
+    OP_REQUIRES(
+        ctx, k_ >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     const TensorShape& input_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, input_shape.dims() == 2,
-        InvalidArgument("input must be rank-2: ", input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be rank-2: ", input_shape.DebugString())));
 
     xla::XlaOp k = xla::ConstantR0<int32_t>(builder, k_);
     xla::XlaOp kth_order_statistics =
@@ -208,16 +210,18 @@ class TopKUnique : public XlaOpKernel {
  public:
   explicit TopKUnique(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("k", &k_));
-    OP_REQUIRES(ctx, k_ >= 0, errors::InvalidArgument("Need k >= 0, got ", k_));
+    OP_REQUIRES(
+        ctx, k_ >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     const TensorShape& input_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, input_shape.dims() == 2,
-        InvalidArgument("input must be rank-2: ", input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be rank-2: ", input_shape.DebugString())));
 
     auto topk = CreateTopKUnique(builder, input, input_shape, k_, false);
     ctx->SetOutput(0, topk.first);
@@ -316,9 +320,9 @@ class MakeUnique : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     const TensorShape& input_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, input_shape.dims() == 2,
-        InvalidArgument("input must be rank-2: ", input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be rank-2: ", input_shape.DebugString())));
 
     ctx->SetOutput(0, CreateMakeUnique(builder, input, input_shape));
   }
@@ -337,16 +341,18 @@ class TopKWithUnique : public XlaOpKernel {
  public:
   explicit TopKWithUnique(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("k", &k_));
-    OP_REQUIRES(ctx, k_ >= 0, errors::InvalidArgument("Need k >= 0, got ", k_));
+    OP_REQUIRES(
+        ctx, k_ >= 0,
+        absl::InvalidArgumentError(absl::StrCat("Need k >= 0, got ", k_)));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
     const TensorShape& input_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, input_shape.dims() == 2,
-        InvalidArgument("input must be rank-2: ", input_shape.DebugString()));
+    OP_REQUIRES(ctx, input_shape.dims() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be rank-2: ", input_shape.DebugString())));
 
     xla::XlaOp unique = CreateMakeUnique(builder, input, input_shape);
     auto topk = CreateTopKUnique(builder, unique, input_shape, k_, true);

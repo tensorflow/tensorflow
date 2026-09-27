@@ -36,33 +36,34 @@ template <typename Index>
 absl::Status ValidateInputs(const Tensor *a_indices, const Tensor *a_values,
                             const Tensor *a_shape, const Tensor *b) {
   if (!TensorShapeUtils::IsMatrix(a_indices->shape())) {
-    return errors::InvalidArgument(
-        "Input a_indices should be a matrix but received shape: ",
-        a_indices->shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input a_indices should be a matrix but received shape: ",
+                     a_indices->shape().DebugString()));
   }
   if (!TensorShapeUtils::IsVector(a_values->shape()) ||
       !TensorShapeUtils::IsVector(a_shape->shape())) {
-    return errors::InvalidArgument(
-        "Inputs a_values and a_shape should be vectors "
-        "but received shapes: ",
-        a_values->shape().DebugString(), " and ",
-        a_shape->shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Inputs a_values and a_shape should be vectors "
+                     "but received shapes: ",
+                     a_values->shape().DebugString(), " and ",
+                     a_shape->shape().DebugString()));
   }
   int64_t nnz = a_indices->dim_size(0);
   int64_t ndims = a_indices->dim_size(1);
   if (a_values->dim_size(0) != nnz) {
-    return errors::InvalidArgument("Dimensions ", nnz, " and ",
-                                   a_values->dim_size(0),
-                                   " are not compatible");
+    return absl::InvalidArgumentError(absl::StrCat("Dimensions ", nnz, " and ",
+                                                   a_values->dim_size(0),
+                                                   " are not compatible"));
   }
   if (a_shape->dim_size(0) != ndims) {
-    return errors::InvalidArgument("Dimensions ", ndims, " and ",
-                                   a_shape->dim_size(0), " are not compatible");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Dimensions ", ndims, " and ", a_shape->dim_size(0),
+                     " are not compatible"));
   }
   if (a_shape->NumElements() != b->dims()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Two operands have different ranks; received: ", a_shape->NumElements(),
-        " and ", b->dims());
+        " and ", b->dims()));
   }
   const auto a_shape_flat = a_shape->flat<Index>();
   for (int i = 0; i < b->dims(); ++i) {
@@ -140,11 +141,11 @@ class SparseTensorDenseAddOp : public OpKernel {
       NDIMS_CASE(4);
       NDIMS_CASE(5);
       default:
-        OP_REQUIRES(
-            ctx, false,
-            errors::InvalidArgument("Only tensors with ranks between 1 and 5 "
-                                    "are currently supported.  Tensor rank: ",
-                                    ndims));
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("Only tensors with ranks between 1 and 5 "
+                                     "are currently supported.  Tensor rank: ",
+                                     ndims)));
 #undef NDIMS_CASE
     }
   }

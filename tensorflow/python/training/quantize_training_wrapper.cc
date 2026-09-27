@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/common_runtime/quantize_training.h"
 #include "tensorflow/core/platform/errors.h"
@@ -37,7 +38,7 @@ static PyObject* DoQuantizeTrainingOnGraphDefHelper(
 
   PyObject* py_str = PyBytes_FromStringAndSize(result.data(), result.size());
   if (!py_str) {
-    tensorflow::MaybeRaiseFromStatus(tensorflow::errors::Internal(
+    tensorflow::MaybeRaiseFromStatus(absl::InternalError(
         "Failed to generate serialized string of the rewritten graph."));
   }
   return py_str;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -111,7 +114,9 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetCompilationEnvOrOverrides(),
             ifrt_model_context.GetTfToHloCompiler(),
             ifrt_model_context.GetPersistentCompilationCache(),
-            ifrt_model_context.GetH2DTransferExecutorFactory()));
+            ifrt_model_context.GetH2DTransferExecutorFactory(),
+            ifrt_model_context.use_output_arena(),
+            ifrt_model_context.use_undonatable_buffer_converter()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.
@@ -126,12 +131,33 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
 
 absl::Status CompileTensorflowForIfrtServing(
     absl::string_view model_name, IfrtModelContext& ifrt_model_context,
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, bool enable_async_ifrt) {
   tsl::profiler::TraceMe trace_me("CompileTensorflowForIfrtServing");
   mlir::Builder builder(module.getContext());
 
-  TF_RETURN_IF_ERROR(
-      RunClusterToIfrtRuntimeOpsPassPipeline(module, model_name));
+  TF_RETURN_IF_ERROR(RunClusterToIfrtRuntimeOpsPassPipeline(
+      module, model_name,
+      ifrt_model_context.enable_propagate_static_shapes_pass(),
+      enable_async_ifrt));
+
+  // Collect the modified-variable report emitted by
+  // SinkVariableAsNamedArrayPass. The union of these reports across all
+  // compiled modules identifies host-needed variables for
+  // IfrtModelContext::Freeze() (freeze-time host variable mode). This is
+  // only complete if every signature is compiled before Freeze() is called.
+  if (auto modified = module->getAttrOfType<mlir::ArrayAttr>(
+          "tf_ifrt.modified_variable_names")) {
+    for (mlir::Attribute attr : modified) {
+      if (auto name = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+        // Ignore NOT_FOUND errors: some modified variables may be host-only
+        // variables managed directly in ResourceManager and not present in the
+        // checkpoint restore registry.
+        ifrt_model_context.GetRestoreTensorRegistry()
+            .SetUsedByHost(name.str())
+            .IgnoreError();
+      }
+    }
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto handles,
@@ -199,7 +225,9 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
 
   // Extract TPU program for IFRT call.
   TF_RETURN_IF_ERROR(CompileTensorflowForIfrtServing(
-      model_context.name(), **ifrt_model_context, module));
+      model_context.name(), **ifrt_model_context, module,
+      model_context.graph_execution_options()
+          .compile_options.enable_async_ifrt));
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("after_ifrt_outlining", module);

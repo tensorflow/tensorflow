@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/data_transfer.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -72,11 +73,14 @@ size_t GetElementResult::EstimatedMemoryUsageBytes() const {
       continue;
     }
 
-    // Estimates the memory usage of a compressed element.
-    const Variant& variant = tensor.scalar<Variant>()();
-    const CompressedElement* compressed = variant.get<CompressedElement>();
-    if (compressed) {
-      size_bytes += compressed->SpaceUsedLong();
+    // Estimates the memory usage of compressed elements.
+    auto variants = tensor.flat<Variant>();
+    for (int64_t i = 0; i < variants.size(); ++i) {
+      const CompressedElement* compressed =
+          variants(i).get<CompressedElement>();
+      if (compressed) {
+        size_bytes += compressed->SpaceUsedLong();
+      }
     }
   }
   return size_bytes;
@@ -105,10 +109,10 @@ absl::Status DataTransferServer::Build(
     available_names.push_back(factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No data transfer server factory has been registered for name ", name,
       ". The available names are: [ ", absl::StrJoin(available_names, ", "),
-      " ]");
+      " ]"));
 }
 
 void DataTransferClient::Register(std::string name, ClientFactoryT factory) {
@@ -133,10 +137,10 @@ absl::Status DataTransferClient::Build(
     available_names.push_back(factory.first);
   }
 
-  return errors::NotFound(
+  return absl::NotFoundError(absl::StrCat(
       "No data transfer client factory has been registered for name ", name,
       ". The available names are: [ ", absl::StrJoin(available_names, ", "),
-      " ]");
+      " ]"));
 }
 
 }  // namespace data

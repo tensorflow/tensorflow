@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,9 +20,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -31,19 +34,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
-#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/codegen_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace cpu {
@@ -143,10 +144,10 @@ TEST_P(CpuVectorizationTest, DoIt) {
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
   auto compiler = GetCpuCompiler();
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler.get());
-  TF_ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
-                                             std::move(hlo_module), check_lines,
-                                             /*match_optimized_ir=*/true));
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
+                                          std::move(hlo_module), check_lines,
+                                          /*match_optimized_ir=*/true));
 }
 
 VectorizationTestSpec CpuVectorizationTestCases[] = {
@@ -213,6 +214,26 @@ std::vector<MaxIsaTestSpec> GetX86MaxIsaTestCases() {
       MaxIsaTestSpec{"AVX512", "avx512f", true},
       MaxIsaTestSpec{"AVX512", "avx512vnni", false},
       MaxIsaTestSpec{"AVX512", "amx-bf16", false},
+      MaxIsaTestSpec{"AVX512", "amx-fp8", false},
+      // AMX_FP16 as max: SPR-or-older ISAs stay on; DMR additions (amx-fp8,
+      // other amx tiles, avx10, APX) are suppressed.
+      MaxIsaTestSpec{"AMX_FP16", "amx-bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-int8", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx512bf16", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.1", true},
+      MaxIsaTestSpec{"AMX_FP16", "amx-fp8", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-tf32", false},
+      MaxIsaTestSpec{"AMX_FP16", "amx-avx512", false},
+      MaxIsaTestSpec{"AMX_FP16", "avx10.2", false},
+      MaxIsaTestSpec{"AMX_FP16", "ndd", false},
+      MaxIsaTestSpec{"AMX_FP16", "ppx", false},
+      // AMX_FP8 as max: amx-fp8 and older AMX tiles stay on.
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp8", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-fp16", true},
+      MaxIsaTestSpec{"AMX_FP8", "amx-bf16", true},
+      // Older max still suppresses amx-fp8.
+      MaxIsaTestSpec{"AMX", "amx-fp8", false},
   });
 }
 
@@ -334,22 +355,22 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto compiler = GetCpuCompiler();
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler.get());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
   Compiler::CompileOptions compile_options;
   compile_options.device_allocator = nullptr;
-  TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
-                                  std::move(hlo_module), check_lines,
-                                  /*match_optimized_ir=*/true));
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
 }
 
 std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
   return std::vector<JitVectorizationTestSpec>({
       JitVectorizationTestSpec{HloOpcode::kMultiply, "SSE4_2",
-                               R"(CHECK: fmul <%d x float>)", 4},
+                               R"(CHECK: fmul contract <%d x float>)", 4},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX2",
-                               R"(CHECK: fmul <%d x float>)", 8},
+                               R"(CHECK: fmul contract <%d x float>)", 8},
       JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX512",
-                               R"(CHECK: fmul <%d x float>)", 16},
+                               R"(CHECK: fmul contract <%d x float>)", 16},
   });
 }
 
@@ -357,6 +378,58 @@ INSTANTIATE_TEST_SUITE_P(JitVectorizationTestInstantiation,
                          JitVectorizationTest,
                          ::testing::ValuesIn(GetJitVectorizationTestCases()),
                          JitVectorizationTest::Name);
+
+class AtanJitVectorizationTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_max_isa("AVX512");
+    debug_options.set_xla_cpu_prefer_vector_width(512);
+    return debug_options;
+  }
+};
+
+TEST_F(AtanJitVectorizationTest, AtanF32) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+
+  const absl::string_view hlo_text = R"(
+    HloModule AtanF32
+
+    ENTRY AtanF32 {
+      p0 = f32[1024] parameter(0)
+      c1 = f32[] constant(1)
+      b1 = f32[1024] broadcast(c1), dimensions={}
+      ROOT atan2 = f32[1024] atan2(p0, b1)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  auto compiler = GetCpuCompiler();
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = nullptr;
+
+  int num_elements = 16;
+  if (!tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX512F)) {
+    if (tsl::port::TestCPUFeature(tsl::port::CPUFeature::AVX2)) {
+      num_elements = 8;
+    } else {
+      num_elements = 4;
+    }
+  }
+
+  std::string check_lines =
+      absl::StrFormat("CHECK: fdiv <%d x float>", num_elements);
+
+  ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
+                               std::move(hlo_module), check_lines,
+                               /*match_optimized_ir=*/true));
+}
 
 }  // namespace
 }  // namespace cpu

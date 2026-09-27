@@ -27,12 +27,15 @@ delegate with `TfLiteGpuDelegateV2Create()` and destroying it with
 auto model = FlatBufferModel::BuildFromFile(model_path);
 if (!model) return false;
 ops::builtin::BuiltinOpResolver op_resolver;
-std::unique_ptr<Interpreter> interpreter;
-InterpreterBuilder(*model, op_resolver)(&interpreter);
+InterpreterBuilder builder(*model, op_resolver);
 
 // NEW: Prepare GPU delegate.
 auto* delegate = TfLiteGpuDelegateV2Create(/*default options=*/nullptr);
-if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+builder.AddDelegate(delegate);
+
+// Build interpreter.
+std::unique_ptr<Interpreter> interpreter;
+if (builder(&interpreter) != kTfLiteOk) return false;
 
 // Run inference.
 WriteToInputTensor(interpreter->typed_input_tensor<float>(0));
@@ -56,12 +59,14 @@ bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate
 bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
-When calling `Interpreter::ModifyGraphWithDelegate()` or
+When calling `InterpreterBuilder::operator()` (e.g. `builder(&interpreter)`),
+`Interpreter::ModifyGraphWithDelegate()`, or
 `Interpreter::Invoke()`, the caller must have an `EGLContext` in the current
 thread and `Interpreter::Invoke()` must be called from the same `EGLContext`. If
 an `EGLContext` does not exist, the delegate creates one internally, but then
 you must ensure that `Interpreter::Invoke()` is always called from the same
-thread in which `Interpreter::ModifyGraphWithDelegate()` was called.
+thread in which `InterpreterBuilder::operator()` or
+`Interpreter::ModifyGraphWithDelegate` was called.
 
 #### With TensorFlow Lite in Google Play Services:
 
@@ -163,9 +168,8 @@ The following code shows how to ***disable*** support for quantized models.
       <p><pre class="prettyprint lang-c++">
 TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
 options.experimental_flags = TFLITE_GPU_EXPERIMENTAL_FLAGS_NONE;
-
-auto* delegate = TfLiteGpuDelegateV2Create(options);
-if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+auto* delegate = TfLiteGpuDelegateV2Create(&options);
+builder.AddDelegate(delegate);
       </pre></p>
     </section>
   </devsite-selector>

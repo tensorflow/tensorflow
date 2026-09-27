@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -91,6 +92,7 @@ using NumericOrString = std::variant<std::string, int64_t, double>;
 // computation is attached to an HloInstruction within some other computation.
 // The meaning of the nested computation depends on the instruction it's
 // attached to.
+
 class HloModule {
  public:
   HloModule(const std::string& name, HloModuleConfig config);
@@ -186,7 +188,15 @@ class HloModule {
 
   bool has_entry_computation() const { return entry_computation_ != nullptr; }
 
-  // Returns the root instruction shape of entry computation.
+  // Returns the output shape in entry computation layout. This is the final
+  // result shape when HLO finishes the full compilation.
+  const Shape& output_shape() const {
+    return entry_computation_layout().result_shape();
+  }
+
+  // Returns the shape of the HLO root instruction.
+  // This can be different from the output_shape() when HLO is in an
+  // intermediate state. E.g. when compilation exits early.
   //
   // Precondition: entry_computation_ is not nullptr.
   const Shape& result_shape() const {
@@ -352,6 +362,23 @@ class HloModule {
     }
   }
 
+  // Canonicalizes the local_ids of all instructions in all computations
+  // in this module and updates the schedule's instruction unique IDs.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs in all
+  // computations. It should only be used in contexts where you are certain
+  // that nothing is caching instruction unique IDs or relying on the stability
+  // of local IDs.
+  void CanonicalizeComputationLocalIds();
+
+  // Reorders the computations in the module to match the post-order.
+  //
+  // Many analysis and optimization passes benefit from processing computations
+  // in post-order (callees before callers). Canonicalizing them in this order
+  // makes simple iteration over computations() yield a valid traversal order,
+  // improving determinism.
+  absl::Status ReorderComputationsToPostOrder();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -447,6 +474,10 @@ class HloModule {
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
  private:
+  // Private constructor which accepts the id to allow specifying pre-allocated
+  // module id.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs, int module_id);
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
@@ -521,11 +552,12 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  void ToProto(HloModuleProto* proto) const;
+  void ToProto(HloModuleProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
 
-  HloModuleProto ToProto() const {
+  HloModuleProto ToProto(HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProto proto;
-    ToProto(&proto);
+    ToProto(&proto, options);
     return proto;
   }
 
@@ -549,13 +581,16 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto,
+                         HloProtoOptions options = HloProtoOptions()) const;
 
-  HloModuleProtoWithConfig ToProtoWithConfig() const {
+  HloModuleProtoWithConfig ToProtoWithConfig(
+      HloProtoOptions options = HloProtoOptions()) const {
     HloModuleProtoWithConfig proto;
-    ToProtoWithConfig(&proto);
+    ToProtoWithConfig(&proto, options);
     return proto;
   }
+
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
@@ -710,6 +745,9 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Returns the next unique module id.
+  static int GetNextUniqueModuleId() { return next_unique_module_id_++; }
+
   // Base class for cached backend-specific data.
   class CacheEntry {
    public:
@@ -791,6 +829,15 @@ class HloModule {
 
   const HloModuleMetadata& metadata() const { return metadata_; }
   HloModuleMetadata* metadata() { return &metadata_; }
+
+  bool hlo_passes_started() const { return hlo_passes_started_; }
+  void set_hlo_passes_started(bool started) { hlo_passes_started_ = started; }
+
+  // Increment a per-pass-name invocation counter (returning the 0-based index
+  // of the current invocation). Used by tre --xla_disable_hlo_passes flag.
+  int64_t IncrementPassOccurrenceCount(const std::string& pass_name) {
+    return pass_occurrence_counts_[pass_name]++;
+  }
 
   // Moves (not copies) metadata from this HloModule to `module`. To be used
   // when metadata should be transferred out of a module before it's destroyed.
@@ -884,6 +931,44 @@ class HloModule {
   // instructions' metadata to refer to the canonical `StackFrameId`s.
   void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
 
+  // Backend config accessors for HloModule.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
+
  private:
   friend class HloComputation;
 
@@ -901,6 +986,9 @@ class HloModule {
   // Sharabled copy-on-write instance.
   // If you want to modify it, use mutable_config().
   std::shared_ptr<const HloModuleConfig> config_;
+
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
 
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -988,6 +1076,17 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
+  // This only has an effect when debug_options.xla_run_hlo_passes_starting_from
+  // is not empty.
+  // - false: We are skipping passes until we reach the pass specified by
+  // debug_options.xla_run_hlo_passes_starting_from.
+  // - true: We have reached the starting pass and passes are run as normal.
+  bool hlo_passes_started_ = false;
+
+  // Per-pass-name invocation counter for the xla_disable_hlo_passes runtime
+  // gate. Transient (not serialized).
+  absl::flat_hash_map<std::string, int64_t> pass_occurrence_counts_;
+
   // Optional compilation profile handle.
   int64_t profile_version_ = 0;
 
@@ -1022,17 +1121,34 @@ class HloModule {
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
   // module.
-  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
-  // data structure.
-  TopologicalSort<HloComputation, int64_t,
-                  &HloComputation::topological_sort_node_,
-                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+  TopologicalSort<HloComputation, int32_t, &HloComputation::index_in_module_,
+                  HloComputation::NeighborIterator,
                   &HloComputation::callers_begin, &HloComputation::callers_end,
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
       topological_sort_;
 
  public:
+  struct DebugAttributes {
+    enum class DebugLogMode {
+      // No debug log.
+      kNone,
+      // Log using TPU logging without perturbing the execution.
+      kDefault,
+      // Log using Fusion Debugger, without perturbing the execution.
+      kFusionDebugger,
+    };
+    DebugLogMode log_mode = DebugLogMode::kNone;
+    int64_t callback_id = 0;
+    // Whether to undo automatic sharding when logging the tensor.
+    bool partitioned = false;
+    // The operand index in the xla_debug_log custom call in the original HLO
+    // module that this tensor is associated with.
+    int64_t op_id = 0;
+
+    std::string ToString() const;
+  };
+
   class OriginalValueRecoveryTable {
    public:
     using Table = absl::flat_hash_map<
@@ -1149,7 +1265,21 @@ class HloModule {
         std::move(original_value_recovery_table.table_);
   }
 
+  void AddDebugAttributes(const OriginalArray& original_array,
+                          const DebugAttributes& debug_attributes) {
+    debug_attributes_[original_array].push_back(debug_attributes);
+  }
+
+  const absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>&
+  debug_attributes() const {
+    return debug_attributes_;
+  }
+
+  bool IsEntryComputationUnboundedDynamic() const;
+
  private:
+  absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>
+      debug_attributes_;
   OriginalValueRecoveryTable original_value_recovery_table_;
 
   mutable absl::Mutex cache_mutex_;

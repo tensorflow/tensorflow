@@ -91,9 +91,6 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<mlir::Operation *> {
     auto *lhs = const_cast<mlir::Operation *>(lhsC);
     auto *rhs = const_cast<mlir::Operation *>(rhsC);
     if (lhs == rhs) return true;
-    if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
-        rhs == getTombstoneKey() || rhs == getEmptyKey())
-      return false;
     return mlir::OperationEquivalence::isEquivalentTo(
         const_cast<mlir::Operation *>(lhsC),
         const_cast<mlir::Operation *>(rhsC),

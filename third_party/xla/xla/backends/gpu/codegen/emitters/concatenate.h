@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,11 +40,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class ConcatenateFusion final : public EmitterBase {
+class ConcatenateFusion final : public MlirKernelEmitter {
  public:
   explicit ConcatenateFusion(const HloFusionAnalysis& analysis);
 
   LaunchDimensions launch_dimensions() const override;
+  int unroll_factor() const override { return unroll_factor_; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;
@@ -69,7 +70,7 @@ class ConcatenateFusion final : public EmitterBase {
  private:
   const HloFusionAnalysis& analysis_;
   Shape largest_shape_;
-  LaunchDimensionsConfig config_;
+  int unroll_factor_;
 };
 
 }  // namespace gpu

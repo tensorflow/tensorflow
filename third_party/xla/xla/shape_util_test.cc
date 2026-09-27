@@ -243,6 +243,48 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, IsPrefix) {
+  Shape f32_scalar = ShapeUtil::MakeShape(F32, {});
+  Shape s32_scalar = ShapeUtil::MakeShape(S32, {});
+  Shape f32_vector = ShapeUtil::MakeShape(F32, {4});
+
+  // Same shapes
+  EXPECT_TRUE(ShapeUtil::IsPrefix(f32_scalar, f32_scalar));
+
+  // Different non-tuple shapes
+  EXPECT_FALSE(ShapeUtil::IsPrefix(f32_scalar, s32_scalar));
+  EXPECT_FALSE(ShapeUtil::IsPrefix(f32_scalar, f32_vector));
+
+  // Tuples
+  Shape empty_tuple = ShapeUtil::MakeTupleShape({});
+  Shape tuple_f32_scalar = ShapeUtil::MakeTupleShape({f32_scalar});
+  Shape tuple_f32_scalar_f32_vector =
+      ShapeUtil::MakeTupleShape({f32_scalar, f32_vector});
+
+  // Empty tuple is prefix of any tuple
+  EXPECT_TRUE(ShapeUtil::IsPrefix(empty_tuple, tuple_f32_scalar));
+  EXPECT_TRUE(ShapeUtil::IsPrefix(empty_tuple, tuple_f32_scalar_f32_vector));
+
+  // Prefix match
+  EXPECT_TRUE(
+      ShapeUtil::IsPrefix(tuple_f32_scalar, tuple_f32_scalar_f32_vector));
+
+  // Not prefix (larger)
+  EXPECT_FALSE(
+      ShapeUtil::IsPrefix(tuple_f32_scalar_f32_vector, tuple_f32_scalar));
+
+  // Mismatched element in tuple
+  Shape tuple_s32_scalar = ShapeUtil::MakeTupleShape({s32_scalar});
+  EXPECT_FALSE(
+      ShapeUtil::IsPrefix(tuple_s32_scalar, tuple_f32_scalar_f32_vector));
+
+  // Nested tuples
+  Shape nested_tuple1 = ShapeUtil::MakeTupleShape({tuple_f32_scalar});
+  Shape nested_tuple2 =
+      ShapeUtil::MakeTupleShape({tuple_f32_scalar_f32_vector});
+  EXPECT_TRUE(ShapeUtil::IsPrefix(nested_tuple1, nested_tuple2));
+}
+
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
   Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
                  {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
@@ -351,6 +393,49 @@ TEST(ShapeUtilTest, ByteSizeOfElementsRecursive) {
             ShapeUtil::ByteSizeOfElementsRecursive(ShapeUtil::MakeTupleShape(
                 {ShapeUtil::MakeShape(S32, {16, 32, 64}),
                  ShapeUtil::MakeShape(S8, {16, 32, 64})})));
+}
+
+// Tests that ByteSizeOfElements aborts on integer overflow (b/333842830).
+TEST(ShapeUtilTest, ByteSizeOfElementsOverflowWithElementSizeInBits) {
+  // Case A: Element count fits in int64_t but total bits overflows.
+  Shape shape_custom = ShapeUtil::MakeShape(S8, {1000000000, 1000000000});
+  shape_custom.mutable_layout()->set_element_size_in_bits(64);
+  EXPECT_DEATH(ShapeUtil::ByteSizeOfElements(shape_custom), "");
+
+  // Case B: Sub-byte 4-bit element size where element count fits in int64_t but
+  // total bits overflows.
+  Shape shape_subbyte = ShapeUtil::MakeShape(S4, {1000000000, 3000000000LL});
+  shape_subbyte.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_DEATH(ShapeUtil::ByteSizeOfElements(shape_subbyte), "");
+}
+
+// Tests calculation of byte size for shapes with custom element_size_in_bits.
+TEST(ShapeUtilTest, ByteSizeOfElementsWithElementSizeInBits) {
+  // 4-bit sub-byte elements with total bits divisible by 8.
+  Shape shape = ShapeUtil::MakeShape(S4, {10, 20});
+  shape.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape), 100);
+
+  // 3-bit sub-byte elements with total bits NOT divisible by 8 (verifies
+  // ceiling division).
+  Shape shape_odd = ShapeUtil::MakeShape(S4, {5});
+  shape_odd.mutable_layout()->set_element_size_in_bits(3);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_odd), 2);
+
+  // 1-bit elements: 17 elements -> 17 bits -> requires 3 bytes.
+  Shape shape_1bit = ShapeUtil::MakeShape(PRED, {17});
+  shape_1bit.mutable_layout()->set_element_size_in_bits(1);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_1bit), 3);
+
+  // 2-bit elements: 7 elements -> 14 bits -> requires 2 bytes.
+  Shape shape_2bit = ShapeUtil::MakeShape(S2, {7});
+  shape_2bit.mutable_layout()->set_element_size_in_bits(2);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_2bit), 2);
+
+  // 4-bit single element: 1 element -> 4 bits -> requires 1 byte.
+  Shape shape_single = ShapeUtil::MakeShape(S4, {1});
+  shape_single.mutable_layout()->set_element_size_in_bits(4);
+  EXPECT_EQ(ShapeUtil::ByteSizeOfElements(shape_single), 1);
 }
 
 TEST(ShapeUtilTest, UnpackedByteStrides) {
@@ -1594,6 +1679,17 @@ TEST(ShapeUtilTest, ReorderDimensionsTest) {
                 {0, 2, 1, 3})
                 .ToString(true),
             "f32[16,12,3,17]{2,1,0,3}");
+
+  // Test with a permutation that is not its own inverse.
+  // Input: f32[10, 20, 30]{2, 1, 0}
+  // Permutation: {1, 2, 0}
+  // Expected output: f32[20, 30, 10]{1, 0, 2}
+  EXPECT_EQ(
+      ShapeUtil::ReorderLogicalDimensions(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0}),
+          {1, 2, 0})
+          .ToString(true),
+      "f32[20,30,10]{1,0,2}");
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

@@ -84,6 +84,16 @@ std::optional<ml::AtomicBinOp> GetAtomicBinOp(Operation* modifier_op,
       .Default([](Operation* op) { return std::nullopt; });
 }
 
+// Looks through an arith.extf widening cast and returns the narrower source
+// value. Low-precision floating-point reductions (e.g. bf16) are computed in a
+// wider type, so the atomic modifier appears in the body as extf(modifier).
+Value LookThroughExtF(Value value) {
+  if (auto ext = value.getDefiningOp<arith::ExtFOp>()) {
+    return ext.getIn();
+  }
+  return value;
+}
+
 }  // namespace
 
 // Returns atomic op modifier and the atomic bin op kind.
@@ -92,9 +102,8 @@ std::optional<std::pair<Value, ml::AtomicBinOp>> GetAtomicModifierParameters(
   Type element_type = op.getInput().getType().getElementType();
   auto& operations = op.getBody()->getOperations();
   auto terminator = op.getBody()->getTerminator();
-  if (operations.size() > 2) {
-    return std::nullopt;
-  }
+  Value block_arg = op.getBody()->getArgument(0);
+
   // If the body contains only the terminator, then it is an atomic store.
   if (operations.size() == 1) {
     // TODO(b/336367145): Support complex<f32> atomic store.
@@ -103,19 +112,67 @@ std::optional<std::pair<Value, ml::AtomicBinOp>> GetAtomicModifierParameters(
     }
     return std::nullopt;
   }
-  // Match the kind of the atomic op.
-  // TODO(rocm): Match bf16 ops
-  mlir::Operation* modifier_op = &operations.front();
+
+  // Simple case: a single binary modifier op followed by the terminator,
+  // operating directly on the atomic element type.
+  if (operations.size() == 2) {
+    mlir::Operation* modifier_op = &operations.front();
+    auto kind = GetAtomicBinOp(modifier_op, element_type);
+    if (!kind.has_value()) {
+      return std::nullopt;
+    }
+    // Find the modifier arg that does not match the argument of `atomic_rmw`
+    // body.
+    Value modifier_arg = modifier_op->getOperand(0) == block_arg
+                             ? modifier_op->getOperand(1)
+                             : modifier_op->getOperand(0);
+    return std::make_pair(modifier_arg, *kind);
+  }
+
+  // Widened low-precision case (e.g. bf16): the reduction is computed in a
+  // wider type, so the body looks like:
+  //   %0 = arith.extf %current  : bf16 to f32
+  //   %1 = arith.extf %modifier : bf16 to f32
+  //   %2 = arith.<binop> %0, %1 : f32
+  //   %3 = arith.truncf %2      : f32 to bf16
+  //   xla.yield %3              : bf16
+  //
+  // bf16 has no native arithmetic on the relevant targets, so
+  // FloatNormalization (driven by GpuFloatSupport, which reports bf16
+  // add/mul/etc. as unsupported) legitimately wraps the combiner in f32
+  // conversions. We do NOT undo that normalization globally; we only look
+  // through it *here*, where we are about to emit a hardware atomic (e.g.
+  // global_atomic_pk_add_bf16) that performs the very same widen-add-round
+  // internally. Recovering the narrow (bf16) modifier lets the lowering use
+  // that packed atomic instead of a slow compare-and-swap loop, without
+  // claiming a native bf16 arithmetic instruction.
+  auto trunc_op = terminator->getOperand(0).getDefiningOp<arith::TruncFOp>();
+  if (!trunc_op || trunc_op.getType() != element_type) {
+    return std::nullopt;
+  }
+  mlir::Operation* modifier_op = trunc_op.getIn().getDefiningOp();
+  if (!modifier_op || modifier_op->getNumOperands() != 2) {
+    return std::nullopt;
+  }
   auto kind = GetAtomicBinOp(modifier_op, element_type);
   if (!kind.has_value()) {
     return std::nullopt;
   }
-  // Find the modifier arg that does not match the argument of `atomic_rmw`
-  // body.
-  Value block_arg = op.getBody()->getArgument(0);
-  Value modifier_arg = modifier_op->getOperand(0) == block_arg
-                           ? modifier_op->getOperand(1)
-                           : modifier_op->getOperand(0);
+  Value lhs = LookThroughExtF(modifier_op->getOperand(0));
+  Value rhs = LookThroughExtF(modifier_op->getOperand(1));
+  Value modifier_arg;
+  if (lhs == block_arg) {
+    modifier_arg = rhs;
+  } else if (rhs == block_arg) {
+    modifier_arg = lhs;
+  } else {
+    return std::nullopt;
+  }
+  // The recovered modifier must have the atomic element type for the downstream
+  // direct-atomic emission to be valid.
+  if (modifier_arg.getType() != element_type) {
+    return std::nullopt;
+  }
   return std::make_pair(modifier_arg, *kind);
 }
 

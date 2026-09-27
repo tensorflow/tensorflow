@@ -32,6 +32,12 @@ limitations under the License.
 
 namespace xla {
 
+enum class ReductionOp {
+  kSum = 0,
+  kMax = 1,
+  kMin = 2,
+};
+
 // C++ representation for corresponding `OpSharding::NamedSharding` proto so
 // same documentation applies.
 class NamedSharding {
@@ -94,11 +100,19 @@ class NamedSharding {
 
   // Shardings using mesh with similar device assignment should compare equal
   bool operator==(const NamedSharding& other) const {
+    if (IsReplicated() && other.IsReplicated()) {
+      return true;
+    }
     return mesh_.DeviceAssignmentEquals(other.mesh_) &&
            dim_shardings_ == other.dim_shardings_ &&
-           replicated_axes_ == other.replicated_axes_ &&
            unreduced_axes_ == other.unreduced_axes_ &&
+           reduction_op_ == other.reduction_op_ &&
            manual_axes_ == other.manual_axes_;
+    // We don't compare `replicated_axes`. This refers to explicitly
+    // replicated axes. Whether an axis is replicated explicitly or
+    // implicitly does not matter for the logical equivalence of the
+    // sharding. This also matches the behavior in v2 sharding where
+    // there is no concept of explicitly replicated axis.
   }
 
   bool operator!=(const NamedSharding& other) const {
@@ -115,7 +129,8 @@ class NamedSharding {
                          absl::Span<const AxisRef> replicated_axes = {},
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const AxisRef> manual_axes = {},
-                         absl::Span<const OpMetadata> metadata = {});
+                         absl::Span<const OpMetadata> metadata = {},
+                         ReductionOp reduction_op = ReductionOp::kSum);
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -126,6 +141,8 @@ class NamedSharding {
   }
   absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
+  ReductionOp reduction_op() const { return reduction_op_; }
+  void set_reduction_op(ReductionOp op) { reduction_op_ = op; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
   std::vector<OpMetadata>& mutable_metadata() { return metadata_; }
@@ -146,15 +163,12 @@ class NamedSharding {
     return mesh_.device_assignment().num_elements();
   }
 
-  // Returns the partitions for the sharding which can be used to construct a
-  // JAX PartitionSpec.
-  //
-  // This method is only used for JAX as it requires every dimension to be
-  // closed and full axis.
-  std::vector<std::vector<std::string>> JaxPartitions() const;
-
   bool IsReplicated() const {
-    return !IsSingleDevice() && AllDimShardingsEmpty(dim_shardings_) &&
+    return !IsSingleDevice() &&
+           absl::c_all_of(dim_shardings_,
+                          [&](const DimensionSharding& s) {
+                            return s.getShardedSize(mesh_) == 1;
+                          }) &&
            unreduced_axes_.empty() && manual_axes_.empty();
   }
 
@@ -166,12 +180,12 @@ class NamedSharding {
   }
 
   bool IsManual() const {
-    return mesh_.num_axes() != 0 &&
+    return !manual_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(manual_axes_);
   }
 
   bool IsUnreduced() const {
-    return mesh_.num_axes() != 0 &&
+    return !unreduced_axes_.empty() &&
            mesh_.ContainsAllMeshAxesInOrder(unreduced_axes_);
   }
 
@@ -194,6 +208,11 @@ class NamedSharding {
     }
     return used_elements < num_devices();
   }
+
+  // Returns the implicitly replicated axes, which are not explicitly bound to a
+  // dimension or explicitly populated in `replicated_axes()`.
+  // The returned axes are sorted by mesh axis index and sub-axis pre-size.
+  std::vector<AxisRef> GetImplicitlyReplicatedAxes() const;
 
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
@@ -239,13 +258,6 @@ class NamedSharding {
     }
   }
 
-  bool AllDimShardingsEmpty(
-      absl::Span<const DimensionSharding> dim_shardings) const {
-    return absl::c_all_of(dim_shardings, [](const DimensionSharding& s) {
-      return s.axes().empty();
-    });
-  }
-
   static std::vector<AxisRef> GetAllMeshAxes(const Mesh& mesh) {
     std::vector<AxisRef> all_axes;
     all_axes.reserve(mesh.num_axes());
@@ -263,6 +275,7 @@ class NamedSharding {
   std::vector<DimensionSharding> dim_shardings_;
   std::vector<AxisRef> replicated_axes_;
   std::vector<AxisRef> unreduced_axes_;
+  ReductionOp reduction_op_ = ReductionOp::kSum;
   std::vector<AxisRef> manual_axes_;
   std::vector<OpMetadata> metadata_;
 

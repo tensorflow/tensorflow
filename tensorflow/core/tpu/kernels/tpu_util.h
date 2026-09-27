@@ -15,51 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_H_
 
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "grpcpp/server_builder.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "tensorflow/cc/framework/ops.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/compile_only_client.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace tpu {
-
-// Utility to get session_name from `SessionMetadata`. `SessionMetadata` may
-// be null.
-std::string SessionNameFromMetadata(const SessionMetadata* session_metadata);
-
-// Generates cache proto key for a given computation on a TPU core.
-std::string ProtoKeyForComputation(const std::string& key, int core);
-
-// Returns a TpuCompilationCacheKey parsed from given key or an error.
-absl::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
-    const std::string& key);
 
 xla::CompileOnlyClient::AotXlaComputationInstance
 BuildAotXlaComputationInstance(
     const XlaCompiler::CompilationResult& compilation_result);
 
-// Returns true if TPU compilation is enabled.
-bool IsTpuCompilationEnabled();
-
 // Converts an int64 host memory `tensor` to a `shape`.
 absl::Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape);
 
-absl::Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
-                                         std::vector<TensorShape>* shapes);
-absl::Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
-                                         std::vector<TensorShape>* shapes);
-
-// Creates gRPC ServerBuilder.
-absl::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
-    int serving_port);
 }  // namespace tpu
 }  // namespace tensorflow
 

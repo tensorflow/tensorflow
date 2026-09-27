@@ -434,97 +434,97 @@ class CSRSparseMatrix {
     // (namely, float16).
     if (dtype != DT_FLOAT && dtype != DT_DOUBLE && dtype != DT_COMPLEX64 &&
         dtype != DT_COMPLEX128) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: dtype = ", DataTypeString(dtype),
-          " not in {float32, float64, complex64, complex128}");
+          " not in {float32, float64, complex64, complex128}"));
     }
     // dense_shape checks
     if (dense_shape.dtype() != DT_INT64) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: dense_shape.dtype() = ",
-          DataTypeString(dense_shape.dtype()), " != int64");
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: dense_shape.dtype() = ",
+                       DataTypeString(dense_shape.dtype()), " != int64"));
     }
     if (dense_shape.dims() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: dense_shape should be a vector, but saw "
           "tensor: ",
-          dense_shape.DebugString());
+          dense_shape.DebugString()));
     }
     int rank = dense_shape.dim_size(0);
     if (rank < 2 || rank > 3) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: dense_shape should be a 2- or 3- vector, "
           "but saw: ",
-          dense_shape.SummarizeValue(5));
+          dense_shape.SummarizeValue(5)));
     }
     auto dense_shape_t = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
     const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
 
     if (batch_pointers.dtype() != DT_INT32) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: batch_pointers.dtype() = ",
-          DataTypeString(batch_pointers.dtype()), " != int32");
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: batch_pointers.dtype() = ",
+                       DataTypeString(batch_pointers.dtype()), " != int32"));
     }
     if (batch_pointers.dims() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: batch_indices is not a vector, saw "
           "shape: ",
-          batch_pointers.shape().DebugString());
+          batch_pointers.shape().DebugString()));
     }
 
     // batch size checks
     if (batch_size != batch_pointers.NumElements() - 1) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: dense_shape is ",
-          dense_shape.SummarizeValue(5),
-          " but batch pointers implies batch size is ",
-          batch_pointers.NumElements() - 1);
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: dense_shape is ",
+                       dense_shape.SummarizeValue(5),
+                       " but batch pointers implies batch size is ",
+                       batch_pointers.NumElements() - 1));
     }
 
     if (row_pointers.dtype() != DT_INT32) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: row_pointers.dtype() = ",
-          DataTypeString(row_pointers.dtype()), " != int32");
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: row_pointers.dtype() = ",
+                       DataTypeString(row_pointers.dtype()), " != int32"));
     }
     if (row_pointers.dims() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: row_pointers is not a vector, saw "
           "shape: ",
-          row_pointers.shape().DebugString());
+          row_pointers.shape().DebugString()));
     }
     if (row_pointers.dim_size(0) != batch_size * (num_rows + 1)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: row_pointers should have size batch_size "
           "* (num_rows + 1), saw shapes: ",
           dense_shape.DebugString(), " vs. ",
-          row_pointers.shape().DebugString());
+          row_pointers.shape().DebugString()));
     }
     if (col_indices.dtype() != DT_INT32) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: col_indices.dtype() = ",
-          DataTypeString(col_indices.dtype()), " != int32");
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: col_indices.dtype() = ",
+                       DataTypeString(col_indices.dtype()), " != int32"));
     }
     if (col_indices.dims() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: col_indices is not a vector, saw shape: ",
-          col_indices.shape().DebugString());
+          col_indices.shape().DebugString()));
     }
     if (values.dtype() != dtype) {
-      return errors::InvalidArgument(
-          "CSRSparseMatrix::Validate: values.dtype() = ",
-          DataTypeString(values.dtype()),
-          " != dtype = ", DataTypeString(dtype));
+      return absl::InvalidArgumentError(
+          absl::StrCat("CSRSparseMatrix::Validate: values.dtype() = ",
+                       DataTypeString(values.dtype()),
+                       " != dtype = ", DataTypeString(dtype)));
     }
     if (values.dims() != 1) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: values is not a vector, saw shape: ",
-          values.shape().DebugString());
+          values.shape().DebugString()));
     }
     if (col_indices.dim_size(0) != values.dim_size(0)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: size(col_indices) = ",
-          col_indices.dim_size(0), " != size(values) = ", values.dim_size(0));
+          col_indices.dim_size(0), " != size(values) = ", values.dim_size(0)));
     }
     return absl::OkStatus();
   }
@@ -554,11 +554,11 @@ absl::Status CSRSparseMatrixBinaryHelper(OpKernelContext* ctx,
                                          CSRSparseMatrix* c) {
   DataType dt = a.dtype();
   if (dt != b.dtype()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "CSRSparseMatrixBinaryHelper: Inconsistent dtypes for input matrices, "
         "a "
         "dtype: ",
-        DataTypeString(dt), ", b dtype: ", DataTypeString(b.dtype()));
+        DataTypeString(dt), ", b dtype: ", DataTypeString(b.dtype())));
   }
   switch (dt) {
     case DT_FLOAT: {
@@ -578,9 +578,9 @@ absl::Status CSRSparseMatrixBinaryHelper(OpKernelContext* ctx,
       return functor(a, b, c);
     }
     default:
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrixBinaryHelper: a.dtype (", DataTypeString(dt),
-          ") is not one of: float, double, complex64, complex128");
+          ") is not one of: float, double, complex64, complex128"));
   }
 }
 
@@ -610,9 +610,9 @@ absl::Status CSRSparseMatrixUnaryHelper(OpKernelContext* ctx,
       return functor(a, b);
     }
     default:
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrixUnaryHelper: a.dtype (", DataTypeString(dt),
-          ") is not one of: float, double, complex64, complex128");
+          ") is not one of: float, double, complex64, complex128"));
   }
 }
 
@@ -637,17 +637,19 @@ absl::Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
                                      const T** value) {
   const Tensor& input_t = ctx->input(index);
   if (!TensorShapeUtils::IsScalar(input_t.shape())) {
-    return errors::InvalidArgument(
-        "Invalid input matrix: Shape must be rank 0 but is rank ",
-        input_t.dims());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid input matrix: Shape must be rank 0 but is rank ",
+                     input_t.dims()));
   }
   const Variant& input_variant = input_t.scalar<Variant>()();
   *value = input_variant.get<T>();
   if (*value == nullptr) {
-    return errors::InvalidArgument("Could not retrieve Variant input ", index);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not retrieve Variant input ", index));
   }
   if (!(*value)->valid()) {
-    return errors::InvalidArgument("Variant input ", index, " is not valid.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Variant input ", index, " is not valid."));
   }
   return absl::OkStatus();
 }

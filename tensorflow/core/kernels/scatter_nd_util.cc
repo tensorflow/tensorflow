@@ -30,11 +30,10 @@ absl::Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
       (indices_shape.dims() > 1) ? indices_shape.dims() - 1 : 1;
 
   auto shape_err_prefix = [&]() {
-    return errors::InvalidArgument(
-        "Dimensions [0,", batch_dim,
-        ") of indices[shape=", indices_shape.DebugString(),
-        "] must match dimensions [0,", batch_dim,
-        ") of updates[shape=", updates_shape.DebugString(), "]");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Dimensions [0,", batch_dim, ") of indices[shape=",
+        indices_shape.DebugString(), "] must match dimensions [0,", batch_dim,
+        ") of updates[shape=", updates_shape.DebugString(), "]"));
   };
   auto shape_err_suffix = [&]() {
     return errors::InvalidArgument(

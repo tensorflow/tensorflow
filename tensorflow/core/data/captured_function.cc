@@ -129,10 +129,10 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 absl::Status GetCapturedInput(const CapturedFunction* const func, int index,
                               const Tensor** out) {
   if (TF_PREDICT_FALSE(index >= func->captured_inputs().size())) {
-    return errors::OutOfRange(
+    return absl::OutOfRangeError(absl::StrCat(
         "Out of range access to captured inputs for function ",
         func->func().name(), ". Index: ", index,
-        ". Num captured inputs: ", func->captured_inputs().size());
+        ". Num captured inputs: ", func->captured_inputs().size()));
   }
   *out = &func->captured_inputs()[index];
   return absl::OkStatus();
@@ -247,7 +247,7 @@ absl::Status CreateFunctionLibraryDefinition(
   DCHECK(lib_def != nullptr);
   const FunctionDef* fdef = lib_def->Find(func_name);
   if (TF_PREDICT_FALSE(fdef == nullptr)) {
-    return errors::FailedPrecondition(absl::StrCat(
+    return absl::FailedPreconditionError(absl::StrCat(
         "Could not find required function definition ", func_name));
   }
   *result = std::make_unique<FunctionLibraryDefinition>(
@@ -259,9 +259,9 @@ absl::Status LookupFunction(const FunctionLibraryDefinition& lib_def,
                             const std::string& name, const FunctionDef** fdef) {
   *fdef = lib_def.Find(name);
   if (*fdef == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Failed to find function ", name,
-        " in function library: ", lib_def.ToProto().DebugString());
+        " in function library: ", lib_def.ToProto().DebugString()));
   }
   return absl::OkStatus();
 }
@@ -277,7 +277,8 @@ class CallFrameBase : public CallFrameInterface {
     int i = 0;
     for (auto&& val : retvals_) {
       if (!val) {
-        return errors::Internal("No return value for index ", i, ".");
+        return absl::InternalError(
+            absl::StrCat("No return value for index ", i, "."));
       }
       retvals->emplace_back(std::move(val.value()));
       ++i;
@@ -295,16 +296,16 @@ class CallFrameBase : public CallFrameInterface {
       retvals_[index] = val;
       return absl::OkStatus();
     } else if (index >= retvals_size) {
-      return errors::InvalidArgument("Return value ", index,
-                                     " is out of range.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Return value ", index, " is out of range."));
     } else if (val.dtype() != ret_types_[index]) {
-      return errors::InvalidArgument("Expected type ",
-                                     DataTypeString(ret_types_[index]),
-                                     " for return value ", index, " but got ",
-                                     DataTypeString(val.dtype()), ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected type ", DataTypeString(ret_types_[index]),
+                       " for return value ", index, " but got ",
+                       DataTypeString(val.dtype()), "."));
     } else {
-      return errors::Internal("Attempted to set return value ", index,
-                              " more than once.");
+      return absl::InternalError(absl::StrCat("Attempted to set return value ",
+                                              index, " more than once."));
     }
   }
 
@@ -339,7 +340,8 @@ class OwnedArgsCallFrame : public CallFrameBase {
       *val = &(*captured_inputs_)[index - args_.size()];
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Argument ", index, " is out of range."));
     }
   }
 
@@ -383,7 +385,8 @@ class BorrowedArgsCallFrame : public CallFrameBase {
       *val = &(*captured_inputs_)[index - args_size];
       return absl::OkStatus();
     } else {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Argument ", index, " is out of range."));
     }
   }
 
@@ -420,7 +423,7 @@ absl::Status MakeIteratorFromInputElement(
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Function must return a single scalar of dtype DT_VARIANT.");
   }
 
@@ -603,7 +606,7 @@ absl::Status CapturedFunction::Instantiate(
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
         if (input.NumElements() == 0) {
-          return errors::InvalidArgument("Empty resouce handle");
+          return absl::InvalidArgumentError("Empty resouce handle");
         }
         const auto& handles = input.flat<ResourceHandle>();
         const ResourceHandle& handle0 = handles(0);
@@ -725,8 +728,8 @@ absl::Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
   DeviceNameUtils::ParsedName current_device_name;
   if (!DeviceNameUtils::ParseFullName(current_device->name(),
                                       &current_device_name)) {
-    return errors::InvalidArgument("Failed to parse device name: ",
-                                   current_device->name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to parse device name: ", current_device->name()));
   }
 
   // Check if any of the captured inputs are placed on a device not compatible
@@ -736,14 +739,14 @@ absl::Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
     DataType dtype = input.dtype();
     if (dtype == DT_RESOURCE) {
       if (input.NumElements() == 0) {
-        return errors::InvalidArgument("Empty resouce handle");
+        return absl::InvalidArgumentError("Empty resouce handle");
       }
       const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
       DeviceNameUtils::ParsedName resource_device_name;
       if (!DeviceNameUtils::ParseFullName(handle.device(),
                                           &resource_device_name)) {
-        return errors::InvalidArgument("Failed to parse device name: ",
-                                       handle.device());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Failed to parse device name: ", handle.device()));
       }
       if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
                                                   resource_device_name)) {
@@ -768,8 +771,8 @@ absl::Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
       if (!node.device().empty()) {
         DeviceNameUtils::ParsedName node_device_name;
         if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
-          return errors::InvalidArgument("Failed to parse device name: ",
-                                         node.device());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Failed to parse device name: ", node.device()));
         }
         if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
                                                     node_device_name)) {

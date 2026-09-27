@@ -29,7 +29,7 @@ absl::Status RenameNode(const GraphDef& input_graph_def,
       (context.params.at("old_node_name").size() != 1) ||
       !context.params.count("new_node_name") ||
       (context.params.at("new_node_name").size() != 1)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "rename_node expects exactly one 'old_node_name' and one "
         "'new_node_name' argument, e.g. "
         "rename_node(old_attribute_name=super/deep/output, "

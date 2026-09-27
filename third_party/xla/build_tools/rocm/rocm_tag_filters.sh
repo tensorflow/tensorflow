@@ -19,6 +19,7 @@ TAG_FILTERS=(
     -no_gpu
     -requires-gpu-intel
     -requires-gpu-nvidia
+    -requires-gpu-cuda
     -cuda-only
     -oneapi-only
     -requires-gpu-sm60
@@ -39,4 +40,7 @@ TAG_FILTERS=(
     -oss_serial
 )
 
-echo $(IFS=, ; echo "${TAG_FILTERS[*]}")
+echo $(
+    IFS=,
+    echo "${TAG_FILTERS[*]}"
+)

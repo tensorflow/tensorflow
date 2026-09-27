@@ -37,7 +37,7 @@ ResourceMgr* GetTPUConfigResourceMgr(bool initialize_first) {
   }
 
   // Put all TPU-related state in the global ResourceMgr. This includes the
-  // TpuPodState, compilation cache, etc. We don't use the TPU_SYSTEM
+  // compilation cache, etc. We don't use the TPU_SYSTEM
   // ResourceMgr because there may be more than one TPU_SYSTEM ResourceMgr when
   // DirectSession or isolate_session_state are used.
   return GetGlobalResourceMgr();

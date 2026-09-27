@@ -114,6 +114,10 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_UINT8;
     case kTfLiteInt8:
       return TF_INT8;
+    case kTfLiteFloat8E4M3FN:
+      return TF_FLOAT8_E4M3FN;
+    case kTfLiteFloat8E5M2:
+      return TF_FLOAT8_E5M2;
     case kTfLiteInt64:
       return TF_INT64;
     case kTfLiteUInt64:
@@ -169,6 +173,10 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteBool;
     case TF_RESOURCE:
       return kTfLiteResource;
+    case TF_FLOAT8_E4M3FN:
+      return kTfLiteFloat8E4M3FN;
+    case TF_FLOAT8_E5M2:
+      return kTfLiteFloat8E5M2;
     case TF_VARIANT:
       return kTfLiteVariant;
     default:
@@ -201,6 +209,10 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "uint8";
     case kTfLiteInt8:
       return "int8";
+    case kTfLiteFloat8E4M3FN:
+      return "float8_e4m3fn";
+    case kTfLiteFloat8E5M2:
+      return "float8_e5m2";
     case kTfLiteInt64:
       return "int64";
     case kTfLiteUInt64:

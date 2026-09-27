@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -32,8 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_domain_remover.h"
 #include "xla/service/hlo_domain_verifier.h"
 #include "xla/service/sharding_propagation.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -153,17 +152,16 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   CallInliner call_inliner(/*single_call_site=*/false,
                            /*update_domain=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "a"));
@@ -175,7 +173,7 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "a"));
@@ -203,13 +201,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   CallInliner call_inliner(/*single_call_site=*/false,
                            /*update_domain=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
   // Instruction "a" has been inlined and no longer exists.
@@ -222,7 +219,7 @@ ENTRY entry {
 }
 
 TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
   HloModule inline_module
 
   add_func {
@@ -245,12 +242,12 @@ TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
   })"));
 
   CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);
 
   // Verify that inlining produces valid domains.
   HloDomainVerifier verifier({"sharding"});
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HloDomainTest, CheckDomainAroundCallsNoInlining) {
@@ -273,15 +270,14 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   HloDomainVerifier verifier({"sharding"});
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p0"));
   EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p1"));
@@ -298,7 +294,7 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   for (HloComputation* computation : module->computations()) {
@@ -309,7 +305,7 @@ ENTRY entry {
 
   HloInstruction* call0 =
       module->entry_computation()->GetInstructionWithName("call0");
-  EXPECT_EQ(call0->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(call0->sharding(), HloSharding::SingleDevice(1));
   HloInstruction* call1 =
       module->entry_computation()->GetInstructionWithName("call1");
   EXPECT_EQ(call1->sharding(), HloSharding::Replicate());
@@ -330,12 +326,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "c", "a"));
@@ -347,7 +342,7 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module.get(), "c", "a"));
@@ -373,12 +368,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(!isolator_changed);
 }
 
@@ -404,12 +398,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "b", "a"));
@@ -420,7 +413,7 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module.get(), "b", "a"));
@@ -445,12 +438,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_FALSE(isolator_changed);
 }
 
@@ -472,13 +464,12 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_FALSE(remover_changed);
 
   HloInstruction* add = FindInstruction(module.get(), "c");
@@ -504,18 +495,17 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator sharding_isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool sharding_isolator_changed,
-                          sharding_isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool sharding_isolator_changed,
+                       sharding_isolator.Run(module.get()));
   EXPECT_TRUE(sharding_isolator_changed);
 
   HloDomainIsolator opname_isolator([]() { return OpNameDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
-                          opname_isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
+                       opname_isolator.Run(module.get()));
   EXPECT_TRUE(opname_isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "c", "a"));
@@ -526,14 +516,14 @@ ENTRY entry {
 
   HloDomainRemover sharding_remover(ShardingMetadata::KindName(),
                                     ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
-                          sharding_remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
+                       sharding_remover.Run(module.get()));
   EXPECT_TRUE(sharding_remover_changed);
 
   HloDomainRemover opname_remover(OpNameMetadata::KindName(),
                                   OpNameDomainNormalizer);
-  TF_ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
-                          opname_remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
+                       opname_remover.Run(module.get()));
   EXPECT_TRUE(opname_remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module.get(), "c", "a"));
@@ -560,12 +550,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "infeed.data", "infeed"));
@@ -607,12 +596,12 @@ ENTRY entry {
   HloInstruction* new_tuple = infeed_data->parent()->AddInstruction(
       HloInstruction::CreateTuple({new_copy0, new_copy1}));
   for (HloInstruction* user : infeed_data_users) {
-    TF_EXPECT_OK(infeed_data->ReplaceUseWith(user, new_tuple));
+    EXPECT_OK(infeed_data->ReplaceUseWith(user, new_tuple));
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   struct Assignment {
@@ -632,8 +621,8 @@ ENTRY entry {
   EXPECT_TRUE(new_tuple->has_sharding());
   EXPECT_EQ(
       new_tuple->sharding(),
-      HloSharding::Tuple(new_tuple->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}));
+      HloSharding::Tuple(new_tuple->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}));
 }
 
 TEST_F(HloDomainTest, EmptyRootDomain) {
@@ -648,11 +637,10 @@ ENTRY entry {
     sharding={maximal device=1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "tuple", "param"));
@@ -662,17 +650,17 @@ ENTRY entry {
   HloInstruction* gte = FindInstruction(module.get(), "gte");
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   module->entry_computation()->set_root_instruction(tuple->mutable_operand(0));
-  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
-  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
+  EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(root->has_sharding());
-  EXPECT_EQ(root->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(root->sharding(), HloSharding::SingleDevice(1));
 }
 
 // Tests that text dumps of domain instructions can be parsed back, in the
@@ -710,11 +698,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   // Clear sharding of tpl instruction, in order to test domain sharding
@@ -724,11 +711,11 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
-  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}),
             tpl->sharding());
 }
 
@@ -759,13 +746,12 @@ ENTRY %entry (p0: (f32[4], f32[4])) -> (f32[4], f32[4], f32[4]) {
   ROOT %g = (f32[4], f32[4], f32[4]) tuple(%domain.2, %domain.3, %domain.4)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   LOG(INFO) << "Original module:\n" << module->ToString();
 
   HloDomainIsolator opname_isolator([]() { return OpNameDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
-                          opname_isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool opname_isolator_changed,
+                       opname_isolator.Run(module.get()));
   EXPECT_TRUE(opname_isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module.get(), "c", "a"));
@@ -776,14 +762,14 @@ ENTRY %entry (p0: (f32[4], f32[4])) -> (f32[4], f32[4], f32[4]) {
 
   HloDomainRemover sharding_remover(ShardingMetadata::KindName(),
                                     ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
-                          sharding_remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool sharding_remover_changed,
+                       sharding_remover.Run(module.get()));
   EXPECT_TRUE(sharding_remover_changed);
 
   HloDomainRemover opname_remover(OpNameMetadata::KindName(),
                                   OpNameDomainNormalizer);
-  TF_ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
-                          opname_remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool opname_remover_changed,
+                       opname_remover.Run(module.get()));
   EXPECT_TRUE(opname_remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module.get(), "c", "a"));
@@ -808,11 +794,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   // Clear sharding of tuple.0 instruction, in order to test domain sharding
@@ -840,7 +825,7 @@ ENTRY entry {
   HloInstruction* copy0 = computation->AddInstruction(
       HloInstruction::CreateUnary(tuple0->operand(1)->shape(), HloOpcode::kCopy,
                                   tuple0->mutable_operand(1)));
-  TF_EXPECT_OK(tuple0->ReplaceOperandWith(1, copy0));
+  EXPECT_OK(tuple0->ReplaceOperandWith(1, copy0));
 
   HloInstruction* copy1 = computation->AddInstruction(
       HloInstruction::CreateUnary(tuple0->shape(), HloOpcode::kCopy, tuple0));
@@ -856,23 +841,23 @@ ENTRY entry {
       computation->AddInstruction(HloInstruction::CreateTuple({gte0, copy2}));
 
   for (HloInstruction* user : tuple0_users) {
-    TF_EXPECT_OK(tuple0->ReplaceUseWith(user, tuple1));
+    EXPECT_OK(tuple0->ReplaceUseWith(user, tuple1));
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingMetadata::NormalizeShardingDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   EXPECT_TRUE(tuple0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(0)}),
             tuple0->sharding());
 
   EXPECT_TRUE(copy0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy0->sharding());
 
   // copy1 has partial information only from gte.0, so in the end it gets no
@@ -881,16 +866,16 @@ ENTRY entry {
   EXPECT_FALSE(copy1->has_sharding());
 
   EXPECT_TRUE(gte0->has_sharding());
-  EXPECT_EQ(HloSharding::AssignDevice(1), gte0->sharding());
+  EXPECT_EQ(HloSharding::SingleDevice(1), gte0->sharding());
 
   EXPECT_TRUE(gte1->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::AssignDevice(1),
-                                               HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::SingleDevice(1),
+                                               HloSharding::SingleDevice(0)}),
             gte1->sharding());
 
   EXPECT_TRUE(copy2->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy2->sharding());
 
   EXPECT_TRUE(tuple1->has_sharding());
@@ -913,15 +898,14 @@ ENTRY entry {
   ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingPropagation::NormalizeDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
   auto tuple0 = FindInstruction(module.get(), "tuple.0");
   EXPECT_TRUE(tuple0->has_sharding());
@@ -942,10 +926,9 @@ ENTRY entry {
   ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
   EXPECT_TRUE(isolator_changed);
 
   // If tuple does not have sharding, verify that tuple sharding normalization
@@ -955,7 +938,7 @@ ENTRY entry {
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
                            ShardingPropagation::NormalizeDomain);
-  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
   tuple0 = FindInstruction(module.get(), "tuple.0");

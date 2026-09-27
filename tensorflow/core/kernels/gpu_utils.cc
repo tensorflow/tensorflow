@@ -134,9 +134,9 @@ CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
         dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
-      cudnn_version.set_major(version.major_version());
-      cudnn_version.set_minor(version.minor_version());
-      cudnn_version.set_patch(version.patch());
+      cudnn_version.set_major_version(version.major_version());
+      cudnn_version.set_minor_version(version.minor_version());
+      cudnn_version.set_patch_version(version.patch());
     }
   }
   return cudnn_version;
@@ -146,8 +146,8 @@ ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
   ComputeCapability cc_proto;
   se::CudaComputeCapability cc =
       stream_executor->GetDeviceDescription().cuda_compute_capability();
-  cc_proto.set_major(cc.major);
-  cc_proto.set_minor(cc.minor);
+  cc_proto.set_major_version(cc.major);
+  cc_proto.set_minor_version(cc.minor);
   return cc_proto;
 }
 
@@ -332,7 +332,7 @@ absl::StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
     for (const auto& result : results) {
       msg << "\n  " << result.failure().msg();
     }
-    return errors::NotFound(msg.str());
+    return absl::NotFoundError(msg.str());
   }
 
   return std::make_tuple(idx, idx_no_scratch);
@@ -368,7 +368,7 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners) {
   if (runners.size() != results.size()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Mismatched size of autotune results and runners vectors.");
   }
   int idx;
@@ -385,21 +385,21 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
                                    : std::move(runners[idx_no_scratch]));
 }
 
-template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::ConvOp>>
 BestCudnnConvAlgorithm<se::dnn::ConvOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
         runners);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
         runners);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
+template absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedMatmulOp>>
 BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
     absl::Span<const xla::AutotuneResult> results,
     std::vector<

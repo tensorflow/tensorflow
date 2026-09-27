@@ -19,16 +19,23 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -49,15 +56,17 @@ namespace xla::gpu::experimental {
 // TilePropagation.
 class TilingSpace {
  public:
-  TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
+  TilingSpace() : constraint_(ConstraintExpression::GetAlwaysSatisfied()) {}
 
-  // Unique ID for the dimension or runtime variable.
-  using ID = int64_t;
+  // Disable copy constructor and assignment to prevent dangling pointers
+  // inside hlo_to_dimension_.
+  TilingSpace(const TilingSpace&) = delete;
+  TilingSpace& operator=(const TilingSpace&) = delete;
 
   enum class DimensionSemantics { kParallel, kSequential };
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
-    ID id;
+    TiledDimId id;
 
     // Size of the dimension.
     int64_t dimension_size;
@@ -80,7 +89,9 @@ class TilingSpace {
     int64_t dim_position;
 
     // Tile size for the dimension.
-    int64_t tile_size = -1;
+    std::optional<int64_t> tile_size;
+
+    std::string ToString() const;
   };
 
   // Information about a runtime variable.
@@ -98,9 +109,12 @@ class TilingSpace {
   //
   // RTVarInfo are accessed by (user_hlo, operand_id), in this case it is
   // (dynamic-slice, 1).
+  //
+  // For ragged_dot group sizes, `hlo` points to the group_sizes operand
+  // (a rank-1 array).
   struct RTVarInfo {
     // Unique ID for the runtime variable within the tiling space.
-    ID id;
+    int64_t id;
     // Feasible bounds of the runtime variable.
     // The values outside of the bounds will be clamped.
     Interval bounds;
@@ -108,8 +122,20 @@ class TilingSpace {
     const HloInstruction* hlo;
   };
 
-  static std::unique_ptr<TilingSpace> Create(const HloFusionAdaptor& fusion,
-                                             mlir::MLIRContext* ctx);
+  // Special constraint requiring that `expr` evaluated at concrete tile sizes
+  // is a multiple of `tile_size`.
+  // This allows verification using IsMultipleOf without heuristics for tid.
+  struct DivisibilityConstraint {
+    SymbolicExpr expr;
+    SymbolicExpr tile_size;
+  };
+
+  static absl::StatusOr<std::unique_ptr<TilingSpace>> Create(
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
+
+  // Creates an independent deep copy of the TilingSpace, with all internal
+  // pointer maps and root tiles re-bound to the new instance.
+  std::unique_ptr<TilingSpace> Clone() const;
 
   std::string ToString() const;
 
@@ -126,36 +152,76 @@ class TilingSpace {
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
 
-  // Assigns tile sizes to the dimensions.
-  void AssignTileSizes(absl::Span<const int64_t> tile_sizes);
+  // Assigns tile sizes to the dimensions and checks if the constraints derived
+  // from the operations are satisfied. That does NOT include backend-specific
+  // constraints.
+  absl::Status AssignTileSizes(absl::Span<const int64_t> tile_sizes);
 
   // Returns the runtime variable info for `hlo` that uses it and its
-  // `operand_id`. This runtime variable info must exist.
-  const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
-                                int64_t operand_id) const;
+  // `operand_id`.
+  std::optional<const RTVarInfo*> GetRTVarInfo(const HloInstruction& hlo,
+                                               int64_t operand_id) const;
 
-  ConstraintExpression& mutable_constraint() { return constraints_; }
-  const ConstraintExpression& constraint() const { return constraints_; }
+  // Returns the list of dimension info for the tiling space in the order they
+  // were appended - in increasing order of dimension IDs.
+  llvm::SmallVector<DimensionInfo, 4> dimensions() const {
+    return llvm::to_vector(dimensions_);
+  }
+
+  void AddDivisibilityConstraint(SymbolicExpr expr, SymbolicExpr tile_size) {
+    divisibility_constraints_.push_back({expr, tile_size});
+  }
+  llvm::ArrayRef<DivisibilityConstraint> divisibility_constraints() const {
+    return divisibility_constraints_;
+  }
 
   mlir::MLIRContext* mlir_context() const { return mlir_context_; }
 
   llvm::ArrayRef<Tile> tiled_roots() const { return tiled_roots_; }
 
   int64_t num_dimensions() const { return dimensions_.size(); }
+  int64_t num_parallel_dimensions() const;
   int64_t num_rt_vars() const { return rt_vars_.size(); }
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
                        int64_t dim_size, DimensionSemantics dim_type);
+
+  // Registers a runtime variable associated with (`hlo`, `operand_id`).
+  // `rt_var` is the HLO instruction whose value is the runtime variable.
+  // `upper_bound` is a compile-time upper bound on the variable's value.
   void AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
                    const HloInstruction* rt_var, int64_t upper_bound);
 
   bool IsSymbolic() const { return is_symbolic_; }
 
+  // Simplifies expressions using actual dimension and symbol bounds
+  // based on the assigned tile sizes and runtime variable bounds.
+  llvm::SmallVector<SymbolicExpr> SimplifyExpressions(
+      const llvm::SmallVector<SymbolicExpr>& expressions) const;
+
+  // Returns the list of valid tilings for the tiling space.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
+
  private:
+  absl::Status InitializeDimensions(
+      absl::Span<const HloInstructionAdaptor> roots);
+  absl::Status InitializeDimensionsForSameShapeMultiOutputFusion(
+      absl::Span<const HloInstructionAdaptor> roots);
+
   void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
+  void ProcessScan(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
+  void ProcessGetTupleElement(const HloInstruction& hlo);
+  // Registers the sequential dimensions and RTVars for a kRaggedDot
+  // instruction.  Handles kRaggedNonContracting (G is a kSequential outer
+  // loop) and kRaggedContracting (G is kParallel, M is kSequential).
+  void ProcessRaggedDot(const HloInstruction& hlo);
   void ProcessInstruction(const HloInstruction& hlo);
+
+  // Initializes cached indexing map variables. This is necessary to allow
+  // building indexing maps during simplification.
+  void InitSimplificationIndexing();
 
   // Maps from (hlo, dim_position) to the dimension info.
   absl::flat_hash_map<std::pair<const HloInstruction*, int64_t>,
@@ -176,18 +242,31 @@ class TilingSpace {
   // there will be only one symbolic tile.
   llvm::SmallVector<Tile, 2> tiled_roots_;
 
-  // Constraint expression for the tiling space.
-  ConstraintExpression constraints_;
+  // Constraint for tile sizes.
+  ConstraintExpression constraint_;
+
+  // Special divisibility constraints.
+  llvm::SmallVector<DivisibilityConstraint, 2> divisibility_constraints_;
 
   mlir::MLIRContext* mlir_context_;
 
   // Whether the tiling space is symbolic.
   bool is_symbolic_ = true;
+
+  // Cached variables for building actual indexing maps during simplification.
+  // These are populated by AssignTileSizes.
+  std::vector<IndexingMap::Variable> dim_vars_indexing_;
+  std::vector<IndexingMap::Variable> range_vars_indexing_;
+  std::vector<IndexingMap::Variable> rt_vars_indexing_;
 };
 
 // If the shape is a tuple, return the shape at the given index.
 // Otherwise, return the shape itself.
 const Shape& GetFirstShape(const HloInstruction* instr, int64_t index = 0);
+
+// Returns a symbol replacement map to set concrete tile sizes.
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes);
 
 }  // namespace xla::gpu::experimental
 

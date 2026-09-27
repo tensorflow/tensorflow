@@ -20,9 +20,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
@@ -49,7 +49,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloPjRtTestBase {
+class XlaCompileLibTest : public HloTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
@@ -60,29 +60,6 @@ class XlaCompileLibTest : public HloPjRtTestBase {
   }
 
   std::unique_ptr<HloModule> module_;
-
-  void ComputeAutotuneResults(AutotuneResults& results) {
-    static constexpr absl::string_view kHloText = R"(
-HloModule t
-ENTRY e {
-  p0 = f16[1,16,17,3] parameter(0)
-  p1 = f16[16,17,3] parameter(1)
-  ROOT _ = f16[1,16,16] dot(p0, p1),
-    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
-})";
-
-    HloModuleConfig config = GetModuleConfigForTest();
-    DebugOptions opts = config.debug_options();
-    opts.set_xla_gpu_autotune_level(3);
-    config.set_debug_options(opts);
-
-    gpu::AutotunerCache::ClearAutotuneResults();
-    ASSERT_OK_AND_ASSIGN(auto module,
-                         ParseAndReturnVerifiedModule(kHloText, config));
-    (void)CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
-
-    ASSERT_OK(gpu::AutotunerCache::SerializeAutotuneResults(&results));
-  }
 };
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
@@ -96,11 +73,30 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
+TEST_F(XlaCompileLibTest, DoesNotOverridePartitionsAndReplicas) {
+  module_->mutable_config().set_num_partitions(3);
+  module_->mutable_config().set_replica_count(3);
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(
+      std::string hlo_text,
+      CompileExecutable(std::move(module_), BackendType::kGpu,
+                        /*gpu_target_config=*/std::nullopt,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result));
+  EXPECT_THAT(hlo_text, ::testing::HasSubstr("num_partitions=3"));
+  EXPECT_THAT(hlo_text, ::testing::HasSubstr("replica_count=3"));
+}
+
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
-  const std::string spec_file =
-      test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)
-          ? "mi200.txtpb"
-          : "h100_sxm.txtpb";
+  const std::string spec_file = [&] {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+      return "mi200.txtpb";
+    } else if (test_runner().HasProperty(
+                   HloRunnerPropertyTag::kUsingGpuOneAPI)) {
+      return "bmg_g21.txtpb";
+    }
+    return "h100_sxm.txtpb";
+  }();
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
@@ -117,6 +113,36 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
                                 /*num_replicas=*/1, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
+}
+
+TEST_F(XlaCompileLibTest, ErrorForIncorrectPlatformAOTCompile) {
+  // Incorrect spec file assignment to trigger an AOT compilation failure.
+  const std::string incorrect_spec_file = [&] {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+      return "h100_sxm.txtpb";
+    } else if (test_runner().HasProperty(
+                   HloRunnerPropertyTag::kUsingGpuOneAPI)) {
+      return "mi200.txtpb";
+    }
+    return "bmg_g21.txtpb";
+  }();
+  const std::string target_config_path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "backends/gpu/target_config/specs",
+      incorrect_spec_file);
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                               &target_config_proto));
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(auto target_config, Compiler::GpuTargetConfig::FromProto(
+                                               target_config_proto));
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
+                                std::move(target_config),
+                                /*cpu_target_config=*/std::nullopt,
+                                /*num_partitions=*/1,
+                                /*num_replicas=*/1, result),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  ::testing::HasSubstr("Attempting to AOT compile for")));
 }
 
 TEST_F(XlaCompileLibTest, MainForGpu) {
@@ -144,34 +170,11 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }
 
-TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
-  gpu::AutotunerCache::ClearAutotuneResults();
-
-  HloModuleAndMetadata mod;
-  mod.hlo_module = std::move(module_);
-  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
-  ComputeAutotuneResults(data->autotune_results.emplace());
-  gpu::AutotunerCache::ClearAutotuneResults();
-  mod.backend_specific_data = std::move(data);
-
-  DebugOptions opts = mod.hlo_module->config().debug_options();
-  opts.set_xla_gpu_autotune_level(3);
-  mod.hlo_module->mutable_config().set_debug_options(opts);
-
-  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
-              absl_testing::IsOkAndHolds(true));
-  EXPECT_FALSE(gpu::AutotunerCache::ResultCacheIsEmpty());
-}
-
 TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
-  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
-  ComputeAutotuneResults(data->autotune_results.emplace());
-  gpu::AutotunerCache::ClearAutotuneResults();
-  mod.backend_specific_data = std::move(data);
 
   DebugOptions opts = mod.hlo_module->config().debug_options();
   opts.set_xla_gpu_autotune_level(0);
@@ -212,6 +215,78 @@ TEST_F(XlaCompileLibTest,
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest,
+       LoadAutotuneDataGpuDataPresentEmptyAndAutotuningEnabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+  data->autotune_results.emplace();  // empty results
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest, MainForGpuForceAutoLayout) {
+  static constexpr absl::string_view kHloText = R"(
+HloModule f
+
+ENTRY f {
+  arg = f32[2,2]{0,1} parameter(0)
+  ROOT add_result = f32[2,2]{0,1} add(arg, arg)
+})";
+
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module_force_layout.txt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file, kHloText));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output_force_layout");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result_force_layout.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_file = output_file;
+  options.platform = "gpu";
+  options.result_output_file = result_file;
+  options.force_auto_layout = true;
+  EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+  EXPECT_TRUE(result.has_hlo_module());
+
+  // Verify that the layout was overwritten. The input had {0,1} (column-major).
+  // We expect the output to have {1,0} (row-major) as default on GPU.
+  const auto& optimized_hlo = result.hlo_module();
+  bool found_parameter_with_different_layout = false;
+  for (const auto& computation : optimized_hlo.computations()) {
+    if (computation.name() == optimized_hlo.entry_computation_name()) {
+      for (const auto& instruction : computation.instructions()) {
+        if (instruction.opcode() == "parameter") {
+          const auto& minor_to_major =
+              instruction.shape().layout().minor_to_major();
+          EXPECT_EQ(minor_to_major.size(), 2);
+          if (minor_to_major.Get(0) == 1 && minor_to_major.Get(1) == 0) {
+            found_parameter_with_different_layout = true;
+          }
+        }
+      }
+    }
+  }
+  EXPECT_TRUE(found_parameter_with_different_layout);
 }
 
 }  // namespace

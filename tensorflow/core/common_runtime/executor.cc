@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
@@ -86,6 +88,36 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+#if defined(__aarch64__) && defined(__linux__)
+// Returns a fixed-point scale factor to convert CNTVCT_EL0 virtual timer
+// cycles to x86-TSC-equivalent cycles.  The factor has 16 fractional bits,
+// so the hot-path update uses (elapsed * factor) >> 16.
+// Computed once per process and cached in a static local.
+inline uint64_t GetAarch64CycleScaleFixed() {
+  static const uint64_t scale_fixed = []() -> uint64_t {
+    uint64_t cntfrq;
+    asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+    if (cntfrq == 0) return 1 << 16;
+    std::string freq_str;
+    if (!tensorflow::ReadFileToString(
+             Env::Default(),
+             "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", &freq_str)
+             .ok()) {
+      return 1 << 16;
+    }
+    int64_t cpu_freq_khz;
+    if (!absl::SimpleAtoi(absl::StripTrailingAsciiWhitespace(freq_str),
+                          &cpu_freq_khz) ||
+        cpu_freq_khz <= 0) {
+      return 1 << 16;
+    }
+    uint64_t sf = (static_cast<uint64_t>(cpu_freq_khz) * 1000 << 16) / cntfrq;
+    return sf > 0 ? sf : (1 << 16);
+  }();
+  return scale_fixed;
+}
+#endif  // defined(__aarch64__) && defined(__linux__)
 
 // 1-D, 0 element tensor.
 static const Tensor* const kEmptyTensor = new Tensor;
@@ -203,9 +235,15 @@ class ExecutorImpl : public Executor {
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
       auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
-
+#if defined(__aarch64__) && defined(__linux__)
+      uint64_t new_estimate =
+          ((kCostDecay - 1) * prev_estimate +
+           ((elapsed_cycles * GetAarch64CycleScaleFixed()) >> 16)) /
+          kCostDecay;
+#else
       uint64_t new_estimate =
           ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
+#endif
 
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
     }
@@ -217,7 +255,6 @@ class ExecutorImpl : public Executor {
     static constexpr uint64_t kInitialCostEstimateCycles = 100 * 1000 * 1000;
     static constexpr uint64_t kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64_t kCostDecay = 10;
-
     std::vector<bool> is_expensive_;
     // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
@@ -393,7 +430,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   tsl::CoordinationServiceAgent* coordination_service_agent_;
-  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
+  absl::optional<ManagedStackTrace> stack_trace_ = std::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
@@ -1011,9 +1048,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
 
       case Entry::State::HAS_VALUE: {
         if (TF_PREDICT_FALSE(expect_ref)) {
-          return AttachDef(
-              errors::InvalidArgument(i, "-th input expects a ref type"),
-              item.kernel->def());
+          return AttachDef(absl::InvalidArgumentError(
+                               absl::StrCat(i, "-th input expects a ref type")),
+                           item.kernel->def());
         }
         inp->mutex_if_ref = nullptr;
         inp->tensor = entry->val.get();
@@ -1022,9 +1059,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
 
       case Entry::State::HAS_CONST_TENSOR: {
         if (TF_PREDICT_FALSE(expect_ref)) {
-          return AttachDef(
-              errors::InvalidArgument(i, "-th input expects a ref type"),
-              item.kernel->def());
+          return AttachDef(absl::InvalidArgumentError(
+                               absl::StrCat(i, "-th input expects a ref type")),
+                           item.kernel->def());
         }
         // NOTE(mrry): This `const_cast` is necessary because `TensorValue`
         // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
@@ -1040,9 +1077,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
           tf_shared_lock ml(*entry->ref_tensor.mu);
           if (TF_PREDICT_FALSE(!entry->ref_tensor.tensor->IsInitialized() &&
                                !item.is_initialization_op)) {
-            return AttachDef(errors::FailedPrecondition(
+            return AttachDef(absl::FailedPreconditionError(absl::StrCat(
                                  "Attempting to use uninitialized value ",
-                                 item.kernel->requested_input(i)),
+                                 item.kernel->requested_input(i))),
                              item.kernel->def());
           }
         }
@@ -1070,11 +1107,11 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
           // matches the expected input type.
           if (TF_PREDICT_FALSE(item.input_type(i) != inp->tensor->dtype())) {
             return AttachDef(
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     i, "-th input expects type ",
                     DataTypeString(item.input_type(i)),
                     " but automatically dereferenced input tensor has type ",
-                    DataTypeString(inp->tensor->dtype())),
+                    DataTypeString(inp->tensor->dtype()))),
                 item.kernel->def());
           }
         }
@@ -1129,8 +1166,9 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       // as not required, the node must produce a tensor value at i-th output.
       if (!(item.is_recv_or_switch ||
             (item.outputs_required && !item.outputs_required[i]))) {
-        s.Update(errors::Internal("Missing ", i, "-th output from ",
-                                  FormatNodeDefForError(item.kernel->def())));
+        s.Update(absl::InternalError(
+            absl::StrCat("Missing ", i, "-th output from ",
+                         FormatNodeDefForError(item.kernel->def()))));
       }
     } else {
       // Set the allocator attributes of the output entry.
@@ -1168,11 +1206,11 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
           }
         }
       } else {
-        s.Update(
-            errors::Internal("Output ", i, " of type ", DataTypeString(dtype),
-                             " does not match declared output type ",
-                             DataTypeString(item.output_type(i)), " for node ",
-                             FormatNodeDefForError(item.kernel->def())));
+        s.Update(absl::InternalError(
+            absl::StrCat("Output ", i, " of type ", DataTypeString(dtype),
+                         " does not match declared output type ",
+                         DataTypeString(item.output_type(i)), " for node ",
+                         FormatNodeDefForError(item.kernel->def()))));
       }
     }
     if (!val.is_ref()) {

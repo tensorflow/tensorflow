@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -204,6 +205,23 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (key == "use_system_hostname") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())["use_system_hostname"]
+                .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (key == "enable_continuous_profiling") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())
+                ["enable_continuous_profiling"]
+                    .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
     } else if (absl::StartsWith(key, "tpu_")) {
       std::visit(
           SetAdvancedOption{options.mutable_profiler_options(), kw.first},
@@ -276,7 +294,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
-    TF_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
+    ABSL_RETURN_IF_ERROR(ValidateHostPortPair(host_port));
   }
 
   if (options.max_session_duration_ms() <

@@ -36,11 +36,12 @@ extra_env_flags = []
 config.name = "XLA"
 config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
-config.test_format = lit.formats.ShTest(execute_external=True)
+config.test_format = lit.formats.ShTest()
 
 for env in [
     # Passthrough XLA_FLAGS.
     "XLA_FLAGS",
+    "CUDA_VISIBLE_DEVICES",
     # Propagate environment variables used by 'bazel coverage'.
     # These are exported by tools/coverage/collect_coverage.sh
     "BULK_COVERAGE_RUN",
@@ -78,4 +79,4 @@ config.substitutions.extend(
 )
 
 # Replace the default test format with our wrapped version
-config.test_format = ShTestWithRunfiles(execute_external=True)
+config.test_format = ShTestWithRunfiles()

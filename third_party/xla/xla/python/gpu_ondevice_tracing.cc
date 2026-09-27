@@ -58,15 +58,19 @@ void Inject(size_t version, int32_t injection_instance_id,
 }  // namespace
 
 NB_MODULE(_gpu_ondevice_tracing, m) {
+  m.doc() =
+      "Utilities for GPU on-device tracing inject events into Xprof profiler.";
+
   m.def("active_version", &ActiveVersion,
-        "Check if there are active profiling session using the on-device event "
-        "receiver.");
+        R"(Returns the active version of the GPU on-device tracing.
+
+0 mean no active tracing.)");
   m.def("start_injection_instance", &StartInjectionInstance, nb::arg("version"),
-        "Get the Id for a new injection instance.");
+        "Starts a new injection instance of the GPU on-device tracing.");
   m.def("inject", &Inject, nb::arg("version"), nb::arg("injection_instance_id"),
         nb::arg("tag_name"), nb::arg("tag_id"), nb::arg("pid"), nb::arg("tid"),
         nb::arg("start_time_ns"), nb::arg("duration_ps"),
-        "Injecting software generated events to the on-device event receiver.");
+        "Injects an event into the Xprof profiler.");
 }
 
 }  // namespace xla

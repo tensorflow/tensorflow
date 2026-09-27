@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,13 +26,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 
@@ -42,10 +44,14 @@ namespace xla::gpu {
 // generated with the regular emitters.
 class TritonFusionNumericsVerifier : public HloModulePass {
  public:
-  TritonFusionNumericsVerifier(const DeviceOrDevicelessConfig& config,
+  TritonFusionNumericsVerifier(se::StreamExecutor& stream_executor,
+                               se::DeviceAddressAllocator* allocator,
                                const AliasInfo* alias_info,
                                mlir::MLIRContext* mlir_context)
-      : config_(config), alias_info_(alias_info), mlir_context_(mlir_context) {}
+      : stream_executor_(stream_executor),
+        allocator_(allocator),
+        alias_info_(alias_info),
+        mlir_context_(mlir_context) {}
 
   static absl::string_view Name() { return "triton-numerics-verifier"; }
   absl::string_view name() const override { return Name(); }
@@ -60,7 +66,13 @@ class TritonFusionNumericsVerifier : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  DeviceOrDevicelessConfig config_;
+  absl::Status VerifyTritonFusion(GpuProfiler& profiler,
+                                  const HloFusionInstruction& fusion,
+                                  const DebugOptions& debug_opts);
+
+  se::StreamExecutor& stream_executor_;
+  se::DeviceAddressAllocator* allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> owned_allocator_;
   const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 
@@ -73,14 +85,10 @@ class TritonFusionNumericsVerifier : public HloModulePass {
 namespace triton_fusion_numerics_pass_internal {
 // These are exposed only for testing. Do not use.
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
-    AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
-    const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
-    bool disable_triton, const AliasInfo* alias_info,
-    mlir::MLIRContext* mlir_context);
-absl::Status CompareBuffers(const ScopedShapedBuffer& current,
-                            const ScopedShapedBuffer& expected,
-                            const Shape& shape, const DebugOptions& debug_opts,
-                            se::Stream* stream);
+    GpuProfiler& profiler, const HloFusionInstruction& fusion,
+    const DebugOptions& debug_opts, bool disable_triton,
+    se::StreamExecutor& stream_executor, se::DeviceAddressAllocator* allocator,
+    const AliasInfo* alias_info, mlir::MLIRContext* mlir_context);
 absl::Status ForAllTritonFusions(
     const HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,

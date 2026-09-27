@@ -36,6 +36,9 @@ struct CompiledMemoryStats {
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
   int64_t peak_memory_in_bytes = 0;
+  int64_t total_allocation_bytes = 0;
+  int64_t indefinite_allocations = 0;
+  int64_t peak_unpadded_heap_bytes = 0;
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;

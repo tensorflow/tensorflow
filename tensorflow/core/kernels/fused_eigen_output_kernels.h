@@ -411,12 +411,23 @@ using WithFusedBatchNormAndLeakyRelu = FusedBatchNormOutputKernel<T, LeakyRelu>;
 template <typename T>
 absl::Status InitBiasAddArgs(OpKernelContext* context, BiasAddArgs<T>* args,
                              const float* leakyrelu_alpha = nullptr) {
-  // Bias of the following dimensions: [ output_depth ]
+  // Bias of the following dimensions: [ output_depth ] or [1, ..., 1,
+  // output_depth]
   const Tensor& bias = context->input(2);
 
-  if (bias.dims() != 1)
-    return errors::InvalidArgument("bias must be 1-dimensional",
-                                   bias.shape().DebugString());
+  if (bias.dims() < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("bias must be at least 1-dimensional, got: ",
+                     bias.shape().DebugString()));
+  }
+  for (int i = 0; i < bias.dims() - 1; ++i) {
+    if (bias.dim_size(i) != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("For bias_dims > 1, all except the last dimension "
+                       "must be 1, got: ",
+                       bias.shape().DebugString()));
+    }
+  }
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());
@@ -441,17 +452,19 @@ absl::Status InitFusedBatchNormArgs(OpKernelContext* context, float epsilon,
   const Tensor& estimated_variance = context->input(5);
 
   if (scale.dims() != 1)
-    return errors::InvalidArgument("scale must be 1-dimensional",
-                                   scale.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "scale must be 1-dimensional", scale.shape().DebugString()));
   if (offset.dims() != 1)
-    return errors::InvalidArgument("offset must be 1-dimensional",
-                                   offset.shape().DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "offset must be 1-dimensional", offset.shape().DebugString()));
   if (estimated_mean.dims() != 1)
-    return errors::InvalidArgument("estimated_mean must be 1-dimensional",
-                                   estimated_mean.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("estimated_mean must be 1-dimensional",
+                     estimated_mean.shape().DebugString()));
   if (estimated_variance.dims() != 1)
-    return errors::InvalidArgument("estimated_variance must be 1-dimensional",
-                                   estimated_variance.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("estimated_variance must be 1-dimensional",
+                     estimated_variance.shape().DebugString()));
 
   const auto data_ptr = [](const Tensor& tensor) -> const T* {
     return reinterpret_cast<const T*>(tensor.tensor_data().data());

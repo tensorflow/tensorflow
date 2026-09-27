@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/literal.h"

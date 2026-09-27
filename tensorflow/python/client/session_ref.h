@@ -89,8 +89,6 @@ class SessionRef : public Session {
 
   // Borrowed reference to global session logger.
   SessionLogger* logger_;
-
-  absl::Status CheckNotClosed();
 };
 
 }  // namespace tensorflow

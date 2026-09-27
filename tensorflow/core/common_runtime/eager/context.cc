@@ -1457,8 +1457,9 @@ absl::Status EagerContext::GetClient(
     }
     if (std::find(remote_contexts_.begin(), remote_contexts_.end(),
                   device_task_name) == remote_contexts_.end()) {
-      return errors::Internal("Unable to find a context for handle on task: ",
-                              device_task_name, ". This should not happen.");
+      return absl::InternalError(absl::StrCat(
+          "Unable to find a context for handle on task: ", device_task_name,
+          ". This should not happen."));
     }
   }
 

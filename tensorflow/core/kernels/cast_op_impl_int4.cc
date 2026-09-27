@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/core/framework/types.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive

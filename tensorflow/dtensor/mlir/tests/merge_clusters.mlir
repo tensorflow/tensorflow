@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: dtensor-opt %s -split-input-file -dtensor-merge-clusters -verify-diagnostics | FileCheck %s
 
 // Check that multiple tf_device.Cluster ops with same mesh specification are
@@ -175,7 +189,7 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<2x4xf
   // CHECK-NEXT:   "tf.C"
   // CHECK-NEXT:   "tf.AssignVariableOp"
   // CHECK-NEXT:   tf_device.return
-  // CHECK-NEXT: _inferred_resource_indices = dense<[2, 1]>
+  // CHECK-NEXT: _inferred_resource_indices = dense<[1, 2]>
   // CHECK-SAME: _inferred_resource_layouts = ["sharding_specs:unsharded,unsharded, mesh:CPU|x=1|0|0|CPU:0", "sharding_specs:unsharded,unsharded, mesh:CPU|x=1|0|0|CPU:0"]
   // CHECK-SAME: _mesh = "CPU|x=1|0|0|/job:localhost/task:0/device:CPU:0"
   "tf_device.cluster"() ({
@@ -213,7 +227,7 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<2x4xf32>, %arg2: tensor<2x4xf3
   // CHECK-NEXT:   "tf.ShapeOp"
   // CHECK-NEXT:   tf_device.return
   // CHECK-NEXT: _mesh = "CPU|x=1|0|0|/job:localhost/task:0/device:CPU:0"
-  // CHECK-SAME: _shape_input_indices = dense<[2, 1]
+  // CHECK-SAME: _shape_input_indices = dense<[1, 2]
   // CHECK-SAME: _shape_input_layout = ["sharding_specs:unsharded,unsharded, mesh:CPU|x=1|0|0|CPU:0", "sharding_specs:unsharded,unsharded, mesh:CPU|x=1|0|0|CPU:0"]
   "tf_device.cluster"() ({
     %0 = "tf.ShapeOp"(%arg1) : (tensor<2x4xf32>) -> (tensor<1xf32>)

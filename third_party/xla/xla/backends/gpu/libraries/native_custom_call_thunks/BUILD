@@ -1,0 +1,226 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+#
+# Thunk-folding API for GPU custom calls: lets custom calls lower directly to native ThunkSequences
+# instead of being wrapped in a CustomCallThunk (FFI/legacy). See
+# `native_custom_call_handler_registry.h`.
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
+
+# Visibility allowlist for packages that are permitted to register custom-call
+# thunk-folding handlers. Handlers that live in the XLA codebase can be added
+# right here; internal ones should be added to the included package group in
+# //third_party/tensorflow/compiler/xla/package_groups.bzl, which is the
+# canonical place in XLA for package_groups that are different between Google
+# and OSS.
+package_group(
+    name = "handler_allowlist",
+    includes = [
+        "//xla:native_custom_call_handler_allowlist",
+    ],
+    packages = [
+        # Demonstrator / test-only handler.
+        "//xla/backends/gpu/libraries/native_custom_call_thunks/...",
+    ],
+)
+
+cc_library(
+    name = "native_custom_call_emitter_context",
+    hdrs = ["native_custom_call_emitter_context.h"],
+    visibility = [
+        ":handler_allowlist",
+        "//xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/ffi:attributes",
+        "//xla/service:buffer_assignment",
+        "//xla/service:gpu_topology",
+        "//xla/service:shaped_slice",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "native_custom_call_handler_registry",
+    srcs = ["native_custom_call_handler_registry.cc"],
+    hdrs = ["native_custom_call_handler_registry.h"],
+    visibility = ["//xla:internal"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "native_custom_call_handler_registration",
+    srcs = ["native_custom_call_handler_registration.cc"],
+    hdrs = ["native_custom_call_handler_registration.h"],
+    visibility = [":handler_allowlist"],
+    deps = [
+        ":native_custom_call_handler_registry",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "native_custom_call_handler_utils",
+    srcs = ["native_custom_call_handler_utils.cc"],
+    hdrs = ["native_custom_call_handler_utils.h"],
+    visibility = [":handler_allowlist"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        "//xla:shape_util",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel",
+        "//xla/backends/gpu/runtime:custom_kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:shaped_slice",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:kernel_args_packing_spec",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "native_custom_call_handler_testlib",
+    testonly = True,
+    srcs = ["native_custom_call_handler_testlib.cc"],
+    hdrs = ["native_custom_call_handler_testlib.h"],
+    visibility = [":handler_allowlist"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        ":native_custom_call_handler_registry",
+        "//xla:debug_options_flags",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/ffi:ffi_attributes_from_backend_config",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:thunk_id",
+        "//xla/backends/gpu/target_config",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/ffi:attributes",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:gpu_topology",
+        "//xla/service:logical_buffer",
+        "//xla/service:shaped_slice",
+        "//xla/service/gpu:gpu_constants",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "native_custom_call_handler_testlib_test",
+    srcs = ["native_custom_call_handler_testlib_test.cc"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        ":native_custom_call_handler_registration",
+        ":native_custom_call_handler_testlib",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/target_config",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/ffi:attributes",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:shaped_slice",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "native_custom_call_handler_utils_test",
+    srcs = ["native_custom_call_handler_utils_test.cc"],
+    deps = [
+        ":native_custom_call_handler_testlib",
+        ":native_custom_call_handler_utils",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:custom_kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/target_config",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/service:shaped_slice",
+        "//xla/stream_executor:kernel_args_packing_spec",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "native_custom_call_handler_registry_test",
+    srcs = ["native_custom_call_handler_registry_test.cc"],
+    deps = [
+        ":native_custom_call_emitter_context",
+        ":native_custom_call_handler_registration",
+        ":native_custom_call_handler_registry",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

@@ -38,7 +38,8 @@ class Ldexp : public intrinsics::Intrinsic<Ldexp> {
  public:
   static constexpr absl::string_view kName = "ldexp";
   static constexpr int8_t kNumArgs = 2;
-  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+  static std::vector<std::vector<Type>> SupportedVectorTypes(
+      absl::string_view features = "") {
     return {{Type::S(xla::F64), Type::S(xla::S32)},
             {Type::V(xla::F64, 1), Type::V(xla::S32, 1)},
             {Type::V(xla::F64, 2), Type::V(xla::S32, 2)},

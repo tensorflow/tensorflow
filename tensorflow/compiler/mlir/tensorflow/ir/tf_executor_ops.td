@@ -51,8 +51,8 @@ def TfeControlType : Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
                      BuildableType<"$_builder.getType<ControlType>()">;
 
 // Token type.
-def TfeTokenType : Type<CPred<"llvm::isa<TokenType>($_self)">, "token">,
-                   BuildableType<"$_builder.getType<TokenType>()">;
+def TfeTokenType : Type<CPred<"llvm::isa<::mlir::tf_executor::TokenType>($_self)">, "token">,
+                   BuildableType<"$_builder.getType<::mlir::tf_executor::TokenType>()">;
 
 // TODO(hinsu): Define and use TensorType instead of AnyType for data operands
 // and results. For example, MergeOp output type.

@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_TSL_LIB_MONITORING_TYPES_H_
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "xla/tsl/platform/types.h"

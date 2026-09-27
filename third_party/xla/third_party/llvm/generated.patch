@@ -1,1 +1,189 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGCall.cpp b/clang/lib/CodeGen/CGCall.cpp
+--- a/clang/lib/CodeGen/CGCall.cpp
++++ b/clang/lib/CodeGen/CGCall.cpp
+@@ -2804,17 +2804,10 @@
+       AddAttributesFromFunctionProtoType(
+           getContext(), FuncAttrs, Fn->getType()->getAs<FunctionProtoType>());
+       if (AttrOnCallSite && Fn->isReplaceableGlobalAllocationFunction()) {
+-        // A sane operator new returns a non-aliasing pointer and does not
+-        // read or write accessible memory.
++        // A sane operator new returns a non-aliasing pointer.
+         if (getCodeGenOpts().AssumeSaneOperatorNew &&
+-            Fn->getDeclName().isAnyOperatorNew()) {
++            Fn->getDeclName().isAnyOperatorNew())
+           RetAttrs.addAttribute(llvm::Attribute::NoAlias);
+-          // FIXME: inaccessiblemem could cause issues if LTO makes the
+-          // previously inaccessible memory accessible after linking.
+-          FuncAttrs.addMemoryAttr(
+-              llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
+-                  llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
+-        }
+       }
+       const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+       const bool IsVirtualCall = MD && MD->isVirtual();
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExprCXX.cpp b/clang/lib/CodeGen/CGExprCXX.cpp
+--- a/clang/lib/CodeGen/CGExprCXX.cpp
++++ b/clang/lib/CodeGen/CGExprCXX.cpp
+@@ -1391,9 +1391,19 @@
+   ///
+   /// We model such elidable calls with the 'builtin' attribute.
+   llvm::Function *Fn = dyn_cast<llvm::Function>(CalleePtr);
+-  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn &&
+-      Fn->hasFnAttribute(llvm::Attribute::NoBuiltin)) {
+-    CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
++  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn) {
++    if (Fn->hasFnAttribute(llvm::Attribute::NoBuiltin))
++      CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
++
++    // A sane operator new does not read or write accessible memory.
++    if (CGF.CGM.getCodeGenOpts().AssumeSaneOperatorNew &&
++        CalleeDecl->getDeclName().isAnyOperatorNew()) {
++      // FIXME: inaccessiblemem could cause issues if LTO makes the
++      // previously inaccessible memory accessible after linking.
++      CallOrInvoke->setMemoryEffects(
++          llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
++              llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
++    }
+   }
+ 
+   return RV;
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/new_hot_cold.cpp b/clang/test/CodeGenCXX/new_hot_cold.cpp
+--- a/clang/test/CodeGenCXX/new_hot_cold.cpp
++++ b/clang/test/CodeGenCXX/new_hot_cold.cpp
+@@ -124,7 +124,7 @@
+ 
+ // CHECK-DAG: attributes [[ATTR_NOBUILTIN]] = { nobuiltin allocsize(0) {{.*}} }
+ // CHECK-DAG: attributes [[ATTR_NOBUILTIN_NOTHROW]] = { nobuiltin nounwind allocsize(0) {{.*}} }
+-// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
++// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) }
+ // CHECK-DAG: attributes [[ATTR_BUILTIN_CALL]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+-// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
++// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) }
+ // CHECK-DAG: attributes [[ATTR_BUILTIN_NOTHROW_CALL]] = { builtin nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/operator-new.cpp b/clang/test/CodeGenCXX/operator-new.cpp
+--- a/clang/test/CodeGenCXX/operator-new.cpp
++++ b/clang/test/CodeGenCXX/operator-new.cpp
+@@ -27,5 +27,14 @@
+ }
+ 
+ // ALL: declare noundef nonnull ptr @_Znaj(
++
++void *f3(unsigned long N) {
++  // SANE: call noalias noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
++  // SANENOT: call noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
++  return ::operator new(N);
++}
++
+ // SANE: attributes [[ATTR]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
++// SANE: attributes [[ATTR2]] = { allocsize(0) }
+ // SANENOT: attributes [[ATTR]] = { builtin allocsize(0) }
++// SANENOT: attributes [[ATTR2]] = { allocsize(0) }
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -16145,18 +16145,21 @@
+ 
+         InstructionCost VecCost = VectorCost(CommonCost);
+         // Check if the current node must be resized, if the parent node is not
+-        // resized.
++        // resized. Nodes without a parent (roots of the splat gather
++        // subtrees) are resized back to their original type when the reusing
++        // gather nodes are emitted.
+         if (It != MinBWs.end() && !UnaryInstruction::isCast(E->getOpcode()) &&
+             E->Idx != 0 &&
+             (E->getOpcode() != Instruction::Load || E->UserTreeIndex)) {
+           const EdgeInfo &EI = E->UserTreeIndex;
+-          if (!EI.UserTE->hasState() ||
++          if (!EI.UserTE || !EI.UserTE->hasState() ||
+               EI.UserTE->getOpcode() != Instruction::Select ||
+               EI.EdgeIdx != 0) {
+             auto UserBWIt = MinBWs.find(EI.UserTE);
+             Type *UserScalarTy =
+-                (EI.UserTE->isGather() ||
+-                 EI.UserTE->State == TreeEntry::SplitVectorize)
++                !EI.UserTE ? OrigScalarTy
++                : (EI.UserTE->isGather() ||
++                   EI.UserTE->State == TreeEntry::SplitVectorize)
+                     ? EI.UserTE->Scalars.front()->getType()
+                     : EI.UserTE->getOperand(EI.EdgeIdx).front()->getType();
+             if (UserBWIt != MinBWs.end())
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
+@@ -0,0 +1,75 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
++; RUN: opt -passes=slp-vectorizer -S -mtriple=aarch64-linux-gnu < %s | FileCheck %s
++
++define double @test() {
++; CHECK-LABEL: @test(
++; CHECK-NEXT:  bbl:
++; CHECK-NEXT:    [[SELECT:%.*]] = select i1 false, i64 0, i64 0
++; CHECK-NEXT:    [[AND:%.*]] = and i64 [[SELECT]], 0
++; CHECK-NEXT:    [[ICMP:%.*]] = icmp eq i64 [[AND]], 0
++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i1> poison, i1 true, i64 0
++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i1> [[TMP0]], <2 x i1> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP2:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
++; CHECK-NEXT:    [[TMP3:%.*]] = bitcast <2 x double> [[TMP2]] to <2 x i64>
++; CHECK-NEXT:    [[TMP4:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
++; CHECK-NEXT:    [[TMP5:%.*]] = bitcast <2 x double> [[TMP4]] to <2 x i64>
++; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <2 x i1> poison, i1 [[ICMP]], i64 0
++; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <2 x i1> [[TMP6]], <2 x i1> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP8:%.*]] = select <2 x i1> [[TMP7]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
++; CHECK-NEXT:    [[TMP9:%.*]] = bitcast <2 x double> [[TMP8]] to <2 x i64>
++; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <2 x i64> poison, i64 [[SELECT]], i64 0
++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x i64> [[TMP10]], <2 x i64> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP12:%.*]] = xor <2 x i64> [[TMP11]], [[TMP9]]
++; CHECK-NEXT:    [[TMP13:%.*]] = bitcast <2 x i64> [[TMP12]] to <2 x double>
++; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <2 x i64> poison, i64 0, i64 0
++; CHECK-NEXT:    [[TMP15:%.*]] = shufflevector <2 x i64> [[TMP14]], <2 x i64> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP16:%.*]] = xor <2 x i64> [[TMP15]], [[TMP3]]
++; CHECK-NEXT:    [[TMP17:%.*]] = bitcast <2 x i64> [[TMP16]] to <2 x double>
++; CHECK-NEXT:    [[TMP18:%.*]] = xor <2 x i64> [[TMP15]], [[TMP5]]
++; CHECK-NEXT:    [[TMP19:%.*]] = fmul <2 x double> [[TMP13]], [[TMP17]]
++; CHECK-NEXT:    [[TMP20:%.*]] = bitcast <2 x i64> [[TMP18]] to <2 x double>
++; CHECK-NEXT:    [[TMP21:%.*]] = fmul <2 x double> [[TMP19]], [[TMP20]]
++; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <2 x double> [[TMP21]], i64 0
++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <2 x double> [[TMP21]], i64 1
++; CHECK-NEXT:    [[FADD:%.*]] = fadd double [[TMP22]], [[TMP23]]
++; CHECK-NEXT:    ret double [[FADD]]
++;
++bbl:
++  %select = select i1 false, i64 0, i64 0
++  %and = and i64 %select, 0
++  %icmp = icmp eq i64 %and, 0
++  %select1 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
++  %bitcast = bitcast double %select1 to i64
++  %xor = xor i64 %select, %bitcast
++  %bitcast2 = bitcast i64 %xor to double
++  %select4 = select i1 false, i64 0, i64 0
++  %icmp5 = icmp eq i64 %select4, 0
++  %select6 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
++  %bitcast7 = bitcast double %select6 to i64
++  %xor8 = xor i64 %select4, %bitcast7
++  %bitcast9 = bitcast i64 %xor8 to double
++  %select10 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
++  %bitcast11 = bitcast double %select10 to i64
++  %select12 = select i1 false, i64 0, i64 0
++  %icmp13 = icmp eq i64 %select12, 0
++  %select14 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
++  %bitcast15 = bitcast double %select14 to i64
++  %xor16 = xor i64 %select12, %bitcast15
++  %select17 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
++  %bitcast18 = bitcast double %select17 to i64
++  %select3 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
++  %bitcast19 = bitcast double %select3 to i64
++  %xor20 = xor i64 %select, %bitcast19
++  %bitcast21 = bitcast i64 %xor20 to double
++  %xor22 = xor i64 %select4, %bitcast11
++  %bitcast23 = bitcast i64 %xor22 to double
++  %fmul = fmul double %bitcast21, %bitcast23
++  %xor24 = xor i64 %select12, %bitcast18
++  %bitcast25 = bitcast i64 %xor24 to double
++  %fmul26 = fmul double %fmul, %bitcast25
++  %fmul27 = fmul double %bitcast2, %bitcast9
++  %bitcast28 = bitcast i64 %xor16 to double
++  %fmul29 = fmul double %fmul27, %bitcast28
++  %fadd = fadd double %fmul26, %fmul29
++  ret double %fadd
++}

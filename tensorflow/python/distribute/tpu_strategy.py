@@ -510,7 +510,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
                        "logical device id {} but there are only total of {} "
                        "logical devices in replica.".format(
                            logical_device_id, num_logical_devices_per_replica))
-    return xla_sharding.assign_device(
+    return xla_sharding.single_device(
         tensor, logical_device_id, use_sharding_op=True)
 
   def experimental_split_to_logical_devices(self, tensor, partition_dimensions):

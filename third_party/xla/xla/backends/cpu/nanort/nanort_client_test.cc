@@ -25,8 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -74,13 +76,13 @@ using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> GetExecutable(
     const XlaComputation& computation, bool export_executable) {
   NanoRtClient client;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> executable,
-                      client.Compile(computation));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<NanoRtExecutable> executable,
+                   client.Compile(computation));
 
   if (export_executable) {
-    TF_ASSIGN_OR_RETURN(auto exported, client.Export(executable.get()));
+    ABSL_ASSIGN_OR_RETURN(auto exported, client.Export(executable.get()));
     CpuAotCompilationResult* aot_compilation_result =
-        tsl::down_cast<CpuAotCompilationResult*>(exported.get());
+        absl::down_cast<CpuAotCompilationResult*>(exported.get());
     return NanoRtExecutable::Create(aot_compilation_result->proto(),
                                     executable->program_shape());
   }

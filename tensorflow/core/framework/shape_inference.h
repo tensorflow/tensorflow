@@ -18,9 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -296,6 +296,7 @@ class InferenceContext {
   // This requires idx to be in the [0, num_inputs) range. If the merge is
   // successful, return true. Return false otherwise.
   bool MergeInput(int idx, ShapeHandle shape) {
+    if (idx < 0 || idx >= num_inputs()) return false;
     ShapeHandle new_shape;
     if (!Merge(inputs_[idx], shape, &new_shape).ok()) return false;
     inputs_[idx] = new_shape;
@@ -655,14 +656,12 @@ class InferenceContext {
   // return true.  Return false otherwise.
   //
   // See 'MergeInput' function for full details and examples.
-  bool MergeInputHandleShapesAndTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool MergeInputHandleShapesAndTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // As MergeInputHandleShapesAndTypes, but for an output.
-  bool MergeOutputHandleShapesAndTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool MergeOutputHandleShapesAndTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // Relaxes the stored shapes and types corresponding to the input handle in
   // position idx with the specified shapes and types. This requires idx to be
@@ -673,14 +672,12 @@ class InferenceContext {
   // Return false otherwise.
   //
   // See 'RelaxInput' function for full details and examples.
-  bool RelaxInputHandleShapesAndMergeTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool RelaxInputHandleShapesAndMergeTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   // As RelaxInputHandleShapesAndTypes, but for an output.
-  bool RelaxOutputHandleShapesAndMergeTypes(
-      int idx,
-      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool RelaxOutputHandleShapesAndMergeTypes(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types);
 
   void set_input_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
@@ -689,7 +686,7 @@ class InferenceContext {
         << "Got idx: " << idx << " but only "
         << input_handle_shapes_and_types_.size() << " inputs.";
     input_handle_shapes_and_types_[idx] =
-        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Returns the output handle shapes and types, for the resource tensor output
@@ -719,7 +716,7 @@ class InferenceContext {
         << "Got idx: " << idx << " but only "
         << output_handle_shapes_and_types_.size() << " inputs.";
     output_handle_shapes_and_types_[idx] =
-        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
@@ -814,14 +811,14 @@ class InferenceContext {
 
   // Used to implement MergeInputHandleShapesAndTypes and
   // MergeOutputHandleShapesAndTypes.
-  bool MergeHandleShapesAndTypes(
+  TF_MUST_USE_RESULT bool MergeHandleShapesAndTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
-      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+      std::vector<ShapeAndType>* to_update);
   // Used to implement RelaxInputHandleShapesAndMergeTypes and
   // RelaxOutputHandleShapesAndMergeTypes.
-  bool RelaxHandleShapesAndMergeTypes(
+  TF_MUST_USE_RESULT bool RelaxHandleShapesAndMergeTypes(
       const std::vector<ShapeAndType>& shapes_and_types,
-      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+      std::vector<ShapeAndType>* to_update);
 
   // Forget all the previous merged shapes and dims.
   void ForgetMerges() {
@@ -901,7 +898,7 @@ inline Shape::Shape(const std::vector<DimensionHandle>& dims)
     : rank_(dims.size()), dims_(dims) {}
 
 inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
-    : dim(dim) {
+    : dim(dim), val(InferenceContext::kUnknownDim) {
   DCHECK(dim.IsSet()) << "Internal error: Got nullptr for Dimension.";
 }
 

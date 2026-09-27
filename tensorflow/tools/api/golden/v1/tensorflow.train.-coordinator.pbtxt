@@ -1,10 +1,10 @@
 path: "tensorflow.train.Coordinator"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.coordinator.Coordinator\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "joined"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

@@ -593,10 +593,6 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched,
                      const Cluster* cluster) {
-#if TENSORFLOW_USE_ROCM && !TF_HIPBLASLT
-  // ROCm does not support _FusedMatMul
-  return false;
-#endif
   // The TF->XLA bridge does not support `_FusedMatMul` so we avoid creating
   // this op. Furthermore, XLA already does this fusion internally so there
   // is no true benefit from doing this optimization if XLA is going to compile
@@ -5016,7 +5012,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
 inline bool IsXlaCpuGlobalJitOn() {
   std::vector<std::string> tf_xla_flags;
   const std::string tf_xla_cpu_global_jit = "--tf_xla_cpu_global_jit";
-  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags));
+  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags, " ,\t"));
   return std::find(tf_xla_flags.begin(), tf_xla_flags.end(),
                    tf_xla_cpu_global_jit) != tf_xla_flags.end();
 }

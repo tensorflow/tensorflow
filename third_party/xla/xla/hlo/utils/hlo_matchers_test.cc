@@ -170,7 +170,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
   p0->clear_sharding();
   auto p1 = HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {7}),
                                             "param.1");
-  p1->set_sharding(HloSharding::AssignDevice(1));
+  p1->set_sharding(HloSharding::SingleDevice(1));
 
   auto tuple_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
@@ -179,29 +179,29 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
   Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
-      tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),
+      tuple_shape, {HloSharding::Tile(assignment), HloSharding::SingleDevice(1),
                     HloSharding::Replicate()});
   p2->set_sharding(sharding);
 
   EXPECT_THAT(p0.get(), op::NoSharding());
   EXPECT_THAT(p0.get(),
-              ::testing::Not(op::Sharding(HloSharding::AssignDevice(1))));
+              ::testing::Not(op::Sharding(HloSharding::SingleDevice(1))));
   EXPECT_THAT(p1.get(), ::testing::Not(op::NoSharding()));
   EXPECT_THAT(p1.get(),
-              ::testing::Not(op::Sharding(HloSharding::AssignDevice(0))));
-  EXPECT_THAT(p1.get(), op::Sharding(HloSharding::AssignDevice(1)));
+              ::testing::Not(op::Sharding(HloSharding::SingleDevice(0))));
+  EXPECT_THAT(p1.get(), op::Sharding(HloSharding::SingleDevice(1)));
 
   EXPECT_THAT(
       p2.get(),
       op::Sharding("{{devices=[2]0,1}, {maximal device=1}, {replicated}}"));
 
-  EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::AssignDevice(1))),
+  EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::SingleDevice(1))),
               "%param.0 = f32[5]{0} parameter(0) has no sharding (expected: "
               "{maximal device=1})");
   EXPECT_THAT(Explain(p1.get(), op::NoSharding()),
               "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
               "expected to have no sharding.");
-  EXPECT_THAT(Explain(p1.get(), op::Sharding(HloSharding::AssignDevice(0))),
+  EXPECT_THAT(Explain(p1.get(), op::Sharding(HloSharding::SingleDevice(0))),
               "%param.1 = f32[7]{0} parameter(1), sharding={maximal device=1} "
               "has incorrect sharding (expected: {maximal device=0})");
 }

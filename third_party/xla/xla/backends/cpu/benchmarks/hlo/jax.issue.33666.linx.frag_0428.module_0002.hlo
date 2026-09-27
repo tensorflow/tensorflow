@@ -1,0 +1,117 @@
+HloModule jit__threefry_split, entry_computation_layout={(u32[2]{0})->u32[20,2]{1,0}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}
+
+region_0.20 {
+  arg_tuple.21 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  get-tuple-element.22 = s32[] get-tuple-element(arg_tuple.21), index=0
+  constant.32 = s32[] constant(1)
+  add.82 = s32[] add(get-tuple-element.22, constant.32), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.23 = s32[] get-tuple-element(arg_tuple.21), index=1
+  add.33 = s32[] add(get-tuple-element.23, constant.32), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.24 = u32[20]{0} get-tuple-element(arg_tuple.21), index=2
+  get-tuple-element.25 = u32[20]{0} get-tuple-element(arg_tuple.21), index=3
+  add.36 = u32[20]{0} add(get-tuple-element.24, get-tuple-element.25), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.29 = u32[4]{0} get-tuple-element(arg_tuple.21), index=7
+  slice.34 = u32[1]{0} slice(get-tuple-element.29), slice={[0:1]}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/slice[start_indices=(0,) limit_indices=(1,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.35 = u32[] reshape(slice.34), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.37 = u32[20]{0} broadcast(reshape.35), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-left.38 = u32[20]{0} shift-left(get-tuple-element.25, broadcast.37), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  constant.31 = u32[] constant(32)
+  subtract.39 = u32[] subtract(constant.31, reshape.35), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.40 = u32[20]{0} broadcast(subtract.39), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-right-logical.41 = u32[20]{0} shift-right-logical(get-tuple-element.25, broadcast.40), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  or.42 = u32[20]{0} or(shift-left.38, shift-right-logical.41), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  xor.43 = u32[20]{0} xor(add.36, or.42), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.46 = u32[20]{0} add(add.36, xor.43), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.44 = u32[1]{0} slice(get-tuple-element.29), slice={[1:2]}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/slice[start_indices=(1,) limit_indices=(2,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.45 = u32[] reshape(slice.44), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.47 = u32[20]{0} broadcast(reshape.45), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-left.48 = u32[20]{0} shift-left(xor.43, broadcast.47), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  subtract.49 = u32[] subtract(constant.31, reshape.45), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.50 = u32[20]{0} broadcast(subtract.49), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-right-logical.51 = u32[20]{0} shift-right-logical(xor.43, broadcast.50), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  or.52 = u32[20]{0} or(shift-left.48, shift-right-logical.51), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  xor.53 = u32[20]{0} xor(add.46, or.52), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.56 = u32[20]{0} add(add.46, xor.53), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.54 = u32[1]{0} slice(get-tuple-element.29), slice={[2:3]}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/slice[start_indices=(2,) limit_indices=(3,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.55 = u32[] reshape(slice.54), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.57 = u32[20]{0} broadcast(reshape.55), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-left.58 = u32[20]{0} shift-left(xor.53, broadcast.57), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  subtract.59 = u32[] subtract(constant.31, reshape.55), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.60 = u32[20]{0} broadcast(subtract.59), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-right-logical.61 = u32[20]{0} shift-right-logical(xor.53, broadcast.60), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  or.62 = u32[20]{0} or(shift-left.58, shift-right-logical.61), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  xor.63 = u32[20]{0} xor(add.56, or.62), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.66 = u32[20]{0} add(add.56, xor.63), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.26 = u32[] get-tuple-element(arg_tuple.21), index=4
+  broadcast.74 = u32[20]{0} broadcast(get-tuple-element.26), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.75 = u32[20]{0} add(add.66, broadcast.74), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.64 = u32[1]{0} slice(get-tuple-element.29), slice={[3:4]}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/slice[start_indices=(3,) limit_indices=(4,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.65 = u32[] reshape(slice.64), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.67 = u32[20]{0} broadcast(reshape.65), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-left.68 = u32[20]{0} shift-left(xor.63, broadcast.67), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_left" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  subtract.69 = u32[] subtract(constant.31, reshape.65), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/sub" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.70 = u32[20]{0} broadcast(subtract.69), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  shift-right-logical.71 = u32[20]{0} shift-right-logical(xor.63, broadcast.70), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/shift_right_logical" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  or.72 = u32[20]{0} or(shift-left.68, shift-right-logical.71), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/or" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  xor.73 = u32[20]{0} xor(add.66, or.72), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.27 = u32[] get-tuple-element(arg_tuple.21), index=5
+  broadcast.76 = u32[20]{0} broadcast(get-tuple-element.27), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.77 = u32[20]{0} add(xor.73, broadcast.76), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.78 = s32[] add(get-tuple-element.23, constant.32), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  convert.79 = u32[] convert(add.78), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/convert_element_type[new_dtype=uint32 weak_type=False]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.80 = u32[20]{0} broadcast(convert.79), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.81 = u32[20]{0} add(add.77, broadcast.80), metadata={op_name="jit(_threefry_split)/jit(main)/while/body/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.28 = u32[] get-tuple-element(arg_tuple.21), index=6
+  get-tuple-element.30 = u32[4]{0} get-tuple-element(arg_tuple.21), index=8
+  ROOT tuple.83 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(add.82, add.33, add.75, add.81, get-tuple-element.27, /*index=5*/get-tuple-element.28, get-tuple-element.26, get-tuple-element.30, get-tuple-element.29)
+} // region_0.20
+
+region_1.84 {
+  arg_tuple.85 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  get-tuple-element.87 = s32[] get-tuple-element(arg_tuple.85), index=1
+  get-tuple-element.88 = u32[20]{0} get-tuple-element(arg_tuple.85), index=2
+  get-tuple-element.89 = u32[20]{0} get-tuple-element(arg_tuple.85), index=3
+  get-tuple-element.90 = u32[] get-tuple-element(arg_tuple.85), index=4
+  get-tuple-element.91 = u32[] get-tuple-element(arg_tuple.85), index=5
+  get-tuple-element.92 = u32[] get-tuple-element(arg_tuple.85), index=6
+  get-tuple-element.93 = u32[4]{0} get-tuple-element(arg_tuple.85), index=7
+  get-tuple-element.94 = u32[4]{0} get-tuple-element(arg_tuple.85), index=8
+  get-tuple-element.86 = s32[] get-tuple-element(arg_tuple.85), index=0
+  constant.95 = s32[] constant(5)
+  ROOT compare.96 = pred[] compare(get-tuple-element.86, constant.95), direction=LT, metadata={op_name="jit(_threefry_split)/jit(main)/while/cond/lt" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+} // region_1.84
+
+ENTRY main.109 {
+  constant.2 = s32[] constant(0)
+  iota.6 = u32[40]{0} iota(), iota_dimension=0, metadata={op_name="jit(_threefry_split)/jit(main)/iota[dtype=uint32 shape=(40,) dimension=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.11 = u32[20]{0} slice(iota.6), slice={[0:20]}, metadata={op_name="jit(_threefry_split)/jit(main)/slice[start_indices=(np.int64(0),) limit_indices=(np.int64(20),) strides=None]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  Arg_0.1 = u32[2]{0} parameter(0)
+  slice.7 = u32[1]{0} slice(Arg_0.1), slice={[0:1]}, metadata={op_name="jit(_threefry_split)/jit(main)/slice[start_indices=(0,) limit_indices=(1,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.8 = u32[] reshape(slice.7), metadata={op_name="jit(_threefry_split)/jit(main)/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.15 = u32[20]{0} broadcast(reshape.8), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.16 = u32[20]{0} add(slice.11, broadcast.15), metadata={op_name="jit(_threefry_split)/jit(main)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.12 = u32[20]{0} slice(iota.6), slice={[20:40]}, metadata={op_name="jit(_threefry_split)/jit(main)/slice[start_indices=(np.int64(20),) limit_indices=(np.int64(40),) strides=None]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  slice.9 = u32[1]{0} slice(Arg_0.1), slice={[1:2]}, metadata={op_name="jit(_threefry_split)/jit(main)/slice[start_indices=(1,) limit_indices=(2,) strides=(1,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  reshape.10 = u32[] reshape(slice.9), metadata={op_name="jit(_threefry_split)/jit(main)/squeeze[dimensions=(0,)]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  broadcast.17 = u32[20]{0} broadcast(reshape.10), dimensions={}, metadata={op_name="jit(_threefry_split)/jit(main)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  add.18 = u32[20]{0} add(slice.12, broadcast.17), metadata={op_name="jit(_threefry_split)/jit(main)/add" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  xor.13 = u32[] xor(reshape.8, reshape.10), metadata={op_name="jit(_threefry_split)/jit(main)/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  constant.3 = u32[] constant(466688986)
+  xor.14 = u32[] xor(xor.13, constant.3), metadata={op_name="jit(_threefry_split)/jit(main)/xor" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  constant.5 = u32[4]{0} constant({13, 15, 26, 6})
+  constant.4 = u32[4]{0} constant({17, 29, 16, 24})
+  tuple.19 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(constant.2, constant.2, add.16, add.18, reshape.10, /*index=5*/xor.14, reshape.8, constant.5, constant.4), metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  while.97 = (s32[], s32[], u32[20]{0}, u32[20]{0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(tuple.19), condition=region_1.84, body=region_0.20, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.98 = s32[] get-tuple-element(while.97), index=0, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.99 = s32[] get-tuple-element(while.97), index=1, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.102 = u32[] get-tuple-element(while.97), index=4, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.103 = u32[] get-tuple-element(while.97), index=5, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.104 = u32[] get-tuple-element(while.97), index=6, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.105 = u32[4]{0} get-tuple-element(while.97), index=7, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.106 = u32[4]{0} get-tuple-element(while.97), index=8, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.100 = u32[20]{0} get-tuple-element(while.97), index=2, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  get-tuple-element.101 = u32[20]{0} get-tuple-element(while.97), index=3, metadata={op_name="jit(_threefry_split)/jit(main)/while[cond_nconsts=0 body_nconsts=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  concatenate.107 = u32[40]{0} concatenate(get-tuple-element.100, get-tuple-element.101), dimensions={0}, metadata={op_name="jit(_threefry_split)/jit(main)/concatenate[dimension=0]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+  ROOT reshape.108 = u32[20,2]{1,0} reshape(concatenate.107), metadata={op_name="jit(_threefry_split)/jit(main)/reshape[new_sizes=(20, 2) dimensions=None]" source_file="/pscratch/sd/c/carag/LINX/scripts/frag_mwe_short.py" source_line=9}
+} // main.109
+

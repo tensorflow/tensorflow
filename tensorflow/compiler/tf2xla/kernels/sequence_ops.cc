@@ -48,10 +48,10 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
 
-  if (delta == 0) {
+  if (delta == static_cast<T>(0)) {
     return errors::InvalidArgument("Requires delta != 0: ", delta);
   }
-  if (delta > 0) {
+  if (delta > static_cast<T>(0)) {
     if (start > limit) {
       return errors::InvalidArgument(
           "Requires start <= limit when delta > 0: ", start, "/", limit);
@@ -62,13 +62,21 @@ absl::StatusOr<xla::XlaOp> CreateRangeTensor(
           "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
-  int64_t size =
-      (std::is_integral<T>::value
-           ? static_cast<T>(
-                 limit == start
-                     ? 0
-                     : (std::abs(limit - start) - 1) / std::abs(delta) + 1)
-           : std::ceil(std::abs((limit - start) / delta)));
+  int64_t size;
+  if constexpr (std::is_integral<T>::value) {
+    int64_t start_i = static_cast<int64_t>(start);
+    int64_t limit_i = static_cast<int64_t>(limit);
+    int64_t delta_i = static_cast<int64_t>(delta);
+    size = (limit_i == start_i
+                ? 0
+                : (std::abs(limit_i - start_i) - 1) / std::abs(delta_i) + 1);
+  } else {
+    double start_f = static_cast<double>(start);
+    double limit_f = static_cast<double>(limit);
+    double delta_f = static_cast<double>(delta);
+    size = static_cast<int64_t>(
+        std::ceil(std::abs((limit_f - start_f) / delta_f)));
+  }
 
   return xla::ConstantR0(builder, start) +
          xla::ConstantR0(builder, delta) *
@@ -103,6 +111,13 @@ class RangeOp : public XlaOpKernel {
     DataType type = input_type(0);
     absl::StatusOr<xla::XlaOp> output;
     switch (type) {
+      case DT_INT8:
+        output = CreateRangeTensor<int8_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_INT16:
+        output =
+            CreateRangeTensor<int16_t>(start, limit, delta, ctx->builder());
+        break;
       case DT_INT32:
         output =
             CreateRangeTensor<int32_t>(start, limit, delta, ctx->builder());
@@ -110,6 +125,26 @@ class RangeOp : public XlaOpKernel {
       case DT_INT64:
         output =
             CreateRangeTensor<int64_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT16:
+        output =
+            CreateRangeTensor<uint16_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT32:
+        output =
+            CreateRangeTensor<uint32_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_UINT64:
+        output =
+            CreateRangeTensor<uint64_t>(start, limit, delta, ctx->builder());
+        break;
+      case DT_HALF:
+        output =
+            CreateRangeTensor<Eigen::half>(start, limit, delta, ctx->builder());
+        break;
+      case DT_BFLOAT16:
+        output =
+            CreateRangeTensor<bfloat16>(start, limit, delta, ctx->builder());
         break;
       case DT_FLOAT:
         output = CreateRangeTensor<float>(start, limit, delta, ctx->builder());
@@ -133,7 +168,7 @@ class RangeOp : public XlaOpKernel {
       xla::XlaOp delta = ctx->Input(2);
       xla::XlaOp limit = ctx->Input(1);
       xla::XlaOp start = ctx->Input(0);
-      if (type == DT_INT32 || type == DT_INT64) {
+      if (DataTypeIsInteger(type)) {
         auto dynamic_size = (xla::Abs(limit - start) + xla::Abs(delta) -
                              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
                             xla::Abs(delta);

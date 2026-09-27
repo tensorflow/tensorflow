@@ -58,14 +58,14 @@ def DenseIntElementsAttrPred : CPred<"llvm::isa<DenseIntElementsAttr>($_self)">;
 ////////////////////////////////////////////////////////////////////////////////
 
 def DenseElementsAttrIsSplatPred
-    : CPred<"llvm::cast<DenseElementsAttr>($_self).isSplat()">;
+    : CPred<"llvm::isa<DenseElementsAttr>($_self) && llvm::cast<DenseElementsAttr>($_self).isSplat()">;
 
 class DenseFPElementsAttrSplatValueEqualToPred<string val>
-    : CPred<"llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
+    : CPred<"llvm::isa<DenseFPElementsAttr>($_self) && llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
             ".getValueAsDouble() == " # val>;
 
 class DenseFPElementsAttrSplatValueEqualToPredWithTolerance<string val, string tolerance>
-    : CPred<"std::abs(llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
+    : CPred<"llvm::isa<DenseFPElementsAttr>($_self) && std::abs(llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
             ".getValueAsDouble() - " # val # ") <= "#tolerance>;
 
 class DenseIntElementsAttrSplatValueEqualToPred<string val>

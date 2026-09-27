@@ -55,8 +55,8 @@ class TableBuilder : public TensorSliceWriter::Builder {
       }
     }
     if (!s.ok()) {
-      s = errors::Internal("Error writing (tmp) checkpoint file: ", name_, ": ",
-                           s.message());
+      s = absl::InternalError(absl::StrCat(
+          "Error writing (tmp) checkpoint file: ", name_, ": ", s.message()));
     }
     builder_.reset();
     file_.reset();
@@ -208,9 +208,9 @@ absl::Status TensorSliceWriter::SaveData(const tstring* data,
     size_bound += data[i].size();
   }
   if (size_bound > kMaxMessageBytes) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tensor slice is too large to serialize (conservative estimate: ",
-        size_bound, " bytes)");
+        size_bound, " bytes)"));
   }
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);

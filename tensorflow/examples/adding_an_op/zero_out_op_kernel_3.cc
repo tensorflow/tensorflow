@@ -36,8 +36,8 @@ class ZeroOutOp : public OpKernel {
                    context->GetAttr("preserve_index", &preserve_index_));
     // Check that preserve\_index is positive
     OP_REQUIRES(context, preserve_index_ >= 0,
-                errors::InvalidArgument("Need preserve_index >= 0, got ",
-                                        preserve_index_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Need preserve_index >= 0, got ", preserve_index_)));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -47,7 +47,7 @@ class ZeroOutOp : public OpKernel {
 
     // Check that preserve_index is in range
     OP_REQUIRES(context, preserve_index_ < input.dimension(0),
-                errors::InvalidArgument("preserve_index out of range"));
+                absl::InvalidArgumentError("preserve_index out of range"));
 
     // Create an output tensor
     Tensor* output_tensor = nullptr;

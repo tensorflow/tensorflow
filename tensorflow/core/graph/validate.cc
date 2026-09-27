@@ -109,10 +109,10 @@ absl::Status ValidateGraphHasNoCycle(const Graph& graph) {
         nodes_in_cycle.push_back(graph.FindNodeId(i)->name());
       }
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Graph is invalid, contains a cycle with ",
         graph.num_nodes() - processed,
-        " nodes, including: ", absl::StrJoin(nodes_in_cycle, ", "));
+        " nodes, including: ", absl::StrJoin(nodes_in_cycle, ", ")));
   }
   return absl::OkStatus();
 }

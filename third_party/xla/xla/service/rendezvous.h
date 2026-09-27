@@ -78,8 +78,8 @@ namespace xla {
 // make easy to debug stuck and timed out attempts.
 template <typename R, typename K, typename V, typename Fn>
 absl::StatusOr<std::shared_ptr<R>> Rendezvous(
-    absl::string_view name, const K& key, const V& value, size_t num_threads,
-    Fn fn, absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
+    absl::string_view name, const K& key, V& value, size_t num_threads, Fn fn,
+    absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
 // A rendezvous for a group of threads that do not have any value arguments.
@@ -205,7 +205,7 @@ struct RendezvousState : public RendezvousStateSynchronization {
   explicit RendezvousState(size_t n_threads)
       : RendezvousStateSynchronization(n_threads), values(n_threads, nullptr) {}
 
-  std::vector<const V*> values;
+  std::vector<V*> values;
   absl::StatusOr<std::shared_ptr<R>> result;
 };
 
@@ -271,12 +271,12 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
-// Rendezvous implemenetation.
+// Rendezvous implementation.
 //===----------------------------------------------------------------------===//
 
 template <typename R, typename V, typename Fn>
-absl::StatusOr<std::shared_ptr<R>> InvokeRendezvous(
-    Fn fn, absl::Span<const V*> values) {
+absl::StatusOr<std::shared_ptr<R>> InvokeRendezvous(Fn fn,
+                                                    absl::Span<V*> values) {
   auto result = fn(values);
 
   if constexpr (internal::IsStatusOrResult<decltype(result)>::value) {
@@ -292,16 +292,15 @@ absl::StatusOr<std::shared_ptr<R>> InvokeRendezvous(
 
 template <typename R, typename K, typename V, typename Fn>
 absl::StatusOr<std::shared_ptr<R>> Rendezvous(
-    absl::string_view name, const K& key, const V& value, size_t num_threads,
-    Fn fn, absl::Duration warn_stuck_timeout,
-    absl::Duration terminate_timeout) {
+    absl::string_view name, const K& key, V& value, size_t num_threads, Fn fn,
+    absl::Duration warn_stuck_timeout, absl::Duration terminate_timeout) {
   // Check that `fn` is callable with a span of values.
-  static_assert(std::is_invocable_v<Fn, absl::Span<const V*>>,
+  static_assert(std::is_invocable_v<Fn, absl::Span<V*>>,
                 "invalid rendezvous function signature");
 
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
   if (num_threads == 1) {
-    const V* ptr = &value;
+    V* ptr = &value;
     return InvokeRendezvous<R, V>(std::move(fn), absl::MakeSpan(&ptr, 1));
   }
 
@@ -350,7 +349,7 @@ absl::StatusOr<std::shared_ptr<R>> Rendezvous(
     // the mutex to create a memory barrier that makes access to `state->result`
     // safe without any extra synchronization.
     tsl::profiler::TraceMe trace("InvokeRendezvous");
-    absl::Span<const V*> values(state->values.data(), num_threads);
+    absl::Span<V*> values(state->values.data(), num_threads);
 
     // Check that we have have exactly the number of participants we expect.
     CHECK_EQ(state.use_count(), num_threads)
@@ -376,8 +375,9 @@ template <typename R, typename K, typename Fn>
 absl::StatusOr<std::shared_ptr<R>> Rendezvous(
     absl::string_view name, const K& key, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout, absl::Duration terminate_timeout) {
+  std::nullopt_t nothing = std::nullopt;
   return Rendezvous<R, K, std::nullopt_t>(
-      name, key, std::nullopt, num_threads, [fn](auto) { return fn(); },
+      name, key, nothing, num_threads, [fn](auto) { return fn(); },
       warn_stuck_timeout, terminate_timeout);
 }
 
@@ -385,10 +385,10 @@ template <typename K>
 absl::Status Rendezvous(absl::string_view name, const K& key,
                         size_t num_threads, absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
+  std::nullopt_t nothing = std::nullopt;
   return Rendezvous<std::nullopt_t, K, std::nullopt_t>(
-             name, key, std::nullopt, num_threads,
-             [](auto) { return std::nullopt; }, warn_stuck_timeout,
-             terminate_timeout)
+             name, key, nothing, num_threads, [](auto) { return std::nullopt; },
+             warn_stuck_timeout, terminate_timeout)
       .status();
 }
 

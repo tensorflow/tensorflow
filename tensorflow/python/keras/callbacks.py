@@ -2155,6 +2155,12 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
                embeddings_metadata=None,
                **kwargs):
     super(TensorBoard, self).__init__()
+    try:
+      from tensorboard.summary import v2 as summary_v2  # pylint: disable=g-import-not-at-top,unused-import
+    except ImportError as exc:
+      raise ImportError(
+          'TensorBoard callback requires tensorboard to be installed. '
+          'Please install TensorBoard via `pip install tensorboard`.') from exc
     self._supports_tf_logs = True
     self._validate_kwargs(kwargs)
 
@@ -2271,9 +2277,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
     # TODO(omalleyt): Add integration tests.
-    from google.protobuf import text_format
-    from tensorflow.python.keras.layers import embeddings
-    from tensorflow.python.keras.protobuf import projector_config_pb2
+    from google.protobuf import text_format  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.keras.layers import embeddings  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.keras.protobuf import projector_config_pb2  # pylint: disable=g-import-not-at-top
 
     config = projector_config_pb2.ProjectorConfig()
     for layer in self.model.layers:

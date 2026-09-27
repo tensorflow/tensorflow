@@ -16,59 +16,63 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_loop.h"
 
 #include <cstddef>
-#include <list>
 #include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 namespace xla::gpu {
 
-static thread_local std::list<WhileLoopState> while_loop_stack;
+static thread_local std::vector<WhileLoopState> while_loop_stack;
 
-static const WhileLoopState* EnterWhileLoop(absl::string_view loop_name,
-                                            std::optional<size_t> trip_count) {
+static size_t EnterWhileLoop(absl::string_view loop_name,
+                             std::optional<size_t> trip_count) {
   size_t depth = while_loop_stack.size();
   while_loop_stack.push_back(
       WhileLoopState{std::string(loop_name), trip_count, depth, 0});
-  return &while_loop_stack.back();
+  return depth;
 }
 
-static const WhileLoopState* IncWhileLoopIteration() {
-  if (while_loop_stack.empty()) return nullptr;
-  ++while_loop_stack.back().loop_iteration;
-  return &while_loop_stack.back();
+static void IncWhileLoopIteration() {
+  if (!while_loop_stack.empty()) {
+    ++while_loop_stack.back().loop_iteration;
+  }
 }
 
-static WhileLoopState ExitWhileLoop() {
-  WhileLoopState state = std::move(while_loop_stack.back());
-  while_loop_stack.pop_back();
-  return state;
-}
+static void ExitWhileLoop() { while_loop_stack.pop_back(); }
 
 const WhileLoopState* IsInsideWhileLoop() {
   if (while_loop_stack.empty()) return nullptr;
   return &while_loop_stack.back();
 }
 
+absl::Span<const WhileLoopState> IsInsideWhileLoopNest() {
+  return while_loop_stack;
+}
+
 ScopedWhileLoop::ScopedWhileLoop(absl::string_view loop_name,
                                  std::optional<size_t> trip_count)
-    : state(EnterWhileLoop(loop_name, trip_count)) {}
+    : loop_depth_(EnterWhileLoop(loop_name, trip_count)) {}
 
 ScopedWhileLoop::~ScopedWhileLoop() { ExitWhileLoop(); }
 
 absl::string_view ScopedWhileLoop::loop_name() const {
-  return state->loop_name;
+  return while_loop_stack[loop_depth_].loop_name;
 }
 
 std::optional<size_t> ScopedWhileLoop::trip_count() const {
-  return state->loop_trip_count;
+  return while_loop_stack[loop_depth_].loop_trip_count;
 }
 
-size_t ScopedWhileLoop::loop_depth() const { return state->loop_depth; }
+size_t ScopedWhileLoop::loop_depth() const {
+  return while_loop_stack[loop_depth_].loop_depth;
+}
 
-size_t ScopedWhileLoop::loop_iteration() const { return state->loop_iteration; }
+size_t ScopedWhileLoop::loop_iteration() const {
+  return while_loop_stack[loop_depth_].loop_iteration;
+}
 
 void ScopedWhileLoop::IncLoopIteration() { IncWhileLoopIteration(); }
 

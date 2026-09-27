@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
@@ -49,6 +51,8 @@ class ROCmPlatform : public Platform {
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
+  absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
+  GetRuntimeAbiVersion() const override;
 
  private:
   // Returns a device constructed with ordinal without

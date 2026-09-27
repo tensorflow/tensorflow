@@ -31,7 +31,6 @@ namespace broadcastto {
 constexpr int kInputTensor = 0;
 constexpr int kShapeTensor = 1;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxDims = 8;
 
 struct BroadcastToContext {
   BroadcastToContext(TfLiteContext* context, TfLiteNode* node) {
@@ -54,8 +53,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   int output_num_dims = SizeOfDimension(op_context->shape, 0);
   TF_LITE_ENSURE_MSG(context, input_num_dims <= output_num_dims,
                      "Output shape must be broadcastable from input shape.");
-  TF_LITE_ENSURE_MSG(context, output_num_dims <= kMaxDims,
-                     "BroadcastTo only supports 1-8D tensor.");
 
   // Check if output shape is broadcastable from input shape.
   auto get_shape_data = [op_context](int i) -> int32_t {
@@ -89,10 +86,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TF_LITE_ENSURE_MSG(context,
-                     (NumDimensions(GetInput(context, node, 0)) <= kMaxDims),
-                     "BroadcastTo only supports 1-8D tensor.");
-
   BroadcastToContext op_context(context, node);
   TF_LITE_ENSURE(context, op_context.shape->type == kTfLiteInt32 ||
                               op_context.shape->type == kTfLiteInt64);
@@ -115,8 +108,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
   }
 
-  // BroadcastTo op support upto 8 dims, matching the support of Tensorflow.
-  reference_ops::BroadcastTo<kMaxDims>(
+  reference_ops::BroadcastTo(
       GetTensorShape(op_context.input), op_context.input->data.raw,
       GetTensorShape(op_context.output), op_context.output->data.raw,
       op_context.input->type);

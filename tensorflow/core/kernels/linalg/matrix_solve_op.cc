@@ -34,6 +34,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/kernels/linalg/matrix_solve_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif
@@ -101,7 +102,7 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument(kErrMsg));
+                absl::InvalidArgumentError(kErrMsg));
 
     // TODO(rmlarsen): Add check based on condition number estimation.
     // The necessary changes to Eigen are in
@@ -135,30 +136,30 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     const int64_t n = input.dim_size(ndims - 1);
     const int64_t nrhs = rhs.dim_size(ndims - 1);
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
-    OP_REQUIRES_ASYNC(context, rhs.dims() == ndims,
-                      errors::InvalidArgument(
-                          "Input and right-hand side must have same rank, got ",
-                          ndims, " != ", rhs.dims()),
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
                       done);
-    OP_REQUIRES_ASYNC(
-        context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got ",
-                                input.dim_size(ndims - 2), " != ", n),
-        done);
+    OP_REQUIRES_ASYNC(context, rhs.dims() == ndims,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input and right-hand side must have same rank, got ",
+                          ndims, " != ", rhs.dims())),
+                      done);
+    OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("Input matrices must be squares, got ",
+                                       input.dim_size(ndims - 2), " != ", n)),
+                      done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "Input matrix and right-hand side must have the "
                           "same number of rows, got ",
-                          n, " != ", rhs.dim_size(ndims - 2)),
+                          n, " != ", rhs.dim_size(ndims - 2))),
                       done);
     for (int dim = 0; dim < ndims - 2; dim++) {
       OP_REQUIRES_ASYNC(
           context, input.dim_size(dim) == rhs.dim_size(dim),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(
               "All input tensors must have the same outer dimensions."),
           done);
     }
@@ -260,6 +261,16 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       }
     }
 
+    // 1b. Check the diagonal of the LU factorization for exact zeros to detect
+    // singular matrices. cuBLAS getrfBatched may not always report singularity
+    // via its info output, so we explicitly check for zero pivots on the
+    // diagonal of the factored matrix.
+    functor::CheckLUDiagonalForZerosFunctor<GPUDevice, Scalar> check_diag;
+    check_diag(device,
+               const_cast<const Tensor*>(&input_copy)
+                   ->template flat_inner_dims<Scalar, 3>(),
+               dev_info.back().mutable_data());
+
     // 2. Make a transposed copy of the right-hand sides. This is necessary
     // because cuBLAS/rocSolver assumes column-major storage while TensorFlow TF
     // uses row-major.
@@ -333,12 +344,12 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                                pivots_mat.data(), transposed_rhs_ptrs_base, n,
                                &host_info, batch_size),
           done);
-      OP_REQUIRES_ASYNC(
-          context, host_info == 0,
-          errors::InvalidArgument("The ", -host_info,
-                                  "'th argument to cublas*getrsBatched had "
-                                  "an illegal value."),
-          done);
+      OP_REQUIRES_ASYNC(context, host_info == 0,
+                        absl::InvalidArgumentError(absl::StrCat(
+                            "The ", -host_info,
+                            "'th argument to cublas*getrsBatched had "
+                            "an illegal value.")),
+                        done);
     } else {
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
@@ -375,7 +386,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
           // Match the CPU error message for singular matrices. Otherwise
           // just print the original error message from the status below.
           OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
-                            errors::InvalidArgument(kErrMsg), done);
+                            absl::InvalidArgumentError(kErrMsg), done);
         }
       }
       OP_REQUIRES_OK_ASYNC(context, status, done);

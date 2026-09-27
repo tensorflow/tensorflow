@@ -37,6 +37,16 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
+namespace ops {
+namespace builtin {
+namespace fully_connected {
+TfLiteStatus ValidateInt16FilterInt16Indexing(TfLiteContext* context,
+                                              const RuntimeShape& filter_shape,
+                                              const RuntimeShape& output_shape);
+}  // namespace fully_connected
+}  // namespace builtin
+}  // namespace ops
+
 namespace {
 
 using ::testing::ElementsAre;
@@ -141,7 +151,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, bool weights_per_channel_quantized = false,
       std::vector<float> per_channel_quantization_scales = {},
-      const TensorType& filter_type = TensorType_FLOAT32)
+      const TensorType& filter_type = TensorType_FLOAT32, int channel_index = 0)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -167,8 +177,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                            /*zero_point=*/0,
                            /*per_channel_quantization=*/true,
                            per_channel_quantization_scales,
-                           per_channel_quantization_offsets,
-                           /*channel_index=*/0});
+                           per_channel_quantization_offsets, channel_index});
     } else {
       // per-tensor
       float min = input.min;
@@ -179,12 +188,16 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           max = 7.f;
           break;
         case TensorType_INT2:
-          min = -2.f;
-          max = 2.f;
+          min = -1.f;
+          max = 1.f;
           break;
         case TensorType_INT8:
           min = -63.5f;
           max = 64.f;
+          break;
+        case TensorType_INT16:
+          min = -32768.f;
+          max = 32767.f;
           break;
         default:
           break;
@@ -370,12 +383,13 @@ class PerChannelQuantizedFullyConnectedOpModel
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      int input_size = -1, const TensorType& filter_type = TensorType_INT8)
+      int input_size = -1, const TensorType& filter_type = TensorType_INT8,
+      int channel_index = 0)
       : BaseFullyConnectedOpModel(
             registration, units, batches, input, output, bias_type,
             keep_num_dims, bias_tensor_optional, activation_func,
             weights_format, input_size, true, per_channel_quantization_scales,
-            filter_type) {}
+            filter_type, channel_index) {}
 
   void SetBias(const std::vector<float>& data) {
     PerChannelQuantizeBias(bias_, data);
@@ -448,7 +462,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                  BuiltinOptions_FullyConnectedOptions, options);
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
-        ops::builtin::Register_FULLY_CONNECTED_PIE());
+        ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/true);
@@ -488,7 +502,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
 
 class FloatFullyConnectedOpTest : public SingleOpTest {
@@ -498,26 +511,17 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
   }
 };
 
-const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
-    {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
-});
-
 class QuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
 const auto kKernelMapHybrid = new std::map<string, TfLiteRegistration*>({
-    {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
-    // Only Pie supports the hybrid path, so the optimized kernel should fall
-    // back to the Pie path in such cases.
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
-// Hybrid mode is used by the Pie quantized kernel.
 class HybridFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
@@ -552,13 +556,16 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
   FloatFullyConnectedOpModel m(GetRegistration(), /*units=*/1, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {2, 2}});
   m.SetWeights({
-      2, 4,  // u = 0
+      2,
+      4,  // u = 0
   });
   m.SetBias({1});
 
   m.SetInput({
-      1, 2,  // b = 0
-      2, 1,  // b = 1
+      1,
+      2,  // b = 0
+      2,
+      1,  // b = 1
   });
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -611,20 +618,24 @@ TEST_P(FloatFullyConnectedOpTest, FilterWithZeroSecondDimension3) {
 
 TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
   // The optimized kernel assumes that the bias is specified.
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {2, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true);
   m.SetWeights({
-      2, 4,  // u = 0
+      2,
+      4,  // u = 0
   });
 
   m.SetInput({
-      1, 2,  // b = 0
-      2, 1,  // b = 1
+      1,
+      2,  // b = 0
+      2,
+      1,  // b = 1
   });
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -638,19 +649,21 @@ TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
     return;
   }
 
-  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
-                               /*units=*/1, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {0, 2}},
-                               /*output=*/{TensorType_FLOAT32},
-                               /*bias_type=*/TensorType_FLOAT32,
-                               /*keep_num_dims=*/false,
-                               /*bias_tensor_optional=*/true,
-                               /*activation_func=*/ActivationFunctionType_RELU,
-                               /*weights_format=*/
-                               FullyConnectedOptionsWeightsFormat_DEFAULT,
-                               /*input_size=*/2);
+  FloatFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(),
+      /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {0, 2}},
+      /*output=*/{TensorType_FLOAT32},
+      /*bias_type=*/TensorType_FLOAT32,
+      /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/true,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/
+      FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/2);
   m.SetWeights({
-      2, 4,  // u = 0
+      2,
+      4,  // u = 0
   });
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -687,8 +700,12 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8) {
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  24, 25, 26,  //
-                  58, 59, 60,  //
+                  24,
+                  25,
+                  26,  //
+                  58,
+                  59,
+                  60,  //
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(151, 152, 153, 185, 186, 187));
@@ -722,8 +739,12 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8NoBias) {
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  23, 23, 23,  //
-                  57, 57, 57,  //
+                  23,
+                  23,
+                  23,  //
+                  57,
+                  57,
+                  57,  //
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(150, 150, 150, 184, 184, 184));
@@ -818,6 +839,27 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
 }
 
+#if GTEST_HAS_DEATH_TEST
+TEST_P(QuantizedFullyConnectedOpTest, QuantizedDimensionMustBeZero) {
+  EXPECT_DEATH(
+      {
+        PerChannelQuantizedFullyConnectedOpModel m(
+            GetRegistration(), /*units=*/3, /*batches=*/2,
+            /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
+            /*per_channel_quantization_scales=*/
+            {0.2, 0.25, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5},
+            /*output=*/{TensorType_INT8, {}, -127, 128},
+            /*bias_type=*/TensorType_INT32,
+            /*keep_num_dims=*/false, /*bias_tensor_optional=*/true,
+            /*activation_func=*/ActivationFunctionType_RELU,
+            /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+            /*input_size=*/-1, /*filter_type=*/TensorType_INT8,
+            /*channel_index=*/1);
+      },
+      "Cannot allocate tensors");
+}
+#endif
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestPerChannelQuantizedInt8) {
   PerChannelQuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
@@ -864,9 +906,21 @@ TEST_P(QuantizedFullyConnectedOpTest,
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5,  // u = 0
-      1, 2, 3, 4, 5,  // u = 1
-      1, 2, 3, 4, 5,  // u = 2
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 0
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 1
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -1010,6 +1064,38 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32) {
               ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
 }
 
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32Weight16) {
+  const float scale = 128.0 / 65536;
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT32, /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/-1, /*filter_type=*/TensorType_INT16);
+
+  m.SetWeights<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32Weight4) {
   const float scale = 128.0 / 65536;
   QuantizedFullyConnectedOpModel m(
@@ -1054,6 +1140,40 @@ TEST_P(QuantizedFullyConnectedOpTest,
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTestPerChannelQuantizedInt16Bias32Weight16) {
+  const float scale = 128.0 / 65536;
+  PerChannelQuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*per_channel_quantization_scales=*/{1.0, 1.0, 1.0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT32, /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/-1, /*filter_type=*/TensorType_INT16);
+
+  m.SetWeights<int16_t>({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
@@ -1164,6 +1284,38 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64) {
               ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
 }
 
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64Weight16) {
+  const float scale = 128.0 / 65536;
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT64, /*keep_num_dims=*/false,
+      /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*input_size=*/-1, /*filter_type=*/TensorType_INT16);
+
+  m.SetWeights<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
@@ -1211,9 +1363,21 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt8) {
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5,  // u = 0
-      1, 2, 3, 4, 5,  // u = 1
-      1, 2, 3, 4, 5,  // u = 2
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 0
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 1
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -1254,9 +1418,21 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5,  // u = 0
-      1, 2, 3, 4, 5,  // u = 1
-      1, 2, 3, 4, 5,  // u = 2
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 0
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 1
+      1,
+      2,
+      3,
+      4,
+      5,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -1340,8 +1516,12 @@ TEST_P(QuantizedFullyConnectedOpTest,
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  24, 25, 26,  // first batch
-                  58, 59, 60,  // second batch
+                  24,
+                  25,
+                  26,  // first batch
+                  58,
+                  59,
+                  60,  // second batch
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(175, 177, 179, 243, 245, 247));
@@ -1371,8 +1551,12 @@ TEST_P(QuantizedFullyConnectedOpTest,
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  24, 25, 26,  // first batch
-                  58, 59, 60,  // second batch
+                  24,
+                  25,
+                  26,  // first batch
+                  58,
+                  59,
+                  60,  // second batch
               })));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(47, 49, 51, 115, 117, 119));
 }
@@ -1531,8 +1715,12 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
+                                     24,
+                                     25,
+                                     26,  //
+                                     58,
+                                     59,
+                                     60,  //
                                  },
                                  /*max_abs_err=*/1.3f)));
 }
@@ -1559,8 +1747,12 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
+                                     24,
+                                     25,
+                                     26,  //
+                                     58,
+                                     59,
+                                     60,  //
                                  },
                                  /*max_abs_err=*/1.3f)));
 }
@@ -1587,8 +1779,12 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     104, 105, 106,  //
-                                     98, 99, 100,    //
+                                     104,
+                                     105,
+                                     106,  //
+                                     98,
+                                     99,
+                                     100,  //
                                  },
                                  /*max_abs_err=*/0.5f)));
 }
@@ -1622,10 +1818,18 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8MultiThreaded) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 3));
     EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                    {
-                                       24, 25, 26,  //
-                                       58, 59, 60,  //
-                                       24, 25, 26,  //
-                                       58, 59, 60,  //
+                                       24,
+                                       25,
+                                       26,  //
+                                       58,
+                                       59,
+                                       60,  //
+                                       24,
+                                       25,
+                                       26,  //
+                                       58,
+                                       59,
+                                       60,  //
                                    },
                                    /*max_abs_err=*/1.3f)));
   }
@@ -1655,8 +1859,12 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedUint8) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
+                                     24,
+                                     25,
+                                     26,  //
+                                     58,
+                                     59,
+                                     60,  //
                                  },
                                  /*max_abs_err=*/0.64f)));
 }
@@ -1685,8 +1893,12 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
+                                     24,
+                                     25,
+                                     26,  //
+                                     58,
+                                     59,
+                                     60,  //
                                  },
                                  /*max_abs_err=*/1.3f)));
 }
@@ -1725,8 +1937,12 @@ TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     24, 195, 366,  //
-                                     58, 251, 441,  //
+                                     24,
+                                     195,
+                                     366,  //
+                                     58,
+                                     251,
+                                     441,  //
                                  },
                                  /*max_abs_err=*/1.3f)));
 }
@@ -1765,8 +1981,12 @@ TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
-                                     35, 188, 368,  //
-                                     53, 275, 430,  //
+                                     35,
+                                     188,
+                                     368,  //
+                                     53,
+                                     275,
+                                     430,  //
                                  },
                                  /*max_abs_err=*/0.5f)));
 }
@@ -1794,8 +2014,12 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 24, 25, 26,  // first batch
-                                 58, 59, 60,  // second batch
+                                 24,
+                                 25,
+                                 26,  // first batch
+                                 58,
+                                 59,
+                                 60,  // second batch
                              }));
 }
 
@@ -1825,8 +2049,12 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 1, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 24, 25, 26,  // first batch
-                                 58, 59, 60,  // second batch
+                                 24,
+                                 25,
+                                 26,  // first batch
+                                 58,
+                                 59,
+                                 60,  // second batch
                              }));
 }
 
@@ -1877,8 +2105,12 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantizedUint8) {
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  24, 25, 26,  //
-                  58, 59, 60,  //
+                  24,
+                  25,
+                  26,  //
+                  58,
+                  59,
+                  60,  //
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(151, 152, 153, 185, 186, 187));
@@ -1914,8 +2146,12 @@ TEST_P(QuantizedFullyConnectedOpTest,
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
-                  24, 25, 26,  // first batch
-                  58, 59, 60,  // second batch
+                  24,
+                  25,
+                  26,  // first batch
+                  58,
+                  59,
+                  60,  // second batch
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(175, 177, 179, 243, 245, 247));
@@ -1927,7 +2163,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     QuantizedFullyConnectedOpTest, QuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 // TODO(ahentz): Reconsider this test. Having arbitrary weights makes it hard
 // to debug errors and doesn't necessarily test all the important details.
@@ -2066,7 +2302,7 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
 class SparseFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2090,7 +2326,7 @@ class SparseHybridFullyConnectedOpTest
 
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
   TfLiteRegistration* GetRegistration() {
     return GetKernelMap().at(GetParam().kernel_tag);
@@ -2498,7 +2734,7 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
 
 INSTANTIATE_TEST_SUITE_P(
     SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 std::vector<SparseTestParam> GenerateSparseTestParam(
     std::vector<std::string> kernel_tags) {
@@ -2513,7 +2749,7 @@ std::vector<SparseTestParam> GenerateSparseTestParam(
 INSTANTIATE_TEST_SUITE_P(SparseHybridFullyConnectedOpTest,
                          SparseHybridFullyConnectedOpTest,
                          ::testing::ValuesIn(GenerateSparseTestParam(
-                             SingleOpTest::GetKernelTags(*kKernelMapNoPie))));
+                             SingleOpTest::GetKernelTags(*kKernelMap))));
 
 class SparseQuantizedFullyConnectedOpModel
     : public SparseFullyConnectedOpModel<float> {
@@ -2531,7 +2767,7 @@ class SparseQuantizedFullyConnectedOpModel
 class SparseQuantizedFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapNoPie;
+    return *kKernelMap;
   }
 };
 
@@ -2676,9 +2912,43 @@ TEST_P(SparseQuantizedFullyConnectedOpTest,
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 1, 25, 0, 1, 21));
 }
 
+TEST(FullyConnectedInt16FilterInt16IndexingTest, AcceptsLargeSafeShapes) {
+  Interpreter interpreter;
+  TfLiteContext* context = interpreter.primary_subgraph().context();
+  const RuntimeShape filter_shape({std::numeric_limits<int>::max(), 1});
+  const RuntimeShape output_shape({1, std::numeric_limits<int>::max()});
+
+  EXPECT_EQ(ops::builtin::fully_connected::ValidateInt16FilterInt16Indexing(
+                context, filter_shape, output_shape),
+            kTfLiteOk);
+}
+
+TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsBatchCountOverflow) {
+  Interpreter interpreter;
+  TfLiteContext* context = interpreter.primary_subgraph().context();
+  const RuntimeShape filter_shape({1, 1});
+  const RuntimeShape output_shape({65536, 65536, 1});
+
+  EXPECT_EQ(ops::builtin::fully_connected::ValidateInt16FilterInt16Indexing(
+                context, filter_shape, output_shape),
+            kTfLiteError);
+}
+
+TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
+  Interpreter interpreter;
+  TfLiteContext* context = interpreter.primary_subgraph().context();
+  const int kMaxInt = std::numeric_limits<int>::max();
+  const RuntimeShape filter_shape({1, 1});
+  const RuntimeShape output_shape({kMaxInt, kMaxInt, kMaxInt, 1});
+
+  EXPECT_EQ(ops::builtin::fully_connected::ValidateInt16FilterInt16Indexing(
+                context, filter_shape, output_shape),
+            kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SparseQuantizedFullyConnectedOpTest, SparseQuantizedFullyConnectedOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapNoPie)));
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace
 }  // namespace tflite

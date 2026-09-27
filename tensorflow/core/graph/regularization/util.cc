@@ -44,7 +44,7 @@ absl::StatusOr<int64_t> GetSuffixUID(absl::string_view function_name) {
 
   int64_t uid;
   if (!absl::SimpleAtoi(v.back(), &uid)) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function name: `", function_name, "` does not end in an integer."));
   }
 

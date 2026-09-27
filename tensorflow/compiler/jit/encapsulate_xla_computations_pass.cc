@@ -74,8 +74,8 @@ bool is_guaranteed_constant(const Node& n) {
 absl::Status GetIndexAttr(const Node& n, int num_args, int* index) {
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
-    return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
-                                   *index);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid ", n.type_string(), " number ", *index));
   }
   return absl::OkStatus();
 }
@@ -127,8 +127,8 @@ absl::Status RewriteSubgraph(
     if (n->type_string() == "_Arg") {
       // Check if this is a guaranteed constant.
       if (is_guaranteed_constant(*n)) {
-        return errors::InvalidArgument(
-            "Guaranteed constants are not supported (", n->name(), ")");
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Guaranteed constants are not supported (", n->name(), ")"));
       }
       args.push_back(n);
     } else if (n->type_string() == "_Retval") {
@@ -137,7 +137,7 @@ absl::Status RewriteSubgraph(
   }
 
   if (std::find(args.begin(), args.end(), nullptr) != args.end()) {
-    return errors::InvalidArgument("Missing or non-consecutive arguments");
+    return absl::InvalidArgumentError("Missing or non-consecutive arguments");
   }
 
   // Reorders the arguments.
@@ -204,14 +204,14 @@ absl::Status RewriteSubgraph(
         e->src()->attrs().Find(kXlaClusterIdAttr) != nullptr &&
         e->dst()->attrs().Find(kXlaClusterIdAttr) == nullptr &&
         e->dst()->type_string() != kXlaClusterOutput) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Undeclared output of XLA computation. Some common causes of this "
           "error are: 1) variable initializers that depend on the XLA "
           "computation; 2) gradient computations that depend on the XLA "
           "computation, which can be mitigated by moving gradient computations "
           "inside XLA computation. Offending edge: ",
           e->src()->name(), ":", e->src_output(), " -> ", e->dst()->name(), ":",
-          e->dst_input());
+          e->dst_input()));
     }
   }
 

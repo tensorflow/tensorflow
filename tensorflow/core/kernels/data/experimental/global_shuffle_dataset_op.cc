@@ -346,7 +346,8 @@ void GlobalShuffleDatasetOp::MakeDataset(OpKernelContext* ctx,
   std::string name = absl::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator,
                                   "_", resource_id_counter.fetch_add(1));
 
-  auto handle = HandleFromInput(ctx, 3);
+  ResourceHandle handle;
+  OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 3, &handle));
   SeedGeneratorManager* seed_generator = nullptr;
   absl::Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
       handle.container(), handle.name(), &seed_generator);

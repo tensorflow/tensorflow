@@ -24,10 +24,10 @@ limitations under the License.
 namespace xla::emitters {
 
 void RegisterOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass());
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::createSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
+  pm.addPass(emitters::createEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
 }
 

@@ -1,14 +1,14 @@
 path: "tensorflow.distribute.experimental.ValueContext"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ValueContext\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "num_replicas_in_sync"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "replica_id_in_sync_group"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"

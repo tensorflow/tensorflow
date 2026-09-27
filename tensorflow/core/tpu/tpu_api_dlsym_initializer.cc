@@ -32,17 +32,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/tpu/libtftpu.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "xla/stream_executor/tpu/tpu_initialize_util.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
+#include "xla/tpu/libtftpu.h"
+#include "xla/tpu/tpu_api.h"
+#include "xla/tpu/tpu_api_dlsym_set_fn.h"
+#include "xla/tpu/tpu_executor_c_api.h"
+#include "xla/tpu/tpu_initialize_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)
-#include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
+#include "xla/tpu/tpu_library_init_fns.inc"
 
 namespace tensorflow {
 namespace tpu {
@@ -66,7 +65,7 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
     void (*initialize_fn)(bool init_library, int num_args, const char** args);
     initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
         dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)(/*init_library=*/true, args.second.size(),
+    (*initialize_fn)(/*init_library=*/true, args.second.size() - 1,
                      args.second.data());
 
     RegisterTpuPlatform();

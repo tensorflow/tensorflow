@@ -321,7 +321,7 @@ class GraphErrorInjectionPass : public tensorflow::GraphOptimizationPass {
       first_call_ = false;
       return absl::OkStatus();
     }
-    return tensorflow::errors::Internal("Graph pass runs for more than once!");
+    return absl::InternalError("Graph pass runs for more than once!");
   }
 
  private:
@@ -444,7 +444,7 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
     for (const auto node : graph->get()->nodes()) {
       if (node->name().find(error_node_) != string::npos &&
           node->requested_device() == error_device_) {
-        return tensorflow::errors::Internal("Injected graph pass error.");
+        return absl::InternalError("Injected graph pass error.");
       }
     }
     return absl::OkStatus();

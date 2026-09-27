@@ -1750,6 +1750,42 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsEqualTensorRank(self):
+    var = resource_variable_ops.ResourceVariable(
+        [10, 20, 30, 40, 50], name="var0", dtype=dtypes.float32
+    )
+    indices = constant_op.constant([1, 3, 4], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "rank"
+    ):
+      _ = resource_variable_ops.resource_gather(
+          resource=var.handle,
+          indices=indices,
+          dtype=dtypes.float32,
+          batch_dims=1,
+          validate_indices=True,
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsGreaterThanIndicesRank(self):
+    var = resource_variable_ops.ResourceVariable(
+        [[10, 20], [30, 40]], name="var0", dtype=dtypes.float32
+    )
+    # indices has rank 0 (scalar)
+    indices = constant_op.constant(1, dtype=dtypes.int32)
+    # batch_dims = 1 > indices.dims() = 0
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "rank"
+    ):
+      _ = resource_variable_ops.resource_gather(
+          resource=var.handle,
+          indices=indices,
+          dtype=dtypes.float32,
+          batch_dims=1,
+          validate_indices=True,
+      )
+
   @parameterized.parameters([
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
@@ -1863,6 +1899,41 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             batch_dims=-42,
         )
         self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather(
+            var.handle,
+            indices=[0],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNdDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float_nd"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather_nd(
+            var.handle,
+            indices=[[0]],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
 
 if __name__ == "__main__":
   test.main()

@@ -197,7 +197,7 @@ StatusOr<std::shared_ptr<const ElementType>>
 CrossTrainerCache<ElementType>::Get(const std::string& trainer_id)
     TF_LOCKS_EXCLUDED(mu_) {
   if (trainer_id.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "tf.data service cross-trainer cache requires a non-empty trainer ID.");
   }
 
@@ -256,9 +256,9 @@ CrossTrainerCache<ElementType>::GetElement(const std::string& trainer_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   size_t element_index = GetElementIndex(trainer_id);
   if (element_index >= std::numeric_limits<size_t>::max()) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "tf.data service caching element index exceeds integer limit. Got ",
-        element_index);
+        element_index));
   }
 
   std::shared_ptr<const ElementType> result =
@@ -284,10 +284,10 @@ absl::Status CrossTrainerCache<ElementType>::ExtendCache()
   size_t new_element_size_bytes =
       cachable_sequence_->GetElementSizeBytes(element);
   if (new_element_size_bytes > max_cache_size_bytes_) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "tf.data service element size is larger than cache size in bytes. Got ",
         "element size: ", new_element_size_bytes,
-        " and cache size: ", max_cache_size_bytes_);
+        " and cache size: ", max_cache_size_bytes_));
   }
 
   mutex_lock l(mu_);

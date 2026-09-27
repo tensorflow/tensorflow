@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cassert>
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -27,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 
 namespace xla {
 namespace emitters {
@@ -93,8 +93,12 @@ struct PackedArgs {
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");
-        op.setArgAttr(i, mlir::LLVM::LLVMDialect::getNoAliasAttrName(),
-                      mlir::UnitAttr::get(op->getContext()));
+        if (!op.getArgAttr(i, kXlaNotInvariantAttr)) {
+          op.setArgAttr(i, mlir::LLVM::LLVMDialect::getNoAliasAttrName(),
+                        mlir::UnitAttr::get(op->getContext()));
+        } else {
+          op.removeArgAttr(i, kXlaNotInvariantAttr);
+        }
       }
     }
   }
@@ -116,10 +120,6 @@ void MergePointersToSameSlicePass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass() {
-  return std::make_unique<MergePointersToSameSlicePass>();
-}
 
 }  // namespace emitters
 }  // namespace xla

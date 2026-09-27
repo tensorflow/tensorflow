@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_NATIVE_EMITTER_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -56,6 +56,10 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   // Applies a given fusion config to the instruction.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+  // Update manually if some change affects native emitters performance
+  // significantly.
+  std::string version() const override { return "v1"; }
 
  private:
   bool IsSupported(const HloInstruction& instr) override;

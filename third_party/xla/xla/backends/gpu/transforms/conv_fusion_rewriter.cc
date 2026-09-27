@@ -1,0 +1,366 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_utils.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+
+namespace xla {
+namespace gpu {
+
+namespace {
+bool IsNCHW(const HloInstruction* absl_nullable conv) {
+  if (conv == nullptr || conv->opcode() != HloOpcode::kConvolution) {
+    return false;
+  }
+  const ConvolutionDimensionNumbers& dnums =
+      conv->convolution_dimension_numbers();
+  const Shape& shape = conv->shape();
+  if (!shape.has_layout()) {
+    return false;
+  }
+  const absl::Span<const int64_t>& minor_to_major =
+      shape.layout().minor_to_major();
+  if (minor_to_major.empty()) {
+    return false;
+  }
+  return minor_to_major[0] != dnums.output_feature_dimension();
+}
+
+bool IsConvFusionOutputsValid(const std::vector<HloInstruction*>& outputs) {
+  if (outputs.size() > 2) {
+    return false;
+  }
+  if (outputs.size() == 2 && (outputs[0]->opcode() == HloOpcode::kReduce) ==
+                                 (outputs[1]->opcode() == HloOpcode::kReduce)) {
+    return false;
+  }
+  // Disallow upcast converts at fusion outputs. S32->F32 is allowed as cuDNN
+  // INT8 convs require it for epilogue fusions.
+  for (const HloInstruction* output : outputs) {
+    if (output->opcode() == HloOpcode::kConvert &&
+        output->shape().element_type() == F32 &&
+        output->operand(0)->shape().element_type() != S32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<HloInstruction*> GetAllReachableAndFusible(
+    HloInstruction* convolution, std::vector<HloInstruction*>& fusion_outputs,
+    const se::DeviceDescription& device_info) {
+  std::vector<HloInstruction*> fusible_users;
+  // cuDNN frontend fusions do not support grouped convolutions with epilogues.
+  // TODO(b/553414095): Re-enable 1D convolution epilogue fusions once cuDNN
+  // fixes NaN corruption with dummy spatial dimensions.
+  if (convolution->feature_group_count() > 1 ||
+      convolution->convolution_dimension_numbers()
+              .input_spatial_dimensions_size() < 2) {
+    fusion_outputs.push_back(convolution);
+    return fusible_users;
+  }
+  absl::flat_hash_map<HloInstruction*, bool> fusible_cache;
+  std::unique_ptr<HloReachabilityMap> reachability =
+      HloReachabilityMap::Build(convolution->parent());
+  bool can_fuse_reduce = true;
+
+  FusionState state{fusible_users, fusion_outputs, can_fuse_reduce};
+  GrowFusionDFS(convolution, reachability.get(), state, fusible_cache,
+                device_info, IsNCHW(convolution), IsConvFusionOutputsValid);
+
+  // Remove convolution from the users.
+  fusible_users.pop_back();
+  std::reverse(fusible_users.begin(), fusible_users.end());
+  // Make sure reduce is after the real conv output
+  if (fusion_outputs.size() == 2 &&
+      fusion_outputs[0]->opcode() == HloOpcode::kReduce) {
+    // Swap reduce and real conv output
+    std::swap(fusion_outputs[0], fusion_outputs[1]);
+  }
+  return fusible_users;
+}
+
+HloComputation::Builder CreateConvFusionBuilder(HloInstruction* conv) {
+  HloComputation* computation = conv->parent();
+  ConvolutionKind convolution_kind =
+      DynCast<HloConvolutionInstruction>(conv)->convolution_kind();
+
+  // Give the conv a user-friendly name.
+  std::string name;
+  if (convolution_kind == CONVOLUTION_KIND_FPROP) {
+    name = "conv_fprop";
+  } else if (convolution_kind == CONVOLUTION_KIND_DGRAD) {
+    name = "conv_dgrad";
+  } else if (convolution_kind == CONVOLUTION_KIND_WGRAD) {
+    name = "conv_wgrad";
+  }
+
+  computation->parent()->SetAndUniquifyInstrName(conv, name);
+  std::string fusion_name = absl::StrCat(conv->name(), "_fusion");
+  std::string computation_name = absl::StrCat(fusion_name, "_comp");
+  return HloComputation::Builder(computation_name);
+}
+
+// Supported input types and destination (accumulation) types for cuDNN
+// prologue convert fusions:
+//
+// +------------------+---------------------------+---------------------+
+// | Source Type      | Allowed Convert Dst Types | cuDNN Compute / Acc |
+// +------------------+---------------------------+---------------------+
+// | FP8 (E4M3, E5M2) | F32, F16, BF16            | FP32 (Tensor Core)  |
+// | INT8 (S8, U8)    | S32                       | INT32 (Tensor Core) |
+// | FP16, BF16       | F32 (if out is F16/BF16)  | FP32 (Tensor Core)  |
+// +------------------+---------------------------+---------------------+
+//
+// Fuses the input parameters and any immediate conversions (prologue).
+std::pair<HloInstruction*, HloInstruction*> TryFuseConvolutionPrologue(
+    HloInstruction* convolution,
+    const std::vector<HloInstruction*>& fusion_outputs,
+    HloComputation::Builder& builder,
+    std::vector<HloInstruction*>& fusion_params,
+    absl::flat_hash_map<HloInstruction*, HloInstruction*>& fused_hlo_map,
+    const se::DeviceDescription& device_info) {
+  auto is_fusable_convert = [&device_info,
+                             &fusion_outputs](const HloInstruction* hlo) {
+    if (hlo->opcode() != HloOpcode::kConvert || hlo->user_count() != 1) {
+      return false;
+    }
+    PrimitiveType src_type = hlo->operand(0)->shape().element_type();
+    PrimitiveType dst_type = hlo->shape().element_type();
+    if (!IsCuDnnConvertSupported(src_type, dst_type, device_info)) {
+      return false;
+    }
+    if (primitive_util::IsF8Type(src_type)) {
+      return dst_type == F32 || dst_type == F16 || dst_type == BF16;
+    }
+    if (primitive_util::Is8BitIntegralType(src_type)) {
+      return dst_type == S32;
+    }
+    if (src_type == F16 || src_type == BF16) {
+      // F16/BF16 prologue converts are only fusible when the fused epilogue
+      // downcasts the final output back to src_type.
+      return dst_type == F32 && !fusion_outputs.empty() &&
+             absl::c_all_of(fusion_outputs, [&](const HloInstruction* out) {
+               return out->shape().element_type() == src_type;
+             });
+    }
+    return false;
+  };
+
+  // Only fuse the prologue converts when both conv operands have one and
+  // they produce the same source type (or neither has one). Otherwise the
+  // cuDNN compiler's "consume convert before conv" path would feed the
+  // conv mismatched input dtypes.
+  const HloInstruction* lhs = convolution->operand(0);
+  const HloInstruction* rhs = convolution->operand(1);
+  const bool fuse_prologue_converts =
+      is_fusable_convert(lhs) && is_fusable_convert(rhs) &&
+      lhs->operand(0)->shape().element_type() ==
+          rhs->operand(0)->shape().element_type();
+
+  auto create_operand = [&](int index) {
+    HloInstruction* original = convolution->mutable_operand(index);
+    const bool is_convert =
+        fuse_prologue_converts && is_fusable_convert(original);
+
+    HloInstruction* source =
+        is_convert ? original->mutable_operand(0) : original;
+
+    // Create the parameter in the new computation
+    HloInstruction* fused_param =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            fusion_params.size(), source->shape(), source->name()));
+    fusion_params.push_back(source);
+    fused_hlo_map[source] = fused_param;
+
+    HloInstruction* fused = fused_param;
+    // If there was a convert, clone it into the new computation
+    if (is_convert) {
+      fused = builder.AddInstruction(
+          original->CloneWithNewOperands(original->shape(), {fused_param}));
+      fused_hlo_map[original] = fused;
+    }
+    return fused;
+  };
+
+  return {create_operand(0), create_operand(1)};
+}
+
+HloInstruction* CreateGpuConvFusion(
+    HloInstruction* convolution, std::vector<HloInstruction*>& fusion_outputs,
+    const se::DeviceDescription& device_info) {
+  std::vector<HloInstruction*> fusible_users =
+      GetAllReachableAndFusible(convolution, fusion_outputs, device_info);
+
+  HloComputation::Builder builder = CreateConvFusionBuilder(convolution);
+
+  // Seeding the parameters and the map for the convolution and its prologue.
+  std::vector<HloInstruction*> fusion_params;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> fused_hlo_map;
+
+  // Returns fused prologue operands.
+  std::pair<HloInstruction*, HloInstruction*> operands =
+      TryFuseConvolutionPrologue(convolution, fusion_outputs, builder,
+                                 fusion_params, fused_hlo_map, device_info);
+  HloInstruction* lhs = operands.first;
+  HloInstruction* rhs = operands.second;
+
+  HloInstruction* fused_conv = builder.AddInstruction(
+      convolution->CloneWithNewOperands(convolution->shape(), {lhs, rhs}));
+  fused_hlo_map[convolution] = fused_conv;
+
+  FuseTowardUsers(builder, fusion_params, fusible_users, fused_hlo_map,
+                  device_info, IsNCHW(convolution));
+
+  HloInstruction* root = nullptr;
+  Shape root_shape;
+  if (fusion_outputs.size() == 1) {
+    auto it = fused_hlo_map.find(fusion_outputs[0]);
+    CHECK(it != fused_hlo_map.end());
+    root = it->second;
+    root_shape = fusion_outputs[0]->shape();
+  } else {
+    // Multi-output
+    std::vector<HloInstruction*> roots;
+    std::vector<Shape> shapes;
+    for (HloInstruction* output : fusion_outputs) {
+      auto it = fused_hlo_map.find(output);
+      CHECK(it != fused_hlo_map.end());
+      roots.push_back(it->second);
+      shapes.push_back(output->shape());
+    }
+    root = builder.AddInstruction(HloInstruction::CreateTuple(roots));
+    root_shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+
+  HloComputation* new_computation =
+      convolution->GetModule()->AddComputationAndUnifyNamesAndIds(
+          builder.Build(root), /*is_entry=*/false);
+  return convolution->parent()->AddInstruction(HloInstruction::CreateFusion(
+      root_shape, HloInstruction::FusionKind::kCustom, fusion_params,
+      new_computation));
+}
+
+absl::StatusOr<bool> RunOnInstruction(
+    HloInstruction* conv, const se::DeviceDescription& device_info) {
+  if (DynCast<HloConvolutionInstruction>(conv)->convolution_kind() ==
+      CONVOLUTION_KIND_UNSET) {
+    return false;
+  }
+
+  std::vector<HloInstruction*> fusion_outputs;
+  HloInstruction* conv_fusion =
+      CreateGpuConvFusion(conv, fusion_outputs, device_info);
+  if (conv_fusion == nullptr) {
+    return false;
+  }
+
+  GpuBackendConfig gpu_backend_config;
+  FusionBackendConfig* fusion_config =
+      gpu_backend_config.mutable_fusion_backend_config();
+  fusion_config->set_kind(kCuDnnFusionKind);
+  const auto* conv_instr = DynCast<HloConvolutionInstruction>(conv);
+  *fusion_config->mutable_cudnn_fusion_config()->mutable_precision_config() =
+      conv_instr->precision_config();
+  ABSL_RETURN_IF_ERROR(conv_fusion->set_backend_config(gpu_backend_config));
+
+  VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
+          << conv_fusion->ToString();
+  if (fusion_outputs.size() == 1) {
+    ABSL_RETURN_IF_ERROR(
+        conv->parent()->ReplaceInstruction(fusion_outputs[0], conv_fusion));
+  } else {
+    for (int idx = 0; idx < fusion_outputs.size(); ++idx) {
+      HloInstruction* output = fusion_outputs[idx];
+      ABSL_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(
+          output,
+          conv->parent()->AddInstruction(
+              HloInstruction::CreateGetTupleElement(conv_fusion, idx))));
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<bool> RunOnComputation(
+    HloComputation* computation, const se::DeviceDescription& device_info) {
+  std::vector<HloInstruction*> convs;
+  for (auto* hlo : computation->instructions()) {
+    if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
+      convs.push_back(hlo);
+    }
+  }
+
+  bool changed = false;
+  for (HloInstruction* conv : convs) {
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv, device_info));
+    changed |= result;
+  }
+  return changed;
+}
+}  // namespace
+
+absl::StatusOr<bool> ConvFusionRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_VLOG_LINES(2,
+                 "ConvFusionRewriter::Run(), before:\n" + module->ToString());
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    ABSL_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, device_info_));
+    changed |= result;
+  }
+  XLA_VLOG_LINES(2, "ConvFusionRewriter::Run(), after:\n" + module->ToString());
+  return changed;
+}
+
+}  // namespace gpu
+}  // namespace xla

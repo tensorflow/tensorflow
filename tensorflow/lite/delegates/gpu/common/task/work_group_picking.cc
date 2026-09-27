@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
-#include <set>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/util.h"

@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Utils/Utils.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
@@ -130,6 +130,20 @@ std::optional<mlir::Value> GetConstantValue(mlir::ImplicitLocOpBuilder& builder,
         builder, mlir::IntegerAttr::get(int_type, value));
   }
 
+  if (auto complex_type = mlir::dyn_cast<mlir::ComplexType>(element_type)) {
+    auto elem_type = complex_type.getElementType();
+    if (auto float_type = mlir::dyn_cast<mlir::FloatType>(elem_type)) {
+      llvm::APFloat nan_value =
+          llvm::APFloat::getNaN(float_type.getFloatSemantics());
+      mlir::Value real_cst = mlir::arith::ConstantOp::create(
+          builder, mlir::FloatAttr::get(float_type, nan_value));
+      mlir::Value imag_cst = mlir::arith::ConstantOp::create(
+          builder, mlir::FloatAttr::get(float_type, nan_value));
+      return mlir::complex::CreateOp::create(builder, complex_type, real_cst,
+                                             imag_cst);
+    }
+  }
+
   return std::nullopt;
 }
 
@@ -194,9 +208,4 @@ class InitializeAllocsPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateInitializeAllocsPass() {
-  return std::make_unique<InitializeAllocsPass>();
-}
-
 }  // namespace xla::cpu

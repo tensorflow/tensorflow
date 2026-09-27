@@ -63,8 +63,7 @@ class StablehloScatterOpModel : public SingleOpModel {
             .Union());
     BuildInterpreter({GetShape(input_), GetShape(indices_), GetShape(updates_)},
                      /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false,
-                     /*use_simple_allocator=*/false);
+                     /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
 
     int* dummy = nullptr;
     AddSubgraphs(1, dummy);

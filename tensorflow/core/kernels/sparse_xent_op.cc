@@ -42,10 +42,10 @@ absl::Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
   if (*min_max_dim_value.first < 0 || *min_max_dim_value.second >= max_index) {
     bad_index = (*min_max_dim_value.first < 0) ? *min_max_dim_value.first
                                                : *min_max_dim_value.second;
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Received a label value of ", bad_index,
         " which is outside the valid range of [0, ", max_index,
-        ").  Label values: ", labels.SummarizeValue(labels.NumElements()));
+        ").  Label values: ", labels.SummarizeValue(labels.NumElements())));
   }
   return absl::OkStatus();
 }
@@ -60,26 +60,28 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
     const Tensor& logits = context->input(0);
     const Tensor& labels = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits.shape()),
-                errors::InvalidArgument("logits must be 2-D, but got shape ",
-                                        logits.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("logits must be 2-D, but got shape ",
+                                 logits.shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(labels.shape()),
-                errors::InvalidArgument("labels must be 1-D, but got shape ",
-                                        labels.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("labels must be 1-D, but got shape ",
+                                 labels.shape().DebugString())));
     OP_REQUIRES(context, logits.dim_size(0) == labels.dim_size(0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "logits and labels must have the same first dimension, "
                     "got logits shape ",
                     logits.shape().DebugString(), " and labels shape ",
-                    labels.shape().DebugString()));
+                    labels.shape().DebugString())));
     OP_REQUIRES(context, logits.dim_size(1) > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Must have at least one class, but got logits shape ",
-                    logits.shape().DebugString()));
+                    logits.shape().DebugString())));
 
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context, !OpDeterminismRequired(),
-          errors::Unimplemented(
+          absl::UnimplementedError(
               "The GPU implementation of SparseSoftmaxCrossEntropyWithLogits"
               " that would have been executed is not deterministic. Note that"
               " the Python API uses an alternative, deterministic,"
@@ -131,21 +133,21 @@ struct SparseXentFunctor<CPUDevice, T, Index> {
           .TypeConstraint<T>("T")                 \
           .TypeConstraint<Index>("Tlabels"),      \
       SparseSoftmaxXentWithLogitsOp<Dev##Device, T, Index>);
-REGISTER(CPU, float, int32)
+REGISTER(CPU, float, int32_t)
 REGISTER(CPU, float, int64_t)
-REGISTER(CPU, double, int32)
+REGISTER(CPU, double, int32_t)
 REGISTER(CPU, double, int64_t)
-REGISTER(CPU, Eigen::half, int32)
+REGISTER(CPU, Eigen::half, int32_t)
 REGISTER(CPU, Eigen::half, int64_t)
-REGISTER(CPU, bfloat16, int32)
+REGISTER(CPU, bfloat16, int32_t)
 REGISTER(CPU, bfloat16, int64_t)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER(GPU, float, int32)
+REGISTER(GPU, float, int32_t)
 REGISTER(GPU, float, int64_t)
-REGISTER(GPU, Eigen::half, int32)
+REGISTER(GPU, Eigen::half, int32_t)
 REGISTER(GPU, Eigen::half, int64_t)
-REGISTER(GPU, Eigen::bfloat16, int32)
+REGISTER(GPU, Eigen::bfloat16, int32_t)
 REGISTER(GPU, Eigen::bfloat16, int64_t)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

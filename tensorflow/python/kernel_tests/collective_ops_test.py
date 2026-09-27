@@ -17,6 +17,7 @@
 import os
 import threading
 import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
@@ -28,8 +29,10 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import collective_ops as _collective_ops
@@ -1177,7 +1180,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
         tokens[device] = create_ordering_token()
 
     @def_function.function
-    def collective_fn():
+    def collective_fn(group_key, instance_key):
       for device in [dev0, dev1]:
         with ops.device(device):
           collective_op(
@@ -1190,7 +1193,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
 
     # Local params resolution cannot be cancelled yet, so we perform a normal
     # collective so that the group is resolved.
-    collective_fn()
+    collective_fn(group_key, instance_key)
 
     # Make the dataset sleep a while so that the collective is being executed
     # when the EOF happens.
@@ -1219,7 +1222,7 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
       f()
     # Collective ops shouldn't be aborted and new collectives should be able to
     # proceed.
-    collective_fn()
+    collective_fn(group_key, instance_key + 1)
 
   @combinations.generate(
       combinations.times(
@@ -1856,6 +1859,81 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
     # result[0] is rank 1 and shall have 4, 2.
     self.assertAllClose(result[1], [4.0, 2.0], rtol=1e-5, atol=1e-5)
     self.assertAllClose(result[0], [3.0, 1.0], rtol=1e-5, atol=1e-5)
+
+
+class CollectiveOpsScalarInputTest(test.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testScalarInputGather(self):
+    t = constant_op.constant(5.0)
+    with self.assertRaises(errors.InvalidArgumentError):
+      _collective_ops.gen_collective_ops.collective_gather_v2(
+          input=t,
+          group_size=constant_op.constant(2),
+          group_key=constant_op.constant(1),
+          instance_key=constant_op.constant(1),
+          ordering_token=[],
+      )
+
+  def testScalarInputReduceScatter(self):
+    t = constant_op.constant(5.0)
+    with self.assertRaises(errors.InvalidArgumentError):
+      _collective_ops.gen_collective_ops.collective_reduce_scatter_v2(
+          input=t,
+          group_size=constant_op.constant(2),
+          group_key=constant_op.constant(1),
+          instance_key=constant_op.constant(1),
+          ordering_token=[],
+          merge_op='Add',
+          final_op='Id',
+      )
+
+  def testScalarInputGatherGraph(self):
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_gather(t):
+      return _collective_ops.gen_collective_ops.collective_gather_v2(
+          input=t,
+          group_size=constant_op.constant(2),
+          group_key=constant_op.constant(1),
+          instance_key=constant_op.constant(1),
+          ordering_token=[],
+      )
+
+    t = constant_op.constant(5.0)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'input should have rank > 0'
+    ):
+      run_gather(t)
+
+  def testScalarInputReduceScatterGraph(self):
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
+        ]
+    )
+    def run_reduce_scatter(t):
+      return _collective_ops.gen_collective_ops.collective_reduce_scatter_v2(
+          input=t,
+          group_size=constant_op.constant(2),
+          group_key=constant_op.constant(1),
+          instance_key=constant_op.constant(1),
+          ordering_token=[],
+          merge_op='Add',
+          final_op='Id',
+      )
+
+    t = constant_op.constant(5.0)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'input should have rank > 0'
+    ):
+      run_reduce_scatter(t)
 
 
 def _setup_context(num_devices=4):

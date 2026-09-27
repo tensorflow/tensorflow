@@ -18,11 +18,9 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -31,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
@@ -39,19 +38,6 @@ using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
 
-// TODO: b/433693782 - This code is duplicated from indexing_test_utils. Remove
-// this function as soon as symbolic_map_converter is not needed anymore. If
-// not, we should refactor it to a common test library.
-// Helper function to parse an AffineMap from a string.
-AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         MLIRContext* context) {
-  std::string full_affine_map_string =
-      absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, context))
-      .getValue();
-}
-
 class SymbolicMapConverterTest : public ::testing::Test {
  public:
   SymbolicMapConverterTest() { RegisterSymbolicExprStorage(&context_); }
@@ -59,16 +45,16 @@ class SymbolicMapConverterTest : public ::testing::Test {
 };
 
 TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
-  AffineMap affine_map = ParseAffineMap(
+  SymbolicMap symbolic_map = ParseSymbolicMap(
       "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
       &context_);
 
-  SymbolicMap symbolic_map = AffineMapToSymbolicMap(affine_map);
+  AffineMap affine_map = SymbolicMapToAffineMap(symbolic_map);
 
-  EXPECT_EQ(symbolic_map.GetNumResults(), 4);
+  EXPECT_EQ(affine_map.getNumResults(), 4);
 
-  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map);
-  EXPECT_EQ(affine_map, round_trip_map);
+  SymbolicMap round_trip_map = AffineMapToSymbolicMap(affine_map);
+  EXPECT_EQ(symbolic_map, round_trip_map);
 }
 
 TEST_F(SymbolicMapConverterTest, SymbolicToAffineEmpty) {

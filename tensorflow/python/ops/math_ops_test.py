@@ -260,6 +260,39 @@ class RoundTest(test_util.TensorFlowTestCase):
         y_np = np.round(x_np)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
+  def testComplexDtypeValidation(self):
+    """Test that complex dtypes raise TypeError with helpful message."""
+    # Test complex64
+    x_complex64 = constant_op.constant(
+        [1.4 + 2.6j, 3.2 + 4.8j], dtype=dtypes.complex64
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tf\.math\.round does not support complex dtypes.*complex64.*"
+        r"apply tf\.math\.round separately",
+    ):
+      math_ops.round(x_complex64)
+
+    # Test complex128
+    x_complex128 = constant_op.constant(
+        [1.4 + 2.6j, 3.2 + 4.8j], dtype=dtypes.complex128
+    )
+    with self.assertRaisesRegex(
+        TypeError,
+        r"tf\.math\.round does not support complex dtypes.*complex128.*"
+        r"apply tf\.math\.round separately",
+    ):
+      math_ops.round(x_complex128)
+
+  def testBFloat16Support(self):
+    """Test that bfloat16 dtype works correctly with tf.math.round."""
+    x = constant_op.constant([0.9, 2.5, 2.3, 1.5, -4.5], dtype=dtypes.bfloat16)
+    result = math_ops.round(x)
+    expected = constant_op.constant(
+        [1.0, 2.0, 2.0, 2.0, -4.0], dtype=dtypes.bfloat16
+    )
+    self.assertAllClose(self.evaluate(result), self.evaluate(expected))
+
 
 @test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
@@ -1277,6 +1310,32 @@ class SignTest(test_util.TensorFlowTestCase):
       self.assertAllClose(
           t.gradient(y, x), math_ops.complex(0.353553, -0.353553))
 
+  def test_complex_sign_tiny_no_underflow(self):
+    # Regression test for tf#116945: tf.math.sign returned 0 for small complex64
+    # inputs because complex_abs computed |z|^2 in float32, which underflows to
+    # 0 for |z| < ~1.08e-19. With the fix, the entire computation is promoted
+    # to complex128 and the result is cast back to the input dtype.
+    with context.eager_mode():
+      # |z| = sqrt(2) * 1e-20 ~= 1.41e-20, well below float32 underflow.
+      tiny = 1e-20
+      for dtype, expected_dtype in [
+          (np.complex64, np.complex64),
+          (np.complex128, np.complex128),
+      ]:
+        x = constant_op.constant(tiny + tiny * 1j, dtype=dtype)
+        y = math_ops.sign(x)
+        # Result should be x/|x| = (1+1j)/sqrt(2), not 0.
+        # Use builtin complex() instead of np.complex (deprecated in NumPy 1.20+).
+        expected = np.array(
+            complex(tiny, tiny) / abs(complex(tiny, tiny)), dtype=expected_dtype
+        )
+        self.assertAllClose(y.numpy(), expected, atol=1e-6)
+        self.assertEqual(y.dtype.base_dtype, expected_dtype)
+
+      # Also verify zero still returns zero (no division by zero crash).
+      z = constant_op.constant(0 + 0j, dtype=np.complex64)
+      self.assertAllEqual(math_ops.sign(z).numpy(), np.complex64(0))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
@@ -1499,6 +1558,43 @@ class CastTest(test_util.TensorFlowTestCase):
       return ta.stack()
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ScalarCoercionTest(test_util.TensorFlowTestCase):
+
+  def testMultiplyAndPowScalarCoercion(self):
+    x1 = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
+    x2 = constant_op.constant([4.0, 5.0, 6.0, 7.0], dtype=dtypes.bfloat16)
+
+    def mul_fn(x):
+      return math_ops.multiply(5, x)
+
+    def pow_fn(x):
+      return math_ops.pow(1, x)
+
+    def mul_reverse_fn(x):
+      return math_ops.multiply(x, 5)
+
+    def pow_reverse_fn(x):
+      return math_ops.pow(x, 2)
+
+    self.assertAllClose(mul_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_fn(x2), [1.0, 1.0, 1.0, 1.0])
+    self.assertAllClose(mul_reverse_fn(x1), [5.0, 10.0, 15.0, 20.0])
+    self.assertAllClose(pow_reverse_fn(x2), [16.0, 25.0, 36.0, 49.0])
+
+    if test_util.is_xla_enabled():
+      mul_xla = def_function.function(mul_fn, jit_compile=True)
+      pow_xla = def_function.function(pow_fn, jit_compile=True)
+      mul_rev_xla = def_function.function(mul_reverse_fn, jit_compile=True)
+      pow_rev_xla = def_function.function(pow_reverse_fn, jit_compile=True)
+
+      self.assertAllClose(mul_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_xla(x2), [1.0, 1.0, 1.0, 1.0])
+      self.assertAllClose(mul_rev_xla(x1), [5.0, 10.0, 15.0, 20.0])
+      self.assertAllClose(pow_rev_xla(x2), [16.0, 25.0, 36.0, 49.0])
+
 
 if __name__ == "__main__":
   googletest.main()

@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -39,9 +41,10 @@ class GetItemXlaOp : public XlaOpKernel {
     const TensorShape& index_shape = ctx->InputShape(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVectorOrHigher(data_shape),
-        errors::InvalidArgument("data must be at least 1 dimensional."));
-    OP_REQUIRES(ctx, index_shape.dims() == 1 && index_shape.dim_size(0) == 1,
-                errors::InvalidArgument("index must be a vector of size 1."));
+        absl::InvalidArgumentError("data must be at least 1 dimensional."));
+    OP_REQUIRES(
+        ctx, index_shape.dims() == 1 && index_shape.dim_size(0) == 1,
+        absl::InvalidArgumentError("index must be a vector of size 1."));
 
     // NOTE(pbar) Use Concat to extend the indices to match cl/142279605.
     // This isn't the simplest way to emit the indices, but the code for

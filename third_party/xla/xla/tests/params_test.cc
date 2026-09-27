@@ -40,8 +40,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ParamsTest = ClientLibraryTestRunnerMixin<
-    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ParamsTest =
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(ParamsTest, ConstantR0F32Param) {
   XlaBuilder builder(TestName());

@@ -110,10 +110,11 @@ const char* EagerExecutor::StateStringLocked() {
 
 absl::Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("SyncExecute does not support async execution.");
+    return absl::InternalError("SyncExecute does not support async execution.");
   }
   if (node->AsAsync() != nullptr) {
-    return errors::Internal("Executor does not support executing async nodes");
+    return absl::InternalError(
+        "Executor does not support executing async nodes");
   }
   // NOTE: SyncExecute runs every node regardless of error status in executor.
 
@@ -153,10 +154,10 @@ absl::Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
              << " with status: " << status_;
     if (state_ != ExecutorState::kActive) {
-      status = errors::FailedPrecondition(
+      status = absl::FailedPreconditionError(absl::StrCat(
           "EagerExecutor accepts new EagerNodes to run only in Active state. "
           "Current state is '",
-          StateStringLocked(), "'");
+          StateStringLocked(), "'"));
     } else {
       status = status_;
       if (status.ok()) {
@@ -264,7 +265,7 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       // Remove item if it exists in unfinished_nodes_.
       // With async execution, if two separate nodes failed and enter this
       // callback, then the second node might not find itself in
-      // unfinished_nodes_ in the following senario:
+      // unfinished_nodes_ in the following scenario:
       //   1) Callback of the first failed node clears unfinished_nodes_
       //   2) ClearError is called and executor status_ is set to OK
       //   3) Callback of the second failed node is triggered

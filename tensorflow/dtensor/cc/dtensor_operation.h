@@ -30,7 +30,7 @@ struct DTensorOperation {
   // otherwise.
   const Mesh default_mesh;
   const StackTracesMap& stack_traces;
-  inline bool is_func() const { return function_def != nullptr; }
+  bool is_func() const { return function_def != nullptr; }
 
   // Returns True if the op has no side effects.
   // Side effects include global side effect marked by IsStateful and
@@ -38,7 +38,7 @@ struct DTensorOperation {
   // This definition is correct for all DTensor support Ops.
   // Some odder TF Ops (e.g. Queue) do not mark themselve as stateful, but are
   // still stateful. DTensor doesn't support them.
-  inline bool is_pure() const {
+  bool is_pure() const {
     if (is_func()) {
       // FIXME(feyu): some functions can still be pure, but we just don't yet
       // handle the case, and treat all functions as non-pure.

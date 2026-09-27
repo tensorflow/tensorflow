@@ -37,7 +37,7 @@ if _tf_uses_legacy_keras:
   _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v1.keras")
 else:
   _module_dir = _module_util.get_parent_dir_for_name("keras.api._v1.keras")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
@@ -57,7 +57,7 @@ if _tf_uses_legacy_keras:
 else:
   _module_dir = _module_util.get_parent_dir_for_name(
       "keras.api._v1.keras.__internal__.legacy.layers")
-_current_module.__path__ = [_module_dir] + _current_module.__path__
+_current_module.__path__ = [_module_dir] + list(_current_module.__path__)
 
 _current_module.nn.rnn_cell = _KerasLazyLoader(
     globals(),
@@ -70,4 +70,4 @@ if _tf_uses_legacy_keras:
 else:
   _module_dir = _module_util.get_parent_dir_for_name(
       "keras.api._v1.keras.__internal__.legacy.rnn_cell")
-_current_module.nn.__path__ = [_module_dir] + _current_module.nn.__path__
+_current_module.nn.__path__ = [_module_dir] + list(_current_module.nn.__path__)

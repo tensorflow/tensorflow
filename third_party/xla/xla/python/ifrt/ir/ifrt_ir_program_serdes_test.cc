@@ -21,20 +21,22 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -62,7 +64,7 @@ class IfrtIRProgramSerDesTest : public testing::TestWithParam<SerDesVersion> {
 };
 
 TEST_P(IfrtIRProgramSerDesTest, RoundTrip) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -79,7 +81,7 @@ module {
     }
   }
 }
-  )";
+  )mlir";
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
@@ -103,7 +105,7 @@ module {
 }
 
 TEST_P(IfrtIRProgramSerDesTest, RoundTripWithUnreduced) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1 unreduced [0]>, [0]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -120,7 +122,7 @@ module {
     }
   }
 }
-  )";
+  )mlir";
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
@@ -144,7 +146,7 @@ module {
 }
 
 TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTrip) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module @multiple_calls_of_same_module {
@@ -166,7 +168,7 @@ module @multiple_calls_of_same_module {
     }
   }
 }
-  )";
+  )mlir";
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
@@ -180,7 +182,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -193,7 +198,7 @@ module @multiple_calls_of_same_module {
 }
 
 TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTripWithUnreduced) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>,
                      #ifrt.sharding_param<1 to [0,1] on 1x2 unreduced [1]>, [0,1]>
 module @multiple_calls_of_same_module {
@@ -211,7 +216,7 @@ module @multiple_calls_of_same_module {
     }
   }
 }
-  )";
+  )mlir";
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
@@ -225,7 +230,10 @@ module @multiple_calls_of_same_module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString(),
       /*version_in_place=*/false);
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, std::move(options)));
@@ -238,7 +246,7 @@ module @multiple_calls_of_same_module {
 }
 
 TEST_P(IfrtIRProgramSerDesTest, VersioningOfAtomProgramInMhloShouldFail) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -255,7 +263,7 @@ module {
     }
   }
 }
-  )";
+  )mlir";
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
@@ -269,7 +277,10 @@ module {
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
   auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
       Version::getCurrentVersion().toString(),
-      ::mlir::vhlo::Version::getCurrentVersion().toString());
+      /*vhlo_target_version=*/
+      mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*atom_program_sdy_version=*/
+      mlir::sdy::SdyDialectVersion::getCurrentVersion().toString());
   EXPECT_THAT(
       Serialize(*initial_program, std::move(options)),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
@@ -277,7 +288,7 @@ module {
 }
 
 TEST_P(IfrtIRProgramSerDesTest, DeserializationError) {
-  static constexpr absl::string_view kMlirModuleStr = R"(
+  static constexpr absl::string_view kMlirModuleStr = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -294,7 +305,7 @@ module {
     }
   }
 }
-  )";
+  )mlir";
   Serialized serialized;
   {
     auto context = std::make_unique<mlir::MLIRContext>();
@@ -319,7 +330,10 @@ module {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, IfrtIRProgramSerDesTest,
-    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

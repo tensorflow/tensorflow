@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>

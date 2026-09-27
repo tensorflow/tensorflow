@@ -1,3 +1,17 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-lower-tensors="gpu_device_info='cuda_compute_capability {major: 6}'" \
 // RUN: | FileCheck %s
@@ -29,6 +43,10 @@
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx90a:sramecc+:xnack\"}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX90A-MI200
+
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: -xla-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx942:sramecc+:xnack\"}'" \
+// RUN: | FileCheck %s --check-prefix=CHECK-GFX942-MI300
 
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
@@ -527,7 +545,7 @@ func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_overwrite
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 4 : i64}
+// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered <alignment = 4>
 
 // -----
 
@@ -764,6 +782,42 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 
 // -----
 
+// The scatter/reduce combiner for bf16 is computed in f32, so the atomic_rmw
+// body is the widened pattern extf -> addf(f32) -> truncf. The modifier is a
+// genuine bf16 value (a constant would have its extf folded to f32). On MI300
+// this must lower to a packed `atomicrmw fadd <2 x bf16>` rather than a slow
+// compare-and-swap loop.
+func.func @direct_atomic_rmw_fadd_bf16_widened(%in: tensor<8xbf16>,
+    %i: index, %arg: bf16) -> (tensor<8xbf16>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
+    ^bb0(%current : bf16):
+      %ext0 = arith.extf %current : bf16 to f32
+      %ext1 = arith.extf %arg : bf16 to f32
+      %add = arith.addf %ext0, %ext1 : f32
+      %res = arith.truncf %add : f32 to bf16
+      xla.yield %res : bf16
+  }
+  return %ret : tensor<8xbf16>
+}
+// CHECK-GFX942-MI300-LABEL: @direct_atomic_rmw_fadd_bf16_widened
+// CHECK-GFX942-MI300-DAG: %[[C_NEG4:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GFX942-MI300-DAG: %[[C2:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-GFX942-MI300-DAG: %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GFX942-MI300: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX942-MI300: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GFX942-MI300: %[[ADDR_MASKED:.*]] = llvm.and %[[ADDR_INT]], %[[C_NEG4]]
+// CHECK-GFX942-MI300: %[[ADDR_TRUNC:.*]] = llvm.trunc %[[ADDR_INT]]
+// CHECK-GFX942-MI300: %[[OFFSET:.*]] = llvm.and %[[ADDR_TRUNC]], %[[C2]]
+// CHECK-GFX942-MI300: %[[SHIFT:.*]] = llvm.mul %[[OFFSET]], %[[C8]]
+// CHECK-GFX942-MI300: %[[VAL_INT:.*]] = llvm.bitcast %{{.*}} : bf16 to i16
+// CHECK-GFX942-MI300: %[[VAL_WIDE:.*]] = llvm.zext %[[VAL_INT]] : i16 to i32
+// CHECK-GFX942-MI300: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
+// CHECK-GFX942-MI300: %[[ADDR_PTR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
+// CHECK-GFX942-MI300: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xbf16>
+// CHECK-GFX942-MI300: llvm.atomicrmw fadd %[[ADDR_PTR]], %[[VAL]] syncscope("agent-one-as") monotonic
+
+// -----
+
 func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
   %i: index) -> (tensor<8xf64>) {
   %c2 = arith.constant 2.0 : f64
@@ -909,7 +963,7 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
 }
 // CHECK-LABEL: @transfer_read
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 4 : i64} : !llvm.ptr -> vector<2xf32>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<2xf32>
 
 // -----
 
@@ -926,10 +980,10 @@ func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
 // CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
 // CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
-// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] <alignment = 1>
 // CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
-// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] <alignment = 1>
 
 // -----
 
@@ -942,7 +996,7 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK-LABEL: @transfer_read_i1
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
@@ -958,7 +1012,7 @@ func.func @transfer_read_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] {alignment = 32 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] <alignment = 32> : !llvm.ptr
 // CHECK:           return %[[LOADED]] : vector<8xi64>
 
 // -----
@@ -972,7 +1026,7 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
 
 // -----
 
@@ -987,7 +1041,7 @@ func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : inde
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 32> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1002,7 +1056,7 @@ func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.al
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 8 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 8> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1091,7 +1145,7 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
 // CHECK-LABEL: @transfer_read_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
 // CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
-// CHECK: llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr -> vector<2xi4>
+// CHECK: llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr -> vector<2xi4>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
 

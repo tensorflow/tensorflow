@@ -37,10 +37,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,10 +61,12 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 class HloModule;
+class HloPayloadDeduplicator;
 
 // Describes a computation at the HLO level.
 //
@@ -128,7 +132,7 @@ class HloComputation {
     absl::Status ForEachInstruction(
         absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
-        TF_RETURN_IF_ERROR(func(instruction.get()));
+        ABSL_RETURN_IF_ERROR(func(instruction.get()));
       }
       return absl::OkStatus();
     }
@@ -400,7 +404,8 @@ class HloComputation {
       absl::Span<const HloInstruction* const> instruction_order) const;
 
   // Serializes this computation to a proto.
-  void ToProto(HloComputationProto* proto) const;
+  void ToProto(HloComputationProto* proto,
+               HloProtoOptions options = HloProtoOptions()) const;
 
   // Creates a computation from the given proto. Arguments:
   //
@@ -419,7 +424,9 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
-      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr);
+      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr,
+      absl::Span<const std::shared_ptr<BackendConfigWrapper>> backend_configs =
+          {});
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.
@@ -633,7 +640,10 @@ class HloComputation {
   // instruction from computation. Updates uses and root instruction.
   absl::Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
-      std::unique_ptr<HloInstruction> new_instruction);
+      std::unique_ptr<HloInstruction> new_instruction,
+      bool preserve_sharding = false, bool relay_control_dependency = false,
+      bool remove_unused_operands = true,
+      bool preserve_frontend_attributes = true);
 
   // Replaces an old instruction with a newly created instruction, and adds the
   // new instruction as an entry computation's parameter. Removes old
@@ -709,6 +719,12 @@ class HloComputation {
   std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
+  // Like Clone(), but also returns a schedule for the cloned computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithSchedule(const std::string& suffix = "clone",
+                    HloCloneContext* context = nullptr);
+
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
@@ -737,8 +753,23 @@ class HloComputation {
                    const absl::Span<HloInstruction* const>>
           new_root = nullptr);
 
+  // Like CloneWithReplacements(), but also returns a schedule for the cloned
+  // computation which
+  // matches the original. The original computation must be scheduled.
+  std::pair<std::unique_ptr<HloComputation>, std::vector<HloInstruction*>>
+  CloneWithScheduleAndReplacements(
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
+      absl::Span<const HloInstruction* const> extra_parameters = {},
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone",
+      std::variant<const HloInstruction*,
+                   const absl::Span<HloInstruction* const>>
+          new_root = nullptr);
+
   // Like CloneWithReplacements(), but this is a const method and `context` must
   // be specified.
+  // If `clone_sequence` is not nullptr, the module must be have a schedule for
+  // this computation.
   std::unique_ptr<HloComputation> CloneInContext(
       HloCloneContext& context,
       const absl::flat_hash_map<const HloInstruction*,
@@ -748,7 +779,8 @@ class HloComputation {
       const std::string& suffix = "clone",
       std::variant<const HloInstruction*,
                    const absl::Span<HloInstruction* const>>
-          new_root = nullptr) const;
+          new_root = nullptr,
+      std::vector<HloInstruction*>* clone_sequence = nullptr) const;
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //
@@ -830,7 +862,9 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
+           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
+           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
   }
 
   // Returns true if this computation only contains send/recv instructions.
@@ -883,6 +917,16 @@ class HloComputation {
   // HloInstructions in a pass.
   // Note: the removal operation is stable because some users depend on it.
   void Cleanup();
+
+  // Canonicalizes the local_ids of all instructions in this computation
+  // based on a stable post-order traversal. This ensures that semantically
+  // equivalent computations get the same local_ids.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs (and thus
+  // changes the index in the instruction vector). It should only be used in
+  // contexts where you are certain that nothing is caching instruction unique
+  // IDs or relying on the stability of local IDs.
+  void CanonicalizeLocalIds();
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
@@ -960,6 +1004,46 @@ class HloComputation {
   // Permutes the parameter numbers of this computation according to the
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
+
+  bool IsEntryInstUnboundedDynamic() const;
+
+  // Backend config accessors for HloComputation.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
 
  private:
   friend class HloModule;
@@ -1082,6 +1166,9 @@ class HloComputation {
 
   std::string name_;
 
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
+
   // Callers and callees of this computation.
   // * These include all computations that have a caller/callee relationship
   //   with this computation, even those that may not belong to a module. For
@@ -1157,19 +1244,9 @@ class HloComputation {
                             callee_computations_.end());
   }
 
-  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
-            Index S::* IndexInParent, typename PredecessorIterator,
-            PredecessorIterator (S::*PredecessorsBegin)() const,
-            PredecessorIterator (S::*PredecessorsEnd)() const,
-            typename SuccessorIterator,
-            SuccessorIterator (S::*SuccessorsBegin)() const,
-            SuccessorIterator (S::*SuccessorsEnd)() const>
-  friend class TopologicalSort;
-
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortIterator;
-
-  TopologicalSortNode<HloComputation> topological_sort_node_;
+  // Dense index of this computation within its parent HloModule, used as the
+  // node index in the module's TopologicalSort.
+  int32_t index_in_module_ = -1;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
@@ -1184,7 +1261,7 @@ absl::Status HloComputation::Accept(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
-    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+    ABSL_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
@@ -1211,10 +1288,10 @@ absl::Status HloComputation::AcceptOrdered(
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
-    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    ABSL_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
     visitor->SetVisited(*mutable_instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
     visited.insert(instruction);
   }
   return visitor->FinishVisit(root_instruction());

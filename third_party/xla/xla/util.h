@@ -38,8 +38,10 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/packing.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
@@ -116,10 +119,13 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
   XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
-  static ::xla::TimerStats XLA_TimerStats##counter;                            \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
-      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition) \
+  static ::xla::TimerStats XLA_TimerStats##counter;                        \
+  const bool XLA_TimerEnabled##counter = VLOG_IS_ON(level) && (condition); \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(       \
+      XLA_TimerEnabled##counter ? ::absl::string_view(label)               \
+                                : ::absl::string_view(""),                 \
+      XLA_TimerEnabled##counter, __FILE__, __LINE__,                       \
       &XLA_TimerStats##counter);
 
 struct TimerStats {
@@ -460,6 +466,12 @@ std::string RoundTripFpToString(tsl::float8_e3m4 value);
 // Returns a string which can losslessly round trip to a float8 E8M0FNU.
 std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
+// Returns a string which can losslessly round trip to a float6 E3M2FN.
+std::string RoundTripFpToString(tsl::float6_e3m2fn value);
+
+// Returns a string which can losslessly round trip to a float6 E2M3FN.
+std::string RoundTripFpToString(tsl::float6_e2m3fn value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -642,13 +654,18 @@ struct UnsignedIntegerTypeForSize<8> {
   using type = uint64_t;
 };
 
+template <>
+struct UnsignedIntegerTypeForSize<16> {
+  using type = absl::uint128;
+};
+
 template <size_t kBytes>
 using UnsignedIntegerTypeForSizeType =
     typename UnsignedIntegerTypeForSize<kBytes>::type;
 
 template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
-    std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
+    make_specialized_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
 template <typename T>
 auto SignAndMagnitude(T x) {
@@ -854,120 +871,37 @@ bool EraseElementFromVector(Container* container, const T& value) {
 }
 
 // Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must
-// be between 1 and 7), such that every byte stores one value in the low-order
+// be 1, 2, or 4), such that every byte stores one value in the low-order
 // bits, and packs them so every byte stores as many which will fit. `output`
 // should have at least ceil((input.size()*kBitsPerElement)/8.0) bytes. The
 // high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
-void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
-  static_assert(1 <= kBitsPerElement);
-  static_assert(kBitsPerElement <= 7);
-  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
-  const size_t aligned_inputs = input.size() / kElementsPerByte;
-  for (size_t i = 0; i < aligned_inputs; ++i) {
-    char byte = 0;
-    for (size_t j = 0; j < kElementsPerByte; ++j) {
-      byte |=
-          (input[i * kElementsPerByte + j] & LsbMask<uint8_t>(kBitsPerElement))
-          << (kBitsPerElement * j);
-    }
-    output[i] = byte;
-  }
-  if (const size_t remainder = input.size() % kElementsPerByte;
-      remainder != 0) {
-    char byte = 0;
-    for (size_t j = 0; j < remainder; ++j) {
-      byte |= (input[aligned_inputs * kElementsPerByte + j] &
-               LsbMask<uint8_t>(kBitsPerElement))
-              << (kBitsPerElement * j);
-    }
-    output[aligned_inputs] = byte;
-  }
+inline void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  PackIntNHwy<kBitsPerElement>(input, output);
 }
 
 // Same as above, but takes the number of bits per element as an argument.
-// `bits_per_element` must be 2 or 4, or this function will crash.
+// `bits_per_element` must be 1, 2, or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
-  if (bits_per_element == 1) {
-    PackIntN<1>(input, output);
-  } else if (bits_per_element == 2) {
-    PackIntN<2>(input, output);
-  } else if (bits_per_element == 4) {
-    PackIntN<4>(input, output);
-  } else {
-    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
-  }
-}
-
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the packed data.
-inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
-                                        size_t size) {
-  size_t packed_size = size * bits_per_element / 8;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[packed_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), packed_size);
-  PackIntN(bits_per_element, src, dst);
-  return buffer;
+  PackIntNHwy(bits_per_element, input, output);
 }
 
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
 // ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
-// between 1 and 7. ßThe high-order bits in each output are zero.
+// 1, 2, or 4. The high-order bits in each output are zero.
 template <size_t kBitsPerElement>
-void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
-  static_assert(1 <= kBitsPerElement);
-  static_assert(kBitsPerElement <= 7);
-  constexpr auto kElementsPerByte = 8 / kBitsPerElement;
-  const size_t aligned_outputs = output.size() / kElementsPerByte;
-  for (size_t i = 0; i < aligned_outputs; ++i) {
-    const char byte = input[i];
-    for (int j = 0; j < kElementsPerByte; ++j) {
-      output[i * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
-    }
-  }
-  if (size_t remainder = output.size() % kElementsPerByte; remainder != 0) {
-    const char byte = input[aligned_outputs];
-    for (size_t j = 0; j < remainder; ++j) {
-      output[aligned_outputs * kElementsPerByte + j] =
-          (byte >> (kBitsPerElement * j)) & LsbMask<uint8_t>(kBitsPerElement);
-    }
-  }
+inline void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  UnpackIntNHwy<kBitsPerElement>(input, output);
 }
 
 // Same as above, but takes the number of bits per element as an argument.
-// `bits_per_element` must be 2 or 4, or this function will crash.
+// `bits_per_element` must be 1, 2, or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
-  if (bits_per_element == 1) {
-    UnpackIntN<1>(input, output);
-  } else if (bits_per_element == 2) {
-    UnpackIntN<2>(input, output);
-  } else if (bits_per_element == 4) {
-    UnpackIntN<4>(input, output);
-  } else {
-    LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
-  }
-}
-
-// Same as above, but takes the number of bits per element, a pointer to the
-// source data, and the size of the data in bytes. Returns a unique pointer to
-// the unpacked data.
-inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
-                                          const char* data, size_t size) {
-  size_t unpacked_size = size * 8 / bits_per_element;
-  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
-  std::unique_ptr<char[]> buffer(new char[unpacked_size]);
-  auto src = absl::MakeSpan(data, size);
-  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
-  UnpackIntN(bits_per_element, src, dst);
-  return buffer;
+  UnpackIntNHwy(bits_per_element, input, output);
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.

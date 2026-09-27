@@ -50,12 +50,16 @@ inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 inline constexpr absl::string_view kUseMultiOutputFusion =
     "xla_cpu_use_multi_output_fusion";
+[[deprecated(
+    "Use DebugOptions::xla_cpu_enable_platform_dependent_math instead.")]]
 inline constexpr absl::string_view kDisablePlatformDependentMath =
     "xla_cpu_disable_platform_dependent_math";
 inline constexpr absl::string_view kDisableTiledEmitter =
     "xla_cpu_disable_tiled_emitter";
+inline constexpr absl::string_view kXlaCpuEnableMsan = "xla_cpu_enable_msan";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
+bool IsMsanEnabled(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
 bool DisableLoopUnrolling(const HloModuleConfig& config);
@@ -71,6 +75,7 @@ bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
 bool UseMultiOutputFusion(const HloModuleConfig& config);
 bool EnableTiledEmitter(const HloModuleConfig& config);
+bool EnableExperimentalTiling(const HloModuleConfig& config);
 
 }  // namespace xla::cpu::options
 

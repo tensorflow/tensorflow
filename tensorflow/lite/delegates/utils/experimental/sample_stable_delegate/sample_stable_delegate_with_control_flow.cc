@@ -487,8 +487,10 @@ TfLiteStatus SampleStableDelegate::PrepareControlFlow(
       continue;
     }
     for (int callee_subgraph_index : callee_subgraph_indices) {
-      TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
-          opaque_context, callee_subgraph_index);
+      TfLiteStatus status =
+          TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
+              opaque_context, callee_subgraph_index);
+      if (status != kTfLiteOk) return status;
     }
   }
 

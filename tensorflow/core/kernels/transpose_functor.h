@@ -236,7 +236,8 @@ absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
       break;
 
     default:
-      return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
+      return absl::UnimplementedError(
+          absl::StrCat("Unsupported dtype on CPU: ", in.dtype()));
   }
   return absl::OkStatus();
 }

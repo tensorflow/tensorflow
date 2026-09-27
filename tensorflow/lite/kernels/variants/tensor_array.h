@@ -46,9 +46,13 @@ class TensorArray : public AbstractVariantData<TensorArray> {
   // `RefCountedTensor` in one `memcpy` and increments each of the ref counts.
   TensorArray(const TensorArray& other);
 
+  TensorArray(TensorArray&& other) noexcept;
+
   // Drops the references of `this` and assigns members in the same way
   // as the copy constructor.
   TensorArray& operator=(const TensorArray& other);
+
+  TensorArray& operator=(TensorArray&& other) noexcept;
 
   const TfLiteIntArray* ElementShape() const { return element_shape_.get(); }
 
@@ -57,7 +61,7 @@ class TensorArray : public AbstractVariantData<TensorArray> {
   // Resizes the array for given number of elements. If the length of the array
   // is being decreased, `Drop` the reference to the elements that will no
   // longer be in the array. If index is out of bounds, no effect.
-  void Resize(int num_elements);
+  bool Resize(int num_elements);
 
   // Retrieve the tensor at the given index.
   const TfLiteTensor* At(int index) const;

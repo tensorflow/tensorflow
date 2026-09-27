@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -68,9 +68,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   return std::move(module);
 }
 
-class XLAOpsTest : public HloPjRtTestBase {
+class XLAOpsTest : public HloTestBase {
  public:
-  XLAOpsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  XLAOpsTest() { mlir_context_.loadDialect<xla::XlaDialect>(); }
   mlir::MLIRContext mlir_context_;
 };
 
@@ -88,7 +88,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(dim_constraints.size());
     for (const auto& [expr, range] : dim_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {
@@ -104,7 +104,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(symbol_constraints.size());
     for (const auto& [expr, range] : symbol_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {
@@ -163,8 +163,8 @@ TEST_F(XLAOpsTest, BackendKindGetAndSet) {
       return %arg0 : f32
     }
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseMlirModuleString(kHloModule, &mlir_context_));
   auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(func);
   EXPECT_EQ(GetBackendKind(func), xla::BackendKind::kCpu);
@@ -182,8 +182,8 @@ TEST_F(XLAOpsTest, BackendKindGetAndSet) {
     CHECK:     {xla.backend_kind = #xla.backend_kind<gpu>}
     CHECK-NOT: {xla.backend_kind = #xla.backend_kind<cpu>}
   )";
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(mlir_dump, kExpected));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(mlir_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -195,8 +195,8 @@ TEST_F(XLAOpsTest, BackendKindCannotGetWrongAttributeName) {
       return %arg0 : f32
     }
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseMlirModuleString(kHloModule, &mlir_context_));
   auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(func);
   EXPECT_FALSE(GetBackendKind(func).has_value());

@@ -18,8 +18,12 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -68,10 +72,10 @@ void AddNVariant(OpKernelContext* ctx,
     // Step 1: ensure unary variants.
     OP_REQUIRES(
         ctx, ctx->input(i).dims() == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "AddN of non-scalar Tensor with dtype=DT_VARIANT is not "
             "supported; inputs[",
-            i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
+            i, " has shape: ", ctx->input(i).shape().DebugString(), ".")));
   }
 
   // Step 2: Sum input variants in a tree-like structure using

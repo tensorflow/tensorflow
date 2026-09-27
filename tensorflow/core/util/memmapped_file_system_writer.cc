@@ -30,19 +30,19 @@ absl::Status MemmappedFileSystemWriter::InitializeToFile(
 absl::Status MemmappedFileSystemWriter::SaveTensor(
     const Tensor& tensor, const std::string& element_name) {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: saving tensor into not opened file");
   }
   if (!MemmappedFileSystem::IsWellFormedMemmappedPackageFilename(
           element_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "MemmappedEnvWritter: element_name is invalid: must have memmapped ",
         "package prefix ", MemmappedFileSystem::kMemmappedPackagePrefix,
-        " and include [A-Za-z0-9_.]");
+        " and include [A-Za-z0-9_.]"));
   }
   const auto tensor_data = tensor.tensor_data();
   if (tensor_data.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "MemmappedEnvWritter: saving tensor with 0 size");
   }
   // Adds pad for correct alignment after memmapping.
@@ -58,16 +58,16 @@ absl::Status MemmappedFileSystemWriter::SaveTensor(
 absl::Status MemmappedFileSystemWriter::SaveProtobuf(
     const protobuf::MessageLite& message, const std::string& element_name) {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: saving protobuf into not opened file");
   }
   if (!MemmappedFileSystem::IsWellFormedMemmappedPackageFilename(
           element_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "MemmappedEnvWritter: element_name is invalid: must have memmapped "
         "package prefix ",
         MemmappedFileSystem::kMemmappedPackagePrefix,
-        " and include [A-Za-z0-9_.]");
+        " and include [A-Za-z0-9_.]"));
   }
   const std::string encoded = message.SerializeAsString();
   AddToDirectoryElement(element_name, encoded.size());
@@ -91,7 +91,7 @@ absl::string_view EncodeUint64LittleEndian(uint64_t val, char* output_buffer) {
 
 absl::Status MemmappedFileSystemWriter::FlushAndClose() {
   if (!output_file_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "MemmappedEnvWritter: flushing into not opened file");
   }
   const std::string dir = directory_.SerializeAsString();

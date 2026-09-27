@@ -60,10 +60,12 @@ struct PointerAlignedPointerPair {
 
 class ResizableAlignedBuffer {
  public:
-  ResizableAlignedBuffer(size_t alignment, int subgraph_index)
+  ResizableAlignedBuffer(size_t alignment, int subgraph_index,
+                         TfLiteAllocator* allocator = nullptr)
       : buffer_{nullptr, nullptr},
         data_size_(0),
         alignment_(alignment),
+        allocator_(allocator),
         subgraph_index_(subgraph_index) {
     // To silence unused private member warning, only used with
     // TF_LITE_TENSORFLOW_PROFILER
@@ -73,9 +75,11 @@ class ResizableAlignedBuffer {
   ~ResizableAlignedBuffer() { Release(); }
 
   // Resizes the buffer to make sure new_size bytes fit in the buffer. Keeps
-  // alignment and any existing the data. Returns true when any external
-  // pointers into the data array need to be adjusted (the buffer was moved).
-  bool Resize(size_t new_size);
+  // alignment and any existing the data. Returns kTfLiteError without
+  // modifying the existing allocation if the resize fails. Sets
+  // `buffer_reallocated` when any external pointers into the data array need to
+  // be adjusted (the buffer was moved).
+  TfLiteStatus Resize(size_t new_size, bool* buffer_reallocated);
   // Releases any allocated memory.
   void Release();
 
@@ -96,6 +100,7 @@ class ResizableAlignedBuffer {
   PointerAlignedPointerPair buffer_;
   size_t data_size_;
   size_t alignment_;
+  TfLiteAllocator* allocator_;
 
   int subgraph_index_;
 };
@@ -107,10 +112,11 @@ class ResizableAlignedBuffer {
 // zero-sized allocations are explicitly allowed, and will resolve to null.
 class SimpleMemoryArena {
  public:
-  explicit SimpleMemoryArena(size_t arena_alignment, int subgraph_index = 0)
+  explicit SimpleMemoryArena(size_t arena_alignment, int subgraph_index = 0,
+                             TfLiteAllocator* allocator = nullptr)
       : committed_(false),
         high_water_mark_(0),
-        underlying_buffer_(arena_alignment, subgraph_index),
+        underlying_buffer_(arena_alignment, subgraph_index, allocator),
         active_allocs_() {}
 
   // Delete all allocs. This should be called when allocating the first node of

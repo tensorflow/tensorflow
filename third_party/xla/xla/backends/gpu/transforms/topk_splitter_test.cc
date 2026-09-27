@@ -28,12 +28,12 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
@@ -45,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using TopkSplitterTest = HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>;
+using TopkSplitterTest = HloInterpreterReferenceMixin<HloPjRtGpuTestBase>;
 using HardwareIndependentTopkSplitterTest = HloHardwareIndependentTestBase;
 
 constexpr absl::string_view kComparator = R"(
@@ -56,7 +56,7 @@ constexpr absl::string_view kComparator = R"(
     %broadcast.40631 = pred[] broadcast(pred[] %constant.40630), dimensions={}
     %p.0.lhs.40626 = f32[] parameter(0)
     %p.0.rhs.40627 = f32[] parameter(1)
-    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, type=TOTALORDER
+    %compare.40632 = pred[] compare(f32[] %p.0.lhs.40626, f32[] %p.0.rhs.40627), direction=GT, order=TOTAL
     ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
   })";
 

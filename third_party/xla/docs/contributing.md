@@ -107,6 +107,41 @@ the XLA runner could load and execute the program. That means that there should
 be no pointers to `HloInstruction` or to other parts of the compiler or the
 `StreamExecutor`.
 
+##### GPU Compatibility Window {#gpu-compatibility-window}
+
+XLA:GPU guarantees the following compatibility windows between the compiler
+that produces a serialized program and the runtime that executes it:
+
+*   **6 months backward compatibility**: a runtime must be able to execute
+    programs compiled by a version of XLA up to 6 months older.
+*   **2 weeks forward compatibility**: a program compiled by a newer version of
+    XLA must run on a runtime that is up to 2 weeks older.
+
+**Backward compatibility** means the runtime must keep executing everything
+older compilers may have emitted, so existing thunks must not be removed from
+the runtime. To retire a thunk, first stop emitting it from the compiler, and
+only remove its runtime support 6 months later.
+
+**Forward compatibility** means the compiler must not emit anything the runtime
+cannot yet deserialize or execute. Changes that affect the serialized thunk
+sequence, such as adding a new thunk kind or a field the runtime must
+understand, must therefore land in two stages:
+
+1.  **Runtime first.** Add the thunk, its proto definitions, and
+    deserialization support, without emitting it from the compiler.
+2.  **Compiler after 2 weeks.** Once the runtime change has been submitted for
+    at least 2 weeks, enable emission in the compiler (e.g. thunk emitter, HLO
+    passes that produce the new op).
+
+There are two ways to do this:
+
+*   Split the change into two PRs and send the compiler PR once the runtime
+    change is 2 weeks old.
+*   Land both in a single PR, but guard the compiler side behind a
+    [feature flag](#code-standards) that is off by default, and flip it in a
+    follow-up after 2 weeks. This also lets you test the full path end to end
+    in the meantime.
+
 ### Code standards
 
 *   *Coding style*: We follow [Google's code style guide](https://google.github.io/styleguide/).
@@ -120,7 +155,9 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
     Doing so will greatly increase the speed at which you can get your code
     merged due to improve reviewability, and reducing the likelihood of
     unintentional side effects of change. Even if you have a large change, there
-    are many strategies for breaking it up into more incremental changes.
+    are many strategies for breaking it up into more incremental changes. If
+    your PR is too large, it will receive an automated comment asking you to
+    break it down into smaller PRs.
 
 *   *Test Coverage*: All changes should include appropriate unit tests. Unit
     tests should not be dependent on specific hardware (CPU, GPU, etc.) timings,
@@ -131,6 +168,11 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
 
     All changes should include appropriate benchmark results as well in the
     change title to ensure the benefits are clearly understood.
+
+*   *Feature Flags*: All somewhat complicated new features should be guarded
+    with a flag first (e.g., via `DebugOptions`). This allows for easy rollback
+    of the flag flip if problems arise, and affected users can temporarily
+    set the flag themselves before a rollback is performed.
 
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place
@@ -148,20 +190,77 @@ information on using pull requests.
     optional and it is critical that the submitter ensure their code conforms
     before requesting review in order to assure timely acceptance of changes.
 
-*   *All tests must pass*. If you find that a test is broken and the issue is not
-    related to your build environment or otherwise your changes, please contact
-    the maintainers.
+*   *All tests and additional checks on GitHub must pass*. If you find that a
+    test is broken and the issue is not related to your build environment or
+    otherwise your changes, please contact the maintainers.
 
-*   Try to avoid scope creep during the review process. This is the
+*   Avoid scope creep during the review process. This is the
     responsibility of both the submitter and the reviewer. If a change starts to
     get too large, consider breaking it up into multiple changes.
 
-*   Before a change is merged, it will undergo internal testing that uses code
+*   After a change is approved on GitHub but before it is merged, it will
+    undergo internal testing that uses code
     internal to Google and other hardware vendors. This can potentially add extra
     steps to the review process if there are failures on internal tests that our
     public CI doesn't catch. The Googler reviewing your change will communicate
-    any internal test failures and describe what needs to be fixed.
+    any internal test failures and describe what needs to be fixed. The overall
+    state of the internal checks is visible in the checks list on GitHub:
+    - *import/copybara — Change imported to the internal review system*:
+    Your PR has been imported in Google's internal system and checks are
+    running.
+    - *import/copybara — An error happened while migrating the change*: Your PR
+    could not be imported into Google's internal system. This very rarely
+    happens. If you see this state please ping your reviewer.
+    - *feedback/copybara — Google internal checks PASS for runs with create time...*:
+    All internal checks pass. Your PR should be merged soon.
+    - *feedback/copybara — Google internal checks FAILED for runs with create time ...*:
+    Some internal checks failed. A Google engineer will soon post a comment with
+    more details. If you don't get any info about the failures within a day
+    please ping your reviewer.
 
+### AI-generated contributions
+
+AI-generated PRs can be accepted in many cases. However, we experience a
+large review load due to AI-generated code and we do not want to waste valuable
+time reviewing PRs that are not beneficial to the broader community. To
+streamline code reviews, each AI-generated PR should be:
+
+  * **Labeled** - The first line after the title in the PR description should
+    be this tag: ```#ai-generated```
+  * **Relevant** - Just because a PR can be generated does not mean it should be
+    submitted. We do not want to merge PRs that only defend against theoretical
+    edge cases without providing any real value. Such "fixes" only clutter the
+    code-base. You can demonstrate the relevance of a PR by providing the
+    following:
+      - A convincing explanation of where you encountered the problem in
+        practice.
+      - A convincing HLO or especially JAX test.
+      - Realistic benchmarks showing improvements.
+  * **Understood by its author** - PR authors must understand all the code in
+    their PRs in detail regardless of whether it was generated by AI or not.
+    Moreover, if we ask questions about the PR we expect a human-written answer.
+
+  * **Concise** - The PR description should be short and to the point. AI often
+    generates long-winded text with superfluous detail and this needs to be
+    edited for brevity. The same applies to code and comments (e.g. don't
+    check for error conditions that can't occur).
+
+> WARNING: **Expect longer review times for AI-generated PRs.**
+>
+> If we suspect that a PR is AI-generated and it does not have the qualities
+> above **we may reject** it or ask you to revise it with this canned
+> response:
+>
+> ```
+> This looks like an AI-generated PR that does not fully follow the guidance at:
+> https://openxla.org/xla/contributing#ai-generated-contributions
+>
+> Please revise the PR according to the guidance above or it will be rejected.
+> ```
+>
+> If we receive an AI-generated answer to one of our comments or
+> questions on the PR, the PR will be immediately rejected without further
+> discussion.
 
 ## Frequently asked questions (FAQ)
 
@@ -217,3 +316,48 @@ There are a few reasons that XLA takes this approach.
     such that it is truly orthogonal to the original PR so that some other
     reviewer could review it, bandwidth would be less of a problem. In our
     experience, this is rarely the case.
+
+### What is the turn around time for code review and merge?
+
+The OpenXLA project has a large contributor base. While we strive for quick
+reviews and code merges, there are delays due to peaks of work.
+
+In order to empower our partner teams to contribute high quality features and
+fixes to the codebase, and to get quicker reviews and merges, we have
+established the co-maintainer program. In this program, selected trusted partner
+contributors ensure that the PRs submitted by those partners meet OpenXLA
+quality requirements as specified in this contributing guide.
+
+If co-maintainers from external partner teams have approved a PR, the Google XLA
+team commits to reviewing and merging (if approved) within a controlled SLO
+(**t<sub>Google Review</sub>** in the diagram below). If the PR is not approved,
+the Google XLA team will provide a documented justification and where available
+a reproducer of the failure.
+
+At this moment the list of co-maintainers from our partner teams is:
+
+*   [@Tixxx](https://github.com/Tixxx)
+*   [@sergachev](https://github.com/sergachev)
+*   [@jreiffers](https://github.com/jreiffers)
+*   [@ezhulenev](https://github.com/ezhulenev)
+*   [@mminutoli](https://github.com/mminutoli)
+*   [@pemeliya](https://github.com/pemeliya)
+
+![img](./images/comaintainers.png)
+
+| Percentile | Target for **t<sub>Google Review</sub>** (co-maintainer approval to PR merged) |
+| --- | --- |
+| 50 percentile of PRs | 3 business days |
+| 80 percentile of PRs | 5 business days |
+
+When Google reviews the PR, it may fail due to an internal test. In this case,
+Google will try to generate a reproducer and share it with the partner. In other
+cases, the review may fail for technical, architectural or stylish reasons -
+Google will share the feedback with the author. We expect that if the PR is
+rejected in the first pass, we will enter a tight loop iteration between the
+partner team and Google (“Iterative review”) to bring the PR to the desired
+state.
+
+The OpenXLA project is committed to strengthening its co-maintainer program and
+adding more contributors to this list. We plan to review on a monthly basis the
+target turnaround times and report back to the participating teams.

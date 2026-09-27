@@ -1,3 +1,18 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Build rules for ROCm-Device-Libs bitcode libraries."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
@@ -19,10 +34,15 @@ def _bitcode_library_impl(ctx):
 
             extra_flags = ctx.attr.file_specific_flags.get(src.basename, [])
             include_flags = ["-I{}".format(dir) for dir in include_dirs]
-            include_flags += ["-I{}".format(ctx.files._clang_header[0].dirname)]
-            include_flags += ["-I{}".format(ctx.files._clang_includes[0].dirname)]
 
-            # https://github.com/ROCm/llvm-project/blob/679865ee84553d564ad0551d878196e58c9d03f3/amd/device-libs/cmake/OCL.cmake#L33
+            clang_header_dir = ctx.files._clang_header[0].dirname
+            clang_includes_dir = ctx.files._clang_includes[0].dirname
+            include_flags += ["-I{}".format(clang_header_dir)]
+            include_flags += ["-I{}".format(clang_includes_dir)]
+            include_flags += ["-isystem", clang_header_dir]
+            include_flags += ["-isystem", clang_includes_dir]
+
+            # https://github.com/ROCm/llvm-project/blob/c7235dceaf25c6ef9ad8bcae4b4a10a3ac691588/amd/device-libs/cmake/OCL.cmake#L33
             args = [
                 "-fcolor-diagnostics",
                 "-Werror",
@@ -36,6 +56,7 @@ def _bitcode_library_impl(ctx):
                 "-fomit-frame-pointer",
                 "-Xclang",
                 "-finclude-default-header",
+                "-nostdlibinc",
                 "-Xclang",
                 "-fexperimental-strict-floating-point",
                 "-Xclang",

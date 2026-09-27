@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_MAP_DEFUN_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_MAP_DEFUN_OP_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {

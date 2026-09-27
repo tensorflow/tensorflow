@@ -81,8 +81,8 @@ DeviceCompilationProfiler::GetCompileStats(const NameAttrList& function) const {
     return it->second;
   }
 
-  return errors::NotFound("Couldn't find compilation stats for cluster: ",
-                          function.name());
+  return absl::NotFoundError(absl::StrCat(
+      "Couldn't find compilation stats for cluster: ", function.name()));
 }
 
 void DeviceCompilationProfiler::RegisterExecution(
@@ -96,8 +96,8 @@ void DeviceCompilationProfiler::RegisterExecution(
 
 absl::Status DeviceCompilationProfiler::RegisterCompilation(
     const NameAttrList& function, int64_t compile_time_us,
-    bool used_persistent_cache) {
-  metrics::UpdateXlaCompilationTime(compile_time_us);
+    bool used_persistent_cache, int64_t compile_end_us) {
+  metrics::UpdateXlaCompilationTime(compile_time_us, compile_end_us);
 
   const std::string& function_name = function.name();
 

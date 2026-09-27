@@ -32,9 +32,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -407,7 +409,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           RecordStart(ctx);
         }
       }
-      return errors::Cancelled(
+      return absl::CancelledError(
           "ParallelInterleaveDatasetOp::Dataset::Iterator::GetNext");
     }
 
@@ -486,8 +488,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         // Restore WorkerStates.
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kWorkersSize, &temp));
         if (temp != dataset()->num_threads()) {
-          return errors::Internal("Expected ", dataset()->num_threads(),
-                                  " worker states but found ", temp, ".");
+          return absl::InternalError(
+              absl::StrCat("Expected ", dataset()->num_threads(),
+                           " worker states but found ", temp, "."));
         }
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
           TF_RETURN_IF_ERROR(ReadWorkerStateLocked(ctx, reader, i));
@@ -532,9 +535,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               prefix(), absl::StrCat(kInterleaveIndices, "_", i), &temp));
           if (temp >= 0 && all_indices.find(temp) != all_indices.end()) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "Duplicate entry for ", temp,
-                " found when reading interleave and staging indices.");
+                " found when reading interleave and staging indices."));
           }
           if (temp >= 0) {
             all_indices.insert(temp);
@@ -553,9 +556,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               prefix(), absl::StrCat(kStagingIndices, "_", i), &temp));
           if (all_indices.find(temp) != all_indices.end()) {
-            return errors::Internal(
+            return absl::InternalError(absl::StrCat(
                 "Duplicate entry for ", temp,
-                " found when reading interleave and staging indices.");
+                " found when reading interleave and staging indices."));
           }
           if (temp >= 0) {
             all_indices.insert(temp);
@@ -569,9 +572,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         worker_threads_.reserve(dataset()->num_threads());
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-          worker_threads_.emplace_back(ctx->StartThread(
+          worker_threads_.emplace_back(Env::Default()->StartThread(
+              /*thread_options=*/{},
               absl::StrCat(kDataParallelInterleaveWorker, "_", i),
-              [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
+              tsl::WithCurrentContext(
+                  [this, new_ctx, i]() { WorkerThread(new_ctx, i); })));
         }
       }
       return absl::OkStatus();
@@ -662,7 +667,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
-      cancellation_manager_->StartCancel();
+      if (cancellation_manager_ != nullptr) {
+        cancellation_manager_->StartCancel();
+      }
       mutex_lock l(mu_);
       cancelled_ = true;
       for (auto& worker : workers_) {
@@ -689,9 +696,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           }
           workers_[i].SetInputs(s, std::move(args));
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-          worker_threads_.push_back(ctx->StartThread(
+          worker_threads_.emplace_back(Env::Default()->StartThread(
+              /*thread_options=*/{},
               absl::StrCat(kDataParallelInterleaveWorker, "_", i),
-              [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
+              tsl::WithCurrentContext(
+                  [this, new_ctx, i]() { WorkerThread(new_ctx, i); })));
         }
         DCHECK(interleave_indices_.size() == dataset()->cycle_length_);
         DCHECK(staging_indices_.size() == dataset()->prefetch_input_elements_);
@@ -1250,12 +1259,12 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   OP_REQUIRES(ctx, cycle_length > 0,
-              errors::InvalidArgument("`cycle_length` must be > 0"));
+              absl::InvalidArgumentError("`cycle_length` must be > 0"));
 
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
-              errors::InvalidArgument("`block_length` must be > 0"));
+              absl::InvalidArgumentError("`block_length` must be > 0"));
 
   if (op_version_ == 1) {
     bool sloppy = false;
@@ -1272,15 +1281,16 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64_t buffer_output_elements = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBufferOutputElements,
                                           &buffer_output_elements));
-  OP_REQUIRES(ctx, buffer_output_elements > 0,
-              errors::InvalidArgument("`buffer_output_elements` must be > 0"));
+  OP_REQUIRES(
+      ctx, buffer_output_elements > 0,
+      absl::InvalidArgumentError("`buffer_output_elements` must be > 0"));
 
   int64_t prefetch_input_elements = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,
                                           &prefetch_input_elements));
   OP_REQUIRES(
       ctx, prefetch_input_elements >= 0,
-      errors::InvalidArgument("`prefetch_input_elements` must be >= 0"));
+      absl::InvalidArgumentError("`prefetch_input_elements` must be >= 0"));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

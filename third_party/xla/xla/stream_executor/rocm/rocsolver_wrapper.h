@@ -1,4 +1,4 @@
-/* Copyright 2020 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,57 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file wraps rocsolver API calls with dso loader so that we don't need to
-// have explicit linking to librocsolver. All TF hipsarse API usage should route
-// through this wrapper.
-
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rocsolver/rocsolver.h"
-#else
-#include "rocm/include/rocsolver.h"
-#endif
-
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
+#include "rocm/rocm_config.h"
 
 namespace stream_executor {
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
-
-#define ROCSOLVER_API_WRAPPER(api_name)                        \
-  template <typename... Args>                                  \
-  auto api_name(Args... args)->decltype(::api_name(args...)) { \
-    return ::api_name(args...);                                \
-  }
-
-#else
-
-#define TO_STR_(x) #x
-#define TO_STR(x) TO_STR_(x)
-
-#define ROCSOLVER_API_WRAPPER(api_name)                                    \
-  template <typename... Args>                                              \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) {           \
-    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;         \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char* kName = TO_STR(api_name);                         \
-      void* f;                                                             \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
-          tsl::internal::CachedDsoLoader::GetRocsolverDsoHandle().value(), \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in rocsolver lib; dlerror: " << s.message();      \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
-  }
-
-#endif
+#define ROCSOLVER_API_WRAPPER(api_name) using ::api_name;
 
 // clang-format off
 #define FOREACH_ROCSOLVER_API(__macro)      \
@@ -107,8 +66,6 @@ namespace wrap {
 
 FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)
 
-#undef TO_STR_
-#undef TO_STR
 #undef FOREACH_ROCSOLVER_API
 #undef ROCSOLVER_API_WRAPPER
 

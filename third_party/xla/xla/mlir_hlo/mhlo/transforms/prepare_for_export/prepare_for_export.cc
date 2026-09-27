@@ -16,7 +16,6 @@ limitations under the License.
 // This file implements logic for some optimizations to reduce size on export.
 
 #include <cassert>
-#include <complex>
 #include <cstdint>
 
 #include "llvm/ADT/STLExtras.h"
@@ -70,7 +69,7 @@ void prepareConstantOp(Operation* op, SplatElementsAttr attr) {
     auto tensorType = RankedTensorType::get({}, returnType.getElementType());
     assert(mlir::isa<FloatType>(complexTy.getElementType()) &&
            "unexpected int complex in MHLO");
-    auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
+    auto complexVal = attr.getSplatValue<mlir::Complex<APFloat>>();
     cst = ConstantOp::create(b, DenseElementsAttr::get(tensorType, complexVal));
   } else {
     cst = ConstantOp::create(b, attr.getSplatValue<Attribute>());

@@ -92,9 +92,9 @@ void ReluTestImpl() {
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
-              ElementsAreArray(
-                  ArrayFloatNear({1.0, 5.0, 6.0}, /*max_abs_error=*/0.03)));
+  EXPECT_THAT(
+      model.GetDequantizedOutput<integer_type>(),
+      ElementsAreArray(ArrayFloatNear({1.0, 5.0, 6.0}, /*max_abs_err=*/0.03)));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -108,9 +108,9 @@ void Relu6TestImpl() {
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
-              ElementsAreArray(
-                  ArrayFloatNear({4.0, 0.0, 6.0}, /*max_abs_error=*/0.03)));
+  EXPECT_THAT(
+      model.GetDequantizedOutput<integer_type>(),
+      ElementsAreArray(ArrayFloatNear({4.0, 0.0, 6.0}, /*max_abs_err=*/0.03)));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -127,7 +127,7 @@ void TanhTestImpl() {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
   EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear({1.00392, -0.752941, 1.00392},
-                                              /*max_abs_error=*/0.03)));
+                                              /*max_abs_err=*/0.03)));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -150,7 +150,7 @@ void SigmoidTestImpl() {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
   EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear({0.977, 0.266, 0.996},
-                                              /*max_abs_error=*/0.03)));
+                                              /*max_abs_err=*/0.03)));
 }
 
 TEST(ActivationOpModel, ReluOutput_UInt8) {

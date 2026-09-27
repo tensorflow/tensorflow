@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -53,6 +68,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -141,10 +157,9 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_compile",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
@@ -155,9 +170,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@xla//xla:shape_util",
         "@xla//xla:status_macros",
-        "@xla//xla/client:compile_only_client",
         "@xla//xla/hlo/ir:hlo",
         "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt/proto:compile_options_proto_cc",
         "@xla//xla/service:hlo_proto_cc",
     ],
@@ -198,11 +213,9 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@xla//xla:shape_util",
-        "@xla//xla/client:client_library",
         "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@xla//xla/stream_executor:platform",
-        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:errors",
@@ -237,6 +250,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -283,6 +297,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/core:framework",
@@ -291,6 +306,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

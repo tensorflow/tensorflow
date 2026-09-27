@@ -136,7 +136,7 @@ class Feature {
       default:
         // Initialize variable to avoid compiler warning
         *dtype = DT_INVALID;
-        return errors::InvalidArgument("Unsupported datatype.");
+        return absl::InvalidArgumentError("Unsupported datatype.");
     }
     return absl::OkStatus();
   }
@@ -267,8 +267,10 @@ class Feature {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32_t buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->data()[index] = absl::bit_cast<float>(buffer32);
-          ++index;
+          if (index < static_cast<int64_t>(float_list->size())) {
+            float_list->data()[index] = absl::bit_cast<float>(buffer32);
+            ++index;
+          }
         }
       }
     }
@@ -475,15 +477,20 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
         return -1;
       }
       if (out == nullptr) {
-        stream->Skip(bytes_length);
+        if (!stream->Skip(bytes_length)) {
+          return -1;
+        }
       } else {
+        if (static_cast<int64_t>(bytes_length) > stream->BytesUntilLimit()) {
+          return -1;
+        }
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-        out++;
+        ++out;
       }
-      num_elements++;
+      ++num_elements;
     }
     stream->PopLimit(limit);
   }

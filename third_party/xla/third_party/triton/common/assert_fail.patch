@@ -1,0 +1,35 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+--- a/python/triton/experimental/gsan/src/GSanLibrary.cu
++++ b/python/triton/experimental/gsan/src/GSanLibrary.cu
+@@ -6,11 +6,12 @@ extern "C" GSAN_DEVICE void __assertfail(const char *assertion,
+                                          const char *function,
+                                          __SIZE_TYPE__ charSize);
+ 
+-static GSAN_DEVICE inline void __assert_fail(const char *assertion,
+-                                             const char *file, unsigned line,
+-                                             const char *function) {
+-  __assertfail(assertion, file, line, function, sizeof(char));
+-}
++// Collides with __clang_cuda_runtime_wrapper.h's definition
++// static GSAN_DEVICE inline void __assert_fail(const char *assertion,
++//                                              const char *file, unsigned line,
++//                                              const char *function) {
++//   __assertfail(assertion, file, line, function, sizeof(char));
++// }
+ 
+ namespace gsan {
+ 
+

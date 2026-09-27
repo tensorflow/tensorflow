@@ -20,11 +20,14 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
 
@@ -104,9 +107,62 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
-          _WINDOW_LENGTHS,
-          (False, True),
-          _TF_DTYPE_TOLERANCE))
+          _WINDOW_LENGTHS, (4.0, 8.0, 10.0, 12.0), _TF_DTYPE_TOLERANCE
+      )
+  )
+  def test_kaiser_window_negative_beta(self, window_length, beta, tf_dtype_tol):
+    """Check that kaiser_window handles negative beta same as positive beta."""
+    pos_beta_win = window_ops.kaiser_window(
+        window_length, beta, tf_dtype_tol[0]
+    )
+    neg_beta_win = window_ops.kaiser_window(
+        window_length, -beta, tf_dtype_tol[0]
+    )
+    self.assertAllClose(
+        pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1]
+    )
+
+  def test_kaiser_window_second_derivative_at_zero_beta(self):
+    """Check that kaiser_window is twice differentiable at beta == 0.
+
+    The window equals I0(beta * s) / I0(beta), where s does not depend on
+    beta and I0 is an even entire function.  The window is therefore an even
+    analytic function of beta and must have a well defined second derivative
+    at beta == 0.  Applying abs() to beta inside the implementation puts a
+    cusp at the origin, where the second derivative of abs vanishes, and
+    makes this second derivative evaluate to zero.
+    """
+    window_length = 10
+    weights = np.arange(1, window_length + 1, dtype=np.float64) ** 2
+    beta = constant_op.constant(0.0, dtypes.float64)
+
+    def target(beta_value):
+      window = window_ops.kaiser_window(
+          window_length, beta_value, dtypes.float64
+      )
+      return math_ops.reduce_sum(window * weights)
+
+    with backprop.GradientTape() as tape_outer:
+      tape_outer.watch(beta)
+      with backprop.GradientTape() as tape_inner:
+        tape_inner.watch(beta)
+        value = target(beta)
+      first = tape_inner.gradient(value, beta)
+    second = tape_outer.gradient(first, beta)
+
+    # The window is even in beta, so the first derivative vanishes at zero.
+    self.assertAllClose(0.0, first, atol=1e-12)
+    # For window(beta) = I0(beta * s) / I0(beta), the second derivative at
+    # beta == 0 is (s^2 - 1) / 2.
+    halflen = (window_length - 1) / 2.0
+    arg = np.arange(-halflen, halflen + 0.1, dtype=np.float64)
+    shape = np.sqrt(np.maximum(0.0, 1.0 - (arg / halflen) ** 2))
+    expected = np.sum(weights * (shape**2 - 1.0) / 2.0)
+    self.assertAllClose(expected, second, rtol=1e-6, atol=1e-9)
+
+  @parameterized.parameters(
+      itertools.product(_WINDOW_LENGTHS, (False, True), _TF_DTYPE_TOLERANCE)
+  )
   def test_hann_window(self, window_length, periodic, tf_dtype_tol):
     """Check that hann_window matches scipy.signal.hann behavior."""
     # The Hann window is a raised cosine window with parameters alpha=0.5 and
@@ -170,6 +226,26 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     """Check if Kaiser-Bessel derived windows satisfy MDCT window conditions."""
     self._check_mdct_window(window_ops.kaiser_bessel_derived_window(
         window_length, beta=beta, dtype=tf_dtype_tol[0]), tol=tf_dtype_tol[1])
+
+  @parameterized.parameters(
+      itertools.product(
+          _MDCT_WINDOW_LENGTHS, (4.0, 8.0, 10.0, 12.0), _TF_DTYPE_TOLERANCE
+      )
+  )
+  def test_kaiser_bessel_derived_window_negative_beta(
+      self, window_length, beta, tf_dtype_tol
+  ):
+    """Check that it handles negative beta same as positive beta."""
+    pos_beta_win = window_ops.kaiser_bessel_derived_window(
+        window_length, beta, tf_dtype_tol[0]
+    )
+    neg_beta_win = window_ops.kaiser_bessel_derived_window(
+        window_length, -beta, tf_dtype_tol[0]
+    )
+    self.assertAllClose(
+        pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1]
+    )
+
 
 if __name__ == '__main__':
   test.main()

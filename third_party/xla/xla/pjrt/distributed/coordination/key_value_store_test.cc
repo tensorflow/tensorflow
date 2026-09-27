@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 namespace {
@@ -40,9 +40,9 @@ using ::testing::status::StatusIs;
 
 // Converts a list of KeyValueEntries into a list of pairs.
 std::vector<std::pair<std::string, std::string>> AsPairs(
-    absl::Span<const tensorflow::KeyValueEntry> entries) {
+    absl::Span<const xla::coordination::KeyValueEntry> entries) {
   std::vector<std::pair<std::string, std::string>> pairs;
-  for (const tensorflow::KeyValueEntry& entry : entries) {
+  for (const xla::coordination::KeyValueEntry& entry : entries) {
     pairs.push_back({entry.key(), entry.value()});
   }
   return pairs;
@@ -227,6 +227,93 @@ TEST(KeyValueStore, IncrementByWithInvalidValueFails) {
   ASSERT_OK(store.Put("foo", "invalid", /*allow_overwrite=*/true));
   EXPECT_THAT(store.IncrementBy("foo", 2),
               StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
+TEST(KeyValueStore, NormalizeKey) {
+  EXPECT_EQ(KeyValueStore::NormalizeKey("foo"), "foo");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/foo/bar/"), "foo/bar");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/a/b/c/"), "a/b/c");
+  EXPECT_EQ(KeyValueStore::NormalizeKey("/"), "");
+}
+
+TEST(KeyValueStore, CallbackInvokedWithoutMutexOnAddCallbackForKey) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "bar", /*allow_overwrite=*/true));
+
+  bool nested_callback_called = false;
+  store.AddCallbackForKey(
+      "foo", [&](const absl::StatusOr<absl::string_view>& s) {
+        ASSERT_THAT(s, IsOkAndHolds("bar"));
+        // Re-entrant calls should not deadlock.
+        EXPECT_THAT(store.Get("foo"), Optional(Eq("bar")));
+        ASSERT_OK(store.Put("nested", "value", /*allow_overwrite=*/true));
+        store.Delete("foo");
+        store.AddCallbackForKey(
+            "nested", [&](const absl::StatusOr<absl::string_view>& s2) {
+              ASSERT_THAT(s2, IsOkAndHolds("value"));
+              nested_callback_called = true;
+            });
+      });
+
+  EXPECT_TRUE(nested_callback_called);
+  EXPECT_EQ(store.Get("foo"), std::nullopt);
+  EXPECT_THAT(store.Get("nested"), Optional(Eq("value")));
+}
+
+TEST(KeyValueStore, CallbackInvokedWithoutMutexOnPut) {
+  KeyValueStore store;
+  bool callback_called = false;
+
+  store.AddCallbackForKey(
+      "foo", [&](const absl::StatusOr<absl::string_view>& s) {
+        ASSERT_THAT(s, IsOkAndHolds("bar"));
+        // Re-entrant calls inside callback triggered by Put should not
+        // deadlock.
+        EXPECT_THAT(store.Get("foo"), Optional(Eq("bar")));
+        ASSERT_OK(store.Put("nested", "val", /*allow_overwrite=*/true));
+        store.Delete("foo");
+        callback_called = true;
+      });
+
+  ASSERT_OK(store.Put("foo", "bar", /*allow_overwrite=*/true));
+  EXPECT_TRUE(callback_called);
+  EXPECT_EQ(store.Get("foo"), std::nullopt);
+  EXPECT_THAT(store.Get("nested"), Optional(Eq("val")));
+}
+
+TEST(KeyValueStore, CallbackInvokedWithoutMutexOnIncrementBy) {
+  KeyValueStore store;
+  bool callback_called = false;
+
+  store.AddCallbackForKey(
+      "counter", [&](const absl::StatusOr<absl::string_view>& s) {
+        ASSERT_THAT(s, IsOkAndHolds("15"));
+        // Re-entrant calls inside callback triggered by IncrementBy should not
+        // deadlock.
+        EXPECT_THAT(store.Get("counter"), Optional(Eq("15")));
+        ASSERT_OK(store.Put("other", "done", /*allow_overwrite=*/true));
+        callback_called = true;
+      });
+
+  EXPECT_THAT(store.IncrementBy("counter", 15), IsOkAndHolds("15"));
+  EXPECT_TRUE(callback_called);
+  EXPECT_THAT(store.Get("other"), Optional(Eq("done")));
+}
+
+TEST(KeyValueStore, CallbackCanDeleteKeyWithoutDeadlock) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "bar", /*allow_overwrite=*/true));
+
+  bool callback_called = false;
+  store.AddCallbackForKey("foo",
+                          [&](const absl::StatusOr<absl::string_view>& s) {
+                            ASSERT_THAT(s, IsOkAndHolds("bar"));
+                            store.Delete("foo");
+                            callback_called = true;
+                          });
+
+  EXPECT_TRUE(callback_called);
+  EXPECT_EQ(store.Get("foo"), std::nullopt);
 }
 
 }  // namespace

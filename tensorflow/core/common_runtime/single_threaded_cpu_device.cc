@@ -65,7 +65,8 @@ class SingleThreadedCpuDevice : public Device {
                                    Tensor* tensor) override {
     Tensor parsed(tensor_proto.dtype());
     if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
+      return absl::InvalidArgumentError(
+          "Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
     return absl::OkStatus();

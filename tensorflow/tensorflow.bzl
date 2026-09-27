@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides build configuration for TensorFlow."""
 
 load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
@@ -24,6 +39,7 @@ load(
     "if_mkl_ml",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
+    "if_onednn_async",
     "onednn_v3_define",
 )
 load("//tensorflow:tf_version.bzl", "TF_VERSION")
@@ -46,6 +62,9 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
+    _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
+    _tf_cuda_tests_tags = "tf_cuda_tests_tags",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -86,7 +105,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )
@@ -99,7 +118,10 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
+
+tf_cuda_base_tests_tags = _tf_cuda_base_tests_tags
+tf_cuda_tests_tags = _tf_cuda_tests_tags
+tf_cuda_2gpu_tests_tags = _tf_cuda_2gpu_tests_tags
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -278,6 +300,13 @@ def if_not_mobile(a):
     return select({
         clean_dep("//tensorflow:mobile"): [],
         "//conditions:default": a,
+    })
+
+def if_not_tflite_converter(if_true, if_false = []):
+    """Include deps if not tflite_converter."""
+    return select({
+        clean_dep("//tensorflow:tflite_converter"): if_false,
+        "//conditions:default": if_true,
     })
 
 # Config setting selector used when building for products
@@ -464,6 +493,7 @@ def tf_copts(
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
+        if_onednn_async(["-DENABLE_ONEDNN_ASYNC"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
@@ -1714,7 +1744,7 @@ def tf_gpu_cc_test(
             "//conditions:default": 0,
         }),
         suffix = "_gpu",
-        tags = tags + tf_gpu_tests_tags(),
+        tags = tags + tf_cuda_tests_tags(),
         deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
@@ -1722,7 +1752,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + two_gpu_tags
+        cleaned_tags = tags + tf_cuda_2gpu_tests_tags()
         if "requires-gpu-nvidia" in cleaned_tags:
             cleaned_tags.remove("requires-gpu-nvidia")
         tf_cc_test(
@@ -2841,9 +2871,9 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_tags = test_tags + tf_gpu_tests_tags()
+            test_tags = test_tags + tf_cuda_tests_tags()
         if config == "2gpu":
-            test_tags = test_tags + two_gpu_tags
+            test_tags = test_tags + tf_cuda_2gpu_tests_tags()
             if "requires-gpu-nvidia" in test_tags:
                 test_tags.remove("requires-gpu-nvidia")
 
@@ -2998,16 +3028,19 @@ _local_exec_transition = transition(
 )
 
 def _local_genrule_impl(ctx):
+    exec_tool_file = ctx.file.exec_tool_cross if ctx.file.exec_tool_cross else ctx.file.exec_tool_local
+
+    env = dict(ctx.configuration.default_shell_env)
+
     ctx.actions.run_shell(
-        mnemonic = "TensorflowLocalGenrule",
+        mnemonic = "LocalGenrule",
         outputs = [ctx.outputs.out],
-        inputs = [f for t in ctx.attr.srcs for f in t.files.to_list()],
-        tools = [ctx.executable.exec_tool],
-        arguments = [f.path for t in ctx.attr.srcs for f in t.files.to_list()] +
-                    [ctx.outputs.out.path],
-        command = "%s %s" % (ctx.executable.exec_tool.path, ctx.attr.arguments),
+        inputs = ctx.files.srcs + [exec_tool_file],
+        arguments = [f.path for f in ctx.files.srcs] + [ctx.outputs.out.path],
+        command = "if command -v python3 &>/dev/null; then python3 %s %s; else python %s %s; fi" % (exec_tool_file.path, ctx.attr.arguments, exec_tool_file.path, ctx.attr.arguments),
         execution_requirements = {"no-remote-exec": ""},
         use_default_shell_env = True,
+        env = env,
     )
 
 # A genrule that executes locally and forces the tool it runs to be built locally.
@@ -3021,10 +3054,13 @@ _local_genrule_internal = rule(
     implementation = _local_genrule_impl,
     attrs = {
         "out": attr.output(),
-        "exec_tool": attr.label(
-            executable = True,
+        "exec_tool_local": attr.label(
             cfg = _local_exec_transition,
-            allow_files = True,
+            allow_single_file = True,
+        ),
+        "exec_tool_cross": attr.label(
+            cfg = "exec",
+            allow_single_file = True,
         ),
         "arguments": attr.string(),
         "srcs": attr.label_list(
@@ -3035,10 +3071,18 @@ _local_genrule_internal = rule(
 )
 
 # Wrap the rule in a macro so we can pass in exec_compatible_with.
-def _local_genrule(**kwargs):
+def _local_genrule(exec_tool, **kwargs):
     tags = kwargs.pop("tags", [])
     tags = tags + ["no-remote-exec"]
     _local_genrule_internal(
+        exec_tool_local = select({
+            clean_dep("//tensorflow:linux_arm64_cross_compile"): None,
+            "//conditions:default": exec_tool,
+        }),
+        exec_tool_cross = select({
+            clean_dep("//tensorflow:linux_arm64_cross_compile"): exec_tool,
+            "//conditions:default": None,
+        }),
         tags = tags,
         **kwargs
     )
@@ -3050,7 +3094,7 @@ def tf_version_info_genrule(name, out, compatible_with = None):
         name = name,
         out = out,
         compatible_with = compatible_with,
-        exec_tool = "//tensorflow/tools/git:gen_git_source",
+        exec_tool = "//tensorflow/tools/git:gen_git_source.py",
         srcs = [
             "@local_config_git//:gen/spec.json",
             "@local_config_git//:gen/head",
@@ -3067,7 +3111,7 @@ def tf_py_build_info_genrule(name, out):
     _local_genrule(
         name = name,
         out = out,
-        exec_tool = "//tensorflow/tools/build_info:gen_build_info",
+        exec_tool = "//tensorflow/tools/build_info:gen_build_info.py",
         arguments =
             "--raw_generate \"$@\" " +
             " --key_value" +
@@ -3382,7 +3426,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@clog//:__subpackages__",
         "@com_github_cares_cares//:__subpackages__",
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
-        "@com_github_grpc_grpc//:__subpackages__",
+        "@grpc//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_googleapis//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",
@@ -3415,7 +3459,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_tensorrt//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
-        "@onednn//:__subpackages__",
+        "@onednn_async//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3517,12 +3561,12 @@ def tf_monitoring_framework_deps(link_to_tensorflow_framework = True):
       Currently in OSS, the protos must be statically linked to the tensorflow
       framework, whereas the grpc should not be linked here.
     """
-    return select({
+    return if_oss(select({
         "//tensorflow:stackdriver_support": [
             "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter_protos",
         ],
         "//conditions:default": [],
-    })
+    }))
 
 def tf_monitoring_python_deps():
     """Get the monitoring libs that will be linked to the python wrapper.
@@ -3530,12 +3574,12 @@ def tf_monitoring_python_deps():
       Currently in OSS, the grpc must be statically linked to the python wrapper
       whereas the protos should not be linked here.
     """
-    return select({
+    return if_oss(select({
         "//tensorflow:stackdriver_support": [
             "@com_github_googlecloudplatform_tensorflow_gcp_tools//monitoring:stackdriver_exporter",
         ],
         "//conditions:default": [],
-    })
+    }))
 
 # Teams sharing the same repo can provide their own ops_to_register.h file using
 # this function, and pass in -Ipath/to/repo flag when building the target.

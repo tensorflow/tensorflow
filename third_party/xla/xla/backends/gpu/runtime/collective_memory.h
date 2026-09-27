@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
@@ -59,7 +60,7 @@ class CollectiveMemory {
 
   CollectiveMemory(
       const BufferAllocations& buffers,
-      absl::flat_hash_map<Key, std::unique_ptr<SymmetricMemory>> sym_memories,
+      absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories,
       absl::flat_hash_map<Key, MulticastMemory> mcast_memories,
       absl::flat_hash_map<Key, PeerMemory> peer_memories);
 
@@ -67,6 +68,11 @@ class CollectiveMemory {
   // corresponds to the given buffer allocation index.
   std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
       const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
+
+  // Returns a symmetric memory and offset in that symmetric memory that
+  // corresponds to the given buffer allocation slice.
+  std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
+      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
 
   // Returns a symmetric memory and offset in that symmetric memory that
   // corresponds to the given device address.
@@ -77,6 +83,11 @@ class CollectiveMemory {
   // corresponds to the given buffer allocation index.
   std::pair<void*, size_t> FindMultimemAddress(
       const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
+
+  // Returns a multimem address and offset from that multimem address that
+  // corresponds to the given buffer allocation slice.
+  std::pair<void*, size_t> FindMultimemAddress(
+      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
 
   // Returns a multimem address and offset from that multimem address that
   // corresponds to the given device address.
@@ -88,6 +99,12 @@ class CollectiveMemory {
       const GpuCliqueKey& clique, RankId rank,
       BufferAllocation::Index allocation) const;
 
+  // Returns a peer address that corresponds to the given buffer allocation
+  // slice.
+  std::optional<se::DeviceAddressBase> FindPeerAddress(
+      const GpuCliqueKey& clique, RankId rank,
+      BufferAllocation::Slice slice) const;
+
   // Returns a peer address corresponds to the given device address.
   std::optional<se::DeviceAddressBase> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank,
@@ -98,9 +115,9 @@ class CollectiveMemory {
   std::optional<se::DeviceAddress<T>> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank, se::DeviceAddress<T> addr) const;
 
- public:
+ private:
   const BufferAllocations& buffers_;
-  absl::flat_hash_map<Key, std::unique_ptr<SymmetricMemory>> sym_memories_;
+  absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories_;
   absl::flat_hash_map<Key, MulticastMemory> mcast_memories_;
   absl::flat_hash_map<Key, PeerMemory> peer_memories_;
 };
@@ -112,8 +129,9 @@ class CollectiveMemory {
 // participating ranks in the requested memories (cliques), otherwise it will
 // lead to a deadlock.
 absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
-    const CollectiveParams& params, const CollectiveCliques& cliques,
-    const CollectiveMemoryRequests& requests);
+    const CollectiveParams& params, CollectiveCliques& cliques,
+    const CollectiveMemoryRequests& requests,
+    CollectiveMemoryCache& memory_cache);
 
 //===----------------------------------------------------------------------===//
 // CollectiveMemory templates implementation.

@@ -643,9 +643,9 @@ struct DelegateState {
 struct OpaqueTestDelegate {
   static constexpr int kTestDelegateOutput = 42;
 
-  static inline TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
-                                     TfLiteOpaqueDelegate* opaque_delegate,
-                                     void* data) {
+  static TfLiteStatus Prepare(TfLiteOpaqueContext* opaque_context,
+                              TfLiteOpaqueDelegate* opaque_delegate,
+                              void* data) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->delegate_prepared = true;
 
@@ -699,10 +699,9 @@ struct OpaqueTestDelegate {
     return kTfLiteOk;
   }
 
-  static inline void FreeBufferHandle(TfLiteOpaqueContext* context,
-                                      TfLiteOpaqueDelegate* delegate,
-                                      void* data,
-                                      TfLiteBufferHandle* buffer_handle) {
+  static void FreeBufferHandle(TfLiteOpaqueContext* context,
+                               TfLiteOpaqueDelegate* delegate, void* data,
+                               TfLiteBufferHandle* buffer_handle) {
     DelegateState* delegate_state = reinterpret_cast<DelegateState*>(data);
     delegate_state->free_buffer_handle_called = true;
   }

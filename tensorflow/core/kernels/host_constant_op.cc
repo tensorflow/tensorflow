@@ -34,9 +34,9 @@ _HostConstantOp::_HostConstantOp(OpKernelConstruction* ctx)
       ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
   OP_REQUIRES(
       ctx, ctx->output_type(0) == tensor_.dtype(),
-      errors::InvalidArgument("Type mismatch between value (",
-                              DataTypeString(tensor_.dtype()), ") and dtype (",
-                              DataTypeString(ctx->output_type(0)), ")"));
+      absl::InvalidArgumentError(absl::StrCat(
+          "Type mismatch between value (", DataTypeString(tensor_.dtype()),
+          ") and dtype (", DataTypeString(ctx->output_type(0)), ")")));
 }
 
 void _HostConstantOp::Compute(OpKernelContext* ctx) {

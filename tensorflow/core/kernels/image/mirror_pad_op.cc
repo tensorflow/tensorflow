@@ -15,11 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/image/mirror_pad_op.h"
-
-#include <string>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/image/mirror_pad_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
@@ -53,7 +53,7 @@ class MirrorPadOp : public OpKernel {
       }
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "mode must be either REFLECT or SYMMETRIC."));
     }
   }
@@ -66,19 +66,20 @@ class MirrorPadOp : public OpKernel {
     const int dims = in0.dims();
     constexpr int kMinDims = 0;
     constexpr int kMaxDims = 5;
-    OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
-                errors::Unimplemented("inputs rank not in [", kMinDims, ",",
-                                      kMaxDims, "]: ", dims));
     OP_REQUIRES(
-        context,
-        TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                in1.shape().DebugString()));
+        context, kMinDims <= dims && dims <= kMaxDims,
+        absl::UnimplementedError(absl::StrCat("inputs rank not in [", kMinDims,
+                                              ",", kMaxDims, "]: ", dims)));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("paddings must be a matrix with 2 columns: ",
+                                 in1.shape().DebugString())));
     OP_REQUIRES(
         context, dims == in1.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            in1.shape().DebugString(), ", ", in0.shape().DebugString()));
+            in1.shape().DebugString(), ", ", in0.shape().DebugString())));
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
@@ -119,12 +120,12 @@ class MirrorPadOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-#define MIRROR_PAD_CASE(i)                                                \
-  case i: {                                                               \
-    functor::MirrorPad<Device, T, Tpaddings, i>()(                        \
-        context->eigen_device<Device>(), To32Bit(output->tensor<T, i>()), \
-        To32Bit(in0.tensor<T, i>()), paddings, offset_);                  \
-    break;                                                                \
+#define MIRROR_PAD_CASE(i)                                       \
+  case i: {                                                      \
+    functor::MirrorPad<Device, T, Tpaddings, i>()(               \
+        context->eigen_device<Device>(), output->tensor<T, i>(), \
+        in0.tensor<T, i>(), paddings, offset_);                  \
+    break;                                                       \
   }
 
     // Invoke the dims-specific implementation.
@@ -136,8 +137,8 @@ class MirrorPadOp : public OpKernel {
       MIRROR_PAD_CASE(5)
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unsupported rank: ",
-                                            in0.shape().DebugString()));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Unsupported rank: ", in0.shape().DebugString())));
     }
 #undef MIRROR_PAD_CASE
   }
@@ -152,12 +153,12 @@ using GpuDevice = Eigen::GpuDevice;
 namespace functor {
 // Forward declarations of the functor specializations defined in the sharded
 // files.
-#define DECLARE_CPU_SPEC(T, Tpaddings, i)                     \
-  template <>                                                 \
-  void MirrorPad<CpuDevice, T, Tpaddings, i>::operator()(     \
-      const CpuDevice&, typename TTypes<T, i, int32>::Tensor, \
-      typename TTypes<T, i, int32>::ConstTensor,              \
-      TTypes<Tpaddings>::ConstMatrix, int);                   \
+#define DECLARE_CPU_SPEC(T, Tpaddings, i)                                 \
+  template <>                                                             \
+  void MirrorPad<CpuDevice, T, Tpaddings, i>::operator()(                 \
+      const CpuDevice&, typename TTypes<T, i>::Tensor,                    \
+      typename TTypes<T, i>::ConstTensor, TTypes<Tpaddings>::ConstMatrix, \
+      int);                                                               \
   extern template struct MirrorPad<CpuDevice, T, Tpaddings, i>;
 
 #define DECLARE_CPU_SPECS(T)       \
@@ -203,12 +204,12 @@ TF_CALL_tstring(REGISTER_KERNEL);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, Tpaddings, i)                     \
-  template <>                                                 \
-  void MirrorPad<GpuDevice, T, Tpaddings, i>::operator()(     \
-      const GpuDevice&, typename TTypes<T, i, int32>::Tensor, \
-      typename TTypes<T, i, int32>::ConstTensor,              \
-      TTypes<Tpaddings>::ConstMatrix, int);                   \
+#define DECLARE_GPU_SPEC(T, Tpaddings, i)                                 \
+  template <>                                                             \
+  void MirrorPad<GpuDevice, T, Tpaddings, i>::operator()(                 \
+      const GpuDevice&, typename TTypes<T, i>::Tensor,                    \
+      typename TTypes<T, i>::ConstTensor, TTypes<Tpaddings>::ConstMatrix, \
+      int);                                                               \
   extern template struct MirrorPad<GpuDevice, T, Tpaddings, i>;
 
 #define DECLARE_GPU_SPECS(T)       \
@@ -266,7 +267,7 @@ class MirrorPadGradOp : public OpKernel {
       }
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "mode must be either REFLECT or SYMMETRIC."));
     }
   }
@@ -279,19 +280,20 @@ class MirrorPadGradOp : public OpKernel {
     const int dims = in0.dims();
     constexpr int kMinDims = 0;
     constexpr int kMaxDims = 5;
-    OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
-                errors::Unimplemented("inputs rank not in [", kMinDims, ",",
-                                      kMaxDims, "]: ", dims));
     OP_REQUIRES(
-        context,
-        TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                in1.shape().DebugString()));
+        context, kMinDims <= dims && dims <= kMaxDims,
+        absl::UnimplementedError(absl::StrCat("inputs rank not in [", kMinDims,
+                                              ",", kMaxDims, "]: ", dims)));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("paddings must be a matrix with 2 columns: ",
+                                 in1.shape().DebugString())));
     OP_REQUIRES(
         context, dims == in1.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            in1.shape().DebugString(), " ", in0.shape().DebugString()));
+            in1.shape().DebugString(), " ", in0.shape().DebugString())));
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
@@ -300,30 +302,30 @@ class MirrorPadGradOp : public OpKernel {
       const int64_t before = paddings(d, 0);  // Pad before existing elements.
       const int64_t after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument(
-                      "Paddings must be non-negative: ", before, ", ", after));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Paddings must be non-negative: ", before, ", ", after)));
 
       const int64_t in_size = in0.dim_size(d);
       const int64_t total_padding = before + after;
       OP_REQUIRES(
           context, total_padding < in_size && total_padding >= 0,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Total paddings must be less than the input dimension size: ",
-              total_padding, " was not less than ", in_size));
+              total_padding, " was not less than ", in_size)));
 
       const int64_t out_size = in_size - total_padding;
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
-                    errors::InvalidArgument("paddings must be no greater "
-                                            "than the output dimension size: ",
-                                            before, ", ", after,
-                                            " greater than ", out_size));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "paddings must be no greater "
+                        "than the output dimension size: ",
+                        before, ", ", after, " greater than ", out_size)));
       } else if (offset_ == 1) {  // REFLECT mode.
         OP_REQUIRES(context, before < out_size && after < out_size,
-                    errors::InvalidArgument("paddings must be less than"
-                                            " the output dimension size: ",
-                                            before, ", ", after,
-                                            " not less than ", out_size));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "paddings must be less than"
+                        " the output dimension size: ",
+                        before, ", ", after, " not less than ", out_size)));
       }
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(out_size));
     }
@@ -340,13 +342,12 @@ class MirrorPadGradOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-#define MIRROR_PAD_GRAD_CASE(k)                                           \
-  case k: {                                                               \
-    functor::MirrorPadGrad<Device, T, Tpaddings, k>()(                    \
-        context->eigen_device<Device>(), To32Bit(output->tensor<T, k>()), \
-        To32Bit(in0.tensor<T, k>()), paddings, offset_,                   \
-        To32Bit(scratch.tensor<T, k>()));                                 \
-    break;                                                                \
+#define MIRROR_PAD_GRAD_CASE(k)                                         \
+  case k: {                                                             \
+    functor::MirrorPadGrad<Device, T, Tpaddings, k>()(                  \
+        context->eigen_device<Device>(), output->tensor<T, k>(),        \
+        in0.tensor<T, k>(), paddings, offset_, scratch.tensor<T, k>()); \
+    break;                                                              \
   }
 
     // Invoke the dims-specific implementation.
@@ -358,8 +359,8 @@ class MirrorPadGradOp : public OpKernel {
       MIRROR_PAD_GRAD_CASE(5);
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unsupported rank: ",
-                                            in0.shape().DebugString()));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Unsupported rank: ", in0.shape().DebugString())));
     }
 #undef MIRROR_PAD_GRAD_CASE
   }
@@ -371,13 +372,12 @@ class MirrorPadGradOp : public OpKernel {
 namespace functor {
 // Forward declarations of the functor specializations defined in the sharded
 // files.
-#define DECLARE_CPU_SPEC(T, Tpaddings, k)                     \
-  template <>                                                 \
-  void MirrorPadGrad<CpuDevice, T, Tpaddings, k>::operator()( \
-      const CpuDevice&, typename TTypes<T, k, int32>::Tensor, \
-      typename TTypes<T, k, int32>::ConstTensor,              \
-      TTypes<Tpaddings>::ConstMatrix, int,                    \
-      typename TTypes<T, k, int32>::Tensor);                  \
+#define DECLARE_CPU_SPEC(T, Tpaddings, k)                                      \
+  template <>                                                                  \
+  void MirrorPadGrad<CpuDevice, T, Tpaddings, k>::operator()(                  \
+      const CpuDevice&, typename TTypes<T, k>::Tensor,                         \
+      typename TTypes<T, k>::ConstTensor, TTypes<Tpaddings>::ConstMatrix, int, \
+      typename TTypes<T, k>::Tensor);                                          \
   extern template struct MirrorPadGrad<CpuDevice, T, Tpaddings, k>;
 
 #define DECLARE_CPU_SPECS(T)       \
@@ -417,13 +417,12 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace functor {
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, Tpaddings, k)                     \
-  template <>                                                 \
-  void MirrorPadGrad<GpuDevice, T, Tpaddings, k>::operator()( \
-      const GpuDevice&, typename TTypes<T, k, int32>::Tensor, \
-      typename TTypes<T, k, int32>::ConstTensor,              \
-      TTypes<Tpaddings>::ConstMatrix, int,                    \
-      typename TTypes<T, k, int32>::Tensor);                  \
+#define DECLARE_GPU_SPEC(T, Tpaddings, k)                                      \
+  template <>                                                                  \
+  void MirrorPadGrad<GpuDevice, T, Tpaddings, k>::operator()(                  \
+      const GpuDevice&, typename TTypes<T, k>::Tensor,                         \
+      typename TTypes<T, k>::ConstTensor, TTypes<Tpaddings>::ConstMatrix, int, \
+      typename TTypes<T, k>::Tensor);                                          \
   extern template struct MirrorPadGrad<GpuDevice, T, Tpaddings, k>;
 
 #define DECLARE_GPU_SPECS(T)       \

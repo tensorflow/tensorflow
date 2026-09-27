@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "oneapi/dnnl/dnnl.hpp"
@@ -51,6 +52,19 @@ inline bool IsSupportedType(xla::PrimitiveType dtype) {
               (TestCPUFeature(CPUFeature::AVX512_FP16) ||
                TestCPUFeature(CPUFeature::AMX_FP16))) ||
              TestCPUFeature(CPUFeature::AVX_NE_CONVERT);
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E4M3:
+      if (TestCPUFeature(CPUFeature::AMX_FP8)) {
+        return true;
+      }
+      if (TestCPUFeature(CPUFeature::AVX512BW) &&
+          TestCPUFeature(CPUFeature::AMX_FP16)) {
+        LOG_FIRST_N(INFO, 1) << "XLA:CPU FP8 dispatched via oneDNN AMX-FP16 "
+                                "emulation path (no native AMX-FP8 on host).";
+        return true;
+      }
+      return false;
     default:
       return false;
   }
@@ -70,11 +84,15 @@ typedef BackendConfig::BackendConfigOneofCase BackendConfigOneofCase;
 
 // These template functions must have explicit specialization at the definition
 // site.
-template <typename PrimDesc>
-std::unique_ptr<PrimDesc> CreateOneDnnPrimDesc(HloInstruction*);
+template <BackendConfigOneofCase config>
+dnnl::memory::desc GetSrcWeightMemDesc(HloInstruction*, const Shape&);
 
 template <BackendConfigOneofCase config, typename TransformationType = void>
 struct PrimitiveTrait;
+
+template <BackendConfigOneofCase config>
+std::unique_ptr<typename PrimitiveTrait<config>::primitive_desc>
+CreateOneDnnPrimDesc(HloInstruction*);
 
 template <BackendConfigOneofCase config>
 typename PrimitiveTrait<config>::pointer_type GetKernelConfig(

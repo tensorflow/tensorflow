@@ -117,8 +117,8 @@ struct BucketizeFunctor<GPUDevice, T> {
 #define REGISTER_GPU_SPEC(type) \
   template struct functor::BucketizeFunctor<GPUDevice, type>;
 
-REGISTER_GPU_SPEC(int32);
-REGISTER_GPU_SPEC(int64);
+REGISTER_GPU_SPEC(int32_t);
+REGISTER_GPU_SPEC(int64_t);
 REGISTER_GPU_SPEC(float);
 REGISTER_GPU_SPEC(double);
 #undef REGISTER_GPU_SPEC

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <type_traits>
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -28,9 +29,11 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
+template <typename T,
+          typename std::enable_if<!std::is_integral<T>::value, int>::type = 0>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const float* input_data,
-                    const RuntimeShape& output_shape, float* output_data) {
+                    const RuntimeShape& input_shape, const T* input_data,
+                    const RuntimeShape& output_shape, T* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -38,26 +41,24 @@ inline void Softmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    // Find max element value which we'll use to ensure numerical stability
-    // taking advantage of the following equality:
-    // exp(x[i])/sum(exp(x[i])) == exp(x[i]+C)/sum(exp(x[i]+C))
-    float max = std::numeric_limits<float>::lowest();
+    T max = std::numeric_limits<T>::lowest();
     for (int c = 0; c < depth; ++c) {
       max = std::max(max, input_data[i * depth + c]);
     }
 
-    // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      const float exp_c = std::exp((input_data[i * depth + c] - max) *
-                                   static_cast<float>(params.beta));
-      output_data[i * depth + c] = exp_c;
+      const float exp_c =
+          std::exp((static_cast<float>(input_data[i * depth + c]) -
+                    static_cast<float>(max)) *
+                   static_cast<float>(params.beta));
+      output_data[i * depth + c] = static_cast<T>(exp_c);
       sum += exp_c;
     }
 
-    // Compute result.
     for (int c = 0; c < depth; ++c) {
-      output_data[i * depth + c] = output_data[i * depth + c] / sum;
+      output_data[i * depth + c] =
+          static_cast<T>(static_cast<float>(output_data[i * depth + c]) / sum);
     }
   }
 }

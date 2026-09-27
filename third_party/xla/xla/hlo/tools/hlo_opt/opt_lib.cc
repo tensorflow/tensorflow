@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -104,6 +105,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/host_memory_transfer_asyncifier.h"
 #include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/recognize_reduce_window.h"
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/result_caster.h"
@@ -153,8 +155,8 @@ static ProviderMap& GetProviderMap() {
     std::string platform) {
   absl::MutexLock l(provider_mu);
 
-  TF_ASSIGN_OR_RETURN(std::string canonical_name,
-                      xla::PlatformUtil::CanonicalPlatformName(platform));
+  ABSL_ASSIGN_OR_RETURN(std::string canonical_name,
+                   xla::PlatformUtil::CanonicalPlatformName(platform));
   auto it = GetProviderMap().find(canonical_name);
   if (it == GetProviderMap().end()) {
     return absl::UnimplementedError(absl::StrCat(
@@ -304,6 +306,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<OptimizationBarrierExpander>();
   RegisterPass<OptimizeInputOutputBufferAlias>(true);
   RegisterPass<QrExpander>();
+  RegisterPass<RecognizeReduceWindow>();
   RegisterPass<ReduceDecomposer>();
   RegisterPass<ReduceWindowRewriter>(/*base_length=*/16);
   RegisterPass<ReorderConvertReduceAdd>();

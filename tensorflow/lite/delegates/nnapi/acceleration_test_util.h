@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_ACCELERATION_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_ACCELERATION_TEST_UTIL_H_
 
+// WARNING: this header file is DEPRECATED.
+// See https://developer.android.com/ndk/guides/neuralnetworks/migration-guide.
+
 #include <optional>
 #include <string>
 

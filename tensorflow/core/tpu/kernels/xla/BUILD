@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 # XLA Ops for TPUs
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -32,6 +47,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu/kernels:cross_replica_ops",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@xla//xla:shape_util",
         "@xla//xla:side_effect_util",
@@ -79,9 +95,9 @@ cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/ir:hlo",
-        "@xla//xla/stream_executor/tpu:c_api_conversions",
-        "@xla//xla/stream_executor/tpu:c_api_decl",
-        "@xla//xla/stream_executor/tpu:tpu_executor_api",
+        "@xla//xla/tpu:c_api_conversions",
+        "@xla//xla/tpu:c_api_decl",
+        "@xla//xla/tpu:tpu_executor_api",
         "@xla//xla/tsl/platform:logging",
     ],
     alwayslink = 1,

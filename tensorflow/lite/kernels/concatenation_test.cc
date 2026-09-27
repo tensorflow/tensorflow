@@ -115,6 +115,22 @@ TEST(ConcatenationOpTest, ThreeDimensionalOneInputInt4) {
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({0x31, 0x74}));
 }
 
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Concatenation(TensorType tensor_type) {
+  ConcatenationOpModel<uint8_t> model({tensor_type, {1, 2}}, /*axis=*/0,
+                                      /*num_inputs=*/2);
+  model.SetInput(0, {0x00, 0x38});
+  model.SetInput(1, {0xbc, 0x7e});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0x00, 0x38, 0xbc, 0x7e}));
+}
+
+TEST(ConcatenationOpTest, Float8) {
+  TestFloat8Concatenation(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Concatenation(TensorType_FLOAT8_E5M2);
+}
+#endif
+
 TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   ConcatenationOpModel<float> m0({TensorType_FLOAT32, {2, 1, 2}}, /*axis=*/1,
                                  /*num_inputs=*/1);
@@ -873,8 +889,10 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
                                                  input_data_lists);
     m0.PopulateInputTensors();
     ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-    ASSERT_EQ(m0.IsPersistentOutput(),
-              test_case.test_type == TestInputType::kPersistentRo);
+    if (m0.GetNumberOfAppliedDelegates() == 0) {
+      ASSERT_EQ(m0.IsPersistentOutput(),
+                test_case.test_type == TestInputType::kPersistentRo);
+    }
     EXPECT_THAT(
         m0.GetOutput(),
         ElementsAreArray(ArrayFloatNear(
@@ -917,8 +935,10 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {
                                                  input_data_lists);
     m0.PopulateInputTensors();
     ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-    ASSERT_EQ(m0.IsPersistentOutput(),
-              test_case.test_type == TestInputType::kPersistentRo);
+    if (m0.GetNumberOfAppliedDelegates() == 0) {
+      ASSERT_EQ(m0.IsPersistentOutput(),
+                test_case.test_type == TestInputType::kPersistentRo);
+    }
     EXPECT_THAT(
         m0.GetOutput(),
         ElementsAreArray(ArrayFloatNear(

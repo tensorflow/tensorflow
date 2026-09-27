@@ -26,17 +26,17 @@ inline absl::Status CheckKeyCounterShape(int minimum_counter_size,
                                          TensorShape const& key_shape,
                                          TensorShape const& counter_shape) {
   if (!(key_shape.dims() == 1 && key_shape.dim_size(0) == RNG_KEY_SIZE)) {
-    return errors::InvalidArgument(
-        "key must have shape [", RNG_KEY_SIZE, "], not ",
-        key_shape.DebugString(),
-        ". (Note that batched keys are not supported yet.)");
+    return absl::InvalidArgumentError(
+        absl::StrCat("key must have shape [", RNG_KEY_SIZE, "], not ",
+                     key_shape.DebugString(),
+                     ". (Note that batched keys are not supported yet.)"));
   }
   if (!(counter_shape.dims() == 1 &&
         counter_shape.dim_size(0) >= minimum_counter_size)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "counter must be a vector with length at least ", minimum_counter_size,
         "; got shape: ", counter_shape.DebugString(),
-        ". (Note that batched counters are not supported yet.)");
+        ". (Note that batched counters are not supported yet.)"));
   }
   return absl::OkStatus();
 }

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
@@ -481,6 +482,80 @@ TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
               op::Tuple(op::Parameter(0), op::Parameter(0)));
 }
 
+TEST_F(HloExtractorTest, TestInheritedConfig) {
+  const char* hlo = R"(
+  HloModule test
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  module->mutable_config().set_replica_count(module->config().replica_count() +
+                                             1);
+  auto extracted = ExtractModule(
+      module->entry_computation()->root_instruction(), /*height=*/-1,
+      /*extract_selector=*/nullptr, /*replace_type_selector=*/nullptr,
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
+      /*run_verifier=*/false, /*inherit_module_config=*/true);
+  EXPECT_THAT(extracted->entry_computation()->root_instruction(),
+              op::Tuple(op::Parameter(0), op::Parameter(0)));
+  EXPECT_EQ(extracted->config().replica_count(),
+            module->config().replica_count());
+}
+
+TEST_F(HloExtractorTest, TestInheritedSchedule) {
+  const char* hlo = R"(
+  HloModule InheritedSchedule, is_scheduled=true
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto extracted = ExtractModule(
+      module->entry_computation()->root_instruction(), /*height=*/-1,
+      /*extract_selector=*/nullptr, /*replace_type_selector=*/nullptr,
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/false,
+      /*run_verifier=*/false, /*inherit_module_config=*/false,
+      /*inherit_schedule=*/true);
+  ASSERT_TRUE(extracted->has_schedule());
+  for (HloComputation* computation : extracted->computations()) {
+    EXPECT_EQ(extracted->schedule().is_computation_scheduled(computation),
+              !computation->IsFusionComputation());
+  }
+}
+
 TEST_F(HloExtractorTest, TestInvalidModule) {
   constexpr absl::string_view hlo = R"(
 HloModule main
@@ -506,6 +581,99 @@ ENTRY main {
 
   // Restore the operand shape to be valid.
   *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
+}
+
+TEST_F(HloExtractorTest, ExtractModuleInheritScheduleEntryPostOrder) {
+  constexpr absl::string_view hlo = R"(
+HloModule scheduled_module, is_scheduled=true
+
+called_comp {
+  c0 = f32[10] parameter(0)
+  c1 = f32[10] parameter(1)
+  neg1 = f32[10] negate(c1)
+  neg0 = f32[10] negate(c0)
+  ROOT sum = f32[10] add(neg0, neg1)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  op_b = f32[10] negate(p1)
+  op_a = f32[10] negate(p0)
+  ROOT call = f32[10] call(op_a, op_b), to_apply=called_comp
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* call_inst = FindInstruction(module.get(), HloOpcode::kCall);
+  ASSERT_NE(call_inst, nullptr);
+
+  auto extracted = ExtractModule(
+      call_inst, /*height=*/0, /*extract_selector=*/nullptr,
+      /*replace_type_selector=*/nullptr, /*cross_computation=*/false,
+      /*inline_calls_and_fusions=*/false, /*run_verifier=*/true,
+      /*inherit_module_config=*/true, /*inherit_schedule=*/true);
+  ASSERT_NE(extracted, nullptr);
+  ASSERT_TRUE(extracted->has_schedule());
+
+  // The entry computation schedule should be in canonical post-order
+  // (parameter(0) before parameter(1)), not the caller's schedule order where
+  // op_b preceded op_a.
+  HloComputation* entry = extracted->entry_computation();
+  const auto& entry_seq = extracted->schedule().sequence(entry).instructions();
+  ASSERT_EQ(entry_seq.size(), 3);
+  EXPECT_EQ(entry_seq[0], entry->parameter_instruction(0));
+  EXPECT_EQ(entry_seq[1], entry->parameter_instruction(1));
+  EXPECT_EQ(entry_seq[2], entry->root_instruction());
+
+  // The called computation schedule should preserve neg1 before neg0.
+  HloComputation* extracted_called = entry->root_instruction()->to_apply();
+  const auto& called_seq =
+      extracted->schedule().sequence(extracted_called).instructions();
+  ASSERT_EQ(called_seq.size(), 5);
+  EXPECT_EQ(called_seq[2]->name(), "neg1");
+  EXPECT_EQ(called_seq[3]->name(), "neg0");
+}
+
+TEST_F(HloExtractorTest, ExtractAsyncChain) {
+  constexpr absl::string_view hlo = R"(
+HloModule async_chain_module
+
+async_computation {
+  p0 = f32[10] parameter(0)
+  ROOT res = f32[10] negate(p0)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  add0 = f32[10] add(p0, p1)
+  start = ((f32[10]), f32[10]) async-start(add0), calls=async_computation
+  update = ((f32[10]), f32[10]) async-update(start)
+  done = f32[10] async-done(update)
+  ROOT out = f32[10] add(done, p1)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* start_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncStart);
+  HloInstruction* update_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncUpdate);
+  HloInstruction* done_inst =
+      FindInstruction(module.get(), HloOpcode::kAsyncDone);
+  ASSERT_NE(start_inst, nullptr);
+  ASSERT_NE(update_inst, nullptr);
+  ASSERT_NE(done_inst, nullptr);
+
+  for (HloInstruction* inst : {start_inst, update_inst, done_inst}) {
+    auto extracted = ExtractModule(inst, /*height=*/0);
+    ASSERT_NE(extracted, nullptr);
+    HloComputation* entry = extracted->entry_computation();
+    EXPECT_EQ(entry->root_instruction()->opcode(), HloOpcode::kAsyncDone);
+    EXPECT_THAT(
+        entry->root_instruction(),
+        op::AsyncDone(op::AsyncUpdate(op::AsyncStart(op::Parameter()))));
+  }
 }
 
 }  // namespace

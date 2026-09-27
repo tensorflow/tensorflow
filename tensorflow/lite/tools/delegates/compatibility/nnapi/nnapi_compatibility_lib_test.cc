@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_compatibility_lib.h"
 
 #include <map>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -29,17 +31,22 @@ namespace tools {
 
 namespace {
 
+void CompatibilityCheckerDelegateDelete(TfLiteDelegate* delegate) {
+  delete static_cast<CompatibilityCheckerDelegate*>(delegate);
+}
+
 class AddOpModel : public SingleOpModel {
  public:
   AddOpModel(const TensorData& input1, const TensorData& input2,
              const TensorData& output, ActivationFunctionType activation_type,
-             CompatibilityCheckerDelegate* checker_delegate) {
+             std::unique_ptr<CompatibilityCheckerDelegate> checker_delegate) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    SetDelegate(checker_delegate);
+    SetDelegate(
+        {checker_delegate.release(), CompatibilityCheckerDelegateDelete});
     // Builds interpreter and applies delegate.
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
@@ -57,25 +64,28 @@ TEST(NnapiDelegateCompabilityTest, InvalidInput) {
 }
 
 TEST(NnapiDelegateCompabilityTest, CompatibleModel) {
-  CompatibilityCheckerDelegate checker_delegate(
+  auto checker_delegate = std::make_unique<CompatibilityCheckerDelegate>(
       tflite::delegate::nnapi::kMinSdkVersionForNNAPI13);
-  AddOpModel add_op_model(
-      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
-      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE, &checker_delegate);
-  EXPECT_EQ(checker_delegate.GetSupportedNodes().size(), 1);
-  EXPECT_EQ(checker_delegate.GetFailuresByNode().size(), 0);
+  auto* checker_delegate_ptr = checker_delegate.get();
+  AddOpModel add_op_model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                          {TensorType_FLOAT32, {1, 2, 2, 1}},
+                          {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                          std::move(checker_delegate));
+  EXPECT_EQ(checker_delegate_ptr->GetSupportedNodes().size(), 1);
+  EXPECT_EQ(checker_delegate_ptr->GetFailuresByNode().size(), 0);
 }
 
 TEST(NnapiDelegateCompabilityTest, IncompatibleModel) {
-  CompatibilityCheckerDelegate checker_delegate(
+  auto checker_delegate = std::make_unique<CompatibilityCheckerDelegate>(
       tflite::delegate::nnapi::kMinSdkVersionForNNAPI13);
+  auto* checker_delegate_ptr = checker_delegate.get();
   // No activation function is supported for INT32 tensor type.
   AddOpModel add_op_model(
       {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {1, 2, 2, 1}},
       {TensorType_INT32, {}}, ActivationFunctionType_RELU_N1_TO_1,
-      &checker_delegate);
-  EXPECT_EQ(checker_delegate.GetSupportedNodes().size(), 0);
-  EXPECT_EQ(checker_delegate.GetFailuresByNode().size(), 1);
+      std::move(checker_delegate));
+  EXPECT_EQ(checker_delegate_ptr->GetSupportedNodes().size(), 0);
+  EXPECT_EQ(checker_delegate_ptr->GetFailuresByNode().size(), 1);
 }
 
 }  // namespace tools

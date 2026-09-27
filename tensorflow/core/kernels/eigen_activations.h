@@ -36,7 +36,7 @@ struct scalar_sigmoid_fast_derivative_op {
   }
 
   template <typename Packet>
-  inline Packet packetOp(const Packet& y) const {
+  Packet packetOp(const Packet& y) const {
     const Packet one = internal::pset1<Packet>(1);
     return internal::pmul(internal::psub(one, y), y);
   }
@@ -69,7 +69,7 @@ struct scalar_tanh_fast_derivative_op {
   }
 
   template <typename Packet>
-  inline Packet packetOp(const Packet& y) const {
+  Packet packetOp(const Packet& y) const {
     const Packet one = internal::pset1<Packet>(1);
     return internal::psub(one, internal::pmul(y, y));
   }

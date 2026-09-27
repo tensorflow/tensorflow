@@ -25,10 +25,10 @@ limitations under the License.
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 #include "xla/util/split_proto/split_proto_riegeli_options.h"
 #include "xla/util/split_proto/split_proto_write_record.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -78,20 +78,32 @@ ExecutableAndOptionsProto GetProtoWithoutSerializedExecutable(
 absl::Status WriteSplitExecutableAndOptions(
     const ExecutableAndOptionsProto& executable_and_options,
     std::unique_ptr<riegeli::Writer> writer) {
-  riegeli::RecordWriter record_writer(std::move(writer),
-                                      GetSplitProtoRiegeliOptions());
+  riegeli::RecordWriter record_writer(
+      std::move(writer),
+      // The bulk of this proto is `serialized_executable`, which is already a
+      // compressed split proto. Compressing it again does not reduce the size
+      // but adds a full (de)compression pass over the whole executable when
+      // serializing and when loading it.
+      GetSplitProtoRiegeliOptions(SplitProtoCompression::kNone));
   SplitProtoManifest manifest = BuildManifest();
-  RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, manifest),
+      "failed to write manifest in ExecutableAndOptionsProto split proto");
 
   // Write the serialized_executable field
-  RETURN_IF_ERROR(WriteRecord(record_writer,
-                              executable_and_options.serialized_executable()));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer,
+                  executable_and_options.serialized_executable()),
+      "failed to write serialized_executable in ExecutableAndOptionsProto "
+      "split proto");
 
   // Write the rest of the fields
   ExecutableAndOptionsProto proto_without_serialized_executable =
       GetProtoWithoutSerializedExecutable(executable_and_options);
-  RETURN_IF_ERROR(
-      WriteRecord(record_writer, proto_without_serialized_executable));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      WriteRecord(record_writer, proto_without_serialized_executable),
+      "failed to write the rest of the fields in ExecutableAndOptionsProto "
+      "split proto");
 
   if (!record_writer.Close()) {
     return record_writer.status();

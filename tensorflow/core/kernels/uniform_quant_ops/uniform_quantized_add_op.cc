@@ -42,8 +42,9 @@ absl::StatusOr<TensorShape> CalculateOutputShape(const TensorShape& lhs_shape,
     const int64_t l_dim_size = l_dim >= 0 ? lhs_shape.dim_size(l_dim) : 1;
     const int64_t r_dim_size = r_dim >= 0 ? rhs_shape.dim_size(r_dim) : 1;
     if (l_dim_size != 1 && r_dim_size != 1 && l_dim_size != r_dim_size) {
-      return InvalidArgument("Cannot Add tensors of shapes: ",
-                             lhs_shape.DebugString(), rhs_shape.DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Cannot Add tensors of shapes: ", lhs_shape.DebugString(),
+          rhs_shape.DebugString()));
     }
     reversed_output_shape.push_back(l_dim_size == 1 ? r_dim_size : l_dim_size);
     --l_dim;
@@ -167,7 +168,7 @@ class UniformQuantizedAddOp : public OpKernel {
   explicit UniformQuantizedAddOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES(context, (std::is_same<T, qint32>()),
-                InvalidArgument("Unsupported operand type."));
+                absl::InvalidArgumentError("Unsupported operand type."));
 
     OP_REQUIRES_OK(context, context->GetAttr("output_quantization_min_val",
                                              &output_quantization_min_val_));
@@ -181,12 +182,12 @@ class UniformQuantizedAddOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("output_quantization_axis",
                                              &output_quantization_axis_));
 
-    OP_REQUIRES(
-        context,
-        (lhs_quantization_axis_ >= -1 && rhs_quantization_axis_ >= -1 &&
-         output_quantization_axis_ >= -1),
-        InvalidArgument("lhs, rhs and output quantization_axis must be -1 or "
-                        "within [0, dims)"));
+    OP_REQUIRES(context,
+                (lhs_quantization_axis_ >= -1 && rhs_quantization_axis_ >= -1 &&
+                 output_quantization_axis_ >= -1),
+                absl::InvalidArgumentError(
+                    "lhs, rhs and output quantization_axis must be -1 or "
+                    "within [0, dims)"));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -222,21 +223,23 @@ class UniformQuantizedAddOp : public OpKernel {
         (!(lhs_quantization_axis_ >= 0 && output_quantization_axis_ >= 0) ||
          (lhs.dims() - lhs_quantization_axis_ ==
           output_shape.dims() - output_quantization_axis_)),
-        InvalidArgument("If lhs and output is both per-axis quantized, the "
-                        "quantization axis must match."));
+        absl::InvalidArgumentError(
+            "If lhs and output is both per-axis quantized, the "
+            "quantization axis must match."));
     OP_REQUIRES(
         context,
         (!(rhs_quantization_axis_ >= 0 && output_quantization_axis_ >= 0) ||
          (rhs.dims() - rhs_quantization_axis_ ==
           output_shape.dims() - output_quantization_axis_)),
-        InvalidArgument("If rhs and output is both per-axis quantized, the "
-                        "quantization axis must match."));
+        absl::InvalidArgumentError(
+            "If rhs and output is both per-axis quantized, the "
+            "quantization axis must match."));
 
     OP_REQUIRES(context,
                 (AllElementsPositive<float>(lhs_scales) &&
                  AllElementsPositive<float>(rhs_scales) &&
                  AllElementsPositive<float>(output_scales)),
-                InvalidArgument(
+                absl::InvalidArgumentError(
                     "lhs/rhs/output scales elements must be all positive."));
 
     Tensor* output = nullptr;

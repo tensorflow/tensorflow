@@ -30,7 +30,7 @@ namespace experimental {
 void LMDBDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES(
       ctx, false,
-      errors::Unimplemented(
+      absl::UnimplementedError(
           "LMDB support is removed from TensorFlow. This API will be deleted "
           "in the next TensorFlow release. If you need LMDB support, please "
           "file a GitHub issue."));

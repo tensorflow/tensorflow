@@ -22,7 +22,7 @@ namespace functor {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template struct Tile<CPUDevice, complex128, int32>;
+template struct Tile<CPUDevice, complex128, int32_t>;
 template struct Tile<CPUDevice, complex128, int64_t>;
 
 }  // end namespace functor

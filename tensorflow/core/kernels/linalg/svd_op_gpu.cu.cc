@@ -281,7 +281,7 @@ class SvdOpGpu : public AsyncOpKernel {
                             const std::vector<HostLapackInfo>& /* unused */) {
       absl::Status full_status = status;
       if (!full_status.ok()) {
-        full_status.Update(errors::InvalidArgument(kErrMsg));
+        full_status.Update(absl::InvalidArgumentError(kErrMsg));
       }
       OP_REQUIRES_OK_ASYNC(context, full_status, done);
       done();
@@ -353,21 +353,21 @@ class SvdOpGpu : public AsyncOpKernel {
     const int ndims = input.dims();
 
     // Validate inputs.
-    OP_REQUIRES_ASYNC(
-        context, ndims >= 2,
-        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
-        done);
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
 
     const int64_t m = input.dim_size(ndims - 2);
     const int64_t n = input.dim_size(ndims - 1);
     const int64_t p = std::min(m, n);
 
     if (n == 1) {
-      OP_REQUIRES_ASYNC(
-          context, !tensorflow::OpDeterminismRequired(),
-          errors::Unimplemented("Determinism is not yet supported for SVD of "
-                                "matrices with 1 column."),
-          done);
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        absl::UnimplementedError(
+                            "Determinism is not yet supported for SVD of "
+                            "matrices with 1 column."),
+                        done);
     }
 
     // output tensors.

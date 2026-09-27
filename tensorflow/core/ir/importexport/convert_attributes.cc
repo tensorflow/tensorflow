@@ -63,7 +63,7 @@ Status ConvertLocation(Location inst_loc,
   } else if (auto fused = mlir::dyn_cast<FusedLoc>(inst_loc)) {
     auto locations = fused.getLocations();
     if (locations.size() <= 1)
-      return InvalidArgument("Expected experimental debug info.");
+      return absl::InvalidArgumentError("Expected experimental debug info.");
     // skip the first one, which is the name of the node_def.
     for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
@@ -162,7 +162,7 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
           *list->add_shape() = nested_value.shape();
           break;
         default:
-          return Unimplemented("Unhandled nested attribute!");
+          return absl::UnimplementedError("Unhandled nested attribute!");
       }
     } else if (auto attr = mlir::dyn_cast<ElementsAttr>(a)) {
       TensorProto tensor;
@@ -191,8 +191,8 @@ Status ConvertAttribute(const ArrayAttr& attr, bool remove_ref_type,
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_shape() = attr_val.shape();
     } else {
-      return Unimplemented("Unhandled MLIR attribute in export to graph:",
-                           debugString(a));
+      return absl::UnimplementedError(absl::StrCat(
+          "Unhandled MLIR attribute in export to graph:", debugString(a)));
     }
   }
   return absl::OkStatus();
@@ -212,7 +212,7 @@ absl::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
     return value;
   }
   if (mlir::isa<AffineMapAttr>(attr))
-    return Unimplemented("AffineMap attribute unimplemented");
+    return absl::UnimplementedError("AffineMap attribute unimplemented");
   TF_RETURN_IF_ERROR(
       llvm::TypeSwitch<Attribute, Status>(attr)
           .Case<BoolAttr, IntegerAttr, FloatAttr, StringAttr, ElementsAttr,
@@ -224,8 +224,8 @@ absl::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
                                     /*remove_ref_type=*/false, &value);
           })
           .Default([&](Attribute attr) {
-            return Unimplemented("Unhandled attribute kind for attribute: ",
-                                 debugString(attr));
+            return absl::UnimplementedError(absl::StrCat(
+                "Unhandled attribute kind for attribute: ", debugString(attr)));
           }));
   return value;
 }
@@ -295,9 +295,9 @@ Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
     // should be trivially the same, else fail.
     std::string new_shape_string = value.shape().ShortDebugString();
     if (actual_shape.ShortDebugString() != new_shape_string) {
-      return InvalidArgument("Expected ", new_shape_string, " '", name,
-                             "' attribute but found ",
-                             actual_shape.ShortDebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected ", new_shape_string, " '", name, "' attribute but found ",
+          actual_shape.ShortDebugString()));
     }
   }
   return absl::OkStatus();
@@ -356,7 +356,7 @@ absl::StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
           TF_ASSIGN_OR_RETURN(auto attr,
                               ConvertAttributeValue(subattr.second, builder));
           if (subattr.first.empty())
-            return InvalidArgument("empty func_attr name");
+            return absl::InvalidArgumentError("empty func_attr name");
           subattrs.push_back(builder.getNamedAttr(subattr.first, attr));
         }
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
@@ -369,7 +369,7 @@ absl::StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
     case AttrValue::kPlaceholder:
       return PlaceholderAttr::get(builder.getContext(), value.placeholder());
     default:
-      return tensorflow::errors::Unimplemented(
+      return absl::UnimplementedError(
           absl::StrCat("Attribute ", value.DebugString()));
   }
 }
@@ -380,7 +380,8 @@ absl::StatusOr<Attribute> ConvertAttributeValue(const AttrValue& value,
     case AttrValue::kFunc: {
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
-        if (func_attr.first.empty()) return InvalidArgument("empty attr name");
+        if (func_attr.first.empty())
+          return absl::InvalidArgumentError("empty attr name");
         TF_ASSIGN_OR_RETURN(auto attr,
                             ConvertAttributeValue(func_attr.second, builder));
         attrs.push_back(builder.getNamedAttr(func_attr.first, attr));
@@ -415,7 +416,7 @@ absl::StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
     case tensorflow::FullTypeDef::ATTR_NOT_SET:
       break;
     default:
-      return InvalidArgument("Unsupported attr kind in FullType");
+      return absl::InvalidArgumentError("Unsupported attr kind in FullType");
   }
   IntegerAttr type_id_attr =
       mlir::IntegerAttr::get(mlir::IntegerType::get(builder.getContext(), 32),
@@ -444,8 +445,9 @@ absl::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
                          })
                          .Default([&](Attribute attr) { return false; });
     if (!converted)
-      return InvalidArgument("Unsupported attr kind in FullType:",
-                             mlir::debugString(full_type.getAttr()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported attr kind in FullType:",
+                       mlir::debugString(full_type.getAttr())));
   }
 
   ret.set_type_id(
@@ -461,7 +463,7 @@ absl::StatusOr<ArrayAttr> ConvertHandleData(
   SmallVector<Attribute> dtype_and_shape;
   for (const auto& handle : handle_data) {
     if (handle.dtype() == tensorflow::DT_INVALID)
-      return InvalidArgument("Invalid dtype for handle_data");
+      return absl::InvalidArgumentError("Invalid dtype for handle_data");
     Type dtype;
     TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
     TF_ASSIGN_OR_RETURN(
@@ -485,8 +487,9 @@ Status ConvertHandleData(ArrayAttr handle_data_arr,
     TensorType handle_type =
         mlir::dyn_cast<TensorType>(handle_data_attr.getValue());
     if (!handle_type) {
-      return InvalidArgument("Expected an array of tensor types, but got ",
-                             debugString(handle_data_arr));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected an array of tensor types, but got ",
+                       debugString(handle_data_arr)));
     }
     auto* handle_data = arg->add_handle_data();
     if (handle_type.hasRank()) {

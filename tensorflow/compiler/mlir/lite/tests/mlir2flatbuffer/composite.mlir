@@ -1,3 +1,17 @@
+// Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 // CHECK: {
@@ -88,7 +102,7 @@
 // CHECK-NEXT:      builtin_options_2: {
 // CHECK-NEXT:        name: "test.TEST_COMPOSITE",
 // CHECK-NEXT:        decomposition_subgraph_index: 2,
-// CHECK-NEXT:        composite_attributes: [ 0, 0, 1, 0, 0, 36, 1 ]
+// CHECK-NEXT:        composite_attributes: [ 109, 121, 95, 97, 114, 114, 97, 121, 0, 1, 97, 0, 1, 98, 0, 2, 6, 4, 20, 20, 1, 21, 1, 1, 1, 9, 40, 2, 36, 1 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      inputs: [ 4, 1 ],
@@ -97,7 +111,7 @@
 // CHECK-NEXT:      builtin_options_2: {
 // CHECK-NEXT:        name: "test.TEST_COMPOSITE",
 // CHECK-NEXT:        decomposition_subgraph_index: 1,
-// CHECK-NEXT:        composite_attributes: [ 0, 0, 1, 0, 0, 36, 1 ]
+// CHECK-NEXT:        composite_attributes: [ 109, 121, 95, 97, 114, 114, 97, 121, 0, 1, 97, 0, 1, 98, 0, 2, 6, 4, 20, 20, 1, 21, 1, 1, 1, 9, 40, 2, 36, 1 ]
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      opcode_index: 1,
@@ -294,8 +308,8 @@
 func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> (tensor<10xf32>) {
   %cst = arith.constant dense<1.000000e+01> : tensor<f32>
   %cst_0 = arith.constant dense<2.000000e+01> : tensor<f32>
-  %0 = "vhlo.composite_v1"(%arg0, %arg1) <{composite_attributes = #vhlo.dict_v1<{}>, decomposition = #vhlo.string_v1<"XlaCallModule_test.TEST_COMPOSITE.impl_0_0">, name = #vhlo.string_v1<"test.TEST_COMPOSITE">, version = #vhlo.integer_v1<0 : i64>}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
-  %1 = "vhlo.composite_v1"(%0, %arg1) <{composite_attributes = #vhlo.dict_v1<{}>, decomposition = #vhlo.string_v1<"XlaCallModule_test.TEST_COMPOSITE.impl_0">, name = #vhlo.string_v1<"test.TEST_COMPOSITE">, version = #vhlo.integer_v1<0 : i64>}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  %0 = "vhlo.composite_v1"(%arg0, %arg1) <{composite_attributes = #vhlo.dict_v1<{#vhlo.string_v1<"my_array"> = #vhlo.array_v1<[#vhlo.string_v1<"a">, #vhlo.string_v1<"b">]>}>, decomposition = #vhlo.string_v1<"XlaCallModule_test.TEST_COMPOSITE.impl_0_0">, name = #vhlo.string_v1<"test.TEST_COMPOSITE">, version = #vhlo.integer_v1<0 : i64>}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  %1 = "vhlo.composite_v1"(%0, %arg1) <{composite_attributes = #vhlo.dict_v1<{#vhlo.string_v1<"my_array"> = #vhlo.array_v1<[#vhlo.string_v1<"a">, #vhlo.string_v1<"b">]>}>, decomposition = #vhlo.string_v1<"XlaCallModule_test.TEST_COMPOSITE.impl_0">, name = #vhlo.string_v1<"test.TEST_COMPOSITE">, version = #vhlo.integer_v1<0 : i64>}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   %2 = tfl.add(%1, %cst) <{fused_activation_function = "NONE"}> : (tensor<10xf32>, tensor<f32>) -> tensor<10xf32>
   %3 = tfl.sub(%2, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<10xf32>, tensor<f32>) -> tensor<10xf32>
   return %3 : tensor<10xf32>

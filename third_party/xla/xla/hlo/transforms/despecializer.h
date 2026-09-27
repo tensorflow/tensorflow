@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -95,7 +96,7 @@ class ControlDepRemover : public HloModulePass {
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         changed |= !instruction->control_predecessors().empty();
-        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+        ABSL_RETURN_IF_ERROR(instruction->DropAllControlDeps());
       }
     }
     return changed;

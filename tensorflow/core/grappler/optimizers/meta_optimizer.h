@@ -96,8 +96,9 @@ class MetaOptimizer : public GraphOptimizer {
   absl::Status OptimizeGraph(
       const std::vector<std::unique_ptr<GraphOptimizer>>& optimizers,
       Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph);
-  absl::Status OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                             GraphDef* optimized_graph);
+  absl::Status OptimizeGraph(
+      Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph,
+      const absl::flat_hash_set<std::string>& optimizer_filter = {});
 
   DeviceBase* const cpu_device_;  // may be NULL
   ConfigProto config_proto_;

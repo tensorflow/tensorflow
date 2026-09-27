@@ -92,7 +92,7 @@ void UpdateFunctionMap(FuncMap* func_map, const std::string& canonicalized_name,
   // If function was modified store its new name, otherwise add empty entry to
   // record that function has been processed and does not need to be rewritten.
   (*func_map)[canonicalized_name] =
-      function_modified ? absl::make_optional(new_func_name) : std::nullopt;
+      function_modified ? std::make_optional(new_func_name) : std::nullopt;
 }
 
 // Adds new function def to graph's function library if necessary.

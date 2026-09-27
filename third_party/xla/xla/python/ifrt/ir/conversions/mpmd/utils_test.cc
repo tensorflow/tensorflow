@@ -29,7 +29,7 @@ limitations under the License.
 #include "shardy/dialect/mpmd/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/support/sharding_conversions.h"
+#include "xla/python/ifrt/ir/support/sharding_conversions.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"

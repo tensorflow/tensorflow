@@ -231,4 +231,19 @@ def Ifrt_ControlType : TypeDef<Ifrt_Dialect, "IfrtControl"> {
   }];
 }
 
+def Ifrt_TokenType : TypeDef<Ifrt_Dialect, "IfrtToken"> {
+  let mnemonic = "token";
+  let summary = [{
+    Represents a dummy that can be used to create artificial data-dependencies
+    between operations.
+  }];
+}
+
+def Ifrt_StringType : TypeDef<Ifrt_Dialect, "IfrtString"> {
+  let mnemonic = "string";
+  let summary = [{
+    Represents a string element type.
+  }];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_DIALECT_TD_

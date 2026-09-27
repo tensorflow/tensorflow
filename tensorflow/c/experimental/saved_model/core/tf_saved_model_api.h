@@ -69,7 +69,7 @@ class TFSavedModelAPI : public SavedModelAPI {
 
   static absl::Status Load(
       const std::string& directory,
-      const absl::optional<std::unordered_set<std::string>>& tags,
+      const std::optional<std::unordered_set<std::string>>& tags,
       ImmediateExecutionContext* context,
       std::unique_ptr<TFSavedModelAPI>* out);
 

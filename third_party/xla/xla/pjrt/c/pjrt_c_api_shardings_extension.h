@@ -83,9 +83,9 @@ typedef PJRT_Error* PJRT_Shardings_PJRT_Executable_OutputShardings(
 
 typedef struct PJRT_Shardings_Extension {
   PJRT_Extension_Base base;
-  PJRT_Shardings_PJRT_Executable_ParameterShardings*
+  PJRT_NO_DISCARD PJRT_Shardings_PJRT_Executable_ParameterShardings*
       PJRT_Shardings_PJRT_Executable_ParameterShardings;
-  PJRT_Shardings_PJRT_Executable_OutputShardings*
+  PJRT_NO_DISCARD PJRT_Shardings_PJRT_Executable_OutputShardings*
       PJRT_Shardings_PJRT_Executable_OutputShardings;
 } PJRT_Shardings_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Shardings_Extension,

@@ -46,7 +46,7 @@ class ShardingTest(test_util.TensorFlowTestCase):
                           xla_sharding.Sharding)
     self.assertIsInstance(xla_sharding.Sharding.manual(), xla_sharding.Sharding)
     self.assertIsInstance(
-        xla_sharding.Sharding.assign_device(0), xla_sharding.Sharding)
+        xla_sharding.Sharding.single_device(0), xla_sharding.Sharding)
     self.assertIsInstance(
         xla_sharding.Sharding.tile(np.ones([3], dtype=int)),
         xla_sharding.Sharding)

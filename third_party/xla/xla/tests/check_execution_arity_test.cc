@@ -34,9 +34,9 @@ namespace {
 
 using ::testing::ContainsRegex;
 
-class CheckExecutionArityTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
+class CheckExecutionArityTest : public ClientLibraryTestRunnerMixin<
+                                    HloInterpreterReferenceMixin<HloTestBase>> {
+};
 
 TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   XlaBuilder builder("add_two_params");

@@ -53,6 +53,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutputIndexTensor,
                                            &output_index_tensor));
 
+  auto* params = reinterpret_cast<TfLiteUniqueParams*>(node->builtin_data);
+  if (params == nullptr) {
+    TF_LITE_KERNEL_LOG(context, "Null params passed");
+    return kTfLiteError;
+  }
+  if (params->index_out_type != kTfLiteInt32 &&
+      params->index_out_type != kTfLiteInt64) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Unique index output array can only be Int32 or Int64, requested: %s",
+        TfLiteTypeGetName(params->index_out_type));
+    return kTfLiteError;
+  }
+  TF_LITE_ENSURE_TYPES_EQ(context, output_unique_tensor->type, input->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output_index_tensor->type,
+                          params->index_out_type);
+
   // The op only supports 1D input.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
   TfLiteIntArray* output_index_shape = TfLiteIntArrayCopy(input->dims);
@@ -123,7 +140,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     default:
       TF_LITE_KERNEL_LOG(
           context,
-          "Unique index output array can only be Int32 or In64, requested: %s",
+          "Unique index output array can only be Int32 or Int64, requested: %s",
           TfLiteTypeGetName(params->index_out_type));
   }
   return kTfLiteError;

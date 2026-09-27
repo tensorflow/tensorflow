@@ -202,8 +202,11 @@ TfLiteStatus StripWeightsFromFlatbuffer(
 }
 
 string StripWeightsFromFlatbuffer(const absl::string_view input_flatbuffer) {
-  auto input_model = FlatBufferModel::BuildFromBuffer(input_flatbuffer.data(),
-                                                      input_flatbuffer.size());
+  auto input_model = FlatBufferModel::VerifyAndBuildFromBuffer(
+      input_flatbuffer.data(), input_flatbuffer.size());
+  if (!input_model) {
+    return string();
+  }
 
   FlatBufferBuilder builder(/*initial_size=*/10240);
   if (StripWeightsFromFlatbuffer(input_model->GetModel(), &builder) !=
@@ -339,8 +342,11 @@ TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
 
 string ReconstituteConstantTensorsIntoFlatbuffer(
     const absl::string_view input_flatbuffer) {
-  auto input_model = FlatBufferModel::BuildFromBuffer(input_flatbuffer.data(),
-                                                      input_flatbuffer.size());
+  auto input_model = FlatBufferModel::VerifyAndBuildFromBuffer(
+      input_flatbuffer.data(), input_flatbuffer.size());
+  if (!input_model) {
+    return string();
+  }
 
   FlatBufferBuilder builder(/*initial_size=*/10240);
   if (ReconstituteConstantTensorsIntoFlatbuffer(input_model->GetModel(),

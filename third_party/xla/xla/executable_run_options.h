@@ -48,6 +48,8 @@ class AsyncValueRef;
 
 namespace xla {
 
+class CustomOptions;
+
 class CliqueKey;
 class DeviceAssignment;
 class ExecutionProfile;
@@ -249,6 +251,11 @@ class ExecutableRunOptions {
       const gpu::GpuExecutableRunOptions* gpu_executable_run_options);
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options() const;
 
+  // Per-execution custom options.
+  ExecutableRunOptions& set_custom_options(
+      std::shared_ptr<const CustomOptions> custom_options);
+  const CustomOptions* custom_options() const;
+
   // XLA FFI specific execution context that allows to pass auxiliary data to
   // FFI handlers. It's a caller responsibility to ensure that the XLA FFI
   // execution context stays alive while the executable is running.
@@ -285,6 +292,7 @@ class ExecutableRunOptions {
   RunId run_id_{0};
   const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
+  std::shared_ptr<const CustomOptions> custom_options_;
   const ffi::ExecutionContext* ffi_execution_context_ = nullptr;
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys_ = nullptr;
 };

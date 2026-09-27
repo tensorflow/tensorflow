@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_setitem_spmd_expander.h"
 
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
@@ -38,7 +39,7 @@ StatusOr<mlir::Operation*> TensorListSetItemSPMDExpander::ExpandOp(
   // handles have differing layouts since this means we are changing the shapes
   // and have to relayout all the items that this points to.
   if (operand_layouts[0] != output_layout) {
-    return errors::Internal(
+    return absl::InternalError(
         "Differing layouts for variant tensor input and variant tensor output "
         "is not yet allowed.");
   }

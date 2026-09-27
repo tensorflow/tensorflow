@@ -48,7 +48,7 @@ void AddFusion(FusionProcessDumpProto& dump_proto,
 }
 
 TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     ENTRY main {
@@ -62,7 +62,7 @@ TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
 
   FusionProcessDumpProto dump_proto;
   *dump_proto.mutable_gpu_device_info() =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo().ToGpuProto();
+      TestGpuDeviceInfo::RTXA6000DeviceInfo().ToProto();
   dump_proto.set_hlo_module_before_fusion(
       module->ToString(HloPrintOptions::ShortParsable()));
 
@@ -70,8 +70,8 @@ TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
   AddFusion(dump_proto, "fusion.2", "fusion.1", "multiply");
   AddFusion(dump_proto, "fusion.2", "add", "fusion.2");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion_process_dump,
-                          FusionProcessDump::LoadFromProto(dump_proto));
+  ASSERT_OK_AND_ASSIGN(auto fusion_process_dump,
+                       FusionProcessDump::LoadFromProto(dump_proto));
 
   fusion_process_dump.Advance();
   fusion_process_dump.Advance();

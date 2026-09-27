@@ -533,7 +533,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser& parser, OperationState& result) {
                                    {"public", "private", "nested"})) {
     StringAttr visibility_attr = parser.getBuilder().getStringAttr(visibility);
     result.attributes.push_back(parser.getBuilder().getNamedAttr(
-        SymbolTable::getVisibilityAttrName(), visibility_attr));
+        SymbolOpInterface::getDefaultVisibilityAttrName(), visibility_attr));
   }
 
   if (succeeded(parser.parseOptionalKeyword("generic")))
@@ -541,7 +541,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser& parser, OperationState& result) {
 
   // Parse the name as a symbol.
   StringAttr name_attr;
-  if (parser.parseSymbolName(name_attr, SymbolTable::getSymbolAttrName(),
+  if (parser.parseSymbolName(name_attr, getSymNameAttrName(result.name),
                              result.attributes))
     return failure();
 
@@ -652,15 +652,15 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
   Operation* op = *this;
   p << " ";
   int argIndentSize = op->getName().getStringRef().size() + 3;
-  StringRef visibility_attr_name = SymbolTable::getVisibilityAttrName();
+  StringRef visibility_attr_name =
+      SymbolOpInterface::getDefaultVisibilityAttrName();
   if (auto visibility = op->getAttrOfType<StringAttr>(visibility_attr_name)) {
     p << visibility.getValue() << ' ';
     argIndentSize += visibility.getValue().size() + 1;
   }
   if (getGeneric()) p << "generic ";
   auto funcName =
-      op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
-          .getValue();
+      op->getAttrOfType<StringAttr>(getSymNameAttrName()).getValue();
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
@@ -709,7 +709,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     p.printNewline();
     function_interface_impl::printFunctionAttributes(
         p, *this,
-        {"generic", SymbolTable::getVisibilityAttrName(),
+        {"generic", SymbolOpInterface::getDefaultVisibilityAttrName(),
          getFunctionTypeAttrName(), getArgAttrsAttrName(),
          getResAttrsAttrName()});
   }
@@ -1214,7 +1214,7 @@ void GetIfLikeRegionOpSuccessorRegions(
     SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   } else {
     // Unknown successor.
     regions.emplace_back(&op.getThenRegion());
@@ -1289,7 +1289,7 @@ void GetCaseLikeRegionOpSuccessorRegions(
   // All branch regions branch back to the parent op.
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   } else {
     // Unknown successor. Add all of them.
     for (Region& branch : op.getBranches()) regions.emplace_back(&branch);
@@ -1394,7 +1394,7 @@ static void GetWhileLikeRegionOpSuccessorRegions(
   }
   if (!cond || !*cond) {
     // Drop the control token.
-    regions.emplace_back(mlir::RegionSuccessor::parent());
+    regions.emplace_back(op.getOperation());
   }
 }
 
@@ -1433,12 +1433,12 @@ void ForRegionOp::getSuccessorRegions(
   regions.emplace_back(&getBodyRegion());
   if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
-  regions.emplace_back(mlir::RegionSuccessor::parent());
+  regions.emplace_back(getOperation());
 }
 
 ::mlir::ValueRange ForRegionOp::getSuccessorInputs(
     ::mlir::RegionSuccessor successor) {
-  if (successor.isParent()) return getOuts();
+  if (successor.isOperation()) return getOuts();
   // Skip the loop index (first arg) - it's not provided by the parent.
   return GetLoopRegionDataArgs(*successor.getSuccessor()).drop_front();
 }

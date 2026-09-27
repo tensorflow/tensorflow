@@ -462,7 +462,7 @@ template <typename T, typename = void>
 struct HasSize : std::false_type {};
 
 template <typename T>
-struct HasSize<T, absl::void_t<decltype(std::declval<T>().size())>>
+struct HasSize<T, std::void_t<decltype(std::declval<T>().size())>>
     : std::true_type {};
 
 // Reserves additional size, if a container.size() method exists.

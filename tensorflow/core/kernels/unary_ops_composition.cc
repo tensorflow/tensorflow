@@ -15,6 +15,17 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -62,8 +73,8 @@ struct UnaryOpsCompositionBase {
     for (const std::string& op_name : op_names) {
       auto it = compute_fns.find(op_name);
       if (it == compute_fns.end())
-        return errors::InvalidArgument(
-            "Do not have a compute function registered for op: ", op_name);
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Do not have a compute function registered for op: ", op_name));
 
       const ComputeFnRegistration& reg = it->second;
       fns->push_back(reg.compute_fn);
@@ -95,7 +106,7 @@ class UnaryOpsComposition : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("op_names", &op_names_));
 
     OP_REQUIRES(context, !op_names_.empty(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Unary op composition must have at least one op"));
 
     OP_REQUIRES_OK(context,

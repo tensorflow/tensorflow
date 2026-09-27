@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.Dataset.scan()`."""
 import itertools
 
 from absl.testing import parameterized
@@ -232,6 +231,23 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset.scan(
           initial_state=constant_op.constant(1, dtype=dtypes.int32),
           scan_func=_scan_fn)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testStateLengthMismatch(self):
+
+    def _scan_fn(state, _):
+      return (state, state), state
+
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        TypeError,
+        "The state returned by `scan_func` must have the same number of "
+        "elements as the initial state.",
+    ):
+      dataset.scan(
+          initial_state=constant_op.constant(1, dtype=dtypes.int32),
+          scan_func=_scan_fn,
+      )
 
   @combinations.generate(test_base.default_test_combinations())
   def testIncorrectReturnType(self):

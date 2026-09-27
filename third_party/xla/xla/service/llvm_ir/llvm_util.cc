@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -61,15 +62,11 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -491,7 +488,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
                 : nullptr;
 
   // Add a terminator to the if block, if necessary.
-  if (if_data.if_block->getTerminator() == nullptr) {
+  if (!if_data.if_block->hasTerminator()) {
     b->SetInsertPoint(if_data.if_block);
     if_data.after_block =
         CreateBasicBlock(nullptr, absl::StrCat(name, "-after"), b);
@@ -666,7 +663,7 @@ void SetToFirstInsertPoint(llvm::BasicBlock* blk,
 }
 
 void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
-  if (llvm::Instruction* terminator = blk->getTerminator()) {
+  if (llvm::Instruction* terminator = blk->getTerminatorOrNull()) {
     builder->SetInsertPoint(terminator);
   } else {
     builder->SetInsertPoint(blk);
@@ -692,6 +689,19 @@ llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
   flags.setApproxFunc(!options.xla_cpu_fast_math_honor_functions());
   return flags;
+}
+
+void SetAllowContractOnFpArithmetic(llvm::Module& module) {
+  for (llvm::Function& function : module) {
+    for (llvm::Instruction& instruction : llvm::instructions(function)) {
+      const unsigned opcode = instruction.getOpcode();
+      if (opcode == llvm::Instruction::FAdd ||
+          opcode == llvm::Instruction::FSub ||
+          opcode == llvm::Instruction::FMul) {
+        instruction.setHasAllowContract(true);
+      }
+    }
+  }
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -745,7 +755,8 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
+  if (!DumpingEnabledForHloModule(hlo_module) ||
+      !DumpingEnabledForEmitter("llvm", hlo_module.config().debug_options())) {
     return;
   }
   tsl::profiler::ScopedAnnotation annotation([&] {
@@ -776,10 +787,11 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setUWTableKind(llvm::UWTableKind::Default);
 
-  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
-  // denormals is safe. This allows vectorization using ARM's neon instruction
-  // set.
-  function->addFnAttr("denormal-fp-math", "preserve-sign");
+  // Optionally flush denormals to zero. This allows vectorization using ARM's
+  // NEON instruction set. Controlled by the xla_cpu_ftz flag.
+  if (module_config.debug_options().xla_cpu_ftz()) {
+    function->addFnAttr("denormal-fp-math", "preserve-sign");
+  }
 
   // Add the optimize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
@@ -799,7 +811,14 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   llvm::GlobalVariable* state_ptr =
       module->getNamedGlobal(kRngStateVariableName);
   if (!state_ptr) {
-    llvm::Type* state_type = b->getInt128Ty();
+    // Limit the state type to 64-bit for SPIR-V, because SPIR-V supports wider
+    // integer types only through the FPGA-specific arbitrary precision integer
+    // extension, which GPU drivers do not support.
+    // TODO(intel-tf): Remove this restriction once the LLVM SPIR-V backend adds
+    // support for arbitrary precision integers on GPU targets.
+    auto bitwidth =
+        llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV() ? 64 : 128;
+    llvm::Type* state_type = b->getIntNTy(bitwidth);
     // Use a non-zero initial value as zero state can cause the result of the
     // first random number generation not passing the chi-square test. The
     // values used here are arbitrarily chosen, any non-zero values should be
@@ -809,7 +828,7 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
         /*Ty=*/state_type,
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Initializer=*/llvm::ConstantInt::get(state_type, 0x7012395ull),
         /*Name=*/kRngStateVariableName,
         /*InsertBefore=*/nullptr,
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
@@ -854,7 +873,7 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
   llvm::BasicBlock* continued;
 
   // Implicitly check whtether we are already at the end of unterminated block.
-  if (b->GetInsertBlock()->getTerminator() == nullptr) {
+  if (!b->GetInsertBlock()->hasTerminator()) {
     // If we are generating code into an incomplete basic block we can just
     // create a new basic block to jump to after our conditional branch.
     continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,

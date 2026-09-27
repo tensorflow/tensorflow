@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
@@ -73,72 +74,70 @@ class TestAllocator : public tsl::Allocator {
 };
 
 TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
-  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
-                          xla::PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto* platform, xla::PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
+                       xla::PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
-  infos.emplace_back(std::make_unique<TestAllocator>(0x1000), stream.get(),
-                     /*memory_space=*/0, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x2000), stream.get(),
-                     /*memory_space=*/0, /*device_ordinal=*/1);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x3000), stream.get(),
-                     /*memory_space=*/1, /*device_ordinal=*/0);
-  infos.emplace_back(std::make_unique<TestAllocator>(0x4000), stream.get(),
-                     /*memory_space=*/1, /*device_ordinal=*/1);
+  infos.push_back({std::make_shared<TestAllocator>(0x1000), stream.get(),
+                   /*memory_space=*/0, /*device_ordinal=*/0});
+  infos.push_back({std::make_shared<TestAllocator>(0x2000), stream.get(),
+                   /*memory_space=*/0, /*device_ordinal=*/1});
+  infos.push_back({std::make_shared<TestAllocator>(0x3000), stream.get(),
+                   /*memory_space=*/1, /*device_ordinal=*/0});
+  infos.push_back({std::make_shared<TestAllocator>(0x4000), stream.get(),
+                   /*memory_space=*/1, /*device_ordinal=*/1});
   std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff1,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff1->opaque()), 0x1002);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff2,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff2->opaque()), 0x3001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff3,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff3->opaque()), 0x2001);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff4,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff4->opaque()), 0x4001);
 }
 
 TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
-  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
-                          xla::PlatformUtil::GetDefaultPlatform());
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform));
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto* platform, xla::PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
+                       xla::PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::shared_ptr<absl::flat_hash_set<void*>> allocations =
       std::make_shared<absl::flat_hash_set<void*>>();
   std::vector<MultiDeviceAdapter::AllocatorInfo> info_allocator;
-  info_allocator.emplace_back(
-      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
-      /*memory_space=*/0, /*device_ordinal=*/0);
+  info_allocator.push_back(
+      {std::make_shared<TestAllocator>(0x1000, allocations), stream.get(),
+       /*memory_space=*/0, /*device_ordinal=*/0});
 
   std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(info_allocator));
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> info_deallocator;
-  info_deallocator.emplace_back(
-      std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
-      /*memory_space=*/0, /*device_ordinal=*/0);
+  info_deallocator.push_back(
+      {std::make_shared<TestAllocator>(0x1000, allocations), stream.get(),
+       /*memory_space=*/0, /*device_ordinal=*/0});
   std::unique_ptr<DeviceAddressAllocator> deallocator =
       std::make_unique<MultiDeviceAdapter>(platform,
                                            std::move(info_deallocator));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(allocations->size(), 1);
@@ -153,8 +152,10 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
 }
 
 TEST(MemoryAllocationError, IsMemoryAllocationError) {
-  EXPECT_TRUE(IsMemoryAllocationError(
-      MemoryAllocationError(100, /*is_host_mem=*/false)));
+  EXPECT_TRUE(IsMemoryAllocationError(MemoryAllocationError(
+      /*device_ordinal=*/0,
+      /*size=*/100, /*allocator_name=*/"test_allocator",
+      /*is_host_mem=*/false)));
   EXPECT_FALSE(IsMemoryAllocationError(absl::OkStatus()));
   EXPECT_FALSE(IsMemoryAllocationError(absl::InternalError("")));
 }

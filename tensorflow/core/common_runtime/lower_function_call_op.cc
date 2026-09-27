@@ -66,7 +66,7 @@ absl::Status RewriteFunctionCallNode(Node* n, Graph* g,
     inline_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::SingleDevice();
   } else {
-    return errors::InvalidArgument("Unsupported function inlining policy");
+    return absl::InvalidArgumentError("Unsupported function inlining policy");
   }
 
   core::RefCountPtr<FunctionRecord> fdef;
@@ -82,7 +82,8 @@ absl::Status RewriteFunctionCallNode(Node* n, Graph* g,
   }
 
   if (fdef == nullptr) {
-    return errors::Internal("Can't find a function: node=", SummarizeNode(*n));
+    return absl::InternalError(
+        absl::StrCat("Can't find a function: node=", SummarizeNode(*n)));
   }
 
   std::unique_ptr<FunctionBody> fbody;

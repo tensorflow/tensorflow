@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -36,7 +35,7 @@ namespace {
 class SmallWhileLoopHoistingPassTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunSmallWhileLoopHoistingPass(HloModule* module) {
-    return cpu::SmallWhileLoopHoistingPass(256).Run(module);
+    return cpu::SmallWhileLoopHoistingPass(1024).Run(module);
   }
 };
 
@@ -62,9 +61,9 @@ TEST_F(SmallWhileLoopHoistingPassTest, SmallWhileLoopHoisting) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
   EXPECT_TRUE(changed);
 
   const HloInstruction* call_instr = FindInstruction(m.get(), HloOpcode::kCall);
@@ -109,9 +108,9 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoBigWhileLoopHoisting) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -151,9 +150,9 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoInOutFeedWhileLoopHoisting) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -188,9 +187,79 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoFftWhileLoopHoisting) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(SmallWhileLoopHoistingPassTest, NoYnnWhileLoopHoisting) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule ynn_module
+
+    %ynn_comp (lhs: f32[8,3], rhs: f32[3,3]) -> f32[8,3] {
+      %lhs = f32[8,3] parameter(0)
+      %rhs = f32[3,3] parameter(1)
+      ROOT %dot = f32[8,3] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+    }
+
+    %closed_call (x: f32[8,3]) -> (f32[8,3], f32[3], f32[3,3]) {
+      %x = f32[8,3] parameter(0)
+      %one = f32[] constant(1)
+      %one_2d = f32[3,3] broadcast(%one), dimensions={}
+      %ynn_fusion = f32[8,3] fusion(%x, %one_2d), kind=kCustom, calls=%ynn_comp,
+        backend_config={
+            "outer_dimension_partitions":[],
+            "fusion_config":{"kind":"__ynn_fusion"}
+          }
+      %zero = f32[] constant(0)
+      %zero_1d = f32[3]{0} broadcast(%zero), dimensions={}
+      ROOT %tuple = (f32[8,3], f32[3], f32[3,3]) tuple(%ynn_fusion,
+                                                       %zero_1d, %one_2d)
+    }
+
+    %body_comp (state: (s32[], f32[8,3], f32[8,3], f32[8,3,3])) ->
+                       (s32[], f32[8,3], f32[8,3], f32[8,3,3]) {
+      %state = (s32[], f32[8,3], f32[8,3], f32[8,3,3]) parameter(0)
+      %idx = s32[] get-tuple-element(%state), index=0
+      %one = s32[] constant(1)
+      %new_idx = s32[] add(%idx, %one)
+      %x = f32[8,3] get-tuple-element(%state), index=1
+      %call = (f32[8,3], f32[3], f32[3,3]) call(%x), to_apply=%closed_call
+      %in2 = f32[8,3] get-tuple-element(%state), index=2
+      %in3 = f32[8,3,3] get-tuple-element(%state), index=3
+      ROOT tuple = (s32[], f32[8,3], f32[8,3], f32[8,3,3])
+                      tuple(%new_idx, %x, %in2, %in3)
+    }
+
+    %cond_comp (state: (s32[], f32[8,3], f32[8,3], f32[8,3,3])) -> pred[] {
+      %state = (s32[], f32[8,3], f32[8,3], f32[8,3,3]) parameter(0)
+      %idx = s32[] get-tuple-element(%state), index=0
+      %eight = s32[] constant(8)
+      ROOT %lt.1 = pred[] compare(%idx, %eight), direction=LT
+    }
+
+    ENTRY %main (x: f32[8,3]) -> (f32[8,3], f32[8,3], f32[8,3,3]) {
+      %zero_int = s32[] constant(0)
+      %x = f32[8,3] parameter(0)
+      %zero_float = f32[] constant(0)
+      %zero_2d = f32[8,3] broadcast(%zero_float), dimensions={}
+      %zero_3d = f32[8,3,3] broadcast(%zero_float), dimensions={}
+      %init_state = (s32[], f32[8,3], f32[8,3], f32[8,3,3])
+                      tuple(%zero_int, %x, %zero_2d, %zero_3d)
+      %while = (s32[], f32[8,3], f32[8,3], f32[8,3,3])
+                  while(%init_state), condition=%cond_comp,
+                  body=%body_comp
+      %res_2d = f32[8,3] get-tuple-element(%while), index=2
+      %res_3d = f32[8,3,3] get-tuple-element(%while), index=3
+      ROOT %tuple = (f32[8,3], f32[8,3], f32[8,3,3]) tuple(%x, %res_2d, %res_3d)
+    }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
   EXPECT_FALSE(changed);
 }
 

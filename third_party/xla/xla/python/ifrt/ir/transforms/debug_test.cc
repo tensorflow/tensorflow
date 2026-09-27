@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -35,7 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
-#include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -86,7 +87,7 @@ class InitPassManagerTest : public testing::Test {
 
   absl::StatusOr<std::vector<std::string>> MatchUndeclaredOutputs() {
     std::vector<std::string> paths;
-    TF_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
         tsl::io::JoinPath(
             absl::NullSafeStringView(getenv("TEST_UNDECLARED_OUTPUTS_DIR")),
             "*.mlir"),

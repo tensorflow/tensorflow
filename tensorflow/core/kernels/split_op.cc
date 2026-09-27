@@ -48,32 +48,32 @@ class SplitOpBase : public OpKernel {
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
     const Tensor& split_dim_tensor = context->input(0);
-    OP_REQUIRES(
-        context, split_dim_tensor.shape().dims() == 0,
-        errors::InvalidArgument("split_dim must be a scalar but has rank ",
-                                split_dim_tensor.shape().dims()));
-    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    OP_REQUIRES(context, split_dim_tensor.shape().dims() == 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("split_dim must be a scalar but has rank ",
+                                 split_dim_tensor.shape().dims())));
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32_t num_split = num_outputs();
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input_shape.dims(),
-        errors::InvalidArgument("-input rank(-", input.dims(),
-                                ") <= split_dim < input rank (", input.dims(),
-                                "), but got ", split_dim_orig));
+        absl::InvalidArgumentError(absl::StrCat(
+            "-input rank(-", input.dims(), ") <= split_dim < input rank (",
+            input.dims(), "), but got ", split_dim_orig)));
 
     OP_REQUIRES(
         context, num_split > 0,
-        errors::InvalidArgument(
-            "Number of ways to split should be > 0, but got ", num_split));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Number of ways to split should be > 0, but got ", num_split)));
 
     OP_REQUIRES(context, input_shape.dim_size(split_dim) % num_split == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Number of ways to split should evenly divide the split "
                     "dimension, but got split_dim ",
                     split_dim, " (size = ", input_shape.dim_size(split_dim),
-                    ") ", "and num_split ", num_split));
+                    ") ", "and num_split ", num_split)));
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
       VLOG(1) << "Split identity";
@@ -210,17 +210,17 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(0).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(),
-                        std::numeric_limits<Eigen::DenseIndex>::max()),
-        errors::InvalidArgument("Split requires input size < ",
-                                std::numeric_limits<Eigen::DenseIndex>::max()));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.NumElements(),
+                                std::numeric_limits<Eigen::DenseIndex>::max()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Split requires input size < ",
+                    std::numeric_limits<Eigen::DenseIndex>::max())));
 
     Eigen::DenseIndex prefix_dim_size;
     Eigen::DenseIndex split_dim_size;
@@ -280,20 +280,20 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     }
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(0).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32_t num_split = Base::num_outputs();
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("Split on GPU requires input size "
-                                "< max int32"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError("Split on GPU requires input size "
+                                           "< max int32"));
     int32_t prefix_dim_size;
     int32_t split_dim_size;
     int32_t suffix_dim_size;
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
-        Base::template SetDims<int32>(input_shape, split_dim);
+        Base::template SetDims<int32_t>(input_shape, split_dim);
 
     const int32_t split_dim_output_size = split_dim_size / num_split;
     TensorShape output_shape(input_shape);
@@ -317,7 +317,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                               input.flat<T>().data(), prefix_dim_size,
                               split_dim_size, suffix_dim_size, ptrs.data());
     OP_REQUIRES(context, context->op_device_context()->stream()->ok(),
-                errors::Internal("Launch of gpu kernel for SplitOp failed"));
+                absl::InternalError("Launch of gpu kernel for SplitOp failed"));
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

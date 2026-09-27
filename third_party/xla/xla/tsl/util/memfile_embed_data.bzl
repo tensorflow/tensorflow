@@ -15,7 +15,7 @@
 
 """Embed data files as TSL memfiles."""
 
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library", "default_compatible_with")
 load("//xla/tsl/util:cc_embed_data.bzl", "cc_embed_data")
 
 visibility("public")
@@ -38,7 +38,7 @@ def _gen_source_impl(ctx):
         DefaultInfo(files = depset([ctx.outputs.generated_file])),
     ]
 
-_gen_source = rule(
+_memfile_embed_data_gen_source = rule(
     implementation = _gen_source_impl,
     attrs = {
         "generated_file": attr.output(
@@ -67,8 +67,8 @@ def memfile_embed_data(
         embedded_dir_name = None,
         embedopts = None,
         flatten = None,
-        testonly = None,
         compatible_with = None,
+        testonly = None,
         **kwargs):
     """Embeds a list of input files in a binary.
 
@@ -89,11 +89,14 @@ def memfile_embed_data(
         filewrapper. (List of strings; optional; see cc_embed_data)
       flatten: If non-zero, the leading path components are removed from each srcs
         file. It overrides `strip`. (Boolean; optional; default is that of cc_embed_data)
-      testonly: If true, this rule can only be included in test code.
       compatible_with: Forwarded to all underlying rules.
+      testonly: If true, this rule can only be included in test code.
       **kwargs: Forwarded to the resulting cc_library.
     """
     embed_name = "%s_embed_internal" % name
+    if compatible_with == None:
+        compatible_with = default_compatible_with()
+
     cc_embed_data(
         name = embed_name,
         srcs = srcs,
@@ -111,14 +114,13 @@ def memfile_embed_data(
 
     embedded_dir_name = name if not embedded_dir_name else embedded_dir_name
     cc_name = "%s_embed_internal_builtin.cc" % name
-    _gen_source(
+    _memfile_embed_data_gen_source(
         name = "%s_embed_cc_src" % name,
         generated_file = cc_name,
         embed_dir = embedded_dir_name,
         embed_name = embed_name,
-        testonly = testonly,
         compatible_with = compatible_with,
-        tags = ["manual"],
+        testonly = testonly,
     )
 
     cc_library(
@@ -126,7 +128,7 @@ def memfile_embed_data(
         srcs = [cc_name],
         deps = [
             ":" + embed_name,
-            "//xla/tsl/util:memfile_builtin",
+            Label("//xla/tsl/util:memfile_builtin"),
         ],
         alwayslink = True,
         compatible_with = compatible_with,

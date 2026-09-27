@@ -17,7 +17,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -50,12 +52,12 @@ class DenseBincountOp : public XlaOpKernel {
     auto output_shape_param = output_shape_or.value();
     auto output_rank = output_shape_param.dimensions().size();
     OP_REQUIRES(ctx, output_rank == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        output_rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", output_rank)));
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("size", &output_size));
     OP_REQUIRES(ctx, output_size >= 0,
-                errors::InvalidArgument("size (", output_size,
-                                        ") must be non-negative"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "size (", output_size, ") must be non-negative")));
     xla::XlaOp idx, updates, output;
     xla::XlaOp input = ctx->Input(0);
     auto input_xla_type = ctx->input_xla_type(0);
@@ -69,8 +71,30 @@ class DenseBincountOp : public XlaOpKernel {
     auto rank = input_shape.dimensions().size();
 
     OP_REQUIRES(ctx, rank <= 2,
-                errors::InvalidArgument(
-                    "Shape must be at most rank 2 but is rank ", rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be at most rank 2 but is rank ", rank)));
+    // When the input is a compile-time constant, validate that all values are
+    // non-negative at compile time (matching the eager kernel's behavior).
+    // When the input is a runtime tensor, we cannot raise a runtime error from
+    // within the XLA computation. Instead, we set negative indices to
+    // output_size (out of bounds) so that XLA Scatter silently ignores them.
+    std::vector<int64_t> input_values;
+    bool is_constant_input =
+        ctx->ConstantInputReshapedToIntVector(0, &input_values).ok();
+    if (is_constant_input) {
+      for (int64_t value : input_values) {
+        OP_REQUIRES(
+            ctx, value >= 0,
+            absl::InvalidArgumentError("Input arr must be non-negative!"));
+      }
+    }
+    // For runtime (non-constant) inputs, set negative indices to output_size
+    // (out of bounds) so that XLA Scatter silently ignores them.
+    xla::XlaOp nonneg_mask;
+    if (!is_constant_input) {
+      auto input_zero = xla::Zero(ctx->builder(), input_xla_type);
+      nonneg_mask = xla::Ge(input, input_zero);
+    }
     xla::XlaOp weights = ctx->Input(2);
     absl::StatusOr<xla::Shape> weights_shape_or =
         ctx->builder()->GetShape(weights);
@@ -83,11 +107,11 @@ class DenseBincountOp : public XlaOpKernel {
                                                               input_shape) ||
                     (weights_shape.dimensions().size() > 0 &&
                      weights_shape.dimensions(0) == 0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "`weights` must be the same shape as `arr` or a length-0 "
                     "`Tensor`, in which case it acts as all weights equal to "
                     "1. Received ",
-                    weights_shape.ToString()));
+                    weights_shape.ToString())));
 
     auto size = input_shape.dimensions(0);
 
@@ -120,6 +144,22 @@ class DenseBincountOp : public XlaOpKernel {
           i, {input_shape.dimensions(0) * input_shape.dimensions(1), 1});
       auto j = xla::Reshape(
           input, {input_shape.dimensions(0) * input_shape.dimensions(1), 1});
+      // For runtime inputs, set negative indices to output_size (out of
+      // bounds) so XLA Scatter silently ignores them. This is better than
+      // clamping to 0 because it avoids overwriting legitimate bin 0 values
+      // when binary_output=True (where scatter assigns rather than adds).
+      if (!is_constant_input) {
+        auto flat_mask = xla::Reshape(
+            nonneg_mask,
+            {input_shape.dimensions(0) * input_shape.dimensions(1), 1});
+        auto oob_value =
+            xla::ConstantR0(ctx->builder(), static_cast<int64_t>(output_size));
+        oob_value = xla::ConvertElementType(oob_value, input_xla_type);
+        auto oob_broadcast = xla::Broadcast(
+            oob_value,
+            {input_shape.dimensions(0) * input_shape.dimensions(1), 1});
+        j = xla::Select(flat_mask, j, oob_broadcast);
+      }
       std::vector<xla::XlaOp> iotas_to_concat;
       iotas_to_concat.push_back(i);
       iotas_to_concat.push_back(j);
@@ -135,6 +175,16 @@ class DenseBincountOp : public XlaOpKernel {
       }
     } else {
       input = xla::Reshape(input, {size, 1});
+      // For runtime inputs, set negative indices to output_size (out of
+      // bounds) so XLA Scatter silently ignores them.
+      if (!is_constant_input) {
+        auto oob_value =
+            xla::ConstantR0(ctx->builder(), static_cast<int64_t>(output_size));
+        oob_value = xla::ConvertElementType(oob_value, input_xla_type);
+        auto oob_broadcast = xla::Broadcast(oob_value, {size, 1});
+        input = xla::Select(xla::Reshape(nonneg_mask, {size, 1}), input,
+                            oob_broadcast);
+      }
       idx = xla::Reshape(input, {size, 1});
       updates = xla::Broadcast(one, {size});
       output = xla::Broadcast(zero, {output_size});

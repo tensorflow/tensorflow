@@ -265,9 +265,9 @@ class QuantizedInstanceNorm : public OpKernel {
       OP_REQUIRES_OK(context, context->GetAttr("given_y_min", &given_y_min_));
       OP_REQUIRES_OK(context, context->GetAttr("given_y_max", &given_y_max_));
       OP_REQUIRES(context, given_y_min_ < given_y_max_,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "given_y_min must be less than given_y_max : ",
-                      given_y_min_, " >= ", given_y_max_));
+                      given_y_min_, " >= ", given_y_max_)));
     }
   }
 
@@ -277,19 +277,19 @@ class QuantizedInstanceNorm : public OpKernel {
     const Tensor& x_min = context->input(1);
     const Tensor& x_max = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(x_min.shape()),
-                errors::InvalidArgument("`x_min` must be rank 0 but is rank ",
-                                        x_min.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`x_min` must be rank 0 but is rank ", x_min.dims())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(x_max.shape()),
-                errors::InvalidArgument("`x_max` must be rank 0 but is rank ",
-                                        x_max.dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "`x_max` must be rank 0 but is rank ", x_max.dims())));
     float input_min = x_min.scalar<float>()();
     float input_max = x_max.scalar<float>()();
     float input_scale = (input_max - input_min) / 255.0f;
 
     OP_REQUIRES(context, input_min < input_max,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input_min must be less than input_max : ", input_min,
-                    " >= ", input_max));
+                    " >= ", input_max)));
 
     auto input_tensor = input.tensor<quint8, 4>();
     auto N = input_tensor.dimension(0);

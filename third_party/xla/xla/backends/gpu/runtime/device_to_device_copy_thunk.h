@@ -23,20 +23,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace xla {
 namespace gpu {
 
 // A thunk that copies data from a device buffer to another device buffer.
-class DeviceToDeviceCopyThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class DeviceToDeviceCopyThunk : public Command {
  public:
-  // Constructs a CopyThunk that copies host data from `source_buffer` to the
+  // Constructs a thunk that copies device data from `source_buffer` to the
   // device buffer `destination_buffer`.
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const ShapedSlice& source_buffer,
@@ -47,6 +52,11 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   const ShapedSlice& source() const { return source_buffer_; }
   const ShapedSlice& destination() const { return destination_buffer_; }
@@ -80,6 +90,15 @@ class DeviceToDeviceCopyThunk : public Thunk {
   }
 
  private:
+  // Resolves device addresses for both buffers from the given allocations.
+  // Used by both ExecuteOnStream and Record to avoid duplicating address
+  // resolution logic.
+  struct CopyAddresses {
+    se::DeviceAddressBase dst;
+    se::DeviceAddressBase src;
+  };
+  CopyAddresses GetCopyAddresses(const BufferAllocations& allocations) const;
+
   const ShapedSlice source_buffer_;
   const ShapedSlice destination_buffer_;
   const int64_t mem_size_;

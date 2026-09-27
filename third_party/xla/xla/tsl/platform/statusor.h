@@ -70,35 +70,39 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/platform.h"
-
-// Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
-#if defined(PLATFORM_GOOGLE)
-#include "xla/tsl/platform/google/statusor.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/statusor.h"  // IWYU pragma: export
-#endif
 
 namespace tsl {
 
 template <typename T>
 using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
 
+ABSL_DEPRECATED(
+    "TF_ASSIGN_OR_RETURN is deprecated. Use ABSL_ASSIGN_OR_RETURN instead")
+inline void TfAssignOrReturnDeprecationMarker() {}
+
+ABSL_DEPRECATED(
+    "TF_ASSERT_OK_AND_ASSIGN is deprecated. Use ASSERT_OK_AND_ASSIGN instead")
+inline void TfAssertOkAndAssignDeprecationMarker() {}
+
 }  // namespace tsl
+
+#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
+  ABSL_ASSIGN_OR_RETURN(lhs, (::tsl::TfAssignOrReturnDeprecationMarker(), (rexpr)))
 
 #define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
   TF_ASSERT_OK_AND_ASSIGN_IMPL(                                         \
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
       rexpr);
 
-#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                                 \
-  ASSERT_TRUE(statusor.status().ok())                      \
-      << ADD_SOURCE_LOCATION(statusor.status());           \
+#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)                  \
+  auto statusor = (::tsl::TfAssertOkAndAssignDeprecationMarker(), (rexpr)); \
+  if (!statusor.status().ok()) {                                            \
+    FAIL() << ADD_SOURCE_LOCATION(statusor.status());                       \
+    return;                                                                 \
+  }                                                                         \
   lhs = std::move(statusor).value()
 
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)

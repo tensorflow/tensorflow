@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/while_util.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 /*static*/
@@ -172,7 +172,7 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     unrolled_while_instruction->set_while_body(unrolled_body);
 
     if (status.ok()) {
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
     } else {
       VLOG(1) << "Failed to unroll: " << while_instruction->name();
@@ -185,9 +185,9 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     // recursively clone all the nested computations. FCG will take care of this
     // for us.
     FlattenCallGraph fcg;
-    RETURN_IF_ERROR(fcg.Run(module).status());
+    ABSL_RETURN_IF_ERROR(fcg.Run(module).status());
     HloDCE dce;
-    RETURN_IF_ERROR(dce.Run(module).status());
+    ABSL_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   return changed;

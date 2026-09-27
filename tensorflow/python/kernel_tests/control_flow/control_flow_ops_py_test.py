@@ -1476,7 +1476,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
     self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
-
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt("b/179459136")
   def testWhileAutoControlDeps(self):
@@ -1667,7 +1666,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(op.inputs[0].op.type, "Shape")
         self.assertEqual(op.inputs[1].op.type, "Shape")
     xla_context.Exit()
-
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
@@ -2735,8 +2733,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def loop_iterator(j, _):
         return math_ops.less(j, 3)
 
-      def loop_body(j, _):
-        ns = state_ops.scatter_update(select, j, 10.0)
+      def loop_body(j, value):
+        with ops.control_dependencies([value]):
+          ns = state_ops.scatter_update(select, j, 10.0)
         nj = math_ops.add(j, 1)
         return [nj, ns]
 
@@ -4609,7 +4608,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(
             len([op for op in x.graph.get_operations() if op.type == "StackV2"
                 ]), 1)
-
 
   @test_util.run_v1_only("b/120545219")
   def testQIntSwitchMerge(self):

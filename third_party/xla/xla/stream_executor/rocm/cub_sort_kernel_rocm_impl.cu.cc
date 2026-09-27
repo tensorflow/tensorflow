@@ -23,7 +23,6 @@ limitations under the License.
 #include "rocm/include/hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp"
 #include "rocm/include/rocprim/thread/radix_key_codec.hpp"
 #include "rocm/include/rocprim/type_traits.hpp"
-#include "rocm/rocm_config.h"
 #include "xla/stream_executor/rocm/cub_sort_kernel_rocm.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "tsl/platform/bfloat16.h"
@@ -31,32 +30,6 @@ limitations under the License.
 // Required for sorting Eigen::half and bfloat16.
 namespace rocprim {
 
-#if (TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000)
-namespace detail {
-template <>
-struct float_bit_mask<Eigen::half> {
-  static constexpr uint16_t sign_bit = 0x8000;
-  static constexpr uint16_t exponent = 0x7C00;
-  static constexpr uint16_t mantissa = 0x03FF;
-  using bit_type = uint16_t;
-};
-
-template <>
-struct float_bit_mask<tsl::bfloat16> {
-  static constexpr uint16_t sign_bit = 0x8000;
-  static constexpr uint16_t exponent = 0x7F80;
-  static constexpr uint16_t mantissa = 0x007F;
-  using bit_type = uint16_t;
-};
-
-template <>
-struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, uint16_t> {};
-template <>
-struct radix_key_codec_base<tsl::bfloat16>
-    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
-}  // namespace detail
-#else   // TF_ROCM_VERSION >= 70000
 namespace traits {
 
 template <>
@@ -78,7 +51,6 @@ struct define<tsl::bfloat16> {
 };
 
 }  // namespace traits
-#endif  // TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000
 
 };  // namespace rocprim
 
@@ -287,10 +259,18 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint32_t)
 XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint64_t)
 #endif
 
-// Pairs with 32-bit key.
+// Pairs with signed 32-bit key.
+#ifdef CUB_TYPE_S32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint16_t)
+#endif
 #ifdef CUB_TYPE_S32_B32
 XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint32_t)
 #endif
+#ifdef CUB_TYPE_S32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint64_t)
+#endif
+
+// Pairs with unsigned 32-bit key.
 #ifdef CUB_TYPE_U32_B16
 XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint16_t)
 #endif
@@ -299,15 +279,6 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U32_B64
 XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint64_t)
-#endif
-#ifdef CUB_TYPE_F32_B16
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
-#endif
-#ifdef CUB_TYPE_F32_B32
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
-#endif
-#ifdef CUB_TYPE_F32_B64
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 #endif
 
 // Pairs with 64-bit key.
@@ -319,6 +290,17 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U64_B64
 XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint64_t)
+#endif
+
+// Pairs with f32 key.
+#ifdef CUB_TYPE_F32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
+#endif
+#ifdef CUB_TYPE_F32_B32
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
+#endif
+#ifdef CUB_TYPE_F32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 #endif
 
 }  // namespace rocm

@@ -30,7 +30,6 @@ llvm::cl::opt<bool> import_all_computations(
 llvm::cl::opt<bool> flatten_computation_args_result(
     "hlo-flatten-computation-args-result",
     llvm::cl::desc("Enable flattening computation arguments and results."));
-
 // NOLINTNEXTLINE
 llvm::cl::opt<bool> emit_stablehlo(
     "emit-stablehlo",

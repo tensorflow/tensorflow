@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -87,7 +88,7 @@ absl::Status MlirXlaOpKernel::ContextToXlaArgs(
     XlaExpression::Kind ctx_kind_i = ctx->InputExpression(i).kind();
     if (ctx_kind_i != XlaExpression::Kind::kXlaOp &&
         ctx_kind_i != XlaExpression::Kind::kConstant)
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("Input ", i, " to an MlirXlaOpKernel is invalid: ",
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
@@ -135,7 +136,7 @@ absl::Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Get the context's device.
   auto device = dynamic_cast<Device*>(ctx->op_kernel_context()->device());
   if (!device) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Expected the XlaOpKernelContext argument's device to have type "
         "Device.");
   }

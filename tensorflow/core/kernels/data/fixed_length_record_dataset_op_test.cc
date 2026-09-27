@@ -96,7 +96,7 @@ absl::Status CreateTestFiles(const std::vector<tstring>& filenames,
                              const std::vector<std::string>& contents,
                              CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The number of files does not match with the contents");
   }
   if (compression_type == CompressionType::UNCOMPRESSED) {
@@ -247,6 +247,58 @@ TEST_F(FixedLengthRecordDatasetOpTest, IteratorPrefix) {
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
       FixedLengthRecordDatasetOp::kDatasetType,
       dataset_params.iterator_prefix(), iterator_prefix_params)));
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, FileSmallerThanHeaderAndFooter) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {"123"};
+  TF_ASSERT_OK(
+      CreateTestFiles(filenames, contents, CompressionType::UNCOMPRESSED));
+
+  auto dataset_params = FixedLengthRecordDatasetParams(
+      filenames,
+      /*header_bytes=*/5,
+      /*record_bytes=*/3,
+      /*footer_bytes=*/2,
+      /*buffer_size=*/10,
+      /*compression_type=*/CompressionType::UNCOMPRESSED,
+      /*node_name=*/kNodeName);
+
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_TRUE(absl::StrContains(
+      status.message(),
+      "smaller than the sum of the header (5 bytes) and footer (2 bytes)"))
+      << status.message();
+}
+
+TEST_F(FixedLengthRecordDatasetOpTest, FileTooSmallForCompressedReader) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  std::vector<std::string> contents = {"123"};
+  TF_ASSERT_OK(CreateTestFiles(filenames, contents, CompressionType::ZLIB));
+
+  auto dataset_params =
+      FixedLengthRecordDatasetParams(filenames,
+                                     /*header_bytes=*/5,
+                                     /*record_bytes=*/3,
+                                     /*footer_bytes=*/2,
+                                     /*buffer_size=*/10,
+                                     /*compression_type=*/CompressionType::ZLIB,
+                                     /*node_name=*/kNodeName);
+
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  // This error is caught by the compressed reader when reading the data.
+  absl::Status status =
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(), "EOF reached"))
+      << status.message();
 }
 
 std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>

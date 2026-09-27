@@ -79,7 +79,7 @@ absl::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
   } else {
     DCHECK_EQ(func->result_types().size(), 0);
     if (auto err = ExecuteSyncBEFFunction(*func, exec_ctx, {}, {})) {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           tfrt::StrCat("Failed to run function: ", func->name(), err));
     }
   }

@@ -80,7 +80,7 @@ class CheckRangeAndConvertI8ToI4 : public OpRewritePattern<arith::ConstantOp> {
         mlir::RankedTensorType::get(const_type.getShape(), builder.getI4Type());
     auto newAttr = DenseElementsAttr::getFromRawBuffer(
         shaped_type, mlir::cast<DenseElementsAttr>(op.getValue()).getRawData());
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, newAttr);
+    rewriter.replaceOpWithNewOp<TFL::ConstOp>(op, newAttr);
 
     return success();
   }
@@ -108,7 +108,7 @@ class SanitizeGatherOpOutputToI4 : public OpRewritePattern<TFL::GatherOp> {
     Builder builder(op.getContext());
     auto new_gather_op =
         TFL::GatherOp::create(rewriter, op.getLoc(),
-                              /*result=*/
+                              /*resultTypes=*/
                               mlir::cast<TensorType>(op.getResult().getType())
                                   .clone(builder.getI4Type()),
                               /*operands=*/op.getOperands(), op->getAttrs());

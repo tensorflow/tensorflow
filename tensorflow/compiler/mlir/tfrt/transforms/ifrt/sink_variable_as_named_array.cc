@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
-#include "xla/service/computation_placer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -65,6 +66,32 @@ class SinkVariableAsNamedArrayPass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::OpBuilder builder(&getContext());
+
+    // Record, as a module attribute, the runtime names of variables that are
+    // modified in this module. The runtime uses the union of these reports
+    // across all compiled modules to classify host-needed variables at
+    // IfrtModelContext::Freeze() time (freeze-time host variable mode). The
+    // name format must match GetRuntimeNameFromVarHandle:
+    // "<container>__<shared_name>".
+    {
+      std::set<std::string> modified_names;
+      module.walk([&](mlir::TF::VarHandleOp var_handle) {
+        for (mlir::Operation* user : var_handle->getUsers()) {
+          if (llvm::isa<mlir::TF::AssignVariableOp>(user)) {
+            modified_names.insert(
+                absl::StrCat(var_handle.getContainer().str(), "__",
+                             var_handle.getSharedName().str()));
+            break;
+          }
+        }
+      });
+      if (!modified_names.empty()) {
+        llvm::SmallVector<llvm::StringRef> refs(modified_names.begin(),
+                                                modified_names.end());
+        module->setAttr("tf_ifrt.modified_variable_names",
+                        builder.getStrArrayAttr(refs));
+      }
+    }
 
     // Rewrite ReadVariableOp with IfrtLoadVariableOp
     llvm::SmallDenseMap<mlir::TF::ReadVariableOp, mlir::TF::IfrtLoadVariableOp>
@@ -112,62 +139,76 @@ class SinkVariableAsNamedArrayPass
     // Rewrite ifrt call: variable tensors are sunk as attribute.
     // The runtime guarantees the binding of corresponding loaded ifrt array
     // based on attributes.
-    mlir::WalkResult ifrt_call_walk_result =
-        module.walk([&](mlir::TF::IfrtCallOp call) {
-          IfrtArgConfigList ifrt_call_argument_configs;
+    auto process_call = [&](auto call) -> mlir::WalkResult {
+      IfrtArgConfigList ifrt_call_argument_configs;
 
-          if (mlir::failed(BuildIfrtCallArgumentConfig(
-                  call, ifrt_call_argument_configs))) {
-            return mlir::WalkResult::interrupt();
-          }
+      if (mlir::failed(BuildIfrtCallArgumentConfig(
+              call.getOperation(), ifrt_call_argument_configs))) {
+        return mlir::WalkResult::interrupt();
+      }
 
-          if (!call.getVariableArgIndicesAttr().empty()) {
-            call->emitError()
-                << "Expect empty " << call.getVariableArgIndicesAttrName().str()
-                << " attributes, but got "
-                << call.getVariableArgIndicesAttr().size() << " elements";
-            return mlir::WalkResult::interrupt();
-          }
-          if (call->getOpOperands().size() !=
-              ifrt_call_argument_configs.size()) {
-            call->emitError()
-                << "IfrtCallOp got " << call->getOpOperands().size()
-                << " operands, but expects "
-                << ifrt_call_argument_configs.size();
-            return mlir::WalkResult::interrupt();
-          }
+      if (!call.getVariableArgIndicesAttr().empty()) {
+        call->emitError() << "Expect empty "
+                          << call.getVariableArgIndicesAttrName().str()
+                          << " attributes, but got "
+                          << call.getVariableArgIndicesAttr().size()
+                          << " elements";
+        return mlir::WalkResult::interrupt();
+      }
+      if (call->getOpOperands().size() != ifrt_call_argument_configs.size()) {
+        call->emitError() << "IfrtCallOp got " << call->getOpOperands().size()
+                          << " operands, but expects "
+                          << ifrt_call_argument_configs.size();
+        return mlir::WalkResult::interrupt();
+      }
 
-          llvm::SmallVector<int> variable_arg_indices;
-          llvm::SmallVector<mlir::Value> updated_args;
+      llvm::SmallVector<int> variable_arg_indices;
+      llvm::SmallVector<mlir::Value> updated_args;
 
-          for (const auto& [arg_idx, arg] :
-               llvm::enumerate(ifrt_call_argument_configs)) {
-            if (arg.is_variable) {
-              variable_arg_indices.push_back(arg_idx);
-              // Variable use the key from IfrtLoadVariable.
-              updated_args.push_back(
-                  read_to_load[arg.read_variable_op].getArrayKey());
-            } else {
-              // non variable
-              updated_args.push_back(call->getOperand(arg_idx));
-            }
-          }
+      for (const auto& [arg_idx, arg] :
+           llvm::enumerate(ifrt_call_argument_configs)) {
+        if (arg.is_variable) {
+          variable_arg_indices.push_back(arg_idx);
+          // Variable use the key from IfrtLoadVariable.
+          updated_args.push_back(
+              read_to_load[arg.read_variable_op].getArrayKey());
+        } else {
+          // non variable
+          updated_args.push_back(call->getOperand(arg_idx));
+        }
+      }
 
-          builder.setInsertionPointAfter(call);
-          auto updated_ifrt_call = mlir::TF::IfrtCallOp::create(
-              builder, call->getLoc(), call.getResultTypes(), updated_args);
+      builder.setInsertionPointAfter(call);
+      mlir::Operation* updated_ifrt_call;
+      if (llvm::isa<mlir::TF::AsyncIfrtCallOp>(call)) {
+        updated_ifrt_call = mlir::TF::AsyncIfrtCallOp::create(
+            builder, call->getLoc(), call.getResultTypes(), updated_args);
+      } else {
+        updated_ifrt_call = mlir::TF::IfrtCallOp::create(
+            builder, call->getLoc(), call.getResultTypes(), updated_args);
+      }
 
-          updated_ifrt_call->setAttrs(call->getAttrs());
-          // Update variable_arg_indices attribute.
-          updated_ifrt_call.setVariableArgIndicesAttr(
-              builder.getI32ArrayAttr(variable_arg_indices));
+      updated_ifrt_call->setAttrs(call->getAttrs());
+      // Update variable_arg_indices attribute.
+      updated_ifrt_call->setAttr("variable_arg_indices",
+                                 builder.getI32ArrayAttr(variable_arg_indices));
 
-          call.replaceAllUsesWith(updated_ifrt_call);
-          call.erase();
-          return mlir::WalkResult::advance();
-        });
+      call.replaceAllUsesWith(updated_ifrt_call);
+      call.erase();
+      return mlir::WalkResult::advance();
+    };
 
-    if (ifrt_call_walk_result.wasInterrupted()) {
+    if (module
+            .walk([&](mlir::TF::IfrtCallOp call) { return process_call(call); })
+            .wasInterrupted()) {
+      return signalPassFailure();
+    }
+
+    if (module
+            .walk([&](mlir::TF::AsyncIfrtCallOp call) {
+              return process_call(call);
+            })
+            .wasInterrupted()) {
       return signalPassFailure();
     }
 
@@ -193,7 +234,7 @@ class SinkVariableAsNamedArrayPass
   using IfrtArgConfigList = llvm::SmallVector<IfrtArgConfig>;
 
   // Build argument configuration map of a IfrtCallOp.
-  mlir::LogicalResult BuildIfrtCallArgumentConfig(mlir::TF::IfrtCallOp call,
+  mlir::LogicalResult BuildIfrtCallArgumentConfig(mlir::Operation* call,
                                                   IfrtArgConfigList& args) {
     for (const auto& [arg_idx, input] : llvm::enumerate(call->getOperands())) {
       // Assuming the nested function calls are inlined.

@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -33,6 +35,11 @@ namespace xla::gpu {
 // A callback to get a unique clique ids.
 using CliqueIdCallback =  // NOLINT
     std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
+
+// Called when GPU execution exceeds the HangWatchdog timeout. Used to abort
+// local collectives and report the failure to the coordination service.
+using ExecutionTimeoutHandler =
+    std::function<void(absl::string_view action, absl::Duration timeout)>;
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -84,6 +91,10 @@ class GpuExecutableRunOptions {
     return *this;
   }
 
+  GpuExecutableRunOptions& set_execution_timeout_handler(
+      ExecutionTimeoutHandler handler);
+  const ExecutionTimeoutHandler& execution_timeout_handler() const;
+
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_collectives_ = false;
@@ -92,6 +103,7 @@ class GpuExecutableRunOptions {
   GpuCollectives* collectives_ = nullptr;
   std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
       incarnations_;
+  ExecutionTimeoutHandler execution_timeout_handler_;
 };
 
 }  // namespace xla::gpu

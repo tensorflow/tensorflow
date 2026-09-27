@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_MONITORING_METRIC_DEF_H_
 #define XLA_TSL_LIB_MONITORING_METRIC_DEF_H_
 
-#include <array>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/types.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace monitoring {

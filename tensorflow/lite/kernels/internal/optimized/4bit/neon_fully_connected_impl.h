@@ -64,15 +64,12 @@ extern void NeonRunKernelNoSDot(const uint8_t* lhs, const int8_t* rhs,
                                 int lhs_layout_cols, int rhs_layout_rows,
                                 int rhs_layout_cols, int dst_layout_rows,
                                 int dst_layout_cols);
-
-#ifdef __aarch64__
 template <int RowsLeft, int RowsRight, int Cols>
 extern void NeonRunKernelSDot(const uint8_t* lhs, const int8_t* rhs,
                               int32_t* dst, int lhs_layout_rows,
                               int lhs_layout_cols, int rhs_layout_rows,
                               int rhs_layout_cols, int dst_layout_rows,
                               int dst_layout_cols);
-#endif
 
 }  // namespace optimized_4bit
 }  // namespace tflite

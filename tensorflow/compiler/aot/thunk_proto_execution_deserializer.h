@@ -62,6 +62,9 @@ class ThunkProtoExecutionDeserializer {
   absl::StatusOr<std::string> GetRngGetAndUpdateStateThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
+  absl::StatusOr<std::string> GetRngSeedThunkRunImpl(
+      const xla::cpu::ThunkProto& thunk);
+
   absl::StatusOr<std::string> GetCallThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 

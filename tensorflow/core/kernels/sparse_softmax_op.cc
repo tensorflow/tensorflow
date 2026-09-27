@@ -48,21 +48,21 @@ class SparseSoftmaxOp : public OpKernel {
 
     // Validations.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input sp_indices should be a matrix but received shape: ",
-                    indices_t->shape().DebugString()));
+                    indices_t->shape().DebugString())));
     OP_REQUIRES(context,
                 TensorShapeUtils::IsVector(values_t->shape()) &&
                     TensorShapeUtils::IsVector(shape_t->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Inputs sp_values and sp_shape should be vectors "
                     "but received shapes: ",
                     values_t->shape().DebugString(), " and ",
-                    shape_t->shape().DebugString()));
+                    shape_t->shape().DebugString())));
     OP_REQUIRES(context, shape_t->NumElements() >= 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input should have rank >= 2, but received shape: ",
-                    shape_t->SummarizeValue(3)));
+                    shape_t->SummarizeValue(3))));
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(
                                 shape_t->flat<int64_t>(), &shape));

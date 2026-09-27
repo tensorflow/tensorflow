@@ -18,12 +18,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -42,14 +40,12 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
-    IrEmitterContext& ir_emitter_context,
-    const HloFusionInstruction& fusion) const {
+AsyncThunkSequence SortFusion::Emit(IrEmitterContext& ir_emitter_context,
+                                    const HloFusionInstruction& fusion) const {
   std::vector<BufferAllocation::Slice> src_buffers;
   std::vector<BufferAllocation::Slice> dst_buffers;
   std::vector<Shape> src_shapes;
@@ -74,12 +70,12 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
     if (HloPredicateIsOp<HloOpcode::kParameter>(sort->operand(i))) {
       const HloInstruction* src_instr =
           fusion.operand(sort->operand(i)->parameter_number());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
       src_buffers.push_back(slice);
       src_shapes.push_back(sort->operand(i)->shape());
-      ASSIGN_OR_RETURN(slice,
+      ABSL_ASSIGN_OR_RETURN(slice,
                        ir_emitter_context.buffer_assignment().GetUniqueSlice(
                            &fusion, shape_index));
       dst_buffers.push_back(slice);
@@ -88,10 +84,10 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
     }
   }
 
-  FusionEmissionResult result;
+  ThunkSequence thunks;
   for (int i = 0; i < src_buffers.size(); ++i) {
     if (src_buffers[i] != dst_buffers[i]) {
-      result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+      thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           /*source_buffer=*/ShapedSlice{src_buffers[i], src_shapes[i]},
@@ -99,15 +95,14 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  std::string op_name(sort->name());
-  result.module = ir_emitter_context.CreateLLVMModule(op_name);
-  ASSIGN_OR_RETURN(
-      ThunkSequence sort_thunks,
-      EmitBitonicSortLLVMIR(sort, result.module.get(), &ir_emitter_context));
-  result.thunks.insert(result.thunks.end(),
-                       std::make_move_iterator(sort_thunks.begin()),
-                       std::make_move_iterator(sort_thunks.end()));
-  return result;
+  return EmitBitonicSortLLVMIR(sort, &ir_emitter_context)
+      .Map(
+          [thunks = std::move(thunks)](ThunkSequence sort_thunks) mutable {
+            thunks.insert(thunks.end(),
+                          std::make_move_iterator(sort_thunks.begin()),
+                          std::make_move_iterator(sort_thunks.end()));
+            return std::move(thunks);
+          });
 }
 
 }  // namespace gpu

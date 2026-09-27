@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -123,6 +124,17 @@ class XStatsOwner {
     return std::nullopt;  // type does not exist in this owner.
   }
 
+  // Shortcut to get a specific stat by its metadata, nullopt if absent.
+  std::optional<XStatVisitor> GetStat(
+      const XStatMetadata& stat_metadata) const {
+    for (const XStat& stat : stats_owner_->stats()) {
+      if (stat.metadata_id() == stat_metadata.id()) {
+        return XStatVisitor(plane_, &stat, &stat_metadata, std::nullopt);
+      }
+    }
+    return std::nullopt;
+  }
+
  protected:
   const XPlaneVisitor* plane() const { return plane_; }
   const T* stats_owner() const { return stats_owner_; }
@@ -204,6 +216,81 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   bool IsAggregatedEvent() const {
     return event_->data_case() == XEvent::kNumOccurrences;
+  }
+
+  // Returns the XStat from XEvent or XEventMetadata (in that order), or nullopt
+  // if absent.
+  std::optional<XStatVisitor> GetEventOrMetadataStat(int64_t stat_type) const;
+
+  // Returns the stat value as an optional of type T, or nullopt if absent or if
+  // the stat value type does not match T.
+  template <typename T>
+  std::optional<T> GetEventOrMetadataStat(int64_t stat_type) const {
+    std::optional<XStatVisitor> stat = GetEventOrMetadataStat(stat_type);
+    if (!stat.has_value()) {
+      return std::nullopt;
+    }
+
+    if constexpr (std::is_same_v<T, int64_t>) {
+      if (stat->ValueCase() != XStat::kInt64Value &&
+          stat->ValueCase() != XStat::kUint64Value) {
+        return std::nullopt;
+      }
+      return static_cast<int64_t>(stat->IntOrUintValue());
+    } else if constexpr (std::is_same_v<T, uint64_t>) {
+      if (stat->ValueCase() != XStat::kInt64Value &&
+          stat->ValueCase() != XStat::kUint64Value) {
+        return std::nullopt;
+      }
+      return stat->IntOrUintValue();
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+      if (auto v = GetEventOrMetadataStat<int64_t>(stat_type); v.has_value()) {
+        return static_cast<int32_t>(*v);
+      }
+      return std::nullopt;
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+      if (auto v = GetEventOrMetadataStat<uint64_t>(stat_type); v.has_value()) {
+        return static_cast<uint32_t>(*v);
+      }
+      return std::nullopt;
+    } else if constexpr (std::is_same_v<T, bool>) {
+      if (auto v = GetEventOrMetadataStat<uint64_t>(stat_type); v.has_value()) {
+        return *v != 0;
+      }
+      return std::nullopt;
+    } else if constexpr (std::is_same_v<T, double>) {
+      if (stat->ValueCase() != XStat::kDoubleValue) {
+        return std::nullopt;
+      }
+      return stat->DoubleValue();
+    } else if constexpr (std::is_same_v<T, absl::string_view>) {
+      switch (stat->ValueCase()) {
+        case XStat::kStrValue:
+        case XStat::kRefValue:
+          return stat->StrOrRefValue();
+        case XStat::kBytesValue:
+          return stat->BytesValue();
+        default:
+          return std::nullopt;
+      }
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      if (auto v = GetEventOrMetadataStat<absl::string_view>(stat_type);
+          v.has_value()) {
+        return std::string(*v);
+      }
+      return std::nullopt;
+    } else {
+      static_assert(sizeof(T) == 0,
+                    "Unsupported type for GetEventOrMetadataStat");
+    }
+  }
+
+  // Shortcut to get a stat from XEvent or XEventMetadata (in that order), or
+  // return default_val if absent or if the stat value type does not match T.
+  template <typename T>
+  T GetEventOrMetadataStat(int64_t stat_type, T default_val) const {
+    return GetEventOrMetadataStat<T>(stat_type).value_or(
+        std::move(default_val));
   }
 
   bool operator<(const XEventVisitor& other) const {
@@ -299,6 +386,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
       for_each_line(XLineVisitor(this, &line));
     }
   }
+
   template <typename ThreadBundle, typename ForEachLineFunc>
   void ForEachLineInParallel(ForEachLineFunc&& for_each_line) const {
     ThreadBundle bundle;
@@ -369,7 +457,6 @@ void XEventMetadataVisitor::ForEachChild(
     }
   }
 }
-
 }  // namespace profiler
 }  // namespace tsl
 

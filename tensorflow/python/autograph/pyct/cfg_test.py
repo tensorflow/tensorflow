@@ -176,8 +176,8 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a, b', 'a = (b + 1)'),
-            ('a = (b + 1)', 'a += max(a)', None),
+            (None, 'a, b', 'a = b + 1'),
+            ('a = b + 1', 'a += max(a)', None),
         ),
     )
     self.assertGraphEnds(graph, 'a, b', ('a += max(a)',))
@@ -213,16 +213,16 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a', '(a > 0)'),
-            ('(a > 0)', 'a = 1', None),
-            ('(a > 0)', 'a += (- 1)', None),
+            (None, 'a', 'a > 0'),
+            ('a > 0', 'a = 1', None),
+            ('a > 0', 'a += -1', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (('a', 'If:2', None),),
     )
-    self.assertGraphEnds(graph, 'a', ('a = 1', 'a += (- 1)'))
+    self.assertGraphEnds(graph, 'a', ('a = 1', 'a += -1'))
 
   def test_branch_nested(self):
 
@@ -243,22 +243,22 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a', '(a > 0)'),
-            ('a', '(a > 0)', ('(a > 1)', '(a > 2)')),
-            ('(a > 0)', '(a > 1)', ('a = 1', 'a = 2')),
-            ('(a > 1)', 'a = 1', None),
-            ('(a > 1)', 'a = 2', None),
-            ('(a > 0)', '(a > 2)', ('a = 3', 'a = 4')),
-            ('(a > 2)', 'a = 3', None),
-            ('(a > 2)', 'a = 4', None),
+            (None, 'a', 'a > 0'),
+            ('a', 'a > 0', ('a > 1', 'a > 2')),
+            ('a > 0', 'a > 1', ('a = 1', 'a = 2')),
+            ('a > 1', 'a = 1', None),
+            ('a > 1', 'a = 2', None),
+            ('a > 0', 'a > 2', ('a = 3', 'a = 4')),
+            ('a > 2', 'a = 3', None),
+            ('a > 2', 'a = 4', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (
             ('a', 'If:2', None),
-            ('(a > 0)', 'If:3', None),
-            ('(a > 0)', 'If:8', None),
+            ('a > 0', 'If:3', None),
+            ('a > 0', 'If:8', None),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 1', 'a = 2', 'a = 3', 'a = 4'))
@@ -274,16 +274,16 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (None, 'a', '(a > 0)'),
-            ('a', '(a > 0)', 'a = 1'),
-            ('(a > 0)', 'a = 1', None),
+            (None, 'a', 'a > 0'),
+            ('a', 'a > 0', 'a = 1'),
+            ('a > 0', 'a = 1', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (('a', 'If:2', None),),
     )
-    self.assertGraphEnds(graph, 'a', ('(a > 0)', 'a = 1'))
+    self.assertGraphEnds(graph, 'a', ('a > 0', 'a = 1'))
 
   def test_branch_return(self):
 
@@ -299,9 +299,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', ('return', 'a = 1')),
-            ('(a > 0)', 'a = 1', 'a = 2'),
-            ('(a > 0)', 'return', None),
+            ('a', 'a > 0', ('return', 'a = 1')),
+            ('a > 0', 'a = 1', 'a = 2'),
+            ('a > 0', 'return', None),
             ('a = 1', 'a = 2', None),
         ),
     )
@@ -325,9 +325,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', ('raise a', 'a = 1')),
-            ('(a > 0)', 'a = 1', 'a = 2'),
-            ('(a > 0)', 'raise a', None),
+            ('a', 'a > 0', ('raise a', 'a = 1')),
+            ('a > 0', 'a = 1', 'a = 2'),
+            ('a > 0', 'raise a', None),
             ('a = 1', 'a = 2', None),
         ),
     )
@@ -348,15 +348,15 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', 'return'),
-            ('(a > 0)', 'return', None),
+            ('a', 'a > 0', 'return'),
+            ('a > 0', 'return', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (('a', 'If:2', None),),
     )
-    self.assertGraphEnds(graph, 'a', ('(a > 0)', 'return'))
+    self.assertGraphEnds(graph, 'a', ('a > 0', 'return'))
 
   def test_while_straightline(self):
 
@@ -370,9 +370,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), '(a > 0)', ('a = 1', 'a = 2')),
-            ('(a > 0)', 'a = 1', '(a > 0)'),
-            ('(a > 0)', 'a = 2', None),
+            (('a', 'a = 1'), 'a > 0', ('a = 1', 'a = 2')),
+            ('a > 0', 'a = 1', 'a > 0'),
+            ('a > 0', 'a = 2', None),
         ),
     )
     self.assertStatementEdges(
@@ -395,9 +395,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), '(a > 0)', ('a = 1', 'a = 2')),
-            ('(a > 0)', 'a = 1', '(a > 0)'),
-            ('(a > 0)', 'a = 2', 'a = 3'),
+            (('a', 'a = 1'), 'a > 0', ('a = 1', 'a = 2')),
+            ('a > 0', 'a = 1', 'a > 0'),
+            ('a > 0', 'a = 2', 'a = 3'),
             ('a = 2', 'a = 3', None),
         ),
     )
@@ -425,11 +425,11 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'continue', 'a = 1'), '(a > 0)', ('(a > 1)', 'a = 2')),
-            ('(a > 0)', '(a > 1)', ('continue', 'a = 0')),
-            ('(a > 1)', 'continue', '(a > 0)'),
-            ('a = 0', 'a = 1', '(a > 0)'),
-            ('(a > 0)', 'a = 2', 'a = 3'),
+            (('a', 'continue', 'a = 1'), 'a > 0', ('a > 1', 'a = 2')),
+            ('a > 0', 'a > 1', ('continue', 'a = 0')),
+            ('a > 1', 'continue', 'a > 0'),
+            ('a = 0', 'a = 1', 'a > 0'),
+            ('a > 0', 'a = 2', 'a = 3'),
             ('a = 2', 'a = 3', None),
         ),
     )
@@ -437,7 +437,7 @@ class AstToCfgTest(test.TestCase):
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'If:3', ('a = 1', '(a > 0)')),
+            ('a > 0', 'If:3', ('a = 1', 'a > 0')),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3',))
@@ -458,11 +458,11 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), '(a > 0)', ('(a > 1)', 'a = 2')),
-            ('(a > 0)', '(a > 1)', ('break', 'a = 1')),
-            ('(a > 1)', 'break', 'a = 3'),
-            ('(a > 1)', 'a = 1', '(a > 0)'),
-            ('(a > 0)', 'a = 2', 'a = 3'),
+            (('a', 'a = 1'), 'a > 0', ('a > 1', 'a = 2')),
+            ('a > 0', 'a > 1', ('break', 'a = 1')),
+            ('a > 1', 'break', 'a = 3'),
+            ('a > 1', 'a = 1', 'a > 0'),
+            ('a > 0', 'a = 2', 'a = 3'),
             (('break', 'a = 2'), 'a = 3', None),
         ),
     )
@@ -470,7 +470,7 @@ class AstToCfgTest(test.TestCase):
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'If:3', ('a = 1', 'a = 3')),
+            ('a > 0', 'If:3', ('a = 1', 'a = 3')),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3',))
@@ -491,11 +491,11 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), '(a > 0)', ('(a > 1)', 'a = 2')),
-            ('(a > 0)', '(a > 1)', ('return', 'a = 1')),
-            ('(a > 1)', 'return', None),
-            ('(a > 1)', 'a = 1', '(a > 0)'),
-            ('(a > 0)', 'a = 2', 'a = 3'),
+            (('a', 'a = 1'), 'a > 0', ('a > 1', 'a = 2')),
+            ('a > 0', 'a > 1', ('return', 'a = 1')),
+            ('a > 1', 'return', None),
+            ('a > 1', 'a = 1', 'a > 0'),
+            ('a > 0', 'a = 2', 'a = 3'),
             ('a = 2', 'a = 3', None),
         ),
     )
@@ -503,7 +503,7 @@ class AstToCfgTest(test.TestCase):
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'If:3', 'a = 1'),
+            ('a > 0', 'If:3', 'a = 1'),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3', 'return'))
@@ -522,18 +522,18 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 2'), '(a > 0)', ('(a > 1)', 'a = 3')),
-            (('(a > 0)', 'a = 1'), '(a > 1)', ('a = 1', 'a = 2')),
-            ('(a > 1)', 'a = 1', '(a > 1)'),
-            ('(a > 1)', 'a = 2', '(a > 0)'),
-            ('(a > 0)', 'a = 3', None),
+            (('a', 'a = 2'), 'a > 0', ('a > 1', 'a = 3')),
+            (('a > 0', 'a = 1'), 'a > 1', ('a = 1', 'a = 2')),
+            ('a > 1', 'a = 1', 'a > 1'),
+            ('a > 1', 'a = 2', 'a > 0'),
+            ('a > 0', 'a = 3', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'While:3', 'a = 2'),
+            ('a > 0', 'While:3', 'a = 2'),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3',))
@@ -554,21 +554,21 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 2'), '(a > 0)', ('(a > 1)', 'a = 3')),
-            (('(a > 0)', 'continue', 'a = 1'), '(a > 1)', ('(a > 3)', 'a = 2')),
-            ('(a > 1)', '(a > 3)', ('continue', 'a = 1')),
-            ('(a > 3)', 'continue', '(a > 1)'),
-            ('(a > 3)', 'a = 1', '(a > 1)'),
-            ('(a > 1)', 'a = 2', '(a > 0)'),
-            ('(a > 0)', 'a = 3', None),
+            (('a', 'a = 2'), 'a > 0', ('a > 1', 'a = 3')),
+            (('a > 0', 'continue', 'a = 1'), 'a > 1', ('a > 3', 'a = 2')),
+            ('a > 1', 'a > 3', ('continue', 'a = 1')),
+            ('a > 3', 'continue', 'a > 1'),
+            ('a > 3', 'a = 1', 'a > 1'),
+            ('a > 1', 'a = 2', 'a > 0'),
+            ('a > 0', 'a = 3', None),
         ),
     )
     self.assertStatementEdges(
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'While:3', 'a = 2'),
-            ('(a > 1)', 'If:4', ('a = 1', '(a > 1)')),
+            ('a > 0', 'While:3', 'a = 2'),
+            ('a > 1', 'If:4', ('a = 1', 'a > 1')),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3',))
@@ -587,20 +587,20 @@ class AstToCfgTest(test.TestCase):
     graph, = self._build_cfg(test_fn).values()
 
     self.assertGraphMatches(graph, (
-        (('a', 'a = 2'), '(a > 0)', ('(a > 1)', 'a = 3')),
-        (('(a > 0)', 'a = 1'), '(a > 1)', ('(a > 2)', 'a = 2')),
-        ('(a > 1)', '(a > 2)', ('break', 'a = 1')),
-        ('(a > 2)', 'break', 'a = 2'),
-        ('(a > 2)', 'a = 1', '(a > 1)'),
-        (('(a > 1)', 'break'), 'a = 2', '(a > 0)'),
-        ('(a > 0)', 'a = 3', None),
+        (('a', 'a = 2'), 'a > 0', ('a > 1', 'a = 3')),
+        (('a > 0', 'a = 1'), 'a > 1', ('a > 2', 'a = 2')),
+        ('a > 1', 'a > 2', ('break', 'a = 1')),
+        ('a > 2', 'break', 'a = 2'),
+        ('a > 2', 'a = 1', 'a > 1'),
+        (('a > 1', 'break'), 'a = 2', 'a > 0'),
+        ('a > 0', 'a = 3', None),
     ))
     self.assertStatementEdges(
         graph,
         (
             ('a', 'While:2', 'a = 3'),
-            ('(a > 0)', 'While:3', 'a = 2'),
-            ('(a > 1)', 'If:4', ('a = 1', 'a = 2')),
+            ('a > 0', 'While:3', 'a = 2'),
+            ('a > 1', 'If:4', ('a = 1', 'a = 2')),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3',))
@@ -672,10 +672,10 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'continue', 'a = 1'), 'range(0, a)', ('(a > 1)', 'a = 2')),
-            ('range(0, a)', '(a > 1)', ('continue', 'a = 0')),
-            ('(a > 1)', 'continue', 'range(0, a)'),
-            ('(a > 1)', 'a = 0', 'a = 1'),
+            (('a', 'continue', 'a = 1'), 'range(0, a)', ('a > 1', 'a = 2')),
+            ('range(0, a)', 'a > 1', ('continue', 'a = 0')),
+            ('a > 1', 'continue', 'range(0, a)'),
+            ('a > 1', 'a = 0', 'a = 1'),
             ('a = 0', 'a = 1', 'range(0, a)'),
             ('range(0, a)', 'a = 2', 'a = 3'),
             ('a = 2', 'a = 3', None),
@@ -706,10 +706,10 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), 'range(0, a)', ('(a > 1)', 'a = 2')),
-            ('range(0, a)', '(a > 1)', ('break', 'a = 1')),
-            ('(a > 1)', 'break', 'a = 3'),
-            ('(a > 1)', 'a = 1', 'range(0, a)'),
+            (('a', 'a = 1'), 'range(0, a)', ('a > 1', 'a = 2')),
+            ('range(0, a)', 'a > 1', ('break', 'a = 1')),
+            ('a > 1', 'break', 'a = 3'),
+            ('a > 1', 'a = 1', 'range(0, a)'),
             ('range(0, a)', 'a = 2', 'a = 3'),
             (('break', 'a = 2'), 'a = 3', None),
         ),
@@ -739,10 +739,10 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), 'range(0, a)', ('(a > 1)', 'a = 2')),
-            ('range(0, a)', '(a > 1)', ('return', 'a = 1')),
-            ('(a > 1)', 'return', None),
-            ('(a > 1)', 'a = 1', 'range(0, a)'),
+            (('a', 'a = 1'), 'range(0, a)', ('a > 1', 'a = 2')),
+            ('range(0, a)', 'a > 1', ('return', 'a = 1')),
+            ('a > 1', 'return', None),
+            ('a > 1', 'a = 1', 'range(0, a)'),
             ('range(0, a)', 'a = 2', 'a = 3'),
             ('a = 2', 'a = 3', None),
         ),
@@ -804,10 +804,10 @@ class AstToCfgTest(test.TestCase):
         (
             (('a', 'a = 2'), 'range(0, a)', ('range(1, a)', 'a = 3')),
             (('range(0, a)', 'continue', 'b += 1'), 'range(1, a)',
-             ('(a > 3)', 'a = 2')),
-            ('range(1, a)', '(a > 3)', ('continue', 'b += 1')),
-            ('(a > 3)', 'continue', 'range(1, a)'),
-            ('(a > 3)', 'b += 1', 'range(1, a)'),
+             ('a > 3', 'a = 2')),
+            ('range(1, a)', 'a > 3', ('continue', 'b += 1')),
+            ('a > 3', 'continue', 'range(1, a)'),
+            ('a > 3', 'b += 1', 'range(1, a)'),
             ('range(1, a)', 'a = 2', 'range(0, a)'),
             ('range(0, a)', 'a = 3', None),
         ),
@@ -839,10 +839,10 @@ class AstToCfgTest(test.TestCase):
         graph,
         (
             (('a', 'a = 2'), 'range(0, a)', ('range(1, a)', 'a = 3')),
-            (('range(0, a)', 'b += 1'), 'range(1, a)', ('(a > 2)', 'a = 2')),
-            ('range(1, a)', '(a > 2)', ('break', 'b += 1')),
-            ('(a > 2)', 'break', 'a = 2'),
-            ('(a > 2)', 'b += 1', 'range(1, a)'),
+            (('range(0, a)', 'b += 1'), 'range(1, a)', ('a > 2', 'a = 2')),
+            ('range(1, a)', 'a > 2', ('break', 'b += 1')),
+            ('a > 2', 'break', 'a = 2'),
+            ('a > 2', 'b += 1', 'range(1, a)'),
             (('range(1, a)', 'break'), 'a = 2', 'range(0, a)'),
             ('range(0, a)', 'a = 3', None),
         ),
@@ -884,23 +884,23 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('b = 0', 'a = 2'), '(a > 0)', ('range(0, a)', 'range(1, a)')),
+            (('b = 0', 'a = 2'), 'a > 0', ('range(0, a)', 'range(1, a)')),
             (
-                ('(a > 0)', 'continue', 'b += 1'),
+                ('a > 0', 'continue', 'b += 1'),
                 'range(0, a)',
-                ('(a > 2)', 'return a'),
+                ('a > 2', 'return a'),
             ),
-            ('range(0, a)', '(a > 2)', ('(a > 3)', 'break')),
-            ('(a > 2)', 'break', 'a = 2'),
-            ('(a > 2)', '(a > 3)', ('(a > 4)', 'b += 1')),
-            ('(a > 3)', '(a > 4)', ('continue', 'max(a)')),
-            ('(a > 4)', 'max(a)', 'break'),
+            ('range(0, a)', 'a > 2', ('a > 3', 'break')),
+            ('a > 2', 'break', 'a = 2'),
+            ('a > 2', 'a > 3', ('a > 4', 'b += 1')),
+            ('a > 3', 'a > 4', ('continue', 'max(a)')),
+            ('a > 4', 'max(a)', 'break'),
             ('max(a)', 'break', 'a = 2'),
-            ('(a > 4)', 'continue', 'range(0, a)'),
-            ('(a > 3)', 'b += 1', 'range(0, a)'),
+            ('a > 4', 'continue', 'range(0, a)'),
+            ('a > 3', 'b += 1', 'range(0, a)'),
             ('range(0, a)', 'return a', None),
-            ('break', 'a = 2', '(a > 0)'),
-            ('(a > 0)', 'range(1, a)', ('return b', 'a = 3')),
+            ('break', 'a = 2', 'a > 0'),
+            ('a > 0', 'range(1, a)', ('return b', 'a = 3')),
             ('range(1, a)', 'return b', None),
             ('range(1, a)', 'a = 3', None),
         ),
@@ -909,11 +909,11 @@ class AstToCfgTest(test.TestCase):
         graph,
         (
             ('b = 0', 'While:3', 'range(1, a)'),
-            ('(a > 0)', 'For:4', 'a = 2'),
-            ('range(0, a)', 'If:5', ('(a > 3)', 'a = 2')),
-            ('(a > 2)', 'If:7', ('b += 1', 'a = 2', 'range(0, a)')),
-            ('(a > 3)', 'If:8', ('a = 2', 'range(0, a)')),
-            ('(a > 0)', 'For:17', 'a = 3'),
+            ('a > 0', 'For:4', 'a = 2'),
+            ('range(0, a)', 'If:5', ('a > 3', 'a = 2')),
+            ('a > 2', 'If:7', ('b += 1', 'a = 2', 'range(0, a)')),
+            ('a > 3', 'If:8', ('a = 2', 'range(0, a)')),
+            ('a > 0', 'For:17', 'a = 3'),
         ),
     )
     self.assertGraphEnds(graph, 'a', ('a = 3', 'return a', 'return b'))
@@ -975,12 +975,12 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', 'break'),
-            ('(a > 0)', 'break', 'a = 1'),
+            ('a', 'a > 0', 'break'),
+            ('a > 0', 'break', 'a = 1'),
             ('break', 'a = 1', None),
         ),
     )
-    self.assertGraphEnds(graph, 'a', ('(a > 0)', 'a = 1'))
+    self.assertGraphEnds(graph, 'a', ('a > 0', 'a = 1'))
 
   def test_continue_finally(self):
 
@@ -996,12 +996,12 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            (('a', 'a = 1'), '(a > 0)', 'continue'),
-            ('(a > 0)', 'continue', 'a = 1'),
-            ('continue', 'a = 1', '(a > 0)'),
+            (('a', 'a = 1'), 'a > 0', 'continue'),
+            ('a > 0', 'continue', 'a = 1'),
+            ('continue', 'a = 1', 'a > 0'),
         ),
     )
-    self.assertGraphEnds(graph, 'a', ('(a > 0)',))
+    self.assertGraphEnds(graph, 'a', ('a > 0',))
 
   def test_with_straightline(self):
 
@@ -1038,19 +1038,19 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         fn_graph,
         (
-            ('a', '(lambda b: (a + b))', 'a = (lambda b: (a + b))'),
-            ('(lambda b: (a + b))', 'a = (lambda b: (a + b))', 'return a'),
-            ('a = (lambda b: (a + b))', 'return a', None),
+            ('a', 'lambda b: a + b', 'a = lambda b: a + b'),
+            ('lambda b: a + b', 'a = lambda b: a + b', 'return a'),
+            ('a = lambda b: a + b', 'return a', None),
         ),
     )
     self.assertGraphEnds(fn_graph, 'a', ('return a',))
     self.assertGraphMatches(
         lam_graph,
         (
-            ('b', '(a + b)', None),
+            ('b', 'a + b', None),
         ),
     )
-    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+    self.assertGraphEnds(lam_graph, 'b', ('a + b',))
 
   def test_lambda_in_return(self):
 
@@ -1067,18 +1067,18 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         fn_graph,
         (
-            ('a', '(lambda b: (a + b))', 'return (lambda b: (a + b))'),
-            ('(lambda b: (a + b))', 'return (lambda b: (a + b))', None),
+            ('a', 'lambda b: a + b', 'return lambda b: a + b'),
+            ('lambda b: a + b', 'return lambda b: a + b', None),
         ),
     )
-    self.assertGraphEnds(fn_graph, 'a', ('return (lambda b: (a + b))',))
+    self.assertGraphEnds(fn_graph, 'a', ('return lambda b: a + b',))
     self.assertGraphMatches(
         lam_graph,
         (
-            ('b', '(a + b)', None),
+            ('b', 'a + b', None),
         ),
     )
-    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+    self.assertGraphEnds(lam_graph, 'b', ('a + b',))
 
   def test_lambda_in_while_loop_test(self):
 
@@ -1096,19 +1096,19 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         fn_graph,
         (
-            ('a', '(lambda b: (a + b))', '(lambda b: (a + b))(a)'),
-            (('(lambda b: (a + b))', 'pass'), '(lambda b: (a + b))(a)', 'pass'),
-            ('(lambda b: (a + b))(a)', 'pass', '(lambda b: (a + b))(a)'),
+            ('a', 'lambda b: a + b', '(lambda b: a + b)(a)'),
+            (('lambda b: a + b', 'pass'), '(lambda b: a + b)(a)', 'pass'),
+            ('(lambda b: a + b)(a)', 'pass', '(lambda b: a + b)(a)'),
         ),
     )
-    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: (a + b))(a)',))
+    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: a + b)(a)',))
     self.assertGraphMatches(
         lam_graph,
         (
-            ('b', '(a + b)', None),
+            ('b', 'a + b', None),
         ),
     )
-    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+    self.assertGraphEnds(lam_graph, 'b', ('a + b',))
 
   def test_lambda_in_for_loop_test(self):
 
@@ -1126,19 +1126,19 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         fn_graph,
         (
-            ('a', '(lambda b: (a + b))', '(lambda b: (a + b))(a)'),
-            (('(lambda b: (a + b))', 'pass'), '(lambda b: (a + b))(a)', 'pass'),
-            ('(lambda b: (a + b))(a)', 'pass', '(lambda b: (a + b))(a)'),
+            ('a', 'lambda b: a + b', '(lambda b: a + b)(a)'),
+            (('lambda b: a + b', 'pass'), '(lambda b: a + b)(a)', 'pass'),
+            ('(lambda b: a + b)(a)', 'pass', '(lambda b: a + b)(a)'),
         ),
     )
-    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: (a + b))(a)',))
+    self.assertGraphEnds(fn_graph, 'a', ('(lambda b: a + b)(a)',))
     self.assertGraphMatches(
         lam_graph,
         (
-            ('b', '(a + b)', None),
+            ('b', 'a + b', None),
         ),
     )
-    self.assertGraphEnds(lam_graph, 'b', ('(a + b)',))
+    self.assertGraphEnds(lam_graph, 'b', ('a + b',))
 
   def test_pass(self):
 
@@ -1374,9 +1374,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', ('a = 1', 'a = 2')),
-            ('(a > 0)', 'a = 1', ('a = 3', 'a = 4')),
-            ('(a > 0)', 'a = 2', ('a = 3', 'a = 4')),
+            ('a', 'a > 0', ('a = 1', 'a = 2')),
+            ('a > 0', 'a = 1', ('a = 3', 'a = 4')),
+            ('a > 0', 'a = 2', ('a = 3', 'a = 4')),
             (('a = 1', 'a = 2'), 'a = 3', 'a = 4'),
             (('a = 1', 'a = 2', 'a = 3'), 'a = 4', None),
         ),
@@ -1407,9 +1407,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a, b', '(a > 0)', ('raise b', 'return 0')),
-            ('(a > 0)', 'raise b', 'return 1'),
-            ('(a > 0)', 'return 0', None),
+            ('a, b', 'a > 0', ('raise b', 'return 0')),
+            ('a > 0', 'raise b', 'return 1'),
+            ('a > 0', 'return 0', None),
             ('raise b', 'return 1', None),
         ),
     )
@@ -1490,9 +1490,9 @@ class AstToCfgTest(test.TestCase):
     self.assertGraphMatches(
         graph,
         (
-            ('a', '(a > 0)', ('raise a', 'c = 1')),
-            ('(a > 0)', 'raise a', 'b = 1'),
-            ('(a > 0)', 'c = 1', 'b = 1'),
+            ('a', 'a > 0', ('raise a', 'c = 1')),
+            ('a > 0', 'raise a', 'b = 1'),
+            ('a > 0', 'c = 1', 'b = 1'),
             (('raise a', 'c = 1'), 'b = 1', ('c = 2', 'b = 2')),
             ('b = 1', 'c = 2', 'b = 2'),
             (('b = 1', 'c = 2'), 'b = 2', 'return (b, c)'),

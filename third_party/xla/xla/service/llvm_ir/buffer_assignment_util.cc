@@ -43,9 +43,12 @@ const HloInstruction& InstrForConstantBufferAllocation(
     // the LogicalBuffer for the kWhile instruction will have the same
     // BufferAllocation as the LogicalBuffer for the (init) constant.
     if (buffer->instruction()->opcode() == HloOpcode::kConstant) {
-      CHECK_EQ(const_instr, nullptr)
-          << const_instr->ToString() << " " << buffer->ToString();
-      const_instr = buffer->instruction();
+      if (const_instr == nullptr) {
+        const_instr = buffer->instruction();
+      } else {
+        CHECK_EQ(const_instr->literal(), buffer->instruction()->literal())
+            << const_instr->ToString() << " " << buffer->ToString();
+      }
     }
   }
   CHECK_NE(const_instr, nullptr);

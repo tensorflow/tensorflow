@@ -1,4 +1,18 @@
-load("@bazel_skylib//lib:selects.bzl", "selects")
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load(
     "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -6,8 +20,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "if_google",
+    "if_cuda_or_rocm",
     "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
@@ -255,35 +268,19 @@ tf_cuda_library(
             "@com_google_absl//absl/time",
             "@tsl//tsl/platform:mutex",
             "@xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+            "@xla//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+            "@xla//xla/pjrt/se:local_device_state",
+            "@xla//xla/pjrt/se:pjrt_stream_executor_client",
             "@xla//xla/tsl/distributed_runtime/coordination:coordination_service",
             "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
             "@xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
             "@xla//xla/tsl/platform:statusor",
         ],
-    }) + if_google(
-        # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
-        # Clean up so that PJRT can run on ARM (and remove "#if defined(PLATFORM_GOOGLE) ..." use
-        # from gpu_util.cc).
-        # Also it won't build with WeightWatcher which tracks OSS build binaries.
-        # TODO(b/290533709): Clean up this build rule.
-        selects.with_or({
-            clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
-            (
-                clean_dep("//tensorflow:linux_x86_64"),
-            ): [
-                "//tensorflow/core",
-                "//tensorflow/core/framework:resource_base",
-                "@xla//xla/pjrt/distributed:key_value_store_interface",
-                "@xla//xla/pjrt:local_device_state",
-                "@xla//xla/service:gpu_topology",
-                "@xla//xla/pjrt:pjrt_client",
-                "@xla//xla/pjrt:pjrt_compiler",
-                "@xla//xla/service/gpu:gpu_executable_run_options",
-                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-            ],
-            "//conditions:default": [],
-        }),
-    ),
+    }) + if_cuda_or_rocm([
+        "@xla//xla/pjrt/distributed:key_value_store_interface",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/framework:resource_base",
+    ]),
 )
 
 tf_cc_test(
@@ -989,10 +986,21 @@ filegroup(
     srcs = glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "*_test.cc",
+            "remote_*",
+        ],
+    ),
+)
+
+filegroup(
+    name = "hdrs",
+    srcs = glob(
+        [
+            "*.h",
+        ],
+        exclude = [
             "remote_*",
         ],
     ),

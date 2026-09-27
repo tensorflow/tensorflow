@@ -55,7 +55,9 @@ inline double CyclesToSeconds(double cycles, double frequency_hz) {
 // Checks the divisor and returns 0 to avoid divide by zero.
 inline double SafeDivide(double dividend, double divisor) {
   constexpr double kEpsilon = 1.0E-10;
-  if ((-kEpsilon < divisor) && (divisor < kEpsilon)) return 0.0;
+  if ((-kEpsilon < divisor) && (divisor < kEpsilon)) {
+    return 0.0;
+  }
   return dividend / divisor;
 }
 

@@ -176,5 +176,62 @@ TEST(HostCallbackTest, NonBlockingRecv) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, borrowing_literal));
 }
 
+TEST(HostCallbackTest, ZeroInitOnFailureToPreventInfoLeak) {
+  HostCallback host_callback;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  size_t byte_size = ShapeUtil::ByteSizeOf(shape);
+
+  host_callback.operands = {HostCallbackArgInfo{/*channel_id=*/1, shape}};
+  host_callback.results = {HostCallbackArgInfo{/*channel_id=*/2, shape}};
+  host_callback.callback = [](void** outputs, void** inputs) {
+    float* res_ptr = static_cast<float*>(outputs[0]);
+    res_ptr[0] = 123.0f;
+    return absl::InternalError("Callback failed intentionally");
+  };
+
+  HostCallbackStates states;
+
+  auto& send_callbacks = states.send_callbacks.emplace_back();
+  auto& recv_callbacks = states.recv_callbacks.emplace_back();
+
+  TestPjRtHostMemoryForDeviceManager test_host_memory_for_device_manager;
+
+  auto context = CreateHostCallbackStateAndAppendSendRecvCallbacks(
+      std::move(host_callback), &test_host_memory_for_device_manager,
+      send_callbacks, recv_callbacks,
+      /*use_major_to_minor_data_layout_for_callbacks=*/false);
+
+  PjRtTransferMetadata metadata;
+  metadata.device_shape = shape;
+
+  auto literal = LiteralUtil::CreateR2({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto chunk = PjRtChunk::AllocateDefault(/*size=*/byte_size);
+  ASSERT_EQ(chunk.size(), literal.size_bytes());
+  std::memcpy(chunk.data(), literal.untyped_data(), literal.size_bytes());
+
+  // Triggers OnSend, which executes the failing callback.
+  absl::Status status =
+      context->OnSend(/*arg_num=*/0, metadata, std::move(chunk));
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+
+  PjRtChunk received_chunk;
+  absl::Notification done;
+  auto stream = std::make_unique<TestStream>(byte_size, /*granule_bytes=*/8,
+                                             received_chunk, done);
+
+  // Trigger Receive to retrieve the result chunk
+  context->Receive(/*res_num=*/0, metadata, std::move(stream));
+  done.WaitForNotification();
+
+  // Verify that the popped chunk's data is fully zero-initialized
+  EXPECT_EQ(received_chunk.size(), byte_size);
+  const char* data_ptr = reinterpret_cast<const char*>(received_chunk.data());
+  for (size_t i = 0; i < byte_size; ++i) {
+    EXPECT_EQ(data_ptr[i], 0);
+  }
+}
+
 }  // namespace
 }  // namespace xla

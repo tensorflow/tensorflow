@@ -163,11 +163,11 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
       scratch_memory = scratch_or.value();
     } else if ((selected_runner = no_scratch_fallback)) {
       if (selected_runner->GetWorkspaceSize() > 0) {
-        return errors::Internal(
+        return absl::InternalError(
             "No-scratch fallback runner requires nonzero scratch space");
       }
     } else {
-      return errors::Unknown(
+      return absl::UnknownError(
           "CUDNN failed to allocate the scratch space for the runner or to "
           "find a working no-scratch runner.");
     }

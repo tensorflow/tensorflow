@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -138,9 +141,9 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
     // to file.
     if (z_stream_->avail_out == 0 ||
         (IsSyncOrFullFlush(flush_mode) && z_stream_->avail_out < 6)) {
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
     }
-    TF_RETURN_IF_ERROR(Deflate(flush_mode));
+    ABSL_RETURN_IF_ERROR(Deflate(flush_mode));
   } while (z_stream_->avail_out == 0);
 
   DCHECK(z_stream_->avail_in == 0);
@@ -179,7 +182,7 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
+  ABSL_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
   if (bytes_to_write <= static_cast<size_t>(AvailableInputSpace())) {
@@ -190,19 +193,29 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
   // `data` is too large to fit in input buffer so we deflate it directly.
   // Note that at this point we have already deflated all existing input so
   // we do not need to backup next_in and avail_in.
-  z_stream_->next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data.data()));
-  z_stream_->avail_in = bytes_to_write;
+  // zlib's avail_in is a uInt, so feed it at most UINT_MAX bytes at a time
+  // to avoid truncating the byte count for larger appends.
+  size_t bytes_deflated = 0;
+  while (bytes_deflated < bytes_to_write) {
+    // NOLINTNEXTLINE(misc-include-cleaner): uInt comes from <zlib.h>.
+    const uInt chunk = static_cast<uInt>(std::min<size_t>(
+        bytes_to_write - bytes_deflated, std::numeric_limits<uInt>::max()));
+    z_stream_->next_in = reinterpret_cast<Bytef*>(
+        const_cast<char*>(data.data() + bytes_deflated));
+    z_stream_->avail_in = chunk;
 
-  do {
-    if (z_stream_->avail_out == 0) {
-      // No available output space.
-      // Write output buffer to file.
-      TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
-    }
-    TF_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
-  } while (z_stream_->avail_out == 0);
+    do {
+      if (z_stream_->avail_out == 0) {
+        // No available output space.
+        // Write output buffer to file.
+        ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
+      }
+      ABSL_RETURN_IF_ERROR(Deflate(zlib_options_.flush_mode));
+    } while (z_stream_->avail_out == 0);
 
-  DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
+    DCHECK(z_stream_->avail_in == 0);  // All input will be used up.
+    bytes_deflated += chunk;
+  }
 
   // Restore z_stream input pointers.
   z_stream_->next_in = z_stream_input_.get();
@@ -213,15 +226,15 @@ absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
 #if defined(TF_CORD_SUPPORT)
 absl::Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
-    TF_RETURN_IF_ERROR(Append(fragment));
+    ABSL_RETURN_IF_ERROR(Append(fragment));
   }
   return absl::OkStatus();
 }
 #endif
 
 absl::Status ZlibOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+  ABSL_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
+  ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
   return file_->Flush();
 }
 
@@ -230,14 +243,14 @@ absl::Status ZlibOutputBuffer::Name(absl::string_view* result) const {
 }
 
 absl::Status ZlibOutputBuffer::Sync() {
-  TF_RETURN_IF_ERROR(Flush());
+  ABSL_RETURN_IF_ERROR(Flush());
   return file_->Sync();
 }
 
 absl::Status ZlibOutputBuffer::Close() {
   if (z_stream_) {
-    TF_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
-    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    ABSL_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
+    ABSL_RETURN_IF_ERROR(FlushOutputBufferToFile());
     deflateEnd(z_stream_.get());
     z_stream_.reset(nullptr);
   }

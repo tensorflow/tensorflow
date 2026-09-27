@@ -77,8 +77,7 @@ absl::Status SimpleDevice::MakeTensorFromProto(
     tensorflow::Tensor *tensor) {
   tensorflow::Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(tensorflow::cpu_allocator(), tensor_proto)) {
-    return tensorflow::errors::InvalidArgument(
-        "Cannot parse tensor from tensor_proto.");
+    return absl::InvalidArgumentError("Cannot parse tensor from tensor_proto.");
   }
   *tensor = std::move(parsed);
   return absl::OkStatus();

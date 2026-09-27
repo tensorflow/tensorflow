@@ -1139,7 +1139,11 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation", "priority_merge"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler_resplit,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$per_criticality_batch_timeout_micros,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_batching_task_lazy_cancellation,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$num_warmup_batch_threads
   );
 
   let results = (outs
@@ -6446,7 +6450,8 @@ indices.shape[batch_dims:] + params.shape[axis + 1:]` where:
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, a 0 is stored in the
-corresponding output value.
+corresponding output value. Under XLA compilation (e.g. `tf.function(jit_compile=True)`),
+out of bound indices are not checked and result in implementation-defined behavior.
 
 Note that on TPU, if any dimension of `params` is of size 0 then the output will
 be the expected shape filled with zeros. On CPU and GPU an error will be
@@ -11511,6 +11516,8 @@ Send an rpc to the external service that builds rpc payload based on prediction 
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
     Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
     Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the timestamp.}]>:$timestamp,
+    Arg<TF_Float32Tensor, [{1-D float tensor representing predicted video probabilities.}]>:$predicted_probability,
 
     StrAttr:$op_config
   );
@@ -12711,30 +12718,6 @@ If `x` and `y` are reals, this will return the floating-point division.
   let hasFolder = 1;
 }
 
-def TF_ReciprocalOp : TF_Op<"Reciprocal", [Pure, TF_Involution, TF_SameOperandsAndResultTypeResolveRef]> {
-  let summary = "Computes the reciprocal of x element-wise.";
-
-  let description = [{
-I.e., \\(y = 1 / x\\).
-  }];
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
-      return ArraysAreCastCompatible(inferred, actual);
-    }
-  }];
-}
-
 def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the gradient for the inverse of `x` wrt its input.";
 
@@ -12759,6 +12742,27 @@ is the corresponding input gradient.
       return ArraysAreCastCompatible(inferred, actual);
     }
   }];
+}
+
+def TF_RecordEventMetricForTensorOp : TF_Op<"RecordEventMetricForTensor", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = [{
+Records an event to a streamz RecordEventMetric (i.e. distribution) for all the
+  }];
+
+  let description = [{
+values of the input tensors. The streamz can be found at
+/video/youtube/discovery/tensorflow/ops/streamz/events.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to be recorded when this op runs.}]>:$value,
+
+    StrAttr:$label
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
@@ -12981,7 +12985,7 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(CallInterfaceCallable callee) {
-      (*this)->setAttr("f", callee.get<SymbolRefAttr>());
+      (*this)->setAttr("f", ::llvm::cast<SymbolRefAttr>(callee));
     }
     Attribute removeArgAttrsAttr() { return nullptr; }
     Attribute removeResAttrsAttr() { return nullptr; }
@@ -21452,11 +21456,15 @@ values. These keys should be in byte format.}]>:$keys,
     Arg<Variadic<TF_Float32Tensor>, [{A list of float tensors containing prediction values.}]>:$predictions_list,
     Arg<TF_Int64Tensor, [{An int that speficies at which step the predictions are generated.}]>:$step,
     Arg<TF_Int64Tensor, [{The utc timestamp in microseconds of when the predictions were created.}]>:$timestamp_usec,
+    Arg<TF_StrTensor, [{An optional tensor of alternate Woodshed Keys corresponding to
+each of the prediction values. These keys should be in byte format. Must
+either be empty or have the same number of elements as `keys`.}]>:$alternate_keys,
 
     StrArrayAttr:$prediction_names,
     BoolAttr:$training,
     StrAttr:$file_path,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions,
+    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate
   );
 
   let results = (outs);

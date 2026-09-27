@@ -89,12 +89,12 @@ struct TransposeContext {
 
 class Transposer {
  public:
-  explicit Transposer() {}
+  explicit Transposer() = default;
 
   Transposer(const Transposer&) = delete;
   Transposer& operator=(const Transposer&) = delete;
 
-  virtual ~Transposer() {}
+  virtual ~Transposer() = default;
 
   // Returns true iff the node should be processed by this transposer.
   // NodeProcessors may perform additional oprand specific checks before

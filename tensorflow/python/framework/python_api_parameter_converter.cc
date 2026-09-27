@@ -14,11 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/framework/python_api_parameter_converter.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/framework/op_def_util.h"
+#include "tensorflow/python/framework/python_api_info.h"
+#include "tensorflow/python/framework/python_tensor_converter.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -85,7 +94,7 @@ void RaiseTypeError(Args... args) {
 
 // Returns the DataType for a `tf.dtypes.DType` object (or DT_INVALID if it
 // is not a valid DType object).
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 DataType DataTypeFromPyDType(PyObject* dtype) {
   if (!dtype) {
     return DT_INVALID;
@@ -102,7 +111,7 @@ DataType DataTypeFromPyDType(PyObject* dtype) {
 // `dtype == DT_INVALID` and `value` is a `Tensor`, then set `dtype` to
 // `value.dtype`.  (If `dtype` is not `DT_INVALID`, or `value` is not a
 // tensor, then do nothing.)  Returns false on exception.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool InferDType(PyObject* value, DataType& dtype) {
   if (dtype != DT_INVALID) return true;  // Already have dtype.
 
@@ -121,7 +130,7 @@ bool InferDType(PyObject* value, DataType& dtype) {
 }
 
 // Returns true if `dtype` is in `ok_dtypes`, or `ok_dtypes` is null or empty.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool IsOkDType(DataType dtype, const std::vector<DataType>* ok_dtypes) {
   return (ok_dtypes == nullptr || ok_dtypes->empty() ||
           std::find(ok_dtypes->begin(), ok_dtypes->end(), dtype) !=
@@ -152,7 +161,7 @@ struct DataTypeFormatter {
 //   ok_dtypes: List of valid dtypes for conversion (optional).
 //   default_dtype: Default dtype -- used if converting the value to a tensor
 //     with unconstrained dtype returns a value not in ok_dtypes.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertToTensorInPlace(PyObject*& src, DataType& dtype,
                             const PythonTensorConverter& tensor_converter,
                             const PythonAPIInfo& api_info, int param_index,
@@ -194,7 +203,7 @@ bool ConvertToTensorInPlace(PyObject*& src, DataType& dtype,
 // Converts the specified attribute parameter to the expected type.  Modifies
 // `params` in-place.  Returns true on success, or sets an exception and
 // returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertAttribute(const Attribute& attr, const PythonAPIInfo& api_info,
                       absl::Span<PyObject*> params) {
   if (attr.index == -1) return true;  // Inferred attribute.
@@ -215,7 +224,7 @@ bool ConvertAttribute(const Attribute& attr, const PythonAPIInfo& api_info,
 // Converts the specified fixed-dtype input parameter to a Tensor with the
 // expected dtype.  Modifies `params` in-place.  Returns true on success, or
 // sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputWithFixedDType(const InputWithFixedDType& input,
                                 const PythonTensorConverter& tensor_converter,
                                 const PythonAPIInfo& api_info,
@@ -242,7 +251,7 @@ bool ConvertInputWithFixedDType(const InputWithFixedDType& input,
 // Tensors) with that dtype. Modifies `params` in-place, and updates
 // `inferred_attrs` with the inferred dtype (if it's not null).  Returns true
 // on success, or sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputsWithTypeAttr(const InputsWithTypeAttr& input,
                                const PythonTensorConverter& tensor_converter,
                                const PythonAPIInfo& api_info,
@@ -317,7 +326,7 @@ bool ConvertInputsWithTypeAttr(const InputsWithTypeAttr& input,
 // of Tensors with those dtypes. Modifies `params` in-place, and updates
 // `inferred_attrs` with the inferred dtypes (if it's not null).  Returns true
 // on success, or sets an exception and returns false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool ConvertInputsWithTypeListAttr(
     const InputsWithTypeListAttr& input,
     const PythonTensorConverter& tensor_converter,
@@ -397,7 +406,7 @@ bool ConvertInputsWithTypeListAttr(
 // if multiple Tensor-list parameters have the same length attribute but
 // different lengths. Returns true on success, or sets an exception and returns
 // false on failure.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 bool InferLengthAttributes(const absl::Span<PyObject*> params,
                            const PythonAPIInfo& api_info,
                            std::vector<int64_t>& inferred_length_attrs) {
@@ -432,10 +441,27 @@ bool InferLengthAttributes(const absl::Span<PyObject*> params,
 
 }  // namespace
 
+int GetPythonAPIMaxIndex(const PythonAPIInfo& api_info) {
+  int max_index = -1;
+  for (const auto& attr : api_info.attributes()) {
+    max_index = std::max(max_index, attr.index);
+  }
+  for (const auto& input : api_info.inputs()) {
+    max_index = std::max(max_index, input.index);
+  }
+  return max_index;
+}
+
 bool ConvertPythonAPIParameters(const PythonAPIInfo& api_info,
                                 const PythonTensorConverter& tensor_converter,
                                 absl::Span<PyObject*> params,
                                 InferredAttributes* inferred_attrs) {
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(params.size()) <= max_index) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    return false;
+  }
   // Make room for inferred attributes.
   if (inferred_attrs) {
     inferred_attrs->types.resize(api_info.inferred_type_attrs().size());
@@ -475,6 +501,12 @@ bool ConvertPythonAPIParameters(const PythonAPIInfo& api_info,
 
 bool CopyPythonAPITensorLists(const PythonAPIInfo& api_info,
                               absl::Span<PyObject*> params) {
+  int max_index = GetPythonAPIMaxIndex(api_info);
+  if (static_cast<int>(params.size()) <= max_index) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Parameters span size is smaller than expected");
+    return false;
+  }
   for (const auto& input : api_info.inputs()) {
     if (input.is_list) {
       PyObject* src = params[input.index];

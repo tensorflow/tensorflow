@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -75,7 +77,7 @@ class FallbackResourceArray {
       resource_async_values_;
 };
 
-// Per-request state in kernel falllback compat mode.
+// Per-request state in kernel fallback compat mode.
 class KernelFallbackCompatRequestState {
  public:
   // NOTE: This is the constructor for training.
@@ -88,7 +90,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<SessionMetadata>& model_metadata,
+      const std::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   // NOTE: This is the constructor for inference.
@@ -98,7 +100,7 @@ class KernelFallbackCompatRequestState {
       tfrt_stub::OpKernelRunnerTable* runner_table,
       FallbackResourceArray* resource_array,
       tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-      const absl::optional<SessionMetadata>& model_metadata,
+      const std::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
   int64_t step_id() const { return step_id_; }
@@ -181,6 +183,22 @@ class KernelFallbackCompatRequestState {
     return runtime_config_;
   }
 
+  void set_rpc_deadline_for_batching_task_cancellation(
+      std::optional<absl::Time> deadline) {
+    rpc_deadline_for_batching_task_cancellation_ = deadline;
+  }
+  std::optional<absl::Time> rpc_deadline_for_batching_task_cancellation()
+      const {
+    return rpc_deadline_for_batching_task_cancellation_;
+  }
+
+  void set_is_rpc_cancelled_callback(std::function<bool()> callback) {
+    is_rpc_cancelled_callback_ = std::move(callback);
+  }
+  const std::function<bool()>& is_rpc_cancelled_callback() const {
+    return is_rpc_cancelled_callback_;
+  }
+
  private:
   int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
@@ -223,6 +241,8 @@ class KernelFallbackCompatRequestState {
   tfrt::ResourceContext* client_graph_resource_context_ = nullptr;
 
   const tensorflow::tfrt_stub::RuntimeConfig* runtime_config_ = nullptr;
+  std::optional<absl::Time> rpc_deadline_for_batching_task_cancellation_;
+  std::function<bool()> is_rpc_cancelled_callback_;
 };
 
 // Set up fallback context with common tensorflow states such as devices,

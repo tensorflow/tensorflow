@@ -111,7 +111,8 @@ class Mesh {
     return device_assignment_.dim(axis_index);
   }
 
-  // Returns true if the given axes span contains all mesh axes in order.
+  // Returns true if the given axes span contains all mesh axes in order,
+  // ignoring axes of size 1.
   bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:
@@ -252,6 +253,12 @@ bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes);
 absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
                                 const Mesh& mesh,
                                 bool allow_mergeable_neighbors = false);
+
+// Merges consecutive adjacent axes.
+//
+// Adjacent axes that overlap will cause a fatal error.
+// Adjacent axes that can be merged are merged.
+void MergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh);
 
 // Sorts and merges axes.
 //

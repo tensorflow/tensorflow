@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -97,6 +98,12 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) {
   ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
+  std::unique_ptr<::tflite::profiling::BufferedProfiler> profiler;
+  if (yield_fp16_precision_) {
+    profiler = std::make_unique<::tflite::profiling::BufferedProfiler>(1024);
+    delegate_interpreter->SetProfiler(profiler.get());
+  }
+
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
@@ -131,8 +138,18 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) {
     std::copy_n(default_bias_data, OutputChannels(), delegate_bias_data);
   }
 
+  if (profiler) {
+    profiler->StartProfiling();
+  }
+
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  if (profiler) {
+    profiler->StopProfiling();
+    EXPECT_TRUE(HasConvertNode(profiler.get()))
+        << "Expected Convert nodes in FP16 rewrite";
+  }
 
   float* default_output_data =
       default_interpreter->typed_output_tensor<float>(0);
@@ -140,9 +157,13 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) {
       delegate_interpreter->typed_output_tensor<float>(0);
 
   for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
-                std::numeric_limits<float>::epsilon() *
-                    std::max(std::abs(default_output_data[i]) * 20.0f, 1.0f));
+    float tolerance = std::numeric_limits<float>::epsilon() *
+                      std::max(std::abs(default_output_data[i]) * 20.0f, 1.0f);
+    if (relative_tolerance_ > 0.0f) {
+      tolerance = std::max(
+          tolerance, relative_tolerance_ * std::abs(default_output_data[i]));
+    }
+    ASSERT_NEAR(default_output_data[i], delegate_output_data[i], tolerance);
   }
 }
 

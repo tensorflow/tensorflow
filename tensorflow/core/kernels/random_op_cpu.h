@@ -65,7 +65,7 @@ struct FillPhiloxRandom {
                   int64_t size, Distribution dist) {
     OP_REQUIRES(
         ctx, false,
-        errors::Internal(
+        absl::InternalError(
             "Default `FillPhiloxRandom` implementation should not be executed. "
             "The cause of this error is probably that `FillPhiloxRandom` does "
             "not support this device or random distribution yet."));

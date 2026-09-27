@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
@@ -33,8 +35,9 @@ absl::StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
   if (input_shape.dimensions().back() != 4) {
-    return errors::InvalidArgument("Expected last dimension to be 4; got ",
-                                   input_shape.dimensions().back());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected last dimension to be 4; got ",
+                     input_shape.dimensions().back()));
   }
 
   // Transpose the input so C is directly followed by VECT_C.
@@ -61,9 +64,9 @@ absl::StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
   if (input_shape.dimensions(dim) % 4 != 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected vectorized dimension to be evenly divisible by 4; got ",
-        input_shape.dimensions(dim));
+        input_shape.dimensions(dim)));
   }
 
   // Split the `dim` into two dimensions with a reshape. The size of the new

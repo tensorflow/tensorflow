@@ -152,9 +152,9 @@ Tensor FeatureSparseCopy(std::size_t batch, const std::string& key,
 int64_t CopyIntoSparseTensor(const Tensor& in, int batch, int64_t offset,
                              Tensor* indices, Tensor* values);
 
-// Check that each dense_shape has known rank and inner dimensions; and
-// update variable_length (whether the outer dimension is None) and
-// elements_per_stride for each denes_shape.
+// Check that each dense_shape has known rank, known positive inner dimensions,
+// and a positive outer dimension or a variable-length outer dimension; and
+// update variable_length and elements_per_stride for each dense_shape.
 absl::Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
                             std::vector<bool>* variable_length,
                             std::vector<std::size_t>* elements_per_stride);
@@ -183,7 +183,8 @@ struct ParseExampleAttrs {
             ctx->GetAttr("ragged_split_types", &ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     return FinishInit(op_version);
   }
@@ -221,9 +222,10 @@ struct ParseSingleExampleAttrs {
     int num_sparse;
     TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
     if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
-          sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
+          sparse_keys.size(), ") and sparse_types (", sparse_types.size(),
+          ")"));
     }
 
     TF_RETURN_IF_ERROR(
@@ -279,7 +281,8 @@ struct ParseSequenceExampleAttrs {
                                         &feature_list_ragged_split_types));
         break;
       default:
-        return errors::InvalidArgument("Unexpected op_version", op_version);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unexpected op_version", op_version));
     }
     TF_RETURN_IF_ERROR(
         ctx->GetAttr("context_sparse_types", &context_sparse_types));

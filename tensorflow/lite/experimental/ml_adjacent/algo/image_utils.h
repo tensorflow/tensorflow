@@ -23,28 +23,28 @@ namespace ml_adj {
 inline void ConvertColorSpace(dim_t batches, dim_t height, dim_t width,
                               const float* input_data, float* output_data,
                               const float* kernel_data, dim_t kernel_size) {
-  TFLITE_DCHECK(kernel_size == 9);
+  TFLITE_CHECK_EQ(kernel_size, 9);
 
-  const dim_t kNumChannels = 3;
-  const dim_t output_num_pixels = batches * width * height;
-  const float* src_data_prt = input_data;
-  float* dst_data_prt = output_data;
+  const dim_t num_channels = 3;
+  const ind_t output_num_pixels = static_cast<ind_t>(batches) * width * height;
+  const float* src_data_ptr = input_data;
+  float* dst_data_ptr = output_data;
 
-  for (int i = 0; i < output_num_pixels; ++i) {
-    dst_data_prt[0] = kernel_data[0] * src_data_prt[0] +
-                      kernel_data[1] * src_data_prt[1] +
-                      kernel_data[2] * src_data_prt[2];
+  for (ind_t i = 0; i < output_num_pixels; ++i) {
+    dst_data_ptr[0] = kernel_data[0] * src_data_ptr[0] +
+                      kernel_data[1] * src_data_ptr[1] +
+                      kernel_data[2] * src_data_ptr[2];
 
-    dst_data_prt[1] = kernel_data[3] * src_data_prt[0] +
-                      kernel_data[4] * src_data_prt[1] +
-                      kernel_data[5] * src_data_prt[2];
+    dst_data_ptr[1] = kernel_data[3] * src_data_ptr[0] +
+                      kernel_data[4] * src_data_ptr[1] +
+                      kernel_data[5] * src_data_ptr[2];
 
-    dst_data_prt[2] = kernel_data[6] * src_data_prt[0] +
-                      kernel_data[7] * src_data_prt[1] +
-                      kernel_data[8] * src_data_prt[2];
+    dst_data_ptr[2] = kernel_data[6] * src_data_ptr[0] +
+                      kernel_data[7] * src_data_ptr[1] +
+                      kernel_data[8] * src_data_ptr[2];
 
-    src_data_prt += kNumChannels;
-    dst_data_prt += kNumChannels;
+    src_data_ptr += num_channels;
+    dst_data_ptr += num_channels;
   }
 }
 

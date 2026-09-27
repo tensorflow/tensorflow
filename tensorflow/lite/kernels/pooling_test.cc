@@ -15,11 +15,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -118,6 +120,40 @@ class SymmetricQuantizedPoolingOpModel16 : public BasePoolingOpModel {
                                GetScale(output_), GetZeroPoint(output_));
   }
 };
+
+class PrepareOnlyPoolingOpModel : public SingleOpModel {
+ public:
+  PrepareOnlyPoolingOpModel(BuiltinOperator type, const TensorData& input,
+                            int filter_width, int filter_height,
+                            Padding padding = Padding_VALID) {
+    input_ = AddInput(input);
+    output_ = AddOutput({input.type, {}});
+    SetBuiltinOp(type, BuiltinOptions_Pool2DOptions,
+                 CreatePool2DOptions(builder_, padding, /*stride_w=*/1,
+                                     /*stride_h=*/1, filter_width,
+                                     filter_height, ActivationFunctionType_NONE)
+                     .Union());
+    BuildInterpreter({GetShape(input_)}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int output_;
+};
+
+TEST(PoolingPrepareSecurityTest, RejectsPaddingOutsideInt16Range) {
+  constexpr int kFilterWidth =
+      2 * (std::numeric_limits<int16_t>::max() + 1) + 1;
+  PrepareOnlyPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                              /*input=*/{TensorType_FLOAT32, {1, 1, 1, 1}},
+                              kFilterWidth,
+                              /*filter_height=*/1, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
 
 // Replicate each entry in a vector n times along depth (innermost dimension).
 // The values are incremented by delta, creating ramps offset by each input

@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include <queue>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -45,6 +48,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("patterns", &patterns_t));
     const auto patterns = patterns_t->flat<tstring>();
     size_t num_patterns = static_cast<size_t>(patterns.size());
+    OP_REQUIRES(ctx, num_patterns > 0,
+                absl::InvalidArgumentError("patterns must not be empty."));
     std::vector<tstring> pattern_strs;
     pattern_strs.reserve(num_patterns);
 
@@ -190,7 +195,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         if (hasMatch_) {
           return absl::OkStatus();
         } else {
-          return errors::NotFound("Don't find any matched files");
+          return absl::NotFoundError("Don't find any matched files");
         }
       }
 
@@ -238,7 +243,14 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         int64_t current_pattern_index;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name("current_pattern_index"), &current_pattern_index));
-        current_pattern_index_ = size_t(current_pattern_index);
+        if (static_cast<size_t>(current_pattern_index) >
+            dataset()->patterns_.size()) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("current_pattern_index must be between 0 and ",
+                           dataset()->patterns_.size(), ", but got ",
+                           current_pattern_index));
+        }
+        current_pattern_index_ = static_cast<size_t>(current_pattern_index);
 
         tstring current_pattern_tstr;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_pattern"),
@@ -329,7 +341,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             // we don't need to explore this path.
             if (!absl::StartsWith(child_path, fixed_prefix)) {
               children_dir_status[i] =
-                  errors::Cancelled("Operation not needed");
+                  absl::CancelledError("Operation not needed");
             } else {
               children_dir_status[i] = fs->IsDirectory(child_path);
             }

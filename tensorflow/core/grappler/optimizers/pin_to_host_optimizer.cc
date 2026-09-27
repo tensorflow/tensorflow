@@ -82,7 +82,8 @@ absl::Status TryFindKernelDef(const std::vector<DeviceType>& devices,
     }
   }
 
-  return errors::NotFound("Could not find KernelDef for op: ", node.op());
+  return absl::NotFoundError(
+      absl::StrCat("Could not find KernelDef for op: ", node.op()));
 }
 
 // Checks if a node's output port is host friendly.

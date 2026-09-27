@@ -42,7 +42,7 @@ absl::Status Session::Run(
     const std::vector<std::string>& output_tensor_names,
     const std::vector<std::string>& target_tensor_names,
     std::vector<Tensor>* outputs, RunMetadata* run_metadata) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Run with options is not supported for this session.");
 }
 
@@ -50,7 +50,7 @@ absl::Status Session::PRunSetup(const std::vector<std::string>& input_names,
                                 const std::vector<std::string>& output_names,
                                 const std::vector<std::string>& target_nodes,
                                 std::string* handle) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Partial run is not supported for this session.");
 }
 
@@ -59,7 +59,7 @@ absl::Status Session::PRun(
     const std::vector<std::pair<std::string, Tensor> >& inputs,
     const std::vector<std::string>& output_names,
     std::vector<Tensor>* outputs) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Partial run is not supported for this session.");
 }
 

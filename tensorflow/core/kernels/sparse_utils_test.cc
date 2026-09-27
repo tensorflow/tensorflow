@@ -42,25 +42,26 @@ using ::testing::MatchesRegex;
 
 TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
   {
-    int32 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int32>::ConstMatrix indices_mat(data, 8, 2);
+    int32_t data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 8, 2);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
     bool contains_empty_rows;
-    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<int32>(indices_mat,
-                                                     &contains_empty_rows) ==
-                std::vector<int32>({0, 1, 2, 2, 2, 3, 3, 4, 5, 6, 6, 7, 7, 8}));
+    EXPECT_TRUE(
+        GetStartIndicesOfEachDenseRow<int32_t>(indices_mat,
+                                               &contains_empty_rows) ==
+        std::vector<int32_t>({0, 1, 2, 2, 2, 3, 3, 4, 5, 6, 6, 7, 7, 8}));
     EXPECT_TRUE(contains_empty_rows);
   }
   {
-    int32 data[] = {0, 0, 1, 0, 1, 0, 4, 0, 4, 0, 4, 0,  6, 0,  7,
-                    0, 7, 0, 7, 0, 7, 0, 8, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int32>::ConstMatrix indices_mat(data, 15, 2);
+    int32_t data[] = {0, 0, 1, 0, 1, 0, 4, 0, 4, 0, 4, 0,  6, 0,  7,
+                      0, 7, 0, 7, 0, 7, 0, 8, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 15, 2);
     // indices_list = {0, 1, 1, 4, 4, 4,  6, 7, 7, 7, 7, 8, 8, 10, 12};
     bool contains_empty_rows;
     EXPECT_TRUE(
-        GetStartIndicesOfEachDenseRow<int32>(indices_mat,
-                                             &contains_empty_rows) ==
-        std::vector<int32>({0, 1, 3, 3, 3, 6, 6, 7, 11, 13, 13, 14, 14, 15}));
+        GetStartIndicesOfEachDenseRow<int32_t>(indices_mat,
+                                               &contains_empty_rows) ==
+        std::vector<int32_t>({0, 1, 3, 3, 3, 6, 6, 7, 11, 13, 13, 14, 14, 15}));
     EXPECT_TRUE(contains_empty_rows);
   }
   {
@@ -73,32 +74,32 @@ TEST(SparseUtilsTest, GetStartIndicesOfEachDenseRow) {
     EXPECT_TRUE(contains_empty_rows);
   }
   {
-    uint32 data[] = {3, 0, 3, 0};
-    TTypes<uint32>::ConstMatrix indices_mat(data, 2, 2);
+    uint32_t data[] = {3, 0, 3, 0};
+    TTypes<uint32_t>::ConstMatrix indices_mat(data, 2, 2);
     bool contains_empty_rows;
-    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint32>(indices_mat,
-                                                      &contains_empty_rows) ==
-                std::vector<uint32>({0, 0, 0, 0, 2}));
+    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint32_t>(indices_mat,
+                                                        &contains_empty_rows) ==
+                std::vector<uint32_t>({0, 0, 0, 0, 2}));
     EXPECT_TRUE(contains_empty_rows);
   }
   {
-    uint16 data[] = {0, 0, 0, 0, 0, 0, 1, 0};
-    TTypes<uint16>::ConstMatrix indices_mat(data, 4, 2);
+    uint16_t data[] = {0, 0, 0, 0, 0, 0, 1, 0};
+    TTypes<uint16_t>::ConstMatrix indices_mat(data, 4, 2);
     // indices_list = {0, 0, 0, 1};
     bool contains_empty_rows;
-    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint16>(indices_mat,
-                                                      &contains_empty_rows) ==
-                std::vector<uint16>({0, 3, 4}));
+    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint16_t>(indices_mat,
+                                                        &contains_empty_rows) ==
+                std::vector<uint16_t>({0, 3, 4}));
     EXPECT_FALSE(contains_empty_rows);
   }
   {
-    uint64 data[] = {0, 0, 0, 0, 0, 0, 3, 0};
-    TTypes<uint64>::ConstMatrix indices_mat(data, 4, 2);
+    uint64_t data[] = {0, 0, 0, 0, 0, 0, 3, 0};
+    TTypes<uint64_t>::ConstMatrix indices_mat(data, 4, 2);
     bool contains_empty_rows;
     // indices_list = {0, 0, 0, 3};
-    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint64>(indices_mat,
-                                                      &contains_empty_rows) ==
-                std::vector<uint64>({0, 3, 3, 3, 4}));
+    EXPECT_TRUE(GetStartIndicesOfEachDenseRow<uint64_t>(indices_mat,
+                                                        &contains_empty_rows) ==
+                std::vector<uint64_t>({0, 3, 3, 3, 4}));
     EXPECT_TRUE(contains_empty_rows);
   }
 }
@@ -108,10 +109,10 @@ TEST(SparseUtilsTest, ParseRowStartIndices) {
     Tensor t(DataType::DT_INT32, {1});
     int indx = 0;
     for (const int32_t v : {0}) {
-      t.flat<int32>()(indx++) = v;
+      t.flat<int32_t>()(indx++) = v;
     }
-    EXPECT_TRUE(ParseRowStartIndices<int32>(t, 1) ==
-                std::vector<int32>({0, 1}));
+    EXPECT_TRUE(ParseRowStartIndices<int32_t>(t, 1) ==
+                std::vector<int32_t>({0, 1}));
   }
   {
     Tensor t(DataType::DT_INT64, {1});
@@ -125,30 +126,30 @@ TEST(SparseUtilsTest, ParseRowStartIndices) {
   {
     Tensor t(DataType::DT_UINT64, {2});
     int indx = 0;
-    for (const uint64 v : {0, 3}) {
-      t.flat<uint64>()(indx++) = v;
+    for (const uint64_t v : {0, 3}) {
+      t.flat<uint64_t>()(indx++) = v;
     }
-    EXPECT_TRUE(ParseRowStartIndices<uint64>(t, 4) ==
-                std::vector<uint64>({0, 3, 4}));
+    EXPECT_TRUE(ParseRowStartIndices<uint64_t>(t, 4) ==
+                std::vector<uint64_t>({0, 3, 4}));
   }
   {
     Tensor t(DataType::DT_UINT16, {2});
     int indx = 0;
-    for (const uint16 v : {0, 3}) {
-      t.flat<uint16>()(indx++) = v;
+    for (const uint16_t v : {0, 3}) {
+      t.flat<uint16_t>()(indx++) = v;
     }
-    EXPECT_TRUE(ParseRowStartIndices<uint16>(t, 4) ==
-                std::vector<uint16>({0, 3, 4}));
+    EXPECT_TRUE(ParseRowStartIndices<uint16_t>(t, 4) ==
+                std::vector<uint16_t>({0, 3, 4}));
   }
 }
 
 TEST(SparseUtilsTest, ContainsEmptyRows) {
   {
-    int32 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int32>::ConstMatrix indices_mat(data, 8, 2);
+    int32_t data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 8, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int32>(indices_mat, &contains_empty_rows);
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int32_t>(
+        indices_mat, &contains_empty_rows);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
@@ -162,29 +163,29 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
-    int32 data[] = {1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<int32>::ConstMatrix indices_mat(data, 6, 2);
+    int32_t data[] = {1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 6, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int32>(indices_mat, &contains_empty_rows);
-    // indices_list = {1, 1, 2, 2, 2, 3};
-    EXPECT_TRUE(ContainsEmptyRows(segment_indices));
-  }
-  {
-    uint16 data[] = {1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<uint16>::ConstMatrix indices_mat(data, 6, 2);
-    bool contains_empty_rows;
-    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint16>(
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int32_t>(
         indices_mat, &contains_empty_rows);
     // indices_list = {1, 1, 2, 2, 2, 3};
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
-    int32 data[] = {0, 0, 1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<int32>::ConstMatrix indices_mat(data, 7, 2);
+    uint16_t data[] = {1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<uint16_t>::ConstMatrix indices_mat(data, 6, 2);
     bool contains_empty_rows;
-    const auto segment_indices =
-        GetStartIndicesOfEachDenseRow<int32>(indices_mat, &contains_empty_rows);
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint16_t>(
+        indices_mat, &contains_empty_rows);
+    // indices_list = {1, 1, 2, 2, 2, 3};
+    EXPECT_TRUE(ContainsEmptyRows(segment_indices));
+  }
+  {
+    int32_t data[] = {0, 0, 1, 0, 1, 1, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 7, 2);
+    bool contains_empty_rows;
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<int32_t>(
+        indices_mat, &contains_empty_rows);
     // indices_list = {0, 1, 1, 2, 2, 2, 3};
     EXPECT_FALSE(ContainsEmptyRows(segment_indices));
   }
@@ -198,10 +199,10 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_FALSE(ContainsEmptyRows(segment_indices));
   }
   {
-    uint32 data[] = {0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<uint32>::ConstMatrix indices_mat(data, 7, 2);
+    uint32_t data[] = {0, 0, 0, 1, 0, 2, 2, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<uint32_t>::ConstMatrix indices_mat(data, 7, 2);
     bool contains_empty_rows;
-    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint32>(
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint32_t>(
         indices_mat, &contains_empty_rows);
     // indices_list = {0, 0, 0, 2, 2, 2, 3};
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
@@ -216,10 +217,10 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
     EXPECT_TRUE(ContainsEmptyRows(segment_indices));
   }
   {
-    uint64 data[] = {0, 0, 0, 1, 0, 2, 1, 0, 2, 1, 2, 2, 3, 4};
-    TTypes<uint64>::ConstMatrix indices_mat(data, 7, 2);
+    uint64_t data[] = {0, 0, 0, 1, 0, 2, 1, 0, 2, 1, 2, 2, 3, 4};
+    TTypes<uint64_t>::ConstMatrix indices_mat(data, 7, 2);
     bool contains_empty_rows;
-    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint64>(
+    const auto segment_indices = GetStartIndicesOfEachDenseRow<uint64_t>(
         indices_mat, &contains_empty_rows);
     // indices_list = {0, 0, 0, 1, 2, 2, 3};
     EXPECT_FALSE(ContainsEmptyRows(segment_indices));
@@ -228,19 +229,19 @@ TEST(SparseUtilsTest, ContainsEmptyRows) {
 
 TEST(SparseUtilsTest, FindNextDenseRowStartIndex) {
   {
-    int32 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<int32>::ConstMatrix indices_mat(data, 8, 2);
+    int32_t data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<int32_t>::ConstMatrix indices_mat(data, 8, 2);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
     for (int32_t i = 0; i < 8; ++i) {
-      EXPECT_EQ(i + 1, FindNextDenseRowStartIndex<int32>(i, indices_mat));
+      EXPECT_EQ(i + 1, FindNextDenseRowStartIndex<int32_t>(i, indices_mat));
     }
   }
   {
-    uint16 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
-    TTypes<uint16>::ConstMatrix indices_mat(data, 8, 2);
+    uint16_t data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
+    TTypes<uint16_t>::ConstMatrix indices_mat(data, 8, 2);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
-    for (uint16 i = 0; i < 8; ++i) {
-      EXPECT_EQ(i + 1, FindNextDenseRowStartIndex<uint16>(i, indices_mat));
+    for (uint16_t i = 0; i < 8; ++i) {
+      EXPECT_EQ(i + 1, FindNextDenseRowStartIndex<uint16_t>(i, indices_mat));
     }
   }
   {

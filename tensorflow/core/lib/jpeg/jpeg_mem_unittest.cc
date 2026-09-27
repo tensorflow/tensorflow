@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/env.h"
@@ -95,10 +96,10 @@ TEST(JpegMemTest, Jpeg) {
   const std::string data_path = kTestData;
 
   // Name of a valid jpeg file on the disk
-  TestJPEG(env, data_path + "jpeg_merge_test1.jpg");
+  TestJPEG(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"));
 
   // Exercise CMYK machinery as well
-  TestJPEG(env, data_path + "jpeg_merge_test1_cmyk.jpg");
+  TestJPEG(env, absl::StrCat(data_path, "jpeg_merge_test1_cmyk.jpg"));
 }
 
 void TestCropAndDecodeJpeg(Env* env, const std::string& jpegfile,
@@ -190,8 +191,10 @@ TEST(JpegMemTest, CropAndDecodeJpeg) {
   UncompressFlags flags;
 
   // Test basic flags for jpeg and cmyk jpeg.
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1_cmyk.jpg", flags);
+  TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        flags);
+  TestCropAndDecodeJpeg(
+      env, absl::StrCat(data_path, "jpeg_merge_test1_cmyk.jpg"), flags);
 }
 
 TEST(JpegMemTest, CropAndDecodeJpegWithRatio) {
@@ -200,7 +203,8 @@ TEST(JpegMemTest, CropAndDecodeJpegWithRatio) {
   UncompressFlags flags;
   for (int ratio : {1, 2, 4, 8}) {
     flags.ratio = ratio;
-    TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+    TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                          flags);
   }
 }
 
@@ -210,7 +214,8 @@ TEST(JpegMemTest, CropAndDecodeJpegWithComponents) {
   UncompressFlags flags;
   for (const int components : {0, 1, 3}) {
     flags.components = components;
-    TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+    TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                          flags);
   }
 }
 
@@ -219,7 +224,8 @@ TEST(JpegMemTest, CropAndDecodeJpegWithUpScaling) {
   const std::string data_path = kTestData;
   UncompressFlags flags;
   flags.fancy_upscaling = true;
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        flags);
 }
 
 TEST(JpegMemTest, CropAndDecodeJpegWithStride) {
@@ -228,7 +234,8 @@ TEST(JpegMemTest, CropAndDecodeJpegWithStride) {
 
   // Read the data from the jpeg file into memory
   std::string jpeg;
-  ReadFileToStringOrDie(env, data_path + "jpeg_merge_test1.jpg", &jpeg);
+  ReadFileToStringOrDie(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        &jpeg);
   const int fsize = jpeg.size();
   const auto* temp = absl::bit_cast<const uint8_t*>(jpeg.data());
 
@@ -238,11 +245,39 @@ TEST(JpegMemTest, CropAndDecodeJpegWithStride) {
   // stride must be either 0 or > w*c; otherwise, uncompress would fail.
   UncompressFlags flags;
   flags.stride = w * c;
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        flags);
   flags.stride = w * c * 3;
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        flags);
   flags.stride = w * c + 100;
-  TestCropAndDecodeJpeg(env, data_path + "jpeg_merge_test1.jpg", flags);
+  TestCropAndDecodeJpeg(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        flags);
+}
+
+TEST(JpegMemTest, UncompressWithDefaultAllocatorAndStride) {
+  Env* env = Env::Default();
+  const std::string data_path = kTestData;
+
+  // Read the data from the jpeg file into memory
+  std::string jpeg;
+  ReadFileToStringOrDie(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        &jpeg);
+  const int fsize = jpeg.size();
+  const auto* temp = absl::bit_cast<const uint8_t*>(jpeg.data());
+
+  int w, h, c;
+  ASSERT_TRUE(GetImageInfo(temp, fsize, &w, &h, &c));
+
+  UncompressFlags flags;
+  flags.components = c;
+  flags.stride = w * c * 2;  // use custom larger stride
+
+  std::unique_ptr<uint8_t[]> imgdata(
+      Uncompress(temp, fsize, flags, &w, &h, &c, nullptr));
+  ASSERT_NE(imgdata, nullptr);
+  EXPECT_GT(w, 0);
+  EXPECT_GT(h, 0);
 }
 
 void CheckInvalidCropWindowFailed(const uint8_t* const temp, int fsize, int x,
@@ -266,7 +301,8 @@ TEST(JpegMemTest, CropAndDecodeJpegWithInvalidCropWindow) {
 
   // Read the data from the jpeg file into memory
   std::string jpeg;
-  ReadFileToStringOrDie(env, data_path + "jpeg_merge_test1.jpg", &jpeg);
+  ReadFileToStringOrDie(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        &jpeg);
   const int fsize = jpeg.size();
   const auto* temp = absl::bit_cast<const uint8_t*>(jpeg.data());
 
@@ -448,7 +484,7 @@ bool IsChromaDownsampled(const std::string& jpegdata) {
 
 TEST(JpegMemTest, ChromaDownsampling) {
   // Read the data from a test jpeg file into memory
-  const std::string jpegfile = std::string(kTestData) + "jpeg_merge_test1.jpg";
+  const std::string jpegfile = absl::StrCat(kTestData, "jpeg_merge_test1.jpg");
   std::string jpeg;
   ReadFileToStringOrDie(Env::Default(), jpegfile, &jpeg);
 
@@ -511,18 +547,50 @@ TEST(JpegMemTest, BadJpeg) {
   const std::string data_path = kTestData;
 
   // Test corrupt file
-  TestBadJPEG(env, data_path + "bad_huffman.jpg", 1024, 768, "", false);
-  TestBadJPEG(env, data_path + "corrupt.jpg", 0 /*120*/, 90, "", false);
+  TestBadJPEG(env, absl::StrCat(data_path, "bad_huffman.jpg"), 1024, 768, "",
+              false);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt.jpg"), 0 /*120*/, 90, "",
+              false);
 
   // Truncated files, undecodable because of missing lines:
-  TestBadJPEG(env, data_path + "corrupt34_2.jpg", 0, 3300, "", false);
-  TestBadJPEG(env, data_path + "corrupt34_3.jpg", 0, 3300, "", false);
-  TestBadJPEG(env, data_path + "corrupt34_4.jpg", 0, 3300, "", false);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_2.jpg"), 0, 3300, "",
+              false);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_3.jpg"), 0, 3300, "",
+              false);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_4.jpg"), 0, 3300, "",
+              false);
 
   // Try in 'recover' mode now:
-  TestBadJPEG(env, data_path + "corrupt34_2.jpg", 2544, 3300, "", true);
-  TestBadJPEG(env, data_path + "corrupt34_3.jpg", 2544, 3300, "", true);
-  TestBadJPEG(env, data_path + "corrupt34_4.jpg", 2544, 3300, "", true);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_2.jpg"), 2544, 3300, "",
+              true);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_3.jpg"), 2544, 3300, "",
+              true);
+  TestBadJPEG(env, absl::StrCat(data_path, "corrupt34_4.jpg"), 2544, 3300, "",
+              true);
+}
+
+TEST(JpegMemTest, StrideTooLargeAllocationFails) {
+  Env* env = Env::Default();
+  const std::string data_path = kTestData;
+
+  // Read the data from the jpeg file into memory
+  std::string jpeg;
+  ReadFileToStringOrDie(env, absl::StrCat(data_path, "jpeg_merge_test1.jpg"),
+                        &jpeg);
+  const int fsize = jpeg.size();
+  const auto* temp = absl::bit_cast<const uint8_t*>(jpeg.data());
+
+  int w, h, c;
+  ASSERT_TRUE(GetImageInfo(temp, fsize, &w, &h, &c));
+
+  UncompressFlags flags;
+  // Set stride to make total_size = height * row_stride >= 1LL << 29
+  flags.stride = 1 << 29;
+
+  int out_w = 0, out_h = 0, out_c = 0;
+  uint8_t* imgdata =
+      Uncompress(temp, fsize, flags, &out_w, &out_h, &out_c, nullptr);
+  EXPECT_EQ(imgdata, nullptr);
 }
 
 }  // namespace

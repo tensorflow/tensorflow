@@ -3,50 +3,50 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.distributions.categorical.Categorical\'>"
   is_instance: "<class \'tensorflow.python.ops.distributions.distribution.Distribution\'>"
   is_instance: "<class \'tensorflow.python.ops.distributions.distribution._BaseDistribution\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "allow_nan_stats"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "batch_shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "event_shape"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "event_size"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "logits"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "parameters"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "probs"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "reparameterization_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member {
     name: "validate_args"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'property\'>"
   }
   member_method {
     name: "__init__"
@@ -115,10 +115,12 @@ tf_class {
   member_method {
     name: "param_shapes"
     argspec: "args=[\'cls\', \'sample_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'DistributionParamShapes\'], "
+    method_kind: CLASS
   }
   member_method {
     name: "param_static_shapes"
     argspec: "args=[\'cls\', \'sample_shape\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "prob"

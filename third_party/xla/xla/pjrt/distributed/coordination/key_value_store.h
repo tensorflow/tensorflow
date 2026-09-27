@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 
 namespace xla {
 
@@ -69,7 +69,8 @@ class KeyValueStore {
   //
   // The empty string "" is a prefix of every key, so GetPrefix("") can be used
   // to retrieve every element in the store.
-  std::vector<tensorflow::KeyValueEntry> GetPrefix(absl::string_view prefix);
+  std::vector<xla::coordination::KeyValueEntry> GetPrefix(
+      absl::string_view prefix);
 
   // Adds a callback that is called when the provided key exists in the map.
   void AddCallbackForKey(absl::string_view key, Callback callback);
@@ -80,10 +81,15 @@ class KeyValueStore {
   // Deletes all key-value pairs where the key has the provided prefix.
   void DeletePrefix(absl::string_view prefix);
 
+  // Utility for normalizing structured config key string.
+  // The normalized key will not have leading or trailing slashes, and all parts
+  // in the key path are separated by exactly one slash ('/').
+  // E.g., ///a//b/c// --> a/b/c
+  static std::string NormalizeKey(absl::string_view key);
+
  private:
-  // Notifies all callbacks registered for the provided key.
-  void NotifyCallbacksForKey(absl::string_view key,
-                             const absl::StatusOr<absl::string_view>& value)
+  // Extracts and removes all callbacks registered for the provided key.
+  std::vector<Callback> ExtractCallbacksForKey(absl::string_view key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;

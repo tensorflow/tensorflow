@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 
 namespace xla {
@@ -28,11 +28,11 @@ namespace xla {
 // TPU specific implementation of XlaExecutableAbiVersion necessary to support
 // TPU specific serialization via TpuXlaExecutableAbiVersionSerDes.
 struct TpuXlaExecutableAbiVersion
-    : public llvm::RTTIExtends<TpuXlaExecutableAbiVersion,
+    : public ifrt::RTTIExtends<TpuXlaExecutableAbiVersion,
                                ifrt::XlaExecutableAbiVersion> {
   explicit TpuXlaExecutableAbiVersion(
       std::unique_ptr<xla::PjRtExecutableAbiVersion> version)
-      : llvm::RTTIExtends<TpuXlaExecutableAbiVersion,
+      : ifrt::RTTIExtends<TpuXlaExecutableAbiVersion,
                           ifrt::XlaExecutableAbiVersion>(std::move(version)) {}
   static char ID;  // NOLINT
 };

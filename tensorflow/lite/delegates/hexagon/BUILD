@@ -115,10 +115,12 @@ cc_library(
     name = "hexagon_delegate",
     srcs = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["hexagon_delegate.cc"],
     }),
     hdrs = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["hexagon_delegate.h"],
     }),
     tags = [
@@ -127,6 +129,7 @@ cc_library(
     ],
     deps = select({
         ":explicit_disable_hexagon_setting": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [
             ":hexagon_delegate_kernel",
             ":hexagon_implementation",
@@ -141,6 +144,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:ios_x86_64": [],
         "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [":enable_hexagon_delegate"],
     }),
 )
@@ -167,6 +171,7 @@ cc_test(
     linkopts = tflite_linkopts() + ["-lm"],
     deps = [
         ":utils",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],

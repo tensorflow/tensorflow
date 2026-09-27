@@ -27,7 +27,7 @@ namespace grappler {
 // A custom optimizer that can be registered.
 class CustomGraphOptimizer : public GraphOptimizer {
  public:
-  virtual ~CustomGraphOptimizer() {}
+  ~CustomGraphOptimizer() override {}
   virtual absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
           nullptr) = 0;

@@ -24,6 +24,8 @@ message SocketTransferPullRequest {
   repeated uint64 buffer_ids = 2;
   // Req ids are assigned sequentially for each pull request.
   uint64 req_id = 3;
+  // Absolute timeout in microseconds since epoch.
+  optional int64 timeout_us = 4;
 }
 
 // Packet headers represent a read request

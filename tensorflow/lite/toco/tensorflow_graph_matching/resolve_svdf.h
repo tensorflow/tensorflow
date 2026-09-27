@@ -54,8 +54,7 @@ class SvdfCluster : public Cluster {
   // needed.
   void MaybeMergeConstNodes(
       const std::vector<const tensorflow::NodeDef*>& const_node_parts,
-      bool transpose_tensor_value,
-      const std::unique_ptr<tensorflow::NodeDef>& merged_node);
+      bool transpose_tensor_value, tensorflow::NodeDef* merged_node);
 
   // Infer the value of Svdf filter rank, by looking up a reshape operator which
   // is used for 'output' which reshapes output from [num_filters, batch, 1]

@@ -25,20 +25,23 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 
 namespace xla::gpu {
@@ -51,15 +54,16 @@ SelectKThunk::SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                            std::uint32_t num_elements, std::uint32_t k,
                            xla::PrimitiveType dtype,
                            const emitters::KernelArguments& kernel_arguments)
-    : Thunk(Kind::kSelectK, thunk_info),
+    : TracedCommand(Kind::kSelectK, std::move(thunk_info)),
       batch_size_(batch_size),
       num_elements_(num_elements),
       k_(k),
       dtype_(dtype),
       args_(kernel_arguments.GetArgumentBufferSlices()) {
-  CHECK_EQ(args_.size(), 3)
-      << "SelectKThunk expects exactly 3 buffer arguments "
-         "(input_data, output_data, output_indices)";
+  CHECK(args_.size() == 3 || args_.size() == 4)
+      << "SelectKThunk expects 3 or 4 buffer arguments "
+         "(input_data, output_data, output_indices, [scratch_buffer]), got "
+      << args_.size();
 }
 
 std::string SelectKThunk::ToString(int indent) const {
@@ -69,6 +73,26 @@ std::string SelectKThunk::ToString(int indent) const {
                       ", dtype=", dtype_, ")");
 }
 
+Thunk::BufferUses SelectKThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(args_.size());
+  uses.push_back(BufferUse::Read(
+      args_[0], ShapeUtil::MakeShape(dtype_, {batch_size_, num_elements_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[1], ShapeUtil::MakeShape(dtype_, {batch_size_, k_})));
+
+  uses.push_back(BufferUse::Write(
+      args_[2], ShapeUtil::MakeShape(PrimitiveType::S32, {batch_size_, k_})));
+
+  if (args_.size() > 3) {
+    uses.push_back(BufferUse::Write(
+        args_[3], ShapeUtil::MakeShape(PrimitiveType::U8, {args_[3].size()})));
+  }
+
+  return uses;
+}
+
 // Execute the TopK operation on the GPU stream.
 // Maps kernel arguments to device memory and dispatches the appropriate
 // select_k_exec implementation based on the platform and data type.
@@ -76,7 +100,7 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Launching " << ToString(0);
 
   // Map buffer slices to device memory.
-  absl::InlinedVector<se::DeviceAddressBase, 3> buffer_args;
+  absl::InlinedVector<se::DeviceAddressBase, 4> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {
     se::DeviceAddressBase buf =
         params.buffer_allocations->GetDeviceAddress(arg);
@@ -90,16 +114,23 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->memory_allocator();
   se::Stream* stream = params.stream;
 
+  se::DeviceAddressBase scratch_buffer =
+      buffer_args.size() > 3 ? buffer_args[3] : se::DeviceAddressBase();
+
   // Dispatch to the correct typed implementation based on dtype.
   switch (dtype_) {
     case PrimitiveType::F32:
       return select_k_exec<float>(
           device_ordinal, allocator, stream, buffer_args[0], buffer_args[1],
-          buffer_args[2], batch_size_, num_elements_, k_);
+          buffer_args[2], batch_size_, num_elements_, k_, scratch_buffer);
     case PrimitiveType::BF16:
       return select_k_exec<::xla::bfloat16>(
           device_ordinal, allocator, stream, buffer_args[0], buffer_args[1],
-          buffer_args[2], batch_size_, num_elements_, k_);
+          buffer_args[2], batch_size_, num_elements_, k_, scratch_buffer);
+    case PrimitiveType::U64:
+      return select_k_exec<uint64_t>(
+          device_ordinal, allocator, stream, buffer_args[0], buffer_args[1],
+          buffer_args[2], batch_size_, num_elements_, k_, scratch_buffer);
     default:
       return absl::UnimplementedError(
           absl::StrCat("SelectKThunk: Unsupported dtype: ",
@@ -118,7 +149,7 @@ absl::StatusOr<ThunkProto> SelectKThunk::ToProto() const {
   select_k_proto->set_dtype(dtype_);
 
   for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*select_k_proto->add_args(), arg.ToProto());
   }
   return proto;
 }
@@ -130,7 +161,7 @@ absl::StatusOr<std::unique_ptr<SelectKThunk>> SelectKThunk::FromProto(
   arguments.reserve(proto.args().size());
   for (const xla::buffer_assignment::BufferAllocationSliceProto& arg :
        proto.args()) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         BufferAllocation::Slice::FromProto(arg, buffer_allocations));
     emitters::KernelArgument argument{Shape{}, slice};

@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -44,7 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/util.h"
@@ -155,6 +156,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->GetHloModules();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return wrapped_->GetParameterMemoryKinds();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return wrapped_->GetOutputMemoryKinds();
   }
@@ -176,6 +181,14 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
 
   void Delete() override { return wrapped_->Delete(); }
   bool IsDeleted() const override { return wrapped_->IsDeleted(); }
+
+  PjRtExecutable* GetExecutable() const override {
+    return wrapped_->GetExecutable();
+  }
+
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    return wrapped_->GetCompiledMemoryStats();
+  }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
@@ -335,14 +348,13 @@ class TfPjRtClient : public PjRtClient {
  private:
   // Unwraps a TfPjRtBuffer.
   PjRtBuffer* UnwrapBuffer(PjRtBuffer* buffer) const {
-    return tensorflow::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
+    return absl::down_cast<TfPjRtBuffer*>(buffer)->wrapped();
   }
 
   // Unwraps a TfPjRtExecutable.
   const PjRtLoadedExecutable& UnwrapExecutable(
       const PjRtLoadedExecutable& executable) const {
-    return *tensorflow::down_cast<const TfPjRtExecutable*>(&executable)
-                ->wrapped();
+    return *absl::down_cast<const TfPjRtExecutable*>(&executable)->wrapped();
   }
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(

@@ -47,7 +47,7 @@ void ExecutorFactory::Register(const std::string& executor_type,
 }
 
 namespace {
-const std::string RegisteredFactoriesErrorMessageLocked()
+std::string RegisteredFactoriesErrorMessageLocked()
     TF_SHARED_LOCKS_REQUIRED(executor_factory_lock) {
   std::vector<std::string> factory_types;
   for (const auto& executor_factory : *executor_factories()) {
@@ -64,9 +64,9 @@ absl::Status ExecutorFactory::GetFactory(const std::string& executor_type,
 
   auto iter = executor_factories()->find(executor_type);
   if (iter == executor_factories()->end()) {
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "No executor factory registered for the given executor type: ",
-        executor_type, " ", RegisteredFactoriesErrorMessageLocked());
+        executor_type, " ", RegisteredFactoriesErrorMessageLocked()));
   }
 
   *out_factory = iter->second;

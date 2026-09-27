@@ -204,10 +204,13 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph = new Subgraph(
+    auto subgraph = std::make_unique<Subgraph>(
         error_reporter_, external_contexts_, &subgraphs_, &resources_,
         &resource_ids_, &initialization_status_map_, subgraphs_.size());
-    subgraphs_.emplace_back(subgraph);
+    if (allocator_ != nullptr) {
+      subgraph->SetAllocator(allocator_);
+    }
+    subgraphs_.emplace_back(std::move(subgraph));
   }
 }
 
@@ -401,8 +404,39 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
+  std::vector<int> all_subgraph_indices(subgraphs_.size());
+  for (int i = 0; i < subgraphs_.size(); ++i) {
+    all_subgraph_indices[i] = i;
+  }
+  return ModifyGraphWithDelegateImpl(delegate, all_subgraph_indices);
+}
+
+TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
+    TfLiteDelegate* delegate, const std::vector<int>& active_subgraph_indices) {
+  if (active_subgraph_indices.empty()) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Active subgraph indices must not be empty.");
+    return kTfLiteApplicationError;
+  }
+
+  std::vector<bool> active_subgraphs(subgraphs_.size(), false);
+  for (int subgraph_index : active_subgraph_indices) {
+    if (subgraph_index < 0 || subgraph_index >= subgraphs_.size()) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Active subgraph index %d is out of range.",
+                           subgraph_index);
+      return kTfLiteApplicationError;
+    }
+    active_subgraphs[subgraph_index] = true;
+  }
+
   TfLiteStatus status = kTfLiteOk;
-  for (auto& subgraph : subgraphs_) {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    if (!active_subgraphs[subgraph_index]) {
+      continue;
+    }
+    auto& subgraph = subgraphs_[subgraph_index];
     if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
         subgraph->IsDelegationSkippable()) {
       TFLITE_LOG(TFLITE_LOG_INFO,
@@ -439,7 +473,8 @@ TfLiteStatus Interpreter::SetMetadata(
       !ParseModelControlDependencies(
           maybe_model_control_dependencies->second.data(),
           maybe_model_control_dependencies->second.size(),
-          &model_control_dependencies_)) {
+          &model_control_dependencies_) ||
+      model_control_dependencies_.size() != subgraphs_.size()) {
     model_control_dependencies_.clear();
   }
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -103,7 +104,8 @@ SubProcess::SubProcess(int nfds)
       exit_cb_tid_(-1),
       exit_status_(0),
       exec_path_(nullptr),
-      exec_argv_(nullptr) {
+      exec_argv_(nullptr),
+      envp_(nullptr) {
   // The input 'nfds' parameter is currently ignored and the internal constant
   // 'kNFds' is used to support the 3 channels (stdin, stdout, stderr).
   for (int i = 0; i < kNFds; i++) {
@@ -128,6 +130,7 @@ SubProcess::~SubProcess() {
   pid_ = -1;
   running_ = false;
   FreeArgs();
+  FreeEnviron();
   ClosePipes();
 }
 
@@ -141,6 +144,16 @@ void SubProcess::FreeArgs() {
     }
     delete[] exec_argv_;
     exec_argv_ = nullptr;
+  }
+}
+
+void SubProcess::FreeEnviron() {
+  if (envp_) {
+    for (char** p = envp_; *p != nullptr; p++) {
+      free(*p);
+    }
+    delete[] envp_;
+    envp_ = nullptr;
   }
 }
 
@@ -187,6 +200,26 @@ void SubProcess::SetProgram(const string& file,
     }
   }
   exec_argv_[argc] = nullptr;
+}
+
+void SubProcess::SetEnviron(const EnvMap& environ) {
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
+  if (running_) {
+    LOG(FATAL) << "SetEnviron called after the process was started.";
+    return;
+  }
+
+  FreeEnviron();
+  int envc = environ.size();
+  envp_ = new char*[envc + 1];
+  int i = 0;
+  for (EnvMap::const_iterator it = environ.begin(); it != environ.end(); ++it) {
+    std::string tmp = absl::StrCat(it->first, "=", it->second);
+    envp_[i] = strdup(tmp.c_str());
+    i++;
+  }
+  envp_[envc] = nullptr;
 }
 
 void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
@@ -396,7 +429,7 @@ bool SubProcess::Start() {
   }
 
   ret = posix_spawnp(&pid_, exec_path_, &file_actions, nullptr, exec_argv_,
-                     environ);
+                     envp_ ? envp_ : environ);
   if (ret != 0) {
     error_text_ =
         absl::StrCat("Start cannot spawn child process: ", strerror(ret));
@@ -581,7 +614,12 @@ bool SubProcess::Start() {
 
   // Execute the child program.
   // See comment (2) in the header about issues with the use of execvp().
-  execvp(exec_path_, exec_argv_);
+  if (envp_ == nullptr) {
+    execvp(exec_path_, exec_argv_);
+  } else {
+    // Call execve with the provided environment.
+    execve(exec_path_, exec_argv_, envp_);
+  }
   _exit(1);
 }
 

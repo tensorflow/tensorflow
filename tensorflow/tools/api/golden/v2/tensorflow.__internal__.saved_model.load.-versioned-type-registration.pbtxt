@@ -1,7 +1,7 @@
 path: "tensorflow.__internal__.saved_model.load.VersionedTypeRegistration"
 tf_class {
   is_instance: "<class \'tensorflow.python.saved_model.revived_types.VersionedTypeRegistration\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'object_factory\', \'version\', \'min_producer_version\', \'min_consumer_version\', \'bad_consumers\', \'setter\'], varargs=None, keywords=None, defaults=[\'None\', \'<built-in function setattr>\'], "

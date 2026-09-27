@@ -43,7 +43,7 @@ absl::Status TestCluster::MakeTestCluster(
   std::vector<std::string> tf_job_args;
   for (const auto& job : config.jobs) {
     if (job.num_tasks % job.num_replicas != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Number of tasks must evenly divide replicas.");
     }
 
@@ -70,7 +70,7 @@ absl::Status TestCluster::MakeTestCluster(
     num_gpus = iter->second;
   }
   if (!options.env->FileExists(binary_path).ok()) {
-    return errors::Internal("Could not find grpc_testlib_server");
+    return absl::InternalError("Could not find grpc_testlib_server");
   }
 
   for (const auto& job : config.jobs) {
@@ -88,7 +88,7 @@ absl::Status TestCluster::MakeTestCluster(
       bool success = subprocess->Start();
       ret->subprocesses_.emplace_back(std::move(subprocess));
       if (!success) {
-        return errors::Internal("Could not start subprocess");
+        return absl::InternalError("Could not start subprocess");
       }
     }
   }

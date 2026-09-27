@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,7 +34,7 @@ limitations under the License.
 namespace tensorflow {
 namespace checkpoint {
 
-const absl::string_view kCheckpointCallbackManagerResourceName =
+ABSL_CONST_INIT const absl::string_view kCheckpointCallbackManagerResourceName =
     "checkpoint_callback_manager";
 
 namespace {
@@ -139,7 +140,7 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
                             std::string(io::Dirname(path)));
     }
   }
-  return errors::NotFound(
+  return absl::NotFoundError(
       absl::StrCat("Failed to find a checkpoint id. prefix = ", prefix));
 }
 

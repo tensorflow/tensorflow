@@ -50,14 +50,16 @@ using TfLiteIntArrayUniquePtr =
 template <typename IndexType>
 TfLiteStatus ClipStartingIndex(const RuntimeShape& operand_shape,
                                const int64_t* slice_sizes, int num_slice_sizes,
-                               Index<IndexType>& starting_index) {
-  if (operand_shape.DimensionsCount() != starting_index.size() ||
+                               Index<IndexType>* starting_index) {
+  if (starting_index == nullptr ||
+      operand_shape.DimensionsCount() != starting_index->size() ||
       operand_shape.DimensionsCount() != num_slice_sizes) {
     return kTfLiteError;
   }
-  for (int dim = 0; dim < starting_index.size(); ++dim) {
-    starting_index[dim] = std::min((int64_t)starting_index[dim],
-                                   operand_shape.Dims(dim) - slice_sizes[dim]);
+  for (int dim = 0; dim < starting_index->size(); ++dim) {
+    (*starting_index)[dim] = std::max<int64_t>(
+        0, std::min<int64_t>(static_cast<int64_t>((*starting_index)[dim]),
+                             operand_shape.Dims(dim) - slice_sizes[dim]));
   }
   return kTfLiteOk;
 }
@@ -122,8 +124,11 @@ template <typename IndexType>
 TfLiteStatus SetBatchAndOffsetIndices(const Index<IndexType>& result_index,
                                       const int64_t* offset_dims,
                                       int num_offset_dims,
-                                      Index<IndexType>& batch_index,
-                                      Index<IndexType>& offset_index) {
+                                      Index<IndexType>* batch_index,
+                                      Index<IndexType>* offset_index) {
+  if (batch_index == nullptr || offset_index == nullptr) {
+    return kTfLiteError;
+  }
   int offset_index_ctr = 0;
   int batch_index_ctr = 0;
   for (int result_dim = 0; result_dim < result_index.size(); ++result_dim) {
@@ -131,13 +136,13 @@ TfLiteStatus SetBatchAndOffsetIndices(const Index<IndexType>& result_index,
       if (offset_index_ctr >= num_offset_dims) {
         return kTfLiteError;
       }
-      offset_index[offset_index_ctr] = result_index[result_dim];
+      (*offset_index)[offset_index_ctr] = result_index[result_dim];
       offset_index_ctr++;
     } else {
       if (batch_index_ctr >= result_index.size() - num_offset_dims) {
         return kTfLiteError;
       }
-      batch_index[batch_index_ctr] = result_index[result_dim];
+      (*batch_index)[batch_index_ctr] = result_index[result_dim];
       batch_index_ctr++;
     }
   }
@@ -177,11 +182,16 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
 
   Index<IndexType> batch_index(num_batch_dims);
   Index<IndexType> offset_index(data->num_offset_dims);
+
+  if (NumElements(output) == 0 || NumElements(operand) == 0) {
+    return kTfLiteOk;
+  }
+
   do {
     TF_LITE_ENSURE_OK(
         context, SetBatchAndOffsetIndices(result_index, data->offset_dims,
-                                          data->num_offset_dims, batch_index,
-                                          offset_index));
+                                          data->num_offset_dims, &batch_index,
+                                          &offset_index));
 
     Index<IndexType> starting_index_vector =
         ReadIndexVector(start_indices, start_indices_shape, batch_index,
@@ -195,7 +205,7 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(
         context,
         ClipStartingIndex(operand_shape, data->slice_sizes,
-                          data->num_slice_sizes, final_starting_index));
+                          data->num_slice_sizes, &final_starting_index));
 
     Index<IndexType> full_offset_index;
     ExpandDims(offset_index, data->collapsed_slice_dims,
@@ -225,33 +235,18 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
 template <typename IndexType>
 TfLiteStatus EvalWithIndexType(TfLiteContext* context, TfLiteNode* node,
                                TfLiteType index_type, TfLiteType data_type) {
-  switch (data_type) {
-    case kTfLiteFloat16:
-      return EvalWithTypes<IndexType, Eigen::half>(context, node);
-    case kTfLiteFloat32:
-      return EvalWithTypes<IndexType, float>(context, node);
-    case kTfLiteFloat64:
-      return EvalWithTypes<IndexType, double>(context, node);
-    case kTfLiteInt8:
+  switch (TfLiteTypeGetSizeBits(data_type)) {
+    case 8:
       return EvalWithTypes<IndexType, int8_t>(context, node);
-    case kTfLiteInt16:
+    case 16:
       return EvalWithTypes<IndexType, int16_t>(context, node);
-    case kTfLiteInt32:
+    case 32:
       return EvalWithTypes<IndexType, int32_t>(context, node);
-    case kTfLiteInt64:
+    case 64:
       return EvalWithTypes<IndexType, int64_t>(context, node);
-    case kTfLiteUInt8:
-      return EvalWithTypes<IndexType, uint8_t>(context, node);
-    case kTfLiteUInt16:
-      return EvalWithTypes<IndexType, uint16_t>(context, node);
-    case kTfLiteUInt32:
-      return EvalWithTypes<IndexType, uint32_t>(context, node);
-    case kTfLiteUInt64:
-      return EvalWithTypes<IndexType, uint64_t>(context, node);
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "(Index Type: %s, Data Type: %s) currently not supported.\n",
-          TfLiteTypeGetName(index_type), TfLiteTypeGetName(data_type));
+      TF_LITE_KERNEL_LOG(context, "(Data Type: %s) currently not supported.\n",
+                         TfLiteTypeGetName(data_type));
       return TfLiteStatus::kTfLiteError;
   }
 }
@@ -306,6 +301,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteStablehloGatherParams* data =
       reinterpret_cast<TfLiteStablehloGatherParams*>(node->builtin_data);
+  TF_LITE_ENSURE(context, data != nullptr);
+  TF_LITE_ENSURE_EQ(context, data->num_slice_sizes, operand->dims->size);
+  TF_LITE_ENSURE(context,
+                 data->num_collapsed_slice_dims <= data->num_slice_sizes);
+  TF_LITE_ENSURE(context, data->num_offset_dims <= output->dims->size);
+  TF_LITE_ENSURE(context, data->index_vector_dim <= start_indices->dims->size);
 
   RuntimeShape start_indices_shape = GetTensorShape(start_indices);
 

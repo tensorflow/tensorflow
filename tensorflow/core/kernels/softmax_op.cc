@@ -55,8 +55,9 @@ class SoftmaxOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& logits_in = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(logits_in.shape()),
-                errors::InvalidArgument("logits must have >= 1 dimension, got ",
-                                        logits_in.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("logits must have >= 1 dimension, got ",
+                                 logits_in.shape().DebugString())));
     Tensor* softmax_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in.shape(), &softmax_out));

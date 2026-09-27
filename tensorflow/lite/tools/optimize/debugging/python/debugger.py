@@ -223,7 +223,7 @@ class QuantizationDebugger:
 
     self._layer_debug_metrics = _DEFAULT_LAYER_DEBUG_METRICS.copy()
     if self._debug_options.layer_debug_metrics:
-      self._layer_debug_metrics.update(self._debug_options.layer_debug_metrics)
+      self._layer_debug_metrics.update(self._debug_options.layer_debug_metrics)  # pyrefly: ignore[no-matching-overload]
 
     self.layer_statistics = None
     self.model_statistics = None
@@ -344,7 +344,7 @@ class QuantizationDebugger:
         lambda: collections.defaultdict(list))
 
     initialize = True
-    for tensor_data in self._data_gen():
+    for tensor_data in self._data_gen():  # pyrefly: ignore[not-callable]
       self._set_input_tensors(self._quant_interpreter, tensor_data, initialize)
       initialize = False
 
@@ -381,7 +381,7 @@ class QuantizationDebugger:
       for metric_name in metrics:
         metrics[metric_name] = np.nanmean(metrics[metric_name])
 
-    return layer_statistics
+    return layer_statistics  # pyrefly: ignore[bad-return]
 
   def _collect_model_statistics(self) -> Dict[str, float]:
     """Collects model output metrics.
@@ -401,7 +401,7 @@ class QuantizationDebugger:
     model_statistics = collections.defaultdict(list)
 
     initialize = True
-    for tensor_data in self._data_gen():
+    for tensor_data in self._data_gen():  # pyrefly: ignore[not-callable]
       # Run quantized debug model and collect output results.
       self._set_input_tensors(self._quant_interpreter, tensor_data, initialize)
       self._quant_interpreter.invoke()
@@ -419,7 +419,7 @@ class QuantizationDebugger:
 
       # Calculate the metrics.
       for (metric_name,
-           metric_fn) in self._debug_options.model_debug_metrics.items():
+           metric_fn) in self._debug_options.model_debug_metrics.items():  # pyrefly: ignore[missing-attribute]
         model_statistics[metric_name].append(
             metric_fn(float_tensor_data, quant_tensor_data))
 
@@ -537,8 +537,8 @@ class QuantizationDebugger:
     if self.layer_statistics:
       for name, metrics in self.layer_statistics.items():
         data = metrics.copy()
-        (data['tensor_name'], _) = self._get_operand_name_and_index(name)
-        data['tensor_idx'] = self._numeric_verify_op_details[name]['inputs'][0]
+        (data['tensor_name'], _) = self._get_operand_name_and_index(name)  # pyrefly: ignore[unsupported-operation]
+        data['tensor_idx'] = self._numeric_verify_op_details[name]['inputs'][0]  # pyrefly: ignore[unsupported-operation]
         data['op_name'] = self._quant_interpreter._get_op_details(  # pylint: disable=protected-access
             self._defining_op[data['tensor_idx']])['op_name']
         details = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access

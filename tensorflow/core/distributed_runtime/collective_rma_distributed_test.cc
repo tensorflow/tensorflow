@@ -101,7 +101,7 @@ class FakeWorker : public TestWorkerInterface {
                       GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     if (is_failed_) {
-      done(errors::Unavailable("peer down"));
+      done(absl::UnavailableError("peer down"));
       return;
     }
     std::vector<DeviceAttributes> dev_attr;
@@ -115,7 +115,7 @@ class FakeWorker : public TestWorkerInterface {
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                     RecvBufResponse* response, StatusCallback done) override {
     if (is_failed_) {
-      done(errors::Unavailable("peer down"));
+      done(absl::UnavailableError("peer down"));
       return;
     }
     opts->SetCancelCallback([this]() {
@@ -126,7 +126,7 @@ class FakeWorker : public TestWorkerInterface {
       // more consistent with that situation and avoid mutex deadlock.
       SchedClosure([this]() {
         Env::Default()->SleepForMicroseconds(100);
-        buf_rendezvous_.StartAbort(errors::Internal("Cancelled"));
+        buf_rendezvous_.StartAbort(absl::InternalError("Cancelled"));
       });
     });
     VLOG(2) << "ConsumeBuf key=" << request->buf_rendezvous_key()
@@ -152,7 +152,7 @@ class FakeWorker : public TestWorkerInterface {
               response->mutable_transport_options()->PackFrom(extra);
             } else {
               if (request->num_bytes() != num_bytes) {
-                s = errors::Internal("Tensor Size Mismatch.");
+                s = absl::InternalError("Tensor Size Mismatch.");
               } else {
                 memcpy(reinterpret_cast<void*>(request->buf_ptr()),
                        DMAHelper::base(h->prod_value), num_bytes);
@@ -189,12 +189,13 @@ class FakeCache : public TestWorkerCache {
     std::string task_name;
     std::string dev_part;
     if (!DeviceNameUtils::SplitDeviceName(device, &task_name, &dev_part)) {
-      done(errors::Internal("failed to parse device name"));
+      done(absl::InternalError("failed to parse device name"));
       return;
     }
     auto it = workers_.find(task_name);
     if (it == workers_.end()) {
-      done(errors::Internal("failed to find worker ", task_name));
+      done(absl::InternalError(
+          absl::StrCat("failed to find worker ", task_name)));
       return;
     }
     WorkerInterface* wi = it->second;
@@ -212,7 +213,7 @@ class FakeCache : public TestWorkerCache {
         return;
       }
     }
-    done(errors::Internal("device not found: ", device));
+    done(absl::InternalError(absl::StrCat("device not found: ", device)));
   }
 };
 
@@ -476,7 +477,7 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
         consumer_status = s;
         consumer_note.Notify();
       });
-  rma_->StartAbort(errors::Internal("Deliberate Failure"));
+  rma_->StartAbort(absl::InternalError("Deliberate Failure"));
   consumer_note.WaitForNotification();
   EXPECT_EQ(consumer_status.message(), "Cancelled");
 }

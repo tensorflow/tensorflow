@@ -1,12 +1,25 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-# copybara:uncomment_begin(google-only)
-# load("@flatbuffers//:flatbuffers.bzl", "flatbuffers_library", "ts_flatbuffers_library")
-# copybara:uncomment_end
-
+# copybara:uncomment load("@flatbuffers//:flatbuffers.bzl", "flatbuffers_library", "ts_flatbuffers_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+# copybara:uncomment load("//tools/build_defs/cc:cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
@@ -45,7 +58,21 @@ flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
     compatible_with = get_compatible_with_portable(),
+    gen_reflections = True,
 )
+
+# copybara:uncomment_begin(google-only)
+# cc_embed_data(
+#     name = "schema_reflection_data",
+#     srcs = ["schema.bfbs"],
+#     outs = [
+#         "schema_reflection_data.cc",
+#         "schema_reflection_data.h",
+#         "schema_reflection_data.o",
+#     ],
+#     embedopts = ["--namespace=tflite"],
+# )
+# copybara:uncomment_end
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).
 flatbuffer_cc_library(

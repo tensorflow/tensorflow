@@ -47,14 +47,12 @@ absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                                    T* wav_string);
 
 // Explicit instantiations defined in wav_io.cc.
-extern template Status EncodeAudioAsS16LEWav<std::string>(
+extern template absl::Status EncodeAudioAsS16LEWav<std::string>(
     const float* audio, size_t sample_rate, size_t num_channels,
     size_t num_frames, std::string* wav_string);
-extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
-                                                      size_t sample_rate,
-                                                      size_t num_channels,
-                                                      size_t num_frames,
-                                                      tstring* wav_string);
+extern template absl::Status EncodeAudioAsS16LEWav<tstring>(
+    const float* audio, size_t sample_rate, size_t num_channels,
+    size_t num_frames, tstring* wav_string);
 
 // Decodes the little-endian signed 16-bit PCM WAV file data (aka LIN16
 // encoding) into a float Tensor. The channels are encoded as the lowest

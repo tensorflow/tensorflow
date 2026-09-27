@@ -43,26 +43,25 @@ TfLiteRegistration* Register_DEQUANTIZE();
 
 namespace {
 
+void StatefulNnApiDelegateDelete(TfLiteDelegate* delegate) {
+  delete static_cast<StatefulNnApiDelegate*>(delegate);
+}
+
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() = default;
-  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
   void Init(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_ =
-        std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
-    SetDelegate(stateful_delegate_.get());
+    SetDelegate({new StatefulNnApiDelegate(nnapi, options_),
+                 StatefulNnApiDelegateDelete});
   }
 
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
-
   void SetBufferHandle(int index, TfLiteBufferHandle handle) {
-    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
+    interpreter_->SetBufferHandle(index, handle, delegate_.get());
   }
   TfLiteStatus GetCompilationStatus() { return compilation_status_; }
 
  protected:
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
   StatefulNnApiDelegate::Options options_;
   TfLiteStatus compilation_status_;
 };
@@ -99,10 +98,10 @@ class HybridFullyConnectedOpModel : public SingleOpModelWithNNAPI {
                  BuiltinOptions_FullyConnectedOptions, options);
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
-        ops::builtin::Register_FULLY_CONNECTED_PIE());
+        ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT());
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
                      /*num_threads=*/-1,
-                     /* allow_fp32_relax_to_fp16 */ false,
+                     /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/false);
     compilation_status_ = ApplyDelegate();
   }

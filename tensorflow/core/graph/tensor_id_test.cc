@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/graph/tensor_id.h"
+
 #include <vector>
+
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -35,6 +37,8 @@ TEST(TensorIdTest, ParseTensorName) {
   EXPECT_EQ(ParseHelper("W1:17"), "W1:17");
   EXPECT_EQ(ParseHelper("xyz1_17"), "xyz1_17:0");
   EXPECT_EQ(ParseHelper("^foo"), "^foo");
+  // Index out of range for int32.
+  EXPECT_EQ(ParseHelper("W1:2147483648"), "W1:2147483648:0");
 }
 
 uint32_t Skewed(random::SimplePhilox* rnd, int max_log) {

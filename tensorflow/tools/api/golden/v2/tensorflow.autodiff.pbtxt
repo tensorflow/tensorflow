@@ -2,10 +2,10 @@ path: "tensorflow.autodiff"
 tf_module {
   member {
     name: "ForwardAccumulator"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
   member {
     name: "GradientTape"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'type\'>"
   }
 }

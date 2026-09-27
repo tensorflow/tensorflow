@@ -24,12 +24,13 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
@@ -40,8 +41,7 @@ namespace ifrt {
 // `xla::Layout`, we strongly suggest using only a small subset of `xla::Layout`
 // features (`minor_to_major`, `tiles`, and `element_size_in_bits`) that are
 // approved for use in PjRt C API and less commonly used features.
-class PjRtLayout final
-    : public llvm::RTTIExtends<xla::ifrt::PjRtLayout, Layout> {
+class PjRtLayout final : public RTTIExtends<xla::ifrt::PjRtLayout, Layout> {
  public:
   // Creates a PjRtLayout.
   //
@@ -56,6 +56,18 @@ class PjRtLayout final
       const {
     return pjrt_layout_;
   }
+
+  using Layout::ByteSize;
+
+  // Computes the byte size of a shard shape using the layout. Same as
+  // `Layout::ByteSize()`, but accepts `std::shared_ptr<const xla::PjRtLayout>`
+  // to avoid the need for converting it into `PjRtLayout`.
+  //
+  // TODO(hyeontaek): Remove this method as we migrate `std::shared_ptr<const
+  // xla::PjRtLayout>` to `LayoutRef` in the IFRT user code.
+  static absl::StatusOr<std::optional<int64_t>> ByteSize(
+      DType dtype, const Shape& shape, const ShardingRef& sharding,
+      const absl_nullable std::shared_ptr<const xla::PjRtLayout>& pjrt_layout);
 
   // Layout implementation.
 

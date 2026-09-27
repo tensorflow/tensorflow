@@ -21,24 +21,31 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/utils/concurrency/tsl_task_executor.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::concurrency {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
 
 template <typename T>
@@ -47,7 +54,7 @@ struct WrappedT {
 };
 
 TEST(ForEachTest, IterVariantConcurrentlyIncrementsIntegers) {
-  TslTaskExecutor task_executor(5);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 5);
 
   constexpr int kx0 = 0;
   constexpr int kx1 = 1;
@@ -59,14 +66,13 @@ TEST(ForEachTest, IterVariantConcurrentlyIncrementsIntegers) {
 
   std::vector<int*> v = {&v0, &v1, &v2};
 
-  ASSERT_EQ(ForEach(
-                v.begin(), v.end(),
-                [](int* element) {
-                  ++(*element);
-                  return absl::OkStatus();
-                },
-                task_executor),
-            absl::OkStatus());
+  ASSERT_OK(ForEach(
+      v.begin(), v.end(),
+      [](int* element) {
+        ++(*element);
+        return absl::OkStatus();
+      },
+      *pool.AsExecutor()));
 
   EXPECT_EQ(v0, kx0 + 1);
   EXPECT_EQ(v1, kx1 + 1);
@@ -76,7 +82,7 @@ TEST(ForEachTest, IterVariantConcurrentlyIncrementsIntegers) {
 TEST(ForEachTest, NonOkStatusPropagatesAsTheFinalResult) {
   const absl::Status status = absl::CancelledError("Test Error");
 
-  TslTaskExecutor task_executor{3};
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 3);
 
   constexpr int kx0 = 0;
   constexpr int kx1 = 1;
@@ -88,15 +94,15 @@ TEST(ForEachTest, NonOkStatusPropagatesAsTheFinalResult) {
 
   std::vector<int*> v = {&v0, &v1, &v2};
 
-  EXPECT_THAT(ForEach(
-                  v.begin(), v.end(),
-                  [&status](int* element) { return status; }, task_executor)
-                  .code(),
-              absl::StatusCode::kCancelled);
+  EXPECT_THAT(
+      ForEach(
+          v.begin(), v.end(), [&status](int* element) { return status; },
+          *pool.AsExecutor()),
+      StatusIs(absl::StatusCode::kCancelled));
 }
 
 TEST(ForEachTest, ActionReturnedValuesCollected) {
-  TslTaskExecutor task_executor{3};
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 3);
 
   constexpr int kx0 = 0;
   constexpr int kx1 = 1;
@@ -113,7 +119,7 @@ TEST(ForEachTest, ActionReturnedValuesCollected) {
       (ForEach<int>(
           v.begin(), v.end(),
           [](int* element) -> absl::StatusOr<int> { return ++(*element); },
-          task_executor)));
+          *pool.AsExecutor())));
 
   EXPECT_EQ(v0, kx0 + 1);
   EXPECT_EQ(v1, kx1 + 1);
@@ -123,7 +129,7 @@ TEST(ForEachTest, ActionReturnedValuesCollected) {
 }
 
 TEST(ForEachTest, FailureOfTheFirstActionPropagates) {
-  TslTaskExecutor task_executor{3};
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 3);
 
   constexpr int kx0 = 0;
   constexpr int kx1 = 1;
@@ -135,17 +141,16 @@ TEST(ForEachTest, FailureOfTheFirstActionPropagates) {
 
   std::vector<int*> v = {&v0, &v1, &v2};
 
-  EXPECT_EQ(ForEach<int>(
-                v.begin(), v.end(),
-                [](int* element) -> absl::StatusOr<int> {
-                  if (*element % 2 == 1)
-                    return absl::CancelledError("Force a failure.");
-                  return ++(*element);
-                },
-                task_executor)
-                .status()
-                .code(),
-            absl::StatusCode::kCancelled);
+  EXPECT_THAT(ForEach<int>(
+                  v.begin(), v.end(),
+                  [](int* element) -> absl::StatusOr<int> {
+                    if (*element % 2 == 1)
+                      return absl::CancelledError("Force a failure.");
+                    return ++(*element);
+                  },
+                  *pool.AsExecutor())
+                  .status(),
+              StatusIs(absl::StatusCode::kCancelled));
 }
 
 class HloComputationTest : public HloHardwareIndependentTestBase {
@@ -175,7 +180,7 @@ class HloComputationTest : public HloHardwareIndependentTestBase {
 
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 
-  TslTaskExecutor task_executor_{5};
+  tsl::thread::ThreadPool pool_{tsl::Env::Default(), "test", 5};
 };
 
 TEST_F(HloComputationTest, ForEachHloComputationBasicCall) {
@@ -194,9 +199,9 @@ TEST_F(HloComputationTest, ForEachHloComputationBasicCall) {
         return std::any_of(results.begin(), results.end(),
                            [](WrappedT<bool> b) { return b.val; });
       },
-      task_executor_);
+      *pool_.AsExecutor());
   // For compatibility with OpenXLA.
-  ASSERT_EQ(result.status(), absl::OkStatus());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, true);
 }
 
@@ -216,9 +221,9 @@ TEST_F(HloComputationTest, ForEachHloComputationSpanBasicCall) {
         return std::any_of(results.begin(), results.end(),
                            [](WrappedT<bool> b) { return b.val; });
       },
-      task_executor_);
+      *pool_.AsExecutor());
   // For compatibility with OpenXLA.
-  ASSERT_EQ(result.status(), absl::OkStatus());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, true);
 }
 
@@ -231,9 +236,9 @@ TEST_F(HloComputationTest, ForEachHloComputationModuleBasicCall) {
         return WrappedT<bool>{true};
       },
       [](std::vector<WrappedT<bool>>& results) { return results.size(); },
-      task_executor_);
+      *pool_.AsExecutor());
   // For compatibility with OpenXLA.
-  ASSERT_EQ(result.status(), absl::OkStatus());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, 3);
 }
 
@@ -246,11 +251,52 @@ TEST_F(HloComputationTest, ForEachNonfusionHloComputationModuleBasicCall) {
         return WrappedT<bool>{true};
       },
       [](std::vector<WrappedT<bool>>& results) { return results.size(); },
-      task_executor_);
+      *pool_.AsExecutor());
   // For compatibility with OpenXLA.
-  ASSERT_EQ(result.status(), absl::OkStatus());
+  ASSERT_OK(result.status());
   EXPECT_EQ(*result, 3);
 }
 
 }  // namespace
 }  // namespace xla::concurrency
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_ForEachIterateCost(::testing::benchmark::State& state) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 5);
+  int num_items = state.range(0);
+  absl::flat_hash_set<int> values;
+  values.reserve(num_items);
+  for (int i = 0; i < num_items; ++i) {
+    values.insert(i);
+  }
+
+  for (auto _ : state) {
+    absl::Status status = xla::concurrency::ForEach(
+        values.begin(), values.end(),
+        [](int element) {
+          benchmark::DoNotOptimize(element);
+          return absl::OkStatus();
+        },
+        *pool.AsExecutor());
+    CHECK_OK(status);
+  }
+}
+
+BENCHMARK(BM_ForEachIterateCost)->Arg(10000)->Arg(100000);
+
+GTEST_API_ int main(int argc, char** argv) {
+  // Only run benchmarks if `--benchmark_filter` is set.
+  for (int i = 1; i < argc; ++i) {
+    if (absl::StartsWith(argv[i], "--benchmark_filter=")) {
+      ::benchmark::Initialize(&argc, argv);
+      ::testing::InitGoogleTest(&argc, argv);
+      ::benchmark::RunSpecifiedBenchmarks();
+      return 0;
+    }
+  }
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

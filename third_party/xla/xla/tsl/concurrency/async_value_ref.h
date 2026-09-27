@@ -68,6 +68,8 @@ template <typename T, typename... Args>
 AsyncValueRef<T> MakeConstructedAsyncValueRef(Args&&... args);
 template <typename T, typename... Args>
 AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args);
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value);
 
 // A collection of type traits used by AsyncValueRef and AsyncValuePtr.
 namespace internal {
@@ -216,7 +218,7 @@ class AsyncValueRef {
     //
     //   struct A {};
     //   struct B : public A {};
-    //   struct C : public C {}
+    //   struct C : public B {}
     //
     //   AsyncValueRef<A> ref = MakeUnconstructedAsyncValueRef<C>();
     //
@@ -232,21 +234,40 @@ class AsyncValueRef {
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> Cast() const {
+  AsyncValueRef<Derived> Cast() const& {
     DCHECK(DynCast<Derived>()) << "Illegal async value cast";
     return AsyncValueRef<Derived>(value_);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> DynCast() const {
+  AsyncValueRef<Derived> Cast() && {
+    DCHECK(Isa<Derived>()) << "Illegal async value cast";
+    return AsyncValueRef<Derived>(std::move(value_));
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCast() const& {
     DCHECK(value_) << "Async value must be not null";
     return Isa<Derived>() ? AsyncValueRef<Derived>(value_)
                           : AsyncValueRef<Derived>(nullptr);
   }
 
   template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
-  AsyncValueRef<Derived> DynCastOrNull() const {
-    return value_ ? DynCast<Derived>(value_) : AsyncValueRef<Derived>(nullptr);
+  AsyncValueRef<Derived> DynCast() && {
+    DCHECK(value_) << "Async value must be not null";
+    return Isa<Derived>() ? AsyncValueRef<Derived>(std::move(value_))
+                          : AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() const& {
+    return value_ ? DynCast<Derived>() : AsyncValueRef<Derived>(nullptr);
+  }
+
+  template <typename Derived, internal::DerivedFrom<Derived, T>* = nullptr>
+  AsyncValueRef<Derived> DynCastOrNull() && {
+    return value_ ? std::move(*this).template DynCast<Derived>()
+                  : AsyncValueRef<Derived>(nullptr);
   }
 
   T* operator->() const { return &get(); }
@@ -869,7 +890,7 @@ class CountDownAsyncValueRef {
     DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
-      absl::MutexLock lock(&state_->mutex);
+      absl::MutexLock lock(state_->mutex);
       state_->is_error.store(true, std::memory_order_release);
       state_->status = status;
     }
@@ -898,10 +919,10 @@ class CountDownAsyncValueRef {
       if (ABSL_PREDICT_FALSE(is_error)) {
         // Ownership of the CountDownAsyncValueRef can be transferred to
         // AsyncValueRef itself (via the `AndThen` callback), and `ref.SetError`
-        // call can destroy the `state_` and the `mutex`. We take the error
-        // status by copy to avoid using memory after it was freed.
+        // call can destroy the `state_` and its mutex. We take the
+        // error status by copy to avoid using memory after it was freed.
         auto take_error = [&] {
-          absl::MutexLock lock(&state_->mutex);
+          absl::MutexLock lock(state_->mutex);
           return state_->status;
         };
         state_->ref.SetError(take_error());
@@ -999,8 +1020,8 @@ bool Isa(const AsyncValueRef<T>& ref) {
 
 template <typename Derived, typename T,
           internal::DerivedFrom<Derived, T>* = nullptr>
-AsyncValueRef<Derived> Cast(const AsyncValueRef<T>& ref) {
-  return ref.template Cast<Derived>();
+AsyncValueRef<Derived> Cast(AsyncValueRef<T> ref) {
+  return std::move(ref).template Cast<Derived>();
 }
 
 template <typename Derived, typename T,
@@ -1011,8 +1032,20 @@ AsyncValueRef<Derived> DynCast(const AsyncValueRef<T>& ref) {
 
 template <typename Derived, typename T,
           internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCast(AsyncValueRef<T>&& ref) {
+  return std::move(ref).template DynCast<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
 AsyncValueRef<Derived> DynCastOrNull(const AsyncValueRef<T>& ref) {
   return ref.template DynCastOrNull<Derived>();
+}
+
+template <typename Derived, typename T,
+          internal::DerivedFrom<Derived, T>* = nullptr>
+AsyncValueRef<Derived> DynCastOrNull(AsyncValueRef<T>&& ref) {
+  return std::move(ref).template DynCastOrNull<Derived>();
 }
 
 template <typename Derived, typename T,
@@ -1092,6 +1125,14 @@ AsyncValueRef<T> MakeAvailableAsyncValueRef(Args&&... args) {
       internal::AllocateAndConstruct<internal::ConcreteAsyncValue<T>>(
           typename internal::ConcreteAsyncValue<T>::ConcretePayload{},
           std::forward<Args>(args)...)));
+}
+
+// Allocate and construct an available AsyncValueRef backed by a
+// std::shared_ptr.
+template <typename T>
+AsyncValueRef<T> MakeAvailableAsyncValueRef(std::shared_ptr<T> value) {
+  return AsyncValueRef<T>(
+      tsl::MakeRef<internal::SharedPtrAsyncValue>(std::move(value)));
 }
 
 // Allocates an AsyncValueRef that is constructed from the result of calling an

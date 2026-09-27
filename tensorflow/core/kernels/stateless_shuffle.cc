@@ -40,7 +40,8 @@ class StatelessShuffleOp : public OpKernel {
 
     if (alg != RNG_ALG_PHILOX) {
       OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Unsupported algorithm id: ", alg)));
     }
 
     auto rng = GetPhiloxRandomFromCounterKeyMem(

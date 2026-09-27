@@ -29,20 +29,23 @@ class GreedyTopDownMatcher : public HloGumgraphMatcher {
  public:
   GreedyTopDownMatcher(const HloGumgraph* left, const HloGumgraph* right,
                        bool debug_mode = false,
-                       bool require_same_children = false)
+                       bool require_same_children = false,
+                       double phase_zero_threshold = 0.5)
       : HloGumgraphMatcher(require_same_children
                                ? MatcherType::kStrictGreedyTopDownMatcher
                                : MatcherType::kGreedyTopDownMatcher,
                            debug_mode),
         left_(*ABSL_DIE_IF_NULL(left)),
         right_(*ABSL_DIE_IF_NULL(right)),
-        require_same_children_(require_same_children) {}
+        require_same_children_(require_same_children),
+        phase_zero_threshold_(phase_zero_threshold) {}
   void Match(HloGumgraphMappings& mappings) const override;
 
  private:
   const HloGumgraph& left_;
   const HloGumgraph& right_;
   const bool require_same_children_;
+  const double phase_zero_threshold_;
 };
 
 }  // namespace xla::hlo_diff

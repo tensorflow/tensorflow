@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 
+#include <memory>
 #include <unordered_set>
 
 #include "absl/container/flat_hash_map.h"
@@ -497,7 +498,7 @@ absl::Status DependencyOptimizer::OptimizeDependencies() {
     VLOG(1) << "Deleted " << nodes_to_delete.size() << " out of "
             << optimized_graph_->node_size() << " nodes.";
     EraseNodesFromGraph(nodes_to_delete, optimized_graph_);
-    node_map_.reset(new NodeMap(optimized_graph_));
+    node_map_ = std::make_unique<NodeMap>(optimized_graph_);
     BuildNodeToIdx();
   }
   return absl::OkStatus();
@@ -765,7 +766,7 @@ absl::Status DependencyOptimizer::Optimize(Cluster* cluster,
     // Perform topological sort to prepare the graph for transitive reduction.
     topo_sort_status = TopologicalSort(optimized_graph_);
     // Set up index-based graph datastructures to speed up analysis steps below.
-    node_map_.reset(new NodeMap(optimized_graph_));
+    node_map_ = std::make_unique<NodeMap>(optimized_graph_);
     BuildNodeToIdx();
 
     if (topo_sort_status.ok()) {

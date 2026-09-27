@@ -31,9 +31,8 @@ class CuDnnFusion : public FusionInterface {
  public:
   explicit CuDnnFusion(const HloFusionAnalysis&) {}
 
-  absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      const HloFusionInstruction& fusion) const final;
+  AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion) const final;
 };
 }  // namespace gpu
 }  // namespace xla

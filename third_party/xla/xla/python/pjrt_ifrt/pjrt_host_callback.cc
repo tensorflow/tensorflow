@@ -38,5 +38,12 @@ absl::StatusOr<std::string> PjRtFfiLoadedHostCallback::Serialize() const {
       "PjRtFfiLoadedHostCallback serialization is not supported");
 }
 
+char PjRtHloOutputLoadedHostCallback::ID = 0;
+
+absl::StatusOr<std::string> PjRtHloOutputLoadedHostCallback::Serialize() const {
+  return Unimplemented(
+      "PjRtHloOutputLoadedHostCallback serialization is not supported");
+}
+
 }  // namespace ifrt
 }  // namespace xla

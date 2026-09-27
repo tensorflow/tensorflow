@@ -15,12 +15,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <sstream>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -75,6 +76,38 @@ class SplitOpModel : public SingleOpModel {
   int axis_;
   std::vector<int> outputs_;
 };
+
+class PrepareOnlySplitOpModel : public SingleOpModel {
+ public:
+  explicit PrepareOnlySplitOpModel(const std::vector<int>& input_shape,
+                                   int axis) {
+    axis_ = AddConstInput(TensorType_INT32, {axis}, {1});
+    input_ = AddInput({TensorType_FLOAT32, input_shape});
+    AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_SPLIT, BuiltinOptions_SplitOptions,
+                 CreateSplitOptions(builder_, /*num_splits=*/1).Union());
+    BuildInterpreter({{}, GetShape(input_)}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int axis_;
+};
+
+TEST(SplitAxisRangeTest, RejectsAxisOutsideInt16Range) {
+  constexpr int kAxis = std::numeric_limits<int16_t>::max() + 1;
+  const std::vector<int> input_shape(kAxis + 1, 1);
+  PrepareOnlySplitOpModel const_axis_model(input_shape, kAxis);
+  EXPECT_EQ(const_axis_model.AllocateTensors(), kTfLiteError);
+
+  SplitOpModel dynamic_axis_model({TensorType_FLOAT32, input_shape},
+                                  /*num_splits=*/1);
+  dynamic_axis_model.SetAxis(/*axis=*/-1);
+  EXPECT_EQ(dynamic_axis_model.Invoke(), kTfLiteError);
+}
 
 template <typename T>
 void Check(TestType test_type, int axis, int num_splits,
@@ -258,6 +291,20 @@ TYPED_TEST(SplitOpTest, NegativeAxis) {
                      GetTensorType<TypeParam>());
   }
 }
+
+#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+void TestFloat8Split(TensorType tensor_type) {
+  Check<uint8_t>(TestType::kDynamic, /*axis=*/0, /*num_splits=*/2,
+                 /*input_shape=*/{4}, /*output_shape=*/{2},
+                 /*input_data=*/{0x00, 0x38, 0xbc, 0x7e},
+                 /*output_data=*/{{0x00, 0x38}, {0xbc, 0x7e}}, tensor_type);
+}
+
+TEST(SplitOpTest, Float8) {
+  TestFloat8Split(TensorType_FLOAT8_E4M3FN);
+  TestFloat8Split(TensorType_FLOAT8_E5M2);
+}
+#endif
 
 }  // namespace
 }  // namespace tflite

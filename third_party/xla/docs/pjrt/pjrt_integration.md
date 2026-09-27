@@ -14,6 +14,7 @@ how to test PJRT integration with JAX.
 1. Implement a C++ PJRT client inheriting from the [base PJRT client](https://github.com/openxla/xla/blob/main/xla/pjrt/pjrt_client.h) (and related PJRT classes). Here are some examples of C++ PJRT client: [pjrt\_stream\_executor\_client.h](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/pjrt_stream_executor_client.h), [tfrt\_cpu\_pjrt\_client.h](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/tfrt_cpu_pjrt_client.h).
 1. Implement a few C API methods that are not part of C++ PJRT client:
   * [PJRT\_Client\_Create](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/c/pjrt_c_api.h#L344-L365). Below is some sample pseudo code (assuming `GetPluginPjRtClient` returns a C++ PJRT client implemented above):
+
 ```
 #include "third_party/tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
@@ -37,6 +38,7 @@ With the [wrapper](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d6
 ### Step 2: Implement GetPjRtApi
 
 You need to implement a method `GetPjRtApi` which returns a `PJRT_Api*` containing function pointers to PJRT C API implementations. Below is an example assuming implementing through wrapper (similar to [pjrt\_c\_api\_cpu.cc](https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api_cpu.cc)):
+
 ```
 const PJRT_Api* GetPjrtApi() {
   static const PJRT_Api pjrt_api =
@@ -54,6 +56,7 @@ You can call [RegisterPjRtCApiTestFactory](https://github.com/openxla/xla/blob/c
 ### Step 1: Set up JAX
 
 You can either use JAX nightly
+
 ```
 pip install --pre -U jaxlib -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/
 
@@ -62,6 +65,7 @@ pip install git+https://github.com/google/jax
 or [build JAX from source](https://jax.readthedocs.io/en/latest/developer.html#building-jaxlib-from-source).
 
 For now, you need to match the jaxlib version with the PJRT C API version. It's usually sufficient to use a jaxlib nightly version from the same day as the TF commit you're building your plugin against, e.g.
+
 ```
 pip install --pre -U jaxlib==0.6.1.dev20250428 -i https://us-python.pkg.dev/ml-oss-artifacts-published/jax/simple/
 ```
@@ -74,6 +78,7 @@ We will start supporting ABI compatibility soon.
 There are two options for your plugin to be discovered by JAX.
 
 1. Using namespace packages ([ref](https://packaging.python.org/en/latest/guides/creating-and-discovering-plugins/#using-naming-convention)). Define a globally unique module under the `jax_plugins` namespace package (i.e. just create a `jax_plugins` directory and define your module below it). Here is an example directory structure:
+
 ```
 jax_plugins/
   my_plugin/
@@ -81,6 +86,7 @@ jax_plugins/
     my_plugin.so
 ```
 2. Using package metadata ([ref](https://packaging.python.org/en/latest/guides/creating-and-discovering-plugins/#using-package-metadata)). If building a package via pyproject.toml or setup.py, advertise your plugin module name by including an entry-point under the `jax_plugins` group which points to your full module name. Here is an example via pyproject.toml or setup.py:
+
 ```
 # use pyproject.toml
 [project.entry-points.'jax_plugins']
@@ -98,6 +104,7 @@ Here are examples of how openxla-pjrt-plugin is implemented using Option 2: http
 ### Step 3: Implement an initialize() method
 
 You need to implement an initialize() method in your python module to register the plugin, for example:
+
 ```
 import os
 import jax._src.xla_bridge as xb
@@ -109,6 +116,7 @@ def initialize():
 Please refer to [here](https://github.com/google/jax/blob/8f283bc9ed50d3828bd468ae57b1ee4df1527624/jax/_src/xla_bridge.py#L420) about how to use `xla_bridge.register_plugin`. It is currently a private method. A public API will be released in the future.
 
 You can run the line below to verify that the plugin is registered and raise an error if it can't be loaded.
+
 ```
 jax.config.update("jax_platforms", "my_plugin")
 ```
@@ -120,6 +128,7 @@ JAX may have multiple backends/plugins. There are a few options to ensure your p
 ## How to test with JAX
 
 Some basic test cases to try:
+
 ```
 # JAX 1+1
 print(jax.numpy.add(1, 1))

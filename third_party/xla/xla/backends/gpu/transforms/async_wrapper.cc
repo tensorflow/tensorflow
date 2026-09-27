@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -57,11 +58,10 @@ absl::StatusOr<bool> AsyncWrapper::RunImpl(
                    "AsyncWrapper will make the following instruction async:\n",
                    instruction->ToString()));
         // If the predicate matches, then wrap the instructions in async blocks.
-        TF_RETURN_IF_ERROR(
-            computation
-                ->CreateAsyncInstructions(instruction,
-                                          {ShapeUtil::MakeScalarShape(U32)})
-                .status());
+        ABSL_RETURN_IF_ERROR(computation
+                            ->CreateAsyncInstructions(
+                                instruction, {ShapeUtil::MakeScalarShape(U32)})
+                            .status());
         changed = true;
         continue;
       }

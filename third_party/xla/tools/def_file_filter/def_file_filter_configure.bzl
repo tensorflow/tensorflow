@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Repository rule for def file filter autoconfiguration.
 
 This repository reuses Bazel's VC detect mechanism to find undname.exe,
@@ -19,8 +34,13 @@ symbols through this python script.
   * `VS140COMNTOOLS`
 """
 
-load("@bazel_tools//tools/cpp:lib_cc_configure.bzl", "auto_configure_fail")
-load("@bazel_tools//tools/cpp:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")
+load("@rules_cc//cc/private/toolchain:windows_cc_configure.bzl", "find_msvc_tool", "find_vc_path")  # buildifier: disable=bzl-visibility
+
+def auto_configure_fail(msg):
+    """Output failure message when def file filter configuration fails."""
+    red = "\033[0;31m"
+    no_color = "\033[0m"
+    fail("\n%sDef File Filter Configuration Error:%s %s\n" % (red, no_color, msg))
 
 def _def_file_filter_configure_impl(repository_ctx):
     if repository_ctx.os.name.lower().find("windows") == -1:

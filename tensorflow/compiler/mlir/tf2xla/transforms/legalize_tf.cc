@@ -685,6 +685,74 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
   return UnrankedTensorType::get(element_type);
 }
 
+class ConvertFloatToUnsignedCastOp : public OpRewritePattern<TF::CastOp> {
+ public:
+  explicit ConvertFloatToUnsignedCastOp(MLIRContext* context)
+      : OpRewritePattern<TF::CastOp>(context, /*benefit=*/2) {}
+
+  LogicalResult matchAndRewrite(TF::CastOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getTruncate()) return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(op.getX().getType());
+    auto result_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !result_type) return failure();
+
+    Type input_element_type = input_type.getElementType();
+    Type result_element_type = result_type.getElementType();
+    if (!mlir::isa<FloatType>(input_element_type) ||
+        !result_element_type.isUnsignedInteger()) {
+      return failure();
+    }
+
+    // XLA convert saturates negative floats to unsigned integers at zero, while
+    // TensorFlow Cast's CPU path wraps finite negative values in the
+    // destination unsigned type. NaN and Inf casts to integral types are
+    // documented as undefined, so keep them on the direct HLO convert path.
+    int result_width = result_element_type.getIntOrFloatBitWidth();
+    int wider_width = result_width == 64 ? 64 : result_width * 2;
+    Type signed_element_type = rewriter.getIntegerType(wider_width);
+    Type unsigned_element_type =
+        IntegerType::get(rewriter.getContext(), wider_width,
+                         IntegerType::SignednessSemantics::Unsigned);
+
+    Type signed_type =
+        ChangeTensorElementType(&rewriter, op.getType(), signed_element_type);
+    Type unsigned_type =
+        ChangeTensorElementType(&rewriter, op.getType(), unsigned_element_type);
+
+    Location loc = op.getLoc();
+    auto scalar_input_type =
+        tensorflow::GetTypeFromTFTensorShape({}, input_element_type);
+    Value zero = stablehlo::ConstantOp::create(
+        rewriter, loc,
+        DenseElementsAttr::get(scalar_input_type,
+                               rewriter.getFloatAttr(input_element_type, 0.0)));
+    Value broadcast_zero = BroadcastToShapeOf(loc, zero, op.getX(), rewriter);
+    Value is_negative =
+        stablehlo::CompareOp::create(rewriter, loc, op.getX(), broadcast_zero,
+                                     stablehlo::ComparisonDirection::LT);
+    Type predicate_type =
+        ChangeTensorElementType(&rewriter, input_type, rewriter.getI1Type());
+    Value is_finite =
+        stablehlo::IsFiniteOp::create(rewriter, loc, predicate_type, op.getX());
+    Value finite_negative =
+        stablehlo::AndOp::create(rewriter, loc, is_negative, is_finite);
+
+    Value direct =
+        stablehlo::ConvertOp::create(rewriter, loc, op.getType(), op.getX());
+    Value signed_value =
+        stablehlo::ConvertOp::create(rewriter, loc, signed_type, op.getX());
+    Value unsigned_value = stablehlo::ConvertOp::create(
+        rewriter, loc, unsigned_type, signed_value);
+    Value wrapped_negative = stablehlo::ConvertOp::create(
+        rewriter, loc, op.getType(), unsigned_value);
+    rewriter.replaceOpWithNewOp<stablehlo::SelectOp>(
+        op, op.getType(), finite_negative, wrapped_negative, direct);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
@@ -2435,7 +2503,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
             /*broadcast_dimensions=*/DenseI64ArrayAttr());
       }
 
-      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+      if (std::is_same_v<FusedBatchNormOpT, TF::FusedBatchNormV2Op>) {
         // FusedBatchNormV2 expects 4 outputs.
         // Outputs 3 and 4 are currently marked as "reserved spaces 1 and 2".
         // They are used to pass the per-batch mean and variance to the
@@ -2484,7 +2552,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       // the last 5 results as long as they are of the same type. Forward
       // input mean and variance to output mean, variance, reserved_space_1 and
       // reserved_space_2.
-      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+      if (std::is_same_v<FusedBatchNormOpT, TF::FusedBatchNormV2Op>) {
         rewriter.replaceOp(op, {/*y=*/y_out,
                                 /*batch_mean=*/op.getMean(),
                                 /*batch_variance=*/op.getVariance(),
@@ -4118,7 +4186,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     Value result = reduction.getResult(0);
 
     // The mean op needs to divide by the product of the reduced dimensions.
-    if (std::is_same<OpTy, TF::MeanOp>::value) {
+    if (std::is_same_v<OpTy, TF::MeanOp>) {
       Value in_shape = shape::ShapeOfOp::create(rewriter, loc, op.getInput());
       Value divisor_count = arith::ConstantIndexOp::create(rewriter, loc, 1);
       for (size_t i = 0; i < input_shape.size(); ++i) {
@@ -4435,8 +4503,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
     // Broadcast scalar `updates` in into expected shape as following shape:
     // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
     if (updates_ty.getRank() == 0 &&
-        (std::is_same<OpTy, TF::TensorScatterUpdateOp>::value ||
-         std::is_same<OpTy, TF::TensorScatterAddOp>::value)) {
+        (std::is_same_v<OpTy, TF::TensorScatterUpdateOp> ||
+         std::is_same_v<OpTy, TF::TensorScatterAddOp>)) {
       if (!tensor_ty.hasStaticShape()) {
         return failure();
       }
@@ -5401,7 +5469,7 @@ class ConvertInfeedDequeueTupleOp
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
-            ::xla::sharding_builder::AssignDevice(0);
+            ::xla::sharding_builder::SingleDevice(0);
         data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));
@@ -6385,7 +6453,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
                                   paddings);
 
     int64_t init_value =
-        (std::is_same<AggregationOp, stablehlo::AddOp>::value) ? 0 : 1;
+        (std::is_same_v<AggregationOp, stablehlo::AddOp>) ? 0 : 1;
     Value init = GetScalarConstOfType(sum_element_type, op.getLoc(), init_value,
                                       &rewriter);
 
@@ -6881,20 +6949,20 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
     // result types. This is only done for the While op for now.
     llvm::SmallVector<Type, 4> element_types;
     int64_t num_results = op.getNumResults();
-    if constexpr (std::is_same<DstOpT, stablehlo::WhileOp>::value) {
+    if constexpr (std::is_same_v<DstOpT, stablehlo::WhileOp>) {
       element_types.reserve(num_results);
       for (Value value : adaptor.getOperands()) {
         element_types.push_back(getElementTypeOrSelf(value.getType()));
       }
     }
 
-    if constexpr (std::is_same<DstOpT, stablehlo::CaseOp>::value) {
+    if constexpr (std::is_same_v<DstOpT, stablehlo::CaseOp>) {
       // Explicitly handle the Case op because it has variadic regions and takes
       // the number of regions as an input along with the operands.
       stablehlo_op =
           DstOpT::create(rewriter, loc, op.getResultTypes(),
                          adaptor.getBranchIndex(), op.getBranches().size());
-    } else if constexpr (std::is_same<DstOpT, stablehlo::WhileOp>::value) {
+    } else if constexpr (std::is_same_v<DstOpT, stablehlo::WhileOp>) {
       llvm::SmallVector<Type, 4> while_result_types;
       while_result_types.reserve(num_results);
       for (int64_t idx = 0; idx < num_results; ++idx) {
@@ -6916,7 +6984,7 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 
       // Update region's entry blocks argument types to handle quantized element
       // types.
-      if constexpr (std::is_same<DstOpT, stablehlo::WhileOp>::value) {
+      if constexpr (std::is_same_v<DstOpT, stablehlo::WhileOp>) {
         TypeConverter::SignatureConversion signature(num_results);
         Block &block = region.front();
         for (const auto &[block_idx, original_ty] :
@@ -6952,6 +7020,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
     ConvertBF16FloorDivOp,
+    ConvertFloatToUnsignedCastOp,
     ConvertClipByValueOp,
     ConvertConstOp,
     ConvertConv2DOp,

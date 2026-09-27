@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -64,7 +65,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> InfeedThunk::Execute(
   int64_t infeed_num = 0;
 
   for (InfeedBuffer& infeed_buffer : infeed_buffers_) {
-    TF_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         se::DeviceAddressBase infeed_data,
         params.buffer_allocations->GetDeviceAddress(infeed_buffer.slice));
 

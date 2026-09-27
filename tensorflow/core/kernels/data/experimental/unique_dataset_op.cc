@@ -159,7 +159,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
             &unique_element));
         auto insert_result = unique_elements_.insert(unique_element);
         if (!insert_result.second) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "Checkpoint contained two unique elements with the same "
               "value.");
         }
@@ -226,14 +226,14 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
 void UniqueDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   OP_REQUIRES(ctx, input->output_dtypes().size() == 1,
-              errors::InvalidArgument("UniqueDataset only supports "
-                                      "inputs with a single component."));
+              absl::InvalidArgumentError("UniqueDataset only supports "
+                                         "inputs with a single component."));
 
   DataType input_dtype = input->output_dtypes()[0];
   OP_REQUIRES(ctx,
               input_dtype == DT_INT32 || input_dtype == DT_INT64 ||
                   input_dtype == DT_STRING,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "UniqueDataset only supports inputs with a single "
                   "`tf.int32`, `tf.int64`, or `tf.string` component."));
 

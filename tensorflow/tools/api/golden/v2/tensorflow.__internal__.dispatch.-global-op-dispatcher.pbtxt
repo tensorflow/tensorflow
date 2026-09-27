@@ -1,10 +1,10 @@
 path: "tensorflow.__internal__.dispatch.GlobalOpDispatcher"
 tf_class {
   is_instance: "<class \'tensorflow.python.util.dispatch.GlobalOpDispatcher\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
   member {
     name: "NOT_SUPPORTED"
-    mtype: "<type \'object\'>"
+    mtype: "<class \'object\'>"
   }
   member_method {
     name: "__init__"

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/math_ops.cc.
+#include <cstdint>
+
 #include "tensorflow/core/kernels/segment_reduction_ops_impl.h"
 
 namespace tensorflow {

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -30,14 +32,15 @@ class PassOn : public XlaOpKernel {
  public:
   explicit PassOn(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES(ctx, ctx->num_inputs() == ctx->num_outputs(),
-                errors::Internal("#inputs != #outputs : ", ctx->num_inputs(),
-                                 " vs. ", ctx->num_outputs()));
+                absl::InternalError(
+                    absl::StrCat("#inputs != #outputs : ", ctx->num_inputs(),
+                                 " vs. ", ctx->num_outputs())));
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(
-          ctx, input_type(i) == output_type(i),
-          errors::Internal("Input and output types for position ", i,
-                           " do not match: ", DataTypeString(input_type(i)),
-                           " vs. ", DataTypeString(output_type(i))));
+      OP_REQUIRES(ctx, input_type(i) == output_type(i),
+                  absl::InternalError(absl::StrCat(
+                      "Input and output types for position ", i,
+                      " do not match: ", DataTypeString(input_type(i)), " vs. ",
+                      DataTypeString(output_type(i)))));
     }
   }
 
@@ -58,9 +61,9 @@ class AlwaysFailOp : public OpKernel {
   ~AlwaysFailOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
-    ctx->CtxFailure(errors::FailedPrecondition(
+    ctx->CtxFailure(absl::FailedPreconditionError(absl::StrCat(
         "Unexpected attempt to compile ", name(), " which is a ", type_string(),
-        ".  These nodes should always be handled by the graph compiler"));
+        ".  These nodes should always be handled by the graph compiler")));
   }
 };
 

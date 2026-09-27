@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/absl_log.h"
 #include "xla/backends/profiler/plugin/plugin_tracer.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -36,7 +37,8 @@ static const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
           pjrt_api, PJRT_Extension_Type::PJRT_Extension_Type_Profiler);
 
   if (profiler_extension == nullptr) {
-    // TODO(b/342627527): return proper error when no profiler api is found.
+    ABSL_LOG(INFO)
+        << "PJRT_Profiler_Extension is not registered to the PJRT API.";
     return nullptr;
   }
   return profiler_extension->profiler_api;
@@ -44,6 +46,10 @@ static const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
 
 void RegisterProfiler(const PJRT_Api* pjrt_api) {
   const PLUGIN_Profiler_Api* profiler_api = FindProfilerApi(pjrt_api);
+  // Don't return an error. Not all plugins implement the extension.
+  if (profiler_api == nullptr) {
+    return;
+  }
   std::function<std::unique_ptr<tsl::profiler::ProfilerInterface>(
       const tensorflow::ProfileOptions&)>
       create_func = [profiler_api = profiler_api](

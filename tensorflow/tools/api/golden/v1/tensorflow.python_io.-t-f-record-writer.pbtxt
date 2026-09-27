@@ -4,6 +4,14 @@ tf_class {
   is_instance: "<class \'tensorflow.python.lib.io._pywrap_record_io.RecordWriter\'>"
   is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member_method {
+    name: "__enter__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "__exit__"
+    argspec: "args=[\'self\'], varargs=args, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

@@ -50,77 +50,6 @@ absl::string_view GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 absl::string_view GetNcclVersion() { return TF_NCCL_VERSION; }
 absl::string_view GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 absl::string_view GetNvshmemVersion() { return XLA_NVSHMEM_VERSION; }
-absl::string_view GetHipVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_HIPRUNTIME_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-absl::string_view GetRocblasVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_ROCBLAS_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-
-std::string GetHipblasltVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_HIPBLASLT_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetMiopenVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_MIOPEN_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetHipfftVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_HIPFFT_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetRocsolverVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_ROCSOLVER_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetHipsparseVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_HIPSPARSE_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetRoctracerVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_ROCTRACER_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetHipsolverVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_HIPSOLVER_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
-std::string GetRocrandVersion() {
-#if TENSORFLOW_USE_ROCM
-  return TF_ROCRAND_SOVERSION;
-#else   // TENSORFLOW_USE_ROCM
-  return "";
-#endif  // TENSORFLOW_USE_ROCM
-}
 
 absl::StatusOr<void*> GetDsoHandle(const std::string& name,
                                    absl::string_view version) {
@@ -144,6 +73,36 @@ absl::StatusOr<void*> GetDsoHandle(const std::string& name,
   VLOG(1) << message;
   return absl::Status(absl::StatusCode::kFailedPrecondition, message);
 }
+absl::StatusOr<void*> GetCudaDsoHandle(const std::string& name,
+                                       absl::string_view version) {
+  auto handle = GetDsoHandle(name, version);
+  if (handle.ok()) return handle;
+  auto primary_status = handle.status();
+
+  // Determine alternative major version across CUDA 12 and CUDA 13 ecosystems.
+  // Note: cuDNN does not support cross-major loading (cuDNN 8 lacks v9 entry
+  // points).
+  absl::string_view alt_version = "";
+  if (name == "cufft" || name == "cusolver") {
+    alt_version = (version == "12") ? "11" : (version == "11" ? "12" : "");
+  } else if (name == "cublas" || name == "cublasLt" || name == "cudart" ||
+             name == "nvrtc" || name == "cusparse" || name == "cupti") {
+    alt_version = (version == "13") ? "12" : (version == "12" ? "13" : "");
+  }
+
+  if (!alt_version.empty()) {
+    handle = GetDsoHandle(name, alt_version);
+    if (handle.ok()) return handle;
+  }
+
+  // Only CUPTI supports unversioned library fallback.
+  if (name == "cupti") {
+    handle = GetDsoHandle(name, "");
+    if (handle.ok()) return handle;
+  }
+
+  return primary_status;
+}
 }  // namespace
 
 namespace DsoLoader {
@@ -165,48 +124,48 @@ absl::StatusOr<void*> GetNvmlDsoHandle() {
   return GetDsoHandle("nvidia-ml", "1");
 }
 
+absl::StatusOr<void*> GetNvrtcDsoHandle() {
+  return GetCudaDsoHandle("nvrtc", GetCudaRtVersion());
+}
+
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaRtVersion());
+  return GetCudaDsoHandle("cudart", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCublasVersion());
+  return GetCudaDsoHandle("cublas", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCublasLtDsoHandle() {
-  return GetDsoHandle("cublasLt", GetCublasVersion());
+  return GetCudaDsoHandle("cublasLt", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCufftVersion());
+  return GetCudaDsoHandle("cufft", GetCufftVersion());
 }
 
 absl::StatusOr<void*> GetCusolverDsoHandle() {
-  return GetDsoHandle("cusolver", GetCusolverVersion());
+  return GetCudaDsoHandle("cusolver", GetCusolverVersion());
 }
 
 absl::StatusOr<void*> GetCusparseDsoHandle() {
-  return GetDsoHandle("cusparse", GetCusparseVersion());
+  return GetCudaDsoHandle("cusparse", GetCusparseVersion());
 }
 
 absl::StatusOr<void*> GetCuptiDsoHandle() {
-  // Load specific version of CUPTI this is built.
-  auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
-  if (status_or_handle.ok()) return status_or_handle;
-  // Load whatever libcupti.so user specified.
-  return GetDsoHandle("cupti", "");
+  return GetCudaDsoHandle("cupti", GetCuptiVersion());
 }
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
-  return GetDsoHandle("cudnn", GetCudnnVersion());
+  return GetCudaDsoHandle("cudnn", GetCudnnVersion());
 }
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
-  return GetDsoHandle("nccl", GetNcclVersion());
+  return GetCudaDsoHandle("nccl", GetNcclVersion());
 }
 
 absl::StatusOr<void*> GetNvshmemDsoHandle() {
-  return GetDsoHandle("nvshmem_host", GetNvshmemVersion());
+  return GetCudaDsoHandle("nvshmem_host", GetNvshmemVersion());
 }
 
 absl::StatusOr<void*> GetNvInferDsoHandle() {
@@ -223,48 +182,6 @@ absl::StatusOr<void*> GetNvInferPluginDsoHandle() {
 #else
   return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
 #endif
-}
-
-absl::StatusOr<void*> GetRocblasDsoHandle() {
-  return GetDsoHandle("rocblas", GetRocblasVersion());
-}
-
-absl::StatusOr<void*> GetMiopenDsoHandle() {
-  return GetDsoHandle("MIOpen", GetMiopenVersion());
-}
-
-absl::StatusOr<void*> GetHipfftDsoHandle() {
-  return GetDsoHandle("hipfft", GetHipfftVersion());
-}
-
-absl::StatusOr<void*> GetRocrandDsoHandle() {
-  return GetDsoHandle("rocrand", GetRocrandVersion());
-}
-
-absl::StatusOr<void*> GetRocsolverDsoHandle() {
-  return GetDsoHandle("rocsolver", GetRocsolverVersion());
-}
-
-#if TF_ROCM_VERSION >= 40500
-absl::StatusOr<void*> GetHipsolverDsoHandle() {
-  return GetDsoHandle("hipsolver", GetHipsolverVersion());
-}
-#endif
-
-absl::StatusOr<void*> GetRoctracerDsoHandle() {
-  return GetDsoHandle("roctracer64", GetRoctracerVersion());
-}
-
-absl::StatusOr<void*> GetHipsparseDsoHandle() {
-  return GetDsoHandle("hipsparse", GetHipsparseVersion());
-}
-
-absl::StatusOr<void*> GetHipblasltDsoHandle() {
-  return GetDsoHandle("hipblaslt", GetHipblasltVersion());
-}
-
-absl::StatusOr<void*> GetHipDsoHandle() {
-  return GetDsoHandle("amdhip64", GetHipVersion());
 }
 
 }  // namespace DsoLoader
@@ -312,58 +229,6 @@ absl::StatusOr<void*> GetCuptiDsoHandle() {
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudnnDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetRocblasDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRocblasDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetMiopenDsoHandle() {
-  static auto result = new auto(DsoLoader::GetMiopenDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetHipfftDsoHandle() {
-  static auto result = new auto(DsoLoader::GetHipfftDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetRocrandDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetRoctracerDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetRocsolverDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRocsolverDsoHandle());
-  return *result;
-}
-
-#if TF_ROCM_VERSION >= 40500
-absl::StatusOr<void*> GetHipsolverDsoHandle() {
-  static auto result = new auto(DsoLoader::GetHipsolverDsoHandle());
-  return *result;
-}
-#endif
-
-absl::StatusOr<void*> GetHipsparseDsoHandle() {
-  static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetHipblasltDsoHandle() {
-  static auto result = new auto(DsoLoader::GetHipblasltDsoHandle());
-  return *result;
-}
-
-absl::StatusOr<void*> GetHipDsoHandle() {
-  static auto result = new auto(DsoLoader::GetHipDsoHandle());
   return *result;
 }
 

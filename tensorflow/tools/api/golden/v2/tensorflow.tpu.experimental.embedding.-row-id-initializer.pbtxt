@@ -1,7 +1,11 @@
 path: "tensorflow.tpu.experimental.embedding.RowIdInitializer"
 tf_class {
   is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.RowIdInitializer\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'object\'>"
+  member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'offset\'], varargs=None, keywords=None, defaults=[\'0\'], "

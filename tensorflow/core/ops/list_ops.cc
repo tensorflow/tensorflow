@@ -29,17 +29,17 @@ absl::Status VerifyHandleData(
     const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
     DataType element_dtype) {
   if (shapes_and_types.size() != 1) {
-    return errors::InvalidArgument(
-        "Invalid handle_data for input list. Expected length of "
-        "shape_and_types: ",
-        1, " Saw: ", shapes_and_types.size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid handle_data for input list. Expected length of "
+                     "shape_and_types: ",
+                     1, " Saw: ", shapes_and_types.size()));
   }
   const shape_inference::ShapeAndType& list_shape_type = shapes_and_types[0];
   if (list_shape_type.dtype != element_dtype) {
-    return errors::InvalidArgument("Expected list with element dtype ",
-                                   DataTypeString(element_dtype),
-                                   " but got list with element dtype ",
-                                   DataTypeString(list_shape_type.dtype));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected list with element dtype ", DataTypeString(element_dtype),
+        " but got list with element dtype ",
+        DataTypeString(list_shape_type.dtype)));
   }
   return absl::OkStatus();
 }
@@ -92,18 +92,18 @@ REGISTER_OP("TensorListPushBack")
 
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Trying to push to list with wrong variant data.");
       }
       if (IsValidTensorListHandleData(handle_data)) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Trying to push to list with wrong element dtype. List has type ",
               DataTypeString(list_shape_type.dtype),
               " but trying to push element with type ",
-              DataTypeString(element_dtype));
+              DataTypeString(element_dtype)));
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(
@@ -143,18 +143,18 @@ REGISTER_OP("TensorListPushBackBatch")
 
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Trying to push to list with wrong variant data.");
       }
       if (IsValidTensorListHandleData(handle_data)) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Trying to push to list with wrong element dtype. List has type ",
               DataTypeString(list_shape_type.dtype),
               " but trying to push element with type ",
-              DataTypeString(element_dtype));
+              DataTypeString(element_dtype)));
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(
@@ -185,22 +185,22 @@ REGISTER_OP("TensorListPopBack")
       shape_inference::ShapeHandle tensor_shape = c->UnknownShape();
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Trying to read from list with invalid variant data.");
       }
       if (IsValidTensorListHandleData(handle_data)) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.type.type_id() != TFT_ARRAY) {
-          return errors::InvalidArgument("Input argument must be a list.");
+          return absl::InvalidArgumentError("Input argument must be a list.");
         }
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Trying to read from list with wrong element dtype. List has "
               "type ",
               DataTypeString(list_shape_type.dtype),
               " but trying to push element with type ",
-              DataTypeString(element_dtype));
+              DataTypeString(element_dtype)));
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(
@@ -225,18 +225,18 @@ REGISTER_OP("TensorListStack")
       shape_inference::ShapeHandle element_shape = c->UnknownShape();
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Trying to read from list with wrong variant data.");
       }
       if (IsValidTensorListHandleData(handle_data)) {
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Trying to read from list with wrong element dtype. List has "
               "type ",
               DataTypeString(list_shape_type.dtype), " but expected type ",
-              DataTypeString(element_dtype));
+              DataTypeString(element_dtype)));
         }
         shape_inference::ShapeHandle ignored;
         TF_RETURN_IF_ERROR(
@@ -269,17 +269,17 @@ absl::Status TensorListConcatShapeInference(
   TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data != nullptr && handle_data->size() > 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Trying to read from list with wrong variant data.");
   }
   if (IsValidTensorListHandleData(handle_data)) {
     const shape_inference::ShapeAndType& list_shape_type = (*handle_data)[0];
     if (list_shape_type.dtype != element_dtype) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Trying to read from list with wrong element dtype. List has "
           "type ",
           DataTypeString(list_shape_type.dtype), " but expected type ",
-          DataTypeString(element_dtype));
+          DataTypeString(element_dtype)));
     }
     shape_inference::ShapeHandle merged;
     TF_RETURN_IF_ERROR(c->Merge(element_shape, list_shape_type.shape, &merged));
@@ -455,10 +455,11 @@ REGISTER_OP("TensorListGetItem")
             (*handle_data)[0];
         element_shape = list_shape_type.shape;
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument("Expected list with element dtype ",
-                                         DataTypeString(element_dtype),
-                                         " but got list with element dtype ",
-                                         DataTypeString(list_shape_type.dtype));
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expected list with element dtype ",
+                           DataTypeString(element_dtype),
+                           " but got list with element dtype ",
+                           DataTypeString(list_shape_type.dtype)));
         }
       }
       shape_inference::ShapeHandle element_shape_input = c->UnknownShape();
@@ -537,10 +538,11 @@ REGISTER_OP("TensorListGather")
             (*handle_data)[0];
         element_shape = list_shape_type.shape;
         if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument("Expected list with element dtype ",
-                                         DataTypeString(element_dtype),
-                                         " but got list with element dtype ",
-                                         DataTypeString(list_shape_type.dtype));
+          return absl::InvalidArgumentError(
+              absl::StrCat("Expected list with element dtype ",
+                           DataTypeString(element_dtype),
+                           " but got list with element dtype ",
+                           DataTypeString(list_shape_type.dtype)));
         }
       }
       shape_inference::ShapeHandle element_shape_input = c->UnknownShape();
@@ -664,14 +666,16 @@ REGISTER_OP("TensorListConcatLists")
       const shape_inference::ShapeAndType& list_shape_type_b =
           handle_data_b_nonempty ? handle_data_b->at(0) : handle_data_a->at(0);
       if (list_shape_type_a.dtype != element_dtype) {
-        return errors::InvalidArgument("input_a.type != element_dtype: ",
-                                       DataTypeString(list_shape_type_a.dtype),
-                                       " vs. ", DataTypeString(element_dtype));
+        return absl::InvalidArgumentError(
+            absl::StrCat("input_a.type != element_dtype: ",
+                         DataTypeString(list_shape_type_a.dtype), " vs. ",
+                         DataTypeString(element_dtype)));
       }
       if (list_shape_type_b.dtype != element_dtype) {
-        return errors::InvalidArgument("input_b.type != element_dtype: ",
-                                       DataTypeString(list_shape_type_b.dtype),
-                                       " vs. ", DataTypeString(element_dtype));
+        return absl::InvalidArgumentError(
+            absl::StrCat("input_b.type != element_dtype: ",
+                         DataTypeString(list_shape_type_b.dtype), " vs. ",
+                         DataTypeString(element_dtype)));
       }
       TF_RETURN_IF_ERROR(c->Merge(list_shape_type_a.shape,
                                   list_shape_type_b.shape,

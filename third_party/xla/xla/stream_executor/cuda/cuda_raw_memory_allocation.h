@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_RAW_MEMORY_ALLOCATION_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"

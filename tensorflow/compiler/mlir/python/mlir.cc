@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -93,7 +93,6 @@ static void RegisterPasses() {
     mlir::mhlo::registerLegalizeTFPass();
     mlir::quant::stablehlo::registerBridgePasses();
     mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
-    mlir::xla_framework::registerXlaFrameworkPasses();
     tensorflow::RegisterMlProgramPasses();
     return true;
   }();
@@ -172,7 +171,8 @@ std::string ImportFunction(const std::string& functiondef_proto,
   FunctionLibraryDefinition& flib_def = *cpp_context->FuncLibDef();
   const tensorflow::FunctionDef* fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
-    s = tensorflow::errors::NotFound("Cannot find function ", function_name);
+    s = absl::NotFoundError(
+        absl::StrCat("Cannot find function ", function_name));
     tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }

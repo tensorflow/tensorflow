@@ -111,6 +111,11 @@ class IndexingAnalysisTest : public IndexingTestBase,
 
             // Custom call / MHLO unknown handling.
             "ScaledDotOp/1",
+
+            "GetTupleElementOp/1",
+            "ScanOp/1",
+            "ScanOpMultiDimensional/1",
+            "ScanOpMultiDimensionalLeadingScanDimension/1",
         };
 
     if (GetParam()) {
@@ -423,8 +428,8 @@ TEST_P(IndexingAnalysisTest, ReshapeNothing) {
   EXPECT_EQ(output_indexing.indexing_maps[0]
                 .begin()
                 ->map()
-                .GetAffineMap()
-                .getNumResults(),
+                .GetSymbolicMap()
+                .GetNumResults(),
             1);
 }
 
@@ -616,6 +621,23 @@ TEST_P(IndexingAnalysisTest, BitcastIsTranspose) {
                           )"));
 }
 
+TEST_P(IndexingAnalysisTest, BitcastWithSize1DimensionIsTranspose) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,250]{0,1} parameter(0)
+      ROOT bitcast = f32[250,1]{1,0} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d1, d0),
+                              domain:
+                              d0 in [0, 249],
+                              d1 in [0, 0]
+                          )"));
+}
+
 TEST_P(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -627,7 +649,7 @@ TEST_P(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                             operand id = 0
-                              (d0, d1) -> (d1, d0 floordiv 3, d0 mod 3),
+                              (d0, d1) -> (d1, d0 / 3, d0 mod 3),
                               domain:
                               d0 in [0, 50],
                               d1 in [0, 15]
@@ -680,6 +702,154 @@ TEST_P(IndexingAnalysisTest, ConstantOp) {
   )");
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), IsEmpty());
+}
+
+TEST_P(IndexingAnalysisTest, GetTupleElementOp) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 20] parameter(0)
+      p1 = f32[30, 40] parameter(1)
+      t0 = (f32[10, 20], f32[30, 40]) tuple(p0, p1)
+      ROOT gte0 = f32[10, 20] get-tuple-element(t0), index=0
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 9],
+                              d1 in [0, 19]
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOp) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT t = (f32[], f32[]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[10] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT scan = (f32[10], f32[]) scan(p0, p1), dimensions={0}, num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 9]
+                            operand id = 1
+                              (d0) -> (),
+                              domain:
+                              d0 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              ()[s0] -> (s0),
+                              domain:
+                              s0 in [0, 9]
+                            operand id = 1
+                              () -> ()
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOpMultiDimensional) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[8] parameter(0)
+      p1 = f32[8] parameter(1)
+      ROOT t = (f32[8], f32[8]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[8, 10] parameter(0)
+      p1 = f32[8] parameter(1)
+      ROOT scan = (f32[8, 10], f32[8]) scan(p0, p1), dimensions={1},
+        num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  // The carry has the shape of the output with the scan dimension removed, so
+  // it is indexed by the non-scan dimensions rather than as a scalar.
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                            operand id = 1
+                              (d0, d1) -> (d0),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0)[s0] -> (d0, s0),
+                              domain:
+                              d0 in [0, 7],
+                              s0 in [0, 9]
+                            operand id = 1
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 7]
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, ScanOpMultiDimensionalLeadingScanDimension) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    scan_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT t = (f32[10], f32[10]) tuple(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[8, 10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT scan = (f32[8, 10], f32[10]) scan(p0, p1), dimensions={0},
+        num_carries=1, to_apply=scan_computation
+    }
+  )");
+
+  auto input_indexing_0 = GetOutputToInputIndexing(root, /*output_id=*/0);
+  EXPECT_THAT(input_indexing_0.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0, d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                            operand id = 1
+                              (d0, d1) -> (d1),
+                              domain:
+                              d0 in [0, 7],
+                              d1 in [0, 9]
+                          )"));
+
+  auto input_indexing_1 = GetOutputToInputIndexing(root, /*output_id=*/1);
+  EXPECT_THAT(input_indexing_1.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0)[s0] -> (s0, d0),
+                              domain:
+                              d0 in [0, 9],
+                              s0 in [0, 7]
+                            operand id = 1
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 9]
+                          )"));
 }
 
 TEST_P(IndexingAnalysisTest, ConcatenateOp) {
@@ -1482,11 +1652,7 @@ TEST_P(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
         rt2 in [0, 25],
         rt3 in [0, 16]
       runtime variables:
-        rt0: parameter(3); (d0, d1) -> (),
-          domain: d0 in [0, 24], d1 in [0, 15]
-        rt1: parameter(4); (d0, d1) -> (),
-          domain: d0 in [0, 24], d1 in [0, 15]
-        rt2: parameter(1); (d0, d1){rt0, rt1} -> (),
+        rt0: parameter(1); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24],
             d1 in [0, 15],
@@ -1494,12 +1660,16 @@ TEST_P(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
             rt1 in [0, 16],
             d0 + rt0 in [0, 49],
             d1 + rt1 in [0, 31]
-        rt3: parameter(2); (d0, d1){rt0, rt1} -> (),
+        rt1: parameter(2); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24], d1 in [0, 15],
             rt0 in [0, 25], rt1 in [0, 16],
             d0 + rt0 in [0, 49],
             d1 + rt1 in [0, 31]
+        rt2: parameter(3); (d0, d1) -> (),
+          domain: d0 in [0, 24], d1 in [0, 15]
+        rt3: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 24], d1 in [0, 15]
     operand id = 1
       (d0, d1) -> (),
       domain:
@@ -1649,7 +1819,7 @@ TEST_P(IndexingAnalysisTest, ReshapeOpCollapseShape) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0) -> (d0 floordiv 8, d0 mod 8),
+                            (d0) -> (d0 / 8, d0 mod 8),
                             domain:
                             d0 in [0, 31]
                           )"));
@@ -1683,7 +1853,7 @@ TEST_P(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2),
+                (d0, d1, d2) -> (d0 / 8, d0 mod 8, d1 * 4 + d2),
                 domain:
                 d0 in [0, 31],
                 d1 in [0, 2],
@@ -1693,7 +1863,7 @@ TEST_P(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
   auto output_indexing = GetInputToOutputIndexing(root);
   EXPECT_THAT(output_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4),
+                (d0, d1, d2) -> (d0 * 8 + d1, d2 / 4, d2 mod 4),
                 domain:
                 d0 in [0, 3],
                 d1 in [0, 7],
@@ -1729,7 +1899,7 @@ TEST_P(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1, d2) -> (d0 * 2 + d1 floordiv 2, (d1 mod 2) * 4 + d2),
+                (d0, d1, d2) -> (d0 * 2 + d1 / 2, (d1 mod 2) * 4 + d2),
                 domain:
                 d0 in [0, 1],
                 d1 in [0, 3],
@@ -1747,8 +1917,8 @@ TEST_P(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1) -> (d0 floordiv 2,
-                                        (d0 mod 2) * 2 + d1 floordiv 4,
+                            (d0, d1) -> (d0 / 2,
+                                        (d0 mod 2) * 2 + d1 / 4,
                                         d1 mod 4),
                             domain:
                             d0 in [0, 3],
@@ -1767,7 +1937,7 @@ TEST_P(IndexingAnalysisTest, PadOp) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                                   operand id = 0
-                                    (d0, d1) -> ((d0 - 1) floordiv 2, d1 - 4),
+                                    (d0, d1) -> ((d0 - 1) / 2, d1 - 4),
                                     domain:
                                     d0 in [1, 7],
                                     d1 in [4, 7],
@@ -1819,7 +1989,7 @@ TEST_P(IndexingAnalysisTest, PadOpNegativePadding) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                                   operand id = 0
-                                    (d0) -> ((d0 + 3) floordiv 2),
+                                    (d0) -> ((d0 + 3) / 2),
                                     domain:
                                     d0 in [0, 4],
                                     (d0 + 3) mod 2 in [0, 0]
@@ -2101,7 +2271,7 @@ TEST_P(IndexingAnalysisTest, ReduceWindowOp_BaseDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1) -> (d0 floordiv 2, d1 floordiv 2),
+                            (d0, d1) -> (d0 / 2, d1 / 2),
                             domain:
                             d0 in [0, 2],
                             d1 in [0, 4],
@@ -2133,7 +2303,7 @@ TEST_P(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1)[s0] -> (d0 + s0 * 3, d1),
+                            (d0, d1)[s0] -> (s0 * 3 + d0, d1),
                             domain:
                             d0 in [0, 3],
                             d1 in [0, 2],
@@ -2333,6 +2503,41 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
                           )"));
 }
 
+TEST_P(IndexingAnalysisTest, ConvolutionOp_WindowReversal) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,12,10,4] parameter(0)
+      p1 = f32[4,3,5,8] parameter(1)
+      ROOT conv = f32[1,10,6,8] convolution(p0, p1),
+        window={size=3x5 pad=0_0x0_0 rhs_reversal=1x0}, dim_labels=b01f_i01o->b01f
+    }
+  )");
+  auto input_indexing = GetOutputToInputIndexing(root);
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                          operand id = 0
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, s2),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 9],
+                            d2 in [0, 5],
+                            d3 in [0, 7],
+                            s0 in [0, 2],
+                            s1 in [0, 4],
+                            s2 in [0, 3]
+                          operand id = 1
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (s2, -s0 + 2, s1, d3),
+                            domain:
+                            d0 in [0, 0],
+                            d1 in [0, 9],
+                            d2 in [0, 5],
+                            d3 in [0, 7],
+                            s0 in [0, 2],
+                            s1 in [0, 4],
+                            s2 in [0, 3]
+                          )"));
+}
+
 TEST_P(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -2346,7 +2551,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, (d1 + s0) floordiv 2, (d2 + s1) floordiv 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, (d1 + s0) / 2, (d2 + s1) / 2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 20],
@@ -2383,7 +2588,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0 * 2, d2 + s1 * 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, s0 * 2 + d1, s1 * 2 + d2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 7],
@@ -2418,7 +2623,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, (d3 floordiv 8) * 4 + s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0, d2 + s1, (d3 / 8) * 4 + s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 9],
@@ -2453,7 +2658,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_BatchGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + s3 * 2, d1 + s0, d2 + s1, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2, s3] -> (s3 * 2 + d0, d1 + s0, d2 + s1, s2),
                             domain:
                             d0 in [0, 1],
                             d1 in [0, 9],
@@ -2555,8 +2760,8 @@ TEST_P(IndexingAnalysisTest, SliceOp) {
                           operand id = 0
                             (d0, d1, d2) -> (
                               d0 - 5,
-                              (d1 - 3) floordiv 7,
-                              d2 floordiv 2
+                              (d1 - 3) / 7,
+                              d2 / 2
                             ),
                             domain:
                             d0 in [5, 9],
@@ -2679,13 +2884,13 @@ TEST_P(IndexingAnalysisTest, ScaledDotOp) {
       d1 in [0, 1],
       s0 in [0, 9]
     operand id = 2
-      (d0, d1)[s0] -> (d0, s0 floordiv 5),
+      (d0, d1)[s0] -> (d0, s0 / 5),
       domain:
       d0 in [0, 1],
       d1 in [0, 1],
       s0 in [0, 9]
     operand id = 3
-      (d0, d1)[s0] -> (s0 floordiv 5, d1),
+      (d0, d1)[s0] -> (s0 / 5, d1),
       domain:
       d0 in [0, 1],
       d1 in [0, 1],
@@ -3049,6 +3254,97 @@ TEST_P(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
   )"));
 }
 
+TEST_P(IndexingAnalysisTest, FusionOpWithDynamicUpdateSliceAndDynamicSlice) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
+    HloModule m
+    fused_computation {
+      dst = s32[7,11] parameter(0)
+      upd = s32[2,4] parameter(1)
+      dus_i0 = s32[] parameter(2)
+      dus_i1 = s32[] parameter(3)
+      dus = s32[7,11] dynamic-update-slice(dst, upd, dus_i0, dus_i1)
+      ds_i0 = s32[] parameter(4)
+      ds_i1 = s32[] parameter(5)
+      ROOT ds = s32[3,5] dynamic-slice(dus, ds_i0, ds_i1),
+        dynamic_slice_sizes={3,5}
+    }
+    ENTRY main {
+      p0 = s32[7,11] parameter(0)
+      p1 = s32[2,4] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      p4 = s32[] parameter(4)
+      p5 = s32[] parameter(5)
+      ROOT fusion = s32[3,5] fusion(p0, p1, p2, p3, p4, p5), kind=kLoop,
+        calls=fused_computation
+    }
+  )hlo"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+    operand id = 0
+      (d0, d1){rt0, rt1} -> (d0 + rt0, d1 + rt1),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4],
+        rt0 in [0, 4],
+        rt1 in [0, 6]
+      runtime variables:
+        rt0: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+        rt1: parameter(5); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+    operand id = 1
+      (d0, d1){rt0, rt1, rt2, rt3} -> (-rt0 + d0 + rt2, -rt1 + d1 + rt3),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4],
+        rt0 in [0, 5],
+        rt1 in [0, 7],
+        rt2 in [0, 4],
+        rt3 in [0, 6]
+      runtime variables:
+        rt0: parameter(2); (d0, d1){rt0, rt1} -> (),
+          domain:
+            d0 in [0, 2],
+            d1 in [0, 4],
+            rt0 in [0, 4],
+            rt1 in [0, 6],
+            d0 + rt0 in [0, 6],
+            d1 + rt1 in [0, 10]
+        rt1: parameter(3); (d0, d1){rt0, rt1} -> (),
+          domain:
+            d0 in [0, 2],
+            d1 in [0, 4],
+            rt0 in [0, 4],
+            rt1 in [0, 6],
+            d0 + rt0 in [0, 6],
+            d1 + rt1 in [0, 10]
+        rt2: parameter(4); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+        rt3: parameter(5); (d0, d1) -> (),
+          domain: d0 in [0, 2], d1 in [0, 4]
+    operand id = 2
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 3
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 4
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+    operand id = 5
+      (d0, d1) -> (),
+      domain:
+        d0 in [0, 2],
+        d1 in [0, 4]
+  )"));
+}
+
 TEST_P(IndexingAnalysisTest, AllGatherOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m, replica_count=4
@@ -3065,7 +3361,7 @@ TEST_P(IndexingAnalysisTest, AllGatherOp) {
         d0 in [0, 127],
         d1 in [0, 255]
       replica id:
-        (d0, d1) -> (d1 floordiv 128),
+        (d0, d1) -> (d1 / 128),
         domain:
           d0 in [0, 127],
           d1 in [0, 255]
@@ -3099,7 +3395,7 @@ TEST_P(IndexingAnalysisTest, AllGatherFusionWithTranspose) {
         d0 in [0, 127],
         d1 in [0, 255]
       replica id:
-        (d0, d1) -> (d1 floordiv 128),
+        (d0, d1) -> (d1 / 128),
         domain:
           d0 in [0, 127],
           d1 in [0, 255]
@@ -3137,20 +3433,20 @@ TEST_P(IndexingAnalysisTest, AllGatherFusionWithReshape) {
   )")));
 
   EXPECT_THAT(grouped_indexing[all_gather], ElementsAre(MatchOperandIndexing(R"(
-    (d0) -> (d0 floordiv 128, d0 mod 128),
+    (d0) -> (d0 / 128, d0 mod 128),
     domain:
       d0 in [0, 32767]
   )")));
 
   EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
-    (d0) -> ((d0 floordiv 128) mod 128, d0 mod 128),
+    (d0) -> ((d0 / 128) mod 128, d0 mod 128),
     domain:
       d0 in [0, 32767]
     replica id:
-      (d0) -> ((d0 floordiv 128) floordiv 128),
+      (d0) -> (d0 / 128 / 128),
       domain:
         d0 in [0, 32767],
-        d0 floordiv 128 in [0, 255],
+        d0 / 128 in [0, 255],
         d0 mod 128 in [0, 127]
   )")));
 }
@@ -3205,7 +3501,7 @@ TEST_P(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
       d1 in [0, 127],
       s0 in [0, 255]
     replica id:
-      (d0, d1)[s0] -> (d0 floordiv 64),
+      (d0, d1)[s0] -> (d0 / 64),
       domain:
         d0 in [0, 127],
         d1 in [0, 127],
@@ -3240,7 +3536,7 @@ TEST_P(IndexingAnalysisTest, AllGatherDotFusion_GatherContractingDim) {
       d1 in [0, 127],
       s0 in [0, 255]
     replica id:
-      (d0, d1)[s0] -> (s0 floordiv 128),
+      (d0, d1)[s0] -> (s0 / 128),
       domain:
         d0 in [0, 127],
         d1 in [0, 127],

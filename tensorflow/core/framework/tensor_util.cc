@@ -58,12 +58,12 @@ void DeepCopy(const Tensor& input, Tensor* output) {
 
 absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
   if (tensors.empty()) {
-    return errors::InvalidArgument("Cannot concatenate zero tensors");
+    return absl::InvalidArgumentError("Cannot concatenate zero tensors");
   }
   int64_t total_dim0_size = 0;
   for (const Tensor& tensor : tensors) {
     if (tensor.dims() == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Cannot concatenate a zero-dimensional tensor");
     }
     total_dim0_size += tensor.dim_size(0);
@@ -74,10 +74,10 @@ absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
   const DataType dtype = tensors[0].dtype();
   for (int i = 1; i < tensors.size(); ++i) {
     if (tensors[i].dtype() != dtype) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Cannot concatenate tensors that have different data types.", " Got ",
           DataTypeString(dtype), " and ", DataTypeString(tensors[i].dtype()),
-          ".");
+          "."));
     }
   }
   *result = Tensor(dtype, shape);
@@ -99,7 +99,7 @@ absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
     }
   } else {
     if (dtype != DT_STRING) {
-      return errors::Internal("Unexpected data type");
+      return absl::InternalError("Unexpected data type");
     }
     tstring* to_strings = result->unaligned_flat<tstring>().data();
 
@@ -121,14 +121,14 @@ absl::Status Concat(const absl::Span<const Tensor> tensors, Tensor* result) {
 absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
                    std::vector<Tensor>* result) {
   if (tensor.dims() == 0) {
-    return errors::InvalidArgument("Cannot split a zero-dimensional tensor");
+    return absl::InvalidArgumentError("Cannot split a zero-dimensional tensor");
   }
   int64_t total_size = 0;
   for (int64_t size : sizes) {
     total_size += size;
   }
   if (total_size != tensor.dim_size(0)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The values in 'sizes' do not sum to the zeroth-dimension size of "
         "'tensor'");
   }
@@ -155,7 +155,7 @@ absl::Status Split(const Tensor& tensor, const absl::Span<const int64_t> sizes,
     }
   } else {
     if (tensor.dtype() != DT_STRING) {
-      return errors::Internal("Unexpected data type");
+      return absl::InternalError("Unexpected data type");
     }
     auto from_strings = tensor.flat<tstring>();
 
@@ -425,9 +425,9 @@ bool CompressTensorProtoInPlace(int64_t min_num_elements,
 
 absl::Status MakeShape(const Tensor& shape, TensorShape* out) {
   if (!TensorShapeUtils::IsVector(shape.shape())) {
-    return errors::InvalidArgument(
-        "shape must be a vector of {int32,int64}, got shape ",
-        shape.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("shape must be a vector of {int32,int64}, got shape ",
+                     shape.shape().DebugString()));
   }
   if (shape.dtype() == DataType::DT_INT32) {
     auto vec = shape.flat<int32_t>();
@@ -436,7 +436,8 @@ absl::Status MakeShape(const Tensor& shape, TensorShape* out) {
     auto vec = shape.flat<int64_t>();
     return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
   } else {
-    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+    return absl::InvalidArgumentError(
+        "shape must be a vector of {int32,int64}.");
   }
 }
 

@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_COMPILATION_OPTIONS_H_
 #define XLA_STREAM_EXECUTOR_CUDA_COMPILATION_OPTIONS_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 
 namespace stream_executor::cuda {
 
@@ -41,13 +46,17 @@ struct CompilationOptions {
   // returned in the compilation result.
   bool dump_compilation_log = false;
 
+  // Additional flags to pass to ptxas.
+  std::vector<std::string> additional_ptxas_flags;
+
   friend bool operator==(const CompilationOptions& lhs,
                          const CompilationOptions& rhs) {
     return lhs.disable_optimizations == rhs.disable_optimizations &&
            lhs.cancel_if_reg_spill == rhs.cancel_if_reg_spill &&
            lhs.generate_line_info == rhs.generate_line_info &&
            lhs.generate_debug_info == rhs.generate_debug_info &&
-           lhs.dump_compilation_log == rhs.dump_compilation_log;
+           lhs.dump_compilation_log == rhs.dump_compilation_log &&
+           lhs.additional_ptxas_flags == rhs.additional_ptxas_flags;
   }
 
   friend bool operator!=(const CompilationOptions& lhs,
@@ -59,8 +68,8 @@ struct CompilationOptions {
   friend H AbslHashValue(H h, const CompilationOptions& options) {
     return H::combine(std::move(h), options.disable_optimizations,
                       options.cancel_if_reg_spill, options.generate_line_info,
-                      options.generate_debug_info,
-                      options.dump_compilation_log);
+                      options.generate_debug_info, options.dump_compilation_log,
+                      options.additional_ptxas_flags);
   }
 
   template <typename Sink>
@@ -68,10 +77,11 @@ struct CompilationOptions {
     absl::Format(&sink,
                  "disable_optimizations: %v, cancel_if_reg_spill: %v, "
                  "generate_line_info: %v, generate_debug_info: %v, "
-                 "dump_compilation_log: %v",
+                 "dump_compilation_log: %v, additional_ptxas_flags: [%s]",
                  options.disable_optimizations, options.cancel_if_reg_spill,
                  options.generate_line_info, options.generate_debug_info,
-                 options.dump_compilation_log);
+                 options.dump_compilation_log,
+                 absl::StrJoin(options.additional_ptxas_flags, ", "));
   }
 };
 

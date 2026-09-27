@@ -16,7 +16,7 @@
 
 import enum
 import functools
-import gc
+import os
 import pprint
 import shutil
 import sys
@@ -42,11 +42,14 @@ from tensorflow.lite.python.convert import build_conversion_flags as _build_conv
 from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
 from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
 from tensorflow.lite.python.convert import convert_jax_hlo as _convert_jax_hlo
+from tensorflow.lite.python.convert import convert_mlir_bytecode as _convert_mlir_bytecode
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
+from tensorflow.lite.python.convert import flatbuffer_to_mlir as _flatbuffer_to_mlir
 from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
+from tensorflow.lite.python.convert import mlir_to_flatbuffer as _mlir_to_flatbuffer
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_phase import Component
@@ -642,6 +645,7 @@ class TFLiteConverterBase:
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+    self._experimental_fold_fp16_resource_casts = True
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
@@ -686,6 +690,7 @@ class TFLiteConverterBase:
     self.canonicalizing_inf_as_min_max_float = True
     self._experimental_strict_qdq = False
     self._experimental_unsafe_fuse_dynamic_shaped_broadcast = False
+    self._experimental_unsafe_single_batch_rank_reduction = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -697,6 +702,8 @@ class TFLiteConverterBase:
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
     self.serialize_debug_metadata = False
+    self.enable_debug = False
+    self.debug_dir = None
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -752,6 +759,7 @@ class TFLiteConverterBase:
           self.representative_dataset
       )
 
+    calibrated = None
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(
@@ -767,16 +775,22 @@ class TFLiteConverterBase:
     elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16
     ):
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return _mlir_quantize(
           calibrated,
           self._experimental_disable_per_channel,
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_for_dense_layers=disable_dense,
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
+      disable_dense = (
+          self._experimental_disable_per_channel_quantization_for_dense_layers
+      )
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen,
           input_type,
@@ -785,7 +799,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_quantization_for_dense_layers=disable_dense,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -811,6 +825,7 @@ class TFLiteConverterBase:
         "unfold_large_splat_constant": (
             self._experimental_unfold_large_splat_constant
         ),
+        "fold_fp16_resource_casts": self._experimental_fold_fp16_resource_casts,
         "default_to_single_batch_in_tensor_list_ops": (
             self._experimental_default_to_single_batch_in_tensor_list_ops
         ),
@@ -836,6 +851,8 @@ class TFLiteConverterBase:
         "print_ir_after": self.print_ir_after,
         "print_ir_module_scope": self.print_ir_module_scope,
         "elide_elementsattrs_if_larger": self.elide_elementsattrs_if_larger,
+        "enable_debug": self.enable_debug,
+        "debug_dir": self.debug_dir,
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
@@ -857,6 +874,9 @@ class TFLiteConverterBase:
         "serialize_debug_metadata": self.serialize_debug_metadata,
         "unsafe_fuse_dynamic_shaped_broadcast": (
             self._experimental_unsafe_fuse_dynamic_shaped_broadcast
+        ),
+        "unsafe_single_batch_rank_reduction": (
+            self._experimental_unsafe_single_batch_rank_reduction
         ),
     }
 
@@ -1209,7 +1229,12 @@ class TFLiteConverterBase:
       self._increase_conversion_success_metric()
     self._set_conversion_latency_metric(round(elapsed_time_ms))
     self._tflite_metrics.export_metrics()
-    if self.exclude_conversion_metadata or self._experimental_use_buffer_offset:
+    if (
+        self.exclude_conversion_metadata
+        or self._experimental_use_buffer_offset
+        or result is None
+        or isinstance(result, (str, os.PathLike))
+    ):
       return result
     # TODO(b/286886803): add support for adding user metadata with
     # use_buffer_offset flags
@@ -1574,19 +1599,27 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           graph_def, input_tensors, output_tensors
       )
 
-    trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
-    if trackable_obj is None:
-      self._debug_info = _get_debug_info(
-          _build_debug_info_func(self._funcs[0].graph), graph_def
-      )
-    else:
-      self._debug_info = _get_debug_info(
-          _convert_debug_info_func(trackable_obj.graph_debug_info),
-          graph_def,
-      )
-
-    del trackable_obj
-    gc.collect()
+    # Read debug info directly from the SavedModel directory instead of loading
+    # the full model with _load(). Loading the model allocates all variable
+    # tensors (~25MB for DenseNet121) plus registers function defs in the
+    # EagerContext, and these can leak across convert() calls due to reference
+    # cycles that are slow to collect.  The debug info proto is already written
+    # to disk alongside saved_model.pb and can be read cheaply.
+    #
+    # Note on adjust_debug_info_func_names: _convert_debug_info_func() (in
+    # util.py) ignores its original_nodes argument entirely and returns the
+    # saved_debug_info proto unchanged, so the function-name adjustment that
+    # _load() applies via adjust_debug_info_func_names() has no effect on this
+    # code path.  The on-disk proto already contains the names as written during
+    # save(), which is what the TFLite C++ pipeline uses for source-location
+    # tracking.
+    _, saved_debug_info = _parse_saved_model_with_debug_info(
+        self.saved_model_dir
+    )
+    self._debug_info = _get_debug_info(
+        _convert_debug_info_func(saved_debug_info),
+        graph_def,
+    )
     return self._convert_from_saved_model(graph_def)
 
 
@@ -1608,6 +1641,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
     self.experimental_lower_to_saved_model = True
+    self._saved_model_export_error = None
 
   @convert_phase(
       Component.PREPARE_TF_MODEL, SubComponent.CONVERT_KERAS_TO_SAVED_MODEL
@@ -1623,6 +1657,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       input_tensors: List of input tensors.
       output_tensors: List of output tensors.
     """
+    self._saved_model_export_error = None
     try:
 
       def _is_keras_3():
@@ -1644,9 +1679,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
         # inference only and TFLite conversion.
         export_archive = keras.export.ExportArchive()
         export_archive.track(self._keras_model)
+        # We use `keras.Function` to detect functional models as keras does not
+        # expose the `Functional` class.
         if isinstance(
-            self._keras_model,
-            (keras.src.models.Functional, keras.src.models.Sequential),
+            self._keras_model, (keras.models.Sequential, keras.Function)
         ):
           input_signature = nest.map_structure(
               lambda x: tensor_spec.TensorSpec(
@@ -1675,9 +1711,10 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
             output_dir,
             options=_save_options.SaveOptions(save_debug_info=True),
         )
-    except Exception:  # pylint: disable=broad-except
+    except Exception as error:  # pylint: disable=broad-except
       # When storing the given keras model to a saved model is failed, let's
       # use original keras model conversion pipeline.
+      self._saved_model_export_error = error
       return None, None, None
     self.saved_model_dir = output_dir
     self._saved_model_tags = set([_tag_constants.SERVING])
@@ -1750,9 +1787,20 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
           self._convert_keras_to_saved_model(temp_dir)
       )
       if self.saved_model_dir:
-        return super(TFLiteKerasModelConverterV2, self).convert(
-            graph_def, input_tensors, output_tensors
-        )
+        try:
+          return super(TFLiteKerasModelConverterV2, self).convert(
+              graph_def, input_tensors, output_tensors
+          )
+        except Exception as e:  # pylint: disable=broad-except
+          # We catch all exceptions (such as MLIR translation or conversion
+          # failures) to safely fall back to freezing the Keras model.
+          logging.warning(
+              "SavedModel conversion failed. Fallback to freezing Keras "
+              "model: %s",
+              e,
+          )
+          self.saved_model_dir = None
+          return None
     finally:
       shutil.rmtree(temp_dir, True)
 
@@ -1773,9 +1821,19 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     if saved_model_convert_result:
       return saved_model_convert_result
 
+    saved_model_export_error = self._saved_model_export_error
+    self._saved_model_export_error = None
     graph_def, input_tensors, output_tensors, frozen_func = (
         self._freeze_keras_model()
     )
+    if not output_tensors:
+      if saved_model_export_error is not None:
+        raise ConverterError(
+            "SavedModel export failed, and legacy Keras fallback tracing also "
+            "failed to produce any output tensors. SavedModel export error: "
+            f"{saved_model_export_error}"
+        ) from saved_model_export_error
+      raise ValueError("The Keras model has no outputs after tracing.")
 
     graph_def = self._optimize_tf_model(
         graph_def, input_tensors, output_tensors, frozen_func
@@ -2091,6 +2149,30 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
     )
 
 
+class TFLiteMlirBytecodeConverterV2(TFLiteConverterBaseV2):
+  """Converts the given MLIR bytecode into TensorFlow Lite model."""
+
+  def __init__(self, model_dir):
+    """Constructor for TFLiteConverter.
+
+    Args:
+      model_dir: Directory containing the MLIR bytecode and weights.
+    """
+    super(TFLiteMlirBytecodeConverterV2, self).__init__()
+    self._model_dir = model_dir
+
+  @_export_metrics
+  def convert(self, output_file_path=None):
+    """Converts the MLIR bytecode and saves directly to output_file_path without heap RAM spike."""
+    converter_kwargs = self._get_base_converter_args()
+    # Build conversion flags.
+    conversion_flags = _build_conversion_flags(**converter_kwargs)
+    if output_file_path is None:
+      output_file_path = os.path.join(self._model_dir, "model.tflite")
+    _convert_mlir_bytecode(conversion_flags, self._model_dir, output_file_path)
+    return output_file_path
+
+
 @_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   """Converts a TensorFlow model into TensorFlow Lite model.
@@ -2346,6 +2428,19 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     )
     # pylint: enable=protected-access
     return TFLiteJaxConverterV2(serving_funcs, inputs)
+
+  @classmethod
+  def _from_mlir_bytecode(cls, model_dir):
+    """Creates a TFLiteConverter object from MLIR bytecode.
+
+    Args:
+      model_dir: Directory containing the MLIR bytecode and weights.
+
+    Returns:
+      TFLiteConverter object.
+    """
+
+    return TFLiteMlirBytecodeConverterV2(model_dir)
 
   # pylint: disable=useless-super-delegation
   def convert(self):
@@ -3450,3 +3545,4 @@ class TocoConverter:
     return TFLiteConverter.from_keras_model_file(
         model_file, input_arrays, input_shapes, output_arrays
     )
+

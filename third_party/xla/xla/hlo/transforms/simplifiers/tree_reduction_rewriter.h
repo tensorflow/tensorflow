@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_TREE_REDUCTION_REWRITER_H_
 
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -47,11 +47,11 @@ class TreeReductionRewriter : public HloModulePass {
  public:
   explicit TreeReductionRewriter(
       int64_t reduce_window_size = 32,
-      std::optional<int64_t> reduce_window_size_stride_one_dim = std::nullopt,
       HloPredicate filter = nullptr)
       : reduce_window_size_(reduce_window_size),
-        reduce_window_size_stride_one_dim_(reduce_window_size_stride_one_dim),
         filter_(std::move(filter)) {}
+  explicit TreeReductionRewriter(HloPredicate filter)
+      : TreeReductionRewriter(32, std::move(filter)) {}
   ~TreeReductionRewriter() override = default;
   absl::string_view name() const override { return "tree_reduction_rewriter"; }
 
@@ -62,7 +62,6 @@ class TreeReductionRewriter : public HloModulePass {
 
  private:
   int64_t reduce_window_size_;
-  std::optional<int64_t> reduce_window_size_stride_one_dim_;
   HloPredicate filter_;
 };
 

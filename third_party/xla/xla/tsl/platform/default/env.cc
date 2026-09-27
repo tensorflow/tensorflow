@@ -28,7 +28,9 @@ limitations under the License.
 #include <unistd.h>
 
 #include <cstdint>
+#include <string>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/numa.h"
 
 #ifdef __FreeBSD__
@@ -132,8 +134,9 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
-    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
+    return fnmatch(std::string(pattern).c_str(), std::string(path).c_str(),
+                   FNM_PATHNAME) == 0;
   }
 
   void SleepForMicroseconds(int64_t micros) override {
@@ -203,7 +206,7 @@ class PosixEnv : public Env {
   }
 
   void SchedClosure(absl::AnyInvocable<void()> closure) override {
-    // TODO(b/27290852): Spawning a new thread here is wasteful, but
+    // TODO(b/119634930): Spawning a new thread here is wasteful, but
     // needed to deal with the fact that many `closure` functions are
     // blocking in the current codebase.
     std::thread closure_thread(std::move(closure));
@@ -212,7 +215,7 @@ class PosixEnv : public Env {
 
   void SchedClosureAfter(int64_t micros,
                          absl::AnyInvocable<void()> closure) override {
-    // TODO(b/27290852): Consuming a thread here is wasteful, but this
+    // TODO(b/119634930): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
     // (AbortStep). This could be replaced by a timer thread
     SchedClosure([this, micros, closure = std::move(closure)]() mutable {

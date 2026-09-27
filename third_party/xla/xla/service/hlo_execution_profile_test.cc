@@ -28,7 +28,7 @@ using absl::StrCat;
 using ::testing::AllOf;
 using ::testing::ContainsRegex;
 
-class HloExecutionProfileTest : public HloPjRtTestBase {};
+class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
   auto hlo_module = ParseAndReturnVerifiedModule(R"(

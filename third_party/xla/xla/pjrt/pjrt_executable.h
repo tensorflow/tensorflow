@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class CustomOptions;
 
 class PjRtClient;
 
@@ -89,6 +92,10 @@ struct CompileOptions {
   // If true, the supplied computation expects its arguments to be wrapped in a
   // tuple and passed as a single parameter.
   bool parameter_is_tupled_arguments = false;
+
+  // Flattened output indices that should use individual definition events when
+  // supported. Other outputs use the primary execute event.
+  absl::flat_hash_set<int> individually_defined_output_indices;
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
@@ -135,9 +142,6 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
-  // Compiler variant to indicate which compiler is invoked.
-  std::optional<std::string> compiler_variant = std::nullopt;
-
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);
@@ -165,6 +169,7 @@ struct LoadOptions {
 class ExecuteContext {
  public:
   virtual ~ExecuteContext() = default;
+  virtual absl::string_view kind() const { return "base"; }
 
   ffi::ExecutionContext& ffi_context() { return ffi_context_; }
   const ffi::ExecutionContext& ffi_context() const { return ffi_context_; }
@@ -221,6 +226,22 @@ struct RecvCallback {
       callback;
 };
 
+struct HloOutputCallback {
+  int64_t callback_id;
+  int num_operands;
+  // The callback for receiving reconstructed HLO output literals.
+  //
+  // Arguments:
+  // - replica_id: The ID of the replica this output corresponds to.
+  // - partition_id: The ID of the manual partition.
+  // - literals: The reconstructed tensor values produced by the HLO
+  // instruction.
+  //             Missing operands are represented by nullptr.
+  std::function<void(int64_t replica_id, int64_t partition_id,
+                     absl::Span<std::shared_ptr<const Literal> const> literals)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
@@ -248,6 +269,13 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+  // The HLO output callbacks for PjRt execution. These callbacks are used to
+  // receive reconstructed HLO instruction output literals. Unlike send/recv
+  // callbacks, this is a flat span since a single callback instance handles
+  // invocations across all replicas and partitions, with the `replica_id` and
+  // `partition_id` passed directly as arguments. These callbacks must outlive
+  // the execution.
+  absl::Span<const HloOutputCallback> hlo_output_callbacks;
 
   // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
   // recv functions should pass major-to-minor chunks to
@@ -282,6 +310,9 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // If non-null, per-execution custom options passed to the runtime.
+  std::shared_ptr<const CustomOptions> custom_options;
+
   // The `call_location` field is used to pass down call site location
   // information from higher-level frameworks like JAX and PyTorch to the PJRT
   // plugin. This field stores the source location (e.g., file:line) of the
@@ -297,6 +328,16 @@ struct ExecuteOptions {
 
   // The latest known incarnation ids for all alive tasks, keyed by task id.
   absl::flat_hash_map<int, IncarnationId> incarnations;
+
+  // The PRNG seed to use for execution. A seed of 0 means that the seed is not
+  // set and that the default seed (usually random) should be used.
+  int64_t seed = 0;
+
+  // If true, use arena allocation for output buffers. When this is true, a
+  // single device buffer is allocated for all output buffers, and each output
+  // buffer is a sub-buffer of the arena. The allocated arena will be released
+  // only after all the sub-buffers are deleted.
+  bool use_output_arena = false;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
@@ -331,9 +372,19 @@ class PjRtExecutable {
   // Unique name for this executable, e.g., HloModule name.
   virtual absl::string_view name() const = 0;
 
+  // Return HloModule (optimized).
+  virtual absl::StatusOr<std::shared_ptr<HloModule>> GetHloModule() const {
+    return absl::UnimplementedError("GetHloModule is not implemented");
+  }
+
   // Return an array of HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-  GetHloModules() const = 0;
+  GetHloModules() const;
+
+  // Unoptimized hlo module.
+  virtual std::optional<HloModuleProto> GetUnoptimizedHloModule() const {
+    return std::nullopt;
+  }
 
   // Returns an output Shape per program, the size should be equal to
   // `GetHloModules()`.
@@ -356,6 +407,13 @@ class PjRtExecutable {
   // Returns the layout of each output.
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
+
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameters]`. The size of the outer list
+  // should be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
 
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be

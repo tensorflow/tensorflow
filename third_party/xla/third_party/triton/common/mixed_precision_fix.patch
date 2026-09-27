@@ -1,7 +1,21 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 --- a/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
-@@ -192,6 +192,15 @@ LogicalResult Prefetcher::initialize() {
-         break;
+@@ -433,6 +433,15 @@ LogicalResult Prefetcher::initialize() {
+     while (op) {
        if (!op->getResult(0).hasOneUse())
          break;
 +      // Similar to issues faced in HoistLayoutConversion pattern in
@@ -13,7 +27,7 @@
 +        if (srcType.isInteger(1))
 +          break;
 +      }
-       rets.push_back(op->getOperand(0));
-       if (auto cvt = dyn_cast<triton::gpu::LocalLoadOp>(op)) {
-         // NYI for other encodings, for example if we have transpose
+       if (auto load = dyn_cast<triton::gpu::LocalLoadOp>(op)) {
+         rets.push_back(load.getSrc());
+         // Only handle the direct dot-operand load chain for now.
 

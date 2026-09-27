@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/external/external_delegate.h"
 
 #include <locale>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -90,7 +91,7 @@ class ExternalDelegateWrapper {
   TfLiteDelegate* external_delegate_;
 
   // TfLiteDelegate representation of this ExternalDelegateWrapper object.
-  TfLiteDelegate wrapper_delegate_;
+  TfLiteDelegate wrapper_delegate_ = {};
 };
 
 // Converts the given TfLiteDelegate to an ExternalDelegateWrapper instance.
@@ -213,10 +214,10 @@ TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(
 
 TfLiteDelegate* TfLiteExternalDelegateCreate(
     const TfLiteExternalDelegateOptions* options) {
-  auto* external_delegate_wrapper =
-      new tflite::ExternalDelegateWrapper(options);
-  if (external_delegate_wrapper) {
-    return external_delegate_wrapper->tflite_wrapper_delegate();
+  auto external_delegate_wrapper =
+      std::make_unique<tflite::ExternalDelegateWrapper>(options);
+  if (external_delegate_wrapper->tflite_external_delegate() != nullptr) {
+    return external_delegate_wrapper.release()->tflite_wrapper_delegate();
   }
   return nullptr;
 }

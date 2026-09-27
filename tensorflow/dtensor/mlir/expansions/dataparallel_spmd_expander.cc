@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -143,7 +144,7 @@ StatusOr<Layout> IntermediateBatchLayout(
     const std::vector<Layout>& output_layouts,
     const llvm::DenseMap<int, int>& batchable_outputs, const Mesh& mesh) {
   if (batchable_operands.empty()) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         llvm::formatv("There must be at least one batchable operand").str());
   }
   int first_batcharg_index = batchable_outputs.begin()->first;
@@ -277,14 +278,14 @@ StatusOr<mlir::Operation*> DataparallelSPMDExpander::ExpandOp(
   // Check all input and output are batch parallel
   if (!AllBatchParallel(operand_layouts, batchable_operands_) ||
       !AllBatchParallel(output_layouts, batchable_outputs_)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         llvm::formatv("All operands and outputs must be batch parallel.")
             .str());
   }
   // Check that the rank of batch dimensions are same for all batchable tensors
   if (!SameBatchRank(operand_layouts, batchable_operands_) ||
       !SameBatchRank(output_layouts, batchable_outputs_)) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         llvm::formatv("All operands and outputs with batch dimensions must "
                       "have same batch dimension rank")
             .str());

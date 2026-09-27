@@ -1,0 +1,47 @@
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt --canonicalize -cse \
+// RUN:   | FileCheck %s
+// RUN: fusion_to_xtile %s --xla_cpu_use_new_xtile_lowering | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xla-simplify-arith \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering
+
+fusion {
+  p0 = c64[4,8] parameter(0)
+  c = c64[] constant((1.0, 2.0))
+  b = c64[4,8] broadcast(c), dimensions={}
+  ROOT add = c64[4,8] add(p0, b)
+}
+
+// CHECK-LABEL: xtile.entry_func @wrapped_fusion(
+// CHECK-SAME:     %[[LHS:[^:]+]]: memref<4x8xcomplex<f32>>,
+// CHECK-SAME:     %[[OUT:[^:]+]]: memref<4x8xcomplex<f32>>,
+// CHECK-SAME:     %[[PID:[^:]+]]: index)
+
+// CHECK-DAG:   %[[CST:.*]] = arith.constant dense<(1.000000e+00,2.000000e+00)> : tensor<complex<f32>>
+// CHECK:       %[[T_0:.*]] = xtile.extract %[[LHS]]
+// CHECK-SAME:    : memref<4x8xcomplex<f32>> -> tensor<4x8xcomplex<f32>>
+// CHECK:       %[[BCAST:.*]] = stablehlo.broadcast_in_dim %[[CST]], dims = []
+// CHECK:       stablehlo.add %[[T_0]], %[[BCAST]]
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
+// NEW-VECTOR-SAME:    %[[LHS:[^:]+]]: memref<4x8x2xf32>,
+// NEW-VECTOR-SAME:    %[[OUT:[^:]+]]: memref<4x8x2xf32>,
+// NEW-VECTOR-SAME:    %[[PID:[^:]+]]: index)
+
+// NEW-VECTOR-DAG:   %[[CST:.*]] = arith.constant dense<[1.000000e+00, 2.000000e+00]> : vector<2xf32>
+// NEW-VECTOR:       vector.transfer_read %[[LHS]]
+// NEW-VECTOR:       vector.broadcast %[[CST]] : vector<2xf32> to vector<4x8x2xf32>
+// NEW-VECTOR:       arith.addf
+
+ENTRY main {
+  p0 = c64[4,8] parameter(0)
+  ROOT fusion = c64[4,8] fusion(p0), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4", "8"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}

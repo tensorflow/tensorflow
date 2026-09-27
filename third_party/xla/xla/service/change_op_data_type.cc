@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -90,7 +91,7 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
       if (new_instr->shape().element_type() != instr->shape().element_type()) {
         new_instr = MakeConvertToHlo(new_instr, instr->shape().element_type());
       }
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+      ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
       changed = true;
     }
   }

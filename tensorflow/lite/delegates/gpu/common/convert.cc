@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 
 #include <stdint.h>
-#include <string.h>
 
-#include <string>
+#include <cstring>
 #include <vector>
 
 #include "fp16.h"  // from @FP16

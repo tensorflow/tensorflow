@@ -1,3 +1,19 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -14,13 +30,13 @@ cc_library(
     name = "legalize_tf",
     srcs = ["legalize_tf.cc"],
     hdrs = ["legalize_tf.h"],
-    visibility = [
+    visibility = internal_visibility([
         "//learning/brain/google/xla:__pkg__",
         "//learning/brain/mlir/bridge:__pkg__",
         "//tensorflow/compiler/mlir/quantization/stablehlo:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2/testing:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:__pkg__",
-    ],
+    ]),
     deps = [
         ":device_type_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -35,19 +51,17 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@tsl//tsl/platform:protobuf",
         "@xla//xla:shape_util",
         "@xla//xla:xla_proto_cc",
-        "@xla//xla/client:compile_only_client",
         "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/pjrt/proto:compile_options_proto_cc",
         "@xla//xla/tsl/platform:statusor",
     ],
@@ -76,9 +90,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:Pass",
         "@xla//xla:shape_util",
-        "@xla//xla/client:client_library",
-        "@xla//xla/stream_executor:platform",
-        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/pjrt:pjrt_compiler",
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:statusor",
     ],
@@ -196,6 +208,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/core:framework",
@@ -211,7 +224,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@tsl//tsl/platform:error_logging",
         "@xla//xla/tsl/lib/monitoring:counter",
-        "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:status",
     ],
 )
@@ -337,7 +349,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/mlir/tf2xla/internal:node_order",
@@ -381,6 +392,7 @@ tf_cc_test(
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",

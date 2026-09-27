@@ -123,8 +123,8 @@ void Worker::AbortStep(int64_t step_id) {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
     // cancellation generated abort error.
-    rendez->StartAbort(errors::Aborted("Step ", step_id,
-                                       " cancelled.  Cancelling rendezvous."));
+    rendez->StartAbort(absl::AbortedError(
+        absl::StrCat("Step ", step_id, " cancelled.  Cancelling rendezvous.")));
   });
 }
 
@@ -227,7 +227,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     delete collector;
     delete device_profiler_session;
     delete out;
-    done(errors::Aborted("Call was aborted"));
+    done(absl::AbortedError("Call was aborted"));
     return;
   }
   session->graph_mgr()->ExecuteAsync(
@@ -386,12 +386,12 @@ void Worker::CleanupAllAsync(const CleanupAllRequest* request,
 
 void Worker::LoggingAsync(const LoggingRequest* request,
                           LoggingResponse* response, StatusCallback done) {
-  done(errors::Unimplemented("Logging"));
+  done(absl::UnimplementedError("Logging"));
 }
 
 void Worker::TracingAsync(const TracingRequest* request,
                           TracingResponse* response, StatusCallback done) {
-  done(errors::Unimplemented("Tracing"));
+  done(absl::UnimplementedError("Tracing"));
 }
 
 void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -400,7 +400,7 @@ void Worker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   // it is not currently used for worker-to-worker communication. Use a
   // transport-specific implementation (such as `GrpcWorker::RecvBufAsync()`)
   // instead.
-  done(errors::Unimplemented("Worker::RecvBufAsync()"));
+  done(absl::UnimplementedError("Worker::RecvBufAsync()"));
 }
 
 void Worker::CompleteGroupAsync(CallOptions* opts,
@@ -408,7 +408,7 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
                                 CompleteGroupResponse* response,
                                 StatusCallback done) {
   if (!request->has_device_attributes()) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "CompleteGroupRequest device_attributes is not set. Make sure you're "
         "running the same version of Tensorflow on all workers."));
     return;
@@ -439,8 +439,8 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
           done(s);
         });
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -452,8 +452,8 @@ void Worker::CompleteInstanceAsync(CallOptions* opts,
     env_->collective_executor_mgr->GetParamResolver()->CompleteInstanceAsync(
         request, response, &cancellation_manager_, done);
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -464,8 +464,8 @@ void Worker::GetStepSequenceAsync(const GetStepSequenceRequest* request,
     env_->collective_executor_mgr->GetStepSequenceAsync(request, response,
                                                         done);
   } else {
-    done(
-        errors::Internal("Runtime not initialized with CollectiveExecutorMgr"));
+    done(absl::InternalError(
+        "Runtime not initialized with CollectiveExecutorMgr"));
   }
 }
 
@@ -501,7 +501,7 @@ void Worker::RecvTensorAsync(CallOptions* opts,
   // it is not currently used for worker-to-worker communication. Use a
   // transport-specific implementation (such as `GrpcWorker::RecvTensorAsync()`)
   // instead.
-  done(errors::Unimplemented("Worker::RecvTensorAsync()"));
+  done(absl::UnimplementedError("Worker::RecvTensorAsync()"));
 }
 
 }  // namespace tensorflow

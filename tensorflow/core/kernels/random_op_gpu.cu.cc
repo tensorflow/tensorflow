@@ -47,21 +47,21 @@ template struct FillPhiloxRandom<
 template struct FillPhiloxRandom<
     GPUDevice, random::UniformDistribution<random::PhiloxRandom, double> >;
 template struct FillPhiloxRandom<
-    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32> >;
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int32_t> >;
 template struct FillPhiloxRandom<
-    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64> >;
-template struct FillPhiloxRandom<
-    GPUDevice,
-    random::UniformFullIntDistribution<random::PhiloxRandom, int32> >;
+    GPUDevice, random::UniformDistribution<random::PhiloxRandom, int64_t> >;
 template struct FillPhiloxRandom<
     GPUDevice,
-    random::UniformFullIntDistribution<random::PhiloxRandom, int64> >;
+    random::UniformFullIntDistribution<random::PhiloxRandom, int32_t> >;
 template struct FillPhiloxRandom<
     GPUDevice,
-    random::UniformFullIntDistribution<random::PhiloxRandom, uint32> >;
+    random::UniformFullIntDistribution<random::PhiloxRandom, int64_t> >;
 template struct FillPhiloxRandom<
     GPUDevice,
-    random::UniformFullIntDistribution<random::PhiloxRandom, uint64> >;
+    random::UniformFullIntDistribution<random::PhiloxRandom, uint32_t> >;
+template struct FillPhiloxRandom<
+    GPUDevice,
+    random::UniformFullIntDistribution<random::PhiloxRandom, uint64_t> >;
 template struct FillPhiloxRandom<
     GPUDevice, random::NormalDistribution<random::PhiloxRandom, Eigen::half> >;
 template struct FillPhiloxRandom<

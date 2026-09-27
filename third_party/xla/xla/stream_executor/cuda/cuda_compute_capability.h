@@ -187,6 +187,13 @@ struct CudaComputeCapability {
     return major == CudaComputeCapabilities::kBlackwell;
   }
 
+  // TensorCore 5th Generation Family Instructions (tcgen05)
+  // are available on SM 10.0, 10.3, and 11.0 but not on SM 12.0.
+  bool HasTcgen05() const {
+    return major == CudaComputeCapabilities::kBlackwell ||
+           major == CudaComputeCapabilities::kBlackwell_11;
+  }
+
   // Returns true if a kernel compiled for compute capability `other` can be run
   // on a GPU with compute capability `this`.
   bool SupportsAllFeaturesOf(const CudaComputeCapability& other) const {

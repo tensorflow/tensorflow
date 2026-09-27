@@ -479,6 +479,8 @@ typedef cl_int(CL_API_CALL *PFN_clEnqueueTask)(
     cl_uint /* num_events_in_wait_list */,
     const cl_event * /* event_wait_list */, cl_event * /* event */);
 
+#ifndef CL_DELEGATE_NO_GL
+
 // OpenGL sharing
 typedef cl_mem(CL_API_CALL *PFN_clCreateFromGLBuffer)(cl_context, cl_mem_flags,
                                                       cl_GLuint, int *);
@@ -522,6 +524,8 @@ typedef cl_int(CL_API_CALL *PFN_clEnqueueReleaseEGLObjectsKHR)(
     cl_command_queue /*command_queue*/, cl_uint /*num_objects*/,
     const cl_mem * /*mem_objects*/, cl_uint /*num_events_in_wait_list*/,
     const cl_event * /*event_wait_list*/, cl_event * /*event*/);
+
+#endif
 
 // cl_khr_command_buffer
 typedef cl_command_buffer_khr(CL_API_CALL *PFN_clCreateCommandBufferKHR)(
@@ -701,6 +705,8 @@ extern PFN_clCreateCommandQueue clCreateCommandQueue;
 extern PFN_clCreateSampler clCreateSampler;
 extern PFN_clEnqueueTask clEnqueueTask;
 
+#ifndef CL_DELEGATE_NO_GL
+
 // OpenGL sharing
 extern PFN_clCreateFromGLBuffer clCreateFromGLBuffer;
 extern PFN_clCreateFromGLTexture clCreateFromGLTexture;
@@ -714,6 +720,8 @@ extern PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 extern PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 extern PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 extern PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+#endif
 
 // cl_khr_command_buffer extension
 extern PFN_clCreateCommandBufferKHR clCreateCommandBufferKHR;

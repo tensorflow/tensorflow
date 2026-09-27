@@ -872,7 +872,7 @@ absl::Status MatMulGradCommon(const std::string& opname,
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "MatMul gradient for complex is not supported yet.");
   }
   bool ta;
