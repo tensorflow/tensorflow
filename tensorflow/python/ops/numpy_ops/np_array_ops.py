@@ -963,6 +963,32 @@ def flatten(a, order='C'):
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axes, (tuple, list)):
+    # Match np.transpose behavior: raise a ValueError at trace time for
+    # invalid `axes` instead of letting the underlying op produce an
+    # opaque error deeper in the stack.
+    if len(axes) != maybe_rank:
+      raise ValueError(
+          f'axes don\'t match array. Expected {maybe_rank} axes, got '
+          f'{len(axes)}.'
+      )
+    normalized_axes = []
+    for ax in axes:
+      if isinstance(ax, (int, np.integer)):
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f'Argument `axes` (received axes={ax}) is out of bounds for '
+              f'input {a} of rank {maybe_rank}.'
+          )
+        normalized_axes.append(normalized)
+    if len(normalized_axes) == maybe_rank and len(set(normalized_axes)) != len(
+        normalized_axes
+    ):
+      raise ValueError('repeated axis in transpose')
+
   if axes is not None:
     axes = asarray(axes)
   return array_ops.transpose(a=a, perm=axes)
