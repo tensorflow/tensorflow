@@ -18,7 +18,6 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER \
-  71  // Fix use-after-free in CopyArraysToHostBufferShards
+#define JAX_IFRT_VERSION_NUMBER 72  // unreduced + partial manual shard_map
 
 #endif  // XLA_PYTHON_VERSION_H_
