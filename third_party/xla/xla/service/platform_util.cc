@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -155,7 +156,7 @@ absl::StatusOr<std::vector<int>> GetDeviceOrdinals(
     if (device_ordinals.size() > device_count) {
       LOG(WARNING) << "Allowed device set contains " << device_ordinals.size()
                    << " devices, but platform only sees " << device_count;
-      std::sort(device_ordinals.begin(), device_ordinals.end());
+      absl::c_sort(device_ordinals);
       device_ordinals.resize(device_count);
     }
   } else {

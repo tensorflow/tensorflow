@@ -239,8 +239,7 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
     used_indices[user->tuple_index()] = true;
   }
 
-  const int new_tuple_shapes_size =
-      std::count(used_indices.begin(), used_indices.end(), true);
+  const int new_tuple_shapes_size = absl::c_count(used_indices, true);
   if (new_tuple_shapes_size == old_tuple_shapes_size) {
     VLOG(3) << "Skip RemoveUnusedTupleElements due to every index is in use.";
     return false;

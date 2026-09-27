@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -928,11 +929,9 @@ TEST_F(CallOutlinerTest, RetainControlDependencies) {
   HloInstruction* other2 = FindInstruction(module.get(), "other2");
   ASSERT_NE(other2, nullptr);
 
-  EXPECT_NE(std::find(call->control_predecessors().begin(),
-                      call->control_predecessors().end(), other1),
+  EXPECT_NE(absl::c_find(call->control_predecessors(), other1),
             call->control_predecessors().end());
-  EXPECT_NE(std::find(other2->control_predecessors().begin(),
-                      other2->control_predecessors().end(), call),
+  EXPECT_NE(absl::c_find(other2->control_predecessors(), call),
             other2->control_predecessors().end());
 }
 

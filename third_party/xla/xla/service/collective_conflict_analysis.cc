@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -65,7 +66,7 @@ bool IsConflictingAbstractReplicaGroups(AbstractReplicaGroups& lhs,
                                         AbstractReplicaGroups& rhs) {
   std::vector<int64_t> frequency(lhs.groups.size(), 0);
   for (auto& rhs_group : rhs.groups) {
-    std::fill(frequency.begin(), frequency.end(), 0);
+    absl::c_fill(frequency, 0);
     for (int64_t rhs_replica_id : rhs_group) {
       int64_t i = lhs.get_index(rhs_replica_id);
       if (i == -1) continue;

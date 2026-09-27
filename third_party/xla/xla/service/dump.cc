@@ -1068,8 +1068,8 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
         }
 
         // Sort both vectors for comparison
-        std::sort(debug_values.begin(), debug_values.end());
-        std::sort(default_values.begin(), default_values.end());
+        absl::c_sort(debug_values);
+        absl::c_sort(default_values);
 
         // Compare the sorted vectors
         if (debug_values != default_values) {

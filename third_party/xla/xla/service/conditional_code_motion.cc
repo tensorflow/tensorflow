@@ -322,27 +322,23 @@ bool InstructionWithinBranchIdentical(
   }
 
   if (instructions[0]->IsCrossModuleAllReduce()) {
-    return std::all_of(
-        instructions.begin(), instructions.end(),
-        [&](HloInstruction* instruction) {
-          if (!instruction->IsCrossModuleAllReduce()) {
-            return false;
-          }
-          auto old_channel_id = instruction->channel_id();
-          instruction->set_channel_id(instructions[0]->channel_id());
-          bool eq_instructions = instructions[0]->Identical(
-              *instruction, eq_operand, eq_computations, is_layout_sensitive);
-          instruction->set_channel_id(old_channel_id);
-          return eq_instructions;
-        });
+    return absl::c_all_of(instructions, [&](HloInstruction* instruction) {
+      if (!instruction->IsCrossModuleAllReduce()) {
+        return false;
+      }
+      auto old_channel_id = instruction->channel_id();
+      instruction->set_channel_id(instructions[0]->channel_id());
+      bool eq_instructions = instructions[0]->Identical(
+          *instruction, eq_operand, eq_computations, is_layout_sensitive);
+      instruction->set_channel_id(old_channel_id);
+      return eq_instructions;
+    });
   }
 
-  return std::all_of(instructions.begin(), instructions.end(),
-                     [&](HloInstruction* instruction) {
-                       return instructions[0]->Identical(
-                           *instruction, eq_operand, eq_computations,
-                           is_layout_sensitive);
-                     });
+  return absl::c_all_of(instructions, [&](HloInstruction* instruction) {
+    return instructions[0]->Identical(*instruction, eq_operand, eq_computations,
+                                      is_layout_sensitive);
+  });
 }
 
 // Copy the boundary out of the conditional and update hoisted_boundaries.
@@ -2370,11 +2366,11 @@ absl::StatusOr<bool> ConditionalCodeMotion::RunImpl(
           if (final_d == Decision::Direction::kMoveOutOfBranch) {
             for (int i = 0; i < to_move_out.size(); ++i) {
               std::vector<Boundary>& m = to_move_out[i];
-              std::for_each(m.begin(), m.end(), update_boundary);
+              absl::c_for_each(m, update_boundary);
             }
             for (int i = 0; i < new_boundaries_for_moveout.size(); ++i) {
               std::vector<Boundary>& m = new_boundaries_for_moveout[i];
-              std::for_each(m.begin(), m.end(), update_boundary);
+              absl::c_for_each(m, update_boundary);
             }
           }
         }

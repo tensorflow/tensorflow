@@ -3487,9 +3487,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         continue;
       }
 
-      if (std::none_of(instruction->while_body()->instructions().begin(),
-                       instruction->while_body()->instructions().end(),
-                       config_.should_process)) {
+      if (absl::c_none_of(instruction->while_body()->instructions(),
+                          config_.should_process)) {
         continue;
       }
       VLOG(1) << "Pipelinable while: " << instruction->name();

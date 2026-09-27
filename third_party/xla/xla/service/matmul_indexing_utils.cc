@@ -293,7 +293,7 @@ std::optional<std::vector<int64_t>> DotOperandDims::PermuteToConsecutive(
 
   const auto& dims = dim_numbers_[category];
   std::vector<int64_t> permutation(shape_.dimensions().size());
-  std::iota(permutation.begin(), permutation.end(), 0);
+  absl::c_iota(permutation, 0);
   // Partition into non-category and category dimensions, preserving relative
   // order.
   auto dims_begin = absl::c_stable_partition(permutation, [&dims](int64_t dim) {

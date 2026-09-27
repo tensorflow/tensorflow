@@ -658,14 +658,13 @@ void AppendToWhileLoopOriginalValue(
     // an original value.
     if (old_original_value == nullptr) {
       bool has_original_value = false;
-      std::for_each(new_while_input_tuple_elements.begin(),
-                    new_while_input_tuple_elements.end(),
-                    [&has_original_value](const HloInstruction* instr) {
-                      has_original_value |=
-                          (instr != nullptr &&
-                           instr->original_value() != nullptr &&
-                           !instr->original_value()->IsEmpty());
-                    });
+      absl::c_for_each(new_while_input_tuple_elements,
+                       [&has_original_value](const HloInstruction* instr) {
+                         has_original_value |=
+                             (instr != nullptr &&
+                              instr->original_value() != nullptr &&
+                              !instr->original_value()->IsEmpty());
+                       });
       if (!has_original_value) {
         return;
       }

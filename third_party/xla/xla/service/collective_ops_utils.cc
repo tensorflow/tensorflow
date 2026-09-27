@@ -1130,7 +1130,7 @@ bool NcclSymmetricBuffersSpec::IsEnabled(const HloInstruction& inst) const {
     return match;
   };
 
-  if (std::any_of(filters_.begin(), filters_.end(), filter_matches)) {
+  if (absl::c_any_of(filters_, filter_matches)) {
     return true;
   }
 
