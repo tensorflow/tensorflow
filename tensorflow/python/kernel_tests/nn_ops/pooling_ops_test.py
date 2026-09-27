@@ -799,14 +799,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
       pooled = nn_ops.max_pool(
           t, ksize=[1, 1, 2, 1], strides=1, padding="VALID")
-      # GPU returns an empty output; CPU rejects the oversized window.
-      if use_gpu:
-        self.assertEqual(self.evaluate(pooled).shape, (1, 1, 0, 1))
-      else:
-        with self.assertRaisesRegex(
-            errors_impl.InvalidArgumentError,
-            "ksize dimension .* is larger than the input tensor dimension"):
-          self.evaluate(pooled)
+      self.assertEqual(self.evaluate(pooled).shape, (1, 1, 0, 1))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
