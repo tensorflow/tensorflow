@@ -20,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
@@ -145,6 +147,15 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   bool use_experimental_tiling_;
   bool enable_same_shape_multi_output_fusion_;
 };
+
+namespace internal {
+
+// Precomputes FLOPs per element for all instructions in the fusion adaptor.
+absl::flat_hash_map<const HloInstruction*, int64_t> PrecomputeFlopsMap(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn);
+
+}  // namespace internal
 
 }  // namespace gpu
 }  // namespace xla

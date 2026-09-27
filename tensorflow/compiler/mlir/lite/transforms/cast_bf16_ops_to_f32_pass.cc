@@ -68,11 +68,17 @@ class CastBf16OpsToF32 : public RewritePattern {
     // Skip cast ops, constants, zero-operand ops, terminators, return-like ops,
     // region-bearing ops (e.g. tfl.while, tfl.if), and call ops to prevent type
     // mismatches with nested block arguments or function signatures.
+    //
+    // stablehlo.composite is also skipped: its operand/result types must stay
+    // in sync with its decomposition function's signature, which this pass does
+    // not rewrite. It is matched by name because this pass intentionally does
+    // not depend on the StableHLO dialect.
     if (isa<mlir::TFL::CastOp>(op) || op.hasTrait<OpTrait::ConstantLike>() ||
         op.getName().hasTrait<OpTrait::ZeroOperands>() ||
         op.hasTrait<OpTrait::IsTerminator>() ||
         op.hasTrait<OpTrait::ReturnLike>() || op.getNumRegions() > 0 ||
-        isa<CallOpInterface>(op)) {
+        isa<CallOpInterface>(op) ||
+        op.getName().getStringRef() == "stablehlo.composite") {
       return failure();
     }
     for (Value input : op.getOperands()) {

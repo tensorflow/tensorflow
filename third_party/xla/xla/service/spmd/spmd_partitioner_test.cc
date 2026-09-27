@@ -18542,6 +18542,26 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dims={manual}}
+  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
+  ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual,unreduced}}
+})";
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/4, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, UnreducedReduce) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -19243,6 +19263,26 @@ ENTRY entry {
   EXPECT_THAT(module->spmd_parameters_shardings(),
               Each(*ParseSharding("{{mesh['x'=2] [], unreduced={'x'}}, "
                                   "{mesh['x'=2] [], unreduced={'x'}}}")));
+}
+
+TEST_F(SpmdPartitioningV3Test, SubgroupUnreducedAndManualV3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={mesh['x'=2,'y'=2] [{},{'y'}], manual={'x'}}
+  b = f32[1024,256]{1,0} parameter(1), sharding={mesh['x'=2,'y'=2] [{'y'},{}], manual={'x'}}
+  ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={mesh['x'=2,'y'=2] [{},{}], unreduced={'y'}, manual={'x'}}
+})";
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/4, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
 }
 
 TEST_F(SpmdPartitioningV3Test, PatternMatchMergeNamedSharding) {
