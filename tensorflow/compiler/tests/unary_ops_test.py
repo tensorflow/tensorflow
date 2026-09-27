@@ -346,14 +346,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
             x, -1.0, 1.0, num_bits=num_bits, signed_input=True
         )
 
-      with self.session() as session:
-        with self.test_scope():
-          x = array_ops.placeholder(dtypes.float32, [4], name="a")
-          output = quantize_and_dequantize_v3(x)
+      with self.test_scope():
+        x = np.array([-1, -0.5, 0, 0.3], dtype=np.float32)
         with self.assertRaisesRegex(
             errors.InvalidArgumentError, "num_bits is out of range"
         ):
-          session.run(output, {x: np.array([-1, -0.5, 0, 0.3], np.float32)})
+          self.evaluate(quantize_and_dequantize_v3(x))
 
   def testComplexOps(self):
     for dtype in self.complex_types:
