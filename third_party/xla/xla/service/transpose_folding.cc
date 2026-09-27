@@ -122,10 +122,8 @@ absl::Status FoldTransposeIntoDot(InstructionOperandsPair& pair) {
       rhs = rhs->mutable_operand(0);
     }
   }
-  HloInstruction* new_dot =
-      dot->parent()->AddInstruction(HloInstruction::CreateDot(
-          dot->shape(), lhs, rhs, new_dot_dims, dot->precision_config()));
-  dot->SetupDerivedInstruction(new_dot);
+  HloInstruction* new_dot = dot->AddInstruction(HloInstruction::CreateDot(
+      dot->shape(), lhs, rhs, new_dot_dims, dot->precision_config()));
   return dot->parent()->ReplaceInstruction(dot, new_dot);
 }
 
@@ -229,8 +227,9 @@ absl::StatusOr<bool> TransposeFolding::RunImpl(
   FunctionVisitor visit_fn([this, &foldable_dots, &foldable_convolutions](
                                HloInstruction* instruction) {
     if (instruction->opcode() == HloOpcode::kDot) {
-      // Don't fold dots with a 1D operand.
-      if ((instruction->operand(0)->shape().dimensions().size() < 2) ||
+      // Don't fold dots with extra scaling/sparsity operands or a 1D operand.
+      if (instruction->operand_count() > 2 ||
+          (instruction->operand(0)->shape().dimensions().size() < 2) ||
           (instruction->operand(1)->shape().dimensions().size() < 2)) {
         return absl::OkStatus();
       }

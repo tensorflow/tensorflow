@@ -229,12 +229,11 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
         canonical_rhs_shape.is_dynamic_dimension(rhs_non_contracting_dim));
   }
 
-  HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
+  HloInstruction* dot = original_dot->AddInstruction(HloInstruction::CreateDot(
       ShapeUtil::MakeShape(original_dot->shape().element_type(),
                            canonical_dot_dims, canonical_dot_dynamic_dims),
       reshaped_lhs, reshaped_rhs, canonical_dnums,
       original_dot->precision_config()));
-  original_dot->SetupDerivedInstruction(dot);
 
   std::unique_ptr<HloInstruction> replacement =
       HloInstruction::CreateReshape(original_dot->shape(), dot);

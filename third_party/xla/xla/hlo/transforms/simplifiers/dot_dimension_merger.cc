@@ -137,12 +137,9 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
                      MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
 
     Shape new_dot_shape = merge_batch_dims(dot->shape(), /*batch_dim=*/0);
-    HloInstruction* new_dot = dot->parent()->AddInstruction(
-        HloInstruction::CreateDot(new_dot_shape, reshaped_lhs, reshaped_rhs,
-                                  new_dot_dimension_numbers,
-                                  dot->precision_config()),
-        &dot->metadata());
-    dot->SetupDerivedInstruction(new_dot);
+    HloInstruction* new_dot = dot->AddInstruction(HloInstruction::CreateDot(
+        new_dot_shape, reshaped_lhs, reshaped_rhs, new_dot_dimension_numbers,
+        dot->precision_config()));
 
     std::unique_ptr<HloInstruction> out_reshape =
         HloInstruction::CreateReshape(dot->shape(), new_dot);

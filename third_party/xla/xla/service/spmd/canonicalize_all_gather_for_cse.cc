@@ -92,12 +92,10 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     std::optional<int64_t> new_channel_id =
         ag->channel_id() ? std::make_optional(this->NextChannelId())
                          : std::nullopt;
-    HloInstruction* new_ag =
-        comp->AddInstruction(HloInstruction::CreateAllGather(
-            new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
-            ag->device_list(), ag->constrain_layout(), new_channel_id,
-            ag->use_global_device_ids()));
-    ag->SetupDerivedInstruction(new_ag);
+    HloInstruction* new_ag = ag->AddInstruction(HloInstruction::CreateAllGather(
+        new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
+        ag->device_list(), ag->constrain_layout(), new_channel_id,
+        ag->use_global_device_ids()));
     HloInstruction* new_formatting = comp->AddInstruction(
         HloInstruction::CreateReshape(ag->shape(), new_ag));
     ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));

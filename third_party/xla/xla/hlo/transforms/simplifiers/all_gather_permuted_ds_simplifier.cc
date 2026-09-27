@@ -84,7 +84,6 @@ AllGatherDynamicSlicePermutedOffsetSimplifierVisitor::HandleDynamicSlice(
         dynamic_slice->AddInstruction(HloInstruction::CreateCollectivePermute(
             dynamic_slice->shape(), all_gather->mutable_operand(0),
             offset_spec->permutation_pairs, all_gather->channel_id()));
-    dynamic_slice->SetupDerivedInstruction(cp);
     CopyCollectiveGroupKey(*all_gather, *cp);
     return ReplaceInstruction(dynamic_slice, cp,
                               /*preserve_frontend_attributes=*/false);

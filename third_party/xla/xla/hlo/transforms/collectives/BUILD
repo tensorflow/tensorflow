@@ -1052,6 +1052,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "all_to_all_decomposer_test",
+    srcs = ["all_to_all_decomposer_test.cc"],
+    deps = [
+        ":all_to_all_decomposer",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "all_gather_decomposer",
     srcs = ["all_gather_decomposer.cc"],
