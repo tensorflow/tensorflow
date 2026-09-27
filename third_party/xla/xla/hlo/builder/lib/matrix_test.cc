@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -327,6 +328,40 @@ TEST_F(MatrixTest, NormalizeEinsumString) {
   EXPECT_EQ(NormalizeEinsumString("ab,dc"), "ab,dc->abcd");
   EXPECT_EQ(NormalizeEinsumString("a,b"), "a,b->ab");
   EXPECT_EQ(NormalizeEinsumString("...ba,ca..."), "...ba,ca...->...bc");
+}
+
+TEST_F(MatrixTest, EinsumIncompatibleContractingDims) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<float>(&builder, {{1.0, 2.0, 3.0, 4.0}});
+  auto b =
+      ConstantR2<float>(&builder, {{1.0}, {2.0}, {3.0}, {4.0}, {5.0}, {6.0}});
+  Einsum(a, b, "ab,bc->ac");
+  EXPECT_FALSE(builder.GetCurrentStatus().ok());
+}
+
+TEST_F(MatrixTest, BatchDotIncompatibleContractingDims) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<float>(&builder, {{1.0, 2.0, 3.0, 4.0}});
+  auto b =
+      ConstantR2<float>(&builder, {{1.0}, {2.0}, {3.0}, {4.0}, {5.0}, {6.0}});
+  BatchDot(a, b);
+  EXPECT_FALSE(builder.GetCurrentStatus().ok());
+}
+
+TEST_F(MatrixTest, EinsumIncompatibleBatchDims) {
+  XlaBuilder builder(TestName());
+  auto a = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3, 2, 2}), "a");
+  auto b = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 2, 2}), "b");
+  Einsum(a, b, "...ij,...jk->...ik");
+  EXPECT_FALSE(builder.GetCurrentStatus().ok());
+}
+
+TEST_F(MatrixTest, EinsumBroadcastingContractingDims) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<float>(&builder, {{1.0}});
+  auto b = ConstantR2<float>(&builder, {{1.0}, {2.0}, {3.0}});
+  Einsum(a, b, "ab,bc->ac");
+  EXPECT_TRUE(builder.GetCurrentStatus().ok());
 }
 
 }  // namespace
