@@ -131,7 +131,6 @@ class DecodeCompressedOp : public OpKernel {
       // accepted and one that is even one byte longer is correctly
       // rejected - reading exactly the cap would make these two cases
       // indistinguishable.
-      constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
       absl::Status result =
           zlib_stream.ReadNBytes(kMaxDecompressedBytes + 1, &output);
 
@@ -144,7 +143,8 @@ class DecodeCompressedOp : public OpKernel {
 
       if (result.ok()) {
         // Read exactly limit + 1 bytes, meaning the stream is larger than
-        // 1GB.
+        // 1GB. Free the oversized buffer before propagating the error.
+        output.clear();
         return absl::InvalidArgumentError(
             "Decompressed size exceeds 1GB limit");
       }
@@ -172,7 +172,7 @@ class DecodeCompressedOp : public OpKernel {
             "Failed to determine decompressed size");
       }
 
-      if (max_decompressed_size > 1024 * 1024 * 1024) {
+      if (max_decompressed_size > kMaxDecompressedBytes) {
         ZSTD_freeDCtx(decompress_ctx);
         return absl::InvalidArgumentError(
             "Decompressed size exceeds 1GB limit");
@@ -220,6 +220,8 @@ class DecodeCompressedOp : public OpKernel {
 
  private:
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
+  // Maximum decompressed size accepted for every compression type.
+  static constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
   std::string compression_type_;
 };
 

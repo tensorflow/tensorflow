@@ -57,7 +57,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "decode_compressed_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["decode_compressed_op_test.py"],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
