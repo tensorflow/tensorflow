@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
