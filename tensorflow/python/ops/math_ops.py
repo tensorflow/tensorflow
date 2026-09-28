@@ -4510,8 +4510,8 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
   leads to a different and slightly less precise computation.
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float16`, `float32`,
-      `float64`.
+    x: A `Tensor`. Must be one of the following types: `bfloat16`, `float16`,
+      `float32`, `float64`.
     axis: A `Tensor` of type `int32` or `int64` (default: 0). Must be in the
       range `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumulative log-sum-exp.

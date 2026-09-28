@@ -144,19 +144,25 @@ struct LogSumExpReducer {
     auto add = Eigen::internal::scalar_sum_op<T>();
 
     using Eigen::internal::pexp;
+    using Eigen::internal::pset1;
     using Eigen::internal::psub;
 
     // `ma = max(x1, ..., xn)`
-    // If the max of all of the `xi` is `-infinity` then the result is
-    // -infinity. If the max is larger than `-infinity` then it's safe to use
-    // for normalization even if the other elements are `-infinity`.
+    // If the max of all of the `xi` is `-infinity` or `+infinity` then the
+    // result is that infinity, and normalizing by it would compute
+    // `inf - inf = NaN`. Otherwise it's safe to use for normalization even if
+    // the other elements are `-infinity`.
     //
     // `logsumexp(x1, ..., xn) = ma + log (exp(x1 - ma) + ... + exp(xn - ma))`
     auto ma = max_reducer.finalizeBoth(saccum, vaccum);
-    auto logsumexp = add(log(sum_reducer.finalizeBoth(
-                             exp(saccum - ma), pexp(psub(vaccum, pset1(ma))))),
-                         ma);
-    return cmp_lt(ma, Eigen::NumTraits<T>::lowest()) ? initialize() : logsumexp;
+    auto logsumexp =
+        add(log(sum_reducer.finalizeBoth(
+                exp(saccum - ma), pexp(psub(vaccum, pset1<Packet>(ma))))),
+            ma);
+    return (cmp_lt(ma, Eigen::NumTraits<T>::lowest()) ||
+            cmp_lt(Eigen::NumTraits<T>::highest(), ma))
+               ? ma
+               : logsumexp;
   }
 };
 

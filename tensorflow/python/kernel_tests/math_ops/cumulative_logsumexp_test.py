@@ -235,6 +235,25 @@ class CumulativeLogsumexpTest(test.TestCase):
           )
           self.assertEqual(0.0, np.exp(float(result[0])))
 
+  def testSingleElementAndEmpty(self):
+    # A single NaN reaches its own inclusive output, while its exclusive
+    # output is the identity, and an empty input gives an empty output.
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor([np.nan], dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x_tf))
+          self.assertTrue(np.isnan(result[0]))
+
+          result = self.evaluate(
+              math_ops.cumulative_logsumexp(x_tf, exclusive=True)
+          )
+          self.assertEqual(0.0, np.exp(float(result[0])))
+
+          empty_tf = ops.convert_to_tensor([], dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(empty_tf))
+          self.assertEqual((0,), result.shape)
+
 
 if __name__ == '__main__':
   test.main()
