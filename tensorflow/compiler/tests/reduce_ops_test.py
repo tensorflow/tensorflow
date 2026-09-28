@@ -221,6 +221,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
 
   def testReduceSumWithDuplicateAxesAutoClustering(self, index_dtype):
+    # Auto-clustering on TPU goes through a different compilation path that
+    # does not hit the MLIR lowering under test here, so the InvalidArgument
+    # raised by GenericConvertReductionOp is never surfaced to this test.
+    if self.device == 'TPU':
+      self.skipTest('Test only covers the CPU/GPU auto-clustering path.')
     # Auto-clustering must reject duplicate axes just like eager execution
     # and jit_compile=True do. The input is the one from GitHub issue
     # 119360: with all-ones dimensions the unfixed lowering silently
