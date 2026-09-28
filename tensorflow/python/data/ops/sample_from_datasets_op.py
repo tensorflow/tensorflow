@@ -20,6 +20,7 @@ from tensorflow.python.data.ops import map_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
@@ -64,20 +65,19 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       # Use the given `weights` as the probability of choosing the respective
       # input.
       if isinstance(weights, tensor.Tensor):
-        # Use get_static_value to safely retrieve constant tensor values in
-        # both eager and graph/tf.function contexts. If the weights are
-        # statically known (e.g. tf.constant), filter zero-weight datasets
-        # to prevent an infinite loop in directed_interleave when a zero-
-        # weight dataset is never sampled but stop_on_empty_dataset=False.
-        static_weights = ops.get_static_value(weights)
+        # Use tensor_util.constant_value to safely retrieve statically-known
+        # tensor values in both eager and graph/tf.function contexts.
+        # If the weights are statically known (e.g. tf.constant), filter
+        # zero-weight datasets to prevent an infinite loop in
+        # directed_interleave when stop_on_empty_dataset=False.
+        static_weights = tensor_util.constant_value(weights)
         if static_weights is not None:
           weights_list = static_weights.tolist()
           datasets, weights = _skip_datasets_with_zero_weight(
               datasets, weights_list)
-        weights = ops.convert_to_tensor(weights, name="weights")
       else:
         datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
-        weights = ops.convert_to_tensor(weights, name="weights")
+      weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):
         raise TypeError(f"Invalid `weights`. `weights` type must be either "
                         f"`tf.float32` or `tf.float64` but is "
