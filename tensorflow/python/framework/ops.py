@@ -5858,15 +5858,10 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       old_name = ctx.scope_name
       name = self._name
       if name:
-        regex = _VALID_SCOPE_NAME_REGEX if old_name else _VALID_OP_NAME_REGEX
-        if not regex.match(name):
-          if old_name:
-            raise ValueError(
-                f"'{name}' is not a valid scope name. A scope name has to match "
-                f"the following pattern: {regex.pattern}")
+        if not _VALID_SCOPE_NAME_REGEX.match(name):
           raise ValueError(
-              f"'{name}' is not a valid root scope name. A root scope name has "
-              f"to match the following pattern: {regex.pattern}")
+              f"'{name}' is not a valid scope name. A scope name has to match "
+              f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}")
       if not name:
         scope_name = ""
       elif name[-1] == "/":
