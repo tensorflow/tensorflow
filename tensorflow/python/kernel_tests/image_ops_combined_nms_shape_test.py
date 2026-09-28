@@ -44,8 +44,9 @@ class CombinedNmsShapeTest(test.TestCase):
       image_ops_impl.combined_non_max_suppression(boxes, scores, 10, 10)
 
   def test_wrong_dynamic_rank_triggers_kernel_validation(self):
-    # Unknown-rank input signatures bypass static shape inference, so the
-    # rank checks in the C++ kernel are what raises here.
+    # Unknown-rank input signatures skip static shape inference at trace time,
+    # so the rank checks in the C++ kernel raise here. Some execution modes
+    # still infer shapes when the call op is created and raise ValueError.
     @def_function.function(
         input_signature=[
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
@@ -60,14 +61,16 @@ class CombinedNmsShapeTest(test.TestCase):
     boxes = random_ops.random_uniform([4, 10, 4])  # rank-3, must be rank-4.
     scores = random_ops.random_uniform([4, 10, 1])
     with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, "boxes must be 4-D"
+        (errors_impl.InvalidArgumentError, ValueError),
+        "(boxes must be 4-D|Shape must be rank 4)",
     ):
       run_nms(boxes, scores)
 
     boxes_valid = random_ops.random_uniform([4, 10, 1, 4])
     scores_invalid = random_ops.random_uniform([4, 10])  # rank-2.
     with self.assertRaisesRegex(
-        errors_impl.InvalidArgumentError, "scores must be 3-D"
+        (errors_impl.InvalidArgumentError, ValueError),
+        "(scores must be 3-D|Shape must be rank 3)",
     ):
       run_nms(boxes_valid, scores_invalid)
 
