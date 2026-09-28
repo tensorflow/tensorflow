@@ -82,18 +82,28 @@ class SummaryV1AudioOpTest(test.TestCase):
 
   def testWriteAudioSummaryRejectsScalarTensor(self):
     scalar_tensor = np.float32(1.0)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "at least 2"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
       self._WriteAudioSummary(scalar_tensor)
 
   def testWriteAudioSummaryRejects1DTensor(self):
     one_d_tensor = np.array([1.0, 2.0], dtype=np.float32)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "at least 2"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
       self._WriteAudioSummary(one_d_tensor)
 
   def testWriteAudioSummaryAccepts2DTensor(self):
     two_d_tensor = np.zeros((1, 100), dtype=np.float32)
     # no exception should be raised
     self._WriteAudioSummary(two_d_tensor)
+
+  def testWriteAudioSummaryAccepts3DTensor(self):
+    three_d_tensor = np.zeros((1, 100, 2), dtype=np.float32)
+    # no exception should be raised
+    self._WriteAudioSummary(three_d_tensor)
+
+  def testWriteAudioSummaryRejects4DTensor(self):
+    four_d_tensor = np.zeros((1, 10, 2, 2), dtype=np.float32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
+      self._WriteAudioSummary(four_d_tensor)
 
 
 if __name__ == "__main__":
