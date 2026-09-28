@@ -193,9 +193,11 @@ class CumulativeLogsumexpTest(test.TestCase):
           self.assertAllClose(2.0, result[2])
 
   def testNaNPropagationExclusive(self):
-    # An exclusive scan starts from the -inf identity and leaves each element
-    # out of its own output, so the NaN only reaches the outputs after it
-    # (before it, in reverse), and the outputs up to it keep their values.
+    # An exclusive scan starts from the identity and leaves each element out
+    # of its own output, so the NaN only reaches the outputs after it (before
+    # it, in reverse), and the outputs up to it keep their values. The
+    # identity is -inf on CPU but the lowest finite value on GPU, so check it
+    # in exp space, where both are 0, as _testLogSumExp does.
     for dtype in self.valid_dtypes:
       for use_gpu in (True, False):
         with self.cached_session(use_gpu=use_gpu):
@@ -208,7 +210,8 @@ class CumulativeLogsumexpTest(test.TestCase):
               np.isnan(result),
               msg=f'Expected NaN only at index 2, got {result}',
           )
-          self.assertAllEqual([-np.inf, 1.0], result[:2])
+          self.assertEqual(0.0, np.exp(float(result[0])))
+          self.assertEqual(1.0, result[1])
 
           result = self.evaluate(
               math_ops.cumulative_logsumexp(x_tf, exclusive=True, reverse=True)
@@ -218,7 +221,8 @@ class CumulativeLogsumexpTest(test.TestCase):
               np.isnan(result),
               msg=f'Expected NaN only at index 0, got {result}',
           )
-          self.assertAllEqual([2.0, -np.inf], result[1:])
+          self.assertEqual(2.0, result[1])
+          self.assertEqual(0.0, np.exp(float(result[2])))
 
           x_tf = ops.convert_to_tensor([np.nan, np.nan], dtype=dtype)
           result = self.evaluate(
@@ -227,9 +231,9 @@ class CumulativeLogsumexpTest(test.TestCase):
           self.assertAllEqual(
               [False, True],
               np.isnan(result),
-              msg=f'Expected -inf then NaN for all-NaN input, got {result}',
+              msg=f'Expected NaN only at index 1, got {result}',
           )
-          self.assertEqual(-np.inf, result[0])
+          self.assertEqual(0.0, np.exp(float(result[0])))
 
 
 if __name__ == '__main__':
