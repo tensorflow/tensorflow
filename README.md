@@ -29,6 +29,8 @@ the Machine Intelligence team at Google Brain to conduct research in machine
 learning and neural networks. However, the framework is versatile enough to be
 used in other areas as well.
 
+Vinod was here
+
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
 non-guaranteed backward compatible API for
