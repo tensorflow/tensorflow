@@ -346,7 +346,8 @@ using ValidateSparseTensorTest = ::testing::TestWithParam<IndexValidation>;
 
 TEST_P(ValidateSparseTensorTest, ValidSparseTensorPasses) {
   constexpr int kNumNonZeros = 1000;
-  const TensorShape kTensorShapes[] = {{3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
+  const TensorShape kTensorShapes[] = {
+      {}, {3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
   const IndexValidation index_validation = GetParam();
   const bool ordered = (index_validation == IndexValidation::kOrdered);
   for (const TensorShape& test_shape : kTensorShapes) {
@@ -356,26 +357,6 @@ TEST_P(ValidateSparseTensorTest, ValidSparseTensorPasses) {
     TF_EXPECT_OK((ValidateSparseTensor<int64_t>(indices, values, shape,
                                                 index_validation)));
   }
-}
-
-TEST_P(ValidateSparseTensorTest, Rank0TensorFails) {
-  // Index-validating modes reject rank-0 sparse tensors because callers
-  // assume rank >= 1.
-  const IndexValidation index_validation = GetParam();
-  // None validation skips the index loop entirely, so rank-0 is allowed there.
-  if (index_validation == IndexValidation::kNone) {
-    return;
-  }
-  // Build a rank-0 sparse tensor: indices shape [1, 0], values shape [1],
-  // dense_shape shape [0].
-  const Tensor indices = Tensor(DT_INT64, TensorShape({1, 0}));
-  const Tensor values = Tensor(DT_FLOAT, TensorShape({1}));
-  const Tensor shape = Tensor(DT_INT64, TensorShape({0}));
-  EXPECT_THAT(
-      (ValidateSparseTensor<int64_t>(indices, values, shape, index_validation)),
-      absl_testing::StatusIs(
-          error::INVALID_ARGUMENT,
-          MatchesRegex("Sparse tensor must have at least 1 dimension.*")));
 }
 
 TEST_P(ValidateSparseTensorTest, InvalidIndicesRankFails) {

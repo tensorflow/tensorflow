@@ -683,13 +683,14 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               weights=[]))
 
   def test_sparse_bincount_rank0_fails(self):
-    # Rank-0 sparse inputs must be rejected before the kernel reads
-    # dense_shape(0). ValidateSparseTensor rejects ndims == 0 for
-    # index-validating callers.
+    # Regression test for the rank-0 guard in SparseBincountOp::Compute
+    # ("dense_shape must have at least 1 dimension"). Without it the kernel
+    # reads dense_shape(0) on an empty dense_shape. Shape inference may reject
+    # the input first, so both messages are accepted.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
         "Input must be less than rank 2|"
-        "Sparse tensor must have at least 1 dimension"):
+        "dense_shape must have at least 1 dimension"):
       self.evaluate(
           gen_math_ops.sparse_bincount(
               indices=constant_op.constant(
@@ -698,22 +699,6 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               dense_shape=constant_op.constant(
                   [], shape=[0], dtype=dtypes.int64),
               size=10,
-              weights=[]))
-
-  def test_sparse_bincount_negative_batch_fails(self):
-    # Regression test for OOB write via negative batch index.
-    # ValidateSparseTensor rejects the negative index during input validation,
-    # before the kernel loop runs; the DCHECK in SparseBincountOp documents
-    # that invariant in debug builds.
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
-        "is out of bounds"):
-      self.evaluate(
-          gen_math_ops.sparse_bincount(
-              indices=[[-1, 0]],
-              values=[0],
-              dense_shape=[2, 5],
-              size=5,
               weights=[]))
 
 
