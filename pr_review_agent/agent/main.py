@@ -244,7 +244,6 @@ async def main():
         try:
             response = await agent.run_pr_review(
                 model_name=model_name,
-                pr_number=pr_number,
                 category=category,
                 reason=reason,
                 focus_areas=focus_areas,

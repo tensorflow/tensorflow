@@ -706,7 +706,6 @@ def make_review_agent(
 
 async def run_pr_review(
     model_name: str,
-    pr_number: int | None = None,
     category: str = "",
     reason: str = "",
     focus_areas: str = "",
@@ -719,7 +718,7 @@ async def run_pr_review(
     if commit_sha:
         _VERIFIED_HEAD_SHA = commit_sha
 
-    trusted_pr_number = _get_trusted_pr_number() or pr_number
+    trusted_pr_number = _get_trusted_pr_number()
     review_agent = make_review_agent(
         model_name=model_name,
         category=category,
