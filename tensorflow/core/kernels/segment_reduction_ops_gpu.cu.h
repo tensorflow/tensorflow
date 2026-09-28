@@ -125,14 +125,17 @@ __global__ void SortedSegmentReductionCustomKernel(
       // to global memory if we move to another segment. Otherwise we can keep
       // accumulating locally.
       if (current_output_segment_id > last_output_segment_id) {
-        const Index output_index =
-            last_output_segment_id * inner_dim_size + segment_offset;
-        // Decide whether to write result to global memory using atomic
-        // operations.
-        if (last_output_segment_id == first_segment_id) {
-          AtomicReductionF()(output + output_index, reduce_res);
-        } else {
-          ReductionF()(output + output_index, reduce_res);
+        if (last_output_segment_id >= 0 &&
+            last_output_segment_id < output_outer_dim_size) {
+          const Index output_index =
+              last_output_segment_id * inner_dim_size + segment_offset;
+          // Decide whether to write result to global memory using atomic
+          // operations.
+          if (last_output_segment_id == first_segment_id) {
+            AtomicReductionF()(output + output_index, reduce_res);
+          } else {
+            ReductionF()(output + output_index, reduce_res);
+          }
         }
         reduce_res = initial_value;
       }
@@ -145,9 +148,12 @@ __global__ void SortedSegmentReductionCustomKernel(
     // For the last result in a strip, always write using atomic operations
     // due to possible race conditions with threads computing
     // the following strip.
-    const Index output_index =
-        last_output_segment_id * inner_dim_size + segment_offset;
-    AtomicReductionF()(output + output_index, reduce_res);
+    if (last_output_segment_id >= 0 &&
+        last_output_segment_id < output_outer_dim_size) {
+      const Index output_index =
+          last_output_segment_id * inner_dim_size + segment_offset;
+      AtomicReductionF()(output + output_index, reduce_res);
+    }
   }
 }
 
@@ -760,33 +766,6 @@ struct ReduceType<functor::Sum, Eigen::bfloat16> {
 };
 
 namespace functor {
-
-template <typename Index>
-__global__ void ValidateSegmentIdsKernel(int64_t size, const Index* segment_ids,
-                                         int* invalid_segment_ids) {
-  for (int64_t i : GpuGridRangeX(size)) {
-    const Index segment_id = segment_ids[i];
-    if (segment_id < 0 || (i > 0 && segment_id < segment_ids[i - 1])) {
-      GpuAtomicMax(invalid_segment_ids, 1);
-    }
-  }
-}
-
-template <typename T, typename Index, typename InitialValueF,
-          typename EmptySegmentValueF, typename ReductionF>
-absl::Status SegmentReductionFunctor<T, Index, InitialValueF,
-                                     EmptySegmentValueF, ReductionF>::
-    ValidateSegmentIds(const GPUDevice& d,
-                       typename TTypes<Index>::ConstFlat segment_ids,
-                       int* invalid_segment_ids) {
-  if (segment_ids.size() == 0) return absl::OkStatus();
-  TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
-                      GetGpuLaunchConfig64(segment_ids.size(), d));
-  return GpuLaunchKernel(ValidateSegmentIdsKernel<Index>, config.block_count,
-                         config.thread_per_block, 0, d.stream(),
-                         segment_ids.size(), segment_ids.data(),
-                         invalid_segment_ids);
-}
 
 template <typename T, typename Index, typename InitialValueF,
           typename EmptySegmentValueF, typename ReductionF>

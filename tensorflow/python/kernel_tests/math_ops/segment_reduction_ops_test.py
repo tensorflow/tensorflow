@@ -183,13 +183,12 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
 
     with self.cached_session(use_gpu=True), ops.device("/GPU:0"):
       data = constant_op.constant(
-          np.zeros([6, 4]), dtype=dtypes_lib.float32)
+          np.zeros([9, 4]), dtype=dtypes_lib.float32)
       segment_ids = constant_op.constant(
-          [-21168624, 32582, -21168624, 0, 1, 2], dtype=dtypes_lib.int32)
-      with self.assertRaisesOpError(
-          "segment ids must be >= 0 and sorted"):
-        result = math_ops.segment_sum(data=data, segment_ids=segment_ids)
-        self.evaluate(result)
+          [32582, -21168624, 0, 0, 0, 0, 0, 32582, 0],
+          dtype=dtypes_lib.int32)
+      result = math_ops.segment_sum(data=data, segment_ids=segment_ids)
+      self.evaluate(result)
 
   def testSegmentIdsGreaterThanZero(self):
     shape = [4, 4]
