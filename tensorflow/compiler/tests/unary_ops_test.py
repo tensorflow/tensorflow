@@ -338,20 +338,30 @@ class UnaryOpsTest(xla_test.XLATestCase):
       )
 
   def testQuantizeAndDequantizeV3InvalidNumBits(self):
-    for num_bits in (0, -1):
+    for signed_input, invalid_num_bits in (
+        (True, (0, -1, 62, 63)),
+        (False, (0, -1, 63, 64)),
+    ):
+      for num_bits in invalid_num_bits:
 
-      @def_function.function(jit_compile=True)
-      def quantize_and_dequantize_v3(x):
-        return array_ops.quantize_and_dequantize_v3(
-            x, -1.0, 1.0, num_bits=num_bits, signed_input=True
-        )
-
-      with self.test_scope():
-        x = np.array([-1, -0.5, 0, 0.3], dtype=np.float32)
-        with self.assertRaisesRegex(
-            errors.InvalidArgumentError, "num_bits is out of range"
+        @def_function.function(jit_compile=True)
+        def quantize_and_dequantize_v3(
+            x, num_bits=num_bits, signed_input=signed_input
         ):
-          self.evaluate(quantize_and_dequantize_v3(x))
+          return array_ops.quantize_and_dequantize_v3(
+              x, -1.0, 1.0, num_bits=num_bits, signed_input=signed_input
+          )
+
+        with self.session() as sess:
+          with self.test_scope():
+            x = array_ops.placeholder(dtypes.float32)
+            output = quantize_and_dequantize_v3(x)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError, "num_bits is out of range"
+          ):
+            sess.run(
+                output, {x: np.array([-1, -0.5, 0, 0.3], dtype=np.float32)}
+            )
 
   def testComplexOps(self):
     for dtype in self.complex_types:
