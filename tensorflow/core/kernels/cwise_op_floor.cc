@@ -17,8 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER4(UnaryOp, CPU, "Floor", functor::floor, float, Eigen::half, bfloat16,
-          double);
+// floor_cpu applies the FTZ/DAZ workaround for negative subnormals on CPU.
+// GPU registration keeps functor::floor (Eigen's scalar_floor_op) because GPU
+// packet types have no integer_packet and GPU kernels do not run under CPU
+// FTZ/DAZ settings.
+REGISTER4(UnaryOp, CPU, "Floor", functor::floor_cpu, float, Eigen::half,
+          bfloat16, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

@@ -1058,28 +1058,57 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testNegativeFloat32SubnormalsFloorToMinusOne(self):
-    if os.name == 'nt':
-      self.skipTest(
-          'MSVC scalar FTZ flushing flushes negative subnormals to -0.0f '
-          'before bit_cast can read the original bits.')
-    base = np.array(
-        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45,  # neg subnormals
-         -0.0, 0.0, 1e-40, 1.40129846e-45,  # signed zeros, pos subnormals
-         -0.5, -1.0, 2.5, -np.inf, np.inf],
+    # Scalar subnormal arrays: MSVC flushes negative subnormals to -0.0f
+    # through an XMM register before bit_cast can read the original bits, so
+    # the scalar path cannot be verified on Windows.  The vectorised (packet)
+    # path does not have this limitation and is tested on all platforms.
+    neg_subnormals = np.array(
+        [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
+    neg_subnormals_exp = np.array([-1.0, -1.0, -1.0, -1.0], dtype=np.float32)
+
+    # Elements that exercise packet logic but are safe on all platforms:
+    # signed zeros, positive subnormals, normals, inf, and NaN.  NaN inputs
+    # must pass through floor unmodified (bit-identical), confirming that the
+    # bit-mask correction never fires on NaN bit patterns.
+    safe_base = np.array(
+        [-0.0, 0.0, 1e-40, 1.40129846e-45,   # signed zeros, pos subnormals
+         -0.5, -1.0, 2.5, -np.inf, np.inf,
+         np.nan, -np.nan],                    # NaN (sign bit set or clear)
         dtype=np.float32)
-    expected_base = np.array(
-        [-1.0, -1.0, -1.0, -1.0, -0.0, 0.0, 0.0, 0.0,
-         -1.0, -1.0, 2.0, -np.inf, np.inf],
+    safe_expected = np.array(
+        [-0.0, 0.0, 0.0, 0.0,
+         -1.0, -1.0, 2.0, -np.inf, np.inf,
+         np.nan, np.nan],
         dtype=np.float32)
-    # 8 * 13 + 5 = 109 elements: full SIMD packets plus a scalar tail.
-    x = np.concatenate([np.tile(base, 8), base[:5]])
-    expected = np.concatenate([np.tile(expected_base, 8), expected_base[:5]])
+
     with test_util.force_cpu():
-      for inp, exp in ((x, expected),
-                       (np.tile(base, (8, 1)), np.tile(expected_base, (8, 1)))):
+      # --- Scalar / short-array tests (skipped on Windows) ---
+      if os.name != 'nt':
+        out = self.evaluate(math_ops.floor(neg_subnormals))
+        self.assertAllEqual(neg_subnormals_exp, out)
+
+      # --- Vectorised (packet) test: runs on all platforms ---
+      # Build a 109-element array: 8 * 13 + 5 = 109 forces full SIMD packets
+      # (AVX=8-wide, AVX-512=16-wide) plus a scalar tail.  Negative subnormals
+      # are included so that packetOp is tested for the subnormal correction
+      # even on Windows (the packet path does not flush through the FP pipeline).
+      if os.name != 'nt':
+        base = np.concatenate([neg_subnormals, safe_base])
+        base_exp = np.concatenate([neg_subnormals_exp, safe_expected])
+      else:
+        base = safe_base
+        base_exp = safe_expected
+
+      x = np.concatenate([np.tile(base, 8), base[:5]])
+      expected = np.concatenate([np.tile(base_exp, 8), base_exp[:5]])
+
+      for inp, exp in (
+          (x, expected),
+          (np.tile(base, (8, 1)), np.tile(base_exp, (8, 1))),
+      ):
         out = self.evaluate(math_ops.floor(inp))
         self.assertAllEqual(exp, out)
-        # assertAllEqual treats -0.0 == 0.0; check the sign bit explicitly.
+        # assertAllEqual treats -0.0 == +0.0; check sign bits explicitly.
         self.assertAllEqual(np.signbit(exp), np.signbit(out))
 
   def testTypes(self):

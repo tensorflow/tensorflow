@@ -953,11 +953,13 @@ struct functor_traits<igamma_op<Scalar>> {
 struct scalar_cpu_floor_float_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
-    // Read the raw bits of x without going through an FP register so that
+    // bit_cast is inside the conditional: evaluated only when r == 0.0f,
+    // allowing fast-path short-circuiting for normal (non-zero) results.
+    // It reads raw bits via memcpy, never through an FP register, so
     // negative subnormals are not flushed to -0.0f under FTZ/DAZ.
-    const uint32_t bits = numext::bit_cast<uint32_t>(x);
-    // bits > 0x80000000u: sign bit set and not -0.0f (0x80000000).
-    return (r == 0.0f && bits > 0x80000000u) ? -1.0f : r;
+    return (r == 0.0f && numext::bit_cast<uint32_t>(x) > 0x80000000u)
+               ? -1.0f
+               : r;
   }
 
   template <typename Packet>
@@ -987,6 +989,38 @@ struct functor_traits<scalar_cpu_floor_float_op> {
     // packetOp uses pfloor (HasRound) and pcmp_eq (HasCmp).
     PacketAccess =
         packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
+  };
+};
+
+// Scalar FTZ/DAZ workaround for types other than float32 (e.g. double,
+// Eigen::half, bfloat16).  The same FTZ/DAZ truncation applies: a negative
+// subnormal is flushed to -0.0 before floor() sees it, so floor() returns
+// -0.0 instead of -1.0.  We fix this by reading the raw bit pattern of x
+// (via bit_cast / memcpy, never through an FP register) and checking whether
+// the value was a negative non-zero: sign bit set AND bits != sign_bit_only.
+//
+// No packetOp is provided here because Eigen's half/bfloat16/double packet
+// types may not carry an integer_packet on all platforms; the scalar path
+// is sufficient for the types registered below.
+template <typename T, typename UInt>
+struct scalar_cpu_floor_fallback_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
+    const T r = numext::floor(x);
+    if (TF_PREDICT_FALSE(r == T(0.0))) {
+      const UInt bits = numext::bit_cast<UInt>(x);
+      const UInt sign_bit = UInt(1) << (sizeof(UInt) * 8 - 1);
+      if (bits > sign_bit) return T(-1.0);
+    }
+    return r;
+  }
+};
+
+template <typename T, typename UInt>
+struct functor_traits<scalar_cpu_floor_fallback_op<T, UInt>> {
+  enum {
+    Cost = functor_traits<scalar_floor_op<T>>::Cost +
+           3 * NumTraits<T>::AddCost,
+    PacketAccess = false,
   };
 };
 
@@ -1191,13 +1225,38 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
 
+// floor_cpu is the CPU-only variant of floor that applies the FTZ/DAZ
+// workaround for negative subnormals.  It is separate from floor<T> to avoid
+// an ODR violation: the GPU translation units see only floor<T> (which uses
+// Eigen's scalar_floor_op<T> without packetOp restrictions), while CPU
+// translation units use floor_cpu<T> which routes float through
+// scalar_cpu_floor_float_op and other types through the scalar fallback.
+//
+// GPU packet types (e.g. float4) have no integer_packet, so
+// scalar_cpu_floor_float_op must never be instantiated in GPU compilation
+// units.  GPU kernels also do not run under CPU FTZ/DAZ settings, so they
+// do not need this workaround.
+//
+// NOTE: Eigen::half is also 16-bit and affected by FTZ/DAZ, but half floor
+// is not yet covered here (tracked as a follow-up).
 #if !defined(EIGEN_GPUCC)
-// The FTZ/DAZ workaround is only needed on CPU.  GPU compilation units keep
-// Eigen's scalar_floor_op<float> because GPU packet types (e.g. float4) have
-// no integer_packet, and GPU kernels do not run with CPU FTZ/DAZ settings.
+template <typename T>
+struct floor_cpu : floor<T> {};
+
 template <>
-struct floor<float>
+struct floor_cpu<float>
     : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
+
+template <>
+struct floor_cpu<double>
+    : base<double,
+           Eigen::internal::scalar_cpu_floor_fallback_op<double, uint64_t>> {};
+
+template <>
+struct floor_cpu<bfloat16>
+    : base<bfloat16,
+           Eigen::internal::scalar_cpu_floor_fallback_op<
+               bfloat16, uint16_t>> {};
 #endif  // !defined(EIGEN_GPUCC)
 
 template <typename T>
