@@ -242,6 +242,25 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           )
       )
 
+  def testSplitsOverflowErrorInt64(self):
+    # Zero-width values let int64 splits reach 2**62 without allocating memory;
+    # gathering the row twice would overflow the int64 output splits.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'exceeds limits of Tsplits'
+    ):
+      self.evaluate(
+          gen_ragged_array_ops.ragged_gather(
+              params_nested_splits=[
+                  constant_op.constant([0, 2**62], dtype=dtypes.int64)
+              ],
+              params_dense_values=array_ops.zeros(
+                  [2**62, 0], dtype=dtypes.uint8
+              ),
+              indices=array_ops.zeros([2], dtype=dtypes.int32),
+              OUTPUT_RAGGED_RANK=1,
+          )
+      )
+
   def testUnknownIndicesRankError(self):
     if context.executing_eagerly():
       return
