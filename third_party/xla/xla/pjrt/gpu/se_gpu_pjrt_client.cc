@@ -804,8 +804,8 @@ void StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice(
 }
 
 void StreamExecutorGpuRawClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
+    LocalDeviceId local_device_id, int memory_kind_id,
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
