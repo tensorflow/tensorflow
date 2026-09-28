@@ -814,20 +814,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     )
     for device in devices:
       with ops.device(device):
-        if context.executing_eagerly():
-          y = nn_ops.max_pool1d(
-              constant_op.constant(input_data),
-              ksize=3,
-              strides=1,
-              padding="VALID",
-          )
-          values = self.evaluate(y)
-        else:
-          # Unknown temporal size avoids graph-mode shape inference rejection.
-          x = array_ops.placeholder(dtypes.float32, shape=[1, None, 3])
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            # Unknown temporal size avoids graph-mode shape inference rejection.
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, 3])
           y = nn_ops.max_pool1d(x, ksize=3, strides=1, padding="VALID")
-          values = self.evaluate(y, feed_dict={x: input_data})
-        self.assertEqual(values.shape, (1, 0, 3))
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 0, 3))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolOversizedWindowReturnsEmpty(self):
@@ -838,21 +836,19 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
     )
     for device in devices:
       with ops.device(device):
-        if context.executing_eagerly():
-          y = nn_ops.max_pool(
-              constant_op.constant(input_data),
-              ksize=[1, 3, 1, 1],
-              strides=[1, 1, 1, 1],
-              padding="VALID",
-          )
-          values = self.evaluate(y)
-        else:
-          x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
           y = nn_ops.max_pool(
               x, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
           )
-          values = self.evaluate(y, feed_dict={x: input_data})
-        self.assertEqual(values.shape, (1, 0, 1, 3))
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 0, 1, 3))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolEmptySpatialDimReturnsEmpty(self):
