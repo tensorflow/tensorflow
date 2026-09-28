@@ -5833,9 +5833,17 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
 
     Raises:
       ValueError: If name is not a string.
+      ValueError: If name contains characters that are not allowed in a scope
+        name (e.g., spaces). The allowed pattern is defined by
+        `_VALID_SCOPE_NAME_REGEX`.
     """
     if not isinstance(name, str):
       raise ValueError("name for name_scope must be a string.")
+    if name and not _VALID_SCOPE_NAME_REGEX.match(name) and name[-1] != "/":
+      raise ValueError(
+          f"'{name}' is not a valid scope name. A scope name has to match "
+          f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}"
+      )
     self._name = name
     self._exit_fns = []
 
