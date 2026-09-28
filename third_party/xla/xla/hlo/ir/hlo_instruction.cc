@@ -124,7 +124,7 @@ void HloInstruction::Users::Clear() {
 
 bool HloInstruction::Users::Contains(const HloInstruction* instruction) const {
   if (user_map_ == nullptr) {
-    return std::find(users_.begin(), users_.end(), instruction) != users_.end();
+    return absl::c_linear_search(users_, instruction);
   }
   return user_map_->contains(instruction);
 }
@@ -150,7 +150,7 @@ void HloInstruction::Users::AddUser(HloInstruction* user) {
 
 int64_t HloInstruction::Users::UserId(HloInstruction* user) {
   if (user_map_ == nullptr) {
-    auto it = std::find(users_.begin(), users_.end(), user);
+    auto it = absl::c_find(users_, user);
     CHECK(it != users_.end());
     return it - users_.begin();
   }
@@ -1235,10 +1235,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      auto operand_vector = all_operands();
       instruction = std::make_unique<HloDotInstruction>(
-          shape, operands(0), operands(1), proto.dot_dimension_numbers(),
-          precision_config);
+          shape, all_operands(), proto.dot_dimension_numbers(),
+          precision_config, proto.sparsity_config(),
+          proto.block_scaling_config());
       break;
     }
     case HloOpcode::kRaggedDot: {
@@ -1797,8 +1797,18 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
-  return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
-                                             precision_config);
+  return CreateDot(shape, {lhs, rhs}, dimension_numbers, precision_config);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config) {
+  return std::make_unique<HloDotInstruction>(shape, operands, dimension_numbers,
+                                             precision_config, sparsity_config,
+                                             block_scaling_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
@@ -2106,9 +2116,9 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
-    const std::string& config) {
+    absl::string_view config) {
   return std::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
-                                                config);
+                                                std::string(config));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateOutfeed(
@@ -2829,7 +2839,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    const std::string& suffix, HloCloneContext* context) const {
+    absl::string_view suffix, HloCloneContext* context) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -3100,7 +3110,7 @@ void HloInstruction::DetachFromOperandsAndUsersOutside(
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
-    const Shape& shape, const std::string& suffix,
+    const Shape& shape, absl::string_view suffix,
     HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
@@ -3113,7 +3123,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const std::string& suffix, HloCloneContext* context) const {
+    absl::string_view suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewShape(shape(), suffix, context);
   return clone;
@@ -3414,12 +3424,9 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
 }
 
 bool HloInstruction::HasConstantOperand() const {
-  for (const HloInstruction* operand : operands_) {
-    if (operand->IsConstant()) {
-      return true;
-    }
-  }
-  return false;
+  return absl::c_any_of(operands_, [](const HloInstruction* operand) {
+    return operand->IsConstant();
+  });
 }
 
 bool HloInstruction::IdenticalSlowPath(
@@ -3608,8 +3615,7 @@ absl::Status HloInstruction::ReplaceUseWithDifferentShape(
   RemoveUser(user);
 
   TF_RET_CHECK(absl::c_count(user->operands_, this) >= 0);
-  std::replace(user->operands_.begin(), user->operands_.end(), this,
-               new_producer);
+  absl::c_replace(user->operands_, this, new_producer);
   new_producer->AddUser(user);
   // Custom fusions may not be able to handle deduplicated operands.
   if (user->opcode() == HloOpcode::kFusion) {
@@ -3825,8 +3831,7 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       // graph. new_producer remains the only user of this instruction.
       new_producer_is_user = true;
     } else {
-      std::replace(user->operands_.begin(), user->operands_.end(), this,
-                   new_producer);
+      absl::c_replace(user->operands_, this, new_producer);
       new_producer->AddUser(user);
       if (user->opcode() == HloOpcode::kFusion) {
         ABSL_RETURN_IF_ERROR(
@@ -4017,7 +4022,7 @@ std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
   while (!dfs.empty() && result.empty()) {
     bool found_next_instr = false;
     auto process_users_or_successors =
-        [&](const std::vector<HloInstruction*>& users_or_successors) {
+        [&](absl::Span<HloInstruction* const> users_or_successors) {
           for (const auto& user : users_or_successors) {
             if (user == child) {
               dfs.push_back(child);
@@ -5879,19 +5884,19 @@ absl::StatusOr<T> StringToEnum(absl::string_view value_name, F enum_to_string,
 }  // namespace
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<RandomAlgorithm>(name, RandomAlgorithmToString,
                                        "algorithm");
 }
 
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<RandomDistribution>(name, RandomDistributionToString,
                                           "distribution");
 }
 
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<PrecisionConfig::Precision>(name, PrecisionToString,
                                                   "precision");
 }
@@ -5913,7 +5918,7 @@ absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
 }
 
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
-    const std::string& name) {
+    absl::string_view name) {
   return StringToEnum<PrecisionConfig::Algorithm>(name, AlgorithmToString,
                                                   "algorithm");
 }
@@ -6289,8 +6294,9 @@ std::string HloInstruction::infeed_config() const {
   return Cast<HloInfeedInstruction>(this)->infeed_config();
 }
 
-void HloInstruction::set_infeed_config(const std::string& config) {
-  return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
+void HloInstruction::set_infeed_config(absl::string_view config) {
+  return Cast<HloInfeedInstruction>(this)->set_infeed_config(
+      std::string(config));
 }
 
 const Shape& HloInstruction::outfeed_shape() const {
@@ -6305,8 +6311,9 @@ const std::string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 
-void HloInstruction::set_outfeed_config(const std::string& config) {
-  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
+void HloInstruction::set_outfeed_config(absl::string_view config) {
+  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(
+      std::string(config));
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
@@ -6462,20 +6469,32 @@ const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
 }
 
 const SparsityConfig& HloInstruction::sparsity_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->sparsity_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->sparsity_config();
 }
 
 void HloInstruction::set_sparsity_config(
     const SparsityConfig& sparsity_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_sparsity_config(sparsity_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
 const BlockScalingConfig& HloInstruction::block_scaling_config() const {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->block_scaling_config();
+  }
   return Cast<HloConvolutionInstruction>(this)->block_scaling_config();
 }
 
 void HloInstruction::set_block_scaling_config(
     const BlockScalingConfig& block_scaling_config) {
+  if (auto d = DynCast<HloDotInstruction>(this)) {
+    return d->set_block_scaling_config(block_scaling_config);
+  }
   Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
       block_scaling_config);
 }

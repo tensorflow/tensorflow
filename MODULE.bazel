@@ -133,6 +133,7 @@ use_repo(
     "nvshmem",
     "onednn",
     "onednn_async",
+    "onednn_async_aarch64",
     "pthreadpool",
     "raft",
     "riegeli",
