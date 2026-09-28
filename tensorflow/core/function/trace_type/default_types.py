@@ -38,6 +38,8 @@ def register_tensor_type(tensor_type):
 
 NanMarker = object()
 
+NoneType = type(None)
+
 
 def is_nan(x):
   """Checks if given value is a Python NaN."""
@@ -45,8 +47,10 @@ def is_nan(x):
   t = type(x)
   if t is float:
     return math.isnan(x)
-  if t is int or t is bool or t is str:
+  if t is int or t is bool or t is str or t is NoneType:
     return False
+  if t is complex:
+    return math.isnan(x.real) or math.isnan(x.imag)
 
   if not isinstance(x, numbers.Number):
     return False
@@ -64,7 +68,7 @@ def _signs(x):
   # This runs for every Python scalar argument of every tf.function call, so
   # check the common exact types before the slower abstract base classes.
   t = type(x)
-  if t is int or t is bool or t is str:
+  if t is int or t is bool or t is str or t is NoneType:
     return None
   if t is float:
     return math.copysign(1.0, x)
@@ -95,7 +99,7 @@ class Literal(trace.TraceType, serialization.Serializable):
     # 0.0 and -0.0 apart. So a Literal only matches values of the same type
     # and sign.
     self._value_type = type(value)
-    self._value_signs = _signs(value)
+    self._value_signs = None if value is NanMarker else _signs(value)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     return self == other

@@ -128,6 +128,21 @@ class DefaultTypesTest(test.TestCase):
         default_types.Literal(complex(0.0, -0.0)),
     )
 
+  def testLiteralNoneAndComplex(self):
+    # None and complex take their own fast paths in is_nan and _signs.
+    none_literal = default_types.Literal(None)
+    self.assertEqual(none_literal, default_types.Literal(None))
+    self.assertNotEqual(none_literal, default_types.Literal(0))
+    self.assertNotEqual(none_literal, default_types.Literal(False))
+
+    complex_literal = default_types.Literal(1 + 2j)
+    self.assertEqual(complex_literal, default_types.Literal(1 + 2j))
+    self.assertNotEqual(complex_literal, default_types.Literal(1 - 2j))
+    # 1 + 0j == 1.0 in Python, but they give tensors of different dtypes.
+    self.assertNotEqual(
+        default_types.Literal(1 + 0j), default_types.Literal(1.0)
+    )
+
   def testLiteralCastRejectsEqualValuesThatDiffer(self):
     self.assertEqual(default_types.Literal(1).cast(1, None), 1)
     with self.assertRaises(ValueError):
