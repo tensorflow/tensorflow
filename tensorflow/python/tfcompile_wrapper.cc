@@ -50,16 +50,22 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         flags.graph = std::move(graph);
         flags.config = std::move(config);
 #ifdef __s390x__
-        flags.target_triple = std::move(
-            target_triple.empty() ? llvm::sys::getDefaultTargetTriple()
-                                  : target_triple);
+        if (target_triple.empty()) {
+          flags.target_triple = llvm::sys::getDefaultTargetTriple();
+        } else {
+          flags.target_triple = std::move(target_triple);
+        }
+
+        // Only default to the host CPU when not cross-compiling.
         bool is_cross_compile =
             llvm::Triple(flags.target_triple).getArch() !=
             llvm::Triple(llvm::sys::getDefaultTargetTriple()).getArch();
-        // Only default to the host CPU when not cross-compiling.
-        flags.target_cpu = std::move(target_cpu.empty() && !is_cross_compile
-                                         ? llvm::sys::getHostCPUName().str()
-                                         : target_cpu);
+
+        if (target_cpu.empty() && !is_cross_compile) {
+          flags.target_cpu = llvm::sys::getHostCPUName().str();
+        } else {
+          flags.target_cpu = std::move(target_cpu);
+        }
 #else
         flags.target_triple = std::move(target_triple);
         flags.target_cpu = std::move(target_cpu);
