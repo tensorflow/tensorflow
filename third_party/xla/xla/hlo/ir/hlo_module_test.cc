@@ -792,6 +792,30 @@ TEST(HloModuleTest, CheckToStringSortsBackendConfig) {
           R"json(backend_config={"tuning_knobs":{"2":"2","3":"0"}})json"));
 }
 
+TEST(HloModuleTest, CheckToStringElidesCustomCallBodyUnlessFlagEnabled) {
+  const char* hlo = R"(
+  HloModule test
+
+  ENTRY main {
+    ROOT custom-call = () custom-call(), custom_call_target="tpu_custom_call", backend_config={"custom_call_config":{"body":"very_long_mlir_body_content","serialization_format":1}}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      module->ToString(),
+      ::testing::HasSubstr(
+          R"json("custom_call_config":{"body":"...","serialization_format":1})json"));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_dump_custom_call_body(true);
+  EXPECT_THAT(
+      module->ToString(),
+      ::testing::HasSubstr(
+          R"json("custom_call_config":{"body":"very_long_mlir_body_content","serialization_format":1})json"));
+}
+
 TEST(HloModuleTest, TestCallersAndCallees) {
   const char* hlo = R"(
     HloModule jit_h

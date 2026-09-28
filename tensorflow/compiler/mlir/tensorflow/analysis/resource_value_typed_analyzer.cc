@@ -148,10 +148,10 @@ LogicalResult ResourceAnalyzer::AnalyzeRegion(Region& region) {
       return;
     }
     if (auto if_op = dyn_cast<TF::IfRegionOp>(op)) {
-      PropagatePotentiallyWrittenUpFromCallee(if_op.getThenBranch(),
-                                              if_op.getODSOperands(1));
-      PropagatePotentiallyWrittenUpFromCallee(if_op.getElseBranch(),
-                                              if_op.getODSOperands(1));
+      PropagatePotentiallyWrittenUpFromCallee(
+          if_op.getThenBranch(), if_op->getOperands().drop_front());
+      PropagatePotentiallyWrittenUpFromCallee(
+          if_op.getElseBranch(), if_op->getOperands().drop_front());
       return;
     }
     if (auto while_op = dyn_cast<TF::WhileOp>(op)) {

@@ -87,7 +87,8 @@ class HloPrintOptions {
         print_parameter_number_(true),
         print_channel_id_(true),
         print_inline_stack_frames_(false),
-        compact_gte_(false) {}
+        compact_gte_(false),
+        print_custom_call_body_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -98,6 +99,7 @@ class HloPrintOptions {
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
         .set_print_large_constants(true)
+        .set_print_custom_call_body(true)
         .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
         .set_print_metadata(false)
         .set_print_operand_shape(false)
@@ -408,6 +410,13 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, the full custom call body of CustomCall instructions will be
+  // printed; otherwise "..." will be printed.
+  HloPrintOptions& set_print_custom_call_body(bool value) {
+    print_custom_call_body_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -464,6 +473,7 @@ class HloPrintOptions {
   bool print_channel_id() const { return print_channel_id_; }
   bool print_inline_stack_frames() const { return print_inline_stack_frames_; }
   bool compact_gte() const { return compact_gte_; }
+  bool print_custom_call_body() const { return print_custom_call_body_; }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -502,6 +512,7 @@ class HloPrintOptions {
   bool print_channel_id_;
   bool print_inline_stack_frames_;
   bool compact_gte_;
+  bool print_custom_call_body_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
