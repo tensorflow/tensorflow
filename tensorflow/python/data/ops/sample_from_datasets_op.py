@@ -14,6 +14,8 @@
 # ==============================================================================
 """The implementation of `tf.data.Dataset.sample_from_datasets`."""
 
+import math
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
@@ -35,12 +37,12 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
   """See `Dataset.sample_from_datasets()` for details."""
 
   def _skip_datasets_with_zero_weight(datasets, weights):
-    # stateless_multinomial never selects a negative or NaN weight either, so
-    # it would hang sampling like a zero weight does. It is not a probability,
-    # so reject it rather than skip it.
-    if not all(weight >= 0 for weight in weights):
-      raise ValueError(f"Invalid `weights`. `weights` must be non-negative "
-                       f"but got {weights}.")
+    # stateless_multinomial never selects a negative, NaN or infinite weight
+    # either, so it would hang sampling like a zero weight does. It is not a
+    # probability, so reject it rather than skip it.
+    if not all(math.isfinite(weight) and weight >= 0 for weight in weights):
+      raise ValueError(f"Invalid `weights`. `weights` must be finite and "
+                       f"non-negative but got {weights}.")
     datasets_and_weights = [(dataset, weight)
                             for (dataset, weight) in zip(datasets, weights)
                             if weight > 0]

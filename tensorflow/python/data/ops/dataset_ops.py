@@ -3667,8 +3667,8 @@ name=None))
       TypeError: If the `datasets` or `weights` arguments have the wrong type.
       ValueError:
         - If `datasets` is empty,
-        - If `weights` has a negative or NaN value that is known when the
-          dataset is created, or
+        - If `weights` has a negative, NaN or infinite value that is known
+          when the dataset is created, or
         - If `weights` is specified and does not match the length of `datasets`.
     """
     # Loaded lazily due to a circular dependency

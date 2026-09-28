@@ -194,13 +194,14 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(weights_type=["list", "tensor"])))
-  def testSampleFromDatasetsRejectsNegativeWeights(self, weights_type):
-    # A negative or NaN weight is never selected, so like a zero weight it
-    # would keep sampling forever once the other dataset is exhausted.
-    for weights_list in ([-1., 1.], [np.nan, 1.]):
+  def testSampleFromDatasetsRejectsInvalidWeights(self, weights_type):
+    # A negative, NaN or infinite weight is never selected, so like a zero
+    # weight it would keep sampling forever once the other dataset is
+    # exhausted.
+    for weights_list in ([-1., 1.], [np.nan, 1.], [np.inf, 1.]):
       with self.subTest(weights=weights_list):
         weights = _get_weights_of_type(np.asarray(weights_list), weights_type)
-        with self.assertRaisesRegex(ValueError, "must be non-negative"):
+        with self.assertRaisesRegex(ValueError, "finite and non-negative"):
           dataset_ops.Dataset.sample_from_datasets(
               [dataset_ops.Dataset.range(10),
                dataset_ops.Dataset.range(20)],
