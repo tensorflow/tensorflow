@@ -43,6 +43,31 @@ from tensorflow.python.platform import test
 @test_util.run_all_in_graph_and_eager_modes
 class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
+  @parameterized.named_parameters(
+      ("Int32", dtypes.int32),
+      ("Int64", dtypes.int64),
+      ("Uint8", dtypes.uint8),
+  )
+  def testNonFiniteToIntegerDtypeRaises(self, dtype):
+    # NumPy arrays holding NaN or Inf must be rejected instead of being
+    # silently mapped to the smallest representable integer, so that
+    # `make_tensor_proto` agrees with the Python-list conversion path.
+    for value in (np.array([np.nan]), np.array([np.inf]),
+                  np.array([-np.inf]), np.array([1.0, np.nan])):
+      with self.assertRaises(TypeError):
+        tensor_util.make_tensor_proto(value, dtype=dtype)
+
+    # Finite floats are still truncated as before.
+    proto = tensor_util.make_tensor_proto(np.array([1.9]), dtype=dtype)
+    self.assertAllEqual([1], tensor_util.MakeNdarray(proto))
+
+    # Floating point dtypes still accept NaN and Inf.
+    self.assertAllEqual(
+        [np.nan],
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array([np.nan]),
+                                          dtype=dtypes.float32)))
+
   def testFloat(self):
     value = 10.0
     t = tensor_util.make_tensor_proto(value)

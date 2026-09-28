@@ -105,6 +105,10 @@ def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
       dtype = dtype.as_datatype_enum
     except AttributeError:
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
+    # A NumPy array holding NaN or Inf is silently mapped to the smallest
+    # representable integer by `ndarray.astype`, while the equivalent Python
+    # list raises a TypeError. Reject it here so that both containers agree.
+    tensor_util.AssertFiniteForIntegerDtype(value, dtypes.as_dtype(dtype))
   ctx.ensure_initialized()
   return ops.EagerTensor(value, ctx.device_name, dtype)
 

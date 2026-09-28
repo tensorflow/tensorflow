@@ -93,6 +93,37 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
       # Changing the input array after `xt` is created should not affect `xt`
       self.assertEqual(xt.numpy()[3], 3)
 
+  @parameterized.named_parameters(
+      ("Int8", dtypes.int8),
+      ("Int32", dtypes.int32),
+      ("Int64", dtypes.int64),
+      ("Uint8", dtypes.uint8),
+  )
+  def test_non_finite_to_integer_dtype_raises(self, dtype):
+    # A NumPy array holding NaN or Inf must not be silently mapped to the
+    # smallest representable integer. That disagrees with the Python-list
+    # conversion path, which rejects such values with a TypeError.
+    non_finite = (
+        np.array([np.nan]),
+        np.array([np.inf]),
+        np.array([-np.inf]),
+        np.array([1.0, np.nan]),
+    )
+    for value in non_finite:
+      with self.assertRaises(TypeError):
+        constant_op.constant(value, dtype=dtype)
+      with self.assertRaises(TypeError):
+        ops.convert_to_tensor(value, dtype=dtype)
+
+    # Graph construction must reject them as well.
+    with ops.Graph().as_default():
+      with self.assertRaises(TypeError):
+        constant_op.constant(np.array([np.nan]), dtype=dtype)
+
+    # Finite floats keep the previous (truncating) behaviour.
+    self.assertAllEqual([1], constant_op.constant(np.array([1.9]),
+                                                  dtype=dtype))
+
   def test_eager_const_grad_error(self):
 
     @def_function.function

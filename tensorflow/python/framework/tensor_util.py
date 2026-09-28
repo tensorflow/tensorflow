@@ -579,6 +579,39 @@ def _is_array_like(obj):  # pylint: disable=invalid-name
     return not isinstance(obj, bytes)
 
 
+def AssertFiniteForIntegerDtype(values, dtype):
+  """Raises a TypeError if non-finite floats are cast to an integer dtype.
+
+  `tf.constant([float("nan")], dtype=tf.int32)` raises a `TypeError` because
+  the Python-list conversion path validates every element. The NumPy-array path
+  instead relies on `ndarray.astype`, which silently maps NaN and Inf to the
+  smallest representable integer. This helper closes that gap so that both
+  input containers behave consistently.
+
+  Args:
+    values: the value being converted. Only floating point `np.ndarray` /
+      `np.generic` inputs are inspected; everything else is left alone.
+    dtype: the requested `DType`, or None. Only integer dtypes are inspected.
+
+  Raises:
+    TypeError: if `dtype` is an integer dtype and `values` is a floating point
+      array that contains NaN or Inf.
+  """
+  if dtype is None or not dtype.is_integer:
+    return
+  if not isinstance(values, (np.ndarray, np.generic)):
+    return
+  if values.dtype.kind != "f":
+    return
+  if np.isfinite(values).all():
+    return
+  raise TypeError(
+      f"Cannot convert {np.array2string(np.asarray(values), threshold=8)} to "
+      f"a tensor of dtype {dtype.name}: NaN and Inf cannot be represented as "
+      "an integer. Use a floating point dtype, or replace the non-finite "
+      "values before converting.")
+
+
 # pylint: disable=invalid-name
 @tf_export("make_tensor_proto")
 def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
@@ -659,6 +692,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
     if dtype and dtype.is_numpy_compatible:
+      AssertFiniteForIntegerDtype(values, dtype)
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
