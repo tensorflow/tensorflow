@@ -16,7 +16,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -630,7 +630,7 @@ TEST_F(WindowDatasetOpTest, MalformedCheckpoint_TriggersOutOfBoundsRead) {
 // Regression test: large window_size and window_stride whose target buffer
 // size (window_size - 1) * window_stride + 1 overflows int64. Before the fix,
 // the overflow silently wrapped to a small value and emitted undersized
-// windows. After the fix, iteration must return InvalidArgument.
+// windows. After the fix, dataset initialization must return InvalidArgument.
 WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
   // (2^32 + 1 - 1) * 2^32 + 1 = 2^64 + 1, which overflows int64/size_t.
   const int64_t large_size = (static_cast<int64_t>(1) << 32) + 1;
@@ -647,9 +647,10 @@ WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
 
 TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
-  EXPECT_THAT(Initialize(dataset_params),
-              tensorflow::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     ::testing::HasSubstr("overflow")));
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tensorflow::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                    ::testing::HasSubstr("overflow")));
 }
 
 }  // namespace
