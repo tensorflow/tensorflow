@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_concat_op.h"
 
-#include <limits>
 #include <numeric>
 #include <utility>
 #include <vector>
