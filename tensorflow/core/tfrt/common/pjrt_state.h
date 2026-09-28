@@ -63,7 +63,6 @@ class PjRtState : public ResourceBase {
   // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
   // be returned by `GetPjRtClient`.
   absl::Status MovePjRtClientToUnused(const DeviceType& device_type);
-  absl::Status TestOnlyResetPjRtClient(const DeviceType& device_type);
   std::string DebugString() const override;
 
   // Saves information needed to create a PJRT client (to enable creating a

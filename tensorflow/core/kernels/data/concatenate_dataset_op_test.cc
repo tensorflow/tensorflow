@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/platform/test.h"
 

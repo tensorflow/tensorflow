@@ -12,7 +12,7 @@ fusion {
 // CHECK: xtile.entry_func @triton_fn(
 // CHECK-SAME: %[[ARG0:[^:]+]]: memref<8x16x16x4xbf16, #xtile.layout<[2, 0, 3, 1]>>,
 // CHECK-SAME: %[[ARG1:[^:]+]]: memref<16x4x8x16xbf16>,
-// CHECK-SAME: %[[PID:[^:]+]]: index)
+// CHECK-SAME: %[[PID:[^:]+]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}})
 // CHECK: %[[CONSTANT_0:.*]] = arith.constant 0 : index
 // CHECK: %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[CONSTANT_0]], %[[CONSTANT_0]], %[[CONSTANT_0]], %[[CONSTANT_0]]] [8, 16, 16, 4] [1, 1, 1, 1] : memref<8x16x16x4xbf16, #xtile.layout<[2, 0, 3, 1]>> -> tensor<8x16x16x4xbf16>
 // CHECK: %[[TRANSPOSE:.*]] = tt.trans %[[EXTRACT]] {order = array<i32: 1, 3, 0, 2>} : tensor<8x16x16x4xbf16> -> tensor<16x4x8x16xbf16>

@@ -36,7 +36,7 @@ ENTRY entry {
 // CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:   %[[ARG3:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:   %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
-// CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index)
+// CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index {xla.range = [0 : index, 127 : index]})
 
 // CHECK:        %[[IDX0:.*]] = xla.apply_indexing #[[MAP0]](%[[PID]])
 // CHECK:        %[[IDX1:.*]] = xla.apply_indexing #[[MAP1]](%[[PID]])

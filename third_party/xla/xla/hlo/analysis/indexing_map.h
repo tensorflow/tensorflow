@@ -173,6 +173,9 @@ class IndexingMap {
   // Returns the range evaluator for the indexing map's domain.
   RangeEvaluator GetRangeEvaluator() const;
 
+  // Computes the range for each result of the indexing map.
+  llvm::SmallVector<Interval> ComputeResultRanges() const;
+
   // Getters for dimension vars.
   const Variable& GetDimVar(int64_t id) const { return dim_vars_[id]; }
   const std::vector<Variable>& GetDimVars() const { return dim_vars_; }
