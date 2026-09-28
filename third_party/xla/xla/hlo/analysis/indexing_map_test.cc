@@ -1875,5 +1875,21 @@ TEST_F(IndexingMapTest, IsUndefined) {
   EXPECT_FALSE(defined_map.IsUndefined());
 }
 
+TEST_F(IndexingMapTest, ComputeResultRanges) {
+  IndexingMap indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 86 + d1) floordiv 64, (d0 * 86 + d1) mod 64),
+    domain:
+    d0 in [0, 11],
+    d1 in [0, 85],
+    d0 * 86 + d1 in [0, 1023]
+  )");
+  EXPECT_THAT(indexing_map.ComputeResultRanges(),
+              ElementsAre(Interval{0, 15}, Interval{0, 63}));
+
+  indexing_map.ClearConstraints();
+  EXPECT_THAT(indexing_map.ComputeResultRanges(),
+              ElementsAre(Interval{0, 16}, Interval{0, 63}));
+}
+
 }  // namespace
 }  // namespace xla
