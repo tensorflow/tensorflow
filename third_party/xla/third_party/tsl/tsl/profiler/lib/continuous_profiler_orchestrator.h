@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
@@ -53,12 +54,19 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   static constexpr absl::Duration kDefaultPollingInterval = absl::Seconds(2);
   static constexpr absl::Duration kMinPollingInterval = absl::Seconds(2);
   static constexpr absl::Duration kMaxPollingInterval = absl::Seconds(5);
+  // Upper bound on how long Flush() will block waiting for the ingestion
+  // thread. Generous relative to kMaxPollingInterval (which bounds how long
+  // the ingestion thread sleeps) but small enough that a wedged Consume()
+  // cannot hold an RPC handler hostage.
+  static constexpr absl::Duration kFlushTimeout = absl::Seconds(30);
 
   explicit ContinuousProfilerOrchestrator(
       std::unique_ptr<ProfilerType> profiler,
-      size_t max_buffer_bytes = kDefaultMaxBufferBytes)
+      size_t max_buffer_bytes = kDefaultMaxBufferBytes,
+      absl::Duration flush_timeout = kFlushTimeout)
       : profiler_(std::move(profiler)),
         max_buffer_bytes_(max_buffer_bytes),
+        flush_timeout_(flush_timeout),
         is_running_(false),
         polling_interval_(kDefaultPollingInterval) {}
 
@@ -130,6 +138,41 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
       }
     }
     return spaces;
+  }
+
+  // Asks the ingestion thread to run a Consume() cycle now and waits for it to
+  // finish, so that everything recorded before this call is in the buffer.
+  // Callers that need the most recent data should call Flush() before
+  // SerializeChunks(); otherwise SerializeChunks() only returns what the
+  // ingestion loop has already harvested, which can lag by up to one polling
+  // interval.
+  //
+  // No-op if the orchestrator is not running. The wait is bounded by the
+  // `flush_timeout` passed to the constructor: a Consume() implementation that
+  // wedges must not be able to block the caller (typically an RPC handler)
+  // indefinitely. On timeout this simply returns, and a following
+  // SerializeChunks() sees whatever was already buffered.
+  //
+  // Note this can cost up to two Consume() cycles in the worst case: a
+  // Consume() that was already in flight when the flush was requested cannot
+  // be credited against it, because it may have started before the data the
+  // caller cares about was recorded.
+  void Flush() {
+    absl::MutexLock lock(mutex_);
+    if (!is_running_) return;
+    uint64_t target_seq = ++flush_requested_seq_;
+    cv_.SignalAll();
+    const absl::Time deadline = absl::Now() + flush_timeout_;
+    while (is_running_ && flush_completed_seq_ < target_seq) {
+      if (cv_.WaitWithDeadline(&mutex_, deadline)) {
+        if (flush_completed_seq_ >= target_seq) break;
+        LOG_EVERY_N_SEC(WARNING, 30)
+            << "ContinuousProfilerOrchestrator::Flush timed out after "
+            << flush_timeout_
+            << " waiting for the ingestion thread; returning partial data.";
+        return;
+      }
+    }
   }
 
   // Returns the current polling interval (primarily for testing).
@@ -204,6 +247,8 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
       return;
     }
 
+    const uint64_t dropped_chunks_before = dropped_chunks_count_;
+    const uint64_t dropped_bytes_before = dropped_bytes_count_;
     while (!circular_buffer_.empty() &&
            (total_buffered_bytes_ + chunk.estimated_size_bytes >
             max_buffer_bytes_)) {
@@ -216,6 +261,16 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
       circular_buffer_.pop_front();
       chunk_sizes_.pop_front();
     }
+    if (dropped_chunks_count_ > dropped_chunks_before) {
+      LOG_EVERY_N_SEC(WARNING, 30)
+          << "ContinuousProfilerOrchestrator buffer is full: dropped the "
+          << dropped_chunks_count_ - dropped_chunks_before
+          << " oldest undrained chunk(s) ("
+          << dropped_bytes_count_ - dropped_bytes_before
+          << " bytes) to stay within " << max_buffer_bytes_
+          << " bytes. Dropped so far: " << dropped_chunks_count_
+          << " chunk(s), " << dropped_bytes_count_ << " bytes.";
+    }
 
     total_buffered_bytes_ += chunk.estimated_size_bytes;
     circular_buffer_.push_back(std::move(chunk.data));
@@ -225,9 +280,11 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   void IngestionLoop() {
     LOG(INFO) << "ContinuousProfilerOrchestrator::IngestionLoop started";
     while (true) {
+      uint64_t seq_before_consume = 0;
       {
         absl::MutexLock lock(mutex_);
         if (!is_running_) break;
+        seq_before_consume = flush_requested_seq_;
       }
       absl::StatusOr<ConsumeResult> result = profiler_->Consume();
 
@@ -238,9 +295,14 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
         AdjustIntervalLocked(chunk_size);
       }
 
+      if (seq_before_consume > flush_completed_seq_) {
+        flush_completed_seq_ = seq_before_consume;
+        cv_.SignalAll();
+      }
       if (!is_running_) break;
-
-      // Wait using absl::CondVar on absl::Mutex
+      if (flush_requested_seq_ > flush_completed_seq_) {
+        continue;  // Immediate consume requested while Consume() was in flight.
+      }
       cv_.WaitWithTimeout(&mutex_, polling_interval_);
       if (!is_running_) break;
     }
@@ -272,6 +334,7 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
 
   std::unique_ptr<ProfilerType> profiler_;
   const size_t max_buffer_bytes_;
+  const absl::Duration flush_timeout_;
 
   mutable absl::Mutex mutex_;
   absl::CondVar cv_;
@@ -284,6 +347,8 @@ class ContinuousProfilerOrchestrator : public ProfilerInterface {
   size_t total_buffered_bytes_ ABSL_GUARDED_BY(mutex_) = 0;
   uint64_t dropped_chunks_count_ ABSL_GUARDED_BY(mutex_) = 0;
   uint64_t dropped_bytes_count_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t flush_requested_seq_ ABSL_GUARDED_BY(mutex_) = 0;
+  uint64_t flush_completed_seq_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace profiler
