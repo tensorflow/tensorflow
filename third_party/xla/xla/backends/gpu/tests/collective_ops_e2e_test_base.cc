@@ -19,14 +19,20 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,9 +47,11 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace {
@@ -188,6 +196,45 @@ CollectiveOpsWithFlagsBase::CreateExecutable(absl::string_view hlo_string,
                    ParseAndReturnVerifiedModule(hlo_string, config));
   return test_runner().CreateExecutable(std::move(module),
                                         /*run_hlo_passes=*/true);
+}
+
+absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
+    absl::string_view dump_dir, absl::string_view thunk_kind_prefix) {
+  std::vector<std::string> dump_files;
+  ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(dump_dir, "*thunk_sequence_after_thunk_passes*.txt"),
+      &dump_files));
+  if (dump_files.size() != 1) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected exactly one thunk sequence dump in ", dump_dir,
+                     ", found ", dump_files.size()));
+  }
+  std::string dump;
+  ABSL_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), dump_files[0], &dump));
+
+  // Each line of the dump describes one thunk as "<index>: <kind> ...".
+  // Thunks nested in a kCommandBuffer thunk are indented under it.
+  CommandBufferThunkCounts counts;
+  bool in_command_buffer = false;
+  for (absl::string_view line : absl::StrSplit(dump, '\n')) {
+    absl::string_view thunk = absl::StripAsciiWhitespace(line);
+    if (thunk.empty()) {
+      continue;
+    }
+    const bool is_top_level = thunk.data() == line.data();
+    if (size_t pos = thunk.find(": "); pos != absl::string_view::npos) {
+      thunk.remove_prefix(pos + 2);
+    }
+    if (is_top_level) {
+      in_command_buffer = absl::StartsWith(thunk, "kCommandBuffer");
+    }
+    if (absl::StartsWith(thunk, thunk_kind_prefix)) {
+      ++(in_command_buffer ? counts.in_command_buffer
+                           : counts.outside_command_buffer);
+    }
+  }
+  return counts;
 }
 
 }  // namespace xla
