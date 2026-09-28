@@ -59,14 +59,14 @@ absl::Status BandedTriangularSolveShapeFn(InferenceContext* c) {
   DimensionHandle num_bands = c->Dim(lhs, -2);
   DimensionHandle m = c->Dim(lhs, -1);
   if (c->ValueKnown(num_bands) && c->Value(num_bands) <= 0) {
-    return errors::InvalidArgument("Number of bands must be positive, but is ",
-                                   c->Value(num_bands));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Number of bands must be positive, but is ", c->Value(num_bands)));
   }
   if (c->ValueKnown(num_bands) && c->ValueKnown(m) &&
       c->Value(num_bands) > c->Value(m)) {
-    return errors::InvalidArgument("Number of bands ", c->Value(num_bands),
-                                   " cannot exceed the size of the matrix ",
-                                   c->Value(m));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Number of bands ", c->Value(num_bands),
+                     " cannot exceed the size of the matrix ", c->Value(m)));
   }
 
   ShapeHandle lhs_batch_shape;
