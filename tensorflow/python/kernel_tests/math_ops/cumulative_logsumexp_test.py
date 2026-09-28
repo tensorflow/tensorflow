@@ -192,6 +192,45 @@ class CumulativeLogsumexpTest(test.TestCase):
           )
           self.assertAllClose(2.0, result[2])
 
+  def testNaNPropagationExclusive(self):
+    # An exclusive scan starts from the -inf identity and leaves each element
+    # out of its own output, so the NaN only reaches the outputs after it
+    # (before it, in reverse), and the outputs up to it keep their values.
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor([1.0, np.nan, 2.0], dtype=dtype)
+          result = self.evaluate(
+              math_ops.cumulative_logsumexp(x_tf, exclusive=True)
+          )
+          self.assertAllEqual(
+              [False, False, True],
+              np.isnan(result),
+              msg=f'Expected NaN only at index 2, got {result}',
+          )
+          self.assertAllEqual([-np.inf, 1.0], result[:2])
+
+          result = self.evaluate(
+              math_ops.cumulative_logsumexp(x_tf, exclusive=True, reverse=True)
+          )
+          self.assertAllEqual(
+              [True, False, False],
+              np.isnan(result),
+              msg=f'Expected NaN only at index 0, got {result}',
+          )
+          self.assertAllEqual([2.0, -np.inf], result[1:])
+
+          x_tf = ops.convert_to_tensor([np.nan, np.nan], dtype=dtype)
+          result = self.evaluate(
+              math_ops.cumulative_logsumexp(x_tf, exclusive=True)
+          )
+          self.assertAllEqual(
+              [False, True],
+              np.isnan(result),
+              msg=f'Expected -inf then NaN for all-NaN input, got {result}',
+          )
+          self.assertEqual(-np.inf, result[0])
+
 
 if __name__ == '__main__':
   test.main()

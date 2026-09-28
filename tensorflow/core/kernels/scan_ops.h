@@ -73,8 +73,9 @@ struct LogSumExp {
                ? ma
                : logsumexp;
   }
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T packetOp(const T& a,
-                                                   const T& b) const {
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
     // See the comment in operator() above: these must propagate NaN, or a NaN
     // operand is silently replaced by the other one.
     auto mi = Eigen::internal::pmin<Eigen::PropagateNaN>(a, b);
@@ -84,14 +85,16 @@ struct LogSumExp {
     using Eigen::internal::pexp;
     using Eigen::internal::plog1p;
     using Eigen::internal::por;
+    using Eigen::internal::pselect;
     using Eigen::internal::pset1;
     using Eigen::internal::psub;
 
     auto logsumexp = padd(plog1p(pexp(psub(mi, ma))), ma);
     // Select ma directly if it is -inf or +inf. A NaN ma fails both
     // comparisons, so the select keeps logsumexp, which is NaN.
-    auto is_inf = por(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())),
-                      pcmp_lt(pset1(Eigen::NumTraits<T>::highest()), ma));
+    auto is_inf =
+        por(pcmp_lt(ma, pset1<Packet>(Eigen::NumTraits<T>::lowest())),
+            pcmp_lt(pset1<Packet>(Eigen::NumTraits<T>::highest()), ma));
     return pselect(is_inf, ma, logsumexp);
   }
 };
@@ -116,7 +119,7 @@ struct LogSumExpReducer {
 
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet initializePacket() const {
-    return Eigen::internal::pset1(initialize());
+    return Eigen::internal::pset1<Packet>(initialize());
   }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
