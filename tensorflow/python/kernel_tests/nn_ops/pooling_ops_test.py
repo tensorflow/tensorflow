@@ -857,7 +857,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       with ops.device(device):
         for pool_fn in (nn_ops.max_pool, gen_nn_ops.max_pool_v2):
           y = pool_fn(
-              x, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
+              x, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="SAME"
           )
           values = self.evaluate(y)
           self.assertEqual(values.shape, (1, 0, 8, 8))
