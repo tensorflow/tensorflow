@@ -942,8 +942,8 @@ def expand_dims(a, axis):
     normalized = axis + maybe_rank + 1 if axis < 0 else axis
     if normalized < 0 or normalized > maybe_rank:
       raise ValueError(
-          f'Argument `axis` (received axis={axis}) is out of bounds for '
-          f'input {a} of rank {maybe_rank}.'
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
       )
 
   return array_ops.expand_dims(a, axis=axis)
