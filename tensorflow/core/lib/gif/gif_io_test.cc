@@ -35,6 +35,42 @@ struct DecodeGifTestCase {
   const int channels;
 };
 
+// Builds a minimal single-frame GIF89a with the given logical screen size and
+// a 1x1 frame using a 2-entry global color table.
+std::string MakeGifWithLogicalScreen(int screen_w, int screen_h) {
+  std::string gif = "GIF89a";
+  auto put16 = [&gif](int v) {
+    gif.push_back(static_cast<char>(v & 0xff));
+    gif.push_back(static_cast<char>((v >> 8) & 0xff));
+  };
+  put16(screen_w);
+  put16(screen_h);
+  gif += std::string("\x80\x00\x00", 3);  // GCT flag, 2 colors; bg; aspect.
+  gif += std::string("\x00\x00\x00\xff\xff\xff", 6);  // Color table.
+  gif.push_back('\x2c');                               // Image descriptor.
+  put16(0);                                             // Left.
+  put16(0);                                             // Top.
+  put16(1);                                             // Width.
+  put16(1);                                             // Height.
+  gif.push_back('\x00');                               // No local table.
+  gif += std::string("\x02\x02\x44\x01\x00", 5);  // LZW data for 1 pixel.
+  gif.push_back('\x3b');                               // Trailer.
+  return gif;
+}
+
+uint8_t* DecodeInMemory(const std::string& gif, std::string* error_string,
+                        std::unique_ptr<uint8_t[]>* holder) {
+  uint8_t* data = gif::Decode(
+      gif.data(), gif.size(),
+      [&](int frame_cnt, int width, int height, int channels) -> uint8_t* {
+        return new uint8_t[static_cast<int64_t>(frame_cnt) * height * width *
+                           channels];
+      },
+      error_string);
+  holder->reset(data);
+  return data;
+}
+
 void ReadFileToStringOrDie(Env* env, const std::string& filename,
                            std::string* output) {
   TF_CHECK_OK(ReadFileToString(env, filename, output));
@@ -82,6 +118,25 @@ TEST(GifTest, Gif) {
   for (const auto& tc : testcases) {
     TestDecodeGif(env, tc);
   }
+}
+
+TEST(GifTest, HugeLogicalScreenRejectedBeforeSlurp) {
+  std::string error_string;
+  std::unique_ptr<uint8_t[]> holder;
+  EXPECT_EQ(DecodeInMemory(MakeGifWithLogicalScreen(32767, 32767),
+                           &error_string, &holder),
+            nullptr);
+  EXPECT_NE(error_string.find("too large"), std::string::npos) << error_string;
+}
+
+TEST(GifTest, ZeroLogicalScreenStillDecodes) {
+  // A 0x0 logical screen is valid; the output is sized from the frames.
+  std::string error_string;
+  std::unique_ptr<uint8_t[]> holder;
+  EXPECT_NE(DecodeInMemory(MakeGifWithLogicalScreen(0, 0), &error_string,
+                           &holder),
+            nullptr)
+      << error_string;
 }
 
 void TestDecodeAnimatedGif(Env* env, const uint8_t* gif_data,
