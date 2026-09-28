@@ -805,6 +805,7 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     """Removes all cached concrete functions for this tf.function."""
     with self._lock:
       self._function_cache.clear()
+      self._concrete_variable_creation_fn = None
 
   @property
   def _run_functions_eagerly(self):

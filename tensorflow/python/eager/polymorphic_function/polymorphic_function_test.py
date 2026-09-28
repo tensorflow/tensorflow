@@ -4440,12 +4440,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def double(a):
       return a + a
 
-    double(constant_op.constant(1))
-    double(constant_op.constant('a'))
+    self.assertAllEqual(double(constant_op.constant(1)), 2)
+    self.assertAllEqual(double(constant_op.constant('a')), b'aa')
     self.assertAllEqual(double.experimental_get_tracing_count(), 2)
     double.clear_cache()
     self.assertAllEqual(double.experimental_get_tracing_count(), 0)
-    double(constant_op.constant(1))
+    self.assertAllEqual(double(constant_op.constant(1)), 2)
     self.assertAllEqual(double.experimental_get_tracing_count(), 1)
 
   def test_tensor_shape_casted_to_specific(self):

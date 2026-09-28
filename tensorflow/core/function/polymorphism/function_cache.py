@@ -58,8 +58,9 @@ class FunctionCache:
         key = (context, dispatch_type)
         fn = self._primary.get(key)
         if fn is not None:
-          self._primary.move_to_end(key)
-        return fn
+          if self._max_capacity is not None:
+            self._primary.move_to_end(key)
+          return fn
 
     return None
 
@@ -86,7 +87,8 @@ class FunctionCache:
     context = context or FunctionContext()
     key = (context, fn.function_type)
     if key in self._primary:
-      self._primary.move_to_end(key)
+      if self._max_capacity is not None:
+        self._primary.move_to_end(key)
     else:
       if context not in self._dispatch_dict:
         self._dispatch_dict[context] = type_dispatch.TypeDispatchTable()
@@ -94,7 +96,7 @@ class FunctionCache:
 
     self._primary[key] = fn
 
-    if (
+    while (
         self._max_capacity is not None
         and len(self._primary) > self._max_capacity
     ):
@@ -102,6 +104,8 @@ class FunctionCache:
       evicted_context, evicted_type = evicted_key
       if evicted_context in self._dispatch_dict:
         self._dispatch_dict[evicted_context].delete(evicted_type)
+        if not self._dispatch_dict[evicted_context].targets:
+          del self._dispatch_dict[evicted_context]
 
   def generalize(
       self, context: FunctionContext,
