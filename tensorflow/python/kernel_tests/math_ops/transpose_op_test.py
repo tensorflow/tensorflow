@@ -534,6 +534,37 @@ class TransposeTest(test.TestCase):
       xt = array_ops.transpose(x, conjugate=True)
       self.assertAllEqual(xt, x)
 
+  def testScalarStringConjugateTranspose(self):
+    with self.cached_session():
+      x = constant_op.constant("hello")
+      xt = array_ops.transpose(x, conjugate=True)
+      self.assertEqual(xt.shape, ())
+      self.assertAllEqual(xt, b"hello")
+
+  def testScalarStringTranspose(self):
+    with self.cached_session():
+      x = constant_op.constant("hello")
+      xt = array_ops.transpose(x)
+      self.assertEqual(xt.shape, ())
+      self.assertAllEqual(xt, b"hello")
+
+  def testStringVectorTranspose(self):
+    with self.cached_session():
+      x = constant_op.constant(["foo", "bar"])
+      for conjugate in (False, True):
+        with self.subTest(conjugate=conjugate):
+          xt = array_ops.transpose(x, perm=[0], conjugate=conjugate)
+          self.assertAllEqual(xt, [b"foo", b"bar"])
+
+  def testEmptyStringTranspose(self):
+    with self.cached_session():
+      x = constant_op.constant([], dtype=dtypes.string)
+      for conjugate in (False, True):
+        with self.subTest(conjugate=conjugate):
+          xt = array_ops.transpose(x, perm=[0], conjugate=conjugate)
+          self.assertEqual(xt.shape, (0,))
+          self.assertAllEqual(xt, [])
+
   def _testError(self, x, p, err):
     with self.cached_session():
       with self.assertRaisesOpError(err):
