@@ -69,6 +69,10 @@ const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
 
 absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
   switch (memory_space) {
+    case 1:
+      // Legacy value for collective memory space before
+      // Layout::kCollectiveMemorySpace (7) was introduced
+      return MemorySpaceColor::kCollective;
     case static_cast<int64_t>(MemorySpaceColor::kDefault):
     case static_cast<int64_t>(MemorySpaceColor::kCollective):
     case static_cast<int64_t>(MemorySpaceColor::kTempBuffer):
@@ -76,8 +80,9 @@ absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
     default:
       return InvalidArgument(
           "Invalid memory space %d. "
-          "Valid values are 0 (default), 1 (collective), 2 (temp).",
-          memory_space);
+          "Valid values are %d (default), %d (collective), %d (temp).",
+          memory_space, MemorySpaceColor::kDefault,
+          MemorySpaceColor::kCollective, MemorySpaceColor::kTempBuffer);
   }
 }
 
@@ -265,8 +270,15 @@ absl::StatusOr<BufferValue::Color> DetermineBufferColor(
     // space from the layout.
     const HloPosition& defining_position = value->defining_position();
     if (defining_position.shape().has_layout()) {
-      const BufferValue::Color memory_space =
+      BufferValue::Color memory_space =
           defining_position.shape().layout().memory_space();
+      if (memory_space == 1) {
+        // Legacy value for collective memory space before
+        // Layout::kCollectiveMemorySpace (7) was introduced.
+        memory_space =
+            static_cast<BufferValue::Color>(MemorySpaceColor::kCollective);
+      }
+
       if (memory_space != 0) {
         candidates.push_back(memory_space);
       }

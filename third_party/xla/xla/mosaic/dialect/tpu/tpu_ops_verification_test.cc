@@ -765,6 +765,188 @@ TEST_F(TpuOpsVerificationTest, VectorCompressStoreDynamicBaseDimAllowed) {
   ASSERT_OK(VerifyOp(cs));
 }
 
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadValid) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_OK(VerifyOp(el));
+}
+
+// Packed (sub-32-bit) types must pass verification.
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadValidPacked) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref =
+      Create<memref::AllocaOp>(
+          GetMemRefType({4, 16}, builder().getBF16Type(), MemorySpace::kVmem))
+          .getMemref();
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, builder().getBF16Type()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_OK(VerifyOp(el));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadInvalidMemorySpace) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kHbm);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_THAT(VerifyOp(el),
+              StatusIs(_, HasSubstr("Expected base memref to be in VMEM.")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadMismatchedRank) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{8},
+                                /*values=*/SmallVector<bool>(8, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_THAT(VerifyOp(el),
+              StatusIs(_, HasSubstr("Expected result to have the same rank as "
+                                    "base (2). Got: 1.")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadMismatchedIndicesCount) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_THAT(VerifyOp(el), StatusIs(_, HasSubstr("Expected 2 indices.")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadExpandDimOutOfRange) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(2));
+
+  ASSERT_THAT(
+      VerifyOp(el),
+      StatusIs(_, HasSubstr("Expected expand_dim to be in [0, 2). Got: 2.")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadNonMinormostExpandDim) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(0));
+
+  ASSERT_OK(VerifyOp(el));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadMismatchedMaskShape) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 4},
+                                /*values=*/SmallVector<bool>(8, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_THAT(
+      VerifyOp(el),
+      StatusIs(_, HasSubstr("Expected mask shape to match result shape")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadNonExpandedDimOutOfBounds) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({2, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{4, 8},
+                                /*values=*/SmallVector<bool>(32, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({4, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_THAT(VerifyOp(el),
+              StatusIs(_, HasSubstr("Non-expanded dimension 0 of result goes "
+                                    "out of bounds of base")));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadDynamicIndicesAllowed) {
+  // Non-expanded dimension fits (2 <= 4), but constant index offset plus size
+  // exceeds base dimension (3 + 2 = 5 > 4). All indices are treated as dynamic,
+  // so verification passes.
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  auto c3 = Create<arith::ConstantIndexOp>(3);
+  Value memref = AllocaI32({4, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{2, 8},
+                                /*values=*/SmallVector<bool>(16, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({2, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c3, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_OK(VerifyOp(el));
+}
+
+TEST_F(TpuOpsVerificationTest, VectorExpandLoadDynamicBaseDimAllowed) {
+  auto c0 = Create<arith::ConstantIndexOp>(0);
+  Value memref = AllocaI32({ShapedType::kDynamic, 16}, MemorySpace::kVmem);
+  Value mask = ConstantI1Vector(/*shape=*/{8, 8},
+                                /*values=*/SmallVector<bool>(64, true));
+  auto el = Create<VectorExpandLoadOp>(
+      /*result=*/VectorType::get({8, 8}, i32()),
+      /*base=*/memref,
+      /*indices=*/ValueRange{c0, c0},
+      /*mask=*/mask,
+      /*expand_dim=*/builder().getI32IntegerAttr(1));
+
+  ASSERT_OK(VerifyOp(el));
+}
+
 TEST_F(TpuOpsVerificationTest, UnpackSubelementsValidIndex) {
   Value source = ConstantI8Vector(/*shape=*/{4, 8}, /*values=*/{1});
   auto unpack = Create<UnpackSubelementsOp>(

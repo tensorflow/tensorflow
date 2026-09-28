@@ -72,6 +72,7 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kConcatenate:
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
+      case HloOpcode::kShuffle:
       case HloOpcode::kSort:
       case HloOpcode::kTranspose:
         return true;
@@ -1176,6 +1177,47 @@ class HloReverseInstruction : public HloDimensionsInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+};
+
+class HloShuffleInstruction : public HloDimensionsInstruction {
+ public:
+  explicit HloShuffleInstruction(const Shape& shape, HloInstruction* operand,
+                                 absl::Span<const int64_t> dimensions,
+                                 const ShuffleMode& mode);
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kShuffle;
+  }
+
+  const ShuffleMode& shuffle_mode() const { return mode_; }
+  ShuffleMode* mutable_shuffle_mode() { return &mode_; }
+  ShuffleMode::ModeCase mode() const { return mode_.mode_case(); }
+  void ToProto(HloInstructionProto* proto) const override;
+
+  // Accessors for the inner attributes of each mode.
+  const ShuffleMode::Rotate& rotate() const {
+    CHECK(mode_.has_rotate());
+    return mode_.rotate();
+  }
+  ShuffleMode::Rotate* mutable_rotate() {
+    CHECK(mode_.has_rotate());
+    return mode_.mutable_rotate();
+  }
+
+ private:
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+  ShuffleMode mode_;
 };
 
 class HloConcatenateInstruction : public HloDimensionsInstruction {
@@ -2774,6 +2816,25 @@ class HloDotInstruction : public HloInstruction {
                              const DotDimensionNumbers& dimension_numbers,
                              const PrecisionConfig& precision_config);
 
+  explicit HloDotInstruction(const Shape& shape,
+                             absl::Span<HloInstruction* const> operands,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig& precision_config,
+                             const SparsityConfig& sparsity_config,
+                             const BlockScalingConfig& block_scaling_config);
+
+  const SparsityConfig& sparsity_config() const { return sparsity_config_; }
+  void set_sparsity_config(const SparsityConfig& sparsity_config) {
+    sparsity_config_ = sparsity_config;
+  }
+
+  const BlockScalingConfig& block_scaling_config() const {
+    return block_scaling_config_;
+  }
+  void set_block_scaling_config(const BlockScalingConfig& config) {
+    block_scaling_config_ = config;
+  }
+
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
     return dot_dimension_numbers_;
@@ -2818,6 +2879,12 @@ class HloDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
+
+  // The sparsity configuration used for the dot.
+  SparsityConfig sparsity_config_;
+
+  // Dot block scaling config.
+  BlockScalingConfig block_scaling_config_;
 };
 
 class HloRaggedDotInstruction : public HloInstruction {

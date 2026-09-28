@@ -128,7 +128,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 103
+// Next ID: 104
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -354,7 +354,8 @@ message HloInstructionProto {
   xla.RandomAlgorithm rng_algorithm = 70;
 
   // The comparison type used for kCompare.
-  string comparison_type = 72;
+  // Deprecated and replaced by comparison_order.
+  string comparison_type = 72 [deprecated = true];
 
   // Specifies if this is a cross-program-prefetch, used by kCopyStart.
   // Deprecated and replaced by optional_cross_program_prefetch_index.
@@ -442,6 +443,9 @@ message HloInstructionProto {
 
   // Comparison order (TOTAL, PARTIAL).
   string comparison_order = 102;
+
+  // The mode of a kShuffle and the attributes of that mode.
+  xla.ShuffleMode shuffle_mode = 103;
 }
 
 // Serialization of HloComputation.

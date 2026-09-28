@@ -33,6 +33,7 @@ struct Interval {
   std::string ToString() const;
   bool IsPoint() const { return lower == upper; }
   bool IsFeasible() const { return lower <= upper; }
+  bool IsUnconstrained() const;
 
   // Returns the number of elements in the interval. Asserts that the number of
   // elements fits in an int64_t. For this reason, this should only be used for

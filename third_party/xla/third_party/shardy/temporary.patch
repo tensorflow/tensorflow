@@ -1,209 +1,1215 @@
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline.mlir
+index 5697a287..6ef5c695 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline.mlir
+@@ -1,4 +1,4 @@
+-// RUN: mpmd_opt %s -mpmd-infer-mesh-pipeline='infer-transfers=true infer-cross-mesh-reductions=True' 2>&1 | FileCheck %s
++// RUN: mpmd_opt %s -mpmd-infer-mesh-pipeline='infer-transfers=true infer-cross-mesh-reductions=true' 2>&1 | FileCheck %s
+ 
+ !mesh_1_tensor_ui32 = !mpmd.mesh_tensor<"m1", tensor<ui32>>
+ !mesh_1_tensor_1_ui32 = !mpmd.mesh_tensor<"m1", tensor<1xui32>>
+diff --git a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_send_recv.mlir b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_send_recv.mlir
+index d914bd27..54d0ca3a 100644
+--- a/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_send_recv.mlir
++++ b/shardy/dialect/mpmd/transforms/import/test/infer_mesh_pipeline_send_recv.mlir
+@@ -1,4 +1,4 @@
+-// RUN: mpmd_opt %s -mpmd-infer-mesh-pipeline='infer-transfers=true infer-cross-mesh-reductions=True' 2>&1 | FileCheck %s
++// RUN: mpmd_opt %s -mpmd-infer-mesh-pipeline='infer-transfers=true infer-cross-mesh-reductions=true' 2>&1 | FileCheck %s
+ 
+ // Test that stablehlo.send and stablehlo.create_token ops (which produce
+ // !stablehlo.token types) are correctly partitioned into fragments by the
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398da..a9462de1 100644
+index a9462de1..634ed2ef 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,189 @@
+@@ -1,189 +1,664 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGCall.cpp b/clang/lib/CodeGen/CGCall.cpp
-+--- a/clang/lib/CodeGen/CGCall.cpp
-++++ b/clang/lib/CodeGen/CGCall.cpp
-+@@ -2804,17 +2804,10 @@
-+       AddAttributesFromFunctionProtoType(
-+           getContext(), FuncAttrs, Fn->getType()->getAs<FunctionProtoType>());
-+       if (AttrOnCallSite && Fn->isReplaceableGlobalAllocationFunction()) {
-+-        // A sane operator new returns a non-aliasing pointer and does not
-+-        // read or write accessible memory.
-++        // A sane operator new returns a non-aliasing pointer.
-+         if (getCodeGenOpts().AssumeSaneOperatorNew &&
-+-            Fn->getDeclName().isAnyOperatorNew()) {
-++            Fn->getDeclName().isAnyOperatorNew())
-+           RetAttrs.addAttribute(llvm::Attribute::NoAlias);
-+-          // FIXME: inaccessiblemem could cause issues if LTO makes the
-+-          // previously inaccessible memory accessible after linking.
-+-          FuncAttrs.addMemoryAttr(
-+-              llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
-+-                  llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
-+-        }
-+       }
-+       const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
-+       const bool IsVirtualCall = MD && MD->isVirtual();
-+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExprCXX.cpp b/clang/lib/CodeGen/CGExprCXX.cpp
-+--- a/clang/lib/CodeGen/CGExprCXX.cpp
-++++ b/clang/lib/CodeGen/CGExprCXX.cpp
-+@@ -1391,9 +1391,19 @@
-+   ///
-+   /// We model such elidable calls with the 'builtin' attribute.
-+   llvm::Function *Fn = dyn_cast<llvm::Function>(CalleePtr);
-+-  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn &&
-+-      Fn->hasFnAttribute(llvm::Attribute::NoBuiltin)) {
-+-    CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
-++  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn) {
-++    if (Fn->hasFnAttribute(llvm::Attribute::NoBuiltin))
-++      CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
-++
-++    // A sane operator new does not read or write accessible memory.
-++    if (CGF.CGM.getCodeGenOpts().AssumeSaneOperatorNew &&
-++        CalleeDecl->getDeclName().isAnyOperatorNew()) {
-++      // FIXME: inaccessiblemem could cause issues if LTO makes the
-++      // previously inaccessible memory accessible after linking.
-++      CallOrInvoke->setMemoryEffects(
-++          llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
-++              llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
-++    }
-+   }
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGCall.cpp b/clang/lib/CodeGen/CGCall.cpp
+---- a/clang/lib/CodeGen/CGCall.cpp
+-+++ b/clang/lib/CodeGen/CGCall.cpp
+-@@ -2804,17 +2804,10 @@
+-       AddAttributesFromFunctionProtoType(
+-           getContext(), FuncAttrs, Fn->getType()->getAs<FunctionProtoType>());
+-       if (AttrOnCallSite && Fn->isReplaceableGlobalAllocationFunction()) {
+--        // A sane operator new returns a non-aliasing pointer and does not
+--        // read or write accessible memory.
+-+        // A sane operator new returns a non-aliasing pointer.
+-         if (getCodeGenOpts().AssumeSaneOperatorNew &&
+--            Fn->getDeclName().isAnyOperatorNew()) {
+-+            Fn->getDeclName().isAnyOperatorNew())
+-           RetAttrs.addAttribute(llvm::Attribute::NoAlias);
+--          // FIXME: inaccessiblemem could cause issues if LTO makes the
+--          // previously inaccessible memory accessible after linking.
+--          FuncAttrs.addMemoryAttr(
+--              llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
+--                  llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
+--        }
+-       }
+-       const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Fn);
+-       const bool IsVirtualCall = MD && MD->isVirtual();
+-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExprCXX.cpp b/clang/lib/CodeGen/CGExprCXX.cpp
+---- a/clang/lib/CodeGen/CGExprCXX.cpp
+-+++ b/clang/lib/CodeGen/CGExprCXX.cpp
+-@@ -1391,9 +1391,19 @@
+-   ///
+-   /// We model such elidable calls with the 'builtin' attribute.
+-   llvm::Function *Fn = dyn_cast<llvm::Function>(CalleePtr);
+--  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn &&
+--      Fn->hasFnAttribute(llvm::Attribute::NoBuiltin)) {
+--    CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
+-+  if (CalleeDecl->isReplaceableGlobalAllocationFunction() && Fn) {
+-+    if (Fn->hasFnAttribute(llvm::Attribute::NoBuiltin))
+-+      CallOrInvoke->addFnAttr(llvm::Attribute::Builtin);
++diff -ruN --strip-trailing-cr a/clang/include/clang/AST/TypeBase.h b/clang/include/clang/AST/TypeBase.h
++--- a/clang/include/clang/AST/TypeBase.h
+++++ b/clang/include/clang/AST/TypeBase.h
++@@ -2270,7 +2270,7 @@
++     /// increments towards the beginning.
++     /// Positive non-zero number represents the index + 1.
++     /// Zero means this is not substituted from an expansion.
++-    unsigned PackIndex : 15;
+++    unsigned PackIndex : 16;
++   };
 + 
-+   return RV;
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/new_hot_cold.cpp b/clang/test/CodeGenCXX/new_hot_cold.cpp
-+--- a/clang/test/CodeGenCXX/new_hot_cold.cpp
-++++ b/clang/test/CodeGenCXX/new_hot_cold.cpp
-+@@ -124,7 +124,7 @@
++   class SubstPackTypeBitfields {
++diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/make_integer_seq.cpp b/clang/test/SemaCXX/make_integer_seq.cpp
++--- a/clang/test/SemaCXX/make_integer_seq.cpp
+++++ b/clang/test/SemaCXX/make_integer_seq.cpp
++@@ -50,3 +50,8 @@
 + 
-+ // CHECK-DAG: attributes [[ATTR_NOBUILTIN]] = { nobuiltin allocsize(0) {{.*}} }
-+ // CHECK-DAG: attributes [[ATTR_NOBUILTIN_NOTHROW]] = { nobuiltin nounwind allocsize(0) {{.*}} }
-+-// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
-++// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) }
-+ // CHECK-DAG: attributes [[ATTR_BUILTIN_CALL]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
-+-// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
-++// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) }
-+ // CHECK-DAG: attributes [[ATTR_BUILTIN_NOTHROW_CALL]] = { builtin nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/operator-new.cpp b/clang/test/CodeGenCXX/operator-new.cpp
-+--- a/clang/test/CodeGenCXX/operator-new.cpp
-++++ b/clang/test/CodeGenCXX/operator-new.cpp
-+@@ -27,5 +27,14 @@
++ __make_integer_seq<__make_integer_seq, int, 10> PR28494; // expected-note{{different template parameters}}
++ // expected-error@make_integer_seq.cpp:* {{template argument for template template parameter must be a class template or type alias template}}
+ +
+-+    // A sane operator new does not read or write accessible memory.
+-+    if (CGF.CGM.getCodeGenOpts().AssumeSaneOperatorNew &&
+-+        CalleeDecl->getDeclName().isAnyOperatorNew()) {
+-+      // FIXME: inaccessiblemem could cause issues if LTO makes the
+-+      // previously inaccessible memory accessible after linking.
+-+      CallOrInvoke->setMemoryEffects(
+-+          llvm::MemoryEffects::inaccessibleOrErrnoMemOnly(
+-+              llvm::ModRefInfo::ModRef, llvm::ModRefInfo::Mod));
+-+    }
+++// The largest type pack whose pack indices fit in SubstTemplateTypeParmType.
+++template <class... Ts> using Expand = void(Ts...);
+++template <class T, T... I> struct ExpandSeq { using type = Expand<decltype(I)...>; };
+++using LargePack = __make_integer_seq<ExpandSeq, int, 65535>::type;
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++@@ -13901,47 +13901,12 @@
++   return SDValue();
 + }
 + 
-+ // ALL: declare noundef nonnull ptr @_Znaj(
-++
-++void *f3(unsigned long N) {
-++  // SANE: call noalias noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
-++  // SANENOT: call noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
-++  return ::operator new(N);
-++}
-++
-+ // SANE: attributes [[ATTR]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
-++// SANE: attributes [[ATTR2]] = { allocsize(0) }
-+ // SANENOT: attributes [[ATTR]] = { builtin allocsize(0) }
-++// SANENOT: attributes [[ATTR2]] = { allocsize(0) }
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -16145,18 +16145,21 @@
++-/// Check if Mask defines a known constant set of enabled lanes, where only the
++-/// first N lanes are enabled. N is returned if so.
++-static uint64_t calculateConstantLowMaskLanes(SDValue Mask) {
++-  // We expect masks for masked load/store to be i1 predicates.
++-  if (Mask.getValueType().getScalarSizeInBits() != 1)
++-    return 0;
++-
++-  if (Mask.getOpcode() == ISD::BUILD_VECTOR) {
++-    unsigned NumOnes = 0;
++-    auto Op = Mask->op_begin();
++-    for (; Op != Mask->op_end(); ++Op) {
++-      if (!isOneConstant(*Op))
++-        break;
++-      ++NumOnes;
++-    }
++-
++-    if (NumOnes == 0)
++-      return 0;
++-
++-    for (; Op != Mask->op_end(); ++Op)
++-      if (!isNullConstant(*Op))
++-        return 0;
++-    return NumOnes;
++-  }
++-
++-  if (Mask.getOpcode() == ISD::GET_ACTIVE_LANE_MASK &&
++-      isNullConstant(Mask.getOperand(0)) &&
++-      isa<ConstantSDNode>(Mask.getOperand(1)) &&
++-      Mask.getOperand(1).getValueType().getSizeInBits() <= 64)
++-    return Mask.getConstantOperandVal(1);
++-
++-  return 0;
++-}
++-
++ SDValue DAGCombiner::visitMSTORE(SDNode *N) {
++   MaskedStoreSDNode *MST = cast<MaskedStoreSDNode>(N);
++   SDValue Mask = MST->getMask();
++   SDValue Chain = MST->getChain();
++   SDValue Value = MST->getValue();
++   SDValue Ptr = MST->getBasePtr();
++-  EVT VT = Value.getValueType();
 + 
-+         InstructionCost VecCost = VectorCost(CommonCost);
-+         // Check if the current node must be resized, if the parent node is not
-+-        // resized.
-++        // resized. Nodes without a parent (roots of the splat gather
-++        // subtrees) are resized back to their original type when the reusing
-++        // gather nodes are emitted.
-+         if (It != MinBWs.end() && !UnaryInstruction::isCast(E->getOpcode()) &&
-+             E->Idx != 0 &&
-+             (E->getOpcode() != Instruction::Load || E->UserTreeIndex)) {
-+           const EdgeInfo &EI = E->UserTreeIndex;
-+-          if (!EI.UserTE->hasState() ||
-++          if (!EI.UserTE || !EI.UserTE->hasState() ||
-+               EI.UserTE->getOpcode() != Instruction::Select ||
-+               EI.EdgeIdx != 0) {
-+             auto UserBWIt = MinBWs.find(EI.UserTE);
-+             Type *UserScalarTy =
-+-                (EI.UserTE->isGather() ||
-+-                 EI.UserTE->State == TreeEntry::SplitVectorize)
-++                !EI.UserTE ? OrigScalarTy
-++                : (EI.UserTE->isGather() ||
-++                   EI.UserTE->State == TreeEntry::SplitVectorize)
-+                     ? EI.UserTE->Scalars.front()->getType()
-+                     : EI.UserTE->getOperand(EI.EdgeIdx).front()->getType();
-+             if (UserBWIt != MinBWs.end())
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
-+@@ -0,0 +1,75 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
-++; RUN: opt -passes=slp-vectorizer -S -mtriple=aarch64-linux-gnu < %s | FileCheck %s
-++
-++define double @test() {
-++; CHECK-LABEL: @test(
-++; CHECK-NEXT:  bbl:
-++; CHECK-NEXT:    [[SELECT:%.*]] = select i1 false, i64 0, i64 0
-++; CHECK-NEXT:    [[AND:%.*]] = and i64 [[SELECT]], 0
-++; CHECK-NEXT:    [[ICMP:%.*]] = icmp eq i64 [[AND]], 0
-++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i1> poison, i1 true, i64 0
-++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i1> [[TMP0]], <2 x i1> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP2:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
-++; CHECK-NEXT:    [[TMP3:%.*]] = bitcast <2 x double> [[TMP2]] to <2 x i64>
-++; CHECK-NEXT:    [[TMP4:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
-++; CHECK-NEXT:    [[TMP5:%.*]] = bitcast <2 x double> [[TMP4]] to <2 x i64>
-++; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <2 x i1> poison, i1 [[ICMP]], i64 0
-++; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <2 x i1> [[TMP6]], <2 x i1> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP8:%.*]] = select <2 x i1> [[TMP7]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
-++; CHECK-NEXT:    [[TMP9:%.*]] = bitcast <2 x double> [[TMP8]] to <2 x i64>
-++; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <2 x i64> poison, i64 [[SELECT]], i64 0
-++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x i64> [[TMP10]], <2 x i64> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP12:%.*]] = xor <2 x i64> [[TMP11]], [[TMP9]]
-++; CHECK-NEXT:    [[TMP13:%.*]] = bitcast <2 x i64> [[TMP12]] to <2 x double>
-++; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <2 x i64> poison, i64 0, i64 0
-++; CHECK-NEXT:    [[TMP15:%.*]] = shufflevector <2 x i64> [[TMP14]], <2 x i64> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP16:%.*]] = xor <2 x i64> [[TMP15]], [[TMP3]]
-++; CHECK-NEXT:    [[TMP17:%.*]] = bitcast <2 x i64> [[TMP16]] to <2 x double>
-++; CHECK-NEXT:    [[TMP18:%.*]] = xor <2 x i64> [[TMP15]], [[TMP5]]
-++; CHECK-NEXT:    [[TMP19:%.*]] = fmul <2 x double> [[TMP13]], [[TMP17]]
-++; CHECK-NEXT:    [[TMP20:%.*]] = bitcast <2 x i64> [[TMP18]] to <2 x double>
-++; CHECK-NEXT:    [[TMP21:%.*]] = fmul <2 x double> [[TMP19]], [[TMP20]]
-++; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <2 x double> [[TMP21]], i64 0
-++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <2 x double> [[TMP21]], i64 1
-++; CHECK-NEXT:    [[FADD:%.*]] = fadd double [[TMP22]], [[TMP23]]
-++; CHECK-NEXT:    ret double [[FADD]]
-++;
-++bbl:
-++  %select = select i1 false, i64 0, i64 0
-++  %and = and i64 %select, 0
-++  %icmp = icmp eq i64 %and, 0
-++  %select1 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
-++  %bitcast = bitcast double %select1 to i64
-++  %xor = xor i64 %select, %bitcast
-++  %bitcast2 = bitcast i64 %xor to double
-++  %select4 = select i1 false, i64 0, i64 0
-++  %icmp5 = icmp eq i64 %select4, 0
-++  %select6 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
-++  %bitcast7 = bitcast double %select6 to i64
-++  %xor8 = xor i64 %select4, %bitcast7
-++  %bitcast9 = bitcast i64 %xor8 to double
-++  %select10 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
-++  %bitcast11 = bitcast double %select10 to i64
-++  %select12 = select i1 false, i64 0, i64 0
-++  %icmp13 = icmp eq i64 %select12, 0
-++  %select14 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
-++  %bitcast15 = bitcast double %select14 to i64
-++  %xor16 = xor i64 %select12, %bitcast15
-++  %select17 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
-++  %bitcast18 = bitcast double %select17 to i64
-++  %select3 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
-++  %bitcast19 = bitcast double %select3 to i64
-++  %xor20 = xor i64 %select, %bitcast19
-++  %bitcast21 = bitcast i64 %xor20 to double
-++  %xor22 = xor i64 %select4, %bitcast11
-++  %bitcast23 = bitcast i64 %xor22 to double
-++  %fmul = fmul double %bitcast21, %bitcast23
-++  %xor24 = xor i64 %select12, %bitcast18
-++  %bitcast25 = bitcast i64 %xor24 to double
-++  %fmul26 = fmul double %fmul, %bitcast25
-++  %fmul27 = fmul double %bitcast2, %bitcast9
-++  %bitcast28 = bitcast i64 %xor16 to double
-++  %fmul29 = fmul double %fmul27, %bitcast28
-++  %fadd = fadd double %fmul26, %fmul29
-++  ret double %fadd
++   // Zap masked stores with a zero mask.
++   if (ISD::isConstantSplatVectorAllZeros(Mask.getNode()))
++@@ -13964,46 +13929,21 @@
++     }
+    }
+  
+-   return RV;
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/new_hot_cold.cpp b/clang/test/CodeGenCXX/new_hot_cold.cpp
+---- a/clang/test/CodeGenCXX/new_hot_cold.cpp
+-+++ b/clang/test/CodeGenCXX/new_hot_cold.cpp
+-@@ -124,7 +124,7 @@
++-  // If this is a masked store with an all ones mask, we can use a unmasked
++-  // store.
+++  // If this is a masked load with an all ones mask, we can use a unmasked load.
++   // FIXME: Can we do this for indexed, compressing, or truncating stores?
++-  if (MST->isUnindexed() && !MST->isCompressingStore() &&
++-      !MST->isTruncatingStore()) {
++-    if (ISD::isConstantSplatVectorAllOnes(Mask.getNode()))
++-      return DAG.getStore(MST->getChain(), SDLoc(N), MST->getValue(),
++-                          MST->getBasePtr(), MST->getPointerInfo(),
++-                          MST->getBaseAlign(), MST->getMemOperand()->getFlags(),
++-                          MST->getAAInfo());
++-
++-    // Convert a masked_store with constant getactivelanemask input mask to a
++-    // standard store.
++-    if (uint64_t Lanes = calculateConstantLowMaskLanes(Mask)) {
++-      if (Lanes < VT.getVectorMinNumElements() && isPowerOf2_32(Lanes)) {
++-        EVT SubVT = EVT::getVectorVT(*DAG.getContext(),
++-                                     VT.getVectorElementType(), Lanes);
++-        unsigned IsFast = 0;
++-        if ((!LegalTypes || isTypeLegal(SubVT)) &&
++-            TLI.allowsMemoryAccess(*DAG.getContext(), DAG.getDataLayout(),
++-                                   SubVT, MST->getAddressSpace(),
++-                                   MST->getBaseAlign(),
++-                                   MST->getMemOperand()->getFlags(), &IsFast) &&
++-            IsFast) {
++-          SDLoc DL(N);
++-          SDValue Ext = DAG.getExtractSubvector(DL, SubVT, MST->getValue(), 0);
++-          return DAG.getStore(MST->getChain(), DL, Ext, MST->getBasePtr(),
++-                              MST->getPointerInfo(), MST->getBaseAlign(),
++-                              MST->getMemOperand()->getFlags(),
++-                              MST->getAAInfo());
++-        }
++-      }
++-    }
++-  }
+++  if (ISD::isConstantSplatVectorAllOnes(Mask.getNode()) && MST->isUnindexed() &&
+++      !MST->isCompressingStore() && !MST->isTruncatingStore())
+++    return DAG.getStore(MST->getChain(), SDLoc(N), MST->getValue(),
+++                        MST->getBasePtr(), MST->getPointerInfo(),
+++                        MST->getBaseAlign(), MST->getMemOperand()->getFlags(),
+++                        MST->getAAInfo());
+  
+- // CHECK-DAG: attributes [[ATTR_NOBUILTIN]] = { nobuiltin allocsize(0) {{.*}} }
+- // CHECK-DAG: attributes [[ATTR_NOBUILTIN_NOTHROW]] = { nobuiltin nounwind allocsize(0) {{.*}} }
+--// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+-+// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_CALL]] = { allocsize(0) }
+- // CHECK-DAG: attributes [[ATTR_BUILTIN_CALL]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+--// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+-+// CHECK-DAG: attributes [[ATTR_NO_BUILTIN_NOTHROW_CALL]] = { nounwind allocsize(0) }
+- // CHECK-DAG: attributes [[ATTR_BUILTIN_NOTHROW_CALL]] = { builtin nounwind allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/operator-new.cpp b/clang/test/CodeGenCXX/operator-new.cpp
+---- a/clang/test/CodeGenCXX/operator-new.cpp
+-+++ b/clang/test/CodeGenCXX/operator-new.cpp
+-@@ -27,5 +27,14 @@
+- }
++   // Try transforming N to an indexed store.
++   if (CombineToPreIndexedLoadStore(N) || CombineToPostIndexedLoadStore(N))
++     return SDValue(N, 0);
++ 
++-  if (MST->isTruncatingStore() && MST->isUnindexed() && VT.isInteger() &&
+++  if (MST->isTruncatingStore() && MST->isUnindexed() &&
+++      Value.getValueType().isInteger() &&
++       (!isa<ConstantSDNode>(Value) ||
++        !cast<ConstantSDNode>(Value)->isOpaque())) {
++     APInt TruncDemandedBits =
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll b/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
++--- a/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
+++++ b/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
++@@ -139,7 +139,14 @@
++ define void @store_low2_v4f64(ptr %p, <4 x double> %a) vscale_range(2, 2) {
++ ; CHECK-LABEL: store_low2_v4f64:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    str q0, [x0]
+++; CHECK-NEXT:    // kill: def $q1 killed $q1 killed $z0_z1 def $z0_z1
+++; CHECK-NEXT:    ptrue p0.d, vl2
+++; CHECK-NEXT:    ptrue p1.h, vl2
+++; CHECK-NEXT:    // kill: def $q0 killed $q0 killed $z0_z1 def $z0_z1
+++; CHECK-NEXT:    splice z0.d, p0, { z0.d, z1.d }
+++; CHECK-NEXT:    punpklo p0.h, p1.b
+++; CHECK-NEXT:    punpklo p0.h, p0.b
+++; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <4 x i1> @llvm.get.active.lane.mask.v4i1.i32(i32 0, i32 2)
++   tail call void @llvm.masked.store(<4 x double> %a, ptr align 1 %p, <4 x i1> %m)
++@@ -149,7 +156,13 @@
++ define void @store_low2_v4i32(ptr %p, <4 x i32> %a) vscale_range(1, 1) {
++ ; CHECK-LABEL: store_low2_v4i32:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    str d0, [x0]
+++; CHECK-NEXT:    ptrue p0.h, vl2
+++; CHECK-NEXT:    // kill: def $q0 killed $q0 def $z0
+++; CHECK-NEXT:    mov z1.h, p0/z, #-1 // =0xffffffffffffffff
+++; CHECK-NEXT:    ptrue p0.s
+++; CHECK-NEXT:    sshll v1.4s, v1.4h, #0
+++; CHECK-NEXT:    cmpne p1.s, p0/z, z1.s, #0
+++; CHECK-NEXT:    st1w { z0.s }, p1, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <4 x i1> @llvm.get.active.lane.mask.v4i1.i32(i32 0, i32 2)
++   tail call void @llvm.masked.store(<4 x i32> %a, ptr align 1 %p, <4 x i1> %m)
++@@ -159,7 +172,12 @@
++ define void @store_low2c_v4i32(ptr %p, <4 x i32> %a) vscale_range(1, 1) {
++ ; CHECK-LABEL: store_low2c_v4i32:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    str d0, [x0]
+++; CHECK-NEXT:    adrp x8, .LCPI12_0
+++; CHECK-NEXT:    ptrue p0.s
+++; CHECK-NEXT:    // kill: def $q0 killed $q0 def $z0
+++; CHECK-NEXT:    ldr q1, [x8, :lo12:.LCPI12_0]
+++; CHECK-NEXT:    cmpne p1.s, p0/z, z1.s, #0
+++; CHECK-NEXT:    st1w { z0.s }, p1, [x0]
++ ; CHECK-NEXT:    ret
++   tail call void @llvm.masked.store(<4 x i32> %a, ptr align 1 %p, <4 x i1> <i1 true, i1 true, i1 false, i1 false>)
++   ret void
++@@ -168,7 +186,11 @@
++ define void @store_low2_nxv4f64(ptr %p, <vscale x 4 x double> %a) {
++ ; CHECK-LABEL: store_low2_nxv4f64:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    str q0, [x0]
+++; CHECK-NEXT:    ptrue p0.s, vl2
+++; CHECK-NEXT:    punpkhi p1.h, p0.b
+++; CHECK-NEXT:    punpklo p0.h, p0.b
+++; CHECK-NEXT:    st1d { z1.d }, p1, [x0, #1, mul vl]
+++; CHECK-NEXT:    st1d { z0.d }, p0, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <vscale x 4 x i1> @llvm.get.active.lane.mask.nxv4i1.i32(i32 0, i32 2)
++   tail call void @llvm.masked.store(<vscale x 4 x double> %a, ptr align 1 %p, <vscale x 4 x i1> %m)
++@@ -203,10 +225,13 @@
++ define void @store_low2_v8i16(ptr %p, <8 x i16> %a) vscale_range(2, 2) {
++ ; CHECK-LABEL: store_low2_v8i16:
++ ; CHECK:       // %bb.0:
+++; CHECK-NEXT:    ptrue p0.b, vl2
++ ; CHECK-NEXT:    // kill: def $q0 killed $q0 def $z0
++-; CHECK-NEXT:    ptrue p0.s, vl2
++-; CHECK-NEXT:    uunpklo z0.s, z0.h
++-; CHECK-NEXT:    st1h { z0.s }, p0, [x0]
+++; CHECK-NEXT:    mov z1.b, p0/z, #-1 // =0xffffffffffffffff
+++; CHECK-NEXT:    ptrue p0.h, vl8
+++; CHECK-NEXT:    sshll v1.8h, v1.8b, #0
+++; CHECK-NEXT:    cmpne p1.h, p0/z, z1.h, #0
+++; CHECK-NEXT:    st1h { z0.h }, p1, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <8 x i1> @llvm.get.active.lane.mask.v8i1.i32(i32 0, i32 2)
++   tail call void @llvm.masked.store(<8 x i16> %a, ptr align 1 %p, <8 x i1> %m)
++@@ -216,9 +241,8 @@
++ define void @store_low2_nxv8i16(ptr %p, <vscale x 8 x i16> %a) {
++ ; CHECK-LABEL: store_low2_nxv8i16:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    mov z1.h, z0.h[1]
++-; CHECK-NEXT:    str h0, [x0]
++-; CHECK-NEXT:    str h1, [x0, #2]
+++; CHECK-NEXT:    ptrue p0.h, vl2
+++; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 0, i32 2)
++   tail call void @llvm.masked.store(<vscale x 8 x i16> %a, ptr align 1 %p, <vscale x 8 x i1> %m)
++@@ -239,7 +263,8 @@
++ define void @store_low4_nxv8i16(ptr %p, <vscale x 8 x i16> %a) {
++ ; CHECK-LABEL: store_low4_nxv8i16:
++ ; CHECK:       // %bb.0:
++-; CHECK-NEXT:    str d0, [x0]
+++; CHECK-NEXT:    ptrue p0.h, vl4
+++; CHECK-NEXT:    st1h { z0.h }, p0, [x0]
++ ; CHECK-NEXT:    ret
++   %m = tail call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 0, i32 4)
++   tail call void @llvm.masked.store(<vscale x 8 x i16> %a, ptr align 1 %p, <vscale x 8 x i1> %m)
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/autohvx/vector-align-basic.ll b/llvm/test/CodeGen/Hexagon/autohvx/vector-align-basic.ll
++--- a/llvm/test/CodeGen/Hexagon/autohvx/vector-align-basic.ll
+++++ b/llvm/test/CodeGen/Hexagon/autohvx/vector-align-basic.ll
++@@ -6,43 +6,40 @@
++ ; CHECK-LABEL: f0:
++ ; CHECK:       // %bb.0: // %b0
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r0 = add(r1,r0)
+++; CHECK-NEXT:     [[RADD:[r0-9]+]] = add([[R1:[r0-9]+]],[[R0:[r0-9]+]])
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     allocframe(r29,#128):raw
+++; CHECK-NEXT:     [[RLCPI:[r0-9]+]] = ##.LCPI0_0
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r2 = add(r0,#136)
+++; CHECK-NEXT:     [[RNEG:[r0-9]+]] = #-1
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r29 = and(r29,#-128)
+++; CHECK-NEXT:     [[RADD136:[r0-9]+]] = add([[RADD]],#136)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     v1 = vmem(r0+#1)
+++; CHECK-NEXT:     [[V1:[v0-9]+]] = vmem([[RLCPI]]+#0)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     v0 = vmemu(r2+#0)
+++; CHECK-NEXT:     [[RADD128:[r0-9]+]] = add([[RADD]],#128)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r4 = add(r29,#0)
+++; CHECK-NEXT:     [[Q0:[q0-9]+]] = vand([[V1]],[[RNEG]])
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     v0.w = vadd(v1.w,v0.w)
+++; CHECK-NEXT:     [[V2:[v0-9]+]] = vmemu([[RADD136]]+#0)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     vmem(r4+#0) = v0
+++; CHECK-NEXT:     [[V3:[v0-9]+]] = vmem([[RADD]]+#1)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r2 = memw(r4+#0)
+++; CHECK-NEXT:     [[V0:[v0-9]+]].w = vadd([[V3]].w,[[V2]].w)
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     r3 = memw(r4+#4)
+++; CHECK-NEXT:     if ([[Q0]]) vmem([[RADD128]]+#0) = [[V0]]
++ ; CHECK-NEXT:    }
++ ; CHECK-NEXT:    {
++-; CHECK-NEXT:     memd(r0+#128) = r3:2
++-; CHECK-NEXT:    }
++-; CHECK-NEXT:    {
++-; CHECK-NEXT:     r31:30 = dealloc_return(r30):raw
+++; CHECK-NEXT:     jumpr r31
++ ; CHECK-NEXT:    }
++ b0:
++   %v0 = add i32 %a1, 128
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/apx/kmov-postrapseudos.ll b/llvm/test/CodeGen/X86/apx/kmov-postrapseudos.ll
++--- a/llvm/test/CodeGen/X86/apx/kmov-postrapseudos.ll
+++++ b/llvm/test/CodeGen/X86/apx/kmov-postrapseudos.ll
++@@ -29,12 +29,20 @@
++ define void @kmovkr_2() {
++ ; AVX512-LABEL: kmovkr_2:
++ ; AVX512:       # %bb.0: # %alloca_21
++-; AVX512-NEXT:    movq $0, 0 # encoding: [0x48,0xc7,0x04,0x25,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]
+++; AVX512-NEXT:    vxorps %xmm0, %xmm0, %xmm0 # encoding: [0xc5,0xf8,0x57,0xc0]
+++; AVX512-NEXT:    movw $3, %ax # encoding: [0x66,0xb8,0x03,0x00]
+++; AVX512-NEXT:    kmovw %eax, %k1 # EVEX TO VEX Compression encoding: [0xc5,0xf8,0x92,0xc8]
+++; AVX512-NEXT:    vmovups %zmm0, 0 {%k1} # encoding: [0x62,0xf1,0x7c,0x49,0x11,0x04,0x25,0x00,0x00,0x00,0x00]
+++; AVX512-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
++ ; AVX512-NEXT:    retq # encoding: [0xc3]
++ ;
++ ; AVX512BW-LABEL: kmovkr_2:
++ ; AVX512BW:       # %bb.0: # %alloca_21
++-; AVX512BW-NEXT:    movq $0, 0 # encoding: [0x48,0xc7,0x04,0x25,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]
+++; AVX512BW-NEXT:    vxorps %xmm0, %xmm0, %xmm0 # encoding: [0xc5,0xf8,0x57,0xc0]
+++; AVX512BW-NEXT:    movw $3, %ax # encoding: [0x66,0xb8,0x03,0x00]
+++; AVX512BW-NEXT:    kmovd %eax, %k1 # EVEX TO VEX Compression encoding: [0xc5,0xfb,0x92,0xc8]
+++; AVX512BW-NEXT:    vmovups %zmm0, 0 {%k1} # encoding: [0x62,0xf1,0x7c,0x49,0x11,0x04,0x25,0x00,0x00,0x00,0x00]
+++; AVX512BW-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
++ ; AVX512BW-NEXT:    retq # encoding: [0xc3]
++ alloca_21:
++   call void @llvm.masked.store.v4f32.p0(<4 x float> zeroinitializer, ptr null, i32 1, <4 x i1> <i1 true, i1 true, i1 false, i1 false>)
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/masked-store-illegal-type.ll b/llvm/test/CodeGen/X86/masked-store-illegal-type.ll
++--- a/llvm/test/CodeGen/X86/masked-store-illegal-type.ll
+++++ b/llvm/test/CodeGen/X86/masked-store-illegal-type.ll
++@@ -1,21 +0,0 @@
++-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
++-; RUN: llc < %s -mtriple=x86_64-linux-gnu -mattr=+avx,+avx2,+avx512bw,+avx512cd,+avx512dq,+avx512f,+avx512vl | FileCheck %s
++-
++-define fastcc void @render_event(<12 x double> %0) {
++-; CHECK-LABEL: render_event:
++-; CHECK:       # %bb.0:
++-; CHECK-NEXT:    vmovlhps {{.*#+}} xmm6 = xmm6[0],xmm7[0]
++-; CHECK-NEXT:    vmovlhps {{.*#+}} xmm4 = xmm4[0],xmm5[0]
++-; CHECK-NEXT:    vinsertf128 $1, %xmm6, %ymm4, %ymm4
++-; CHECK-NEXT:    vmovlhps {{.*#+}} xmm2 = xmm2[0],xmm3[0]
++-; CHECK-NEXT:    vmovlhps {{.*#+}} xmm0 = xmm0[0],xmm1[0]
++-; CHECK-NEXT:    vinsertf128 $1, %xmm2, %ymm0, %ymm0
++-; CHECK-NEXT:    vinsertf64x4 $1, %ymm4, %zmm0, %zmm0
++-; CHECK-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
++-; CHECK-NEXT:    vmovsd %xmm1, 64
++-; CHECK-NEXT:    vmovups %zmm0, 0
++-; CHECK-NEXT:    vzeroupper
++-; CHECK-NEXT:    retq
++-  call void @llvm.masked.store.v12f64.p0(<12 x double> %0, ptr null, <12 x i1> <i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 false, i1 false, i1 false>)
++-  ret void
++-}
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr179489.ll b/llvm/test/CodeGen/X86/pr179489.ll
++--- a/llvm/test/CodeGen/X86/pr179489.ll
+++++ b/llvm/test/CodeGen/X86/pr179489.ll
++@@ -9,12 +9,14 @@
++ ; X86-LABEL: foo:
++ ; X86:       # %bb.0: # %entry
++ ; X86-NEXT:    movl {{[0-9]+}}(%esp), %eax
++-; X86-NEXT:    vpextrb $1, %xmm0, (%eax)
+++; X86-NEXT:    vmovw %xmm0, %ecx
+++; X86-NEXT:    movb %ch, (%eax)
++ ; X86-NEXT:    retl
++ ;
++ ; X64-LABEL: foo:
++ ; X64:       # %bb.0: # %entry
++-; X64-NEXT:    vpextrb $1, %xmm0, (%rdi)
+++; X64-NEXT:    vmovw %xmm0, %eax
+++; X64-NEXT:    movb %ah, (%rdi)
++ ; X64-NEXT:    retq
++ entry:
++   %i3 = shufflevector <8 x i16> %arg, <8 x i16> <i16 poison, i16 257, i16 257, i16 257, i16 257, i16 257, i16 257, i16 257>, <8 x i32> <i32 0, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr46532.ll b/llvm/test/CodeGen/X86/pr46532.ll
++--- a/llvm/test/CodeGen/X86/pr46532.ll
+++++ b/llvm/test/CodeGen/X86/pr46532.ll
++@@ -7,6 +7,8 @@
++ ; CHECK-NEXT:    movq (%rax), %rax
++ ; CHECK-NEXT:    vxorps %xmm0, %xmm0, %xmm0
++ ; CHECK-NEXT:    vmovaps %xmm0, 32(%rax)
+++; CHECK-NEXT:    vmovsd {{.*#+}} xmm0 = [4294967295,4294967295,0,0]
+++; CHECK-NEXT:    vmaskmovps %ymm0, %ymm0, (%rax)
++ while.1.body.preheader:
++   %0 = load ptr, ptr undef, align 8, !invariant.load !0, !dereferenceable !1, !align !2
++   %1 = getelementptr inbounds i8, ptr %0, i64 32
++diff -ruN --strip-trailing-cr a/llvm/test/TableGen/AMDGPUTargetDefGenericClassification.td b/llvm/test/TableGen/AMDGPUTargetDefGenericClassification.td
++--- a/llvm/test/TableGen/AMDGPUTargetDefGenericClassification.td
+++++ b/llvm/test/TableGen/AMDGPUTargetDefGenericClassification.td
++@@ -1,71 +0,0 @@
++-// RUN: split-file %s %t
++-// RUN: llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/valid.td \
++-// RUN:   | FileCheck %t/valid.td
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-bug.td 2>&1 \
++-// RUN:   | FileCheck %t/missing-generic.td -DDIR=%t -DFEATURE=user-sgpr-init16-bug --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-priority.td 2>&1 \
++-// RUN:   | FileCheck %t/missing-generic.td -DDIR=%t -DFEATURE=required-export-priority --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-timing.td 2>&1 \
++-// RUN:   | FileCheck %t/missing-generic.td -DDIR=%t -DFEATURE=gfx125x-lowest-rate-wmma --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-banks.td 2>&1 \
++-// RUN:   | FileCheck %t/missing-generic.td -DDIR=%t -DFEATURE=ldsbankcount32 --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-lds-size.td 2>&1 \
++-// RUN:   | FileCheck %t/missing-generic.td -DDIR=%t -DFEATURE=addressablelocalmemorysize65536 --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/capability.td 2>&1 \
++-// RUN:   | FileCheck %t/capability.td -DFILE=%t/capability.td --implicit-check-not="error:"
++-
++-//--- common.td
++-include "AMDGPU.td"
++-
++-def EmptyGPU : AMDGPUProcessorModel<"gfx999", NoSchedModel, [], [9, 9, 9]>;
++-
++-//--- valid.td
++-include "common.td"
++-// Check the real generic targets, including gfx11's combined workarounds,
++-// gfx12-5's fixup and WMMA timing, and gfx9-4's LDS size and bank count.
++-// CHECK: GK_GFX9_4_GENERIC
++-// CHECK: GK_GFX11_GENERIC
++-// CHECK: GK_GFX12_5_GENERIC
++-
++-//--- missing-bug.td
++-include "common.td"
++-defvar CheckedFeature = FeatureUserSGPRInit16Bug;
++-include "missing-generic.td"
++-
++-//--- missing-priority.td
++-include "common.td"
++-defvar CheckedFeature = FeatureRequiredExportPriority;
++-include "missing-generic.td"
++-
++-//--- missing-timing.td
++-include "common.td"
++-defvar CheckedFeature = FeatureGFX125xLowestRateWMMA;
++-include "missing-generic.td"
++-
++-//--- missing-banks.td
++-include "common.td"
++-defvar CheckedFeature = FeatureLDSBankCount32;
++-include "missing-generic.td"
++-
++-//--- missing-lds-size.td
++-include "common.td"
++-defvar CheckedFeature = FeatureAddressableLocalMemorySize65536;
++-include "missing-generic.td"
++-
++-//--- missing-generic.td
++-// Classified backend-only features still need support from a covered GPU.
++-// Included files use the native path separator after the include directory.
++-// CHECK: [[DIR]]{{[/\\]}}missing-generic.td:[[#@LINE+1]]:1: error: generic target 'gfx9-9-generic' exposes feature '[[FEATURE]]' not supported by any covered GPU
++-def : AMDGPUProcessorModel<"gfx9-9-generic", NoSchedModel, [CheckedFeature], [9, 9, 0]> {
++-  let CoveredGPUs = [EmptyGPU];
++-}
++-
++-//--- capability.td
++-include "common.td"
++-def WMMAGPU : AMDGPUProcessorModel<"gfx998", NoSchedModel,
++-    [FeatureWMMA256bInsts], [9, 9, 8]>;
++-// Instruction support keeps the default all-covered-GPUs rule.
++-// CHECK: [[FILE]]:[[#@LINE+1]]:1: error: generic target 'gfx9-9-generic' exposes feature 'wmma-256b-insts' not supported by covered GPU 'gfx999'
++-def : AMDGPUProcessorModel<"gfx9-9-generic", NoSchedModel, [FeatureWMMA256bInsts], [9, 9, 0]> {
++-  let CoveredGPUs = [WMMAGPU, EmptyGPU];
++-}
++diff -ruN --strip-trailing-cr a/llvm/test/TableGen/AMDGPUTargetDefGenericFeatures.td b/llvm/test/TableGen/AMDGPUTargetDefGenericFeatures.td
++--- a/llvm/test/TableGen/AMDGPUTargetDefGenericFeatures.td
+++++ b/llvm/test/TableGen/AMDGPUTargetDefGenericFeatures.td
++@@ -1,33 +1,66 @@
++ // RUN: split-file %s %t
++-// RUN: llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/valid.td \
+++// RUN: llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/valid.td \
++ // RUN:   | FileCheck %t/valid.td
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-any.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/missing-any.td 2>&1 \
++ // RUN:   | FileCheck %t/missing-any.td -DFILE=%t/missing-any.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-all.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/missing-all.td 2>&1 \
++ // RUN:   | FileCheck %t/missing-all.td -DFILE=%t/missing-all.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/implied-all.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/implied-all.td 2>&1 \
++ // RUN:   | FileCheck %t/implied-all.td -DFILE=%t/implied-all.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/missing-private.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/missing-private.td 2>&1 \
++ // RUN:   | FileCheck %t/missing-private.td -DFILE=%t/missing-private.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/numeric-mismatch.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/implied-private.td 2>&1 \
+++// RUN:   | FileCheck %t/implied-private.td -DFILE=%t/implied-private.td --implicit-check-not="error:"
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/numeric-mismatch.td 2>&1 \
++ // RUN:   | FileCheck %t/numeric-mismatch.td -DFILE=%t/numeric-mismatch.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/empty-members.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/empty-members.td 2>&1 \
++ // RUN:   | FileCheck %t/empty-members.td -DFILE=%t/empty-members.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/self-member.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/self-member.td 2>&1 \
++ // RUN:   | FileCheck %t/self-member.td -DFILE=%t/self-member.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/generic-member.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/generic-member.td 2>&1 \
++ // RUN:   | FileCheck %t/generic-member.td -DFILE=%t/generic-member.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/pseudo-member.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/pseudo-member.td 2>&1 \
++ // RUN:   | FileCheck %t/pseudo-member.td -DFILE=%t/pseudo-member.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/unregistered-member.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/unregistered-member.td 2>&1 \
++ // RUN:   | FileCheck %t/unregistered-member.td -DFILE=%t/unregistered-member.td --implicit-check-not="error:"
++-// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../include -I %p/../../lib/Target/AMDGPU %t/r600-member.td 2>&1 \
+++// RUN: not llvm-tblgen -gen-amdgpu-target-def -I %t -I %p/../../lib/Target/AMDGPU %t/r600-member.td 2>&1 \
++ // RUN:   | FileCheck %t/r600-member.td -DFILE=%t/r600-member.td --implicit-check-not="error:"
+  
+- // ALL: declare noundef nonnull ptr @_Znaj(
++ //--- common.td
++-include "llvm/Target/Target.td"
+++// Exercise the validation rules with small synthetic targets. The real targets
+++// are validated when AMDGPUTargetParserDef.inc is generated during the build.
+++// Stand-ins for the Target.td classes used by AMDGPUTargetParser.td, limited to
+++// the fields the backend reads.
+++class InlineBehavior;
+++def InlineIgnore : InlineBehavior;
+++def InlineDefault : InlineBehavior;
+++class SubtargetFeature<string n, string f, string v, string d,
+++                       list<SubtargetFeature> i = [],
+++                       InlineBehavior ib = InlineDefault> {
+++  string Name = n;
+++  string FieldName = f;
+++  string Value = v;
+++  string Desc = d;
+++  list<SubtargetFeature> Implies = i;
+++  InlineBehavior InlineBehavior = ib;
 ++}
+++
+++class SchedMachineModel;
+++def NoSchedModel : SchedMachineModel;
+++class ProcessorItineraries;
+++def NoItineraries : ProcessorItineraries;
+ +
+-+void *f3(unsigned long N) {
+-+  // SANE: call noalias noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
+-+  // SANENOT: call noundef nonnull ptr @_Znwj(i32 noundef {{.*}}) [[ATTR2:#[0-9]+]]
+-+  return ::operator new(N);
+++class Processor<string n, ProcessorItineraries pi, list<SubtargetFeature> f> {
+++  string Name = n;
+++  ProcessorItineraries ProcItin = pi;
+++  list<SubtargetFeature> Features = f;
+++}
+++class ProcessorModel<string n, SchedMachineModel m, list<SubtargetFeature> f>
+++    : Processor<n, NoItineraries, f> {
+++  SchedMachineModel SchedModel = m;
+ +}
+ +
+- // SANE: attributes [[ATTR]] = { builtin allocsize(0) memory(inaccessiblemem: readwrite, errnomem: write) }
+-+// SANE: attributes [[ATTR2]] = { allocsize(0) }
+- // SANENOT: attributes [[ATTR]] = { builtin allocsize(0) }
+-+// SANENOT: attributes [[ATTR2]] = { allocsize(0) }
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+---- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-@@ -16145,18 +16145,21 @@
++ include "AMDGPUTargetParser.td"
++-def MyTarget : Target;
+  
+-         InstructionCost VecCost = VectorCost(CommonCost);
+-         // Check if the current node must be resized, if the parent node is not
+--        // resized.
+-+        // resized. Nodes without a parent (roots of the splat gather
+-+        // subtrees) are resized back to their original type when the reusing
+-+        // gather nodes are emitted.
+-         if (It != MinBWs.end() && !UnaryInstruction::isCast(E->getOpcode()) &&
+-             E->Idx != 0 &&
+-             (E->getOpcode() != Instruction::Load || E->UserTreeIndex)) {
+-           const EdgeInfo &EI = E->UserTreeIndex;
+--          if (!EI.UserTE->hasState() ||
+-+          if (!EI.UserTE || !EI.UserTE->hasState() ||
+-               EI.UserTE->getOpcode() != Instruction::Select ||
+-               EI.EdgeIdx != 0) {
+-             auto UserBWIt = MinBWs.find(EI.UserTE);
+-             Type *UserScalarTy =
+--                (EI.UserTE->isGather() ||
+--                 EI.UserTE->State == TreeEntry::SplitVectorize)
+-+                !EI.UserTE ? OrigScalarTy
+-+                : (EI.UserTE->isGather() ||
+-+                   EI.UserTE->State == TreeEntry::SplitVectorize)
+-                     ? EI.UserTE->Scalars.front()->getType()
+-                     : EI.UserTE->getOperand(EI.EdgeIdx).front()->getType();
+-             if (UserBWIt != MinBWs.end())
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
+---- a/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/AArch64/splat-gather-subtree-minbw.ll
+-@@ -0,0 +1,75 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+-+; RUN: opt -passes=slp-vectorizer -S -mtriple=aarch64-linux-gnu < %s | FileCheck %s
+-+
+-+define double @test() {
+-+; CHECK-LABEL: @test(
+-+; CHECK-NEXT:  bbl:
+-+; CHECK-NEXT:    [[SELECT:%.*]] = select i1 false, i64 0, i64 0
+-+; CHECK-NEXT:    [[AND:%.*]] = and i64 [[SELECT]], 0
+-+; CHECK-NEXT:    [[ICMP:%.*]] = icmp eq i64 [[AND]], 0
+-+; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i1> poison, i1 true, i64 0
+-+; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i1> [[TMP0]], <2 x i1> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP2:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
+-+; CHECK-NEXT:    [[TMP3:%.*]] = bitcast <2 x double> [[TMP2]] to <2 x i64>
+-+; CHECK-NEXT:    [[TMP4:%.*]] = select <2 x i1> [[TMP1]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
+-+; CHECK-NEXT:    [[TMP5:%.*]] = bitcast <2 x double> [[TMP4]] to <2 x i64>
+-+; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <2 x i1> poison, i1 [[ICMP]], i64 0
+-+; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <2 x i1> [[TMP6]], <2 x i1> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP8:%.*]] = select <2 x i1> [[TMP7]], <2 x double> zeroinitializer, <2 x double> zeroinitializer
+-+; CHECK-NEXT:    [[TMP9:%.*]] = bitcast <2 x double> [[TMP8]] to <2 x i64>
+-+; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <2 x i64> poison, i64 [[SELECT]], i64 0
+-+; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x i64> [[TMP10]], <2 x i64> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP12:%.*]] = xor <2 x i64> [[TMP11]], [[TMP9]]
+-+; CHECK-NEXT:    [[TMP13:%.*]] = bitcast <2 x i64> [[TMP12]] to <2 x double>
+-+; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <2 x i64> poison, i64 0, i64 0
+-+; CHECK-NEXT:    [[TMP15:%.*]] = shufflevector <2 x i64> [[TMP14]], <2 x i64> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP16:%.*]] = xor <2 x i64> [[TMP15]], [[TMP3]]
+-+; CHECK-NEXT:    [[TMP17:%.*]] = bitcast <2 x i64> [[TMP16]] to <2 x double>
+-+; CHECK-NEXT:    [[TMP18:%.*]] = xor <2 x i64> [[TMP15]], [[TMP5]]
+-+; CHECK-NEXT:    [[TMP19:%.*]] = fmul <2 x double> [[TMP13]], [[TMP17]]
+-+; CHECK-NEXT:    [[TMP20:%.*]] = bitcast <2 x i64> [[TMP18]] to <2 x double>
+-+; CHECK-NEXT:    [[TMP21:%.*]] = fmul <2 x double> [[TMP19]], [[TMP20]]
+-+; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <2 x double> [[TMP21]], i64 0
+-+; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <2 x double> [[TMP21]], i64 1
+-+; CHECK-NEXT:    [[FADD:%.*]] = fadd double [[TMP22]], [[TMP23]]
+-+; CHECK-NEXT:    ret double [[FADD]]
+-+;
+-+bbl:
+-+  %select = select i1 false, i64 0, i64 0
+-+  %and = and i64 %select, 0
+-+  %icmp = icmp eq i64 %and, 0
+-+  %select1 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast = bitcast double %select1 to i64
+-+  %xor = xor i64 %select, %bitcast
+-+  %bitcast2 = bitcast i64 %xor to double
+-+  %select4 = select i1 false, i64 0, i64 0
+-+  %icmp5 = icmp eq i64 %select4, 0
+-+  %select6 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast7 = bitcast double %select6 to i64
+-+  %xor8 = xor i64 %select4, %bitcast7
+-+  %bitcast9 = bitcast i64 %xor8 to double
+-+  %select10 = select i1 %icmp5, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast11 = bitcast double %select10 to i64
+-+  %select12 = select i1 false, i64 0, i64 0
+-+  %icmp13 = icmp eq i64 %select12, 0
+-+  %select14 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast15 = bitcast double %select14 to i64
+-+  %xor16 = xor i64 %select12, %bitcast15
+-+  %select17 = select i1 %icmp13, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast18 = bitcast double %select17 to i64
+-+  %select3 = select i1 %icmp, double 0.000000e+00, double 0.000000e+00
+-+  %bitcast19 = bitcast double %select3 to i64
+-+  %xor20 = xor i64 %select, %bitcast19
+-+  %bitcast21 = bitcast i64 %xor20 to double
+-+  %xor22 = xor i64 %select4, %bitcast11
+-+  %bitcast23 = bitcast i64 %xor22 to double
+-+  %fmul = fmul double %bitcast21, %bitcast23
+-+  %xor24 = xor i64 %select12, %bitcast18
+-+  %bitcast25 = bitcast i64 %xor24 to double
+-+  %fmul26 = fmul double %fmul, %bitcast25
+-+  %fmul27 = fmul double %bitcast2, %bitcast9
+-+  %bitcast28 = bitcast i64 %xor16 to double
+-+  %fmul29 = fmul double %fmul27, %bitcast28
+-+  %fadd = fadd double %fmul26, %fmul29
+-+  ret double %fadd
++ def FeatureAll : SubtargetFeature<"all", "HasAll", "true", "">;
++ def FeatureAnyA : AMDGPUGenericAnyFeature<"any-a", "HasAnyA", "true", "">;
++@@ -37,7 +70,13 @@
++ def FeatureAnySmall : NumericFeature<4>;
++ def FeatureAnyB : NumericFeature<8>;
++ def FeatureAnyLarge : NumericFeature<16>;
++-def FeaturePrivate : AMDGPUGenericAnyFeature<"private", "HasPrivate", "true", "">;
+++// Classification inherited through a subclass also applies to backend-only
+++// features, which must participate in validation without being emitted.
+++class PrivateFeature : AMDGPUGenericAnyFeature<
+++    "private", "HasPrivate", "true", "">;
+++def FeaturePrivate : PrivateFeature;
+++def FeatureImpliesPrivate : SubtargetFeature<
+++    "implies-private", "HasImpliesPrivate", "true", "", [FeaturePrivate]>;
++ def FeatureImpliesA : SubtargetFeature<
++     "implies-a", "HasImpliesA", "true", "", [FeatureAnyA]>;
++ def FeatureImpliesB : SubtargetFeature<
++@@ -55,7 +94,7 @@
++ def GFX900 : AMDGPUProcessorModel<"gfx900", NoSchedModel,
++     [FeatureAll, FeatureAnyA, FeatureAnySmall], [9, 0, 0]>;
++ def GFX901 : AMDGPUProcessorModel<"gfx901", NoSchedModel,
++-    [FeatureAll, FeatureImpliesB, FeaturePrivate], [9, 0, 1]>;
+++    [FeatureAll, FeatureImpliesB, FeatureImpliesPrivate], [9, 0, 1]>;
++ // Different members supply different marked features. Follow Implies on both
++ // the generic and the members, and check marked backend-only features too.
++ def : AMDGPUProcessorModel<"gfx9-generic", NoSchedModel,
++@@ -103,6 +142,15 @@
++   let CoveredGPUs = [GFX900];
++ }
++ 
+++//--- implied-private.td
+++include "common.td"
+++def GFX900 : AMDGPUProcessorModel<"gfx900", NoSchedModel, [], [9, 0, 0]>;
+++// An unclassified backend-only parent must not hide a classified dependency.
+++// CHECK: [[FILE]]:[[#@LINE+1]]:1: error: generic target 'gfx9-generic' exposes feature 'private' not supported by any covered GPU
+++def : AMDGPUProcessorModel<"gfx9-generic", NoSchedModel, [FeatureImpliesPrivate], [9, 0, 0]> {
+++  let CoveredGPUs = [GFX900];
+ +}
+++
++ //--- numeric-mismatch.td
++ include "common.td"
++ def GFX900 : AMDGPUProcessorModel<"gfx900", NoSchedModel, [FeatureAnySmall], [9, 0, 0]>;
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tosa/Transforms/TosaProfileCompliance.cpp b/mlir/lib/Dialect/Tosa/Transforms/TosaProfileCompliance.cpp
++--- a/mlir/lib/Dialect/Tosa/Transforms/TosaProfileCompliance.cpp
+++++ b/mlir/lib/Dialect/Tosa/Transforms/TosaProfileCompliance.cpp
++@@ -14,11 +14,12 @@
++ using namespace mlir;
++ using namespace mlir::tosa;
++ 
++-// Building this ~5,000-line generated initializer map under MemorySanitizer
++-// leads to extreme compile times (>3.5 minutes) during InstCombine and greedy
++-// register allocation due to shadow/origin instrumentation overhead. Disable
++-// optimization under MSan to keep build times manageable.
++-#if LLVM_MEMORY_SANITIZER_BUILD
+++// Building this ~5,000-line generated initializer map under HWAddressSanitizer
+++// or MemorySanitizer leads to extreme compile times (>3.5 minutes) during
+++// InstCombine and greedy register allocation due to instrumentation
+++// overhead. Disable optimization under MSan/HWAsan to keep build times
+++// manageable.
+++#if LLVM_MEMORY_SANITIZER_BUILD || LLVM_HWADDRESS_SANITIZER_BUILD
++ __attribute__((optnone))
++ #else
++ LLVM_ATTRIBUTE_MINSIZE
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel b/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/third-party/BUILD.bazel
++@@ -66,7 +66,7 @@
++ 
++ bool_flag(
++     name = "llvm_enable_lzma",
++-    build_setting_default = False,
+++    build_setting_default = True,
++ )
++ 
++ config_setting(
++@@ -74,11 +74,7 @@
++     flag_values = {":llvm_enable_lzma": "true"},
++ )
++ 
++-# Unlike zlib and zstd there is no liblzma module in the Bazel registry, so this
++-# links the system library rather than building one from source. That is why it
++-# is a plain cc_library with linkopts instead of a cc_library_wrapper, and why
++-# it defaults to off.
++-cc_library(
+++cc_library_wrapper(
++     name = "lzma",
++     defines = select({
++         ":llvm_lzma_enabled": [
++@@ -88,9 +84,9 @@
++             "LLVM_ENABLE_LZMA=0",
++         ],
++     }),
++-    linkopts = select({
+++    deps = select({
++         ":llvm_lzma_enabled": [
++-            "-llzma",
+++            "@llvm_xz//:lzma",
++         ],
++         "//conditions:default": [],
++     }),
++diff -ruN --strip-trailing-cr a/utils/bazel/MODULE.bazel b/utils/bazel/MODULE.bazel
++--- a/utils/bazel/MODULE.bazel
+++++ b/utils/bazel/MODULE.bazel
++@@ -29,6 +29,7 @@
++ bazel_dep(name = "nanobind", version = "2.12.0.bcr.1")
++ bazel_dep(name = "libpfm", version = "4.13.0", repo_name = "pfm")
++ bazel_dep(name = "vulkan_headers", version = "1.4.349")
+++bazel_dep(name = "xz", version = "5.4.5.bcr.9", repo_name = "llvm_xz")
++ 
++ bazel_dep(name = "emsdk", version = "6.0.2", dev_dependency = True)
++ bazel_dep(name = "llvm", version = "0.8.20", dev_dependency = True)
++diff -ruN --strip-trailing-cr a/utils/bazel/MODULE.bazel.lock b/utils/bazel/MODULE.bazel.lock
++--- a/utils/bazel/MODULE.bazel.lock
+++++ b/utils/bazel/MODULE.bazel.lock
++@@ -55,7 +55,8 @@
++     "https://bcr.bazel.build/modules/bazel_lib/3.0.0/MODULE.bazel": "22b70b80ac89ad3f3772526cd9feee2fa412c2b01933fea7ed13238a448d370d",
++     "https://bcr.bazel.build/modules/bazel_lib/3.1.0/MODULE.bazel": "6809765c14e3c766a9b9286c7b0ec56ed87a73326e48fe01749f0c0fdcfe3287",
++     "https://bcr.bazel.build/modules/bazel_lib/3.2.2/MODULE.bazel": "e2c890c8a515d6bca9c66d47718aa9e44b458fde64ec7204b8030bf2d349058c",
++-    "https://bcr.bazel.build/modules/bazel_lib/3.2.2/source.json": "9e84e115c20e14652c5c21401ae85ff4daa8702e265b5c0b3bf89353f17aa212",
+++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/MODULE.bazel": "cbc920fff00a55b2fd663d40850560a6fb17fd5ef3a9f3d6cbf0d32908dd8a40",
+++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/source.json": "7a9c2b06a113c4962d329bb68befdb90d0447788a19aabaa32b476a0458e7d28",
++     "https://bcr.bazel.build/modules/bazel_skylib/1.0.3/MODULE.bazel": "bcb0fd896384802d1ad283b4e4eb4d718eebd8cb820b0a2c3a347fb971afd9d8",
++     "https://bcr.bazel.build/modules/bazel_skylib/1.1.1/MODULE.bazel": "1add3e7d93ff2e6998f9e118022c84d163917d912f5afafb3058e3d2f1545b5e",
++     "https://bcr.bazel.build/modules/bazel_skylib/1.2.0/MODULE.bazel": "44fe84260e454ed94ad326352a698422dbe372b21a1ac9f3eab76eb531223686",
++@@ -313,6 +314,8 @@
++     "https://bcr.bazel.build/modules/windows_support/0.4.1/source.json": "bdb72e6717b00135e0a4a8512b3f6b626df0baea0bde74bf7312c7484f791287",
++     "https://bcr.bazel.build/modules/with_cfg.bzl/0.12.0/MODULE.bazel": "b573395fe63aef4299ba095173e2f62ccfee5ad9bbf7acaa95dba73af9fc2b38",
++     "https://bcr.bazel.build/modules/with_cfg.bzl/0.12.0/source.json": "3f3fbaeafecaf629877ad152a2c9def21f8d330d91aa94c5dc75bbb98c10b8b8",
+++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/MODULE.bazel": "ff7cf8a5334a96b7b9ffcbe73418d45929ce125efebac39c1ee7d14bd2ae7a9b",
+++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/source.json": "abf61f3c1630eab7b81722f710060b6f31e7c160511bcbfaad74bb4385883051",
++     "https://bcr.bazel.build/modules/zlib-ng/2.3.3.bcr.2/MODULE.bazel": "86130924115bf8dfc4aba286fb49a2ec8d32430a21771db9ccf5381acf0d10cc",
++     "https://bcr.bazel.build/modules/zlib-ng/2.3.3.bcr.2/source.json": "7aa4112eb2fbb99757e97cf0b7a4e2bdb3464b2b3cfb351bc807ffcb34bd349f",
++     "https://bcr.bazel.build/modules/zlib-ng/2.3.3/MODULE.bazel": "0afa781a5f354b4fd811a5c9a086e111daf50e09d8e98ab1cf7c46eeacc33aac",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 08380e9e..d929da09 100644
+index d929da09..88052c28 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -19,8 +19,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "0038be81b8b5361112faf82e69d4590364ee81b9"
--    LLVM_SHA256 = "6675de5b328d62a6bbbef606720ab110d32c55e4645d4fa503e1cfab15bfe878"
-+    LLVM_COMMIT = "a22291abb68744cb0b70978eb506a7c5592a3309"
-+    LLVM_SHA256 = "cf19b82f0dfbef1e62afe520ba4ee6de4f4823524d7804490e88d815f822c8e9"
+-    LLVM_COMMIT = "a22291abb68744cb0b70978eb506a7c5592a3309"
+-    LLVM_SHA256 = "cf19b82f0dfbef1e62afe520ba4ee6de4f4823524d7804490e88d815f822c8e9"
++    LLVM_COMMIT = "e56c2cefc3e7978de4a2d799fa3abec77d75af21"
++    LLVM_SHA256 = "affcad31c9455e95faca9d4de38e4a49b73c23bbf48b405d264ff10a6bfd3baf"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index fb55a869..81f3bf2f 100644
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -123,6 +123,328 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgU
+  
+  /// Extracts integer values from the attribute |elements|.
+  SmallVector<int64_t> extract1DVector(DenseIntElementsAttr elements);
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++@@ -38,7 +38,7 @@
++ 
++ // CHECK-LABEL: @concatenate
++ func.func @concatenate(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x3xf32>) -> tensor<6x3xf32> {
++-  // CHECK: tosa.concat %arg0, %arg1 {axis = 0 : i32} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+++  // CHECK: tosa.concat %arg0, %arg1 axis(0) : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
++   %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
++   return %0 : tensor<6x3xf32>
++ }
++@@ -61,10 +61,10 @@
++ 
++ // CHECK-LABEL: @dot_vector_vector
++ func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> tensor<f32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<> : tensor<0xindex>} : () -> !tosa.shape<0>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 1, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<> : tensor<0xindex>) : () -> !tosa.shape<0>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 1, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 1]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -74,10 +74,10 @@
++ 
++ // CHECK-LABEL: @dot_vector_matrix
++ func.func @dot_vector_matrix(%arg0 : tensor<2xf32>, %arg1 : tensor<2x3xf32>) -> tensor<3xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<3> : tensor<1xindex>} : () -> !tosa.shape<1>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 1, 2]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<3> : tensor<1xindex>) : () -> !tosa.shape<1>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 1, 2]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -87,10 +87,10 @@
++ 
++ // CHECK-LABEL: @dot_matrix_vector
++ func.func @dot_matrix_vector(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3xf32>) -> tensor<2xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<2> : tensor<1xindex>} : () -> !tosa.shape<1>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<2> : tensor<1xindex>) : () -> !tosa.shape<1>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 1]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -100,10 +100,10 @@
++ 
++ // CHECK-LABEL: @dot_matrix_matrix
++ func.func @dot_matrix_matrix(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3x4xf32>) -> tensor<2x4xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<[2, 4]> : tensor<2xindex>} : () -> !tosa.shape<2>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<[2, 4]> : tensor<2xindex>) : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 4]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -113,10 +113,10 @@
++ 
++ // CHECK-LABEL: @dot_general_vector_vector
++ func.func @dot_general_vector_vector(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<f32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<> : tensor<0xindex>} : () -> !tosa.shape<0>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 1, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<> : tensor<0xindex>) : () -> !tosa.shape<0>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 1, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 1]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -126,10 +126,10 @@
++ 
++ // CHECK-LABEL: @dot_general_vector_matrix
++ func.func @dot_general_vector_matrix(%arg0: tensor<2xf32>, %arg1: tensor<2x3xf32>) -> tensor<3xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<3> : tensor<1xindex>} : () -> !tosa.shape<1>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 1, 2]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<3> : tensor<1xindex>) : () -> !tosa.shape<1>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 1, 2]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -139,10 +139,10 @@
++ 
++ // CHECK-LABEL: @dot_general_matrix_vector
++ func.func @dot_general_matrix_vector(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<2> : tensor<1xindex>} : () -> !tosa.shape<1>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<2> : tensor<1xindex>) : () -> !tosa.shape<1>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 1]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++@@ -152,10 +152,10 @@
++ 
++ // CHECK-LABEL: @dot_general_matrix_matrix
++ func.func @dot_general_matrix_matrix(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<[2, 4]> : tensor<2xindex>} : () -> !tosa.shape<2>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape {values = dense<[1, 2, 3]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<[2, 4]> : tensor<2xindex>) : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 2, 3]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.reshape %arg0, %[[VAR1]]
++-  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape {values = dense<[1, 3, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
+++  // CHECK-DAG: %[[VAR3:.*]] = tosa.const_shape values(dense<[1, 3, 4]> : tensor<3xindex>) : () -> !tosa.shape<3>
++   // CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %arg1, %[[VAR3]]
++   // CHECK-DAG: %[[VAR5:.*]] = tosa.matmul %[[VAR2]], %[[VAR4]]
++   // CHECK-DAG: %[[VAR6:.*]] = tosa.reshape %[[VAR5]], %[[VAR0]]
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
++@@ -11,10 +11,10 @@
++   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -32,10 +32,10 @@
++   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -52,10 +52,10 @@
++   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
++   %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
++@@ -74,10 +74,10 @@
++   // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -97,10 +97,10 @@
++   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -120,10 +120,10 @@
++   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
++   %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
++             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
++@@ -140,9 +140,9 @@
++   // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
++-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
++   %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
++   return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
++@@ -159,8 +159,8 @@
++   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
++   // CHECK: return %[[V2]]
++   %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
++@@ -177,8 +177,8 @@
++   // CHECK-DAG: %[[SHIFT15:.+]] = "tosa.const"() <{values = dense<15> : tensor<1xi8>}>
++   // CHECK-DAG: %[[ZP16_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
++   // CHECK-DAG: %[[ZP32_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
++-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
+++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
+++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
++   // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
++   // CHECK: return %[[V2]]
++   %0 = stablehlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i16:f32, 0.025:0>>, tensor<20x20x!quant.uniform<i16:f32, 0.075:0>>) -> tensor<20x20xi1>
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
++@@ -7,7 +7,7 @@
++   %shift = "tosa.const"() {values = dense<13> : tensor<1xi8>} : () -> tensor<1xi8>
++   %input_zp = "tosa.const"() {values = dense<-1> : tensor<1xi8>} : () -> tensor<1xi8>
++   %output_zp = "tosa.const"() {values = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
++-  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} :
+++  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false) :
++             (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x2xi32>
++ 
++   // convert input quantized type to storage type
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++@@ -18,7 +18,7 @@
++ func.func @iota_dimension_0() -> tensor<4x8xf32> {
++   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
++   // CHECK-SAME{LITERAL}: <{values = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}> : () -> tensor<4x1xf32>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {values = dense<[1, 8]> : vector<2xindex>} : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 8]> : vector<2xindex>) : () -> !tosa.shape<2>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
++   %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
++   return %0 : tensor<4x8xf32>
++@@ -28,7 +28,7 @@
++ func.func @iota_dimension_1() -> tensor<4x8xi32> {
++   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
++   // CHECK-SAME{LITERAL}: <{values = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}> : () -> tensor<1x8xi32>
++-  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {values = dense<[4, 1]> : vector<2xindex>} : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[4, 1]> : vector<2xindex>) : () -> !tosa.shape<2>
++   // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
++   %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
++   return %0 : tensor<4x8xi32>
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
++@@ -2,7 +2,7 @@
++ 
++ // CHECK-LABEL: @concatenate
++ func.func @concatenate(%arg0 : tensor<5x2xf32>, %arg1 : tensor<5x5xf32>, %arg2 : tensor<5x7xf32>) -> tensor<5x14xf32> {
++-  // CHECK: tosa.concat %arg0, %arg1, %arg2 {axis = 1 : i32} : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
+++  // CHECK: tosa.concat %arg0, %arg1, %arg2 axis(1) : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
++   %0 = "stablehlo.concatenate"(%arg0, %arg1, %arg2) {dimension = 1 : i64} : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
++   return %0 : tensor<5x14xf32>
++ }
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
++--- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+++++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
++@@ -79,8 +79,8 @@
++ 
++ // CHECK-LABEL: @slice
++ func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
++-  // CHECK-DAG: %[[SIZE:.*]] = tosa.const_shape {values = dense<[2, 1]> : tensor<2xindex>} : () -> !tosa.shape<2>
++-  // CHECK-DAG: %[[START:.*]] = tosa.const_shape {values = dense<2> : tensor<2xindex>} : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[SIZE:.*]] = tosa.const_shape values(dense<[2, 1]> : tensor<2xindex>) : () -> !tosa.shape<2>
+++  // CHECK-DAG: %[[START:.*]] = tosa.const_shape values(dense<2> : tensor<2xindex>) : () -> !tosa.shape<2>
++   // CHECK: tosa.slice %arg0, %[[SIZE]], %[[START]]
++   %0 = "stablehlo.slice"(%arg) {
++     start_indices = array<i64: 2, 1>,
++@@ -123,7 +123,7 @@
++ 
++ // CHECK-LABEL: @transpose
++ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
++-  // CHECK: %[[VAR0:.*]] = tosa.transpose %arg0 {perms = array<i32: 2, 1, 0>}
+++  // CHECK: %[[VAR0:.*]] = tosa.transpose %arg0 perms([2, 1, 0])
++   %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
++   return %0 : tensor<3x2x1xf32>
++ }
++@@ -158,7 +158,7 @@
++ 
++ // CHECK-LABEL: @reshape
++ func.func @reshape(%arg0 : tensor<2x3xf32>) -> tensor<6xf32> {
++-  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {values = dense<6> : tensor<1xindex>} : () -> !tosa.shape<1>
+++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape values(dense<6> : tensor<1xindex>) : () -> !tosa.shape<1>
++   // CHECK: tosa.reshape %arg0, %[[VAR0]]
++   %0 = "stablehlo.reshape"(%arg0) : (tensor<2x3xf32>) -> tensor<6xf32>
++   return %0 : tensor<6xf32>
+ diff --ruN a/stablehlo/stablehlo/dialect/ChloBytecode.cpp b/stablehlo/stablehlo/dialect/ChloBytecode.cpp
+ --- stablehlo/stablehlo/dialect/ChloBytecode.cpp
+ +++ stablehlo/stablehlo/dialect/ChloBytecode.cpp

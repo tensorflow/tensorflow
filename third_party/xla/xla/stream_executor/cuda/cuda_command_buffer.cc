@@ -722,6 +722,29 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
     const ThreadDim& threads, const BlockDim& blocks,
     const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
+  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
+  ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(
+      args.number_of_shared_bytes()));
+
+  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
+  const KernelArgsPackedArrayBase* packed_args = &args;
+  if (cuda_kernel.args_packing()) {
+    ABSL_ASSIGN_OR_RETURN(repacked, cuda_kernel.args_packing()(cuda_kernel, args));
+    packed_args = repacked.get();
+  }
+
+  return CreateKernelNode(
+      dependencies, priority, threads, blocks, cluster_dims,
+      NativeKernel{cuda_kernel.gpu_function(), std::string(kernel.name()),
+                   kernel.use_pdl()},
+      *packed_args);
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
+    absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+    const ThreadDim& threads, const BlockDim& blocks,
+    const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   XLA_VLOG_DEVICE(2, stream_exec_->device_ordinal())
@@ -733,19 +756,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
       << "): " << FormatGraphNodeHandles(dependencies);
 
   CUgraphNode node_handle = nullptr;
-  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
-  CUfunction function = cuda_kernel.gpu_function();
-  ABSL_RETURN_IF_ERROR(
-      cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(shared_mem_bytes));
-
-  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
-  const KernelArgsPackedArrayBase* packed_args;
-  if (cuda_kernel.args_packing()) {
-    ABSL_ASSIGN_OR_RETURN(repacked, cuda_kernel.args_packing()(cuda_kernel, args));
-    packed_args = repacked.get();
-  } else {
-    packed_args = &args;
-  }
+  CUfunction function = static_cast<CUfunction>(kernel.device_fn);
 
   auto set_params = [&](auto& params) {
     params.func = function;
@@ -756,8 +767,10 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
     params.blockDimY = threads.y;
     params.blockDimZ = threads.z;
     params.sharedMemBytes = shared_mem_bytes;
-    params.kernelParams =
-        const_cast<void**>(packed_args->argument_addresses().data());
+    // CUDA driver API requires void** for kernelParams even though it does not
+    // mutate the argument pointers.
+    // NOLINTNEXTLINE
+    params.kernelParams = const_cast<void**>(args.argument_addresses().data());
     params.extra = nullptr;
   };
 
@@ -845,6 +858,28 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
     GraphNodeHandle node_handle, const ThreadDim& threads,
     const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
     const Kernel& kernel, const KernelArgsPackedArrayBase& args) {
+  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
+  ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(
+      args.number_of_shared_bytes()));
+
+  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
+  const KernelArgsPackedArrayBase* packed_args = &args;
+  if (cuda_kernel.args_packing()) {
+    ABSL_ASSIGN_OR_RETURN(repacked, cuda_kernel.args_packing()(cuda_kernel, args));
+    packed_args = repacked.get();
+  }
+
+  return UpdateKernelNode(
+      node_handle, threads, blocks, cluster_dims,
+      NativeKernel{cuda_kernel.gpu_function(), std::string(kernel.name()),
+                   kernel.use_pdl()},
+      *packed_args);
+}
+
+absl::Status CudaCommandBuffer::UpdateKernelNode(
+    GraphNodeHandle node_handle, const ThreadDim& threads,
+    const BlockDim& blocks, const std::optional<ClusterDim>& cluster_dims,
+    const NativeKernel& kernel, const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 
   VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
@@ -855,18 +890,7 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
           << "; shmem: " << shared_mem_bytes;
 
   CUDA_KERNEL_NODE_PARAMS params{};
-  const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
-
-  std::unique_ptr<KernelArgsPackedArrayBase> repacked;
-  const KernelArgsPackedArrayBase* packed_args;
-  if (cuda_kernel.args_packing()) {
-    ABSL_ASSIGN_OR_RETURN(repacked, cuda_kernel.args_packing()(cuda_kernel, args));
-    packed_args = repacked.get();
-  } else {
-    packed_args = &args;
-  }
-
-  CUfunction function = cuda_kernel.gpu_function();
+  CUfunction function = static_cast<CUfunction>(kernel.device_fn);
   params.func = function;
   params.gridDimX = blocks.x;
   params.gridDimY = blocks.y;
@@ -875,12 +899,11 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
   params.blockDimY = threads.y;
   params.blockDimZ = threads.z;
   params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams =
-      const_cast<void**>(packed_args->argument_addresses().data());
+  // CUDA driver API requires void** for kernelParams even though it does not
+  // mutate the argument pointers.
+  // NOLINTNEXTLINE
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
   params.extra = nullptr;
-
-  ABSL_RETURN_IF_ERROR(
-      cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(shared_mem_bytes));
 
   if (cluster_dims.has_value()) {
     CUlaunchAttributeValue value;

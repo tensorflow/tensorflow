@@ -1,9 +1,9 @@
-# proto-file: third_party/tensorflow/compiler/xla/tools/split_proto/split_proto_cli.proto
-# proto-message: xla.split_proto_cli.DeserializedSplitExecutableAndOptions
-
+# proto-file: third_party/tensorflow/compiler/xla/util/split_proto/human_readable_aot_executable.proto
+# proto-message: xla.HumanReadableAotExecutable
 executable_and_options {
   compile_options {
     executable_build_options {
+      device_ordinal: -1
       result_layout {
         element_type: TUPLE
         tuple_shapes {
@@ -39,7 +39,7 @@ executable_and_options {
         xla_cpu_enable_fast_math: false
         xla_gpu_enable_fast_min_max: false
         xla_force_host_platform_device_count: 1
-        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_gpu_enable_dynamic_slice_fusion: true
         xla_hlo_evaluator_use_fast_path: true
         xla_dump_hlo_as_html: false
         xla_cpu_fast_math_honor_nans: true
@@ -65,7 +65,6 @@ executable_and_options {
         xla_gpu_use_runtime_fusion: false
         xla_dump_latency_hiding_schedule: false
         xla_dump_enable_mlir_pretty_form: true
-        xla_gpu_enable_latency_hiding_scheduler: false
         xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
         xla_gpu_enable_triton_gemm: true
         xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
@@ -78,14 +77,10 @@ executable_and_options {
         xla_gpu_all_gather_combine_threshold_bytes: 31457287
         xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
         xla_gpu_enable_highest_priority_async_stream: true
-        xla_gpu_enable_pipelined_all_reduce: false
         xla_gpu_exhaustive_tiling_search: false
         xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
         xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
-        xla_gpu_enable_pipelined_all_gather: false
         xla_gpu_redzone_padding_bytes: 8388608
-        xla_gpu_enable_pipelined_reduce_scatter: true
-        xla_gpu_fused_attention_use_cudnn_rng: false
         xla_gpu_copy_insertion_use_region_analysis: false
         xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
         xla_gpu_collect_cost_model_stats: false
@@ -129,6 +124,7 @@ executable_and_options {
         xla_reduce_window_rewrite_base_length: 16
         xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
         xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_exclude_nondeterministic_ops: true
         xla_gpu_nccl_terminate_on_error: false
         xla_gpu_shard_autotuning: true
         xla_gpu_enable_approx_costly_collectives: false
@@ -137,7 +133,7 @@ executable_and_options {
         xla_cmd_buffer_trace_cache_size: 16
         xla_gpu_temp_buffer_use_separate_color: false
         xla_syntax_sugar_async_ops: false
-        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_gpu_autotune_gemm_rtol: 0.01
         xla_enable_command_buffers_during_profiling: false
         xla_gpu_cudnn_gemm_max_plans: 5
         xla_cpu_parallel_codegen_split_count: 32
@@ -199,7 +195,6 @@ executable_and_options {
         xla_cpu_generate_unique_c_style_kernel_entry_points: false
         xla_gpu_experimental_collective_cse_distance_threshold: 0
         xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
-        xla_cpu_use_fusion_emitters: true
         xla_gpu_experimental_collective_perf_table_path: ""
         xla_gpu_collective_permute_combine_threshold_bytes: 31457287
         xla_unsupported_crash_on_hlo_pass_noop_change: false
@@ -208,7 +203,6 @@ executable_and_options {
         xla_gpu_unsupported_enable_triton_multi_output_fusion: false
         xla_gpu_experimental_matmul_perf_table_path: ""
         xla_gpu_unsupported_enable_all_reduce_decomposer: false
-        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
         xla_gpu_nccl_blocking_communicators: true
         xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
         xla_gpu_first_collective_call_terminate_timeout_seconds: 40
@@ -219,14 +213,13 @@ executable_and_options {
         xla_detect_unstable_reductions: DETECTION_MODE_NONE
         xla_gpu_command_buffer_scheduling_mode: LHS
         xla_gpu_experimental_enable_nccl_symmetric_buffers: false
-        xla_gpu_experimental_autotuner_cache_dir: ""
         xla_disable_automatic_host_compute_offload: false
         xla_gpu_experimental_enable_fusion_autotuner: true
         xla_gpu_experimental_scaled_dot_with_triton: true
         xla_gpu_command_buffer_unroll_loops: false
         xla_cpu_experimental_onednn_custom_call: false
-        xla_gpu_experimental_use_raft_select_k: false
         xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer: true
         xla_cpu_collective_call_terminate_timeout_seconds: 40
         xla_cpu_collective_call_warn_stuck_seconds: 20
         xla_keep_shardings_after_spmd: false
@@ -236,21 +229,32 @@ executable_and_options {
         xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
         xla_cpu_enable_platform_dependent_math: true
         xla_gpu_detect_nan: DETECTION_MODE_NONE
-        xla_gpu_experimental_dump_gpu_executable: true
         xla_gpu_detect_inf: DETECTION_MODE_NONE
         xla_enable_enzyme_comms_opt: false
         xla_gpu_experimental_enable_buffer_saver_on_thunks: false
         xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
-        xla_gpu_experimental_aot_compiled_thunks: true
         xla_enable_scoped_logging_timers: true
         xla_gpu_executable_embed_debug_info: true
         xla_cpu_collective_timeout_seconds: 1800
         xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
         xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_default_to_alg_dot_bf16_bf16_f32: false
+        xla_gpu_experimental_autotune_backends: CUDNN
+        xla_gpu_experimental_autotune_backends: TRITON
+        xla_gpu_experimental_autotune_backends: CUBLASLT
+        xla_gpu_experimental_autotune_backends: HIPBLASLT
+        xla_gpu_experimental_autotune_backends: MIOPEN
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL
+        xla_gpu_experimental_autotune_backends: BLOCK_LEVEL_EMITTER
+        xla_gpu_experimental_autotune_backends: NATIVE_EMITTER
+        xla_gpu_experimental_autotune_backends: LLVM_KERNEL_EMITTER
+        xla_gpu_experimental_autotune_backends: CUBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL_FISSION
+        xla_gpu_experimental_autotune_backends: HIPBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: YNNPACK
         xla_gpu_experimental_all_fusions_with_triton: false
         xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
         xla_gpu_rocm_max_trace_events: 4194304
-        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
         xla_gpu_execution_terminate_timeout: "inf"
         xla_enable_hlo_sharding_v3: false
         xla_gpu_log_minmax: false
@@ -261,6 +265,7 @@ executable_and_options {
         xla_gpu_experimental_max_unroll_factor: 32
         xla_gpu_enable_pdl: true
         xla_gpu_collective_combine_threshold_count: 2048
+        xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl: true
         xla_recognize_reduction_optimization_level: 0
         xla_gpu_experimental_parallel_async_compute_limit: 2
         xla_dump_buffer_assignment_analysis: true
@@ -280,12 +285,12 @@ executable_and_options {
         xla_gpu_executable_num_compute_streams: 0
         xla_gpu_executable_num_communication_streams: 0
         xla_gpu_experimental_collective_start_as_early_as_possible: false
-        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_cpu_experimental_enable_tiling_propagation: true
         xla_gpu_enable_dus_accumulator_zero_init_elimination: false
         xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
         xla_cpu_ftz: true
         xla_gpu_enable_allocator_spatial_partitioning: true
-        xla_dump_compact_gte: false
+        xla_dump_compact_gte: true
         xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
         xla_dump_hlo_as_riegeli: false
         xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
@@ -294,6 +299,35 @@ executable_and_options {
         xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
         xla_gpu_enable_nccl_user_buffers_in_default_space: false
         xla_sdy_export_all_reduce_scatter: false
+        xla_gpu_enable_gxl_ragged_all_to_all: false
+        xla_gpu_gxl_scratch_size_bytes: 67108864
+        xla_gpu_use_new_autotune_cache_format: true
+        xla_gpu_experimental_use_collective_kernels: COLLECTIVE_KERNEL_ALL_REDUCE
+        xla_gpu_pipeline_all_gather: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_all_reduce: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_reduce_scatter: COLLECTIVE_PIPELINING_MODE_ON
+        xla_spmd_enable_dynamic_slice_collective_broadcast: false
+        xla_gpu_experimental_ragged_all_to_all_use_device_kernel: false
+        xla_gpu_async_copy_min_bytes: -1
+        xla_gpu_blas_max_algorithms: 0
+        xla_gpu_experimental_enable_selective_memcpy_overlap: false
+        xla_gpu_experimental_enable_same_shape_multi_output_fusion: false
+        xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes: -1
+        xla_gpu_experimental_scheduler_memory_fencing_slack_windows: 1
+        xla_while_loop_all_reduce_dus_code_motion_max_size_bytes: 10240
+        xla_cpu_use_new_xtile_lowering: false
+        xla_gpu_trace_annotation_level: 0
+        xla_gpu_experimental_cost_model_gemm_tiling_default: false
+        xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback: false
+        xla_gpu_all_reduce_splitter_ignore_profitability_check: false
+        xla_gpu_enable_cupti_multi_subscriber: true
+        xla_enable_hlo_modules_upload: true
+        xla_gpu_collective_domain_assignment: ""
+        xla_gpu_experimental_parallel_scale_up_collective_overlap_limit: 1
+        xla_compile_all_supported_configs: false
+        xla_deduplicate_backend_configs_min_size: 9223372036854775807
+        xla_force_config: ""
+        xla_candidate_configs_file: ""
       }
       num_replicas: 2
       num_partitions: 1
@@ -311,9 +345,9 @@ executable_and_options {
       allow_spmd_sharding_propagation_to_parameters: false
       process_count: 1
       memory_fitting_level: EFFORT_O2
-      slice_size: 2
     }
   }
+  pjrt_client_name: "PjRtStreamExecutorClient"
 }
 gpu_executable {
   hlo_module_with_config {
@@ -338,6 +372,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "param_0.1"
           }
           id: 4294967298
           frontend_attributes {
@@ -361,6 +396,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "bitcast.6.1"
           }
           id: 4294967297
           operand_ids: 4294967298
@@ -385,6 +421,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "transpose.1.1"
           }
           dimensions: 1
           dimensions: 0
@@ -444,6 +481,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "param_0.3"
           }
           id: 8589934594
           frontend_attributes {
@@ -467,6 +505,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "bitcast.4.1"
           }
           id: 8589934593
           operand_ids: 8589934594
@@ -491,6 +530,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "transpose.3"
           }
           dimensions: 1
           dimensions: 0
@@ -544,6 +584,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "param_0.5"
           }
           id: 12884901890
           frontend_attributes {
@@ -561,6 +602,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "p1.1.1"
           }
           id: 12884901889
           operand_ids: 12884901890
@@ -585,6 +627,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "broadcast.13.1"
           }
           id: 12884901888
           operand_ids: 12884901889
@@ -619,156 +662,6 @@ gpu_executable {
         is_fusion_computation: true
       }
       computations {
-        name: "async_computation"
-        instructions {
-          name: "param_0.6"
-          opcode: "parameter"
-          shape {
-            element_type: U32
-            dimensions: 2
-            dimensions: 1
-            layout {
-              minor_to_major: 0
-              minor_to_major: 1
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-            is_dynamic_dimension: false
-          }
-          metadata {
-          }
-          id: 17179869184
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-        }
-        instructions {
-          name: "param_1"
-          opcode: "parameter"
-          shape {
-            element_type: F32
-            dimensions: 2
-            dimensions: 1
-            layout {
-              minor_to_major: 0
-              minor_to_major: 1
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-            is_dynamic_dimension: false
-          }
-          metadata {
-          }
-          parameter_number: 1
-          id: 17179869185
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-        }
-        instructions {
-          name: "allgather.2"
-          opcode: "all-gather"
-          shape {
-            element_type: TUPLE
-            tuple_shapes {
-              element_type: U32
-              dimensions: 2
-              dimensions: 2
-              layout {
-                minor_to_major: 0
-                minor_to_major: 1
-                tail_padding_alignment_in_elements: 1
-              }
-              is_dynamic_dimension: false
-              is_dynamic_dimension: false
-            }
-            tuple_shapes {
-              element_type: F32
-              dimensions: 2
-              dimensions: 2
-              layout {
-                minor_to_major: 0
-                minor_to_major: 1
-                tail_padding_alignment_in_elements: 1
-              }
-              is_dynamic_dimension: false
-              is_dynamic_dimension: false
-            }
-          }
-          metadata {
-          }
-          dimensions: 1
-          id: 17179869186
-          operand_ids: 17179869184
-          operand_ids: 17179869185
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-          collective_device_list {
-          }
-        }
-        program_shape {
-          parameters {
-            element_type: U32
-            dimensions: 2
-            dimensions: 1
-            layout {
-              minor_to_major: 0
-              minor_to_major: 1
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-            is_dynamic_dimension: false
-          }
-          parameters {
-            element_type: F32
-            dimensions: 2
-            dimensions: 1
-            layout {
-              minor_to_major: 0
-              minor_to_major: 1
-              tail_padding_alignment_in_elements: 1
-            }
-            is_dynamic_dimension: false
-            is_dynamic_dimension: false
-          }
-          result {
-            element_type: TUPLE
-            tuple_shapes {
-              element_type: U32
-              dimensions: 2
-              dimensions: 2
-              layout {
-                minor_to_major: 0
-                minor_to_major: 1
-                tail_padding_alignment_in_elements: 1
-              }
-              is_dynamic_dimension: false
-              is_dynamic_dimension: false
-            }
-            tuple_shapes {
-              element_type: F32
-              dimensions: 2
-              dimensions: 2
-              layout {
-                minor_to_major: 0
-                minor_to_major: 1
-                tail_padding_alignment_in_elements: 1
-              }
-              is_dynamic_dimension: false
-              is_dynamic_dimension: false
-            }
-          }
-          parameter_names: "param_0.6"
-          parameter_names: "param_1"
-        }
-        id: 4
-        root_id: 17179869186
-      }
-      computations {
         name: "wrapped_broadcast_computation"
         instructions {
           name: "param_0.7"
@@ -780,6 +673,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "param_0.7"
           }
           id: 21474836481
           frontend_attributes {
@@ -803,6 +697,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "broadcast.12.1"
           }
           id: 21474836480
           operand_ids: 21474836481
@@ -848,6 +743,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "id.1"
           }
           frontend_attributes {
           }
@@ -870,17 +766,15 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "wrapped_broadcast"
           }
           fusion_kind: "kLoop"
-          id: 11
+          id: 9
           operand_ids: 0
           called_computation_ids: 5
           frontend_attributes {
           }
           statistics_viz {
-          }
-          backend_config_payload {
-            id: 0
           }
         }
         instructions {
@@ -899,6 +793,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "loop_broadcast_fusion"
           }
           fusion_kind: "kLoop"
           id: 8
@@ -908,87 +803,10 @@ gpu_executable {
           }
           statistics_viz {
           }
-          backend_config_payload {
-            id: 0
-          }
         }
         instructions {
-          name: "all-gather-start"
-          opcode: "async-start"
-          shape {
-            element_type: TUPLE
-            tuple_shapes {
-              element_type: TUPLE
-              tuple_shapes {
-                element_type: U32
-                dimensions: 2
-                dimensions: 1
-                layout {
-                  minor_to_major: 0
-                  minor_to_major: 1
-                  tail_padding_alignment_in_elements: 1
-                }
-                is_dynamic_dimension: false
-                is_dynamic_dimension: false
-              }
-              tuple_shapes {
-                element_type: F32
-                dimensions: 2
-                dimensions: 1
-                layout {
-                  minor_to_major: 0
-                  minor_to_major: 1
-                  tail_padding_alignment_in_elements: 1
-                }
-                is_dynamic_dimension: false
-                is_dynamic_dimension: false
-              }
-            }
-            tuple_shapes {
-              element_type: TUPLE
-              tuple_shapes {
-                element_type: U32
-                dimensions: 2
-                dimensions: 2
-                layout {
-                  minor_to_major: 0
-                  minor_to_major: 1
-                  tail_padding_alignment_in_elements: 1
-                }
-                is_dynamic_dimension: false
-                is_dynamic_dimension: false
-              }
-              tuple_shapes {
-                element_type: F32
-                dimensions: 2
-                dimensions: 2
-                layout {
-                  minor_to_major: 0
-                  minor_to_major: 1
-                  tail_padding_alignment_in_elements: 1
-                }
-                is_dynamic_dimension: false
-                is_dynamic_dimension: false
-              }
-            }
-          }
-          metadata {
-          }
-          id: 9
-          operand_ids: 11
-          operand_ids: 8
-          called_computation_ids: 4
-          frontend_attributes {
-          }
-          statistics_viz {
-          }
-          backend_config_payload {
-            id: 1
-          }
-        }
-        instructions {
-          name: "all-gather-done"
-          opcode: "async-done"
+          name: "allgather.3"
+          opcode: "all-gather"
           shape {
             element_type: TUPLE
             tuple_shapes {
@@ -1017,12 +835,20 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "all-gather-start"
           }
+          dimensions: 1
           id: 10
           operand_ids: 9
+          operand_ids: 8
           frontend_attributes {
           }
           statistics_viz {
+          }
+          collective_device_list {
+          }
+          backend_config_payload {
+            id: 0
           }
         }
         instructions {
@@ -1041,6 +867,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "ag0.1"
           }
           id: 1
           operand_ids: 10
@@ -1065,6 +892,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "loop_transpose_fusion.1"
           }
           fusion_kind: "kLoop"
           id: 7
@@ -1073,9 +901,6 @@ gpu_executable {
           frontend_attributes {
           }
           statistics_viz {
-          }
-          backend_config_payload {
-            id: 0
           }
         }
         instructions {
@@ -1091,6 +916,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "bitcast.24"
           }
           id: 4
           operand_ids: 7
@@ -1115,6 +941,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "ag1.1"
           }
           tuple_index: 1
           id: 2
@@ -1140,6 +967,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "loop_transpose_fusion"
           }
           fusion_kind: "kLoop"
           id: 6
@@ -1148,9 +976,6 @@ gpu_executable {
           frontend_attributes {
           }
           statistics_viz {
-          }
-          backend_config_payload {
-            id: 0
           }
         }
         instructions {
@@ -1166,6 +991,7 @@ gpu_executable {
             is_dynamic_dimension: false
           }
           metadata {
+            scheduling_name: "bitcast.1.0"
           }
           id: 5
           operand_ids: 6
@@ -1199,6 +1025,7 @@ gpu_executable {
             }
           }
           metadata {
+            scheduling_name: "out.1"
           }
           id: 3
           operand_ids: 4
@@ -1262,24 +1089,15 @@ gpu_executable {
           value {
             instruction_ids: 0
             instruction_ids: 8
-            instruction_ids: 11
             instruction_ids: 9
             instruction_ids: 10
-            instruction_ids: 2
             instruction_ids: 1
             instruction_ids: 7
-            instruction_ids: 4
+            instruction_ids: 2
             instruction_ids: 6
+            instruction_ids: 4
             instruction_ids: 5
             instruction_ids: 3
-          }
-        }
-        sequences {
-          key: 4
-          value {
-            instruction_ids: 17179869185
-            instruction_ids: 17179869184
-            instruction_ids: 17179869186
           }
         }
       }
@@ -1298,11 +1116,10 @@ gpu_executable {
       frontend_attributes {
         map {
           key: "fingerprint_before_lhs"
-          value: "27beb9c461cc00eca8e7c7d6d313ca37"
+          value: "7b2e4f79c5524b5cbc566da178aa7fda"
         }
       }
-      payloads: "{\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"native_emitter_backend_config\":{\"type\":\"NATIVE_EMITTER_TYPE_INVALID\",\"unroll_factor\":0},\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
-      payloads: "{\"collective_backend_config\":{\"backend\":\"DEFAULT\",\"collectives_mode\":\"COLLECTIVES_MODE_INVALID\",\"is_pipelined\":false,\"is_spmd_generated\":false,\"is_sync\":true,\"kernel_strategy\":\"KERNEL_STRATEGY_DEFAULT\"},\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
+      payloads: "{\"collective_backend_config\":{\"backend\":\"DEFAULT\",\"collectives_mode\":\"COLLECTIVES_MODE_INVALID\",\"communication_domain\":\"COLLECTIVE_COMMUNICATION_DOMAIN_UNSPECIFIED\",\"is_pipelined\":false,\"is_spmd_generated\":false,\"is_sync\":true,\"kernel_strategy\":\"KERNEL_STRATEGY_DEFAULT\"},\"device_type\":\"DEVICE_TYPE_INVALID\",\"force_earliest_schedule\":false,\"operation_queue_id\":\"0\",\"reification_cost\":[]}"
     }
     config {
       entry_computation_layout {
@@ -1345,7 +1162,7 @@ gpu_executable {
         xla_cpu_enable_fast_math: false
         xla_gpu_enable_fast_min_max: false
         xla_force_host_platform_device_count: 1
-        xla_gpu_enable_dynamic_slice_fusion: false
+        xla_gpu_enable_dynamic_slice_fusion: true
         xla_hlo_evaluator_use_fast_path: true
         xla_dump_hlo_as_html: false
         xla_cpu_fast_math_honor_nans: true
@@ -1371,7 +1188,6 @@ gpu_executable {
         xla_gpu_use_runtime_fusion: false
         xla_dump_latency_hiding_schedule: false
         xla_dump_enable_mlir_pretty_form: true
-        xla_gpu_enable_latency_hiding_scheduler: false
         xla_partitioning_algorithm: PARTITIONING_ALGORITHM_NOOP
         xla_gpu_enable_triton_gemm: true
         xla_gpu_enable_cudnn_int8x32_convolution_reordering: true
@@ -1384,14 +1200,10 @@ gpu_executable {
         xla_gpu_all_gather_combine_threshold_bytes: 31457287
         xla_gpu_reduce_scatter_combine_threshold_bytes: 31457287
         xla_gpu_enable_highest_priority_async_stream: true
-        xla_gpu_enable_pipelined_all_reduce: false
         xla_gpu_exhaustive_tiling_search: false
         xla_gpu_auto_spmd_partitioning_memory_budget_gb: 0
         xla_gpu_auto_spmd_partitioning_memory_budget_ratio: 1.1
-        xla_gpu_enable_pipelined_all_gather: false
         xla_gpu_redzone_padding_bytes: 8388608
-        xla_gpu_enable_pipelined_reduce_scatter: true
-        xla_gpu_fused_attention_use_cudnn_rng: false
         xla_gpu_copy_insertion_use_region_analysis: false
         xla_gpu_collective_permute_decomposer_threshold: 9223372036854775807
         xla_gpu_collect_cost_model_stats: false
@@ -1435,6 +1247,7 @@ gpu_executable {
         xla_reduce_window_rewrite_base_length: 16
         xla_gpu_enable_while_loop_unrolling: WHILE_LOOP_UNROLLING_AUTO_UNROLL
         xla_gpu_enable_host_memory_offloading: false
+        xla_gpu_exclude_nondeterministic_ops: true
         xla_gpu_nccl_terminate_on_error: false
         xla_gpu_shard_autotuning: true
         xla_gpu_enable_approx_costly_collectives: false
@@ -1443,7 +1256,7 @@ gpu_executable {
         xla_cmd_buffer_trace_cache_size: 16
         xla_gpu_temp_buffer_use_separate_color: false
         xla_syntax_sugar_async_ops: false
-        xla_gpu_autotune_gemm_rtol: 0.1
+        xla_gpu_autotune_gemm_rtol: 0.01
         xla_enable_command_buffers_during_profiling: false
         xla_gpu_cudnn_gemm_max_plans: 5
         xla_cpu_parallel_codegen_split_count: 32
@@ -1505,7 +1318,6 @@ gpu_executable {
         xla_cpu_generate_unique_c_style_kernel_entry_points: false
         xla_gpu_experimental_collective_cse_distance_threshold: 0
         xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel: true
-        xla_cpu_use_fusion_emitters: true
         xla_gpu_experimental_collective_perf_table_path: ""
         xla_gpu_collective_permute_combine_threshold_bytes: 31457287
         xla_unsupported_crash_on_hlo_pass_noop_change: false
@@ -1514,7 +1326,6 @@ gpu_executable {
         xla_gpu_unsupported_enable_triton_multi_output_fusion: false
         xla_gpu_experimental_matmul_perf_table_path: ""
         xla_gpu_unsupported_enable_all_reduce_decomposer: false
-        xla_gpu_unsupported_use_all_reduce_one_shot_kernel: true
         xla_gpu_nccl_blocking_communicators: true
         xla_gpu_first_collective_call_warn_stuck_timeout_seconds: 20
         xla_gpu_first_collective_call_terminate_timeout_seconds: 40
@@ -1525,14 +1336,13 @@ gpu_executable {
         xla_detect_unstable_reductions: DETECTION_MODE_NONE
         xla_gpu_command_buffer_scheduling_mode: LHS
         xla_gpu_experimental_enable_nccl_symmetric_buffers: false
-        xla_gpu_experimental_autotuner_cache_dir: ""
         xla_disable_automatic_host_compute_offload: false
         xla_gpu_experimental_enable_fusion_autotuner: true
         xla_gpu_experimental_scaled_dot_with_triton: true
         xla_gpu_command_buffer_unroll_loops: false
         xla_cpu_experimental_onednn_custom_call: false
-        xla_gpu_experimental_use_raft_select_k: false
         xla_gpu_experimental_enable_checksum_tracing_on_thunks: false
+        xla_gpu_unsupported_enable_ragged_all_to_all_multi_host_decomposer: true
         xla_cpu_collective_call_terminate_timeout_seconds: 40
         xla_cpu_collective_call_warn_stuck_seconds: 20
         xla_keep_shardings_after_spmd: false
@@ -1542,21 +1352,32 @@ gpu_executable {
         xla_cpu_experimental_ynn_fusion_type: LIBRARY_FUSION_TYPE_REDUCE
         xla_cpu_enable_platform_dependent_math: true
         xla_gpu_detect_nan: DETECTION_MODE_NONE
-        xla_gpu_experimental_dump_gpu_executable: true
         xla_gpu_detect_inf: DETECTION_MODE_NONE
         xla_enable_enzyme_comms_opt: false
         xla_gpu_experimental_enable_buffer_saver_on_thunks: false
         xla_detect_unstable_reductions_post_optimizations: DETECTION_MODE_NONE
-        xla_gpu_experimental_aot_compiled_thunks: true
         xla_enable_scoped_logging_timers: true
         xla_gpu_executable_embed_debug_info: true
         xla_cpu_collective_timeout_seconds: 1800
         xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled: false
         xla_gpu_enable_pipelined_host_offloading: false
+        xla_gpu_default_to_alg_dot_bf16_bf16_f32: false
+        xla_gpu_experimental_autotune_backends: CUDNN
+        xla_gpu_experimental_autotune_backends: TRITON
+        xla_gpu_experimental_autotune_backends: CUBLASLT
+        xla_gpu_experimental_autotune_backends: HIPBLASLT
+        xla_gpu_experimental_autotune_backends: MIOPEN
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL
+        xla_gpu_experimental_autotune_backends: BLOCK_LEVEL_EMITTER
+        xla_gpu_experimental_autotune_backends: NATIVE_EMITTER
+        xla_gpu_experimental_autotune_backends: LLVM_KERNEL_EMITTER
+        xla_gpu_experimental_autotune_backends: CUBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: CUSTOM_KERNEL_FISSION
+        xla_gpu_experimental_autotune_backends: HIPBLASLT_FISSION
+        xla_gpu_experimental_autotune_backends: YNNPACK
         xla_gpu_experimental_all_fusions_with_triton: false
         xla_cpu_scheduler_type: CPU_SCHEDULER_TYPE_DEFAULT
         xla_gpu_rocm_max_trace_events: 4194304
-        xla_gpu_experimental_ragged_all_to_all_use_barrier: true
         xla_gpu_execution_terminate_timeout: "inf"
         xla_enable_hlo_sharding_v3: false
         xla_gpu_log_minmax: false
@@ -1567,6 +1388,7 @@ gpu_executable {
         xla_gpu_experimental_max_unroll_factor: 32
         xla_gpu_enable_pdl: true
         xla_gpu_collective_combine_threshold_count: 2048
+        xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl: true
         xla_recognize_reduction_optimization_level: 0
         xla_gpu_experimental_parallel_async_compute_limit: 2
         xla_dump_buffer_assignment_analysis: true
@@ -1586,12 +1408,12 @@ gpu_executable {
         xla_gpu_executable_num_compute_streams: 0
         xla_gpu_executable_num_communication_streams: 0
         xla_gpu_experimental_collective_start_as_early_as_possible: false
-        xla_cpu_experimental_enable_tiling_propagation: false
+        xla_cpu_experimental_enable_tiling_propagation: true
         xla_gpu_enable_dus_accumulator_zero_init_elimination: false
         xla_gpu_experimental_thunk_buffer_debug_module_outputs: false
         xla_cpu_ftz: true
         xla_gpu_enable_allocator_spatial_partitioning: true
-        xla_dump_compact_gte: false
+        xla_dump_compact_gte: true
         xla_gpu_enable_collectives_command_buffer_filter: ALLCOLLECTIVES
         xla_dump_hlo_as_riegeli: false
         xla_gpu_experimental_use_ragged_dot_grouped_gemm: true
@@ -1600,6 +1422,35 @@ gpu_executable {
         xla_gpu_cudnn_deviceless_compilation_mode: CUDNN_DEVICELESS_COMPILATION_DISABLED
         xla_gpu_enable_nccl_user_buffers_in_default_space: false
         xla_sdy_export_all_reduce_scatter: false
+        xla_gpu_enable_gxl_ragged_all_to_all: false
+        xla_gpu_gxl_scratch_size_bytes: 67108864
+        xla_gpu_use_new_autotune_cache_format: true
+        xla_gpu_experimental_use_collective_kernels: COLLECTIVE_KERNEL_ALL_REDUCE
+        xla_gpu_pipeline_all_gather: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_all_reduce: COLLECTIVE_PIPELINING_MODE_DEFAULT
+        xla_gpu_pipeline_reduce_scatter: COLLECTIVE_PIPELINING_MODE_ON
+        xla_spmd_enable_dynamic_slice_collective_broadcast: false
+        xla_gpu_experimental_ragged_all_to_all_use_device_kernel: false
+        xla_gpu_async_copy_min_bytes: -1
+        xla_gpu_blas_max_algorithms: 0
+        xla_gpu_experimental_enable_selective_memcpy_overlap: false
+        xla_gpu_experimental_enable_same_shape_multi_output_fusion: false
+        xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes: -1
+        xla_gpu_experimental_scheduler_memory_fencing_slack_windows: 1
+        xla_while_loop_all_reduce_dus_code_motion_max_size_bytes: 10240
+        xla_cpu_use_new_xtile_lowering: false
+        xla_gpu_trace_annotation_level: 0
+        xla_gpu_experimental_cost_model_gemm_tiling_default: false
+        xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback: false
+        xla_gpu_all_reduce_splitter_ignore_profitability_check: false
+        xla_gpu_enable_cupti_multi_subscriber: true
+        xla_enable_hlo_modules_upload: true
+        xla_gpu_collective_domain_assignment: ""
+        xla_gpu_experimental_parallel_scale_up_collective_overlap_limit: 1
+        xla_compile_all_supported_configs: false
+        xla_deduplicate_backend_configs_min_size: 9223372036854775807
+        xla_force_config: ""
+        xla_candidate_configs_file: ""
       }
       static_device_assignment {
         replica_count: 2
@@ -1621,94 +1472,64 @@ gpu_executable {
   }
   buffer_assignment {
     logical_buffers {
-      id: 7
-      size: 16
-      defined_at {
-        instruction_id: 17179869186
-      }
-    }
-    logical_buffers {
-      id: 8
-      size: 16
-      defined_at {
-        shape_index: 0
-        instruction_id: 17179869186
-      }
-    }
-    logical_buffers {
       id: 9
-      size: 16
-      defined_at {
-        shape_index: 1
-        instruction_id: 17179869186
-      }
-    }
-    logical_buffers {
-      id: 12
       size: 4
       defined_at {
       }
     }
     logical_buffers {
-      id: 13
+      id: 10
       size: 8
       defined_at {
-        instruction_id: 11
+        instruction_id: 9
       }
     }
     logical_buffers {
-      id: 14
+      id: 11
       size: 8
       defined_at {
         instruction_id: 8
       }
     }
     logical_buffers {
-      id: 15
-      size: 16
-      defined_at {
-        instruction_id: 9
-      }
-    }
-    logical_buffers {
-      id: 16
-      size: 16
-      defined_at {
-        shape_index: 0
-        instruction_id: 9
-      }
-    }
-    logical_buffers {
-      id: 17
-      size: 16
-      defined_at {
-        shape_index: 1
-        instruction_id: 9
-      }
-    }
-    logical_buffers {
-      id: 18
+      id: 12
       size: 16
       defined_at {
         instruction_id: 10
       }
     }
     logical_buffers {
-      id: 19
+      id: 13
+      size: 16
+      defined_at {
+        shape_index: 0
+        instruction_id: 10
+      }
+    }
+    logical_buffers {
+      id: 14
+      size: 16
+      defined_at {
+        shape_index: 1
+        instruction_id: 10
+      }
+    }
+    logical_buffers {
+      id: 15
       size: 16
       defined_at {
         instruction_id: 7
       }
     }
     logical_buffers {
-      id: 20
+      id: 16
       size: 16
       defined_at {
         instruction_id: 6
       }
     }
     logical_buffers {
-      id: 21
+      id: 17
       size: 16
       defined_at {
         instruction_id: 3
@@ -1718,12 +1539,12 @@ gpu_executable {
       size: 16
       maybe_live_out: true
       assigned {
-        logical_buffer_id: 13
+        logical_buffer_id: 10
         size: 8
         element_type: U32
       }
       assigned {
-        logical_buffer_id: 19
+        logical_buffer_id: 15
         size: 16
         element_type: U32
       }
@@ -1733,17 +1554,17 @@ gpu_executable {
       size: 16
       maybe_live_out: true
       assigned {
-        logical_buffer_id: 8
-        size: 16
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 12
+        logical_buffer_id: 9
         size: 4
         element_type: U32
       }
       assigned {
-        logical_buffer_id: 20
+        logical_buffer_id: 13
+        size: 16
+        element_type: U32
+      }
+      assigned {
+        logical_buffer_id: 16
         size: 16
         element_type: F32
       }
@@ -1753,7 +1574,7 @@ gpu_executable {
       size: 16
       maybe_live_out: true
       assigned {
-        logical_buffer_id: 21
+        logical_buffer_id: 17
         size: 16
         element_type: TUPLE
       }
@@ -1761,102 +1582,74 @@ gpu_executable {
     }
     buffer_allocations {
       index: 3
-      size: 1544
+      size: 520
       assigned {
-        logical_buffer_id: 7
-        offset: 1024
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 9
-        offset: 1280
-        size: 16
-        element_type: F32
-      }
-      assigned {
-        logical_buffer_id: 14
-        offset: 1536
+        logical_buffer_id: 11
+        offset: 512
         size: 8
         element_type: F32
       }
       assigned {
-        logical_buffer_id: 15
+        logical_buffer_id: 12
         size: 16
         element_type: TUPLE
       }
       assigned {
-        logical_buffer_id: 16
+        logical_buffer_id: 14
         offset: 256
         size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 17
-        offset: 512
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 18
-        offset: 768
-        size: 16
-        element_type: TUPLE
+        element_type: F32
       }
       is_tuple: true
     }
     heap_simulator_traces {
       events {
-        buffer_id: 14
+        buffer_id: 11
         computation_name: "test_computation"
         instruction_name: "loop_broadcast_fusion"
       }
       events {
-        buffer_id: 9
-        computation_name: "async_computation"
-        instruction_name: "allgather.2"
+        buffer_id: 14
+        computation_name: "test_computation"
+        instruction_name: "allgather.3"
+      }
+      events {
+        kind: FREE
+        buffer_id: 11
+        computation_name: "test_computation"
+        instruction_name: "loop_broadcast_fusion"
       }
       events {
         kind: FREE
         buffer_id: 14
         computation_name: "test_computation"
-        instruction_name: "loop_broadcast_fusion"
-      }
-      events {
-        kind: FREE
-        buffer_id: 9
-        computation_name: "async_computation"
-        instruction_name: "allgather.2"
+        instruction_name: "allgather.3"
       }
       whole_module_simulation: true
       buffer_allocation_index: 3
     }
     peak_buffers {
-      logical_buffer_ids: 19
+      logical_buffer_ids: 15
     }
     peak_buffers {
       index: 1
-      logical_buffer_ids: 20
+      logical_buffer_ids: 16
     }
     peak_buffers {
       index: 2
-      logical_buffer_ids: 21
+      logical_buffer_ids: 17
     }
     peak_buffers {
       index: 3
-      logical_buffer_ids: 15
-      logical_buffer_ids: 16
-      logical_buffer_ids: 17
-      logical_buffer_ids: 18
-      logical_buffer_ids: 7
-      logical_buffer_ids: 9
+      logical_buffer_ids: 12
+      logical_buffer_ids: 11
       logical_buffer_ids: 14
     }
   }
   gpu_compute_capability {
     cuda_compute_capability {
-      major: 6
-      feature_extension: NONE
+      major: 9
+      feature_extension: ACCELERATED_FEATURES
     }
   }
   module_name: "test"
@@ -1887,92 +1680,21 @@ gpu_executable {
     values {
       size: 16
       maybe_live_out: true
-      assigned {
-        logical_buffer_id: 13
-        size: 8
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 19
-        size: 16
-        element_type: U32
-      }
     }
     values {
       index: 1
       size: 16
       maybe_live_out: true
-      assigned {
-        logical_buffer_id: 8
-        size: 16
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 12
-        size: 4
-        element_type: U32
-      }
-      assigned {
-        logical_buffer_id: 20
-        size: 16
-        element_type: F32
-      }
     }
     values {
       index: 2
       size: 16
       maybe_live_out: true
-      assigned {
-        logical_buffer_id: 21
-        size: 16
-        element_type: TUPLE
-      }
       is_tuple: true
     }
     values {
       index: 3
-      size: 1544
-      assigned {
-        logical_buffer_id: 7
-        offset: 1024
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 9
-        offset: 1280
-        size: 16
-        element_type: F32
-      }
-      assigned {
-        logical_buffer_id: 14
-        offset: 1536
-        size: 8
-        element_type: F32
-      }
-      assigned {
-        logical_buffer_id: 15
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 16
-        offset: 256
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 17
-        offset: 512
-        size: 16
-        element_type: TUPLE
-      }
-      assigned {
-        logical_buffer_id: 18
-        offset: 768
-        size: 16
-        element_type: TUPLE
-      }
+      size: 520
       is_tuple: true
     }
   }
@@ -2032,7 +1754,7 @@ gpu_executable {
       }
       args {
         slice {
-          offset: 1536
+          offset: 512
           size: 8
           buffer_allocation_index: 3
           element_type: F32
@@ -2056,7 +1778,7 @@ gpu_executable {
         name: "loop_broadcast_fusion"
         kernel_spec {
           cubin {
-            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000@\010\000\000\000\000\000\000\300\005\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_broadcast_fusion\000.nv.info.loop_broadcast_fusion\000.nv.shared.loop_broadcast_fusion\000.nv.constant0.loop_broadcast_fusion\000.rel.nv.constant0.loop_broadcast_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_broadcast_fusion\000.nv.info.loop_broadcast_fusion\000.nv.shared.loop_broadcast_fusion\000.rel.nv.constant0.loop_broadcast_fusion\000.nv.constant0.loop_broadcast_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000loop_broadcast_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\266\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\332\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\300\000\000\000\000\000\000\000\004/\010\000\005\000\000\000\007\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001\020\000\003\031\020\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000x\000\000\000\004\020\014\000\002\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\000\376\000D\034\000\001\000\207\000\200\007\230L\002\000\007\005\200\007\230L\004\000\027\002\000\000\310\360\342\007\340\367\000\304?\010\003\000\027\005\200\007\230L\002\002\007\000\000\240\324\356\000\004\347\001\000\000(8\346\007\340\374\000t\034\004\004\004\'\005\000\201\030L\005\0007\005\000\010\020L\006\n\'\000\000\000\270\\\361\017\200\374\000\374\037\000\006\004\007\000\000 \334\356\000\017\007\000\000\000\260P\017\000\007\000\000\000\000\343\377\007\000\374\000\200\037\000\017\000\007\377\377\017@\342\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\340\007\000\374\000\200\037\000\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\005\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000E\001\000\000\000\000\000\000\033\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000`\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\002\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000N\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\024\003\000\000\000\000\000\000\\\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\332\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\366\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\220\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\216\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\003\000\000\000\000\000\000P\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\300\000\000\000\000\000\000\000\003\000\000\000\005\000\000\007 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000@\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\240\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000@\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\240\013\000\000\000\000\000\000\240\010\000\000\000\000\000\000Z\rZ\000@\0008\000\005\000@\000\014\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_broadcast_fusion\000.nv.info.loop_broadcast_fusion\000.nv.shared.loop_broadcast_fusion\000.nv.shared.reserved.0\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000.nv.constant0.loop_broadcast_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_broadcast_fusion\000.nv.info.loop_broadcast_fusion\000.nv.shared.loop_broadcast_fusion\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000loop_broadcast_fusion\000.nv.constant0.loop_broadcast_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\216\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\275\000\000\000 \240\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\336\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\016\001\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000*\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000@\001\000\000\003\000\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\004|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\377,\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\004(\000\000\000\004\004\000\000\000\014\201\200\200(\000\000\000\000\000\004/\010\000\006\000\000\000\n\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\004\034\004\000\240\000\000\000\004\020\014\000\002\000\000\000\001\000\000\000\001\000\000\000\003\031\020\000\004\n\010\000\007\000\000\000\020\002\020\000\0046\004\000\010\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377\000\000\000\000D\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202{\001\377\000\n\000\000\000\010\000\000\000\360\017\000\202{\002\377\000\204\000\000\000\n\000\000\000\"\016\000\271z\004\000\000\202\000\000\000\n\000\000\000\342\017\000\031y\007\000\000\000\000\000\000!\000\000\000b\016\000.x\000\000\000\000\000\000\000\000\000\000\000\312\017\000\202{\004\377\000\206\000\000\000\n\000\000\000b\016\000\201y\002\002\004\000\000\000\000\231\036\014\000\242\036\000%x\004\007\004\000\000\000\004\000\216\007\000\342/\000Er\007\000\002\000\000\000\000\020 \000\000\312O\000\206y\000\004\007\000\000\000\004\031\020\014\000\342\017\000My\000\000\000\000\000\000\000\000\200\003\000\352\017\000Gy\374\000\374\377\377\377\377\377\203\003\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\024\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\211\001\000\000\000\000\000\000d\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\002\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\244\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\260\003\000\000\000\000\000\000h\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\004\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000N\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000<\004\000\000\000\000\000\000`\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\324\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\234\004\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\302\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\300\004\000\000\000\000\000\000\030\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\200\001\000\000\000\000\000\000\003\000\000\000\006\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\216\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000 \002\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\200\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
           }
           arity: 2
           kernel_name: "loop_broadcast_fusion"
@@ -2089,6 +1811,7 @@ gpu_executable {
           }
         }
       }
+      use_pdl: true
       tma_metadata {
       }
     }
@@ -2136,7 +1859,7 @@ gpu_executable {
         name: "wrapped_broadcast"
         kernel_spec {
           cubin {
-            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\340\007\000\000\000\000\000\000`\005\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.wrapped_broadcast\000.nv.info.wrapped_broadcast\000.nv.shared.wrapped_broadcast\000.nv.constant0.wrapped_broadcast\000.rel.nv.constant0.wrapped_broadcast\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.wrapped_broadcast\000.nv.info.wrapped_broadcast\000.nv.shared.wrapped_broadcast\000.rel.nv.constant0.wrapped_broadcast\000.nv.constant0.wrapped_broadcast\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000wrapped_broadcast\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\246\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\306\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\342\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\361\000\000\000\022\020\t\000\000\000\000\000\000\000\000\000\200\000\000\000\000\000\000\000\004/\010\000\005\000\000\000\006\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001\020\000\003\031\020\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000p\000\000\000\004\020\014\000\002\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\000\376\000D\034\000\001\000\207\000\200\007\230L\002\000\007\005\200\007\230L\004\000\027\002\000\000\310\360\342\007\340\367\000\304?\010\003\000\027\005\200\007\230L\002\002\007\000\000\240\324\356\000\004\347\001\000\000(8\346\007\340\374\000\304\037\004\004\004\'\005\000\201\030L\005\0007\005\000\010\020L\002\004\007\000\000 \334\356\352\007\340\377\000\374\037\000\000\017\007\000\000\000\260P\017\000\007\000\000\000\000\343\017\000\207\377\377\017@\342\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\361\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0001\001\000\000\000\000\000\000\003\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0008\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\002\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000J\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\354\002\000\000\000\000\000\000\\\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\306\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000H\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\342\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000h\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\202\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000x\003\000\000\000\000\000\000P\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\340\004\000\000\000\000\000\000\200\000\000\000\000\000\000\000\003\000\000\000\005\000\000\006 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000\340\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000x\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\350\001\000\000\000\000\000\000\350\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\340\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\240\013\000\000\000\000\000\000\240\010\000\000\000\000\000\000Z\rZ\000@\0008\000\005\000@\000\014\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.wrapped_broadcast\000.nv.info.wrapped_broadcast\000.nv.shared.wrapped_broadcast\000.nv.shared.reserved.0\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000.nv.constant0.wrapped_broadcast\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.wrapped_broadcast\000.nv.info.wrapped_broadcast\000.nv.shared.wrapped_broadcast\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000wrapped_broadcast\000.nv.constant0.wrapped_broadcast\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\261\000\000\000 \240\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\322\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\001\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\036\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\0000\001\000\000\003\000\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\004|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\377,\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\004$\000\000\000\004\004\000\000\000\014\201\200\200(\000\000\000\000\000\004/\010\000\006\000\000\000\n\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\004\034\004\000\220\000\000\000\004\020\014\000\002\000\000\000\001\000\000\000\001\000\000\000\003\031\020\000\004\n\010\000\007\000\000\000\020\002\020\000\0046\004\000\010\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377\000\000\000\000D\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202{\001\377\000\n\000\000\000\010\000\000\000\360\017\000\202{\002\377\000\204\000\000\000\n\000\000\000\"\016\000\271z\004\000\000\202\000\000\000\n\000\000\000\342\017\000\031y\007\000\000\000\000\000\000!\000\000\000b\016\000.x\000\000\000\000\000\000\000\000\000\000\000\312\017\000\202{\004\377\000\206\000\000\000\n\000\000\000b\016\000\201y\003\002\004\000\000\000\000\231\036\014\000\242\036\000%x\004\007\004\000\000\000\004\000\216\007\000\312/\000\206y\000\004\003\000\000\000\004\031\020\014\000\342O\000My\000\000\000\000\000\000\000\000\200\003\000\352\017\000Gy\374\000\374\377\377\377\377\377\203\003\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\004\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000u\001\000\000\000\000\000\000P\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\002\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\230\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\210\003\000\000\000\000\000\000h\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\003\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000J\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\024\004\000\000\000\000\000\000`\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000t\004\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\266\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\230\004\000\000\000\000\000\000\030\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\200\001\000\000\000\000\000\000\003\000\000\000\006\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\344\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000 \002\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\200\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
           }
           arity: 2
           kernel_name: "wrapped_broadcast"
@@ -2169,13 +1892,14 @@ gpu_executable {
           }
         }
       }
+      use_pdl: true
       tma_metadata {
       }
     }
   }
   thunks {
     thunk_info {
-      profile_annotation: "allgather.2"
+      profile_annotation: "allgather.3"
       thunk_id: 4
     }
     all_gather_thunk {
@@ -2227,7 +1951,7 @@ gpu_executable {
         element_count: 2
         source_buffer {
           slice {
-            offset: 1536
+            offset: 512
             size: 8
             buffer_allocation_index: 3
             element_type: F32
@@ -2247,7 +1971,7 @@ gpu_executable {
         }
         destination_buffer {
           slice {
-            offset: 1280
+            offset: 256
             size: 16
             buffer_allocation_index: 3
             element_type: F32
@@ -2317,7 +2041,7 @@ gpu_executable {
         name: "loop_transpose_fusion_1"
         kernel_spec {
           cubin {
-            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000`\010\000\000\000\000\000\000\340\005\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion_1\000.nv.info.loop_transpose_fusion_1\000.nv.shared.loop_transpose_fusion_1\000.nv.constant0.loop_transpose_fusion_1\000.rel.nv.constant0.loop_transpose_fusion_1\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion_1\000.nv.info.loop_transpose_fusion_1\000.nv.shared.loop_transpose_fusion_1\000.rel.nv.constant0.loop_transpose_fusion_1\000.nv.constant0.loop_transpose_fusion_1\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000loop_transpose_fusion_1\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\276\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\344\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\017\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\300\000\000\000\000\000\000\000\004/\010\000\005\000\000\000\006\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001\020\000\003\031\020\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000\220\000\000\000\004\020\014\000\004\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\340\343\000\230?\000\001\000\207\000\200\007\230L\005\000\027\002\000\000\310\360\000\005W\000\000\000\020\\\366\007\300\376\000\304\037\010\000\000\'\000\000\000\000\004\000\005\007\360\201\177\337[\003\000\347\001\000\000(8\346\007@\374\000\304\036\000\002\000\007\005\000\201\030L\003\003\027\005\000\010\020L\002\002\007\000\000\240\324\356\361\007\302\374\000\234\037\000\000\005\347\001\000\000(8\004\005\'\005\000\201\030L\005\0007\005\000\010\020L\361\007\341\377\000\374\037\000\002\004\007\000\000 \334\356\017\000\007\000\000\000\000\343\017\000\207\377\377\017@\342\340\007\000\374\000\200\037\000\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\017\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000O\001\000\000\000\000\000\000\'\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000x\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\003\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000P\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000,\003\000\000\000\000\000\000\\\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\344\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\210\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\000\001\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\224\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\270\003\000\000\000\000\000\000P\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \005\000\000\000\000\000\000\300\000\000\000\000\000\000\000\003\000\000\000\005\000\000\006 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000`\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\270\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000(\002\000\000\000\000\000\000(\002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000`\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\240\013\000\000\000\000\000\000\240\010\000\000\000\000\000\000Z\rZ\000@\0008\000\005\000@\000\014\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion_1\000.nv.info.loop_transpose_fusion_1\000.nv.shared.loop_transpose_fusion_1\000.nv.shared.reserved.0\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000.nv.constant0.loop_transpose_fusion_1\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion_1\000.nv.info.loop_transpose_fusion_1\000.nv.shared.loop_transpose_fusion_1\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000loop_transpose_fusion_1\000.nv.constant0.loop_transpose_fusion_1\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\224\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\303\000\000\000 \240\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\344\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\024\001\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0000\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000H\001\000\000\003\000\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\004|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\377,\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\0044\000\000\000\004\004\000\000\000\014\201\200\200(\000\000\000\000\000\004/\010\000\006\000\000\000\n\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\004\034\004\000\320\000\000\000\004\020\014\000\004\000\000\000\001\000\000\000\001\000\000\000\003\031\020\000\004\n\010\000\007\000\000\000\020\002\020\000\0046\004\000\010\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377\000\000\000\000D\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202{\001\377\000\n\000\000\000\010\000\000\000\342\017\000\031y\007\000\000\000\000\000\000!\000\000\000.\016\000\202{\002\377\000\204\000\000\000\n\000\000\000b\016\000\271z\004\000\000\202\000\000\000\n\000\000\000\342\017\000.x\000\000\000\000\000\000\000\000\000\000\000\342\017\000\031x\000\007\001\000\000\000\377\006\000\000\000\310\037\000\022x\000\000\002\000\000\000\377\300\216\007\000\310\017\000\021r\005\007\000\000\000\000\377\370\217\007\000\312\017\000%x\002\005\004\000\000\000\002\000\216\007\000\344/\000\202{\004\377\000\206\000\000\000\n\000\000\000(\016\000\201y\003\002\004\000\000\000\000\231\036\014\000\242\016\000%x\004\007\004\000\000\000\004\000\216\007\000\312\037\000\206y\000\004\003\000\000\000\004\031\020\014\000\342O\000My\000\000\000\000\000\000\000\000\200\003\000\352\017\000Gy\374\000\374\377\377\377\377\377\203\003\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\034\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\223\001\000\000\000\000\000\000n\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\003\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\252\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\310\003\000\000\000\000\000\000h\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0000\004\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000P\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000T\004\000\000\000\000\000\000`\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\332\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\264\004\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\310\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\330\004\000\000\000\000\000\000\030\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\200\001\000\000\000\000\000\000\003\000\000\000\006\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\224\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000 \002\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\200\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
           }
           arity: 2
           kernel_name: "loop_transpose_fusion_1"
@@ -2350,6 +2074,7 @@ gpu_executable {
           }
         }
       }
+      use_pdl: true
       tma_metadata {
       }
     }
@@ -2362,7 +2087,7 @@ gpu_executable {
     custom_kernel_thunk {
       args {
         slice {
-          offset: 1280
+          offset: 256
           size: 16
           buffer_allocation_index: 3
           element_type: F32
@@ -2405,7 +2130,7 @@ gpu_executable {
         name: "loop_transpose_fusion"
         kernel_spec {
           cubin {
-            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000@\010\000\000\000\000\000\000\300\005\000\000\000\000\000\000<\005<\000@\0008\000\003\000@\000\n\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion\000.nv.info.loop_transpose_fusion\000.nv.shared.loop_transpose_fusion\000.nv.constant0.loop_transpose_fusion\000.rel.nv.constant0.loop_transpose_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion\000.nv.info.loop_transpose_fusion\000.nv.shared.loop_transpose_fusion\000.rel.nv.constant0.loop_transpose_fusion\000.nv.constant0.loop_transpose_fusion\000.nv.callgraph\000.nv.prototype\000.nv.rel.action\000loop_transpose_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\266\000\000\000\003\000\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\332\000\000\000\003\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\000\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\300\000\000\000\000\000\000\000\004/\010\000\005\000\000\000\006\000\000\000\004\021\010\000\005\000\000\000\000\000\000\000\004\022\010\000\005\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\0010\000\000\001*\000\000\004\n\010\000\002\000\000\000@\001\020\000\003\031\020\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003\033\377\000\004\034\004\000\220\000\000\000\004\020\014\000\004\000\000\000\001\000\000\000\001\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377s\000\000\000\000\000\000\000\000\000\000\021%\000\0056\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\366\007\340\343\000\230?\000\001\000\207\000\200\007\230L\005\000\027\002\000\000\310\360\000\005W\000\000\000\020\\\366\007\300\376\000\304\037\010\000\000\'\000\000\000\000\004\000\005\007\360\201\177\337[\003\000\347\001\000\000(8\346\007@\374\000\304\036\000\002\000\007\005\000\201\030L\003\003\027\005\000\010\020L\002\002\007\000\000\240\324\356\361\007\302\374\000\234\037\000\000\005\347\001\000\000(8\004\005\'\005\000\201\030L\005\0007\005\000\010\020L\361\007\341\377\000\374\037\000\002\004\007\000\000 \334\356\017\000\007\000\000\000\000\343\017\000\207\377\377\017@\342\340\007\000\374\000\200\037\000\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\017\007\000\000\000\260P\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\005\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000E\001\000\000\000\000\000\000\033\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000`\002\000\000\000\000\000\000\220\000\000\000\000\000\000\000\002\000\000\000\005\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\002\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000N\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\024\003\000\000\000\000\000\000\\\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\332\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000p\003\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\366\000\000\000\013\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\220\003\000\000\000\000\000\000\020\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\216\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\240\003\000\000\000\000\000\000P\001\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\300\000\000\000\000\000\000\000\003\000\000\000\005\000\000\006 \000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\005\000\000\000@\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\240\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000@\010\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\250\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
+            data: "\177ELF\002\001\0013\007\000\000\000\000\000\000\000\002\000\276\000\200\000\000\000\000\000\000\000\000\000\000\000\240\013\000\000\000\000\000\000\240\010\000\000\000\000\000\000Z\rZ\000@\0008\000\005\000@\000\014\000\001\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion\000.nv.info.loop_transpose_fusion\000.nv.shared.loop_transpose_fusion\000.nv.shared.reserved.0\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000.nv.constant0.loop_transpose_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000.shstrtab\000.strtab\000.symtab\000.symtab_shndx\000.nv.info\000.text.loop_transpose_fusion\000.nv.info.loop_transpose_fusion\000.nv.shared.loop_transpose_fusion\000.nv.reservedSmem.offset0\000.nv.shared.reserved.0\000__nv_reservedSMEM_offset_0_alias\000.debug_frame\000.rel.debug_frame\000.rela.debug_frame\000.nv.callgraph\000.nv.prototype\000loop_transpose_fusion\000.nv.constant0.loop_transpose_fusion\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\0002\000\000\000\003\000\t\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\216\000\000\000!\000\000\000\000\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\275\000\000\000 \240\n\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\336\000\000\000\003\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\016\001\000\000\003\000\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000*\001\000\000\022\020\t\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000@\001\000\000\003\000\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\377\377\377\377$\000\000\000\000\000\000\000\377\377\377\377\377\377\377\377\003\000\004|\377\377\377\377\017\014\201\200\200(\000\010\377\201\200(\010\201\200\200(\000\000\000\377\377\377\377,\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\0044\000\000\000\004\004\000\000\000\014\201\200\200(\000\000\000\000\000\004/\010\000\006\000\000\000\n\000\000\000\004\021\010\000\006\000\000\000\000\000\000\000\004\022\010\000\006\000\000\000\000\000\000\000\0047\004\000\200\000\000\000\004\027\014\000\000\000\000\000\001\000\010\000\010\365!\000\004\027\014\000\000\000\000\000\000\000\000\000\010\365!\000\003P\000\000\003\033\377\000\004\034\004\000\320\000\000\000\004\020\014\000\004\000\000\000\001\000\000\000\001\000\000\000\003\031\020\000\004\n\010\000\007\000\000\000\020\002\020\000\0046\004\000\010\000\000\000\000\000\000\000\377\377\377\377\000\000\000\000\376\377\377\377\000\000\000\000\375\377\377\377\000\000\000\000\374\377\377\377\000\000\000\000D\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\202{\001\377\000\n\000\000\000\010\000\000\000\342\017\000\031y\007\000\000\000\000\000\000!\000\000\000.\016\000\202{\002\377\000\204\000\000\000\n\000\000\000b\016\000\271z\004\000\000\202\000\000\000\n\000\000\000\342\017\000.x\000\000\000\000\000\000\000\000\000\000\000\342\017\000\031x\000\007\001\000\000\000\377\006\000\000\000\310\037\000\022x\000\000\002\000\000\000\377\300\216\007\000\310\017\000\021r\005\007\000\000\000\000\377\370\217\007\000\312\017\000%x\002\005\004\000\000\000\002\000\216\007\000\344/\000\202{\004\377\000\206\000\000\000\n\000\000\000(\016\000\201y\003\002\004\000\000\000\000\231\036\014\000\242\016\000%x\004\007\004\000\000\000\004\000\216\007\000\312\037\000\206y\000\004\003\000\000\000\004\031\020\014\000\342O\000My\000\000\000\000\000\000\000\000\200\003\000\352\017\000Gy\374\000\374\377\377\377\377\377\203\003\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\030y\000\000\000\000\000\000\000\000\000\000\000\300\017\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000@\000\000\000\000\000\000\000\024\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\013\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\211\001\000\000\000\000\000\000d\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\002\000\000\000\000\000\000\300\000\000\000\000\000\000\000\002\000\000\000\006\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\000\244\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\260\003\000\000\000\000\000\000h\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000)\000\000\000\000\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\004\000\000\000\000\000\000$\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000N\000\000\000\000\000\000p@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000<\004\000\000\000\000\000\000`\000\000\000\000\000\000\000\003\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\324\000\000\000\001\000\000p\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\234\004\000\000\000\000\000\000 \000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\004\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\302\000\000\000\004\000\000\000@\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\300\004\000\000\000\000\000\000\030\000\000\000\000\000\000\000\003\000\000\000\004\000\000\000\010\000\000\000\000\000\000\000\030\000\000\000\000\000\000\0002\000\000\000\001\000\000\000\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\005\000\000\000\000\000\000\200\001\000\000\000\000\000\000\003\000\000\000\006\000\000\000\200\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\216\000\000\000\010\000\000\000\003\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\360\000\000\000\001\000\000\000B\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\006\000\000\000\000\000\000 \002\000\000\000\000\000\000\000\000\000\000\t\000\000\000\004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\006\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\240\013\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\030\001\000\000\000\000\000\000\030\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\005\000\000\000\000\005\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\200\001\000\000\000\000\000\000\200\001\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\006\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\010\000\000\000\000\000\000\000\001\000\000\000\004\000\000\000\200\006\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000 \002\000\000\000\000\000\000 \002\000\000\000\000\000\000\010\000\000\000\000\000\000\000"
           }
           arity: 2
           kernel_name: "loop_transpose_fusion"
@@ -2438,6 +2163,7 @@ gpu_executable {
           }
         }
       }
+      use_pdl: true
       tma_metadata {
       }
     }
@@ -2446,9 +2172,9 @@ gpu_executable {
     platform_name: "CUDA"
     cuda_platform_version {
       cuda_toolkit_version: "12.8.0"
-      cudnn_version: "9.10.0"
+      cudnn_version: "9.10.2"
       cub_version: "3.1.2"
     }
   }
-  buffer_allocations_debug_summary: "BufferAssignment OOM Debugging.\nBufferAssignment stats:\n             parameter allocation:         0B\n              constant allocation:         0B\n        maybe_live_out allocation:        48B\n     preallocated temp allocation:     1.5KiB\n  preallocated temp fragmentation:       240B (15.54%)\n                 total allocation:     1.6KiB\n              total fragmentation:     1.4KiB (91.96%)\nPeak buffers:\n\tBuffer 1:\n\t\tSize: 16B\n\t\tXLA Label: all-gather\n\t\tShape: f32[2,2]\n\t\t==========================\n\n\tBuffer 2:\n\t\tSize: 16B\n\t\tXLA Label: all-gather\n\t\tShape: (u32[2,2], f32[2,2])\n\t\t==========================\n\n\tBuffer 3:\n\t\tSize: 16B\n\t\tXLA Label: async-done\n\t\tShape: (u32[2,2], f32[2,2])\n\t\t==========================\n\n\tBuffer 4:\n\t\tSize: 16B\n\t\tXLA Label: async-start\n\t\tShape: (u32[2,2], f32[2,2])\n\t\t==========================\n\n\tBuffer 5:\n\t\tSize: 16B\n\t\tXLA Label: async-start\n\t\tShape: (u32[2,1], f32[2,1])\n\t\t==========================\n\n\tBuffer 6:\n\t\tSize: 16B\n\t\tXLA Label: async-start\n\t\tShape: ((u32[2,1], f32[2,1]), (u32[2,2], f32[2,2]))\n\t\t==========================\n\n\tBuffer 7:\n\t\tSize: 16B\n\t\tXLA Label: tuple\n\t\tShape: (u32[4], f32[4])\n\t\t==========================\n\n\tBuffer 8:\n\t\tSize: 16B\n\t\tXLA Label: fusion\n\t\tShape: f32[2,2]\n\t\t==========================\n\n\tBuffer 9:\n\t\tSize: 16B\n\t\tXLA Label: fusion\n\t\tShape: u32[2,2]\n\t\t==========================\n\n\tBuffer 10:\n\t\tSize: 8B\n\t\tXLA Label: fusion\n\t\tShape: f32[2,1]\n\t\t==========================\n"
+  buffer_allocations_debug_summary: "BufferAssignment OOM Debugging.\nBufferAssignment stats:\n             parameter allocation:         0B\n              constant allocation:         0B\n        maybe_live_out allocation:        48B\n     preallocated temp allocation:       520B\n  preallocated temp fragmentation:       240B (46.15%)\n                 total allocation:       568B\n              total fragmentation:       504B (88.73%)\nPeak buffers:\n\tBuffer 1:\n\t\tSize: 16B\n\t\tXLA Label: all-gather\n\t\tShape: f32[2,2]\n\t\t==========================\n\n\tBuffer 2:\n\t\tSize: 16B\n\t\tXLA Label: all-gather\n\t\tShape: (u32[2,2], f32[2,2])\n\t\t==========================\n\n\tBuffer 3:\n\t\tSize: 16B\n\t\tXLA Label: tuple\n\t\tShape: (u32[4], f32[4])\n\t\t==========================\n\n\tBuffer 4:\n\t\tSize: 16B\n\t\tXLA Label: fusion\n\t\tShape: f32[2,2]\n\t\t==========================\n\n\tBuffer 5:\n\t\tSize: 16B\n\t\tXLA Label: fusion\n\t\tShape: u32[2,2]\n\t\t==========================\n\n\tBuffer 6:\n\t\tSize: 8B\n\t\tXLA Label: fusion\n\t\tShape: f32[2,1]\n\t\t==========================\n"
 }

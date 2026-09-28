@@ -187,6 +187,31 @@ def SelectBufferOp : XTile_Op<"select_buffer", [Pure]> {
   }];
 }
 
+def MemRefBitcastOp : XTile_Op<"memref_bitcast",
+                               [Pure, SameOperandsAndResultShape]> {
+  let summary = "Reinterprets the element type of a memref.";
+  let description = [{
+    Shape, layout and memory space are unchanged, so no data is moved: this is
+    purely a change of how the bits of each element are interpreted.
+
+    Example:
+
+    ```mlir
+    %0 = xtile.memref_bitcast %arg0 : memref<4x16xbf16> -> memref<4x16xi16>
+    ```
+  }];
+
+  let arguments = (ins AnyMemRef:$source);
+  let results = (outs AnyMemRef:$result);
+
+  let assemblyFormat = [{
+    $source `:` type($source) `->` type($result) attr-dict
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
   let summary = "Extract a tile from a memref.";
   let description = [{

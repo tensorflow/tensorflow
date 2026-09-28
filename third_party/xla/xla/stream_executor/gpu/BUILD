@@ -350,6 +350,31 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+xla_test(
+    name = "gpu_hsaco_bundle_test",
+    srcs = ["gpu_hsaco_bundle_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"],
+    deps = [
+        ":asm_compiler",
+        "//xla:debug_options_flags",
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_platform",  # buildcleaner: keep
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:path",
     ],
 )

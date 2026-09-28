@@ -53,7 +53,7 @@ bool IsFromFoldableChain(mlir::Value value) {
   while (defining_op) {
     // `QConstOp` carries its value in an attribute but is neither ConstantLike
     // nor foldable, so it has to be named rather than left to `m_Constant`.
-    if (mlir::isa<DequantizeOp, QConstOp>(defining_op) ||
+    if (mlir::isa<DequantizeOp, BlockwiseDequantizeOp, QConstOp>(defining_op) ||
         defining_op->hasTrait<mlir::OpTrait::ConstantLike>() ||
         matchPattern(defining_op, mlir::m_Constant())) {
       return true;

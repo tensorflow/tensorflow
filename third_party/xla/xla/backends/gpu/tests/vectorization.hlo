@@ -1,5 +1,5 @@
 // RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-LLVM-%{GPU} %s
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-PTX-%{GPU} %s
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-PTX-%{GPU} %s %}
 
 // CHECK-LLVM-b200: store <16 x i8>
 // CHECK-PTX-b200: st.global.v4.b32
@@ -12,6 +12,8 @@
 // CHECK-PTX-a100_pcie_80: st.global.b32
 // CHECK-LLVM-a6000: store <4 x i8>
 // CHECK-PTX-a6000: st.global.b32
+// CHECK-LLVM-mi200: store <4 x i8>
+// CHECK-LLVM-mi350: store <4 x i8>
 
 HloModule m8, is_scheduled=true
 
