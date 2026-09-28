@@ -30,8 +30,9 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu_topology.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_description.pb.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -57,15 +58,19 @@ TEST_P(CommandBufferProfilingTest,
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_text));
 
-  ASSERT_OK_AND_ASSIGN(
-      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
-      GetGpuTargetConfig(GpuModel::H100_PCIE));
-  ASSERT_OK_AND_ASSIGN(
-      gpu::GpuTargetConfig gpu_target_config,
-      gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Compiler> compiler,
-      Compiler::GetForPlatform(stream_executor::cuda::kCudaPlatformId));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("gpu"));
+
+  ASSERT_OK_AND_ASSIGN(std::vector<stream_executor::StreamExecutor*> executors,
+                       PlatformUtil::GetStreamExecutors(platform));
+
+  ASSERT_FALSE(executors.empty());
+
+  stream_executor::StreamExecutor* executor = executors.front();
+  GpuTargetConfig gpu_target_config(executor);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform->id()));
 
   AotCompilationOptions aot_options(compiler->PlatformId());
   aot_options.set_gpu_topology(

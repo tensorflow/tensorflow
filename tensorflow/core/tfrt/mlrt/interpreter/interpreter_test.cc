@@ -792,8 +792,8 @@ TEST(InterpreterTest, AwaitMove) {
     notification.WaitForNotification();
     TF_ASSERT_OK(execution_context.status());
 
-    EXPECT_EQ(output.Get<TestPayload>().copy, 0);
-    EXPECT_EQ(output.Get<TestPayload>().move, 4);
+    EXPECT_EQ(output.Get<TestPayload>().copy, 1);
+    EXPECT_EQ(output.Get<TestPayload>().move, 3);
   }
 
   {

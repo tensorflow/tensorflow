@@ -33,9 +33,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/overflow_util.h"
@@ -206,13 +206,16 @@ class ShapeUtil {
   // This serialized size includes the header of the serialized format, and so
   // should not be used for subshapes.  Use SerializedSizeOfData for that
   // purpose.
-  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape);
+  // If `pack_pred` is true, PRED elements are bit-packed (8 elements per byte);
+  // if false, each PRED element occupies 1 byte.
+  static absl::StatusOr<int64_t> SerializedSize(const Shape& shape,
+                                                bool pack_pred = true);
 
   // As above, but assumes the given ShapeProto is the result of
   // shape.ToProto().  This can be used to avoid converting the shape to a
   // protobuf multiple times.
   static absl::StatusOr<int64_t> SerializedSizeWithProto(
-      const Shape& shape, const ShapeProto& proto);
+      const Shape& shape, const ShapeProto& proto, bool pack_pred = true);
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -308,6 +311,11 @@ class ShapeUtil {
   // ((F32, F32), F32) as the former has structure (,(,)) while the latter has
   // ((,),)
   static bool EqualStructure(const Shape& lhs, const Shape& rhs);
+
+  // Returns whether expected_prefix shape is a prefix of shape.
+  static bool IsPrefix(const Shape& expected_prefix, const Shape& shape,
+                       absl::FunctionRef<bool(const Shape&, const Shape&)>
+                           equal_fn = Shape::Equal());
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true dimensionality of 1D, the other dimensions
@@ -744,7 +752,7 @@ class ShapeUtil {
         shape,
         [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (IsLeafIndex(shape, index)) {
-            RETURN_IF_ERROR(fn(subshape, index));
+            ABSL_RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -754,7 +762,7 @@ class ShapeUtil {
     return ForEachMutableSubshapeWithStatus(
         shape, [&](Shape* subshape, const ShapeIndex& index) -> absl::Status {
           if (IsLeafIndex(*shape, index)) {
-            RETURN_IF_ERROR(fn(subshape, index));
+            ABSL_RETURN_IF_ERROR(fn(subshape, index));
           }
           return absl::OkStatus();
         });
@@ -1247,14 +1255,14 @@ class ShapeUtil {
   template <typename Fn>
   static absl::Status ForEachMutableSubshapeWithStatusHelper(
       Shape* shape, Fn&& fn, ShapeIndex* index) {
-    RETURN_IF_ERROR(fn(shape, *index));
+    ABSL_RETURN_IF_ERROR(fn(shape, *index));
     if (Shape::TupleState* tuple = shape->if_tuple_state()) {
       Shape* tuple_shape = tuple->tuple_shapes.data();
       int64_t tuple_count = tuple->tuple_shapes.size();
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        RETURN_IF_ERROR(
+        ABSL_RETURN_IF_ERROR(
             ForEachMutableSubshapeWithStatusHelper(tuple_shape, fn, index));
       }
       index->pop_back();
@@ -1291,12 +1299,12 @@ class ShapeUtil {
       index->push_back(0);
       for (int64_t i = 0; i < tuple_count;
            ++i, ++tuple_shape, ++index->back()) {
-        RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
+        ABSL_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
             tuple_shape, fn, index));
       }
       index->pop_back();
     }
-    RETURN_IF_ERROR(fn(shape, *index));
+    ABSL_RETURN_IF_ERROR(fn(shape, *index));
     return absl::OkStatus();
   }
 

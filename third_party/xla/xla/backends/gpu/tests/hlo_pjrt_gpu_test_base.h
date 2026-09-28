@@ -32,10 +32,10 @@ namespace xla::gpu {
 class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase,
                            public HloGpuTestBaseInterface {
  protected:
-  explicit HloPjRtGpuTestBase(HloPjRtTestBaseOptions options = {});
+  explicit HloPjRtGpuTestBase(HloTestBaseOptions options = {});
 
   explicit HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client)
-      : HloPjRtGpuTestBase(client.release(), HloPjRtTestBaseOptions()) {}
+      : HloPjRtGpuTestBase(client.release(), HloTestBaseOptions()) {}
 
   const GpuTargetConfig& gpu_target_config() const override {
     return gpu_target_config_;
@@ -55,12 +55,12 @@ class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase,
   }
 
  private:
-  HloPjRtGpuTestBase(PjRtClient* client, HloPjRtTestBaseOptions options);
+  HloPjRtGpuTestBase(PjRtClient* client, HloTestBaseOptions options);
   HloPjRtGpuTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
                      DeviceShapeSizeFn device_shape_size_fn,
                      GpuTargetConfig gpu_target_config,
                      std::unique_ptr<PjRtClient> client,
-                     HloPjRtTestBaseOptions options);
+                     HloTestBaseOptions options);
 
   GpuTargetConfig gpu_target_config_;
 

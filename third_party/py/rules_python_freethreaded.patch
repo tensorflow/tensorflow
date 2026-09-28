@@ -1,3 +1,28 @@
+diff --git a/python/private/pypi/platform.bzl b/python/private/pypi/platform.bzl
+index 00000000..00000000 100644
+--- a/python/private/pypi/platform.bzl
++++ b/python/private/pypi/platform.bzl
+@@ -25,7 +25,7 @@ def platform(*, name, arch_name, os_name, config_settings = [], env = {}, marker
+         # the lowest priority one needs to be the first one
+         whl_platform_tags = ["any"] + whl_platform_tags
+
+-    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}"]
++    whl_abi_tags = whl_abi_tags or ["abi3", "cp{major}{minor}", "cp{major}{minor}t"]
+     if "none" not in whl_abi_tags:
+         # the lowest priority one needs to be the first one
+         whl_abi_tags = ["none"] + whl_abi_tags
+diff --git a/python/private/pypi/pep508_env.bzl b/python/private/pypi/pep508_env.bzl
+index 00000000..00000000 100644
+--- a/python/private/pypi/pep508_env.bzl
++++ b/python/private/pypi/pep508_env.bzl
+@@ -23,6 +23,7 @@ _DEFAULT = "//conditions:default"
+ # Here we store the aliases in the platform so that the users can specify any valid target in
+ # there.
+ _cpu_aliases = {
++    "amd64": "x86_64",
+     "arm": "aarch32",
+     "arm64": "aarch64",
+ }
 diff --git a/python/private/python_register_toolchains.bzl b/python/private/python_register_toolchains.bzl
 index 9e75c419..ba6d8f7a 100644
 --- a/python/private/python_register_toolchains.bzl

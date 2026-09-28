@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -153,7 +153,7 @@ static absl::StatusOr<bool> AddControlEdgesForLoopWrites(
           // Add control dependency if it does not already exist.
           if (!absl::c_linear_search(read->control_successors(), write)) {
             // Unless we want a copy, read should happen before write.
-            RETURN_IF_ERROR(read->AddControlDependencyTo(write));
+            ABSL_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
             VLOG(2) << "Adding dependency: " << read->ToShortString()
                     << " before " << write->ToShortString();
             changed = true;
@@ -199,10 +199,10 @@ absl::StatusOr<bool> LoopScheduleLinearizer::RunImpl(
       }
 
       if (alias_analysis == nullptr) {
-        ASSIGN_OR_RETURN(alias_analysis,
+        ABSL_ASSIGN_OR_RETURN(alias_analysis,
                          HloAliasAnalysis::Run(module, alias_info_));
       }
-      ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
+      ABSL_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
                                               instruction, *alias_analysis));
       changed |= updated_loop;
     }

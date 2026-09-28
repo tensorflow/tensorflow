@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/intrinsic/log1p.h"
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -76,6 +78,14 @@ std::vector<T> GetTestValues() {
           std::numeric_limits<float>::quiet_NaN()};
 }
 
+std::vector<double> GetF64TestValues() {
+  std::vector<double> test_values = GetTestValues<double>();
+  test_values.insert(
+      test_values.end(),
+      {-0.4141892, -0.35, -0.29289321881345248, 0.41421356237309505});
+  return test_values;
+}
+
 TEST(Log1pTest, F32) {
   Type type = Type::S(F32);
   JitRunner runner = CreateJitRunnerWithLog1p(type);
@@ -92,12 +102,34 @@ TEST(Log1pTest, F32) {
   }
 }
 
+TEST(Log1pTest, F32Vector16) {
+  constexpr size_t kN = 16;
+  Type type = Type::V(F32, kN);
+  JitRunner runner = CreateJitRunnerWithLog1p(type);
+  auto fn = runner.GetVectorizedFn<kN, float, float>(Log1p::Name(type));
+
+  std::vector<float> test_values = GetTestValues<float>();
+  std::array<float, kN> vals;
+  for (size_t i = 0; i < kN; ++i) {
+    vals[i] = test_values[i % test_values.size()];
+  }
+  std::array<float, kN> results = fn(vals);
+  for (size_t i = 0; i < kN; ++i) {
+    float expected = std::log1pf(vals[i]);
+    if (std::isnan(expected)) {
+      EXPECT_TRUE(std::isnan(results[i]));
+    } else {
+      EXPECT_THAT(results[i], NearUlps<float>(expected, 1));
+    }
+  }
+}
+
 TEST(Log1pTest, F64) {
   Type type = Type::S(F64);
   JitRunner runner = CreateJitRunnerWithLog1p(type);
   auto fn = runner.GetScalarFn<double(double)>(Log1p::Name(type));
 
-  for (double x_val : GetTestValues<double>()) {
+  for (double x_val : GetF64TestValues()) {
     double expected = std::log1p(x_val);
     double result = fn(x_val);
     if (std::isnan(expected)) {

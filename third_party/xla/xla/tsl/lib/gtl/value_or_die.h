@@ -37,9 +37,8 @@ namespace gtl {
 namespace internal_value_or_die {
 
 // LOG(FATAL), with a source location and an optional 'status' for details.
-ABSL_ATTRIBUTE_NORETURN
-void DieBecauseEmptyValue(const char* file, int line,
-                          const absl::Status* status = nullptr);
+[[noreturn]] void DieBecauseEmptyValue(const char* file, int line,
+                                       const absl::Status* status = nullptr);
 
 // SFINAE helper to detect instances of StatusOr<T>.
 template <int&... kDoNotSpecify, typename T>

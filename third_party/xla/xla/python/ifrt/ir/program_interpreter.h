@@ -75,7 +75,7 @@ class ProgramInterpreter {
       Client* client, absl::string_view program_name,
       mlir::ModuleOp mlir_module,
       std::shared_ptr<AtomExecutableMap> atom_program_executables,
-      DeviceListRef devices);
+      DeviceListRef devices, bool set_op_user_contexts = false);
 
   absl::StatusOr<ExecuteFn> BuildExecuteFn();
 
@@ -86,13 +86,14 @@ class ProgramInterpreter {
       Client* client, absl::string_view program_name,
       mlir::ModuleOp mlir_module,
       std::shared_ptr<AtomExecutableMap> atom_program_executables,
-      DeviceListRef devices, mlir::Liveness liveness)
+      DeviceListRef devices, mlir::Liveness liveness, bool set_op_user_contexts)
       : client_(client),
         program_name_(program_name),
         mlir_module_(mlir_module),
         atom_program_executables_(std::move(atom_program_executables)),
         devices_(std::move(devices)),
-        liveness_(std::move(liveness)) {}
+        liveness_(std::move(liveness)),
+        set_op_user_contexts_(set_op_user_contexts) {}
 
   absl::StatusOr<OpFn> HandleOp(CallLoadedExecutableOp call_loaded_op);
   absl::StatusOr<OpFn> HandleOp(RemapArraysOp remap_op);
@@ -114,6 +115,10 @@ class ProgramInterpreter {
 
   // Cached liveness analysis of the IFRT IR program.
   mlir::Liveness liveness_;
+
+  // Whether or not to set up a private user context around each op. Set to true
+  // while tracing.
+  bool set_op_user_contexts_;
 };
 
 }  // namespace ifrt

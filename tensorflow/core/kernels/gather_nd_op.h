@@ -156,7 +156,7 @@ absl::Status DoGatherNd(
     using CPUDevice = Eigen::ThreadPoolDevice;
 
     const bool check_bad_indices =
-        ((std::is_same<Device, CPUDevice>::value &&
+        ((std::is_same_v<Device, CPUDevice> &&
           bad_indices_policy == BadIndicesPolicy::kDefault) ||
          bad_indices_policy == BadIndicesPolicy::kError);
     if (check_bad_indices && bad_i >= 0) {

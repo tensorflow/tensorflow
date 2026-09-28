@@ -15,19 +15,23 @@ limitations under the License.
 
 #include "xla/service/space_to_batch_converter.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using SpaceToBatchConverterTest = HloHardwareIndependentTestBase;
 namespace op = testing::opcode_matchers;
 
@@ -43,8 +47,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -79,8 +83,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -123,8 +127,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
@@ -144,8 +148,8 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
@@ -167,8 +171,8 @@ TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 1});
@@ -186,8 +190,8 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
       window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -222,8 +226,8 @@ ENTRY computation {
 }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -262,8 +266,8 @@ TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
   }
 
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   SpaceToBatchConverter converter(
       SpaceToBatchController{true, true, true, true, 8});
@@ -290,8 +294,8 @@ TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
     ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -338,8 +342,8 @@ TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
     %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -371,8 +375,8 @@ TEST_F(SpaceToBatchConverterTest, ReduceDegenerateDim) {
       %convolution.98, f32[] %constant.10559), dimensions={1,4}, to_apply=%region_42.4982
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -405,8 +409,8 @@ ENTRY main.140 {
     dimensions={0,1,2}, to_apply=%region_0.134
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
   SpaceToBatchConverter converter(
@@ -415,6 +419,169 @@ ENTRY main.140 {
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Reduce());
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationIntoCalledComputation) {
+  const std::string hlo_string = R"(
+HloModule module
+
+called_computation {
+  called_p0 = bf16[1,256,256,32] parameter(0)
+  ROOT identity = bf16[1,256,256,32] copy(called_p0)
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  conv = bf16[1,256,256,32] convolution(entry_p0, entry_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+  ROOT call = bf16[1,256,256,32] call(conv), to_apply=called_computation
+}
+
+// CHECK-LABEL: %called_computation
+// CHECK:         ROOT %identity = bf16[1,256,256,32]{{.*}} copy(%called_p0)
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         %[[B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+// CHECK:         ROOT %call = bf16[1,256,256,32]{{.*}} call(%[[B2S]]), to_apply=%called_computation
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationOutOfCalledComputation) {
+  const std::string hlo_string = R"(
+HloModule module
+
+callee {
+  callee_p0 = bf16[1,258,258,32] parameter(0)
+  callee_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(callee_p0, callee_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_bias = bf16[1,256,256,32] parameter(2)
+  call = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=callee
+  ROOT add = bf16[1,256,256,32] add(call, entry_bias)
+}
+
+// CHECK-LABEL: %callee
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %call = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%callee
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call, %entry_bias)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, BlockingPropagationThroughCallInstruction) {
+  const std::string hlo_string = R"(
+HloModule module
+
+callee {
+  callee_p0 = bf16[1,256,256,32] parameter(0)
+  ROOT identity = bf16[1,256,256,32] copy(callee_p0)
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_bias = bf16[1,256,256,32] parameter(2)
+  conv = bf16[1,256,256,32] convolution(entry_p0, entry_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+  call = bf16[1,256,256,32] call(conv), to_apply=callee
+  ROOT add = bf16[1,256,256,32] add(call, entry_bias)
+}
+
+// CHECK-LABEL: %callee
+// CHECK:         ROOT %identity = bf16[1,256,256,32]{{.*}} copy(%callee_p0)
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         %[[B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+// CHECK:         %call = bf16[1,256,256,32]{{.*}} call(%[[B2S]]), to_apply=%callee
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call, %entry_bias)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, TransformCalledComputationCalledOnce) {
+  const std::string hlo_string = R"(
+HloModule module
+
+foo {
+  foo_p0 = bf16[1,258,258,32] parameter(0)
+  foo_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(foo_p0, foo_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT call = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=foo
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         ROOT %call = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%foo
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, TransformCalledComputationCalledTwice) {
+  const std::string hlo_string = R"(
+HloModule module
+
+foo {
+  foo_p0 = bf16[1,258,258,32] parameter(0)
+  foo_p1 = bf16[3,3,32,32] parameter(1)
+  ROOT conv = bf16[1,256,256,32] convolution(foo_p0, foo_p1), window={size=3x3}, dim_labels=b01f_01io->b01f
+}
+
+ENTRY computation {
+  entry_p0 = bf16[1,258,258,32] parameter(0)
+  entry_p1 = bf16[3,3,32,32] parameter(1)
+  entry_p2 = bf16[1,258,258,32] parameter(2)
+  call1 = bf16[1,256,256,32] call(entry_p0, entry_p1), to_apply=foo
+  call2 = bf16[1,256,256,32] call(entry_p2, entry_p1), to_apply=foo
+  ROOT add = bf16[1,256,256,32] add(call1, call2)
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         %[[CONV:.*]] = bf16[{{.*}}8,{{.*}}33,32]{{.*}} convolution(
+// CHECK:         ROOT %[[ROOT_B2S:.*]] = bf16[1,256,256,32]{{.*}} transpose(
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %call1 = bf16[1,256,256,32]{{.*}} call(%entry_p0, %entry_p1), to_apply=%foo
+// CHECK:         %call2 = bf16[1,256,256,32]{{.*}} call(%entry_p2, %entry_p1), to_apply=%foo
+// CHECK:         ROOT %add = bf16[1,256,256,32]{{.*}} add(%call1, %call2)
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace

@@ -39,8 +39,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
-#include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -52,17 +50,24 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
-#include "tensorflow/lite/profiling/model_runtime_info.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
-#include "tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/model_loader.h"
 #include "tensorflow/lite/tools/utils.h"
+
+// Proto-based outputs are compiled out when TFLITE_WITHOUT_PROTO is defined
+// (e.g. the CMake build), which avoids a dependency on protobuf and TensorFlow.
+#ifndef TFLITE_WITHOUT_PROTO
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/lite/profiling/model_runtime_info.h"
+#include "tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h"
+#endif  // TFLITE_WITHOUT_PROTO
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -75,7 +80,9 @@ RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 namespace tflite {
 namespace benchmark {
 namespace {
+#ifndef TFLITE_WITHOUT_PROTO
 using ::tflite::tools::benchmark::BenchmarkResult;
+#endif  // TFLITE_WITHOUT_PROTO
 using utils::InputTensorData;
 using utils::VoidUniquePtr;
 
@@ -89,12 +96,19 @@ constexpr bool kOpProfilingEnabledDefault = false;
 // Op profiling output modes.
 constexpr char kOpProfilingOutputModeStdout[] = "stdout";
 constexpr char kOpProfilingOutputModeCsv[] = "csv";
+#ifndef TFLITE_WITHOUT_PROTO
 constexpr char kOpProfilingOutputModeProto[] = "proto";
+#endif  // TFLITE_WITHOUT_PROTO
 
-const char* kOpProfilingOutputModes[] = {kOpProfilingOutputModeStdout,
-                                         kOpProfilingOutputModeCsv,
-                                         kOpProfilingOutputModeProto};
+const char* kOpProfilingOutputModes[] = {
+    kOpProfilingOutputModeStdout,
+    kOpProfilingOutputModeCsv,
+#ifndef TFLITE_WITHOUT_PROTO
+    kOpProfilingOutputModeProto,
+#endif  // TFLITE_WITHOUT_PROTO
+};
 
+#ifndef TFLITE_WITHOUT_PROTO
 // Sets feature values in the tensorflow::Example proto from the tflite tensor.
 // Returns an error if the tensor type is not supported or the tensor dime is a
 // nullptr.
@@ -137,6 +151,7 @@ TfLiteStatus MaybeSetFeatureValuesFromTensor(const TfLiteTensor& tensor,
       return kTfLiteError;
   }
 }
+#endif  // TFLITE_WITHOUT_PROTO
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
@@ -218,6 +233,7 @@ class OutputSaver : public BenchmarkListener {
       }
     }
 
+#ifndef TFLITE_WITHOUT_PROTO
     // If the output_proto_filepath is specified, save the output tensors as
     // tensorflow::Example proto and serialize it to the file.
     const std::string output_proto_path =
@@ -236,6 +252,12 @@ class OutputSaver : public BenchmarkListener {
         ofs.close();
       }
     }
+#else
+    if (!params_->Get<std::string>("output_proto_filepath").empty()) {
+      TFLITE_LOG(WARN)
+          << "--output_proto_filepath is not supported in this build.";
+    }
+#endif  // TFLITE_WITHOUT_PROTO
   }
 
  private:
@@ -243,6 +265,7 @@ class OutputSaver : public BenchmarkListener {
   const BenchmarkParams* params_ = nullptr;
 };
 
+#ifndef TFLITE_WITHOUT_PROTO
 // Dumps the Model Runtime Info if enabled when export_model_runtime_info is
 // set to true.
 class ModelRuntimeInfoListener : public BenchmarkListener {
@@ -337,6 +360,7 @@ class ProtoBenchmarkReporter : public BenchmarkListener {
  private:
   std::string result_file_path_;
 };
+#endif  // TFLITE_WITHOUT_PROTO
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
   if (str.empty()) {
@@ -488,8 +512,10 @@ std::shared_ptr<profiling::ProfileSummaryFormatter>
 CreateProfileSummaryFormatter(const std::string& output_mode) {
   if (output_mode == kOpProfilingOutputModeCsv) {
     return std::make_shared<profiling::ProfileSummaryCSVFormatter>();
+#ifndef TFLITE_WITHOUT_PROTO
   } else if (output_mode == kOpProfilingOutputModeProto) {
     return std::make_shared<profiling::ProfileSummaryProtoFormatter>();
+#endif  // TFLITE_WITHOUT_PROTO
   } else {
     return std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
   }
@@ -536,24 +562,14 @@ BenchmarkInterpreterRunner::Create(tflite::Interpreter* const interpreter,
   const std::vector<const std::string*>& interpreter_keys =
       interpreter->signature_keys();
 
-  // Model without signature.
-  if (interpreter_keys.empty()) {
-    if (!signature_key.empty()) {
+  // If a signature key was explicitly specified:
+  if (!signature_key.empty()) {
+    if (interpreter_keys.empty()) {
       TFLITE_LOG(ERROR) << "Signature key is specified, but the model does not "
                            "have any signatures.";
       return {kTfLiteError, nullptr};
     }
 
-    return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
-                           interpreter, nullptr, nullptr)};
-  }
-
-  // Model with one or more signatures.
-  if (interpreter_keys.size() == 1 && signature_key.empty()) {
-    // Default to the only signature if not specified.
-    signature_key = *interpreter_keys[0];
-  } else {
-    // Ensure that the requested signature key is valid.
     bool found = std::any_of(
         interpreter_keys.begin(), interpreter_keys.end(),
         [&signature_key](const auto& k) { return *k == signature_key; });
@@ -567,20 +583,39 @@ BenchmarkInterpreterRunner::Create(tflite::Interpreter* const interpreter,
       }
       return {kTfLiteError, nullptr};
     }
-  }
-  TFLITE_LOG(INFO) << "Using signature: " << signature_key;
-  SignatureRunner* signature_runner =
-      interpreter->GetSignatureRunner(signature_key.c_str());
-  if (signature_runner == nullptr) {
-    return {kTfLiteError, nullptr};
-  } else {
-    int subgraph_index =
-        interpreter->GetSubgraphIndexFromSignature(signature_key.c_str());
 
-    return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
-                           interpreter, signature_runner,
-                           interpreter->subgraph(subgraph_index))};
+    TFLITE_LOG(INFO) << "Using signature: " << signature_key;
+    SignatureRunner* signature_runner =
+        interpreter->GetSignatureRunner(signature_key.c_str());
+    if (signature_runner == nullptr) {
+      return {kTfLiteError, nullptr};
+    } else {
+      int subgraph_index =
+          interpreter->GetSubgraphIndexFromSignature(signature_key.c_str());
+
+      return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
+                             interpreter, signature_runner,
+                             interpreter->subgraph(subgraph_index))};
+    }
   }
+
+  // If signature_key was NOT specified:
+  // For models with multiple signatures, require the user to explicitly specify
+  // a signature.
+  if (interpreter_keys.size() > 1) {
+    TFLITE_LOG(ERROR) << "Signature not specified or incorrect. Pass one "
+                         "of the following to the flag "
+                         "\"--signature_to_run_for\"";
+    for (const std::string* k : interpreter_keys) {
+      TFLITE_LOG(ERROR) << " #> Signature key: " << *k;
+    }
+    return {kTfLiteError, nullptr};
+  }
+
+  // Model without signatures or single-signature model running without explicit
+  // signature specification runs directly on the primary interpreter.
+  return {kTfLiteOk, std::make_unique<BenchmarkInterpreterRunner>(
+                         interpreter, nullptr, nullptr)};
 }
 
 TfLiteStatus BenchmarkInterpreterRunner::AllocateTensors() {
@@ -1196,8 +1231,13 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       new InterpreterStatePrinter(interpreter_.get())));
 
   if (params_.Get<bool>("export_model_runtime_info")) {
+#ifndef TFLITE_WITHOUT_PROTO
     AddOwnedListener(std::unique_ptr<BenchmarkListener>(
         new ModelRuntimeInfoListener(interpreter_.get())));
+#else
+    TFLITE_LOG(WARN)
+        << "--export_model_runtime_info is not supported in this build.";
+#endif  // TFLITE_WITHOUT_PROTO
   }
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
@@ -1246,6 +1286,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   owned_delegates_.clear();
 
+  total_node_count_ = interpreter_runner_->execution_plan().size();
+  int current_undelegated_nodes = total_node_count_;
+  npu_delegated_node_count_ = 0;
+  npu_partition_count_ = 0;
+  gpu_delegated_node_count_ = 0;
+  gpu_partition_count_ = 0;
+  cpu_delegated_node_count_ = 0;
+  cpu_partition_count_ = 0;
+  is_fully_delegated_ = false;
+
   // Contains all ids of TfLiteNodes that have been checked to see whether
   // it's delegated or not.
   std::unordered_set<int> checked_node_ids;
@@ -1282,6 +1332,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       // Ideally, such delegate info should already be computed when the
       // delegate is being applied to the model graph.
       int num_delegated_kernels = 0;
+      int num_undelegated_nodes = 0;
       for (int i = 0; i < interpreter_runner_->execution_plan().size(); ++i) {
         int node_id = interpreter_runner_->execution_plan()[i];
         if (checked_node_ids.find(node_id) != checked_node_ids.end()) {
@@ -1298,11 +1349,30 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
         if (node.delegate != nullptr) {
           num_delegated_kernels++;
           checked_node_ids.insert(node_id);
+        } else {
+          num_undelegated_nodes++;
         }
       }
       bool fully_delegated =
           (num_delegated_kernels == 1 &&
            interpreter_runner_->execution_plan().size() == 1);
+
+      int delegated_ops = current_undelegated_nodes - num_undelegated_nodes;
+      std::string provider_name = delegate_provider->GetName();
+      if (provider_name == "GPU") {
+        gpu_partition_count_ += num_delegated_kernels;
+        gpu_delegated_node_count_ += delegated_ops;
+      } else if (provider_name == "XNNPACK" || provider_name == "YNNPACK") {
+        cpu_partition_count_ += num_delegated_kernels;
+        cpu_delegated_node_count_ += delegated_ops;
+      } else {
+        // NPU / Accelerators like NNAPI, Hexagon, CoreML, etc.
+        npu_partition_count_ += num_delegated_kernels;
+        npu_delegated_node_count_ += delegated_ops;
+      }
+      current_undelegated_nodes = num_undelegated_nodes;
+
+      is_fully_delegated_ = fully_delegated;
 
       if (params_.Get<bool>("require_full_delegation") && !fully_delegated) {
         TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
@@ -1336,8 +1406,14 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   AddOwnedListener(
       std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
+#ifndef TFLITE_WITHOUT_PROTO
   AddOwnedListener(
       std::unique_ptr<BenchmarkListener>(new ProtoBenchmarkReporter()));
+#else
+  if (!params_.Get<std::string>("result_file_path").empty()) {
+    TFLITE_LOG(WARN) << "--result_file_path is not supported in this build.";
+  }
+#endif  // TFLITE_WITHOUT_PROTO
 
   AddOwnedListener(std::unique_ptr<BenchmarkListener>(
       new OutputSaver(interpreter_runner_.get())));

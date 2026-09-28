@@ -1035,6 +1035,25 @@ bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
   return true;
 }
 
+// Returns true if every user of `hlo` is a slice.
+bool AllUsersAreSlices(const HloInstruction& hlo) {
+  return absl::c_all_of(hlo.users(), [](const HloInstruction* user) {
+    return user->opcode() == HloOpcode::kSlice;
+  });
+}
+
+// Whether giving each consumer of `hlo` its own copy is cheap. True when `hlo`
+// is cheap to recompute (a parameter/constant read, or an elementwise op that
+// recomputes only the needed tile), or when every user only slices it, so each
+// reads a sub-region of the one materialized result without re-running `hlo`.
+// Anything else is conservatively assumed to redo its full computation per
+// consumer.
+bool IsCheapToDuplicate(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kParameter ||
+         hlo.opcode() == HloOpcode::kConstant || hlo.IsElementwise() ||
+         AllUsersAreSlices(hlo);
+}
+
 }  // namespace
 
 // Tells that fusing an instruction as an input is efficient.
@@ -1059,6 +1078,8 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   //   the slice can be fused into the producer instead of here.
   // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
   //   fused into the producer by the multi output fusion pass.
+  // * IsCheapToDuplicate - fusing the slice duplicates the shared operand into
+  //   each consumer, so only do it when that duplication is cheap.
   if (hlo.opcode() == HloOpcode::kSlice) {
     const HloInstruction* operand = hlo.operand(0);
     while (HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTranspose,
@@ -1067,7 +1088,8 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
       operand = operand->operand(0);
     }
     if (operand->user_count() > 1 &&
-        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape())) {
+        !AllUsersAreSlicesWithSameShape(*operand, hlo.shape()) &&
+        IsCheapToDuplicate(*operand)) {
       return true;
     }
   }

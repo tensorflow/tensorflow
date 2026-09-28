@@ -1,10 +1,25 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
 """Provides the repository macro to import Shardy."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
-    SHARDY_COMMIT = "1ade0bf9b454307b90bc9af53487a83e6c7839e9"
-    SHARDY_SHA256 = "7cdb8217725f69e2621d6177968e6eb96357454adec92f32e0c6117bf2ccdfc0"
+    SHARDY_COMMIT = "dc6f5f05c411667e7f2f6a2d3552276c6f4b1a43"
+    SHARDY_SHA256 = "0130b0bfa450f1fb2a44da6264aec45e81607896790a799d5fc75c6ff08bafa2"
 
     tf_http_archive(
         name = "shardy",

@@ -75,7 +75,7 @@ const float test_float_vals[3][test_width][test_height] = {
 
 // Test whether fusion operations are emitted with no errors and compute
 // accurate outputs.
-class CpuGpuFusionTest : public HloPjRtInterpreterReferenceMixin<HloTestBase> {
+class CpuGpuFusionTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   template <typename T, int Arity>
   void TestElementwise2D(
@@ -884,9 +884,9 @@ TEST_F(CpuGpuFusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
 }
 
-class FusionClientLibraryTest
-    : public ClientLibraryTestRunnerMixin<
-          HloPjRtInterpreterReferenceMixin<HloTestBase>> {};
+class FusionClientLibraryTest : public ClientLibraryTestRunnerMixin<
+                                    HloInterpreterReferenceMixin<HloTestBase>> {
+};
 
 TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
   // On the GPU backend, it's possible to have too many transposes within one

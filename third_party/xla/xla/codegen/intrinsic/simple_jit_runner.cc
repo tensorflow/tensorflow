@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/JITLink/JITLinkMemoryManager.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
@@ -98,6 +99,10 @@ JitRunner::JitRunner(std::unique_ptr<llvm::Module> module,
         llvm::Twine(llvm::toString(jit_or_err.takeError())));
   }
   jit_ = std::move(jit_or_err.get());
+  // Match what production XLA:CPU codegen does as the last step of
+  // `IrCompiler::RunIrPasses`, so that accuracy tests measure the contracted
+  // (FMA-fused) code that actually ships rather than an unfused variant.
+  llvm_ir::SetAllowContractOnFpArithmetic(*module);
   llvm::orc::ThreadSafeModule tsm(std::move(module), *tsc_);
   llvm::ExitOnError exit_on_err;
   exit_on_err(jit_->addIRModule(std::move(tsm)));
@@ -142,16 +147,14 @@ llvm::Expected<void*> JitRunner::CreateVectorWrapperWithLoop(
 
     std::vector<llvm::Type*> wrapper_arg_types;
     // 1. Pointer to write the return data
-    wrapper_arg_types.push_back(ret_vec_type->getScalarType()->getPointerTo());
+    wrapper_arg_types.push_back(llvm::PointerType::get(*ctx, 0));
     // 2. Iteration count, passed by value
     wrapper_arg_types.push_back(builder.getInt32Ty());
     // 3. Data length (number of elements in source arrays), by value
     wrapper_arg_types.push_back(builder.getInt32Ty());
     // 4. Pointers for each input data array
-    for (llvm::Type* arg_vec_type : arg_vec_types) {
-      wrapper_arg_types.push_back(
-          arg_vec_type->getScalarType()->getPointerTo());
-    }
+    wrapper_arg_types.insert(wrapper_arg_types.end(), arg_vec_types.size(),
+                             llvm::PointerType::get(*ctx, 0));
 
     llvm::FunctionType* wrapper_llvm_func_type =
         llvm::FunctionType::get(builder.getVoidTy(), wrapper_arg_types, false);

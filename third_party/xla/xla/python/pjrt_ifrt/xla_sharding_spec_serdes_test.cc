@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
-#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -54,8 +54,7 @@ TEST_P(ShardingSpecSerDesTest, HloShardingSpecRoundTrip) {
       auto deserialized,
       Deserialize<ShardingSpec>(serialized, /*options=*/nullptr));
 
-  const auto* deserialized_spec =
-      llvm::dyn_cast<HloShardingSpec>(deserialized.get());
+  const auto* deserialized_spec = dyn_cast<HloShardingSpec>(deserialized.get());
   ASSERT_NE(deserialized_spec, nullptr);
   EXPECT_EQ(deserialized_spec->num_shards(), num_shards());
   EXPECT_EQ(deserialized_spec->xla_hlo_sharding(), xla_hlo_sharding);

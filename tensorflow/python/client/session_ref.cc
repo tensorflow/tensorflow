@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -115,7 +114,7 @@ class SessionLogger {
     Env::Default()->DeleteFile(log_name).IgnoreError();
 
     TF_CHECK_OK(Env::Default()->NewWritableFile(log_name, &log_file_));
-    log_writer_ = absl::make_unique<io::RecordWriter>(log_file_.get());
+    log_writer_ = std::make_unique<io::RecordWriter>(log_file_.get());
   }
 
   ~SessionLogger() {

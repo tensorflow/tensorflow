@@ -20,12 +20,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -104,7 +104,7 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
         ->mutable_device_interconnect_info()
         ->set_active_links(active_links);
     target_config_proto.set_platform_name("CUDA");
-    ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
+    ABSL_ASSIGN_OR_RETURN(gpu::GpuTargetConfig target_config,
                      gpu::GpuTargetConfig::FromProto(target_config_proto));
 
     // num_devices_per_host = num_replicas / num_hosts (for single group).
@@ -115,7 +115,7 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
                              /*num_devices_per_host=*/num_devices_per_host,
                              target_config);
 
-    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                      ParseAndReturnVerifiedModule(module_str, num_replicas));
 
     const HloInstruction* hlo_instr =
@@ -211,6 +211,15 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
                 /*replica_groups=*/{0, 1}, /*num_hosts=*/1,
                 /*active_links=*/0),
       StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("NVLink/UALink")));
+}
+
+TEST_F(BuildAllGatherInfoTest, FailsForLargeInputs) {
+  // 2 * 1024 * 1024 F32 elements = 8 MB > 4 MB limit -> unimplemented.
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), F32,
+                /*num_elements=*/2 * 1024 * 1024, /*replica_groups=*/{0, 1}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("only supported for small inputs")));
 }
 
 }  // namespace

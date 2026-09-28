@@ -2135,14 +2135,27 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     ValueError: If `tensors` does not contain any `Tensor` or `IndexedSlices`.
     TypeError: If `control_inputs` is not a list of `Operation` or `Tensor`
       objects.
-
+    TypeError: If `tensors` contains a nested list, tuple, or dict instead of
+      a flat sequence of `Tensor`, `IndexedSlices`, `Operation`, or `None`.
   """
+  if any(nest.is_nested(t) for t in tensors):
+    raise TypeError(
+        "'tensors' must be a flat list of Tensor, IndexedSlices, Operation, "
+        "or None. tf.tuple() does not flatten nested structures. "
+        f"Received: {tensors}"
+    )
   if context.executing_eagerly():
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     tensors = [
-        t if (isinstance(t, ops.Operation) or tensor_util.is_tf_type(t) or
-              t is None) else ops.convert_to_tensor(t) for t in tensors
+        t
+        if (
+            isinstance(t, ops.Operation)
+            or isinstance(t, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
+            or t is None
+        )
+        else ops.convert_to_tensor(t)
+        for t in tensors
     ]
     gating_ops = [
         t if isinstance(t, ops.Operation) else t.op
@@ -2253,4 +2266,5 @@ ops.register_proto_function(
     ops.GraphKeys.WHILE_CONTEXT,
     proto_type=control_flow_pb2.WhileContextDef,
     to_proto=WhileContext.to_proto,
-    from_proto=WhileContext.from_proto)
+    from_proto=WhileContext.from_proto,
+)

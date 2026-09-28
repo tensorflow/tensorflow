@@ -80,6 +80,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
   // to `max_batch_size_`.
   absl::Status ValidateAllowedBatchSizes() const;
 
+  // Validates 'per_criticality_batch_timeout_micros_'. The entries must be
+  // either empty or of size equal to the number of criticalities.
+  absl::Status ValidatePerCriticalityBatchTimeoutMicros() const;
+
   // Creates the function handle if it isn't initialized yet; and re-use it
   // afterwards.
   absl::Status GetOrCreateFunctionHandle(
@@ -119,6 +123,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   bool has_attribute_enable_large_batch_splitting_ = false;
   bool enable_priority_aware_batch_scheduler_ = false;
   bool enable_priority_aware_batch_scheduler_resplit_ = false;
+  std::vector<int64_t> per_criticality_batch_timeout_micros_ = {};
   // If true, the priority-aware batch scheduler will lazily filter out and
   // cancel tasks that have been cancelled or have exceeded their deadline
   // before batch formation.

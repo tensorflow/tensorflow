@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdlib>
 #include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 namespace tsl {
@@ -57,7 +57,7 @@ absl::Status ComputeEngineMetadataClient::GetMetadata(
     request->SetUri(metadata_url + path);
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
-    RETURN_IF_ERROR(request->Send());
+    ABSL_RETURN_IF_ERROR(request->Send());
     return absl::OkStatus();
   };
 

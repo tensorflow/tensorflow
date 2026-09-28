@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/builder/padding.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -76,7 +76,7 @@ absl::StatusOr<SpatialDimensionOutputSizeAndPadding>
 ConvGradExtractAndVerifyDimension(int64_t input_size, int64_t filter_size,
                                   int64_t output_size, int64_t dilation,
                                   int64_t stride, Padding padding) {
-  ASSIGN_OR_RETURN(SpatialDimensionOutputSizeAndPadding output_dim,
+  ABSL_ASSIGN_OR_RETURN(SpatialDimensionOutputSizeAndPadding output_dim,
                    GetWindowedOutputSize(input_size, filter_size, dilation,
                                          stride, padding));
   if (output_size != output_dim.output_size) {

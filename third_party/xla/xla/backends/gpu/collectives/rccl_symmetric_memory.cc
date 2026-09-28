@@ -39,16 +39,14 @@ RcclSymmetricMemory::Create(ncclComm_t comm,
       "Create RCCL symmetric memory on comm=%p from: ptr=%p; size=%ld", comm,
       addr.opaque(), addr.size());
 
-  ncclWindow_t win;
-  XLA_RCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
-      comm, addr.opaque(), addr.size(), &win, NCCL_WIN_COLL_SYMMETRIC));
-
+  ncclWindow_t win = nullptr;
+  // NOTE: ncclCommWindowRegister is not supported in RCCL yet: it fails loudly
+  // or just returns NULL window.
   return absl::WrapUnique(new RcclSymmetricMemory(comm, win, addr));
 }
 
 RcclSymmetricMemory::~RcclSymmetricMemory() {
   VLOG(3) << absl::StrFormat("Destroy %v", *this);
-  XLA_RCCL_LOG_IF_ERROR(ncclCommWindowDeregister(comm_, win_));
 }
 
 stream_executor::DeviceAddressBase RcclSymmetricMemory::addr() const {

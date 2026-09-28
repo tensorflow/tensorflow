@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -69,13 +70,13 @@ TEST_F(TiledFusionEmitterTest, EvaluatesMultipleCandidates) {
       ROOT wrapped_reshape = f32[6,6] fusion(p0), kind=kLoop, calls=res_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kReshapeHlo));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kReshapeHlo));
   auto& debug_options = hlo_module->mutable_config().mutable_debug_options();
   debug_options.set_xla_cpu_experimental_enable_tiling_propagation(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
-                          RunBufferAssignment(*hlo_module));
+  ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
 
@@ -90,11 +91,11 @@ TEST_F(TiledFusionEmitterTest, EvaluatesMultipleCandidates) {
 
   // Assert that this fusion has multiple tiling candidates.
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<gpu::experimental::TilingSpace> tiling_space,
       gpu::experimental::TilingSpace::Create(*fusion_adaptor,
                                              mlir_context.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto candidates, tiling_space->GetValidTilings());
+  ASSERT_OK_AND_ASSIGN(auto candidates, tiling_space->GetValidTilings());
   EXPECT_GT(candidates.size(), 1);
 }
 

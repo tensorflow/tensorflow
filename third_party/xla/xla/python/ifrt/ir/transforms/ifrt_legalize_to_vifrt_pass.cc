@@ -262,6 +262,9 @@ class IfrtToVifrtTypeConverter : public VifrtTypeConverterBuiltin {
       if (llvm::isa<IfrtTokenType>(shape.getElementType())) {
         shape = mlir::RankedTensorType::get(
             {}, VifrtTokenV1Type::get(array.getContext()));
+      } else if (llvm::isa<IfrtStringType>(shape.getElementType())) {
+        shape = mlir::RankedTensorType::get(
+            shape.getShape(), VifrtStringV1Type::get(array.getContext()));
       }
       return VifrtArrayV1Type::get(array.getContext(), shape, sharding_attr,
                                    devices_attr, memory_kind_attr, layout_attr);

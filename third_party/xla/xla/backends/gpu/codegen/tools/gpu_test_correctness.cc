@@ -57,7 +57,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using CorrectnessTest = HloPjRtInterpreterReferenceMixin<HloTestBase>;
+using CorrectnessTest = HloInterpreterReferenceMixin<HloTestBase>;
 
 const Shape& GetFirstArrayShape(const Shape& shape) {
   if (shape.IsArray()) {

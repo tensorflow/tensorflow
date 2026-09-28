@@ -26,10 +26,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -382,12 +382,12 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
         HloInstruction* static_slice = computation->AddInstruction(
             HloInstruction::CreateSlice(inst->shape(), inst->mutable_operand(0),
                                         starts, limits, strides));
-        RETURN_IF_ERROR(inst->ReplaceAllUsesWith(static_slice));
+        ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(static_slice));
         changed = true;
       }
     } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
       if (inst->operand(0)->opcode() == HloOpcode::kTuple) {
-        RETURN_IF_ERROR(inst->ReplaceAllUsesWith(
+        ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(
             inst->mutable_operand(0)->mutable_operand(inst->tuple_index())));
         changed = true;
       }
@@ -559,12 +559,12 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                         ? lhs->to_apply()->root_instruction()->opcode()
                         : inst->opcode();
 
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto rw,
           CreateReduceWindow(computation, inst->shape(), new_base_op, opcode,
                              dim, current_window_size, window_dilation));
 
-      RETURN_IF_ERROR(inst->ReplaceAllUsesWith(rw));
+      ABSL_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(rw));
       changed = true;
       continue;
     }
@@ -663,7 +663,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
           auto broadcasted_zero =
               computation->AddInstruction(HloInstruction::CreateBroadcast(
                   inst->shape(), zero_replacement, {}));
-          RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               computation->ReplaceInstruction(inst, broadcasted_zero));
           changed = true;
           continue;
@@ -671,7 +671,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
 
         if (folded.size() == 1) {
           if (folded[0].weight == one && !any_array_weights) {
-            RETURN_IF_ERROR(
+            ABSL_RETURN_IF_ERROR(
                 computation->ReplaceInstruction(inst, folded[0].slice));
             changed = true;
             continue;
@@ -694,7 +694,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                       inst->shape(), HloOpcode::kMultiply, replacement,
                       broadcasted));
             }
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -706,7 +706,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
           HloInstruction* replacement = computation->AddInstruction(
               HloInstruction::CreateBinary(inst->shape(), HloOpcode::kMultiply,
                                            folded[0].slice, broadcasted));
-          RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+          ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
           changed = true;
           continue;
         }
@@ -831,12 +831,12 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                       folded[0].slice->mutable_operand(1), new_pad_config));
             }
             int64_t current_window_size = folded.size();
-            ASSIGN_OR_RETURN(
+            ABSL_ASSIGN_OR_RETURN(
                 HloInstruction * replacement,
                 CreateReduceWindow(computation, inst->shape(), new_base_op,
                                    HloOpcode::kAdd, dim, current_window_size,
                                    window_dilation));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -862,7 +862,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
             HloInstruction* replacement = computation->AddInstruction(
                 HloInstruction::CreateBinary(inst->shape(), HloOpcode::kAdd,
                                              folded[0].slice, folded[1].slice));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -877,7 +877,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                 computation->AddInstruction(HloInstruction::CreateBinary(
                     inst->shape(), HloOpcode::kSubtract, folded[0].slice,
                     folded[1].slice));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -893,7 +893,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                 computation->AddInstruction(HloInstruction::CreateBinary(
                     inst->shape(), HloOpcode::kSubtract, folded[1].slice,
                     folded[0].slice));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -982,7 +982,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
             replacement = computation->AddInstruction(
                 HloInstruction::CreateDot(inst->shape(), concat, concat_weights,
                                           dnums, precision_config));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           } else {
@@ -1025,7 +1025,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
 
             replacement = computation->AddInstruction(HloInstruction::CreateDot(
                 inst->shape(), concat, weights, dnums, precision_config));
-            RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
+            ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(inst, replacement));
             changed = true;
             continue;
           }
@@ -1046,7 +1046,7 @@ absl::StatusOr<bool> RecognizeReduceWindow::RunImpl(
   std::vector<HloComputation*> computations =
       module->MakeNonfusionComputations(execution_threads);
   for (HloComputation* computation : computations) {
-    ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
+    ABSL_ASSIGN_OR_RETURN(bool computation_changed, RunOnComputation(computation));
     changed |= computation_changed;
 
     // Post-order traversal for DCE
@@ -1062,7 +1062,7 @@ absl::StatusOr<bool> RecognizeReduceWindow::RunImpl(
           if (dce_inst->user_count() == 0 && !dce_inst->HasSideEffect() &&
               computation->root_instruction() != dce_inst &&
               computation->IsSafelyRemovable(dce_inst)) {
-            RETURN_IF_ERROR(computation->RemoveInstruction(dce_inst));
+            ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(dce_inst));
             dce_changed = true;
           }
         }

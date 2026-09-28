@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
-    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+#if defined(__FLT16_MANT_DIG__) && defined(__has_attribute) &&    \
+    __has_attribute(ext_vector_type) && defined(__has_builtin) && \
+    __has_builtin(__builtin_vectorelements)
 
 #include "xla/codegen/intrinsic/cpp/eigen_unary.h"
 

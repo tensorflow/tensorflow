@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/simple_memory_arena.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 
 #include <gtest/gtest.h>
@@ -24,6 +27,81 @@ namespace tflite {
 namespace {
 
 void ReportError(TfLiteContext* context, const char* format, ...) {}
+
+class ReallocatingTestAllocator {
+ public:
+  explicit ReallocatingTestAllocator(bool fail_reallocate = false)
+      : fail_reallocate_(fail_reallocate),
+        allocator_{this, AllocateCallback, ReallocateCallback,
+                   DeallocateCallback} {}
+
+  TfLiteAllocator* GetAllocator() { return &allocator_; }
+
+  int allocate_calls() const { return allocate_calls_; }
+  int reallocate_calls() const { return reallocate_calls_; }
+  int deallocate_calls() const { return deallocate_calls_; }
+  bool arguments_valid() const { return arguments_valid_; }
+
+ private:
+  static constexpr size_t kAlignment = 64;
+  static constexpr size_t kCapacity = 512;
+
+  static void* AllocateCallback(void* data, size_t bytes, size_t alignment) {
+    auto* self = static_cast<ReallocatingTestAllocator*>(data);
+    ++self->allocate_calls_;
+    const bool valid = self->current_pointer_ == nullptr && bytes > 0 &&
+                       bytes <= kCapacity && alignment == kAlignment;
+    self->arguments_valid_ = self->arguments_valid_ && valid;
+    if (!valid) {
+      return nullptr;
+    }
+    self->current_pointer_ = self->initial_storage_;
+    self->current_bytes_ = bytes;
+    return self->current_pointer_;
+  }
+
+  static void* ReallocateCallback(void* data, void* ptr, size_t old_bytes,
+                                  size_t new_bytes, size_t alignment) {
+    auto* self = static_cast<ReallocatingTestAllocator*>(data);
+    ++self->reallocate_calls_;
+    const bool valid = ptr == self->current_pointer_ &&
+                       old_bytes == self->current_bytes_ && new_bytes > 0 &&
+                       new_bytes <= kCapacity && alignment == kAlignment;
+    self->arguments_valid_ = self->arguments_valid_ && valid;
+    if (!valid || self->fail_reallocate_) {
+      return nullptr;
+    }
+    std::memcpy(self->resized_storage_, self->current_pointer_,
+                std::min(old_bytes, new_bytes));
+    self->current_pointer_ = self->resized_storage_;
+    self->current_bytes_ = new_bytes;
+    return self->current_pointer_;
+  }
+
+  static void DeallocateCallback(void* data, void* ptr, size_t bytes,
+                                 size_t alignment) {
+    auto* self = static_cast<ReallocatingTestAllocator*>(data);
+    ++self->deallocate_calls_;
+    const bool valid = ptr == self->current_pointer_ &&
+                       bytes == self->current_bytes_ && alignment == kAlignment;
+    self->arguments_valid_ = self->arguments_valid_ && valid;
+    if (valid) {
+      self->current_pointer_ = nullptr;
+      self->current_bytes_ = 0;
+    }
+  }
+
+  bool fail_reallocate_;
+  TfLiteAllocator allocator_;
+  int allocate_calls_ = 0;
+  int reallocate_calls_ = 0;
+  int deallocate_calls_ = 0;
+  bool arguments_valid_ = true;
+  void* current_pointer_ = nullptr;
+  size_t current_bytes_ = 0;
+  alignas(kAlignment) char initial_storage_[kCapacity];
+  alignas(kAlignment) char resized_storage_[kCapacity];
+};
 
 TEST(SimpleMemoryArenaTest, BasicArenaOperations) {
   TfLiteContext context;
@@ -60,6 +138,66 @@ TEST(ResizableAlignedBufferTest, FailedResizePreservesOriginalBuffer) {
   EXPECT_FALSE(reallocated);
   EXPECT_EQ(buffer.GetPtr(), original_ptr);
   EXPECT_EQ(buffer.GetSize(), original_size);
+}
+
+TEST(ResizableAlignedBufferTest, UsesCustomAllocatorReallocateCallback) {
+  ReallocatingTestAllocator allocator;
+  {
+    ResizableAlignedBuffer buffer(/*alignment=*/64, /*subgraph_index=*/0,
+                                  allocator.GetAllocator());
+
+    bool reallocated = false;
+    ASSERT_EQ(buffer.Resize(/*new_size=*/128, &reallocated), kTfLiteOk);
+    ASSERT_TRUE(reallocated);
+    ASSERT_NE(buffer.GetPtr(), nullptr);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(buffer.GetPtr()) % 64, 0);
+    EXPECT_EQ(allocator.allocate_calls(), 1);
+    EXPECT_EQ(allocator.reallocate_calls(), 0);
+    std::memset(buffer.GetPtr(), 0x5a, buffer.GetSize());
+
+    char* const original_ptr = buffer.GetPtr();
+    ASSERT_EQ(buffer.Resize(/*new_size=*/256, &reallocated), kTfLiteOk);
+    EXPECT_TRUE(reallocated);
+    EXPECT_NE(buffer.GetPtr(), original_ptr);
+    EXPECT_EQ(buffer.GetSize(), 256);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(buffer.GetPtr()) % 64, 0);
+    EXPECT_EQ(allocator.allocate_calls(), 1);
+    EXPECT_EQ(allocator.reallocate_calls(), 1);
+    EXPECT_TRUE(std::all_of(buffer.GetPtr(), buffer.GetPtr() + 128,
+                            [](char value) { return value == 0x5a; }));
+    EXPECT_TRUE(allocator.arguments_valid());
+  }
+  EXPECT_EQ(allocator.deallocate_calls(), 1);
+  EXPECT_TRUE(allocator.arguments_valid());
+}
+
+TEST(ResizableAlignedBufferTest,
+     FailedCustomReallocatePreservesOriginalBuffer) {
+  ReallocatingTestAllocator allocator(/*fail_reallocate=*/true);
+  {
+    ResizableAlignedBuffer buffer(/*alignment=*/64, /*subgraph_index=*/0,
+                                  allocator.GetAllocator());
+
+    bool reallocated = false;
+    ASSERT_EQ(buffer.Resize(/*new_size=*/128, &reallocated), kTfLiteOk);
+    std::memset(buffer.GetPtr(), 0x5a, buffer.GetSize());
+    char* const original_ptr = buffer.GetPtr();
+    const size_t original_size = buffer.GetSize();
+
+    reallocated = true;
+    EXPECT_EQ(buffer.Resize(/*new_size=*/256, &reallocated), kTfLiteError);
+    EXPECT_FALSE(reallocated);
+    EXPECT_EQ(buffer.GetPtr(), original_ptr);
+    EXPECT_EQ(buffer.GetSize(), original_size);
+    EXPECT_TRUE(std::all_of(buffer.GetPtr(), buffer.GetPtr() + original_size,
+                            [](char value) { return value == 0x5a; }));
+    EXPECT_EQ(allocator.allocate_calls(), 1);
+    EXPECT_EQ(allocator.reallocate_calls(), 1);
+    EXPECT_EQ(allocator.deallocate_calls(), 0);
+    EXPECT_TRUE(allocator.arguments_valid());
+  }
+  EXPECT_EQ(allocator.deallocate_calls(), 1);
+  EXPECT_TRUE(allocator.arguments_valid());
 }
 
 TEST(SimpleMemoryArenaTest, BasicZeroAlloc) {

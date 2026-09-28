@@ -28,10 +28,19 @@ namespace hexagon {
 TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
                                                TfLiteContext* context) {
+  TF_LITE_ENSURE(context, inputs != nullptr);
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, inputs->size >= 1);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
+
   const TfLiteConcatenationParams* concat_params =
       reinterpret_cast<const TfLiteConcatenationParams*>(builtin_data_);
   int concat_axis = concat_params->axis;
-  const int output_dim_size = context->tensors[outputs->data[0]].dims->size;
+  const int output_tensor_id = outputs->data[0];
+  TF_LITE_ENSURE(context, output_tensor_id >= 0 &&
+                              output_tensor_id < context->tensors_size);
+  TF_LITE_ENSURE(context, context->tensors[output_tensor_id].dims != nullptr);
+  const int output_dim_size = context->tensors[output_tensor_id].dims->size;
   // Axis value is incremented if tensor dims are < 4 and/or axis < 0.
   concat_axis =
       concat_axis < 0 ? concat_axis + 4 : concat_axis + 4 - output_dim_size;
@@ -127,6 +136,8 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
 TfLiteStatus ConcatOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
                                               TfLiteContext* context) {
+  TF_LITE_ENSURE(context, outputs != nullptr);
+  TF_LITE_ENSURE(context, outputs->size >= 1);
   // Should be only 1 output.
   graph_builder_->AddTensorWithID(outputs->data[0], node_output_.first,
                                   node_output_.second);

@@ -21,7 +21,7 @@ def if_mkl(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with oneDNN.
 
       OneDNN gets built if we are building on platforms that support oneDNN
-      (x86 linux/windows) or if specifcially configured to use oneDNN.
+      (x86 linux/windows) or if specifically configured to use oneDNN.
 
     Args:
       if_true: expression to evaluate if building with oneDNN.

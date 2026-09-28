@@ -17,9 +17,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/writer.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/dump.h"
@@ -50,7 +50,7 @@ absl::StatusOr<std::unique_ptr<riegeli::Writer>> CreateRiegeliDumpWriter(
       module == nullptr ? std::string(filename)
                         : FilenameFor(*module, TimestampFor(*module), filename);
 
-  RETURN_IF_ERROR(CreateDirIfNeeded(opts.dump_to, tsl::Env::Default()));
+  ABSL_RETURN_IF_ERROR(CreateDirIfNeeded(opts.dump_to, tsl::Env::Default()));
 
   std::string file_path =
       tsl::io::JoinPath(opts.dump_to, SanitizeFileName(partial_path));

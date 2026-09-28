@@ -92,7 +92,7 @@ class WhileThunk : public Command {
       CommandExecutor condition_executor, CommandExecutor body_executor,
       bool enable_loop_unroll);
 
-  absl::Status WalkNested(Walker callback) override;
+  absl::Status WalkNested(Walker pre_order, Walker post_order) override;
   absl::Status TransformNested(Transformer callback) override;
 
   std::string ToString(int indent) const override;

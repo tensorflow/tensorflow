@@ -496,3 +496,16 @@ func.func @main() -> tensor<4xf32> {
   return %1#0 : tensor<4xf32>
 }
 
+// -----
+// CHECK-LABEL: ENTRY %main{{.*}} (Arg_0.1: s32[128,8]) -> s32[128,8] {
+// CHECK: %[[ARG:.*]] = s32[128,8] parameter(0)
+// CHECK-NOT: s32[] constant(8), sharding={devices=[8,1]<=[8]}, metadata=
+// CHECK: %[[SIZE:.*]] = s32[] constant(8), metadata=
+// CHECK: ROOT %{{.*}} = s32[128,8] set-dimension-size(%[[ARG]], %[[SIZE]]), dimensions={1}, sharding={devices=[8,1]<=[8]}, metadata=
+func.func @main(%arg0: tensor<128x8xi32>) -> tensor<128x8xi32> {
+  %size = stablehlo.constant dense<8> : tensor<i32>
+  %0 = "stablehlo.set_dimension_size"(%arg0, %size) <{dimension = 1 : i64}>
+      {mhlo.sharding = "{devices=[8,1]<=[8]}"}
+      : (tensor<128x8xi32>, tensor<i32>) -> tensor<128x8xi32>
+  func.return %0 : tensor<128x8xi32>
+}

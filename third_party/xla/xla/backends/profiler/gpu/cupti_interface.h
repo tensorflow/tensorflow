@@ -69,11 +69,14 @@ using CuptiBuffersCallbackCompleteFuncV2 =
     void(CUPTIAPI*)(uint8_t* buffer, size_t size, size_t valid_size,
                     void* buffer_complete_info);
 
-// Provides a wrapper interface to every single CUPTI API function. This class
-// is needed to create an easy mock object for CUPTI API calls. All member
-// functions are defined in the following order: activity related APIs, callback
-// related APIs, Event APIs, and metric APIs. Within each category, we follow
-// the order in the original CUPTI documentation.
+// Provides a wrapper interface to every CUPTI API function. This class provides
+// a seam for mocking individual CUPTI calls. CuptiTracer selects V1 or weakly
+// linked V2 APIs per session at runtime; the two activity API families must not
+// be mixed within a session.
+//
+// Member functions are grouped by CUPTI API category: activity, callback,
+// event, and metric. Within each group, they follow the order in the CUPTI API
+// reference.
 class CuptiInterface {
  public:
   CuptiInterface() = default;
@@ -90,6 +93,11 @@ class CuptiInterface {
   virtual CUptiResult ActivityGetNextRecord(uint8_t* buffer,
                                             size_t valid_buffer_size_bytes,
                                             CUpti_Activity** record) = 0;
+
+  virtual CUptiResult ActivityGetNextRecordV2(CUpti_SubscriberHandle subscriber,
+                                              uint8_t* buffer,
+                                              size_t valid_buffer_size_bytes,
+                                              CUpti_Activity** record) = 0;
 
   virtual CUptiResult ActivityGetNumDroppedRecords(CUcontext context,
                                                    uint32_t stream_id,
@@ -133,6 +141,9 @@ class CuptiInterface {
   virtual CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) = 0;
 
   virtual CUptiResult GetTimestamp(uint64_t* timestamp) = 0;
+
+  virtual CUptiResult GetTimestampV2(CUpti_SubscriberHandle subscriber,
+                                     uint64_t* timestamp) = 0;
 
   virtual CUptiResult Finalize() = 0;
 

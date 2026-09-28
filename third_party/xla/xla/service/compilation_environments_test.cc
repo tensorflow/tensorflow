@@ -23,15 +23,13 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/message_lite.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -135,7 +133,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvNotModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(5);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env)));
+  ASSERT_OK(envs.AddEnv(std::move(env)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 5);
 }
@@ -144,7 +142,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(1);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env)));
+  ASSERT_OK(envs.AddEnv(std::move(env)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
@@ -172,7 +170,7 @@ TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
   CompilationEnvironments envs;
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(5);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  ASSERT_OK(envs.AddEnv(std::move(env1)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
   {
     auto env2 = std::make_unique<TestCompilationEnvironment1>();
@@ -184,7 +182,7 @@ TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
   {
     auto env2 = std::make_unique<TestCompilationEnvironment1>();
     env2->set_some_flag(6);
-    TF_ASSERT_OK(envs.AddEnv(std::move(env2)));
+    ASSERT_OK(envs.AddEnv(std::move(env2)));
     EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 6);
   }
 }
@@ -194,9 +192,9 @@ TEST_F(CompilationEnvironmentsTest, CopyConstructor) {
   auto envs = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs->AddEnv(std::move(env1)));
+  ASSERT_OK(envs->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs->AddEnv(std::move(env2)));
+  ASSERT_OK(envs->AddEnv(std::move(env2)));
   envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Call the copy constructor and delete the original CompilationEnvironments
@@ -214,9 +212,9 @@ TEST_F(CompilationEnvironmentsTest, CopyAssignment) {
   auto envs1 = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs1->AddEnv(std::move(env1)));
+  ASSERT_OK(envs1->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs1->AddEnv(std::move(env2)));
+  ASSERT_OK(envs1->AddEnv(std::move(env2)));
   envs1->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Create envs2 with some environments that should be deleted on copy
@@ -224,10 +222,10 @@ TEST_F(CompilationEnvironmentsTest, CopyAssignment) {
   auto envs2 = std::make_unique<CompilationEnvironments>();
   auto env3 = std::make_unique<TestCompilationEnvironment1>();
   env3->set_some_flag(30);
-  TF_ASSERT_OK(envs2->AddEnv(std::move(env3)));
+  ASSERT_OK(envs2->AddEnv(std::move(env3)));
   auto env4 = std::make_unique<TestCompilationEnvironment3>();
   env4->set_a_third_flag(40);
-  TF_ASSERT_OK(envs2->AddEnv(std::move(env4)));
+  ASSERT_OK(envs2->AddEnv(std::move(env4)));
 
   // Assign envs1 to envs2, and delete envs1. After assignment, the environments
   // originaly added to envs2 should be deleted, and copies of the environments
@@ -250,14 +248,14 @@ TEST_F(CompilationEnvironmentsTest, ProtoRoundTrip) {
   auto envs = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs->AddEnv(std::move(env1)));
+  ASSERT_OK(envs->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs->AddEnv(std::move(env2)));
+  ASSERT_OK(envs->AddEnv(std::move(env2)));
   envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   auto proto = envs->ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto envs_deserialized,
-                          CompilationEnvironments::CreateFromProto(proto));
+  ASSERT_OK_AND_ASSIGN(auto envs_deserialized,
+                       CompilationEnvironments::CreateFromProto(proto));
 
   // Verify that envs_deserialized has the same values with which envs was
   // initialized.
@@ -279,10 +277,10 @@ TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
   CompilationEnvironments envs;
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(400);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  ASSERT_OK(envs.AddEnv(std::move(env1)));
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 400);
-  TF_ASSERT_OK(envs.InitializeAllKnownEnvs());
+  ASSERT_OK(envs.InitializeAllKnownEnvs());
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 400);
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment2>());
@@ -323,13 +321,180 @@ TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
 
   // Add this dynamic instance to CompilationEnvironments.
   CompilationEnvironments envs;
-  TF_ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
+  ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
 
   // Trigger lookup by full_name.
   const auto& retrieved_env = envs.GetEnv<test::TestCompilationEnvironment1>();
 
   // Verify that the fallback value was used.
   EXPECT_EQ(retrieved_env.some_flag(), kExpectedFallbackValue);
+}
+
+TEST_F(CompilationEnvironmentsTest, UnknownEnvTypeRoundTripsViaToProto) {
+  // Verify that unknown proto types survive a CreateFromProto -> ToProto
+  // round trip, preserving both the type URL and the opaque payload.
+  constexpr absl::string_view kUnknownTypeUrlA =
+      "type.googleapis.com/some.unknown.ProtoTypeA";
+  constexpr absl::string_view kUnknownPayloadA = "payload_a";
+  constexpr absl::string_view kUnknownTypeUrlB =
+      "type.googleapis.com/some.unknown.ProtoTypeB";
+  constexpr absl::string_view kUnknownPayloadB = "payload_b";
+
+  CompilationEnvironmentsProto proto;
+
+  // Add a known environment.
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(7);
+  proto.add_environments()->PackFrom(*env1);
+
+  // Add two "unknown" environments.
+  google::protobuf::Any* unknown1 = proto.add_environments();
+  unknown1->set_type_url(kUnknownTypeUrlA);
+  unknown1->set_value(kUnknownPayloadA);
+
+  google::protobuf::Any* unknown2 = proto.add_environments();
+  unknown2->set_type_url(kUnknownTypeUrlB);
+  unknown2->set_value(kUnknownPayloadB);
+
+  // Round-trip: CreateFromProto -> ToProto.
+  ASSERT_OK_AND_ASSIGN(auto envs,
+                       CompilationEnvironments::CreateFromProto(proto));
+  CompilationEnvironmentsProto output_proto = envs->ToProto();
+
+  // The output should contain the known env + both unknown envs.
+  ASSERT_EQ(output_proto.environments_size(), 3);
+
+  // The known env should be first (sorted by full_name).
+  EXPECT_THAT(output_proto.environments(0).type_url(),
+              ::testing::HasSubstr("TestCompilationEnvironment1"));
+
+  // The unknown envs should follow, preserving type URLs and payloads.
+  EXPECT_EQ(output_proto.environments(1).type_url(), kUnknownTypeUrlA);
+  EXPECT_EQ(output_proto.environments(1).value(), kUnknownPayloadA);
+  EXPECT_EQ(output_proto.environments(2).type_url(), kUnknownTypeUrlB);
+  EXPECT_EQ(output_proto.environments(2).value(), kUnknownPayloadB);
+}
+
+TEST_F(CompilationEnvironmentsTest, UnknownEnvTypePreservedOnCopy) {
+  // Verify that unknown environments are preserved across copy construction.
+  constexpr absl::string_view kUnknownTypeUrl =
+      "type.googleapis.com/some.unknown.InternalProto";
+  constexpr absl::string_view kUnknownPayload = "opaque_config_bytes";
+
+  CompilationEnvironmentsProto proto;
+
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(99);
+  proto.add_environments()->PackFrom(*env1);
+
+  google::protobuf::Any* unknown = proto.add_environments();
+  unknown->set_type_url(kUnknownTypeUrl);
+  unknown->set_value(kUnknownPayload);
+
+  ASSERT_OK_AND_ASSIGN(auto envs,
+                       CompilationEnvironments::CreateFromProto(proto));
+
+  // Copy construct.
+  auto envs_copy = std::make_unique<CompilationEnvironments>(*envs);
+  envs.reset();  // Destroy the original.
+
+  // The copy should still have the known env.
+  EXPECT_EQ(envs_copy->GetEnv<TestCompilationEnvironment1>().some_flag(), 99);
+
+  // The copy should round-trip the unknown env.
+  CompilationEnvironmentsProto copy_proto = envs_copy->ToProto();
+  ASSERT_EQ(copy_proto.environments_size(), 2);
+  EXPECT_EQ(copy_proto.environments(1).type_url(), kUnknownTypeUrl);
+  EXPECT_EQ(copy_proto.environments(1).value(), kUnknownPayload);
+}
+
+TEST_F(CompilationEnvironmentsTest, ClearAlsoClearsUnknownEnvs) {
+  // Clear() must also drop unknown (opaque) environments, otherwise a stale
+  // entry would be re-emitted by a subsequent ToProto().
+  constexpr absl::string_view kUnknownTypeUrl =
+      "type.googleapis.com/some.unknown.InternalProto";
+  constexpr absl::string_view kUnknownPayload = "opaque_config_bytes";
+
+  CompilationEnvironmentsProto proto;
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(5);
+  proto.add_environments()->PackFrom(*env1);
+  google::protobuf::Any* unknown = proto.add_environments();
+  unknown->set_type_url(kUnknownTypeUrl);
+  unknown->set_value(kUnknownPayload);
+
+  ASSERT_OK_AND_ASSIGN(auto envs,
+                       CompilationEnvironments::CreateFromProto(proto));
+  ASSERT_EQ(envs->ToProto().environments_size(), 2);
+
+  envs->Clear();
+
+  // Both the known and the unknown environments should be gone.
+  EXPECT_FALSE(envs->HasEnv<TestCompilationEnvironment1>());
+  EXPECT_EQ(envs->ToProto().environments_size(), 0);
+}
+
+TEST_F(CompilationEnvironmentsTest, DuplicateUnknownEnvTypeReturnsError) {
+  // Two unknown entries of the same type must be rejected, mirroring
+  // AddEnvImpl's duplicate check for known types.
+  constexpr absl::string_view kUnknownTypeUrl =
+      "type.googleapis.com/some.unknown.DupProto";
+
+  CompilationEnvironmentsProto proto;
+  google::protobuf::Any* first = proto.add_environments();
+  first->set_type_url(kUnknownTypeUrl);
+  first->set_value("first");
+  google::protobuf::Any* second = proto.add_environments();
+  second->set_type_url(kUnknownTypeUrl);
+  second->set_value("second");
+
+  auto result = CompilationEnvironments::CreateFromProto(proto);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kAlreadyExists);
+}
+
+TEST_F(CompilationEnvironmentsTest, UnknownEnvsAreSortedByTypeNameInToProto) {
+  // ToProto() must emit unknown environments sorted by their fully-qualified
+  // type name regardless of input order, so the output is deterministic.
+  constexpr absl::string_view kTypeUrlA =
+      "type.googleapis.com/some.unknown.ProtoTypeA";
+  constexpr absl::string_view kTypeUrlB =
+      "type.googleapis.com/some.unknown.ProtoTypeB";
+
+  CompilationEnvironmentsProto proto;
+  // Intentionally add B before A.
+  google::protobuf::Any* b = proto.add_environments();
+  b->set_type_url(kTypeUrlB);
+  b->set_value("payload_b");
+  google::protobuf::Any* a = proto.add_environments();
+  a->set_type_url(kTypeUrlA);
+  a->set_value("payload_a");
+
+  ASSERT_OK_AND_ASSIGN(auto envs,
+                       CompilationEnvironments::CreateFromProto(proto));
+  CompilationEnvironmentsProto output_proto = envs->ToProto();
+
+  ASSERT_EQ(output_proto.environments_size(), 2);
+  EXPECT_EQ(output_proto.environments(0).type_url(), kTypeUrlA);
+  EXPECT_EQ(output_proto.environments(1).type_url(), kTypeUrlB);
+}
+
+TEST_F(CompilationEnvironmentsTest,
+       DuplicateUnknownEnvTypeWithDifferentPrefixReturnsError) {
+  // Duplicate detection keys on the fully-qualified type name, not the raw
+  // type_url, so the same type under two different Any prefixes is still a
+  // duplicate (parity with AddEnvImpl, which dedups by descriptor).
+  CompilationEnvironmentsProto proto;
+  google::protobuf::Any* first = proto.add_environments();
+  first->set_type_url("type.googleapis.com/some.unknown.PrefixProto");
+  first->set_value("first");
+  google::protobuf::Any* second = proto.add_environments();
+  second->set_type_url("custom.prefix.example.com/some.unknown.PrefixProto");
+  second->set_value("second");
+
+  auto result = CompilationEnvironments::CreateFromProto(proto);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kAlreadyExists);
 }
 
 }  // namespace

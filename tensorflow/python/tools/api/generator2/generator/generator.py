@@ -747,7 +747,7 @@ def main(argv: Sequence[str]) -> None:
   gen_public_api(
       _OUTPUT_DIR.value,
       _OUTPUT_PACKAGE.value,
-      _ROOT_INIT_TEMPLATE.value,
+      _ROOT_INIT_TEMPLATE.value,  # pyrefly: ignore[bad-argument-type]
       _API_VERSION.value,
       [int(v) for v in _COMPAT_API_VERSIONS.value],
       _COMPAT_INIT_TEMPLATES.value,

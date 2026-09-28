@@ -34,6 +34,106 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  scalar_unit_description {
+    rate_infos {
+      key: 4
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 8
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 32
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 64
+        ops_per_clock: 2
+      }
+    }
+  }
+  matrix_unit_description {
+    rate_infos {
+      key: 2
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 6
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 128
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 16
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.41
+        units_per_core: 4
+        ops_per_clock: 256
+      }
+    }
+  }
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
@@ -51,9 +151,4 @@ gpu_device_info {
   cub_version: "3.1.2"
 }
 platform_name: "CUDA"
-dnn_version_info {
-  major: 8
-  minor: 9
-  patch: 4
-}
 device_description_str: "NVIDIA A100-SXM4-40GB"

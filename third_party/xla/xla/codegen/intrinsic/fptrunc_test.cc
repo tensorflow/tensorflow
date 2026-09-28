@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/fptrunc.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -40,12 +41,12 @@ namespace xla::codegen::intrinsics {
 using ::xla::codegen::intrinsic::JitRunner;
 
 TEST(FpTruncTest, SclarIninsic) {
-  EXPECT_EQ(FpTrunc::Name(Type::S(F32), Type::S(BF16)),
+  EXPECT_EQ(FpTrunc::Name({Type::S(F32), Type::S(BF16)}),
             "xla.fptrunc.f32.to.bf16");
 }
 
 TEST(FpTruncTest, VectorIninsic) {
-  EXPECT_EQ(FpTrunc::Name(Type::V(F32, 4), Type::V(BF16, 4)),
+  EXPECT_EQ(FpTrunc::Name({Type::V(F32, 4), Type::V(BF16, 4)}),
             "xla.fptrunc.v4f32.to.v4bf16");
 }
 
@@ -131,7 +132,7 @@ JitRunner CreateJitRunner(Type from, Type to) {
 TEST(FpTruncExecutionTest, F16ToF8e4m3fn) {
   JitRunner jit = CreateJitRunner(Type::S(F16), Type::S(F8E4M3FN));
   auto fptrunc = jit.GetScalarFn<int8_t(int16_t)>(
-      FpTrunc::Name(Type::S(F16), Type::S(F8E4M3FN)) + "_itofp");
+      FpTrunc::Name({Type::S(F16), Type::S(F8E4M3FN)}) + "_itofp");
   EXPECT_EQ(fptrunc(0x7FFF), 0x7F);  // overflows
   EXPECT_EQ(fptrunc(0x0), 0x0);
   EXPECT_EQ(fptrunc(static_cast<int16_t>(0b1100000000000000)),
@@ -153,7 +154,7 @@ TEST(FpTruncExecutionTest, F16ToF8e4m3fn) {
 TEST(FpTruncExecutionTest, F16ToF8e4m3fn_Vector4) {
   JitRunner jit = CreateJitRunner(Type::V(F16, 4), Type::V(F8E4M3FN, 4));
   auto fptrunc = jit.GetVectorizedFn<4, int8_t, int16_t>(
-      FpTrunc::Name(Type::V(F16, 4), Type::V(F8E4M3FN, 4)) + "_itofp");
+      FpTrunc::Name({Type::V(F16, 4), Type::V(F8E4M3FN, 4)}) + "_itofp");
   std::array<int16_t, 4> vals = {0x7FFF, 0x0,
                                  static_cast<int16_t>(0b1100000000000000),
                                  static_cast<int16_t>(0b0011100000000000)};
@@ -167,7 +168,7 @@ TEST(FpTruncExecutionTest, F16ToF8e4m3fn_Vector4) {
 TEST(FpTruncExecutionTest, F8e4m3fnToF16) {
   JitRunner jit = CreateJitRunner(Type::S(F8E4M3FN), Type::S(F16));
   auto fptrunc = jit.GetScalarFn<int16_t(int8_t)>(
-      FpTrunc::Name(Type::S(F8E4M3FN), Type::S(F16)) + "_fptoi");
+      FpTrunc::Name({Type::S(F8E4M3FN), Type::S(F16)}) + "_fptoi");
   EXPECT_EQ(fptrunc(static_cast<int8_t>(0b11000000)),
             static_cast<int16_t>(0b1100000000000000));  // -2.0
   EXPECT_EQ(fptrunc(static_cast<int8_t>(0b00110000)),
@@ -179,7 +180,7 @@ TEST(FpTruncExecutionTest, F8e4m3fnToF16) {
 TEST(FpTruncExecutionTest, F8e4m3fnToF16_Vector4) {
   JitRunner jit = CreateJitRunner(Type::V(F8E4M3FN, 4), Type::V(F16, 4));
   auto fptrunc = jit.GetVectorizedFn<4, int16_t, int8_t>(
-      FpTrunc::Name(Type::V(F8E4M3FN, 4), Type::V(F16, 4)) + "_fptoi");
+      FpTrunc::Name({Type::V(F8E4M3FN, 4), Type::V(F16, 4)}) + "_fptoi");
   std::array<int8_t, 4> vals = {static_cast<int8_t>(0b11000000), 0x0,
                                 static_cast<int8_t>(0b10110000),
                                 static_cast<int8_t>(0b00110000)};
@@ -193,7 +194,7 @@ TEST(FpTruncExecutionTest, F8e4m3fnToF16_Vector4) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3fn) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3FN));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E4M3FN)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E4M3FN)}));
   EXPECT_EQ(fptrunc(0x7FFFFFFF), 0x7F);  // overflows
   EXPECT_EQ(fptrunc(0x0), 0x0);
 
@@ -221,7 +222,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fn) {
 TEST(FpTruncExecutionTest, F32ToF8e3m4) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E3M4));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E3M4)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E3M4)}));
   EXPECT_EQ(fptrunc(0x0), 0x0);
   EXPECT_EQ(fptrunc(-2.0f), static_cast<int8_t>(0b11000000));
   EXPECT_EQ(fptrunc(0.5f), static_cast<int8_t>(0b00100000));
@@ -254,7 +255,7 @@ TEST(FpTruncExecutionTest, F32ToF8e3m4) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E4M3)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E4M3)}));
 
   // Test basic values
   EXPECT_EQ(fptrunc(0.0f), 0x0);
@@ -290,7 +291,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3FNUZ));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E4M3FNUZ)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E4M3FNUZ)}));
 
   EXPECT_EQ(fptrunc(0.0f), 0x0);
   EXPECT_EQ(fptrunc(16.0f), static_cast<int8_t>(0b01100000));
@@ -324,7 +325,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz_Vector4) {
   JitRunner jit = CreateJitRunner(Type::V(F32, 4), Type::V(F8E4M3FNUZ, 4));
   auto fptrunc = jit.GetVectorizedFn<4, int8_t, float>(
-      FpTrunc::Name(Type::V(F32, 4), Type::V(F8E4M3FNUZ, 4)));
+      FpTrunc::Name({Type::V(F32, 4), Type::V(F8E4M3FNUZ, 4)}));
   std::array<float, 4> vals = {500, 16.0f, -0.5f, -240.0f};
   std::array<int8_t, 4> actuals = fptrunc(vals);
   EXPECT_EQ(actuals[0], static_cast<int8_t>(0b10000000));
@@ -336,7 +337,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz_Vector4) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz_Vector8) {
   JitRunner jit = CreateJitRunner(Type::V(F32, 8), Type::V(F8E4M3FNUZ, 8));
   auto fptrunc = jit.GetVectorizedFn<8, int8_t, float>(
-      FpTrunc::Name(Type::V(F32, 8), Type::V(F8E4M3FNUZ, 8)));
+      FpTrunc::Name({Type::V(F32, 8), Type::V(F8E4M3FNUZ, 8)}));
   std::array<float, 8> vals = {500,   16.0f,  -0.5f,  -240.0f,
                                -1.0f, -16.0f, 240.0f, 242.0f};
   std::array<int8_t, 8> actuals = fptrunc(vals);
@@ -355,7 +356,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fnuz_Vector8) {
 TEST(FpTruncExecutionTest, F32ToF8e4m3fn_Vector8) {
   JitRunner jit = CreateJitRunner(Type::V(F32, 8), Type::V(F8E4M3FN, 8));
   auto fptrunc = jit.GetVectorizedFn<8, int8_t, float>(
-      FpTrunc::Name(Type::V(F32, 8), Type::V(F8E4M3FN, 8)));
+      FpTrunc::Name({Type::V(F32, 8), Type::V(F8E4M3FN, 8)}));
   std::array<float, 8> vals = {500,   16.0f,  -0.5f, -240.0f,
                                -1.0f, -16.0f, 0.5f,  242.0f};
   std::array<int8_t, 8> actuals = fptrunc(vals);
@@ -371,10 +372,38 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fn_Vector8) {
   EXPECT_EQ(actuals[7], static_cast<int8_t>(0b01110111));
 }
 
+TEST(FpTruncExecutionTest, F32ToBf16_Vector16) {
+  constexpr size_t kN = 16;
+  const Type from = Type::V(F32, kN);
+  const Type to = Type::V(BF16, kN);
+  JitRunner jit = CreateJitRunner(from, to);
+  auto fptrunc = jit.GetVectorizedFn<kN, uint16_t, float>(
+      FpTrunc::Name({from, to}) + "_fptoi");
+  constexpr float kEps = std::numeric_limits<float>::epsilon();
+  std::array<float, kN> vals = {
+      1.0f, -2.0f, 0.5f, 0.0f, -0.0f, 3.0f, -0.75f,
+      // Rounds up to 65536.0f.
+      65504.0f,
+      // Ties round to even: 1 + 2^-8 rounds down, 1 + 3 * 2^-8 rounds up.
+      1.00390625f, 1.01171875f,
+      // Just above a tie rounds up.
+      1.00390625f + kEps,
+      // Rounds up to infinity.
+      std::numeric_limits<float>::max(),
+      std::numeric_limits<float>::denorm_min(),
+      std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN()};
+  std::array<uint16_t, kN> expected = {
+      0x3F80, 0xC000, 0x3F00, 0x0000, 0x8000, 0x4040, 0xBF40, 0x4780,
+      0x3F80, 0x3F82, 0x3F81, 0x7F80, 0x0000, 0x7F80, 0xFF80, 0x7FC0};
+  EXPECT_EQ(fptrunc(vals), expected);
+}
+
 TEST(FpTruncExecutionTest, F32ToF8e4m3b11fnuz) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3B11FNUZ));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E4M3B11FNUZ)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E4M3B11FNUZ)}));
 
   // Test basic values (bias of 11 shifts the range)
   EXPECT_EQ(fptrunc(0.0f), 0x0);
@@ -412,7 +441,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3b11fnuz) {
 TEST(FpTruncExecutionTest, F32ToF8e5m2) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E5M2));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E5M2)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E5M2)}));
 
   // Test basic values (bias of 15)
   EXPECT_EQ(fptrunc(0.0f), 0x0);
@@ -460,7 +489,7 @@ TEST(FpTruncExecutionTest, F32ToF8e5m2) {
 TEST(FpTruncExecutionTest, F32ToF8e5m2fnuz) {
   JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E5M2FNUZ));
   auto fptrunc = jit.GetScalarFn<int8_t(float)>(
-      FpTrunc::Name(Type::S(F32), Type::S(F8E5M2FNUZ)));
+      FpTrunc::Name({Type::S(F32), Type::S(F8E5M2FNUZ)}));
 
   // Test basic values (bias of 16 shifts the range)
   EXPECT_EQ(fptrunc(0.0f), 0x0);
@@ -498,7 +527,7 @@ TEST(FpTruncExecutionTest, F32ToF8e5m2fnuz) {
 TEST(FpTruncExecutionTest, F16ToF8e5m2fnuz) {
   JitRunner jit = CreateJitRunner(Type::S(F16), Type::S(F8E5M2FNUZ));
   auto fptrunc = jit.GetScalarFn<int8_t(int16_t)>(
-      FpTrunc::Name(Type::S(F16), Type::S(F8E5M2FNUZ)) + "_itofp");
+      FpTrunc::Name({Type::S(F16), Type::S(F8E5M2FNUZ)}) + "_itofp");
 
   EXPECT_EQ(fptrunc(static_cast<int16_t>(0x00)),
             static_cast<int8_t>(0b00000000));
@@ -538,7 +567,7 @@ TEST(FpTruncExecutionTest, F64ToF8e5m2) {
   // double. However, CreateWrapperIntArgToFp creates an integer argument
   // wrapper. For F64, the wrapper will take int64_t and bitcast to double.
   auto fptrunc = jit.GetScalarFn<int8_t(int64_t)>(
-      FpTrunc::Name(Type::S(F64), Type::S(F8E5M2)) + "_itofp");
+      FpTrunc::Name({Type::S(F64), Type::S(F8E5M2)}) + "_itofp");
 
   EXPECT_EQ(fptrunc(0), 0);
   // 1.0 in double: 0x3FF0000000000000
@@ -568,7 +597,7 @@ TEST(FpTruncExecutionTest, F64ToF8e5m2) {
 TEST(FpTruncExecutionTest, F16ToF8e5m2) {
   JitRunner jit = CreateJitRunner(Type::S(F16), Type::S(F8E5M2));
   auto fptrunc = jit.GetScalarFn<int8_t(int16_t)>(
-      FpTrunc::Name(Type::S(F16), Type::S(F8E5M2)) + "_itofp");
+      FpTrunc::Name({Type::S(F16), Type::S(F8E5M2)}) + "_itofp");
 
   // Bias is 15 for both.
   EXPECT_EQ(fptrunc(static_cast<int16_t>(0x00)), 0x00);

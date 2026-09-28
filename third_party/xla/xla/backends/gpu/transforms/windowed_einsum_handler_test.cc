@@ -345,7 +345,7 @@ CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [6144:8192], [0:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [4096:6144]}
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE1]]),
@@ -354,7 +354,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [4096:6144], [0:32768]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [2048:4096]}
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE2]]),
@@ -363,7 +363,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [2048:4096], [0:32768]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:2048]}
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE3]]),
@@ -372,7 +372,7 @@ CHECK:     {0,1,2,3},{4,5,6,7}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:2048], [0:32768]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"5","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"5"
 CHECK-DAG: %[[CONSTANT:.*]] = bf16[] constant(0)
 CHECK-DAG: %[[BROADCAST:.*]] = bf16[1,4,2048,32768]{3,2,1,0} broadcast(%[[CONSTANT:.*]]), dimensions={}
 CHECK-DAG: %[[ADD0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT0:.*]], %[[BROADCAST:.*]])
@@ -415,7 +415,7 @@ CHECK-DAG: %[[P1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} parameter(1)
 CHECK-DAG: %[[SLICE0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [24576:32768]}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [24576:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 CHECK: %[[A2A0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT0:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -424,7 +424,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [16384:24576]}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [16384:24576]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT1:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -433,7 +433,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [8192:16384]}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [8192:16384]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT2:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -442,7 +442,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:8192]}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [0:8192]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"5","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={2}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"5"
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT3:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -505,7 +505,7 @@ CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[P0:.*]] = bf16[1,8192,32768]{2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [6144:8192], [0:32768]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"9","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"9"
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [4096:6144]}
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE1]]),
@@ -514,7 +514,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [4096:6144], [0:32768]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"8","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"8"
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [2048:4096]}
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE2]]),
@@ -523,7 +523,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [2048:4096], [0:32768]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"7","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"7"
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} slice(%[[COPY:.*]]), slice={[0:1], [0:4], [0:2048], [0:2048]}
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,2048]{3,2,1,0} all-to-all(%[[SLICE3]]),
@@ -532,7 +532,7 @@ CHECK:     {0,1,2,3}
 CHECK: }
 CHECK: dimensions={1}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,2048,32768]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:2048], [0:32768]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"6","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,32768]{3,2,1,0} dot(%[[A2A3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"6"
 CHECK-DAG: %[[CONSTANT:.*]] = bf16[] constant(0)
 CHECK-DAG: %[[BROADCAST:.*]] = bf16[1,4,2048,32768]{3,2,1,0} broadcast(%[[CONSTANT:.*]]), dimensions={}
 CHECK-DAG: %[[ADD0:.*]] = bf16[1,4,2048,32768]{3,2,1,0} add(%[[DOT0:.*]], %[[BROADCAST:.*]])
@@ -581,7 +581,7 @@ CHECK-DAG: %[[P1:.*]] = bf16[1,4,2048,32768]{3,2,1,0} parameter(0)
 CHECK-DAG: %[[SLICE0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [24576:32768]}
 CHECK-DAG: %[[P0:.*]] = bf16[1,32768,8192]{2,1,0} parameter(1)
 CHECK-DAG: %[[SLICE4:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [24576:32768], [0:8192]}
-CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"12","force_earliest_schedule":false
+CHECK-DAG: %[[DOT0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE0:.*]], %[[SLICE4:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"12"
 CHECK: %[[A2A0:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT0:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -590,7 +590,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [16384:24576]}
 CHECK-DAG: %[[SLICE5:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [16384:24576], [0:8192]}
-CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"11","force_earliest_schedule":false
+CHECK-DAG: %[[DOT1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE1:.*]], %[[SLICE5:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"11"
 CHECK: %[[A2A1:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT1:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -599,7 +599,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [8192:16384]}
 CHECK-DAG: %[[SLICE6:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [8192:16384], [0:8192]}
-CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"10","force_earliest_schedule":false
+CHECK-DAG: %[[DOT2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE2:.*]], %[[SLICE6:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"10"
 CHECK: %[[A2A2:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT2:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}
@@ -608,7 +608,7 @@ CHECK: dimensions={1}
 
 CHECK-DAG: %[[SLICE3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} slice(%[[P1]]), slice={[0:1], [0:4], [0:2048], [0:8192]}
 CHECK-DAG: %[[SLICE7:.*]] = bf16[1,8192,8192]{2,1,0} slice(%[[P0:.*]]), slice={[0:1], [0:8192], [0:8192]}
-CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"operation_queue_id":"9","force_earliest_schedule":false
+CHECK-DAG: %[[DOT3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} dot(%[[SLICE3:.*]], %[[SLICE7:.*]]), lhs_batch_dims={0}, lhs_contracting_dims={3}, rhs_batch_dims={0}, rhs_contracting_dims={1}, backend_config={"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"operation_queue_id":"9"
 CHECK: %[[A2A3:.*]] = bf16[1,4,2048,8192]{3,2,1,0} all-to-all(%[[DOT3:.*]]),
 CHECK: replica_groups={
 CHECK:     {0,1,2,3}

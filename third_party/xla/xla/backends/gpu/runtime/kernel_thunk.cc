@@ -27,17 +27,18 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/shaped_slice.h"
@@ -90,7 +91,7 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
 
   KernelThunkProto* kernel_proto = proto.mutable_kernel_thunk();
   for (int i = 0; i < args_.size(); i++) {
-    ASSIGN_OR_RETURN(*kernel_proto->add_args(), args_[i].slice.ToProto());
+    ABSL_ASSIGN_OR_RETURN(*kernel_proto->add_args(), args_[i].slice.ToProto());
     *kernel_proto->add_args_shape() = args_[i].shape.ToProto();
     kernel_proto->add_written(written_[i]);
   }
@@ -112,11 +113,11 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     ThunkInfo thunk_info, const KernelThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+  ABSL_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                    LaunchDimensions::FromProto(proto.launch_dimensions()));
   std::optional<stream_executor::ClusterDim> cluster_dim;
   if (proto.has_cluster_dim()) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         cluster_dim.emplace(),
         stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
   }
@@ -131,16 +132,16 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
   std::vector<emitters::KernelArgument> arguments;
   arguments.reserve(proto.args().size());
   for (int i = 0; i < proto.args().size(); ++i) {
-    ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+    ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                      BufferAllocation::Slice::FromProto(proto.args().at(i),
                                                         buffer_allocations));
-    ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.args_shape().at(i)));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.args_shape().at(i)));
     emitters::KernelArgument argument{shape, slice};
     argument.set_written(proto.written().at(i));
     arguments.push_back(std::move(argument));
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       stream_executor::gpu::TmaMetadata tma_metadata,
       stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
 
@@ -174,47 +175,31 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
-  absl::MutexLock lock(mutex_);
-
-  // Load the kernel into the device if necessary.
-  //
-  // We could alternatively do this within ExecuteOnStream, but doing it here
-  // lets the time spent loading the kernel not count towards our execution
-  // profiles.
-  if (!kernel_cache_.contains(params.executor)) {
-    std::unique_ptr<se::Kernel> kernel;
-    if (!params.src.binary.empty()) {
-      ASSIGN_OR_RETURN(
-          kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
-                               params.executor, shmem_bytes_, use_pdl_));
-
-    } else {
-      ASSIGN_OR_RETURN(kernel,
-                       CreateKernel(kernel_name_, args_.size(), params.src.text,
-                                    params.executor, shmem_bytes_, use_pdl_));
-    }
-
-    kernel_cache_.emplace(params.executor, std::move(kernel));
-  }
-
-  return absl::OkStatus();
+  return kernel_cache_
+      .GetOrCreate(
+          params.executor,
+          [&params, this]() -> absl::StatusOr<std::unique_ptr<se::Kernel>> {
+            if (!params.src.binary.empty()) {
+              return CreateKernel(kernel_name_, args_.size(), params.src.binary,
+                                  params.executor, shmem_bytes_, use_pdl_);
+            }
+            return CreateKernel(kernel_name_, args_.size(), params.src.text,
+                                params.executor, shmem_bytes_, use_pdl_);
+          })
+      .status();
 }
 
 absl::StatusOr<KernelThunk::KernelWithArgs> KernelThunk::GetKernelAndArgs(
     const BufferAllocations& buffer_allocations,
     se::StreamExecutor* executor) const {
-  se::Kernel* kernel;
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = kernel_cache_.find(executor);
-    if (it == kernel_cache_.end() || it->second == nullptr) {
-      return absl::InternalError(absl::StrFormat(
-          "Kernel not loaded for executor (Initialize() not called): %s",
-          kernel_name_));
-    }
-    kernel = it->second.get();
+  se::Kernel* kernel = kernel_cache_.Find(executor);
+  if (kernel == nullptr) {
+    return absl::InternalError(absl::StrFormat(
+        "Kernel not loaded for executor (Initialize() not called): %s",
+        kernel_name_));
   }
   absl::InlinedVector<se::KernelArg, 4> kernel_args;
+  kernel_args.reserve(args_.size());
   for (int idx = 0; idx < args_.size(); ++idx) {
     se::DeviceAddressBase buf =
         buffer_allocations.GetDeviceAddress(args_[idx].slice);
@@ -223,7 +208,7 @@ absl::StatusOr<KernelThunk::KernelWithArgs> KernelThunk::GetKernelAndArgs(
     if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
         it != tma_metadata_.arg_index_to_tma_info.end()) {
       const se::gpu::TmaDescriptor& tma_desc = it->second;
-      ASSIGN_OR_RETURN(se::TensorMap tensor_map,
+      ABSL_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                        executor->CreateTensorMap(tma_desc, buf.opaque()));
       VLOG(5) << "  Using TensorMap for arg #" << idx << ": "
               << tma_desc.ToString();
@@ -242,10 +227,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (int64_t index : zeroed_output_buffer_indices_) {
     se::DeviceAddressBase address =
         params.buffer_allocations->GetDeviceAddress(args_[index].slice);
-    RETURN_IF_ERROR(stream->MemZero(&address, address.size()));
+    ABSL_RETURN_IF_ERROR(stream->MemZero(&address, address.size()));
   }
 
-  ASSIGN_OR_RETURN(auto kernel_with_args,
+  ABSL_ASSIGN_OR_RETURN(auto kernel_with_args,
                    GetKernelAndArgs(*params.buffer_allocations, executor));
   auto& [kernel, kernel_args] = kernel_with_args;
 
@@ -268,7 +253,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
     se::CommandBuffer* command_buffer) {
   se::StreamExecutor* executor = execute_params.stream->parent();
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto kernel_with_args,
       GetKernelAndArgs(*execute_params.buffer_allocations, executor));
   auto& [kernel, kernel_args] = kernel_with_args;
@@ -277,13 +262,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> KernelThunk::Record(
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     return command_buffer->CreateLaunch(
         launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), *kernel, *packed_args,
+        launch_dimensions_.block_counts(), cluster_dim_, *kernel, *packed_args,
         create->dependencies, priority());
   }
   if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
-    RETURN_IF_ERROR(command_buffer->UpdateLaunch(
+    ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
         update->command, launch_dimensions_.thread_counts_per_block(),
-        launch_dimensions_.block_counts(), *kernel, *packed_args));
+        launch_dimensions_.block_counts(), cluster_dim_, *kernel,
+        *packed_args));
     return update->command;
   }
   return Internal("Invalid record action");

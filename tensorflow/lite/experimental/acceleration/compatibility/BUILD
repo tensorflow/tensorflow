@@ -18,7 +18,6 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "gpu_compatibility_without_gl_deps_internal_visibility_allowlist", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
@@ -101,9 +100,9 @@ genrule(
     ],
     outs = ["devicedb-sample.bin"],
     cmd = """
-    $(location :json_to_fb) \
-        --fbs=$(location :database.fbs) \
-        --json_input=$(location :devicedb-sample.json) \
+    $(execpath :json_to_fb) \
+        --fbs=$(execpath :database.fbs) \
+        --json_input=$(execpath :devicedb-sample.json) \
         --fb_output=$(@)
     """,
     tools = [":json_to_fb"],
@@ -126,10 +125,10 @@ genrule(
     # convert_file_to_c_source for some reason doesn't define the global with
     # 'extern', which is needed for global const variables in C++.
     cmd = """
-    $(location :convert_binary_to_cc_source) \
-        --input_binary_file $(location :devicedb-sample.bin) \
-        --output_header_file $(location :devicedb-sample.h) \
-        --output_source_file $(location :devicedb-sample.cc) \
+    $(execpath :convert_binary_to_cc_source) \
+        --input_binary_file $(execpath :devicedb-sample.bin) \
+        --output_header_file $(execpath :devicedb-sample.h) \
+        --output_source_file $(execpath :devicedb-sample.cc) \
         --array_variable_name g_tflite_acceleration_devicedb_sample_binary
     """,
     tools = [":convert_binary_to_cc_source"],
@@ -163,6 +162,7 @@ cc_test(
 exports_files([
     "database.fbs",
     "gpu_compatibility.bin",
+    "mldrift_compatibility.bin",
 ])
 
 genrule(
@@ -175,11 +175,30 @@ genrule(
     # convert_file_to_c_source for some reason doesn't define the global with
     # 'extern', which is needed for global const variables in C++.
     cmd = """
-    $(location :convert_binary_to_cc_source) \
-        --input_binary_file $(location :gpu_compatibility.bin) \
-        --output_header_file $(location :gpu_compatibility_binary.h) \
-        --output_source_file $(location :gpu_compatibility_binary.cc) \
+    $(execpath :convert_binary_to_cc_source) \
+        --input_binary_file $(execpath :gpu_compatibility.bin) \
+        --output_header_file $(execpath :gpu_compatibility_binary.h) \
+        --output_source_file $(execpath :gpu_compatibility_binary.cc) \
         --array_variable_name g_tflite_acceleration_gpu_compatibility_binary
+    """,
+    tools = [":convert_binary_to_cc_source"],
+)
+
+genrule(
+    name = "mldrift_compatibility_binary",
+    srcs = ["mldrift_compatibility.bin"],
+    outs = [
+        "mldrift_compatibility_binary.h",
+        "mldrift_compatibility_binary.cc",
+    ],
+    # The array variable name must differ from the gpu_compatibility one above:
+    # both allowlists may end up linked into the same binary.
+    cmd = """
+    $(execpath :convert_binary_to_cc_source) \
+        --input_binary_file $(execpath :mldrift_compatibility.bin) \
+        --output_header_file $(execpath :mldrift_compatibility_binary.h) \
+        --output_source_file $(execpath :mldrift_compatibility_binary.cc) \
+        --array_variable_name g_tflite_acceleration_mldrift_compatibility_binary
     """,
     tools = [":convert_binary_to_cc_source"],
 )
@@ -197,6 +216,16 @@ cc_library(
     name = "gpu_compatibility_binary_embed",
     srcs = [":gpu_compatibility_binary.cc"],
     hdrs = [":gpu_compatibility_binary.h"],
+)
+
+# Deliberately a target of its own rather than an addition to the library above:
+# a client that only cares about ML Drift should not link the (much larger)
+# TFLite GPU allowlist, and vice versa. Both binaries are consumed through the
+# generic GPUCompatibilityList::Create(flatbuffer, length) overload.
+cc_library(
+    name = "mldrift_compatibility_binary_embed",
+    srcs = [":mldrift_compatibility_binary.cc"],
+    hdrs = [":mldrift_compatibility_binary.h"],
 )
 
 cc_library(
@@ -235,8 +264,11 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
-    tags = tf_gpu_tests_tags() + [
+    tags = [
+        "gpu",
         "no_cuda_asan",  # TODO(b/181032551).
+        "notsan",
+        "requires-gpu-sm70",
     ],
     deps = [
         ":devicedb_sample",

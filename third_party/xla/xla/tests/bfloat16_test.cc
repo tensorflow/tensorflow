@@ -30,7 +30,7 @@ namespace {
 constexpr ErrorSpec kErrorSpec{0.001, 0.001};
 
 using Bfloat16Test =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(Bfloat16Test, ScalarOperation) {
   XlaBuilder builder(TestName());

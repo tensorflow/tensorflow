@@ -49,8 +49,9 @@ namespace xla {
 // needs to be run to a fixed point.
 class ReduceWindowRewriter : public HloModulePass {
  public:
-  // `base_length` is a size of a reduce-window we are comfortable with
-  // executing.
+  // `base_length` is the maximum size of a single reduce-window before
+  // decomposing into a tree reduction. If base_length <= 1, this pass is a
+  // no-op because tree reduction cannot reduce the scan length.
   explicit ReduceWindowRewriter(int64_t base_length)
       : base_length_(base_length) {}
 
@@ -69,8 +70,13 @@ class ReduceWindowRewriter : public HloModulePass {
 // or (if 0 < base_length < scan_length) into a reduce-window tree.
 class AssociativeScanRewriter : public HloModulePass {
  public:
-  // `base_length` is a size of a reduce-window we are comfortable with
-  // executing.
+  // `base_length` is the size threshold for tree reduction:
+  // - base_length == 0: always rewrite to a single reduce-window (no tree
+  //   tiling).
+  // - base_length == 1: pass is a no-op (tree reduction cannot make progress).
+  // - base_length > 1: rewrite to a single reduce-window if
+  //   scan_length <= base_length, otherwise decompose into a reduce-window
+  //   tree.
   explicit AssociativeScanRewriter(int64_t base_length)
       : base_length_(base_length) {}
 

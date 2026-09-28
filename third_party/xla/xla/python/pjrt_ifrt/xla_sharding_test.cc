@@ -35,8 +35,9 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/sharding_spec.h"
+#include "xla/python/pjrt_ifrt/xla_sharding_spec.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -45,6 +46,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 
@@ -78,7 +80,8 @@ TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   EXPECT_DEATH(
       HloSharding::Create(GetDevices({0}), MemoryKind(),
                           tiled_xla_hlo_sharding),
-      HasSubstr("sharding's tile count and device count does not match"));
+      HasSubstr("`num_shards` and `xla_hlo_sharding`'s `num_devices` does not "
+                "match"));
 }
 
 TEST_P(HloShardingTest, IsFullyReplicated) {
@@ -166,7 +169,8 @@ TEST_P(HloShardingTest, GetShardShape) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape 3 vs from HloSharding 2")));
+                            "Shape [6,6,6] vs from HloSharding "
+                            "{devices=[2,3]<=[6]}")));
 }
 
 TEST_P(HloShardingTest, HasSamePartitioning) {
@@ -221,10 +225,9 @@ TEST_P(HloShardingTest, WithDeviceAssignment) {
     auto xla_hlo_sharding1 = xla::HloSharding::IotaTile({2, 3});
     std::shared_ptr<const HloSharding> sharding1 =
         HloSharding::Create(device_list1, MemoryKind(), xla_hlo_sharding1);
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto new_sharding,
-        sharding0->WithDeviceAssignment(device_list1,
-                                        /*memory_kind=*/std::nullopt));
+    ASSERT_OK_AND_ASSIGN(auto new_sharding, sharding0->WithDeviceAssignment(
+                                                device_list1,
+                                                /*memory_kind=*/std::nullopt));
     EXPECT_EQ(*new_sharding, *sharding1);
   }
   {
@@ -249,7 +252,7 @@ TEST_P(HloShardingTest, IndexDomainsWithReplication) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -261,7 +264,7 @@ TEST_P(HloShardingTest, IndexDomainsWithReplication) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -276,6 +279,21 @@ TEST_P(HloShardingTest, IndexDomainsWithReplication) {
   }
 }
 
+TEST_P(HloShardingTest, UniqueIndexDomainsWithReplication) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  // Fully replicated.
+  auto xla_hlo_sharding = xla::HloSharding::Replicate();
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+              absl_testing::IsOkAndHolds(ElementsAre(FieldsAre(
+                  IndexDomain(shape), ElementsAre(0, 1, 2, 3, 4, 5)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 0, 0, 0)));
+}
+
 TEST_P(HloShardingTest, DisassembleWithReplication) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // Fully replicated.
@@ -285,7 +303,7 @@ TEST_P(HloShardingTest, DisassembleWithReplication) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -297,7 +315,7 @@ TEST_P(HloShardingTest, DisassembleWithReplication) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -321,7 +339,7 @@ TEST_P(HloShardingTest, IndexDomainsWithTile) {
 
   Shape shape({12, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -336,7 +354,7 @@ TEST_P(HloShardingTest, IndexDomainsWithTile) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -353,6 +371,28 @@ TEST_P(HloShardingTest, IndexDomainsWithTile) {
   }
 }
 
+TEST_P(HloShardingTest, UniqueIndexDomainsWithTile) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  // 6-way sharded along axis 0, 1-way sharded along axis 1.
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({6, 1}));
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({12, 20});
+  EXPECT_THAT(
+      sharding->UniqueIndexDomains(shape),
+      absl_testing::IsOkAndHolds(ElementsAre(
+          FieldsAre(IndexDomain(Index({0, 0}), Shape({2, 20})), ElementsAre(0)),
+          FieldsAre(IndexDomain(Index({2, 0}), Shape({2, 20})), ElementsAre(1)),
+          FieldsAre(IndexDomain(Index({4, 0}), Shape({2, 20})), ElementsAre(2)),
+          FieldsAre(IndexDomain(Index({6, 0}), Shape({2, 20})), ElementsAre(3)),
+          FieldsAre(IndexDomain(Index({8, 0}), Shape({2, 20})), ElementsAre(4)),
+          FieldsAre(IndexDomain(Index({10, 0}), Shape({2, 20})),
+                    ElementsAre(5)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5)));
+}
+
 TEST_P(HloShardingTest, DisassembleWithTile) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 6-way sharded along axis 0, 1-way sharded along axis 1.
@@ -362,7 +402,7 @@ TEST_P(HloShardingTest, DisassembleWithTile) {
 
   Shape shape({12, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -374,7 +414,7 @@ TEST_P(HloShardingTest, DisassembleWithTile) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -398,7 +438,7 @@ TEST_P(HloShardingTest, IndexDomainsWithUnevenTile) {
 
   Shape shape({11, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -413,7 +453,7 @@ TEST_P(HloShardingTest, IndexDomainsWithUnevenTile) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -439,7 +479,7 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
 
   Shape shape({11, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -455,7 +495,7 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -473,7 +513,7 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
 TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // replicated by 3 times.
+  // replicated 3 times.
   auto xla_hlo_sharding =
       xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
   std::shared_ptr<const HloSharding> sharding =
@@ -481,7 +521,7 @@ TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -496,7 +536,7 @@ TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -513,10 +553,30 @@ TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
   }
 }
 
+TEST_P(HloShardingTest, UniqueIndexDomainsWithPartialTile) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+  // replicated 3 times.
+  auto xla_hlo_sharding =
+      xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(sharding->UniqueIndexDomains(shape),
+              absl_testing::IsOkAndHolds(ElementsAre(
+                  FieldsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
+                            ElementsAre(0, 1, 2)),
+                  FieldsAre(IndexDomain(Index({5, 0}), Shape({5, 20})),
+                            ElementsAre(3, 4, 5)))));
+  EXPECT_THAT(sharding->ShardToUniqueIndexDomainIndex(),
+              absl_testing::IsOkAndHolds(ElementsAre(0, 0, 0, 1, 1, 1)));
+}
+
 TEST_P(HloShardingTest, DisassembleWithPartialTile) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // replicated by 3 times.
+  // replicated 3 times.
   auto xla_hlo_sharding =
       xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
   std::shared_ptr<const HloSharding> sharding =
@@ -524,7 +584,7 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -536,7 +596,7 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -554,7 +614,7 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
 TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // replicated by 3 times.
+  // replicated 3 times.
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::REPLICATED});
   std::shared_ptr<const HloSharding> sharding =
@@ -562,7 +622,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -577,7 +637,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -597,7 +657,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
 TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // replicated by 3 times.
+  // replicated 3 times.
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::REPLICATED});
   std::shared_ptr<const HloSharding> sharding =
@@ -605,7 +665,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -617,7 +677,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -635,7 +695,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
 TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // maximal-replicated by 3 times, device#0 in each replication is maximal.
+  // maximal-replicated 3 times, device#0 in each replication is maximal.
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::MAXIMAL});
   std::shared_ptr<const HloSharding> sharding =
@@ -643,7 +703,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -658,7 +718,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape,
                                SingleDeviceShardSemantics::kAddressableShards));
@@ -678,7 +738,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
 TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
-  // maximal-replicated by 3 times, device#0 in each replication is maximal.
+  // maximal-replicated 3 times, device#0 in each replication is maximal.
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::MAXIMAL});
   std::shared_ptr<const HloSharding> sharding =
@@ -686,7 +746,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -698,7 +758,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -722,7 +782,7 @@ TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
   Shape shape({4, 4});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
@@ -769,7 +829,7 @@ TEST_P(HloShardingTest, DisassembleWithManual) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
     ASSERT_THAT(disassembled, SizeIs(6));
@@ -781,7 +841,7 @@ TEST_P(HloShardingTest, DisassembleWithManual) {
     }
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape,
                               SingleDeviceShardSemantics::kAddressableShards));
@@ -818,7 +878,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   std::shared_ptr<const HloSharding> sharding =
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
   EXPECT_THAT(
@@ -842,6 +902,16 @@ TEST_P(HloShardingTest, Hash) {
                           xla::HloSharding::PartialTile(xla::TileAssignment(
                               xla::IotaTileAssignment::Create({2, 3})))),
   }));
+}
+
+TEST_P(HloShardingTest, ShardingSpec) {
+  auto device_list = GetDevices({0, 1});
+  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2, 1}));
+  ShardingRef sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+  ShardingSpecRef sharding_spec = sharding->sharding_spec();
+  EXPECT_EQ(*sharding_spec,
+            *HloShardingSpec::Create(device_list->size(), xla_hlo_sharding));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, HloShardingTest,

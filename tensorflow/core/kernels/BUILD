@@ -739,6 +739,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -825,6 +826,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:mutex",
     ],
 )
@@ -2051,6 +2053,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2235,6 +2239,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2795,7 +2801,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tensor_array_ops",
     prefix = "tensor_array_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 DYNAMIC_DEPS = [
@@ -3346,7 +3352,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
-    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -3703,6 +3712,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3831,6 +3844,8 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
         "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4301,6 +4316,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
@@ -4330,10 +4346,15 @@ cc_library(
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:stringpiece",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4603,7 +4624,11 @@ tf_kernel_library(
     name = "xent_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
-    deps = NN_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = NN_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4699,6 +4724,38 @@ tf_cuda_cc_test(
         ":host_constant_op",
         ":nn",
         ":ops_testutil",
+        ":pooling_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_benchmark//:benchmark",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "nn_ops_gpu_test",
+    srcs = ["nn_ops_gpu_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "gpu",
+    ],
+    deps = [
+        ":host_constant_op",
+        ":nn",
+        ":ops_testutil",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/cc:cc_ops",
@@ -4785,6 +4842,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -5942,6 +6002,9 @@ tf_kernel_library(
     name = "string_ngrams_op",
     srcs = ["string_ngrams_op.cc"],
     deps = STRING_DEPS + [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -5951,7 +6014,6 @@ tf_cc_test(
     srcs = ["string_ngrams_op_test.cc"],
     deps = [
         ":ops_testutil",
-        ":ops_util",
         ":string_ngrams_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5959,6 +6021,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -6135,26 +6199,31 @@ tf_kernel_library(
     prefix = "parameterized_truncated_normal_op",
     deps = [
         ":stateless_random_ops",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_cuda_cc_test(
     name = "parameterized_truncated_normal_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.cc"],
     deps = [
         ":host_constant_op",
-        ":ops_util",
         ":parameterized_truncated_normal_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_benchmark//:benchmark",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -7801,6 +7870,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -8231,8 +8302,11 @@ cc_library(
         "//tensorflow:__subpackages__",
     ] + LOOSE_HEADER_VISIBILITY,
     deps = [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

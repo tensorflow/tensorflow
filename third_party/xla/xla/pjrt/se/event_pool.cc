@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/never_run_on_fiber.h"
 #include "xla/stream_executor/stream.h"
@@ -29,6 +29,8 @@ limitations under the License.
 namespace xla {
 
 EventPool::Handle::~Handle() {
+  // event_ == nullptr is ONLY possible when Handle is in an invalid
+  // 'moved from' state.
   if (pool_ && event_) {
     absl::MutexLock lock(pool_->mu_free_events_);
     pool_->free_events_.push(std::move(event_));
@@ -40,22 +42,23 @@ EventPool::EventPool(bool allow_reuse)
 
 absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     AsyncWorkRunner* async_work_runner, se::StreamExecutor* executor) {
-  Handle event;
+  std::unique_ptr<se::Event> event;
 
+  EventPool* pool = nullptr;
   if (allow_reuse_) {
-    event.pool_ = this;
+    pool = this;
     absl::MutexLock lock(mu_free_events_);
     if (!free_events_.empty()) {
-      event.event_ = std::move(free_events_.top());
+      event = std::move(free_events_.top());
       free_events_.pop();
     }
   }
-  if (!event.event_) {
-    ASSIGN_OR_RETURN(event.event_, NeverRunOnFiber(async_work_runner, [&]() {
+  if (!event) {
+    ABSL_ASSIGN_OR_RETURN(event, NeverRunOnFiber(async_work_runner, [&]() {
                        return executor->CreateEvent();
                      }));
   }
-  return event;
+  return EventPool::Handle(pool, std::move(event));
 }
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
@@ -66,7 +69,7 @@ void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
 
 absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     AsyncWorkRunner* async_work_runner, se::Stream* stream) {
-  ASSIGN_OR_RETURN(EventPool::Handle handle,
+  ABSL_ASSIGN_OR_RETURN(EventPool::Handle handle,
                    AllocateEvent(async_work_runner, stream->parent()));
   ThenRecordEvent(stream, handle);
   return handle;

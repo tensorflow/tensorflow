@@ -39,6 +39,16 @@ class LowerReshape : public mlir::OpRewritePattern<stablehlo::ReshapeOp> {
       stablehlo::ReshapeOp op, mlir::PatternRewriter& rewriter) const override;
 };
 
+// Lowers stablehlo.transpose to ttir.trans.
+class LowerTranspose : public mlir::OpRewritePattern<stablehlo::TransposeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::TransposeOp op,
+      mlir::PatternRewriter& rewriter) const override;
+};
+
 // Returns the AddOp and its non-dot operand (accumulator) if the 'op' is
 // consumed by an AddOp. This is used to identify GEMM fusion units.
 mlir::LogicalResult GetFusedAddUnit(mlir::Operation* op,

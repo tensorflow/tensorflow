@@ -27,11 +27,11 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "grpc/grpc.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/client_context.h"
@@ -155,7 +155,7 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
         "GrpcClientSession: writes no longer allowed.");
   }
 
-  RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
+  ABSL_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
 
   CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
   req->mutable_request_metadata()->set_op_id(op_id);

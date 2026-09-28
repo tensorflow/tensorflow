@@ -103,6 +103,10 @@ void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
   if (primitive_util::IsSubByteNonPredType(type)) {
     return false;
   }
+  if (shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return false;
+  }
 
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At

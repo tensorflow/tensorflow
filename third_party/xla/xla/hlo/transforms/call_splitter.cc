@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -352,7 +352,7 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
     auto split_result = get_split(call->to_apply());
     if (split_result.first != nullptr) {
       changed |= true;
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           SplitCallSite(call, split_result.first, split_result.second));
     }
   }

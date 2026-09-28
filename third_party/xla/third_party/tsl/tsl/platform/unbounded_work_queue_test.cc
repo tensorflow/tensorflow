@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
@@ -32,7 +31,7 @@ class UnboundedWorkQueueTest : public ::testing::Test {
  protected:
   UnboundedWorkQueueTest()
       : work_queue_(
-            absl::make_unique<UnboundedWorkQueue>(Env::Default(), "test")) {}
+            std::make_unique<UnboundedWorkQueue>(Env::Default(), "test")) {}
   ~UnboundedWorkQueueTest() override = default;
 
   void RunMultipleCopiesOfClosure(const int num_closures,
@@ -103,6 +102,27 @@ TEST_F(UnboundedWorkQueueTest, RacyDestructor) {
   RunMultipleCopiesOfClosure(num_closures, []() {});
   ResetQueue();
   EXPECT_LE(NumClosuresExecuted(), num_closures);
+}
+
+TEST(UnboundedWorkQueueOptionsTest, CustomStackSize) {
+  ThreadOptions thread_options;
+  thread_options.stack_size = 2 * 1024 * 1024;  // 2 MB
+  UnboundedWorkQueue queue(Env::Default(), "custom_stack_test", thread_options);
+  BlockingCounter counter(10);
+  for (int i = 0; i < 10; ++i) {
+    queue.Schedule([&counter]() { counter.DecrementCount(); });
+  }
+  counter.Wait();
+}
+
+TEST(UnboundedWorkQueueOptionsTest, DefaultThreadOptions) {
+  UnboundedWorkQueue queue(Env::Default(), "default_options_test",
+                           ThreadOptions{});
+  BlockingCounter counter(10);
+  for (int i = 0; i < 10; ++i) {
+    queue.Schedule([&counter]() { counter.DecrementCount(); });
+  }
+  counter.Wait();
 }
 
 }  // namespace

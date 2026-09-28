@@ -31,7 +31,8 @@ namespace ynnpack {
 
 TfLiteStatus IsReductionSupported(const TfLiteRegistration* registration,
                                   const TfLiteNode* node,
-                                  TfLiteContext* context) {
+                                  TfLiteContext* context,
+                                  const TfLiteYNNPackDelegateOptions& options) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
@@ -47,7 +48,7 @@ TfLiteStatus IsReductionSupported(const TfLiteRegistration* registration,
 
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
 
-  TF_LITE_ENSURE(context, axes.allocation_type == kTfLiteMmapRo);
+  TF_LITE_ENSURE(context, IsConstant(axes, options.static_shape));
   TF_LITE_ENSURE_EQ(context, axes.type, kTfLiteInt32);
 
   // YNNPACK reduce only supports 0D or 1D axes for now.

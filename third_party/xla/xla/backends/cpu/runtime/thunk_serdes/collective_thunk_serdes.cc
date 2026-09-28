@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/cpu/runtime/all_to_all_thunk.h"
@@ -96,13 +96,13 @@ GetCollectiveThunkParamsFromProto(
     const CollectiveThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(CollectiveThunk::OpParams op_params,
+  ABSL_ASSIGN_OR_RETURN(CollectiveThunk::OpParams op_params,
                    OpParamsFromProto(proto.op_params()));
 
   CollectiveThunk::OpBuffers op_buffers;
   for (const auto& shape_buffer_slice_proto :
        proto.op_buffers().source_shapes_buffer_slices()) {
-    ASSIGN_OR_RETURN(auto slice_shape,
+    ABSL_ASSIGN_OR_RETURN(auto slice_shape,
                      DeserializeSliceShapeFromProto(shape_buffer_slice_proto,
                                                     buffer_allocations));
     const auto& [slice, shape] = slice_shape;
@@ -112,7 +112,7 @@ GetCollectiveThunkParamsFromProto(
 
   for (const auto& shape_buffer_slice_proto :
        proto.op_buffers().destination_shapes_buffer_slices()) {
-    ASSIGN_OR_RETURN(auto slice_shape,
+    ABSL_ASSIGN_OR_RETURN(auto slice_shape,
                      DeserializeSliceShapeFromProto(shape_buffer_slice_proto,
                                                     buffer_allocations));
 
@@ -134,7 +134,7 @@ GetCollectiveThunkParamsFromProto(
 
     // Validate that the serialized resource has the same type as the
     // resource we are setting.
-    ASSIGN_OR_RETURN(std::shared_ptr<Resource> communicator_resource_from_proto,
+    ABSL_ASSIGN_OR_RETURN(std::shared_ptr<Resource> communicator_resource_from_proto,
                      CreateResourceFromProto(
                          proto.op_resources().communicator_resource().value()));
 
@@ -194,7 +194,7 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   CollectiveThunkProto* collective_thunk_proto =
       proto.mutable_collective_thunk();
 
-  ASSIGN_OR_RETURN(*collective_thunk_proto->mutable_op_params(),
+  ABSL_ASSIGN_OR_RETURN(*collective_thunk_proto->mutable_op_params(),
                    OpParamsToProto(collective_thunk.op_params()));
 
   collective_thunk_proto->mutable_op_resources()
@@ -202,7 +202,7 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
       ->set_contains_value(
           collective_thunk.op_resources().communicator_resource != nullptr);
   if (collective_thunk.op_resources().communicator_resource != nullptr) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         *collective_thunk_proto->mutable_op_resources()
              ->mutable_communicator_resource()
              ->mutable_value(),
@@ -211,7 +211,7 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0; i < collective_thunk.op_buffers().source_buffers.size();
        ++i) {
-    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         collective_thunk.op_buffers().source_buffers[i],
         collective_thunk.op_buffers().source_shapes[i],
         collective_thunk_proto->mutable_op_buffers()
@@ -220,7 +220,7 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   for (size_t i = 0;
        i < collective_thunk.op_buffers().destination_buffers.size(); ++i) {
-    RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+    ABSL_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         collective_thunk.op_buffers().destination_buffers[i],
         collective_thunk.op_buffers().destination_shapes[i],
         collective_thunk_proto->mutable_op_buffers()
@@ -229,27 +229,27 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 
   switch (collective_thunk.collective_kind()) {
     case CollectiveThunk::CollectiveKind::kAllGather:
-      RETURN_IF_ERROR(AllGatherToProto(
+      ABSL_RETURN_IF_ERROR(AllGatherToProto(
           absl::down_cast<const AllGatherThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_gather_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllReduce:
-      RETURN_IF_ERROR(AllReduceToProto(
+      ABSL_RETURN_IF_ERROR(AllReduceToProto(
           absl::down_cast<const AllReduceThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_reduce_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllToAll:
-      RETURN_IF_ERROR(AllToAllToProto(
+      ABSL_RETURN_IF_ERROR(AllToAllToProto(
           absl::down_cast<const AllToAllThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_to_all_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kReduceScatter:
-      RETURN_IF_ERROR(ReduceScatterToProto(
+      ABSL_RETURN_IF_ERROR(ReduceScatterToProto(
           absl::down_cast<const ReduceScatterThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_reduce_scatter_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kCollectivePermute:
-      RETURN_IF_ERROR(CollectivePermuteToProto(
+      ABSL_RETURN_IF_ERROR(CollectivePermuteToProto(
           absl::down_cast<const CollectivePermuteThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_collective_permute_thunk()));
       break;
@@ -280,9 +280,9 @@ absl::StatusOr<std::unique_ptr<AllGatherThunk>> AllGatherThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto collective_thunk_params,
       GetCollectiveThunkParamsFromProto(proto.collective_thunk(),
                                         buffer_allocations, resources));
@@ -295,15 +295,15 @@ absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto collective_thunk_params,
       GetCollectiveThunkParamsFromProto(proto.collective_thunk(),
                                         buffer_allocations, resources));
 
   const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
       ParseReductionKind(
           proto.collective_thunk().all_reduce_thunk().reduction_kind()));
@@ -317,8 +317,8 @@ absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(
       auto collective_thunk_params,
       GetCollectiveThunkParamsFromProto(proto.collective_thunk(),
                                         buffer_allocations, resources));
@@ -332,9 +332,9 @@ CollectivePermuteThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto collective_thunk_params,
       GetCollectiveThunkParamsFromProto(proto.collective_thunk(),
                                         buffer_allocations, resources));
@@ -355,16 +355,16 @@ absl::StatusOr<std::unique_ptr<ReduceScatterThunk>> ReduceScatterThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
     const std::vector<std::shared_ptr<Resource>>& resources) {
-  ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  ABSL_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto collective_thunk_params,
       GetCollectiveThunkParamsFromProto(proto.collective_thunk(),
                                         buffer_allocations, resources));
 
   const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
       ParseReductionKind(
           proto.collective_thunk().reduce_scatter_thunk().reduction_kind()));
@@ -381,7 +381,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> CollectiveThunkFromProto(
     return Internal("CollectiveThunk serdes requires resources.");
   }
 
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       CollectiveThunk::CollectiveKind collective_kind,
       ProtoCollectiveThunkToCollectiveThunkKind(proto.collective_thunk()));
 

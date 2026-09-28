@@ -9,5 +9,5 @@ def repo():
         sha256 = "a78b05c0d8427a90eb5b4eb08af25309770c8379592bb0b8a863373128e6143f",
         strip_prefix = "libjpeg-turbo-2.1.4",
         build_file = "//third_party/jpeg:jpeg.BUILD",
-        system_build_file = "//third_party/jpeg:BUILD.system",
+        system_build_file = "//third_party/systemlibs:jpeg.BUILD",
     )

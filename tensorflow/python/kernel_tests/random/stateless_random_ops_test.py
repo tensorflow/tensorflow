@@ -18,6 +18,7 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -32,6 +33,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_ops_util
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.platform import test
 
@@ -169,9 +171,7 @@ def multinomial_cases():
   def wrap(op: ops.Operation, logits, logits_dtype, output_dtype, seed):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
-    if (logits_dtype == dtypes.bfloat16 and device_type == 'GPU' and
-        not test_util.is_gpu_available(
-            cuda_only=True, min_cuda_compute_capability=(8, 0))):
+    if logits_dtype == dtypes.bfloat16 and device_type == 'GPU':
       logits_dtype = dtypes.float32
     return op(seed=seed,
               logits=constant_op.constant(logits, dtype=logits_dtype),
@@ -510,6 +510,15 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(counter.shape, [2])
     alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
     self.assertAllEqual(alg.shape, [])
+
+  @test_util.run_v2_only
+  def testThreefryKeyCounterShape(self):
+    """ThreeFry key/counter must satisfy non-XLA shape checks (see #100252)."""
+    seed = constant_op.constant([1, 2], dtype=dtypes.int32)
+    key, counter, alg = random_ops_util.get_key_counter_alg(seed, 'threefry')
+    self.assertAllEqual(key.shape, [1])
+    self.assertAllEqual(counter.shape, [2])
+    self.assertEqual(int(alg), random_ops_util.Algorithm.THREEFRY.value)
 
   def assertDTypeEqual(self, a, b):
     self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))

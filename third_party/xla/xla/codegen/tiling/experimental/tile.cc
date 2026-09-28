@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -76,10 +77,10 @@ DimTile GetFullDimTile(int64_t dim_size, MLIRContext* ctx) {
                  CreateSymbolicConstant(dim_size, ctx)};
 }
 
-DimTile GetDefaultDimTile(int64_t id, SymbolicExpr tile_size,
+DimTile GetDefaultDimTile(TiledDimId id, SymbolicExpr tile_size,
                           int64_t dim_size) {
   MLIRContext* ctx = tile_size.GetContext();
-  auto tile_id = CreateDimExpr(id, ctx);
+  SymbolicExpr tile_id = CreateDimExpr(id.value(), ctx);
   return DimTile{tile_id * tile_size, tile_size, CreateSymbolicConstant(1, ctx),
                  CreateSymbolicConstant(dim_size, ctx)};
 }
@@ -87,6 +88,12 @@ DimTile GetDefaultDimTile(int64_t id, SymbolicExpr tile_size,
 bool DimTile::operator==(const DimTile& other) const {
   return offset == other.offset && size == other.size &&
          stride == other.stride && upper_bound == other.upper_bound;
+}
+
+std::string DimTile::ToString() const {
+  return absl::StrCat("offset [", offset.ToString(), "], size [",
+                      size.ToString(), "], stride [", stride.ToString(),
+                      "], upper bound [", upper_bound.ToString(), "]");
 }
 
 Tile::Tile(const TilingSpace& tiling_space, ArrayRef<SymbolicExpr> offsets,
@@ -219,22 +226,60 @@ void Tile::Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) {
   }
 }
 
+void SimplifyDimTiles(
+    llvm::ArrayRef<llvm::MutableArrayRef<DimTile>> dim_tile_groups,
+    const TilingSpace& space) {
+  int64_t total_dim_tiles = 0;
+  for (const auto& group : dim_tile_groups) {
+    total_dim_tiles += group.size();
+  }
+  if (total_dim_tiles == 0) {
+    return;
+  }
+  llvm::SmallVector<SymbolicExpr> expressions;
+  expressions.reserve(total_dim_tiles * 4);
+  for (auto& group : dim_tile_groups) {
+    for (DimTile& dim_tile : group) {
+      expressions.push_back(dim_tile.offset);
+      expressions.push_back(dim_tile.size);
+      expressions.push_back(dim_tile.stride);
+      expressions.push_back(dim_tile.upper_bound);
+    }
+  }
+  expressions = space.SimplifyExpressions(expressions);
+  CHECK_EQ(expressions.size(), total_dim_tiles * 4);
+  int idx = 0;
+  for (auto& group : dim_tile_groups) {
+    for (DimTile& dim_tile : group) {
+      dim_tile.offset = expressions[idx++];
+      dim_tile.size = expressions[idx++];
+      dim_tile.stride = expressions[idx++];
+      dim_tile.upper_bound = expressions[idx++];
+    }
+  }
+}
+
+void SimplifyDimTiles(llvm::MutableArrayRef<DimTile> dim_tiles,
+                      const TilingSpace& space) {
+  SimplifyDimTiles(
+      llvm::ArrayRef<llvm::MutableArrayRef<DimTile>>(&dim_tiles, 1), space);
+}
+
 void DimTile::Simplify(const TilingSpace& space) {
-  offset = space.SimplifyExpression(offset);
-  size = space.SimplifyExpression(size);
-  stride = space.SimplifyExpression(stride);
-  upper_bound = space.SimplifyExpression(upper_bound);
+  SimplifyDimTiles(*this, space);
 }
 
 void Tile::Simplify() {
-  for (DimTile& dim_tile : llvm::concat<DimTile>(dim_tiles_, replica_ids_)) {
-    dim_tile.Simplify(*tiling_space_);
-  }
+  SimplifyDimTiles({dim_tiles_, replica_ids_}, *tiling_space_);
 }
 
 Tile Tile::CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const {
   Tile ret{*tiling_space_, std::move(new_dim_tiles), replica_ids_};
   return ret;
+}
+
+Tile Tile::CloneWithNewTilingSpace(const TilingSpace& new_space) const {
+  return Tile(new_space, dim_tiles_, replica_ids_);
 }
 
 bool Tile::operator==(const Tile& other) const {

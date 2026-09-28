@@ -123,6 +123,20 @@ class MatrixSolveOpTest(test.TestCase):
       self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testNotInvertibleGpu(self):
+    for matrix_values in (
+        [[1.0, 2.0], [2.0, 4.0]],
+        [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+        [
+            [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+            [[1.0, 0.0, -1.0], [-1.0, 1.0, 0.0], [0.0, -1.0, 1.0]],
+        ],
+    ):
+      with self.assertRaisesOpError("Input matrix is not invertible."):
+        matrix = constant_op.constant(matrix_values)
+        self.evaluate(linalg_ops.matrix_solve(matrix, matrix))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrent(self):
     seed = [42, 24]
     matrix_shape = [3, 3]

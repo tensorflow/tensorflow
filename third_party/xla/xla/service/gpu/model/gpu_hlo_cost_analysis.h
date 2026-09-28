@@ -20,8 +20,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -130,7 +130,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // instruction by their origin from "element-wise use roots". All access
   // paths from such a root to the instruction are element-wise.
   absl::flat_hash_map<const HloInstruction*,
-                      absl::flat_hash_set<const HloInstruction*>>
+                      absl::btree_set<const HloInstruction*, HloPtrComparator>>
       elementwise_use_roots_;
 
   // Elementwise utilization of instruction's input subtree if it is a root.
@@ -141,6 +141,12 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // Contains a map from (opcode, element_type) to FLOPs per element estimate
   // for elementwise instructions.
   const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile_;
+
+ private:
+  // Extracts custom cost estimates from the backend config (either structured
+  // proto or raw JSON string) and applies them to current_properties_.
+  // Falls back to shape-based heuristics if estimates are missing or invalid.
+  void ExtractAndApplyCustomCallCostEstimate(const HloInstruction* custom_call);
 };
 
 }  // namespace gpu

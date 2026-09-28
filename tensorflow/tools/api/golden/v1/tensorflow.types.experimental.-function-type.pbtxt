@@ -5,5 +5,6 @@ tf_class {
   member_method {
     name: "from_callable"
     argspec: "args=[\'cls\', \'obj\', \'follow_wrapped\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    method_kind: CLASS
   }
 }

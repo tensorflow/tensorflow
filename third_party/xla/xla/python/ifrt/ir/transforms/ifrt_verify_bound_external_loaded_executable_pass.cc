@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -92,10 +92,10 @@ absl::Status IfrtVerifyBoundExternalLoadedExecutablePass::VerifyShardingsEqual(
     absl::string_view sharding_type) {
   for (const auto& it : llvm::enumerate(llvm::zip(types, shardings))) {
     const auto& [param_type, sharding] = it.value();
-    ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+    ABSL_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
     IfrtArrayType array_type = GetArrayType(param_type);
     IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const xla::HloSharding hlo_type_sharding,
         xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
     if (hlo_sharding != hlo_type_sharding) {

@@ -37,6 +37,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
@@ -44,6 +45,7 @@ limitations under the License.*/
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
@@ -67,7 +69,6 @@ class CollectiveKernelThunk : public TracedCommand {
   CollectiveKernelThunk(
       ThunkInfo info, CollectiveConfig collective_config,  //
       CollectiveKernelSpec kernel_spec,                    //
-      bool is_async,                                       //
       std::vector<CollectiveThunk::Buffer> buffers,        //
       bool is_collective_kernel_enabled,                   //
       absl::string_view kernel_name,                       //
@@ -77,7 +78,6 @@ class CollectiveKernelThunk : public TracedCommand {
       bool use_pdl = false)
       : TracedCommand{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
-        is_async_(is_async),
         collective_config_(std::move(collective_config)),
         kernel_spec_(std::move(kernel_spec)),
         launch_dimensions_(launch_dimensions),
@@ -96,7 +96,6 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::string_view kernel_name() const { return kernel_name_; }
 
   bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
-  bool is_async() const { return is_async_; }
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
@@ -135,6 +134,7 @@ class CollectiveKernelThunk : public TracedCommand {
   // Per-executor scratch memory.
   struct StreamMemory {
     std::vector<se::DeviceAddressHandle> scratch_allocations;
+    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
   };
 
   // Per-executor state that needs to be synchronized for access.
@@ -163,8 +163,6 @@ class CollectiveKernelThunk : public TracedCommand {
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
-  // Whether the collective is run on an async stream.
-  const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
   // Operation specific parameters.

@@ -14,7 +14,7 @@
 // ==============================================================================
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -emit-custom-ops -emit-builtin-tflite-ops=false -o - | flatbuffer_to_string - | FileCheck %s
 
-func.func @main() -> tensor<4xi4> {
+func.func @main() -> (tensor<4xi4>, tensor<4xi4>) {
   // CHECK: {
   // CHECK:   version: 3,
   // CHECK:   operator_codes: [  ],
@@ -28,9 +28,18 @@ func.func @main() -> tensor<4xi4> {
   // CHECK-EMPTY
   // CHECK:       },
   // CHECK:       has_rank: true
+  // CHECK:     }, {
+  // CHECK:       shape: [ 4 ],
+  // CHECK:       type: INT4,
+  // CHECK:       buffer: 2,
+  // CHECK:       name: "ConstResource",
+  // CHECK:       quantization: {
+  // CHECK-EMPTY
+  // CHECK:       },
+  // CHECK:       has_rank: true
   // CHECK:     } ],
   // CHECK:     inputs: [  ],
-  // CHECK:     outputs: [ 0 ],
+  // CHECK:     outputs: [ 0, 1 ],
   // CHECK:     operators: [  ],
   // CHECK:     name: "main"
   // CHECK:   } ],
@@ -40,11 +49,13 @@ func.func @main() -> tensor<4xi4> {
   // CHECK:   }, {
   // CHECK:     data: [ 56, 190 ]
   // CHECK:   }, {
+  // CHECK:     data: [ 56, 190 ]
+  // CHECK:   }, {
   // CHECK:     data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
   // CHECK:   } ],
   // CHECK:   metadata: [ {
   // CHECK:     name: "min_runtime_version",
-  // CHECK:     buffer: 2
+  // CHECK:     buffer: 3
   // CHECK:   } ],
   // CHECK:   signature_defs: [  ]
   // CHECK: }
@@ -53,5 +64,14 @@ func.func @main() -> tensor<4xi4> {
   // be packed low-bits-first as [0x38, 0xBE] or [56, 190]. Tensor type should
   // be INT4.
   %0 = "tfl.pseudo_const" () {value = dense<[-8, 3, -2, -5]> : tensor<4xi4>} : () -> tensor<4xi4> loc("Const")
-  func.return %0 : tensor<4xi4>
+  %1 = "tfl.pseudo_const" () {value = dense_resource<res_i4> : tensor<4xi4>} : () -> tensor<4xi4> loc("ConstResource")
+  func.return %0, %1 : tensor<4xi4>, tensor<4xi4>
 }
+
+{-#
+  dialect_resources: {
+    builtin: {
+      res_i4: "0x40000000F803FEFB"
+    }
+  }
+#-}

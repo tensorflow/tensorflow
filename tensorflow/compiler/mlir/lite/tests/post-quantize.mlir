@@ -220,3 +220,22 @@ func.func @RemoveVolatileQConstOps() -> tensor<640xf32> {
   // QDQ-CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<640xf32>
   // QDQ-CHECK: return %cst : tensor<640xf32>
 }
+
+// CHECK-LABEL: FoldTransposeSubByteResource
+func.func @FoldTransposeSubByteResource() -> tensor<4x2x!quant.uniform<i4:f32, 1.0>> {
+  %perm = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<2x4x!quant.uniform<i4:f32, 1.0>>, value = dense_resource<res_q4_2x4> : tensor<2x4xi4>}> : () -> tensor<2x4x!quant.uniform<i4:f32, 1.0>>
+  %1 = "tfl.transpose"(%0, %perm) : (tensor<2x4x!quant.uniform<i4:f32, 1.0>>, tensor<2xi32>) -> tensor<4x2x!quant.uniform<i4:f32, 1.0>>
+  return %1 : tensor<4x2x!quant.uniform<i4:f32, 1.0>>
+  // CHECK-NOT: "tfl.transpose"
+  // CHECK: "tfl.pseudo_qconst"() <{qtype = tensor<4x2x!quant.uniform<i4:f32, 1.000000e+00>>, value = dense_resource<{{.*}}> : tensor<4x2x!quant.uniform<i4:f32, 1.000000e+00>>}> : () -> tensor<4x2x!quant.uniform<i4:f32, 1.000000e+00>>
+  // CHECK: return
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      res_q4_2x4: "0x0400000012345678"
+    }
+  }
+#-}

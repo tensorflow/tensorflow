@@ -27,10 +27,12 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -45,8 +47,9 @@ class BasicAtomProgramCompiler final : public AtomProgramCompiler {
       bool strict_memory_reservation);
 
   tsl::Future<LoadedExecutableRef> CompileXla(
-      std::unique_ptr<HloProgram> hlo_program,
-      xla::CompileOptions options) final;
+      std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks)
+      final;
 
   tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,

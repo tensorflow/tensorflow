@@ -44,7 +44,7 @@ limitations under the License.
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/platform.h"
@@ -89,9 +89,9 @@ std::string FileSystem::TranslateName(absl::string_view name) const {
 
 absl::Status FileSystem::IsDirectory(const std::string& name) {
   // Check if path exists.
-  RETURN_IF_ERROR(FileExists(name));
+  ABSL_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
-  RETURN_IF_ERROR(Stat(name, &stat));
+  ABSL_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {
     return absl::OkStatus();
   }

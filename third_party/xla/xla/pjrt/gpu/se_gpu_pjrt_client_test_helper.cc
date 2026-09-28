@@ -71,7 +71,7 @@ GpuClientOptions GetTestGpuClientOptions(int num_devices) {
 absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options) {
-  ASSIGN_OR_RETURN(auto hlo_module,
+  ABSL_ASSIGN_OR_RETURN(auto hlo_module,
                    ParseAndReturnUnverifiedModule(program, {}));
 
   xla::XlaComputation xla_computation(hlo_module->ToProto());
@@ -81,7 +81,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
 absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
     absl::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
         result) {
-  ASSIGN_OR_RETURN(auto result_vec, std::move(result));
+  ABSL_ASSIGN_OR_RETURN(auto result_vec, std::move(result));
   TF_RET_CHECK(result_vec.size() == 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result_vec[0];
   TF_RET_CHECK(result_buffers.size() == 1);
@@ -138,11 +138,11 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "MemsetFromAttr",
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
     xla::PjRtClient* client) {
   auto device = client->addressable_devices()[0];
-  ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+  ABSL_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
 
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto input, client->BufferFromHostBuffer(
                       data.data(), shape.element_type(), shape.dimensions(),
                       /*byte_strides=*/std::nullopt,

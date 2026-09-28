@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -145,7 +145,7 @@ absl::StatusOr<bool> InstrIsReplicated(
     return false;
   }
 
-  ASSIGN_OR_RETURN(auto replication_analysis,
+  ABSL_ASSIGN_OR_RETURN(auto replication_analysis,
                    HloReplicationAnalysis::RunWithPartialReplication(
                        module,
                        /*cross_partition_spmd=*/true));
@@ -321,7 +321,7 @@ absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
     // participating in the collective. The group mode of the collective must be
     // kCrossPartition or kFlattenedID since the replication is verified aross
     // partitions, not replicas.
-    ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+    ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                      GetCollectiveOpGroupMode(instr));
     if (group_mode !=
             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION &&
@@ -329,7 +329,7 @@ absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
       return false;
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool scale_is_replicated,
         InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
                           instr->opcode() == HloOpcode::kCollectivePermute
@@ -365,7 +365,7 @@ absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
         new_convert->shape(), {new_convert, new_scale_bcast}));
   }
 
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       instr->ReplaceAllUsesWith(subgraph->binary ? new_binary : new_convert));
 
   VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
@@ -392,7 +392,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
     // participating in the collective. The group mode of the collective must be
     // kCrossPartition or kFlattenedID since the replication is verified aross
     // partitions, not replicas.
-    ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+    ABSL_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                      GetCollectiveOpGroupMode(instr));
     if (group_mode !=
             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION &&
@@ -400,7 +400,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
       return false;
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         bool scale_is_replicated,
         InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
                           instr->opcode() == HloOpcode::kCollectivePermute
@@ -441,7 +441,7 @@ absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
 
   // Insert the collected unary ops after the new collective.
   new_collective = ApplyUnaries(new_collective, subgraph->unaries);
-  RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
+  ABSL_RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
 
   VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
           << new_collective->ToString();
@@ -459,9 +459,9 @@ absl::StatusOr<bool> CollectiveQuantizer::RunImpl(
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (IsSupportedCollective(instr)) {
-        ASSIGN_OR_RETURN(bool instr_changed, MatchDequantization(instr));
+        ABSL_ASSIGN_OR_RETURN(bool instr_changed, MatchDequantization(instr));
         if (!instr_changed) {
-          ASSIGN_OR_RETURN(instr_changed, MatchQuantization(instr));
+          ABSL_ASSIGN_OR_RETURN(instr_changed, MatchQuantization(instr));
         }
         changed |= instr_changed;
       }

@@ -109,6 +109,20 @@ CUptiResult CuptiErrorManager::ActivityGetNextRecord(
   return error;
 }
 
+CUptiResult CuptiErrorManager::ActivityGetNextRecordV2(
+    CUpti_SubscriberHandle subscriber, uint8_t* buffer,
+    size_t valid_buffer_size_bytes, CUpti_Activity** record) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityGetNextRecordV2(
+      subscriber, buffer, valid_buffer_size_bytes, record);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
+  ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_KIND);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 CUptiResult CuptiErrorManager::ActivityGetNumDroppedRecords(CUcontext context,
                                                             uint32_t stream_id,
                                                             size_t* dropped) {
@@ -192,6 +206,8 @@ CUptiResult CuptiErrorManager::ActivityUseSystemThreadIdV2(
     CUpti_SubscriberHandle subscriber) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->ActivityUseSystemThreadIdV2(subscriber);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -199,6 +215,8 @@ CUptiResult CuptiErrorManager::ActivityUseSystemThreadIdV2(
 CUptiResult CuptiErrorManager::ActivityUsePerThreadBufferV2() {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->ActivityUsePerThreadBufferV2();
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -229,6 +247,21 @@ CUptiResult CuptiErrorManager::GetDeviceId(CUcontext context,
 CUptiResult CuptiErrorManager::GetTimestamp(uint64_t* timestamp) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->GetTimestamp(timestamp);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetTimestampV2(CUpti_SubscriberHandle subscriber,
+                                              uint64_t* timestamp) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetTimestampV2(subscriber, timestamp);
+  // Treat recoverable V2 timestamp failures as nonfatal so the caller can
+  // clean up the V2 subscriber and fall back to the V1 subscriber API.
+  // NOT_SUPPORTED means subscriber-scoped timestamps are unavailable.
+  // UNKNOWN preserves fallback for an unclassified failure in the optional V2
+  // path.
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -304,6 +337,7 @@ CUptiResult CuptiErrorManager::SubscribeV2(CUpti_SubscriberHandle* subscriber,
     auto f = std::bind(&CuptiErrorManager::Unsubscribe, this, *subscriber);
     RegisterUndoFunction(f);
   }
+  // Optional V2 subscriber path unavailable; callers can fall back to V1.
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
   ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);
   LOG_AND_DISABLE_IF_ERROR(error);

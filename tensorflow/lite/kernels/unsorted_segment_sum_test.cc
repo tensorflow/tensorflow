@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -140,6 +141,19 @@ TEST(UnsortedSegmentSumModelTest,
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 0, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 2}));
+}
+
+TEST(UnsortedSegmentSumModelTest, Int32OverflowWrapsWithoutUb) {
+  UnsortedSegmentSumModel<int32_t> model({TensorType_INT32, {2}},
+                                         {TensorType_INT32, {2}},
+                                         {TensorType_INT32, {1}});
+  model.PopulateTensor<int32_t>(model.data(),
+                                {std::numeric_limits<int32_t>::max(), 1});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 0});
+  model.PopulateTensor<int32_t>(model.num_segments(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({std::numeric_limits<int32_t>::min()}));
 }
 }  // namespace
 }  // namespace tflite

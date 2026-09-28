@@ -158,7 +158,7 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 23> kAllXlaGpuTypes = {{DT_UINT8,
+constexpr std::array<DataType, 24> kAllXlaGpuTypes = {{DT_UINT8,
                                                        DT_QUINT8,
                                                        DT_UINT16,
                                                        DT_INT8,
@@ -179,6 +179,7 @@ constexpr std::array<DataType, 23> kAllXlaGpuTypes = {{DT_UINT8,
                                                        DT_FLOAT8_E4M3FNUZ,
                                                        DT_FLOAT8_E4M3B11FNUZ,
                                                        DT_FLOAT8_E5M2FNUZ,
+                                                       DT_FLOAT8_E8M0FNU,
                                                        DT_INT4,
                                                        DT_UINT4}};
 

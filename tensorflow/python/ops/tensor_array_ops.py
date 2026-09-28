@@ -369,8 +369,27 @@ class _GraphTensorArray:
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if not context.executing_eagerly():
+          if value.shape.rank == 0:
+            raise ValueError(
+                "Expected value to be at least a vector, but received shape: %s"
+                % value.shape.as_list()
+            )
           clengths = tensor_util.constant_value(lengths_64)
-          if value.shape.dims is not None and clengths is not None:
+          if (
+              value.shape.rank is not None
+              and value.shape.rank > 0
+              and lengths_64.shape.rank == 1
+              and clengths is not None
+          ):
+            sum_lengths = int(np.sum(clengths))
+            value_first_dim = value.shape.as_list()[0]
+            if value_first_dim is not None:
+              if sum_lengths != value_first_dim:
+                raise ValueError(
+                    "Expected sum of lengths to be equal to values.shape[0], "
+                    "but sum of lengths is %d and value's shape is: %s"
+                    % (sum_lengths, value.shape.as_list())
+                )
             if clengths.shape and clengths.max() == clengths.min():
               self._check_element_shape(
                   tensor_shape.TensorShape([clengths[0]
@@ -644,8 +663,27 @@ class _GraphTensorArrayV2:
       _check_dtypes(value, self._dtype)
       lengths_64 = math_ops.cast(lengths, dtypes.int64)
       if not context.executing_eagerly():
+        if value.shape.rank == 0:
+          raise ValueError(
+              "Expected value to be at least a vector, but received shape: %s"
+              % value.shape.as_list()
+          )
         clengths = tensor_util.constant_value(lengths_64)
-        if value.shape.dims is not None and clengths is not None:
+        if (
+            value.shape.rank is not None
+            and value.shape.rank > 0
+            and lengths_64.shape.rank == 1
+            and clengths is not None
+        ):
+          sum_lengths = int(np.sum(clengths))
+          value_first_dim = value.shape.as_list()[0]
+          if value_first_dim is not None:
+            if sum_lengths != value_first_dim:
+              raise ValueError(
+                  "Expected sum of lengths to be equal to values.shape[0], "
+                  "but sum of lengths is %d and value's shape is: %s"
+                  % (sum_lengths, value.shape.as_list())
+              )
           if clengths.shape and clengths.max() == clengths.min():
             self._check_element_shape(
                 tensor_shape.TensorShape([clengths[0]
@@ -670,6 +708,15 @@ class _GraphTensorArrayV2:
 
 
 # pylint: enable=protected-access
+
+
+# Advice shared by the errors raised when an eager-mode TensorArray is used
+# while a graph is being built.
+_EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE = (
+    "This is not currently supported. You may be attempting to capture a "
+    "TensorArray inside a tf.function or tf.data map function. Instead, "
+    "construct a new TensorArray inside the function."
+)
 
 
 class _EagerTensorArray:
@@ -769,12 +816,38 @@ class _EagerTensorArray:
         "gradient implementation does not use/need this function to compute "
         "gradients of operations that use TensorArrays.")
 
+  def _check_symbolic_input(self, value, method_name, argument_name):
+    """Checks that `value` is usable as a Python value.
+
+    An `_EagerTensorArray` is only created while executing eagerly, so a
+    symbolic `value` means an eager-mode TensorArray was captured by a
+    `tf.function` or a `tf.data` map function. Without this check `value` is
+    used as a Python value below, which fails with a confusing error such as
+    "Using a symbolic `tf.Tensor` as a Python `bool` is not allowed".
+
+    Args:
+      value: the argument passed to `method_name`.
+      method_name: name of the `TensorArray` method being called.
+      argument_name: name of the argument `value` was passed as.
+
+    Raises:
+      NotImplementedError: if a graph is being built and `value` is symbolic.
+    """
+    if not context.executing_eagerly() and tensor_util.is_tf_type(value):
+      raise NotImplementedError(
+          "Attempting to call TensorArray.%s() with a symbolic `%s` on an "
+          "eager-mode TensorArray. %s"
+          % (method_name, argument_name, _EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE)
+      )
+
   def read(self, index, name=None):
     """See TensorArray."""
     del name  # not meaningful when executing eagerly.
 
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
+
+    self._check_symbolic_input(index, "read", "index")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(
@@ -813,10 +886,13 @@ class _EagerTensorArray:
       errors_impl.InvalidArgumentError: `value` dtype does not match dtype.
       errors_impl.OutOfRangeError: `index` is out of bounds.
       ValueError: shape of `value` is not consistent with inferred shape.
+      NotImplementedError: a graph is being built and `index` is symbolic.
     """
 
     if isinstance(index, ops.EagerTensor):
       index = index.numpy()
+
+    self._check_symbolic_input(index, "write", "index")
 
     if index < 0:
       raise errors_impl.OutOfRangeError(
@@ -882,6 +958,9 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
+
+    self._check_symbolic_input(indices, "gather", "indices")
+
     return array_ops_stack.stack([self._maybe_zero(i) for i in indices])
 
   def concat(self, name=None):
@@ -918,12 +997,25 @@ class _EagerTensorArray:
     del name  # not meaningful when executing eagerly.
     if isinstance(indices, ops.EagerTensor):
       indices = indices.numpy()
+
+    self._check_symbolic_input(indices, "scatter", "indices")
+
     for index, val in zip(indices, array_ops_stack.unstack(value)):
       self._write(index, val)  # pylint: disable=protected-access
     return self.parent()
 
   def split(self, value, lengths, name=None):
     """See TensorArray."""
+    if not context.executing_eagerly():
+      # `lengths` is converted to a tensor below and then read as a Python
+      # value, which is not possible while a graph is being built. This holds
+      # even for a `lengths` that was passed as a Python value.
+      raise NotImplementedError(
+          "Attempting to call TensorArray.split() on an eager-mode "
+          "TensorArray while building a graph. %s"
+          % _EAGER_TENSOR_ARRAY_IN_GRAPH_ADVICE
+      )
+
     # TODO(b/129870929): Fix after all callers provide proper init dtype.
     value = ops.convert_to_tensor(
         value, preferred_dtype=self._dtype, name="value")

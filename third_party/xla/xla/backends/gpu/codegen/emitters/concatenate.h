@@ -45,6 +45,7 @@ class ConcatenateFusion final : public MlirKernelEmitter {
   explicit ConcatenateFusion(const HloFusionAnalysis& analysis);
 
   LaunchDimensions launch_dimensions() const override;
+  int unroll_factor() const override { return unroll_factor_; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;

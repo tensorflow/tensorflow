@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
@@ -109,7 +109,7 @@ absl::Status AppendOutputBufferSaverThunks(
     Thunk::ThunkInfo info;
     info.profile_annotation = profile_annotation_str;
 
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {shaped_slice},
@@ -142,7 +142,7 @@ absl::Status RunDebugSaverInserter(
                                        debug_options.xla_dump_to());
   };
 
-  RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+  ABSL_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
   return AppendOutputBufferSaverThunks(*thunk_sequence, hlo_module,
                                        module_output_slices, debug_options);
 }

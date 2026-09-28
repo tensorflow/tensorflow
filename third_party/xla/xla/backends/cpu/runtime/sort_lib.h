@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
+#include "xla/types.h"
 
 namespace xla::cpu::internal {
 
@@ -45,26 +46,32 @@ enum class SortDirection {
   kDescending,
 };
 
-// Sorts `data` using `less_than` comparator function. Data is sorted in place,
-// and sort dimensions are specified in `sort_dims`.
+// Sorts `data` using `less_than` comparator function for slices in
+// [start_slice, end_slice). Data is sorted in place, and sort dimensions are
+// specified in `sort_dims`.
 using LessThan = absl::AnyInvocable<bool(const void** data)>;
-void SortInplace(const SortDims& sort_dims, absl::Span<std::byte* const> data,
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, absl::Span<std::byte* const> data,
                  absl::Span<const size_t> primitive_sizes, bool is_stable,
                  LessThan* less_than);
 
-// Sorts `data` using the sort `direction` with builtin comparator functions.
-// This is more efficient, as the comparator can be inlined.
+// Sorts `data` using the sort `direction` with builtin comparator functions for
+// slices in [start_slice, end_slice).
 template <typename T>
-void SortInplace(const SortDims& sort_dims, T* data, bool is_stable,
+void SortInplace(const SortDims& sort_dims, int64_t start_slice,
+                 int64_t end_slice, T* data, bool is_stable,
                  SortDirection direction);
 
 // Declare SortInplace for all supported types. Template is instantiated in
 // the .cc file.
-#define DECLARE_SORT_INPLACE(T) \
-  extern template void SortInplace<T>(const SortDims&, T*, bool, SortDirection)
+#define DECLARE_SORT_INPLACE(T)                                              \
+  extern template void SortInplace<T>(const SortDims&, int64_t, int64_t, T*, \
+                                      bool, SortDirection)
 
 DECLARE_SORT_INPLACE(float);
 DECLARE_SORT_INPLACE(double);
+DECLARE_SORT_INPLACE(bfloat16);
+DECLARE_SORT_INPLACE(half);
 DECLARE_SORT_INPLACE(int8_t);
 DECLARE_SORT_INPLACE(int16_t);
 DECLARE_SORT_INPLACE(int32_t);
@@ -75,6 +82,40 @@ DECLARE_SORT_INPLACE(uint32_t);
 DECLARE_SORT_INPLACE(uint64_t);
 
 #undef DECLARE_SORT_INPLACE
+
+// Sorts a pair of (keys, values) buffers using the sort `direction` with
+// builtin comparator functions on `keys` for slices in [start_slice,
+// end_slice).
+template <typename Key, typename Value>
+void Sort2DKeyValue(const SortDims& sort_dims, int64_t start_slice,
+                    int64_t end_slice, Key* keys, Value* values, bool is_stable,
+                    SortDirection direction);
+
+#define DECLARE_SORT_2D_KEY_VALUE(Key, Value)      \
+  extern template void Sort2DKeyValue<Key, Value>( \
+      const SortDims&, int64_t, int64_t, Key*, Value*, bool, SortDirection)
+
+#define DECLARE_SORT_2D_KEY_VALUE_KEY(Key)  \
+  DECLARE_SORT_2D_KEY_VALUE(Key, uint8_t);  \
+  DECLARE_SORT_2D_KEY_VALUE(Key, uint16_t); \
+  DECLARE_SORT_2D_KEY_VALUE(Key, uint32_t); \
+  DECLARE_SORT_2D_KEY_VALUE(Key, uint64_t)
+
+DECLARE_SORT_2D_KEY_VALUE_KEY(float);
+DECLARE_SORT_2D_KEY_VALUE_KEY(double);
+DECLARE_SORT_2D_KEY_VALUE_KEY(bfloat16);
+DECLARE_SORT_2D_KEY_VALUE_KEY(half);
+DECLARE_SORT_2D_KEY_VALUE_KEY(int8_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(int16_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(int32_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(int64_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(uint8_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(uint16_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(uint32_t);
+DECLARE_SORT_2D_KEY_VALUE_KEY(uint64_t);
+
+#undef DECLARE_SORT_2D_KEY_VALUE_KEY
+#undef DECLARE_SORT_2D_KEY_VALUE
 
 }  // namespace xla::cpu::internal
 

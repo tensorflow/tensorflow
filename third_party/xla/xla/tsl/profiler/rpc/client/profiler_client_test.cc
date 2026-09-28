@@ -407,6 +407,54 @@ TEST(ContinuousProfiler, GetSnapshotWithIllegalSnapshotSessionId) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 }
 
+TEST(GrpcRoute, ProfileWithContinuousProfilingCallsSerializeChunks) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  std::string logdir = ::testing::TempDir();
+
+  ProfileRequest request;
+  request.set_session_id("grpc_continuous_session");
+  request.set_repository_root(logdir);
+  request.set_emit_xspace(false);
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  request.mutable_opts()->set_duration_ms(100);
+  request.mutable_opts()->set_override_hostname("testhost");
+  (*request.mutable_opts()
+        ->mutable_advanced_configuration())["enable_continuous_profiling"]
+      .set_bool_value(true);
+
+  tensorflow::ProfileResponse response;
+  ASSERT_OK(ProfileGrpc(service_addr, request, &response));
+
+  std::string expected_riegeli_filepath = ProfilerJoinPath(
+      logdir, "grpc_continuous_session", "testhost.xplane.riegeli");
+
+  EXPECT_OK(Env::Default()->FileExists(expected_riegeli_filepath));
+  EXPECT_TRUE(response.empty_trace());
+}
+
+TEST(GrpcRoute, ProfileWithContinuousProfilingEmitXspace) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  ProfileRequest request;
+  request.set_session_id("grpc_continuous_session_emit");
+  request.set_emit_xspace(true);
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  request.mutable_opts()->set_duration_ms(100);
+  request.mutable_opts()->set_override_hostname("testhost");
+  (*request.mutable_opts()
+        ->mutable_advanced_configuration())["enable_continuous_profiling"]
+      .set_bool_value(true);
+
+  tensorflow::ProfileResponse response;
+  ASSERT_OK(ProfileGrpc(service_addr, request, &response));
+  EXPECT_TRUE(response.empty_trace());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

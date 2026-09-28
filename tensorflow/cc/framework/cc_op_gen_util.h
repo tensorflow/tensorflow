@@ -106,6 +106,16 @@ bool IsCPPKeyword(absl::string_view name);
 
 std::string AvoidCPPKeywords(absl::string_view name);
 
+// Returns a name safe to splice as a raw C++ identifier: `rename_to` if it
+// is already a safe identifier (see IsValidAttrOrArgName), else `name` if
+// THAT is safe, else a sanitized fallback (see SanitizeToIdentifier).
+// `rename_to` comes from ApiDef, a separate message from the OpDef arg/attr
+// name `name` is drawn from; neither is validated at OpDef-registration
+// time (see op_def_util.cc for why), so both must be checked here rather
+// than trusted, at every place either is spliced as a raw C++ identifier
+// into generated source.
+std::string SafeRenameTo(absl::string_view name, absl::string_view rename_to);
+
 void InferArgAttributes(
     const OpDef::ArgDef& arg,
     std::unordered_map<std::string, std::string>* inferred_attrs);

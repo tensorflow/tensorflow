@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 # Copyright 2024 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +30,9 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Any, ClassVar, Dict, List, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
+
+from build_tools.ci import bazel_diff
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
@@ -96,9 +97,9 @@ class BuildType(enum.Enum):
 
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_CPU_WORKSPACE_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS = enum.auto()
@@ -118,10 +119,7 @@ class BuildType(enum.Enum):
 
   JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
-
-  TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
   @classmethod
   def from_str(cls, s):
@@ -135,7 +133,27 @@ class BuildType(enum.Enum):
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
-  """Class representing a build of XLA."""
+  """Class representing a build of XLA.
+
+  Attributes:
+    type_: The BuildType enum value identifying this build.
+    repo: The repository under test (e.g. "openxla/xla").
+    target_patterns: Tuple of Bazel target patterns to build or test.
+    subcommand: The Bazel subcommand to execute ("test" by default).
+    configs: Tuple of Bazel --config names.
+    build_tag_filters: Tuple of tags for --build_tag_filters.
+    test_tag_filters: Tuple of tags for --test_tag_filters.
+    action_env: Dictionary of --action_env variables.
+    test_env: Dictionary of --test_env variables.
+    repo_env: Dictionary of --repo_env variables.
+    override_repository: Dictionary of --override_repository mappings.
+    override_module: Dictionary of --override_module mappings.
+    options: Dictionary of additional Bazel flags.
+    startup_options: Dictionary of Bazel startup options (before subcommand).
+    extra_setup_commands: Tuple of shell commands to run before Bazel.
+    use_bazel_diff: Whether to enable bazel-diff target filtering on presubmit.
+    bazel_diff_use_cquery: Whether bazel-diff should use cquery (--useCquery).
+  """
 
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
@@ -154,6 +172,8 @@ class Build:
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   startup_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
+  use_bazel_diff: bool = False
+  bazel_diff_use_cquery: bool = True
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -172,13 +192,17 @@ class Build:
     return cls._builds
 
   def bazel_command(
-      self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
+      self,
+      subcommand: str = "test",
+      extra_options: Tuple[str, ...] = (),
+      target_pattern_file: Optional[str] = None,
   ) -> List[str]:
     """Returns a bazel test command for this build.
 
     Args:
       subcommand: The subcommand to give to bazel. `test` by default.
       extra_options: Extra options. For now just used to pass in `--nobuild`.
+      target_pattern_file: Optional file containing explicit target patterns.
 
     Returns: List of command line arguments
     """
@@ -212,6 +236,18 @@ class Build:
         + options
         + list(extra_options)
     )
+    if target_pattern_file:
+      extra = ["--skip_incompatible_explicit_targets"]
+      if self.subcommand == "test" and "--build_tests_only" not in all_options:
+        extra.append("--build_tests_only")
+      return [
+          "bazel",
+          *startup_options,
+          subcommand,
+          *all_options,
+          *extra,
+          f"--target_pattern_file={target_pattern_file}",
+      ]
     return [
         "bazel",
         *startup_options,
@@ -221,7 +257,9 @@ class Build:
         *self.target_patterns,
     ]
 
-  def commands(self) -> List[List[str]]:
+  def commands(
+      self, target_pattern_file: Optional[str] = None
+  ) -> List[List[str]]:
     """Returns list of commands for a build."""
     cmds = []
 
@@ -244,17 +282,23 @@ class Build:
       cmds.append(
           retry(
               self.bazel_command(
-                  subcommand="build", extra_options=("--nobuild",)
+                  subcommand="build",
+                  extra_options=("--nobuild",),
+                  target_pattern_file=target_pattern_file,
               )
           )
       )
-    cmds.append(self.bazel_command(subcommand=self.subcommand))
-    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
+    cmds.append(
+        self.bazel_command(
+            subcommand=self.subcommand,
+            target_pattern_file=target_pattern_file,
+        )
+    )
 
     return cmds
 
 
-_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103, 120)
+_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103, 107, 120)
 
 
 def _tag_filters_only_for_compute_capability(
@@ -307,6 +351,8 @@ def nvidia_gpu_build_with_compute_capability(
     configs: Tuple[str, ...],
     compute_capability: int,
     multi_gpu: bool = False,
+    use_bazel_diff: bool = False,
+    bazel_diff_use_cquery: bool = True,
 ) -> Build:
   """Returns a build for a Nvidia GPU build with the given compute capability."""
   repo_env = {"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"}
@@ -330,7 +376,7 @@ def nvidia_gpu_build_with_compute_capability(
         nvidia_only_multi_gpu_filters
         + _tag_filters_only_for_compute_capability(compute_capability)
     )
-    repo_env["REMOTE_GPU_TESTING"] = 0
+    repo_env["REMOTE_GPU_TESTING"] = 0  # pyrefly: ignore[bad-assignment]
   else:
     options = {
         "run_under": "//build_tools/ci:parallel_gpu_execute",
@@ -352,7 +398,9 @@ def nvidia_gpu_build_with_compute_capability(
       build_tag_filters=build_tag_filters,
       options=options,
       repo_env=repo_env,
-      extra_setup_commands=(["nvidia-smi"],),
+      extra_setup_commands=(["nvidia-smi"],) if multi_gpu else (),
+      use_bazel_diff=use_bazel_diff,
+      bazel_diff_use_cquery=bazel_diff_use_cquery,
   )
 
 
@@ -371,6 +419,8 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 windows_x86_tag_filter = (
@@ -406,9 +456,6 @@ Build(
         "-//xla/backends/profiler/subprocess:subprocess_profiling_session_test",
         "-//xla/backends/profiler/subprocess:subprocess_registry",
         "-//xla/backends/profiler/subprocess:subprocess_registry_test",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_cc",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_main",
-        "-//xla/tools/benchmarks/utils:generate_benchmark_matrices_test",
         # xnnpack is not windows compatible
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
@@ -433,13 +480,15 @@ Build(
 )
 
 Build(
-    type_=BuildType.XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_CPU_WORKSPACE_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "nonccl", "rbe_linux_cpu", "bzlmod"),
+    configs=("warnings", "nonccl", "rbe_linux_cpu", "workspace"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 cpu_arm_tag_filter = (
@@ -462,13 +511,17 @@ Build(
     },
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=75,
     multi_gpu=False,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 nvidia_gpu_build_with_compute_capability(
@@ -476,6 +529,8 @@ nvidia_gpu_build_with_compute_capability(
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=90,
     multi_gpu=True,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 oneapi_build_tag_filter = (
@@ -696,8 +751,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -719,8 +772,6 @@ Build(
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-        "HERMETIC_CUDA_VERSION": "12.8.0",
-        "HERMETIC_CUDNN_VERSION": "9.8.0",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
@@ -798,7 +849,7 @@ Build(
 Build(
     type_=BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64", "bzlmod"),
+    configs=("rbe_linux_x86_64",),
     target_patterns=(
         "//tests:cpu_tests",
         "//tests:backend_independent_tests",
@@ -853,9 +904,9 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64_cuda",),
+    configs=("rbe_linux_x86_64_cuda13",),
     target_patterns=(
         "//tests:gpu_tests",
         "//tests:backend_independent_tests",
@@ -885,91 +936,6 @@ Build(
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
-    extra_setup_commands=(["nvidia-smi"],),
-)
-
-tensorflow_tag_filters = (
-    "-no_oss",
-    "-tf_tosa",
-    "-oss_excluded",
-    "-oss_serial",
-    "-tpu",
-    "-benchmark-test",
-    "-v1only",
-)
-
-tensorflow_cpu_tag_filters = tensorflow_tag_filters + ("-gpu",)
-tensorflow_gpu_tag_filters = tensorflow_tag_filters + (
-    "-no_gpu",
-    "-no_gpu_presubmit",
-    "-no_cuda11",
-    "+gpu",
-)
-
-Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS,
-    repo="tensorflow/tensorflow",
-    configs=(
-        "release_cpu_linux",
-        "rbe_linux_cpu",
-    ),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/kernel_tests/...",
-        "-//tensorflow/python/data/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    build_tag_filters=tensorflow_cpu_tag_filters,
-    test_tag_filters=tensorflow_cpu_tag_filters,
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        profile="profile.json.gz",
-        test_lang_filters="cc,py",
-        color="yes",
-    ),
-    override_repository=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    override_module=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    repo_env={"USE_PYWRAP_RULES": "True"},
-)
-
-Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
-    repo="tensorflow/tensorflow",
-    configs=("release_gpu_linux", "rbe_linux_cuda", "hermetic_cuda_umd"),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/kernel_tests/...",
-        "-//tensorflow/python/data/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    build_tag_filters=tensorflow_gpu_tag_filters,
-    test_tag_filters=tensorflow_gpu_tag_filters,
-    override_repository=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    override_module=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        profile="profile.json.gz",
-        test_lang_filters="cc,py",
-        color="yes",
-    ),
-    repo_env={"USE_PYWRAP_RULES": "True"},
-    extra_setup_commands=(["nvidia-smi"],),
 )
 
 
@@ -978,8 +944,19 @@ def dump_all_build_commands():
   # Awkward workaround b/c Build instances are not hashable
   for build in sorted(Build.all_builds().values(), key=lambda b: str(b.type_)):
     sys.stdout.write(f"# BEGIN {build.type_}\n")
-    for cmd in build.commands():
-      sys.stdout.write(" ".join(cmd) + "\n")
+    for command in build.commands(target_pattern_file=None):
+      sys.stdout.write(" ".join(command) + "\n")
+    if build.use_bazel_diff:
+      sys.stdout.write("# With bazel-diff (presubmit):\n")
+      if build.bazel_diff_use_cquery:
+        cquery_options = " ".join(bazel_diff.get_cquery_command_options(build))
+        sys.stdout.write(f"# bazel-diff cquery_options: {cquery_options}\n")
+      else:
+        sys.stdout.write("# bazel-diff use_cquery: False\n")
+      for command in build.commands(
+          target_pattern_file="/tmp/target_pattern_file"
+      ):
+        sys.stdout.write(" ".join(command) + "\n")
     sys.stdout.write(f"# END {build.type_}\n")
 
 
@@ -1009,9 +986,43 @@ def main():
   if args.dump_commands:
     dump_all_build_commands()
     return
-  else:
-    for cmd in Build.all_builds()[args.build].commands():
-      sh(cmd)
+
+  build = Build.all_builds()[args.build]
+  github_event = os.environ.get("GITHUB_EVENT_NAME", "").strip()
+  is_presubmit = github_event in ("", "pull_request", "pull_request_target")
+  base_sha = os.environ.get("XLA_CI_BAZEL_DIFF_BASE_SHA", "").strip()
+  head_sha = os.environ.get("XLA_CI_BAZEL_DIFF_HEAD_SHA", "HEAD").strip()
+  disabled = os.environ.get("XLA_CI_DISABLE_BAZEL_DIFF", "false").lower() in (
+      "true",
+      "1",
+      "yes",
+  )
+
+  target_pattern_file = None
+  if build.use_bazel_diff and is_presubmit and base_sha and not disabled:
+    logging.info(
+        "Running bazel-diff analysis (base=%s, head=%s)",
+        base_sha,
+        head_sha,
+    )
+    decision = bazel_diff.compute_impacted_targets(build, base_sha, head_sha)
+    bazel_diff.report_decision(decision, str(build.type_))
+
+    if decision.decision == bazel_diff.BazelDiffDecisionType.SKIP:
+      logging.info("bazel-diff: 0 impacted targets, skipping Bazel commands!")
+      return
+    elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
+      target_pattern_file = decision.impacted_targets_file
+
+  for command in build.commands(target_pattern_file=target_pattern_file):
+    result = sh(command, check=False)
+    if result.returncode == 4 and target_pattern_file:
+      logging.info(
+          "Bazel returned exit code 4 (no tests found), treating as success."
+      )
+      continue
+    if result.returncode != 0:
+      sys.exit(result.returncode)
 
 
 if __name__ == "__main__":

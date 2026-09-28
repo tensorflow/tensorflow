@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -87,7 +88,6 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_name: "platform"
-        dnn_version_info { major: 2 }
         runtime_version { major: 12 }
         gpu_device_info { threads_per_block_limit: 5 }
         device_description_str: "foo"

@@ -22,15 +22,13 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.pb.h"
 #include "xla/python/ifrt/ir/version.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -64,7 +63,7 @@ absl::StatusOr<xla::ifrt::DeviceListRef> MakeDeviceListFromAtomDeviceIds(
   std::vector<xla::ifrt::Device*> device_ptrs;
   device_ptrs.reserve(atom_logical_device_ids.size());
   for (const auto& atom_logical_device_id : atom_logical_device_ids) {
-    ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+    ABSL_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                      client.LookupDevice(
                          device_assignments[atom_logical_device_id.value()]));
     device_ptrs.push_back(device);
@@ -88,7 +87,7 @@ absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     return absl::OkStatus();
   }
   if (auto other_ifrt_ir_executable_version =
-          llvm::dyn_cast<IfrtIrExecutableVersion>(&other)) {
+          dyn_cast<IfrtIrExecutableVersion>(&other)) {
     if (ifrt_version == other_ifrt_ir_executable_version->ifrt_version) {
       return absl::OkStatus();
     }
@@ -101,19 +100,19 @@ absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
 
 absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     xla::ifrt::Client& client, const ExecutableVersion& other) const {
-  RETURN_IF_ERROR(IsCompatibleWith(other));
+  ABSL_RETURN_IF_ERROR(IsCompatibleWith(other));
   const auto* other_ifrt_ir_executable_version =
-      llvm::cast<IfrtIrExecutableVersion>(&other);
+      cast<IfrtIrExecutableVersion>(&other);
   // This version is compatible with the other IFRT IR version if the other's
   // atom executables are compatible with this client on the assigned devices.
   for (const auto& [other_atom_abi_version, other_atom_logical_device_ids] :
        other_ifrt_ir_executable_version->runtime_abi_versions) {
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         DeviceListRef other_atom_device_list,
         MakeDeviceListFromAtomDeviceIds(
             client, other_ifrt_ir_executable_version->device_assignments,
             other_atom_logical_device_ids));
-    RETURN_IF_ERROR(client.GetDefaultCompiler()->IsExecutableVersionCompatible(
+    ABSL_RETURN_IF_ERROR(client.GetDefaultCompiler()->IsExecutableVersionCompatible(
         *other_atom_abi_version, other_atom_device_list));
   }
   return absl::OkStatus();
@@ -133,7 +132,7 @@ absl::StatusOr<IfrtIrExecutableVersionProto> IfrtIrExecutableVersion::ToProto(
   for (const auto& [runtime_abi_version, atom_logical_device_ids] :
        runtime_abi_versions) {
     xla::ifrt::Serialized serialized_runtime_abi_version;
-    ASSIGN_OR_RETURN(serialized_runtime_abi_version,
+    ABSL_ASSIGN_OR_RETURN(serialized_runtime_abi_version,
                      xla::ifrt::Serialize(
                          *runtime_abi_version,
                          std::make_unique<xla::ifrt::SerializeOptions>(
@@ -176,7 +175,7 @@ IfrtIrExecutableVersion::FromProto(
           "Failed to parse serialized runtime ABI version");
     }
 
-    ASSIGN_OR_RETURN(atom_executable_version.runtime_abi_version,
+    ABSL_ASSIGN_OR_RETURN(atom_executable_version.runtime_abi_version,
                      xla::ifrt::Deserialize<xla::ifrt::ExecutableVersion>(
                          serialized_runtime_abi_version,
                          std::make_unique<xla::ifrt::DeserializeOptions>()));
@@ -207,7 +206,7 @@ std::string IfrtIrExecutableVersion::ToString() const {
   runtime_abi_version_strs.reserve(runtime_abi_versions.size());
   for (const auto& [runtime_abi_version, atom_devices] : runtime_abi_versions) {
     if (auto xla_executable_version =
-            llvm::dyn_cast<XlaExecutableVersion>(runtime_abi_version.get())) {
+            dyn_cast<XlaExecutableVersion>(runtime_abi_version.get())) {
       runtime_abi_version_strs.push_back(absl::StrCat(
           "{platform_id=", xla_executable_version->platform_id, " devices=[",
           absl::StrJoin(atom_devices, ",",
@@ -232,8 +231,7 @@ ToIfrtIrExecutableVersion(
   if (!executable_version) {
     return absl::InvalidArgumentError("executable_version is null");
   }
-  if (llvm::isa_and_nonnull<IfrtIrExecutableVersion>(
-          executable_version.get())) {
+  if (isa_and_nonnull<IfrtIrExecutableVersion>(executable_version.get())) {
     return xla::unique_ptr_down_cast<IfrtIrExecutableVersion>(
         std::move(executable_version));
   }
@@ -244,7 +242,7 @@ ToIfrtIrExecutableVersion(
 namespace {
 
 class IfrtIrExecutableVersionSerDes
-    : public llvm::RTTIExtends<IfrtIrExecutableVersionSerDes, SerDes> {
+    : public RTTIExtends<IfrtIrExecutableVersionSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::IfrtIrExecutableVersion";
@@ -256,9 +254,9 @@ class IfrtIrExecutableVersionSerDes
     const SerDesVersion version = GetRequestedSerDesVersion(options.get());
 
     const auto& ifrt_ir_executable_version =
-        llvm::cast<IfrtIrExecutableVersion>(serializable);
+        cast<IfrtIrExecutableVersion>(serializable);
 
-    ASSIGN_OR_RETURN(IfrtIrExecutableVersionProto proto,
+    ABSL_ASSIGN_OR_RETURN(IfrtIrExecutableVersionProto proto,
                      ifrt_ir_executable_version.ToProto(version));
     absl::Cord serialized;
     if (!proto.SerializeToString(&serialized)) {
@@ -272,8 +270,7 @@ class IfrtIrExecutableVersionSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     auto* deserialize_options =
-        llvm::dyn_cast<IfrtIrExecutableVersionDeserializeOptions>(
-            options.get());
+        dyn_cast<IfrtIrExecutableVersionDeserializeOptions>(options.get());
     if (deserialize_options == nullptr) {
       return absl::InvalidArgumentError(
           "IfrtIrExecutableVersionDeserializeOptions not found");

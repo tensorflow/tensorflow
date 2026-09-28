@@ -208,7 +208,11 @@ class HloRematerialization : public HloPassInterface {
 
   // Get the peak memory for the computation.
   int64_t ComputationPeakMemory(const HloComputation* computation) const {
-    return computation_peak_memory_.at(computation);
+    if (auto it = computation_peak_memory_.find(computation);
+        it != computation_peak_memory_.end()) {
+      return it->second;
+    }
+    return 0;
   }
 
   HloRematerialization::RematAlgorithm remat_algorithm() const {
@@ -290,8 +294,8 @@ class HloRematerialization : public HloPassInterface {
   // Updates the schedule to mirror the provided instruction sequence. This is
   // used to update the schedule after each rematerialization due to the memory
   // tracker requiring the schedule to be in sync with the instruction sequence
-  // and computation.
-  absl::Status UpdateScheduleFromSequence(
+  // and computation. Returns the peak memory usage and instruction.
+  absl::StatusOr<MemoryUsageAndInstruction> UpdateScheduleFromSequence(
       HloComputation* computation, HloSchedule* schedule,
       const HloInstructionSequence& sequence,
       const absl::flat_hash_set<absl::string_view>& execution_threads);

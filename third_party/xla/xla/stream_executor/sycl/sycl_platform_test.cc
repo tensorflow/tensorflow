@@ -10,6 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -20,14 +21,14 @@ namespace stream_executor::sycl {
 namespace {
 
 TEST(SyclPlatformTest, TestPlatformName) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
   EXPECT_EQ(platform->Name(), "SYCL");
 }
 
 TEST(SyclPlatformTest, FindExistingWorks) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
   EXPECT_GT(platform->VisibleDeviceCount(), 0);
@@ -36,12 +37,12 @@ TEST(SyclPlatformTest, FindExistingWorks) {
   }
   absl::flat_hash_map<int, StreamExecutor*> executors;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
+    ASSERT_OK_AND_ASSIGN(auto executor, platform->ExecutorForDevice(i));
     executors[i] = executor;
   }
   EXPECT_EQ(executors.size(), platform->VisibleDeviceCount());
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
+    ASSERT_OK_AND_ASSIGN(auto executor, platform->FindExisting(i));
     EXPECT_EQ(executor, executors[i]);
   }
 }

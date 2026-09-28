@@ -2269,6 +2269,70 @@ def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDe
   );
 }
 
+def TF_XlaSparseDenseMatmulPositionalWeightedWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulPositionalWeightedWithCsrInput", [Pure]> {
+  let summary = "This op looks up the embedding vectors on SparseCores and performs the positional weighted combiner computation on SparseCores.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$weights,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_logical_devices,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations,
+    TF_Float32Tensor:$preserved_received_unique_vectors
+  );
+}
+
+def TF_XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulPositionalWeightedGradWithAdagradAndCsrInput", [AttrSizedOperandSegments, Pure]> {
+  let summary = "A XLA op which calculates the gradients and performs Adagrad update on the embedding table and custom optimizer update on positional weights and associated slot variables.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Int32Tensor:$sorted_pos_ids,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$preserved_received_unique_vectors,
+    TF_Float32Tensor:$preserved_weights,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$embedding_table_accumulator,
+    TF_Float32Tensor:$embedding_table_learning_rate,
+    Variadic<TF_Float32Tensor>:$weights,
+    Variadic<TF_Float32Tensor>:$hyperparameters,
+
+    F32Attr:$clip_weight_min,
+    F32Attr:$clip_weight_max,
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_weights,
+    SymbolRefAttr:$custom_computation,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_embedding_table_accumulator,
+    Variadic<TF_Float32Tensor>:$updated_weights
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<10>;
+  TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<11>;
+}
+
 def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithSgdAndCsrInput", [Pure]> {
   let summary = "";
 
@@ -3254,6 +3318,35 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
 
   TF_DerivedOperandTypeAttr input_dtype = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+// Reciprocal deliberately does not carry the TF_Involution trait: it is not
+// an exact involution. In floating point 1 / (1 / x) does not round-trip to x
+// because the inner reciprocal is already rounded, and for integer types
+// 1 / x truncates to zero for |x| > 1, so folding a Reciprocal pair would
+// change the computed result.
+def TF_ReciprocalOp : TF_Op<"Reciprocal", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
+  let summary = "Computes the reciprocal of x element-wise.";
+
+  let description = [{
+I.e., \\(y = 1 / x\\).
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange inferred, TypeRange actual) {
+      return ArraysAreCastCompatible(inferred, actual);
+    }
+  }];
 }
 #endif // TF_OPS
 

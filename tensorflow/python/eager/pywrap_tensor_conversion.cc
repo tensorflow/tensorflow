@@ -67,17 +67,29 @@ void TFE_TensorHandleCache::Insert(PyObject* value, DataType dtype,
                                    TFE_Context* ctx,
                                    absl::string_view device_name,
                                    TFE_TensorHandle* h) {
+  Cache old_cache;
   CHECK(value != nullptr);  // Crash OK
   CHECK(h != nullptr);      // Crash OK
 #ifdef Py_GIL_DISABLED
-  absl::MutexLock lock(mu_);
+  {
+    absl::MutexLock lock(mu_);
 #endif  // Py_GIL_DISABLED
-  auto [it, inserted] = cache_.try_emplace(
-      LookupKey{PyObjectPtr{value}, dtype, ctx, device_name}, h);
-  if (inserted) {
-    Py_INCREF(value);
-    unwrap(h)->Ref();
+    // Prevent unbounded cache growth when many distinct scalar values are
+    // created (e.g. tf.constant(i) in a loop with varying i).
+    if (cache_.size() >= kMaxCacheSize) {
+      old_cache = std::move(cache_);
+      cache_.clear();
+    }
+    auto [it, inserted] = cache_.try_emplace(
+        LookupKey{PyObjectPtr{value}, dtype, ctx, device_name}, h);
+    if (inserted) {
+      Py_INCREF(value);
+      unwrap(h)->Ref();
+    }
+#ifdef Py_GIL_DISABLED
   }
+#endif  // Py_GIL_DISABLED
+  DecrefUnrefAll(std::move(old_cache));
 }
 
 void TFE_TensorHandleCache::Clear() { DecrefUnrefAll(); }

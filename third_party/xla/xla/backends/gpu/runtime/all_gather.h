@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/computation_placer.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
@@ -50,6 +50,10 @@ inline constexpr auto kSupportedAllGatherTypes =
 // unmanaged-argument shaper (collective_emitter.cc) so that the signal buffer
 // is always sized to match the actual grid.
 inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 32;
+
+// Optimal threshold for one-shot all-gather in bytes for the collective kernel.
+// Base on the experimental results.
+inline constexpr int64_t kMaxAllGatherSizeBytes = 512 * 1024;  // 512 KB
 
 // Encapsulates the information needed to perform an all-gather via the Triton
 // collective kernel backend.
@@ -88,17 +92,19 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
 // to the symmetric buffer and then reads each peer's slice.
 // warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
 // 64 on AMD) so that the thread count is a multiple of the hardware warp.
-LaunchDimensions AllGatherLaunchDimensions(int64_t elements, int64_t warp_size);
+LaunchDimensions AllGatherLaunchDimensions(
+    int64_t elements, int64_t num_ranks,
+    const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel.  The returned spec uses the same 6-argument layout
-// as the all-reduce kernel:
-//   [0] input buffer (per-rank source slice)
-//   [1] output buffer (full gathered destination)
+// Triton all-gather kernel.  The kernel argument layout is:
+//   [0] input/scratch buffer pointer table (kScratchBuffer, index 1)
+//   [1] output buffer (kOutputBuffer, index 0)
 //   [2] runtime rank  (kRuntimeRank)
 //   [3] invocation count (kInvocationCount)
-//   [4] scratch index 0: signal flags (kScratchBuffer)
-//   [5] scratch index 1: symmetric remote buffer (kScratchBuffer)
+//   [4] signal flags (kScratchBuffer, index 0)
+// The runtime performs a D2D copy from the input buffer to the local rank's
+// scratch buffer before kernel launch (copy_input_to_scratch=true).
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 

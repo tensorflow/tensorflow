@@ -137,6 +137,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleCollectivePermute(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  absl::Status HandleCollectiveReduce(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   absl::Status HandleCollectivePermuteStart(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
@@ -166,6 +169,9 @@ class DfsHloVisitorWithDefaultBase
   }
   absl::Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
+  }
+  absl::Status HandleShuffle(HloInstructionPtr shuffle) override {
+    return DefaultAction(shuffle);
   }
   absl::Status HandleSort(HloInstructionPtr sort) override {
     return DefaultAction(sort);

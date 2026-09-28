@@ -273,5 +273,63 @@ TEST_F(DynamicSliceAnnotatorTest, AnnotatesDusInNestedCalls) {
   EXPECT_EQ(config->byte_stride(), 4);
 }
 
+TEST_F(DynamicSliceAnnotatorTest,
+       AnnotatesParameterThatIsFunctionOfInductionVariable) {
+  constexpr absl::string_view kHlo = R"(
+    async_slice {
+      p_input = s32[4,8,8] parameter(0)
+      p_index = s32[] parameter(1)
+      p_zero = s32[] parameter(2)
+      ROOT slice = s32[1,8,8] dynamic-slice(p_input, p_index, p_zero, p_zero),
+          dynamic_slice_sizes={1,8,8}
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      c3 = s32[] constant(3)
+      reversed = s32[] subtract(c3, ivar)
+      start = ((s32[4,8,8], s32[], s32[]), s32[1,8,8], u32[])
+          async-start(input, reversed, c0), calls=async_slice
+      done = s32[1,8,8] async-done(start)
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8,8]) tuple(next_ivar, input)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(DynamicSliceAnnotator().Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  auto* slice = module->GetComputationWithName("async_slice")
+                    ->GetInstructionWithName("slice");
+  auto config = GetDynamicSliceConfig(slice);
+  ASSERT_TRUE(config.has_value());
+  EXPECT_EQ(config->loop_index(), 0);
+  EXPECT_EQ(config->byte_offset(), 3 * 256);
+  EXPECT_EQ(config->byte_stride(), -256);
+}
+
 }  // namespace
 }  // namespace xla::gpu

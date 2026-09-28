@@ -68,8 +68,15 @@ class TiledHloRegion {
     return roots_;
   }
 
+  // Simplifies the tiles of instructions in the region recursively.
+  void Simplify();
+
+  // Sorts instructions in def-before-use (post order) order recursively.
+  void SortInstructionsPostOrder();
+
  private:
-  // The tiled HLO instructions in def-before-use order.
+  // The tiled HLO instructions. Instructions are not ordered by
+  // default, call SortInstructionsPostOrder() to sort them.
   std::vector<std::unique_ptr<TiledHloInstruction>> instructions_;
   llvm::SmallVector<const TiledHloInstruction*, 4> roots_;
 };
@@ -98,6 +105,7 @@ class TiledHloInstruction {
   }
 
   llvm::ArrayRef<TiledHloRegion> hlo_regions() const { return regions_; }
+  llvm::MutableArrayRef<TiledHloRegion> hlo_regions() { return regions_; }
   void AddHloRegion(TiledHloRegion region) {
     regions_.push_back(std::move(region));
   }
@@ -182,15 +190,23 @@ class TiledHloComputation {
  public:
   using InstructionType = TiledHloInstruction;
 
+  // Creates a tiled HLO computation from a fusion and a tiling space.
   static absl::StatusOr<TiledHloComputation> Tile(
       const HloFusionAdaptor& fusion,
       std::unique_ptr<TilingSpace> tiling_space);
 
-  // Returns the symbolic tiled HLO instructions in def-before-use order.
+  // Simplifies the tiles of instructions in the computation recursively.
+  void Simplify();
+
+  // Sorts instructions in def-before-use (post order) order recursively.
+  void SortInstructionsPostOrder();
+
+  // Returns the symbolic tiled HLO instructions. Instructions in regions are
+  // not in def-before-use order by default.
   const TiledHloRegion& tiled_root_region() const { return region_; }
 
-  // Returns an iterator range over the instructions in the computation in
-  // def-before-use order.
+  // Returns an iterator range over the instructions in the root region of
+  // the computation (not in def-before-use order by default).
   tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<TiledHloInstruction>>::const_iterator>>
   instructions() const {

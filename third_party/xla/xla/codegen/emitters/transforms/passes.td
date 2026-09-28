@@ -29,6 +29,13 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
     "mlir::func::FuncDialect",
     "mlir::vector::VectorDialect",
   ];
+
+  let options = [
+    Option<"cpu_features_", "cpu_features", "std::string", /*default=*/"",
+           "LLVM target feature string (e.g. '+avx,+avx2') used to select "
+           "feature-gated intrinsic variants. Must match the features of the "
+           "target machine that compiles the module.">,
+  ];
 }
 
 def ConvertPureCallOpsPass
@@ -210,6 +217,7 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "mlir::arith::ArithDialect",
     "mlir::func::FuncDialect",
+    "mlir::math::MathDialect",
   ];
 
   let options = [

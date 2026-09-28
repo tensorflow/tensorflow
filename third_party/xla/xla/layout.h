@@ -404,6 +404,7 @@ class Layout {
 
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
+  static constexpr int64_t kCollectiveMemorySpace = 7;
   static constexpr int64_t kHostMemorySpace = 5;
   static constexpr int64_t kUnpinnedHostMemorySpace = 6;
   int64_t memory_space() const { return memory_space_; }

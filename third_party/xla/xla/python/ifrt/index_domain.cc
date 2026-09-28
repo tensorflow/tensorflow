@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 
@@ -37,8 +37,8 @@ absl::StatusOr<IndexDomain> IndexDomain::FromProto(
         "Unsupported ", version_number, " for IndexDomain deserialization"));
   }
 
-  ASSIGN_OR_RETURN(Index origin_val, Index::FromProto(proto.origin()));
-  ASSIGN_OR_RETURN(Shape shape_val, Shape::FromProto(proto.shape()));
+  ABSL_ASSIGN_OR_RETURN(Index origin_val, Index::FromProto(proto.origin()));
+  ABSL_ASSIGN_OR_RETURN(Shape shape_val, Shape::FromProto(proto.shape()));
 
   return IndexDomain(std::move(origin_val), std::move(shape_val));
 }

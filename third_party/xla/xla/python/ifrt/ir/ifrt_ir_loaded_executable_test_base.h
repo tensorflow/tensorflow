@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
@@ -51,9 +52,16 @@ class IfrtIrLoadedExecutableTestBase : public testing::Test {
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromSource(
       absl::string_view source);
 
-  // Loads mlir from file.
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromFile(
-      absl::string_view file_path);
+  // Compiles an IFRT IR program string for the given device list.
+  absl::StatusOr<LoadedExecutableRef> CompileProgram(absl::string_view source,
+                                                     DeviceListRef devices);
+
+  // Serializes the program with the requested compatibility requirement,
+  // deserializes it back, and compiles it for the given device list.
+  absl::StatusOr<LoadedExecutableRef> CompileProgramWithSerDe(
+      absl::string_view source, DeviceListRef devices,
+      Version::CompatibilityRequirement compatibility_requirement =
+          Version::CompatibilityRequirement::WEEK_4);
 
   // Serializes the program with the requested compatibility requirement, and
   // deserializes it back. Returns the deserialized program.
@@ -62,6 +70,16 @@ class IfrtIrLoadedExecutableTestBase : public testing::Test {
   absl::StatusOr<std::unique_ptr<IfrtIRProgram>> SerDeRoundTrip(
       std::unique_ptr<IfrtIRProgram> program,
       Version::CompatibilityRequirement compatibility_requirement);
+
+  // Returns default execute options with fill_status enabled.
+  ExecuteOptions ExecuteOptionsWithFillStatus() const;
+
+  // Executes a loaded executable with the given arguments and devices.
+  // Defaults to ExecuteOptionsWithFillStatus() if options are not provided.
+  absl::StatusOr<LoadedExecutable::ExecuteResult> Execute(
+      LoadedExecutableRef executable, absl::Span<ArrayRef> args,
+      std::optional<DeviceListRef> devices = std::nullopt,
+      std::optional<ExecuteOptions> options = std::nullopt);
 
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it

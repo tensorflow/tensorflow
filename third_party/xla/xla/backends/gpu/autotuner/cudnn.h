@@ -77,7 +77,7 @@ class CudnnBackend : public GpuCodegenBackend {
   bool CanProduceWrongResults() const override { return true; }
 
   std::string version() const override {
-    return target_config().dnn_version_info.ToString();
+    return target_config().device_description.dnn_version().ToString();
   }
 
  private:

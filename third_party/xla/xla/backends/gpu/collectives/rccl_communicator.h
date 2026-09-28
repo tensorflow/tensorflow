@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/registered_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/executor.h"
@@ -113,6 +114,13 @@ class RcclCommunicator : public GpuCommunicator {
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
       se::DeviceAddressBase addr) final;
+
+  absl::StatusOr<std::unique_ptr<RegisteredMemory>> CreateRegisteredMemory(
+      se::DeviceAddressBase addr) final;
+
+  PlatformCommunicatorHandle platform_comm() const final {
+    return PlatformCommunicatorHandle{comm_};
+  }
 
   std::string ToString() const final;
 

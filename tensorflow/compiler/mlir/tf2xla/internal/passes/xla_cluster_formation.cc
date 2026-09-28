@@ -107,7 +107,7 @@ mlir::LogicalResult EncapsulateFirstXlaCompilablePartitionedCalls(
   for (auto &pcall_op : outermost_pcall_ops) {
     auto call = llvm::cast<CallOpInterface>(pcall_op.getOperation());
     CallInterfaceCallable callable = call.getCallableForCallee();
-    auto sym = callable.get<mlir::SymbolRefAttr>();
+    auto sym = llvm::cast<mlir::SymbolRefAttr>(callable);
     EncapsulatePartitionedCall(pcall_op, sym.getRootReference());
   }
   // Partitioned calls are executed asynchronous. The calls outside of

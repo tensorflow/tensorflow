@@ -218,12 +218,26 @@ class FlatBufferModelBase {
 
   static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
                              uint8_t* buffer, bool from_big_endian) {
+    if (buffer == nullptr) return;
     switch (tensor_type) {
       case tflite::TensorType_STRING: {
+        // A string buffer starts with an int32 count followed by (count + 1)
+        // int32 offsets, all of which need swapping. The count is read from the
+        // untrusted buffer, so cap the number of int32 words to what the buffer
+        // actually holds to avoid reading or writing past its end.
+        const size_t max_words = buffer_size / sizeof(int32_t);
+        if (max_words == 0) break;
         auto bp = reinterpret_cast<int32_t*>(buffer);
         int num_of_strings =
             from_big_endian ? bp[0] : flatbuffers::EndianSwap(bp[0]);
-        for (int i = 0; i < num_of_strings + 2; i++)
+        // A negative count is invalid; swap only the count word itself rather
+        // than the whole buffer, which would waste work and corrupt the string
+        // character data that follows the offset table.
+        size_t words =
+            num_of_strings < 0
+                ? 1
+                : std::min(static_cast<size_t>(num_of_strings) + 2, max_words);
+        for (size_t i = 0; i < words; i++)
           bp[i] = flatbuffers::EndianSwap(bp[i]);
         break;
       }

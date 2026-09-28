@@ -7,3 +7,7 @@ to Open Source.
 TFLITE_FRAMEWORK_VISIBILITY = [
     "//visibility:public",
 ]
+
+TFLITE_PYTHON_CLIENTS_VISIBILITY = [
+    "//visibility:public",
+]

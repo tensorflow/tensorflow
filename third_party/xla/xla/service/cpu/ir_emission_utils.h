@@ -31,6 +31,10 @@ bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution,
     const TargetMachineFeatures& target_machine_features);
 
+bool CanUseEigenConvolution(
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features);
+
 // Computes the minimum alignment guaranteed for a tensor of shape `shape` on
 // the target machine.
 int64_t GetMinimumAlignmentForArray(

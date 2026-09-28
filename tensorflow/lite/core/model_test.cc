@@ -18,15 +18,14 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <fstream>
-#include <iterator>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -269,7 +268,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(InterpreterBuilder(*model, TrivialResolver(nullptr))(&interpreter),
             kTfLiteOk);
   ASSERT_EQ(interpreter, nullptr);
@@ -281,7 +280,7 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(
       InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -352,6 +351,41 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
     TfLiteIntArrayFree(desired_outputs);
     ASSERT_EQ(reg1, dummy_reg);
   }
+}
+
+TEST(BasicFlatBufferModel, TestInvalidBlockwiseQuantizationDetails) {
+  flatbuffers::FlatBufferBuilder builder;
+  auto q = ::tflite::CreateQuantizationParameters(
+      builder,
+      /*min=*/0,
+      /*max=*/0,
+      /*scale=*/0,
+      /*zero_point=*/0,
+      /*details_type=*/tflite::QuantizationDetails_BlockwiseQuantization,
+      /*details=*/0);
+  auto tensor = ::tflite::CreateTensorDirect(builder, /*shape=*/nullptr,
+                                             tflite::TensorType_FLOAT32,
+                                             /*buffer=*/0, "tensor_one", q);
+  std::vector<flatbuffers::Offset<::tflite::Tensor>> tensors = {tensor};
+  auto subgraph = ::tflite::CreateSubGraphDirect(
+      builder, &tensors, /*inputs=*/nullptr, /*outputs=*/nullptr,
+      /*operators=*/nullptr, "subgraph");
+  std::vector<flatbuffers::Offset<::tflite::SubGraph>> subgraphs = {subgraph};
+  std::vector<uint8_t> buffer_data = {};
+  auto buf = ::tflite::CreateBuffer(builder, builder.CreateVector(buffer_data));
+  std::vector<flatbuffers::Offset<::tflite::Buffer>> buffers = {buf};
+  auto model = ::tflite::CreateModelDirect(builder, TFLITE_SCHEMA_VERSION,
+                                           /*operator_codes=*/nullptr,
+                                           &subgraphs, "model", &buffers);
+  ::tflite::FinishModelBuffer(builder, model);
+  auto fb_model = FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(builder.GetBufferPointer()),
+      builder.GetSize());
+  ASSERT_TRUE(fb_model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver;
+  ASSERT_EQ(InterpreterBuilder(*fb_model, resolver)(&interpreter),
+            kTfLiteError);
 }
 
 TEST(BasicFlatBufferModel, TestWithNumThreads) {
@@ -472,7 +506,7 @@ TEST(BasicFlatBufferModel, TestBrokenMmap) {
 
 TEST(BasicFlatBufferModel, TestNullModel) {
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(
       InterpreterBuilder(nullptr, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -705,7 +739,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
       "tensorflow/lite/testdata/sparse_tensor.bin");
   ASSERT_TRUE(model);
 
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  auto interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
@@ -833,8 +867,7 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
   bool destroyed = false;
   bool prepared = false;
   {
-    std::unique_ptr<TestDelegate> delegate(
-        new TestDelegate(&destroyed, &prepared));
+    auto delegate = std::make_unique<TestDelegate>(&destroyed, &prepared);
     {
       // Load a model.
       auto model = FlatBufferModel::BuildFromFile(
@@ -928,5 +961,51 @@ TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
 // not here.
+
+#if FLATBUFFERS_LITTLEENDIAN == 0
+// A string tensor buffer records the string count in its leading int32 word.
+// When that (untrusted) count implies more offset words than the buffer holds,
+// ByteSwapBuffer must not swap past the end of the buffer.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferRespectsBufferSize) {
+  // Only the first two words belong to the tensor buffer; the last two are
+  // guards that must remain untouched.
+  std::vector<int32_t> storage = {2, 0x11111111, 0x12345678, 0x23456789};
+  const size_t buffer_size = 2 * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[2], 0x12345678);
+  EXPECT_EQ(storage[3], 0x23456789);
+}
+
+// A negative leading count is invalid. ByteSwapBuffer must swap only the count
+// word rather than treating it as a large unsigned length and running over the
+// whole buffer, which would corrupt the string character data.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferHandlesNegativeCount) {
+  // storage[0] is the count (-1); the remaining words stand in for offset and
+  // character data that must remain untouched.
+  std::vector<int32_t> storage = {-1, 0x12345678, 0x23456789, 0x3456789a};
+  const size_t buffer_size = storage.size() * sizeof(int32_t);
+  FlatBufferModel::ByteSwapBuffer(
+      static_cast<int8_t>(TensorType_STRING), buffer_size,
+      reinterpret_cast<uint8_t*>(storage.data()), /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], flatbuffers::EndianSwap<int32_t>(-1));
+  EXPECT_EQ(storage[1], 0x12345678);
+  EXPECT_EQ(storage[2], 0x23456789);
+  EXPECT_EQ(storage[3], 0x3456789a);
+}
+
+// A buffer smaller than a single int32 word cannot even hold the string count.
+// ByteSwapBuffer must break out before dereferencing bp[0] and leave it as is.
+TEST(BasicFlatBufferModel, ByteSwapStringBufferTooSmall) {
+  std::vector<uint8_t> storage = {0x01, 0x02};
+  const size_t buffer_size = storage.size();
+  FlatBufferModel::ByteSwapBuffer(static_cast<int8_t>(TensorType_STRING),
+                                  buffer_size, storage.data(),
+                                  /*from_big_endian=*/true);
+  EXPECT_EQ(storage[0], 0x01);
+  EXPECT_EQ(storage[1], 0x02);
+}
+#endif
 
 }  // namespace tflite

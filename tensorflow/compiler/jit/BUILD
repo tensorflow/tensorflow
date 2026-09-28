@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/linalg/sparse:__pkg__",
+        "//tensorflow/python/kernel_tests/image_ops:__pkg__",
     ]),
     deps = [
         ":xla_cpu_device",
@@ -1718,6 +1719,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",

@@ -42,23 +42,18 @@ class CollectiveCliqueRequests {
   struct BarrierRequirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
-      absl::Format(
-          &sink, "{module_execution_barrier: %d, use_cross_device_barrier: %d}",
-          reqs.module_execution_barrier, reqs.use_cross_device_barrier);
+      absl::Format(&sink, "{use_cross_device_barrier: %d}",
+                   reqs.use_cross_device_barrier);
     }
 
     bool operator==(const BarrierRequirements& other) const {
-      return other.module_execution_barrier == module_execution_barrier &&
-             other.use_cross_device_barrier == use_cross_device_barrier;
+      return other.use_cross_device_barrier == use_cross_device_barrier;
     }
 
     bool operator<(const BarrierRequirements& other) const {
-      return std::tie(module_execution_barrier, use_cross_device_barrier) <
-             std::tie(other.module_execution_barrier,
-                      other.use_cross_device_barrier);
+      return use_cross_device_barrier < other.use_cross_device_barrier;
     }
 
-    bool module_execution_barrier = false;
     bool use_cross_device_barrier = false;
   };
 
@@ -113,14 +108,23 @@ class CollectiveCliqueRequests {
     absl::btree_set<GpuDeviceCommunicator::Requirements> dev_comms;
 
     // Requirements for barriers.
-    bool barrier_after_module_execution_requested = false;
     bool use_cross_device_barrier_requested = false;
+
+    // Requirements for GXL.
+    bool use_gxl_requested = false;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
   // acquires collective cliques (see `collective_cliques.h`), it will satisfy
   // all of the requirements, or will return an error.
   struct CliqueRequirements {
+    CliqueRequirements(
+        std::optional<GpuDeviceCommunicator::Requirements> dev_comm =
+            std::nullopt,
+        std::optional<BarrierRequirements> barrier_reqs = std::nullopt,
+        bool use_gxl = false)
+        : dev_comm(dev_comm), barrier_reqs(barrier_reqs), use_gxl(use_gxl) {}
+
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const CliqueRequirements& reqs) {
       if (reqs.dev_comm) {
@@ -130,15 +134,17 @@ class CollectiveCliqueRequests {
       }
 
       if (reqs.barrier_reqs) {
-        absl::Format(&sink, "barrier_req: %v}", *reqs.barrier_reqs);
+        absl::Format(&sink, "barrier_req: %v, use_gxl: %v}", *reqs.barrier_reqs,
+                     reqs.use_gxl);
       } else {
-        absl::Format(&sink, "barrier_req: n/a}");
+        absl::Format(&sink, "barrier_req: n/a, use_gxl: %v}", reqs.use_gxl);
       }
     }
 
     // Create a device communicator for the given collective clique.
     std::optional<GpuDeviceCommunicator::Requirements> dev_comm;
     std::optional<BarrierRequirements> barrier_reqs;
+    bool use_gxl;
   };
 
   // Adds a clique key to the list of requested cliques. Callers must pass
@@ -150,7 +156,7 @@ class CollectiveCliqueRequests {
   absl::Status RequestClique(
       const GpuCliqueKey& clique_key,
       absl::Span<const std::vector<GlobalDeviceId>> device_groups,
-      const CliqueRequirements& requirements = {});
+      const CliqueRequirements& requirements = CliqueRequirements());
 
   // Returns all requested cliques in undefined order.
   std::vector<GpuCliqueKey> RequestedCliques() const;
@@ -161,8 +167,6 @@ class CollectiveCliqueRequests {
 
   size_t size() const { return cliques_.size(); }
 
-  // Returns devices which requested a barrier after module execution.
-  absl::flat_hash_set<GlobalDeviceId> GetDevicesRequiringBarrier() const;
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

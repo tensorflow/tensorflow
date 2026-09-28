@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -70,12 +70,12 @@ AsyncThunkSequence SortFusion::Emit(IrEmitterContext& ir_emitter_context,
     if (HloPredicateIsOp<HloOpcode::kParameter>(sort->operand(i))) {
       const HloInstruction* src_instr =
           fusion.operand(sort->operand(i)->parameter_number());
-      ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
       src_buffers.push_back(slice);
       src_shapes.push_back(sort->operand(i)->shape());
-      ASSIGN_OR_RETURN(slice,
+      ABSL_ASSIGN_OR_RETURN(slice,
                        ir_emitter_context.buffer_assignment().GetUniqueSlice(
                            &fusion, shape_index));
       dst_buffers.push_back(slice);

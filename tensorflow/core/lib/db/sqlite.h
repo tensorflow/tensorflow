@@ -181,7 +181,7 @@ class SqliteStatement {
   /// This statement should be Reset() or destructed when finished with
   /// the result.
   absl::Status Step(bool* is_done);
-  bool StepOrDie() TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool StepOrDie();
 
   /// \brief Executes query when only one row is desired.
   ///
@@ -277,7 +277,7 @@ class SqliteStatement {
   }
 
   /// \brief Returns number of columns in result set.
-  int ColumnCount() const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT int ColumnCount() const {
     return sqlite3_column_count(stmt_);
   }
 
@@ -285,17 +285,17 @@ class SqliteStatement {
   ///
   /// Please note that SQLite is dynamically typed and the type of a
   /// particular column can vary from row to row.
-  int ColumnType(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT int ColumnType(int column) const {
     return sqlite3_column_type(stmt_, column);
   }
 
   /// \brief Returns 0-indexed column from row result coerced as an integer.
-  int64_t ColumnInt(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT int64_t ColumnInt(int column) const {
     return sqlite3_column_int64(stmt_, column);
   }
 
   /// \brief Returns 0-indexed column from row result coerced as a double.
-  double ColumnDouble(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT double ColumnDouble(int column) const {
     return sqlite3_column_double(stmt_, column);
   }
 
@@ -303,7 +303,7 @@ class SqliteStatement {
   ///
   /// NULL values are returned as empty string. This method should be
   /// used for both BLOB and TEXT columns. See also: ColumnType().
-  std::string ColumnString(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT std::string ColumnString(int column) const {
     auto data = sqlite3_column_blob(stmt_, column);
     if (data == nullptr) return "";
     return {static_cast<const char*>(data),
@@ -315,13 +315,13 @@ class SqliteStatement {
   /// Empty values are returned as NULL. The returned memory will no
   /// longer be valid the next time Step() or Reset() is called. No NUL
   /// terminator is added.
-  absl::string_view ColumnStringUnsafe(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT absl::string_view ColumnStringUnsafe(int column) const {
     return {static_cast<const char*>(sqlite3_column_blob(stmt_, column)),
             static_cast<size_t>(ColumnSize(column))};
   }
 
   /// \brief Returns number of bytes stored at 0-indexed column.
-  int ColumnSize(int column) const TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT int ColumnSize(int column) const {
     return sqlite3_column_bytes(stmt_, column);
   }
 

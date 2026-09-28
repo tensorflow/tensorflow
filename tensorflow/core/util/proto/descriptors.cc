@@ -29,7 +29,7 @@ namespace {
 absl::Status CreatePoolFromSet(
     const protobuf::FileDescriptorSet& set,
     std::unique_ptr<protobuf::DescriptorPool>* out_pool) {
-  *out_pool = absl::make_unique<protobuf::DescriptorPool>();
+  *out_pool = std::make_unique<protobuf::DescriptorPool>();
   for (const auto& file : set.file()) {
     if ((*out_pool)->BuildFile(file) == nullptr) {
       return absl::InvalidArgumentError(absl::StrCat(

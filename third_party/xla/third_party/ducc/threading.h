@@ -38,8 +38,8 @@ class EigenThreadPool : public ducc0::detail_threading::thread_pool {
   EigenThreadPool(Eigen::ThreadPoolInterface& pool) : pool_{&pool} {}
   size_t nthreads() const override { return pool_->NumThreads(); }
   size_t adjust_nthreads(size_t nthreads_in) const override {
-    // If called by a thread in the pool, return 1
-    if (pool_->CurrentThreadId() >= 0) {
+    // Don't parallelize if this thread is already inside a parallel loop
+    if (ducc0::detail_threading::in_parallel_region) {
       return 1;
     } else if (nthreads_in == 0) {
       return pool_->NumThreads();

@@ -350,8 +350,8 @@ class Tensor {
   /// This tensor shares other's underlying storage. Returns `true`
   /// iff `other.shape()` has the same number of elements of the given
   /// `shape`.
-  bool CopyFrom(const Tensor& other,
-                const TensorShape& shape) TF_MUST_USE_RESULT {
+  TF_MUST_USE_RESULT bool CopyFrom(const Tensor& other,
+                                   const TensorShape& shape) {
     if (other.NumElements() != shape.num_elements()) return false;
     CopyFromInternal(other, shape);
     return true;
@@ -396,16 +396,19 @@ class Tensor {
 
   /// Returns `true` iff the parsing succeeds. If the parsing fails,
   /// the state of `*this` is unchanged.
-  bool FromProto(const TensorProto& other) TF_MUST_USE_RESULT;
-  bool FromProto(Allocator* a, const TensorProto& other) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool FromProto(const TensorProto& other);
+  TF_MUST_USE_RESULT bool FromProto(Allocator* a, const TensorProto& other);
 
   /// \brief Fills in `proto` with `*this` tensor's content.
   ///
   /// `AsProtoField()` fills in the repeated field for `proto.dtype()`, while
   /// `AsProtoTensorContent()` encodes the content in `proto.tensor_content()`
   /// in a compact form.
-  void AsProtoField(TensorProto* proto) const;
-  void AsProtoTensorContent(TensorProto* proto) const;
+  ///
+  /// Both return `true` on success, or `false` if serialization fails (for
+  /// example, if a variant within the tensor fails to encode).
+  bool AsProtoField(TensorProto* proto) const;
+  bool AsProtoTensorContent(TensorProto* proto) const;
 
   /// \brief Return the tensor data as an `Eigen::Tensor` with the type and
   /// sizes of this `Tensor`.

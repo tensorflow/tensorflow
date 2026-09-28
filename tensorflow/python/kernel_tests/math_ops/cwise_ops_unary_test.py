@@ -118,8 +118,8 @@ class UnaryOpTest(test.TestCase):
         self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
 
   def _check(self, result_tensor, result_np, input_sp_t, tol):
-    self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
-    self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
+    self.assertIsInstance(result_tensor, sparse_tensor.SparseTensor)
+    self.assertIsInstance(input_sp_t, sparse_tensor.SparseTensor)
     self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
     self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
     if tol is None:
@@ -527,6 +527,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.square, math_ops.square)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -544,6 +546,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.negative, math_ops.negative)
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(x, np.sign, math_ops.sign)
+    self._compareBoth(x, np.round, math_ops.round)
+    self._compareBoth(x, np.round, gen_math_ops.round)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)
@@ -553,6 +557,17 @@ class UnaryOpTest(test.TestCase):
     x = np.arange(-6 << 20, 6 << 20, 2 << 20).reshape(1, 3, 2).astype(np.int64)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBothSparse(x, np.square, math_ops.square)
+
+  def testRoundIntIsIdentity(self):
+    # Rounding an integer tensor must be the identity. Regression test for
+    # https://github.com/tensorflow/tensorflow/issues/74789, where the CPU
+    # Round kernel returned all zeros for integer inputs. gen_math_ops.round
+    # is used directly because math_ops.round short-circuits integer dtypes in
+    # Python and would not exercise the kernel.
+    for dtype in (np.int32, np.int64):
+      x = np.array([[-3, -2, -1], [0, 1, 2]], dtype=dtype)
+      with test_util.force_cpu():
+        self.assertAllEqual(x, self.evaluate(gen_math_ops.round(x)))
 
   def testUInt64Basic(self):
     x = np.arange(6).reshape(1, 3, 2).astype(np.uint64)
@@ -700,6 +715,67 @@ class UnaryOpTest(test.TestCase):
     err = gradient_checker_v2.max_error(
         *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
     self.assertLess(err, 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDigamma(self):
+    try:
+      from scipy import special  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      special = None
+
+    regular_mask = np.array([True, True, False, False, False, False, True])
+
+    for dtype in [np.float32, np.float64]:
+      x = np.array([1.0, 0.5, 0.0, -0.0, -1.0, -2.0, 2.5]).astype(dtype)
+      with self.cached_session():
+        x_tf = constant_op.constant(x)
+        y_tf = math_ops.digamma(x_tf)
+        y_val = self.evaluate(y_tf)
+
+        # Use hardcoded expected values for boundary/pole inputs to avoid
+        # scipy inconsistencies (e.g., scipy returns nan for digamma(0.0) in
+        # some environments). The key behaviors being tested:
+        #   x=0.0, x=-0.0 -> -inf  (pole fix: PR #111945)
+        #   x=-1.0, x=-2.0 -> nan  (negative integer poles)
+        expected = np.array([
+            -0.57721566490153286,  # digamma(1.0)   = -euler_mascheroni
+            -1.9635100260214238,  # digamma(0.5)
+            -np.inf,  # digamma(0.0)   -> -inf (pole)
+            -np.inf,  # digamma(-0.0)  -> -inf (pole)
+            np.nan,  # digamma(-1.0)  -> nan (negative integer)
+            np.nan,  # digamma(-2.0)  -> nan (negative integer)
+            0.7031566378415714,  # digamma(2.5)
+        ]).astype(dtype)
+
+        # For non-boundary values, optionally verify against scipy if available.
+        if special is not None:
+          scipy_expected = special.digamma(x[regular_mask])
+          self.assertAllClose(
+              scipy_expected, y_val[regular_mask], rtol=1e-5, atol=1e-5
+          )
+
+        # Always check the full array including boundary/pole values.
+        self.assertAllClose(expected, y_val)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testLogSigmoidSecondDerivativePreservesSmallValue(self):
+    for x_val, expected in [
+        (-37.42994775023705, -5.551115123125775e-17),
+        (37.42994775023705, -5.551115123125775e-17),
+        (0.0, -0.25),
+    ]:
+      x = constant_op.constant(x_val, dtype=dtypes_lib.float64)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = math_ops.log_sigmoid(x)
+        grad = inner_tape.gradient(y, x)
+      grad_grad = outer_tape.gradient(grad, x)
+
+      self.assertAllClose(
+          expected, self.evaluate(grad_grad), rtol=1e-14, atol=1e-18
+      )
 
 
 if __name__ == "__main__":

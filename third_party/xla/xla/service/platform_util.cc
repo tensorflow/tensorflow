@@ -25,12 +25,13 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/compiler.h"
 #include "xla/status_macros.h"
@@ -125,9 +126,9 @@ absl::Status IsDeviceSupported(se::StreamExecutor* executor) {
 
 absl::StatusOr<se::StreamExecutor*> ExecutorForDevice(se::Platform* platform,
                                                       int device_ordinal) {
-  ASSIGN_OR_RETURN(se::StreamExecutor * exec,
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * exec,
                    platform->ExecutorForDevice(device_ordinal));
-  RETURN_IF_ERROR(IsDeviceSupported(exec));
+  ABSL_RETURN_IF_ERROR(IsDeviceSupported(exec));
   return exec;
 }
 
@@ -206,7 +207,7 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
         "double-check that you are using a PJRT-compatible test class.",
         allow_default);
   }
-  ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
+  ABSL_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
   TF_RET_CHECK(!platforms.empty()) << "No platforms found";
 
   if (platforms.size() == 1) {
@@ -236,10 +237,10 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
 
 /*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     absl::string_view platform_name) {
-  ASSIGN_OR_RETURN(se::Platform * platform,
+  ABSL_ASSIGN_OR_RETURN(se::Platform * platform,
                    se::PlatformManager::PlatformWithName(
                        xla::CanonicalPlatformName(platform_name)));
-  RETURN_IF_ERROR(Compiler::GetForPlatform(platform->id()).status());
+  ABSL_RETURN_IF_ERROR(Compiler::GetForPlatform(platform->id()).status());
   return platform;
 }
 
@@ -247,7 +248,7 @@ absl::StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
     const std::optional<std::set<int>>& allowed_devices) {
-  ASSIGN_OR_RETURN(std::vector<int> device_ordinals,
+  ABSL_ASSIGN_OR_RETURN(std::vector<int> device_ordinals,
                    GetDeviceOrdinals(platform, allowed_devices));
 
   std::vector<absl::StatusOr<se::StreamExecutor*>> executors(
@@ -271,6 +272,7 @@ PlatformUtil::GetStreamExecutors(
   }
 
   std::vector<se::StreamExecutor*> out;
+  std::vector<std::string> device_errors;
   for (int i = 0; i < executors.size(); ++i) {
     absl::StatusOr<se::StreamExecutor*>& se = executors[i];
     if (se.ok()) {
@@ -279,11 +281,13 @@ PlatformUtil::GetStreamExecutors(
       LOG(ERROR) << "Failed to create stream executor for device "
                  << platform->Name() << ":" << device_ordinals[i] << ": "
                  << se.status().message();
+      device_errors.push_back(absl::StrCat("Device ", device_ordinals[i], ": ",
+                                           se.status().message()));
     }
   }
   if (out.empty()) {
-    return Internal("no supported devices found for platform %s",
-                    platform->Name());
+    return Internal("no supported devices found for platform %s: %s",
+                    platform->Name(), absl::StrJoin(device_errors, ", "));
   }
   return out;
 }

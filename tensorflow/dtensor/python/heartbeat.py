@@ -85,6 +85,7 @@ def _heartbeat(
         logging.warning('Heartbeat failure %d, %d more until limit: %s',
                         _failure_count,
                         _CONSECUTIVE_FAILURES_LIMIT - _failure_count, e)
+        continue
       else:
         logging.fatal('Heartbeat failure %d, limit of %d reached: %s',
                       _failure_count, _CONSECUTIVE_FAILURES_LIMIT, e)
@@ -150,7 +151,7 @@ def start(period: int) -> threading.Event:
   # The merged signal should have equal elements. If not, some worker(s) may be
   # out of sync, and we should terminate all workers.
   if task_id == 0:
-    if not np.all(signal == token):
+    if not np.all(signal == token):  # pyrefly: ignore[unbound-name]
       logging.fatal('Merged heartbeat signal has value != %d', token)
   else:
     if len(set(signal)) != 1:

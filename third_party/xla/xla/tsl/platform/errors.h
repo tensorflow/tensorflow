@@ -174,7 +174,7 @@ void AppendToMessage(absl::Status* status, Args... args) {
 }
 
 ABSL_DEPRECATED(
-    "TF_RETURN_IF_ERROR is deprecated. Call RETURN_IF_ERROR instead")
+    "TF_RETURN_IF_ERROR is deprecated. Call ABSL_RETURN_IF_ERROR instead")
 inline void TfReturnIfErrorDeprecationMarker() {}
 
 // For propagating errors when calling a function.

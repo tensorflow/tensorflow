@@ -540,6 +540,34 @@ SymbolicExpr SymbolicExprSimplifier::SimplifyOnce(SymbolicExpr expr) {
   }
 
   switch (expr.GetType()) {
+    case SymbolicExprType::kMin: {
+      auto lhs_range = range_evaluator_->ComputeExpressionRange(expr.GetLHS());
+      auto rhs_range = range_evaluator_->ComputeExpressionRange(expr.GetRHS());
+      if (expr.GetLHS() == expr.GetRHS()) {
+        return expr.GetLHS();
+      }
+      if (lhs_range.upper <= rhs_range.lower) {
+        return expr.GetLHS();
+      }
+      if (rhs_range.upper <= lhs_range.lower) {
+        return expr.GetRHS();
+      }
+      return expr;
+    }
+    case SymbolicExprType::kMax: {
+      auto lhs_range = range_evaluator_->ComputeExpressionRange(expr.GetLHS());
+      auto rhs_range = range_evaluator_->ComputeExpressionRange(expr.GetRHS());
+      if (lhs_range.lower >= rhs_range.upper) {
+        return expr.GetLHS();
+      }
+      if (rhs_range.lower >= lhs_range.upper) {
+        return expr.GetRHS();
+      }
+      if (expr.GetLHS() == expr.GetRHS()) {
+        return expr.GetLHS();
+      }
+      return expr;
+    }
     case SymbolicExprType::kMul:
       return RewriteMul(expr);
     case SymbolicExprType::kAdd:

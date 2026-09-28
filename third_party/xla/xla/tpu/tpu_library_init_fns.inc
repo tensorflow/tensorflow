@@ -16,11 +16,11 @@
 #ifndef TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 #define TENSORFLOW_COMPILER_XLA_TPU_TPU_LIBRARY_INIT_FNS_INC_
 
-#include "third_party/absl/status/status.h"
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "xla/tpu/tpu_api.h"
 #include "xla/tpu/tpu_executor_init_fns.inc"
 #include "xla/tpu/tpu_ops_c_api.h"
-#include "xla/tsl/platform/errors.h"
 
 namespace {
 
@@ -28,8 +28,6 @@ absl::Status DoSetTpuOpsStructFns(void* library_handle) {
   static TfTpu_OpsApiFn ops_api_fn;
   TFTPU_SET_FN(&ops_api_fn, SetGlobalTPUArrayOp_DoWork);
   TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_FreeCharArray);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpusPerHost);
-  TFTPU_SET_FN(&ops_api_fn, TpuConfigurationApi_TpuMemoryLimit);
 
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Create);
   TFTPU_SET_FN(&ops_api_fn, TpuMeshState_Free);
@@ -106,10 +104,10 @@ static absl::Status DoInitializeBaseApi(void* library_handle) {
                   [library_handle]() {
                     DoInitializeBaseApi(library_handle).IgnoreError();
                   });
-  TF_RETURN_IF_ERROR(::stream_executor::tpu::GetTpuBaseApiInitStatus());
+  ABSL_RETURN_IF_ERROR(::stream_executor::tpu::GetTpuBaseApiInitStatus());
 
-  TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
-  TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
+  ABSL_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
+  ABSL_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 
   return absl::OkStatus();
 }

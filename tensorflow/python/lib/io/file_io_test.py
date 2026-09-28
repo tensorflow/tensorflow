@@ -128,6 +128,56 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     with file_io.FileIO(file_path, mode="r") as f:
       self.assertEqual("testing", f.read())
 
+  @parameterized.parameters("w", "wb", "w+", "w+b", "a", "ab", "a+", "a+b")
+  def testCloseCreatesEmptyFileInWriteMode(self, mode):
+    file_path = file_io.join(self._base_dir, "empty_file")
+    with file_io.FileIO(file_path, mode=mode):
+      pass
+    self.assertTrue(file_io.file_exists(file_path))
+    self.assertEqual(
+        b"", file_io.read_file_to_string(file_path, binary_mode=True)
+    )
+
+  @parameterized.parameters("w", "wb", "w+", "w+b")
+  def testCloseTruncatesFileInWriteMode(self, mode):
+    file_path = file_io.join(self._base_dir, "existing_file")
+    file_io.write_string_to_file(file_path, "contents")
+    with file_io.FileIO(file_path, mode=mode):
+      pass
+    self.assertEqual(
+        b"", file_io.read_file_to_string(file_path, binary_mode=True)
+    )
+
+  @parameterized.parameters("a", "ab", "a+", "a+b")
+  def testCloseDoesNotTruncateFileInAppendMode(self, mode):
+    file_path = file_io.join(self._base_dir, "existing_file")
+    file_io.write_string_to_file(file_path, "contents")
+    with file_io.FileIO(file_path, mode=mode):
+      pass
+    self.assertEqual(
+        b"contents", file_io.read_file_to_string(file_path, binary_mode=True)
+    )
+
+  @parameterized.parameters("w", "wb", "w+", "w+b", "a", "ab", "a+", "a+b")
+  def testCloseIsIdempotent(self, mode):
+    file_path = file_io.join(self._base_dir, "double_close_file")
+    f = file_io.FileIO(file_path, mode=mode)
+    f.close()
+    file_io.delete_file(file_path)
+    f.close()
+    self.assertFalse(file_io.file_exists(file_path))
+
+  @parameterized.parameters("w", "wb", "w+", "w+b")
+  def testDoubleCloseDoesNotTruncateReplacementFile(self, mode):
+    file_path = file_io.join(self._base_dir, "replacement_file")
+    f = file_io.FileIO(file_path, mode=mode)
+    f.close()
+    file_io.write_string_to_file(file_path, "contents")
+    f.close()
+    self.assertEqual(
+        b"contents", file_io.read_file_to_string(file_path, binary_mode=True)
+    )
+
   def testAppend(self):
     file_path = file_io.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="w") as f:

@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
@@ -101,6 +101,7 @@ bool AreGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
       << output_shape.ToString();
 
   switch (output_shape.element_type()) {
+    case BF16:
     case F16:
     case F32:
     case F64:
@@ -172,6 +173,16 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
     bool allow_runtime_calls) {
   PrimitiveType element_type = dot_info.result_shape.element_type();
 
+  // Whether both operands have the same element type as the result. The tiled
+  // LLVM IR GEMV/GEMM emitters are templated on a single scalar type and would
+  // compute garbage for mixed-precision dots (e.g. s8 x s8 -> s32, where the
+  // result type is wider than the operand types due to preferred_element_type).
+  // Such dots must instead go to kEigen (correct via the Eigen contraction) or
+  // kNaiveLlvmIr (correct via the widened accumulator loop).
+  bool operands_match_result_type =
+      dot_info.lhs_shape.element_type() == element_type &&
+      dot_info.rhs_shape.element_type() == element_type;
+
   // Batched dot either handled by a runtime call or expanded into a sequence
   // of non-batch dot operations.
   DCHECK(dot_info.dim_nums.lhs_batch_dimensions_size() == 0 &&
@@ -186,7 +197,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
-       primitive_util::IsIntegralType(element_type))) {
+       primitive_util::IsIntegralType(element_type)) &&
+      operands_match_result_type) {
     return DotImplementationStrategy::kTiledLlvmIrGemv;
   }
 
@@ -205,7 +217,11 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
-    if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
+    // The tiled LLVM IR GEMM emitter is templated on a single scalar type, so
+    // only use it for uniform-precision dots; mixed-precision dots fall through
+    // to kEigen (or kNaiveLlvmIr below), both of which handle them correctly.
+    if (operands_match_result_type &&
+        CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
     } else if (allow_runtime_calls) {
       return DotImplementationStrategy::kEigen;
@@ -561,7 +577,7 @@ absl::StatusOr<uint64_t> DotOpEmitter::Emit() {
     // If the operands are scalar, don't emit any loops.
     TF_RET_CHECK(ShapeUtil::IsScalar(lhs_shape) &&
                  ShapeUtil::IsScalar(rhs_shape));
-    RETURN_IF_ERROR(EmitScalarDot());
+    ABSL_RETURN_IF_ERROR(EmitScalarDot());
     return 1;
   }
 
@@ -580,7 +596,7 @@ absl::StatusOr<uint64_t> DotOpEmitter::Emit() {
       return 1;
 
     case DotImplementationStrategy::kEigen:
-      RETURN_IF_ERROR(EmitCallToRuntime());
+      ABSL_RETURN_IF_ERROR(EmitCallToRuntime());
       return 1;
   }
 }
@@ -714,12 +730,31 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
     updated_accum = b_->CreateInsertValue(
         updated_accum, b_->CreateFAdd(imag(accum), product_imag), {1});
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
+    // For mixed-precision dots (e.g. s8 x s8 -> s32) HLO semantics require the
+    // product and accumulation to happen in the wider result type. Widen the
+    // operand elements to the accumulator type before multiplying; otherwise
+    // the multiply/add would be emitted at the operand type (invalid IR when it
+    // differs from `accum_type`, and wrong arithmetic besides).
+    if (lhs_element->getType() != accum_type) {
+      bool operand_is_signed =
+          primitive_util::IsSignedIntegralType(lhs_shape.element_type());
+      lhs_element =
+          b_->CreateIntCast(lhs_element, accum_type, operand_is_signed);
+      rhs_element =
+          b_->CreateIntCast(rhs_element, accum_type, operand_is_signed);
+    }
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
   } else if (lhs_shape.element_type() == PRED) {
     llvm::Value* product = b_->CreateAnd(lhs_element, rhs_element);
     updated_accum = b_->CreateOr(accum, product);
   } else {
+    // Mixed-precision floating-point dots (e.g. f16 x f16 -> f32) must likewise
+    // accumulate in the wider result type.
+    if (lhs_element->getType() != accum_type) {
+      lhs_element = b_->CreateFPCast(lhs_element, accum_type);
+      rhs_element = b_->CreateFPCast(rhs_element, accum_type);
+    }
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
   }
@@ -786,7 +821,27 @@ absl::Status DotOpEmitter::EmitScalarDot() {
     result = b_->CreateInsertValue(result, real, {0});
     result = b_->CreateInsertValue(result, imag, {1});
   } else {
-    result = b_->CreateFMul(lhs_value, rhs_value);
+    llvm::Type* accum_type = target_array_.GetElementLlvmType();
+    if (lhs_value->getType() != accum_type) {
+      // Mixed-precision scalar dot: compute the product in the (wider) result
+      // type so the stored value has the target element type. Integer operands
+      // must use an integer multiply after widening; using a float multiply as
+      // in the uniform path would emit invalid IR.
+      PrimitiveType operand_type = lhs_array_.GetShape().element_type();
+      if (primitive_util::IsIntegralType(operand_type)) {
+        bool operand_is_signed =
+            primitive_util::IsSignedIntegralType(operand_type);
+        lhs_value = b_->CreateIntCast(lhs_value, accum_type, operand_is_signed);
+        rhs_value = b_->CreateIntCast(rhs_value, accum_type, operand_is_signed);
+        result = b_->CreateMul(lhs_value, rhs_value);
+      } else {
+        lhs_value = b_->CreateFPCast(lhs_value, accum_type);
+        rhs_value = b_->CreateFPCast(rhs_value, accum_type);
+        result = b_->CreateFMul(lhs_value, rhs_value);
+      }
+    } else {
+      result = b_->CreateFMul(lhs_value, rhs_value);
+    }
   }
   target_array_.EmitWriteArrayElement(/*index=*/element_index, result, b_);
   return absl::OkStatus();
@@ -1128,7 +1183,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitNonBatchDotOperation(
                            hlo_module_config, target_machine_features,
                            allow_runtime_calls, allow_parallelism);
 
-  ASSIGN_OR_RETURN(uint64_t x, dot_emitter.Emit());
+  ABSL_ASSIGN_OR_RETURN(uint64_t x, dot_emitter.Emit());
   return DotOpWorkGroupDim{x};
 }
 
@@ -1261,7 +1316,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     llvm::IRBuilderBase* b, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
     bool allow_runtime_calls, bool allow_parallelism) {
-  RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
+  ABSL_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot.dot_dimension_numbers()));
 
   // first check if the batch can be rendered directly by the runtime
   // otherwise lower it to a sequence of non-batch dot operations
@@ -1277,7 +1332,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
                              hlo_module_config, target_machine_features,
                              allow_runtime_calls, allow_parallelism);
 
-    RETURN_IF_ERROR(dot_emitter.EmitBatch());
+    ABSL_RETURN_IF_ERROR(dot_emitter.EmitBatch());
     return DotOpWorkGroupDim{1, 1};
 
   } else {
@@ -1349,7 +1404,7 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     static constexpr int64_t kParallelLoopThreshold = 32768;
     if (allow_parallelism && (lhs_size > kParallelLoopThreshold ||
                               rhs_size > kParallelLoopThreshold)) {
-      ASSIGN_OR_RETURN(auto inner_dims, inner_dot(work_group_id.x));
+      ABSL_ASSIGN_OR_RETURN(auto inner_dims, inner_dot(work_group_id.x));
       DCHECK_EQ(inner_dims.y, 1);
       return DotOpWorkGroupDim{static_cast<uint64_t>(batch_count),
                                inner_dims.x};
@@ -1358,10 +1413,10 @@ absl::StatusOr<DotOpWorkGroupDim> EmitBatchDotOperation(
     // Emit sequential loop over the batch dimension, but still might decide to
     // parallelize the inner loop.
     DotOpWorkGroupDim inner_dims;
-    RETURN_IF_ERROR(ksl.ForWithStatus(
+    ABSL_RETURN_IF_ERROR(ksl.ForWithStatus(
         llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
         /*step=*/1, [&](llvm::Value* indvar) {
-          ASSIGN_OR_RETURN(inner_dims, inner_dot(indvar));
+          ABSL_ASSIGN_OR_RETURN(inner_dims, inner_dot(indvar));
           return absl::OkStatus();
         }));
     return DotOpWorkGroupDim{1, inner_dims.x};

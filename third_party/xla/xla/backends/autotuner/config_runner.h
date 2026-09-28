@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/autotune_cache.pb.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_orchestrator.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -79,9 +81,12 @@ class ConfigRunner {
     absl::Duration duration = absl::ZeroDuration();
     int scratch_bytes = 0;
     int cluster_index = -1;
+    std::string diff_report_with_first_cluster = "";
 
     std::string ToString(bool verbose = false) const;
     AutotuneResult ToProto() const;
+    autotuner::ConfigProfile ToConfigProfileProto() const;
+    autotuner::FailedConfigs ToFailedConfigsProto() const;
   };
 
   static absl::StatusOr<std::unique_ptr<ConfigRunner>> Create(
@@ -108,9 +113,10 @@ class ConfigRunner {
                                  bool is_trusted_config, bool allow_new_cluster)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
-  int AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                            ScopedShapedBuffer& output, bool is_trusted_config,
-                            bool allow_new_cluster)
+  int AssignToOutputCluster(
+      std::vector<OutputCluster>& clusters, ScopedShapedBuffer& output,
+      bool is_trusted_config, bool allow_new_cluster,
+      std::string* diff_report_with_first_cluster = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
   void DemoteNonWinningClusterConfigs(

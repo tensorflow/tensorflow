@@ -137,7 +137,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   llvm::Value* indvar_inc = b->CreateAdd(indvar, step, "invar.inc",
                                          /*HasNUW=*/true, /*HasNSW=*/true);
   b->CreateStore(indvar_inc, indvar_address);
-  llvm::BranchInst* back_branch = b->CreateBr(header_bb_);
+  llvm::UncondBrInst* back_branch = b->CreateBr(header_bb_);
 
   std::vector<llvm::Metadata*> loop_metadata = GetLoopMetadata(b);
   if (!loop_metadata.empty()) {
@@ -156,7 +156,7 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
 std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
   const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
   const char* const kLlvmLoopUnrollFullMDName = "llvm.loop.unroll.full";
-  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.enable";
+  const char* const kLlvmLoopVectorizeMDName = "llvm.loop.vectorize.disable";
   llvm::LLVMContext* ctx = &start_index_->getContext();
 
   std::vector<llvm::Metadata*> result;
@@ -167,8 +167,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilderBase* b) {
 
   if (prevent_vectorization_) {
     result.push_back(llvm::MDNode::get(
-        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName),
-               llvm::ConstantAsMetadata::get(b->getFalse())}));
+        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopVectorizeMDName)}));
   }
 
   if (unroll_mode_ == xla::llvm_ir::UnrollMode::kFullyUnroll) {

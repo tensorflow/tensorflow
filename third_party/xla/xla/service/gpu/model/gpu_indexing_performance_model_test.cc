@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -41,10 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -53,13 +53,17 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/util.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::xla::xtile::BlockLevelParameters;
 
 class GpuIndexingPerformanceModelTest
     : public HloHardwareIndependentTestBase,
@@ -276,9 +280,11 @@ ENTRY e {
       indexing_cost_model_.EstimateRunTimeForTriton(root, nullptr));
 
   const int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  const float approx_hbm_bandwidth =
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, device_info_);
   const absl::Duration approx_hbm_time =
-      absl::Seconds(1.0f * approx_total_bytes /
-                    device_info_.memory_bandwidth()) +
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth) +
       gpu_dot_fusion_cost_model::detail::kLoopLatencyTax;
 
   // For pipelined loops, execution time is bounded by the dominant cost (memory
@@ -501,6 +507,47 @@ ENTRY entry_computation {
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes[1],
               ElementsAre(16));
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
+}
+
+TEST_P(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilingsForFusion_DumpsToFile) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  param_0.1 = f32[1024] parameter(0)
+  ROOT negate.1 = f32[1024] negate(param_0.1)
+}
+
+ENTRY main {
+  param_0.3 = f32[1024] parameter(0)
+  ROOT fusion = f32[1024] fusion(param_0.3), kind=kCustom, calls=fused_computation
+}
+)"));
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string dump_file =
+      tsl::io::JoinPath(temp_dir.path(), "top_k_candidates.txt");
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_dump_cost_model_top_k_candidates_to(dump_file);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_OK_AND_ASSIGN(
+      auto top_k_result,
+      indexing_cost_model_.TryFindTopKBestTilingsForFusion(*fusion_adaptor,
+                                                           /*top_k=*/3));
+  ASSERT_TRUE((std::holds_alternative<absl::InlinedVector<TiledRunTimeData, 4>>(
+      top_k_result)));
+
+  std::string dumped_content;
+  ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), dump_file, &dumped_content));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("=== Cost model top-"));
+  EXPECT_THAT(dumped_content, ::testing::HasSubstr("Candidate #0:"));
 }
 
 TEST_P(GpuIndexingPerformanceModelTest,
@@ -1235,6 +1282,52 @@ ENTRY entry_computation {
   ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
 }
 )");
+}
+
+TEST_P(GpuIndexingPerformanceModelTest, PrecomputeFlopsMapWorksCorrectly) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  c0 = f32[] constant(0)
+  exp = f32[128,256] exponential(p0)
+  dot = f32[128,64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reduce = f32[128] reduce(dot, c0), dimensions={1}, to_apply=add
+  ROOT tuple = (f32[128,64], f32[128]) tuple(dot, reduce)
+}
+
+ENTRY entry {
+  p0 = f32[128,256] parameter(0)
+  p1 = f32[256,64] parameter(1)
+  ROOT fusion = (f32[128,64], f32[128]) fusion(p0, p1), kind=kCustom,
+    calls=fused_computation
+}
+)"));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+
+  auto flops_map = internal::PrecomputeFlopsMap(
+      *fusion_adaptor, [this](const HloInstruction* instr) {
+        return indexing_cost_model_.FlopsPerElement(instr);
+      });
+
+  HloComputation* fused_comp = fusion->fused_instructions_computation();
+  const HloInstruction* dot = fused_comp->GetInstructionWithName("dot");
+  const HloInstruction* reduce = fused_comp->GetInstructionWithName("reduce");
+  const HloInstruction* exp = fused_comp->GetInstructionWithName("exp");
+
+  EXPECT_EQ(flops_map.at(dot), indexing_cost_model_.FlopsPerElement(dot));
+  EXPECT_EQ(flops_map.at(reduce), indexing_cost_model_.FlopsPerElement(reduce));
+  EXPECT_EQ(flops_map.at(exp), indexing_cost_model_.FlopsPerElement(exp));
 }
 
 }  // namespace

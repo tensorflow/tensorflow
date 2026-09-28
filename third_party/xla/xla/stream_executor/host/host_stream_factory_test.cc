@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/host/host_stream.h"
@@ -41,10 +42,10 @@ class DummyFactory : public HostStreamFactory {
 };
 
 TEST(HostStreamFactoryTest, GetFactoryUAF) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("Host"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("Host"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
 
   std::atomic<bool> stop{false};
   absl::Notification reader_started;

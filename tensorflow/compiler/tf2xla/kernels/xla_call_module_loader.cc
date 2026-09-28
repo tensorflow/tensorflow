@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
+#include "shardy/dialect/sdy/transforms/common/passes.h"  // from @shardy
 #include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo

@@ -538,6 +538,10 @@ class MatrixDiagTest(test.TestCase):
   def testInvalidShape(self):
     with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.matrix_diag(0)
+    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+      array_ops.matrix_diag([1, 2], k=[1, 2])
+    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+      array_ops.matrix_diag([1, 2], k=(-1, 1))
 
   @test_util.run_deprecated_v1
   def testInvalidShapeAtEval(self):
@@ -1223,6 +1227,25 @@ class DiagGradPartOpTest(test.TestCase):
               y.get_shape().as_list())
           tf_logging.info("error = %f", error)
           self.assertLess(error, 1e-4)
+
+  def testMatrixDiagV3InvalidAndOverflowDimensions(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      array_ops.matrix_diag_v3(
+          diagonal=[1.0, 2.0],
+          k=0,
+          num_rows=-5,
+          num_cols=2,
+          padding_value=0.0,
+      )
+
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      array_ops.matrix_diag_v3(
+          diagonal=[1.0, 2.0],
+          k=0,
+          num_rows=2**62,
+          num_cols=2**62,
+          padding_value=0.0,
+      )
 
 
 if __name__ == "__main__":

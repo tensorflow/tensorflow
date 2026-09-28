@@ -32,7 +32,6 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -44,6 +43,7 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/tsl/concurrency/future.h"
@@ -55,7 +55,7 @@ namespace ifrt {
 namespace proxy {
 
 class LoadedExecutable final
-    : public llvm::RTTIExtends<LoadedExecutable, xla::ifrt::LoadedExecutable> {
+    : public RTTIExtends<LoadedExecutable, xla::ifrt::LoadedExecutable> {
  public:
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,

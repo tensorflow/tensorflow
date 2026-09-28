@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_setitem_spmd_expander.h"
 
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"

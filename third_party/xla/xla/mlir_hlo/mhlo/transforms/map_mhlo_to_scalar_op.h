@@ -1115,6 +1115,10 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
           })
           .getResult(0);
 
+  if (IsUnsignedIntegerType{}(getElementTypeOrSelf(argTypes.front()))) {
+    return accum;
+  }
+
   Value rhsIsEven = arith::CmpIOp::create(
       lb, arith::CmpIPredicate::eq,
       arith::RemSIOp::create(lb, adaptor.getRhs(), two), zero);

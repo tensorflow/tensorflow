@@ -545,7 +545,7 @@ func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_overwrite
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 4 : i64}
+// CHECK-PASCAL: llvm.store %[[C2]], %[[ADDR]] atomic unordered <alignment = 4>
 
 // -----
 
@@ -963,7 +963,7 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
 }
 // CHECK-LABEL: @transfer_read
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 4 : i64} : !llvm.ptr -> vector<2xf32>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<2xf32>
 
 // -----
 
@@ -980,10 +980,10 @@ func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
 // CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
 // CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
-// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] <alignment = 1>
 // CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
-// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] {alignment = 1 : i64}
+// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] <alignment = 1>
 
 // -----
 
@@ -996,7 +996,7 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK-LABEL: @transfer_read_i1
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
@@ -1012,7 +1012,7 @@ func.func @transfer_read_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] {alignment = 32 : i64} : !llvm.ptr
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] <alignment = 32> : !llvm.ptr
 // CHECK:           return %[[LOADED]] : vector<8xi64>
 
 // -----
@@ -1026,7 +1026,7 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
+// CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 8> : !llvm.ptr -> vector<8xi64>
 
 // -----
 
@@ -1041,7 +1041,7 @@ func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : inde
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 32> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1056,7 +1056,7 @@ func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.al
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 8 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] <alignment = 8> : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -1145,7 +1145,7 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
 // CHECK-LABEL: @transfer_read_f4
 // CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
 // CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
-// CHECK: llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr -> vector<2xi4>
+// CHECK: llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr -> vector<2xi4>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
 

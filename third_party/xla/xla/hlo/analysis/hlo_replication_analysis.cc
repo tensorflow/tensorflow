@@ -32,11 +32,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -499,11 +499,19 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
                                          HloReplication::UniqueOnAllDevices());
 
     std::unique_ptr<ShapeTree<HloSharding>> sharding_tree = nullptr;
-    if (cross_partition_spmd_ && param->has_sharding()) {
-      ASSIGN_OR_RETURN(auto result,
-                       param->sharding().AsShapeTree(param->shape()));
-      sharding_tree =
-          std::make_unique<ShapeTree<HloSharding>>(std::move(result));
+    if (cross_partition_spmd_) {
+      const HloSharding* sharding = nullptr;
+      if (module_->has_spmd_parameters_shardings()) {
+        CHECK_LT(i, module_->spmd_parameters_shardings().size());
+        sharding = &module_->spmd_parameters_shardings()[i];
+      } else if (param->has_sharding()) {
+        sharding = &param->sharding();
+      }
+      if (sharding != nullptr) {
+        ABSL_ASSIGN_OR_RETURN(auto result, sharding->AsShapeTree(param->shape()));
+        sharding_tree =
+            std::make_unique<ShapeTree<HloSharding>>(std::move(result));
+      }
     }
 
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
@@ -513,7 +521,7 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
           if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
             return absl::OkStatus();
           }
-          if (cross_partition_spmd_ && param->has_sharding()) {
+          if (sharding_tree != nullptr) {
             // In cross-partition spmd mode, set parameter replication status
             // based on the parameter's sharding.
             *shape_tree.mutable_element(index) =
@@ -540,7 +548,7 @@ absl::Status HloReplicationAnalysis::ComputeHloReplication() {
           }
           return absl::OkStatus();
         });
-    RETURN_IF_ERROR(status);
+    ABSL_RETURN_IF_ERROR(status);
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,
@@ -651,7 +659,7 @@ HloReplicationAnalysis::Run(const HloModule* module, bool cross_partition_spmd,
       module, cross_partition_spmd, loops_known_with_same_iterations,
       /*support_partial_replication=*/false));
   analysis->BuildReplicaGroupDedupMap();
-  RETURN_IF_ERROR(analysis->ComputeHloReplication());
+  ABSL_RETURN_IF_ERROR(analysis->ComputeHloReplication());
   return analysis;
 }
 
@@ -663,7 +671,7 @@ HloReplicationAnalysis::RunWithPartialReplication(const HloModule* module,
       new HloReplicationAnalysis(module, cross_partition_spmd, &empty,
                                  /*support_partial_replication=*/true));
   analysis->BuildReplicaGroupDedupMap();
-  RETURN_IF_ERROR(analysis->ComputeHloReplication());
+  ABSL_RETURN_IF_ERROR(analysis->ComputeHloReplication());
   return analysis;
 }
 

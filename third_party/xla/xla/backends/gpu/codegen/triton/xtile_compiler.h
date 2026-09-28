@@ -34,10 +34,10 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -52,7 +52,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
-    const BlockLevelParameters& block_level_parameters,
+    const xla::xtile::BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
     mlir::MLIRContext& mlir_context);
 
@@ -60,14 +60,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 absl::StatusOr<TritonKernelSource> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
-    const BlockLevelParameters& block_level_parameters,
+    const xla::xtile::BlockLevelParameters& block_level_parameters,
     mlir::MLIRContext& mlir_context);
 
 // Compiles a given Triton module to LLVM IR.
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
-    const BlockLevelParameters& block_level_parameters,
+    const xla::xtile::BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
     TritonKernelSource triton_source, mlir::MLIRContext& mlir_context,
     bool is_xla_fusion);
@@ -98,7 +98,7 @@ absl::Status LowerXTileToTriton(
     mlir::ModuleOp xtile_dialect_module, mlir::MLIRContext& mlir_context,
     const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
-    const BlockLevelParameters& block_level_parameters);
+    const xla::xtile::BlockLevelParameters& block_level_parameters);
 
 }  // namespace ir_emitter_triton_internal
 }  // namespace xla::gpu

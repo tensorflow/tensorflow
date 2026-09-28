@@ -106,12 +106,12 @@ uint16_t __truncsfbf2(float);
 // Converts an F64 value to a BF16.
 uint16_t __truncdfbf2(double);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__s390x__)
 // Converts an F32 value to a F16.
 uint16_t __truncsfhf2(float);
 
 float __extendhfsf2(uint16_t a);
-#endif  // __APPLE__
+#endif  // defined(__APPLE__) || defined(__s390x__)
 
 }  // extern "C"
 
@@ -240,9 +240,12 @@ static Registry CreateRegistry() {
 
 #undef REGISTER_LIBM_SYMBOL
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__s390x__)
   registry["__truncsfhf2"] = SymbolDef(__truncsfhf2);
   registry["__extendhfsf2"] = SymbolDef(__extendhfsf2);
+#endif
+
+#ifdef __APPLE__
   registry["__bzero"] = SymbolDef(bzero);
   registry["bzero"] = SymbolDef(bzero);
   registry["memset_pattern16"] = SymbolDef(memset_pattern16);

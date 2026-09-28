@@ -37,11 +37,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -132,7 +132,7 @@ class HloComputation {
     absl::Status ForEachInstruction(
         absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
-        RETURN_IF_ERROR(func(instruction.get()));
+        ABSL_RETURN_IF_ERROR(func(instruction.get()));
       }
       return absl::OkStatus();
     }
@@ -862,7 +862,9 @@ class HloComputation {
 
   // Returns if this computation is an async computation.
   bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty();
+    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
+           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
+           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
   }
 
   // Returns true if this computation only contains send/recv instructions.
@@ -1003,6 +1005,46 @@ class HloComputation {
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
 
+  bool IsEntryInstUnboundedDynamic() const;
+
+  // Backend config accessors for HloComputation.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
+
  private:
   friend class HloModule;
 
@@ -1124,6 +1166,9 @@ class HloComputation {
 
   std::string name_;
 
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
+
   // Callers and callees of this computation.
   // * These include all computations that have a caller/callee relationship
   //   with this computation, even those that may not belong to a module. For
@@ -1199,19 +1244,9 @@ class HloComputation {
                             callee_computations_.end());
   }
 
-  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
-            Index S::* IndexInParent, typename PredecessorIterator,
-            PredecessorIterator (S::*PredecessorsBegin)() const,
-            PredecessorIterator (S::*PredecessorsEnd)() const,
-            typename SuccessorIterator,
-            SuccessorIterator (S::*SuccessorsBegin)() const,
-            SuccessorIterator (S::*SuccessorsEnd)() const>
-  friend class TopologicalSort;
-
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortIterator;
-
-  TopologicalSortNode<HloComputation> topological_sort_node_;
+  // Dense index of this computation within its parent HloModule, used as the
+  // node index in the module's TopologicalSort.
+  int32_t index_in_module_ = -1;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
@@ -1226,7 +1261,7 @@ absl::Status HloComputation::Accept(
   for (HloInstruction* root : CollectUnreachableRoots()) {
     VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
-    RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
+    ABSL_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
   // Visit the computation root instruction last.
   return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
@@ -1253,10 +1288,10 @@ absl::Status HloComputation::AcceptOrdered(
         << " appears more than once in order";
     HloInstruction* mutable_instruction =
         const_cast<HloInstruction*>(instruction);
-    RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
+    ABSL_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
     visitor->SetVisited(*mutable_instruction);
-    RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
+    ABSL_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
     visited.insert(instruction);
   }
   return visitor->FinishVisit(root_instruction());

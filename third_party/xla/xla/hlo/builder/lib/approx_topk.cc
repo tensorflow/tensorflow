@@ -112,8 +112,8 @@ absl::StatusOr<XlaComputationId> BuildReductionComputation(
 XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
                              absl::Span<const XlaOp> operands,
                              absl::Span<const XlaOp> init_values, int64_t top_k,
-                             int64_t reduction_dim,
-                             XlaComputationId comparator) {
+                             int64_t reduction_dim, XlaComputationId comparator,
+                             bool is_stable = false) {
   auto operands_shapes = builder->GetOperandShapes(operands).value();
   int64_t rank = operands_shapes[0].dimensions().size();
   int64_t num_operands = operands.size();
@@ -141,7 +141,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
     return Tuple(builder, {top1_vals, top1_args});
   }
 
-  auto sorted_results = Sort(operands, comparator, reduction_dim);
+  auto sorted_results = Sort(operands, comparator, reduction_dim, is_stable);
   std::vector<int64_t> slice_start_indices(rank, 0);
   std::vector<int64_t> slice_limit_indices;
   std::vector<int64_t> slice_strides(rank, 1);
@@ -164,10 +164,11 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
                              absl::Span<const XlaOp> operands,
                              absl::Span<const XlaOp> init_values, int64_t top_k,
                              int64_t reduction_dim,
-                             const XlaComputation& comparator) {
-  return AggregateToTopKBuilder(builder, operands, init_values, top_k,
-                                reduction_dim,
-                                builder->AddSubComputation(comparator));
+                             const XlaComputation& comparator,
+                             bool is_stable = false) {
+  return AggregateToTopKBuilder(
+      builder, operands, init_values, top_k, reduction_dim,
+      builder->AddSubComputation(comparator), is_stable);
 }
 
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
@@ -292,8 +293,12 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     return builder->ReportError(status_or_approx_output_size.status());
   }
   auto output_size = status_or_approx_output_size.value().first;
+  // Temporary lower fallback approx_top_k to stable sort to preserve historical
+  // behavior on GPU.
+  // TODO(b/534418378): Lower approx_top_k to unstable_sort+slice for better
+  // performance once critical DL models can handle the output variation.
   return AggregateToTopKBuilder(builder, operands, init_values, output_size,
-                                reduction_dim, comparator);
+                                reduction_dim, comparator, /*is_stable=*/true);
 }
 
 XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,

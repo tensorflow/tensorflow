@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -44,7 +45,8 @@ std::vector<std::unique_ptr<GpuCommunicator>> DowncastComms(
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
                     std::vector<GlobalDeviceId> device_ids,
-                    bool blocking = true, size_t num_ids = 1);
+                    bool blocking = true, size_t num_ids = 1,
+                    GpuCollectives* custom_backend = nullptr);
 
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 SplitCommunicators(

@@ -16,7 +16,7 @@
 import atheris
 with atheris.instrument_imports():
   import sys
-  from python_fuzzing import FuzzingHelper
+  from python_fuzzing import FuzzingHelper  # pyrefly: ignore[missing-import]
   import tensorflow as tf
 
 

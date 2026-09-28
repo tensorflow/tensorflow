@@ -46,4 +46,9 @@ std::string GetCodegenOptionsFingerprint(const DebugOptions& options) {
   return absl::StrCat(absl::Hex(fprint, absl::kZeroPad16));
 }
 
+std::string AutotuneFingerprintToString(tsl::Fprint128 fingerprint) {
+  return absl::StrCat(absl::Hex(fingerprint.high64, absl::kZeroPad16),
+                      absl::Hex(fingerprint.low64, absl::kZeroPad16));
+}
+
 }  // namespace xla

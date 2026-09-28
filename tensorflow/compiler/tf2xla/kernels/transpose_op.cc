@@ -71,7 +71,11 @@ class TransposeOp : public XlaOpKernel {
     absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
-      const int64_t d = perm[i];
+      int64_t d = perm[i];
+      // Wrap negative indices, matching the behavior of the non-XLA kernel.
+      if (d < 0) {
+        d += dims;
+      }
       OP_REQUIRES(
           ctx, 0 <= d && d < dims,
           errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));

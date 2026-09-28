@@ -17,12 +17,14 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_TILED_TILED_FUSION_EMITTER_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/xla_data.pb.h"
@@ -36,10 +38,13 @@ struct TiledEmissionResult {
   bool tiling_succeeded = true;
 };
 
+// TODO(b/538986250): Move BlockLevelParams to a common location.
 TiledEmissionResult EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups);
+    int64_t num_work_groups,
+    std::optional<xla::xtile::BlockLevelParameters> block_level_parameters =
+        std::nullopt);
 
 }  // namespace xla::cpu
 

@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -153,7 +153,7 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
       }
       HloInstruction* new_tuple = conditional->parent()->AddInstruction(
           HloInstruction::CreateTuple(new_tuple_operands));
-      RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           conditional->ReplaceOperandWithDifferentShape(branch + 1, new_tuple));
       CHECK(ShapeUtil::Compatible(conditional->operand(branch + 1)->shape(),
                                   conditional->branch_computation(branch)
@@ -487,9 +487,9 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
   if (conditional->branch_count() == 1) {
     HloInstruction* call_op = create_call(0);
     call_op->set_original_value(conditional->original_value());
-    RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
+    ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
     if (CallInliner::InlineInstructionAllowed(call_op)) {
-      RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+      ABSL_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
     }
     return true;
   }
@@ -506,9 +506,9 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
     }
     HloInstruction* call_op = create_call(branch_index);
     call_op->set_original_value(conditional->original_value());
-    RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
+    ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(conditional, call_op));
     if (CallInliner::InlineInstructionAllowed(call_op)) {
-      RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
+      ABSL_RETURN_IF_ERROR(CallInliner::Inline(call_op).status());
     }
 
     return true;
@@ -594,14 +594,14 @@ absl::StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
             HloInstruction::CreateTuple(selects));
       };
 
-  RETURN_IF_ERROR(computation->ReplaceInstruction(
+  ABSL_RETURN_IF_ERROR(computation->ReplaceInstruction(
       conditional, select(true_call_op, false_call_op)));
 
   if (CallInliner::InlineInstructionAllowed(false_call_op)) {
-    RETURN_IF_ERROR(CallInliner::Inline(false_call_op).status());
+    ABSL_RETURN_IF_ERROR(CallInliner::Inline(false_call_op).status());
   }
   if (CallInliner::InlineInstructionAllowed(true_call_op)) {
-    RETURN_IF_ERROR(CallInliner::Inline(true_call_op).status());
+    ABSL_RETURN_IF_ERROR(CallInliner::Inline(true_call_op).status());
   }
   return true;
 }
@@ -668,7 +668,7 @@ absl::StatusOr<bool> ConditionalSimplifier::RunImpl(
     changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
-    ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
+    ABSL_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
     if (result) {
       removed_conditionals.insert(conditional_op);
       changed = true;
@@ -698,7 +698,7 @@ absl::StatusOr<bool> ConditionalSimplifier::RunImpl(
   for (auto* comp : calling_computationals_vector) {
     auto entry = calling_conditionals.find(comp);
     CHECK(entry != calling_conditionals.end());
-    ASSIGN_OR_RETURN(bool result, TryRemoveUnusedConditionalOperands(
+    ABSL_ASSIGN_OR_RETURN(bool result, TryRemoveUnusedConditionalOperands(
                                       entry->first, entry->second));
     changed |= result;
   }

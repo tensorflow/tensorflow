@@ -99,12 +99,12 @@ inline void BroadcastBinaryOpSimple(const RuntimeShape& input1_shape,
       output_shape.DimensionsCount(),
       std::max(input1_shape.DimensionsCount(), input2_shape.DimensionsCount()));
 
+  TFLITE_CHECK_LE(dims_count, kMaxRank);
+
   if (dims_count <= 0) {
     *output_data = op(*input1_data, *input2_data);
     return;
   }
-
-  TFLITE_DCHECK_LE(dims_count, kMaxRank);
 
   const RuntimeShape extended_output_shape =
       RuntimeShape::ExtendedShape(dims_count, output_shape);

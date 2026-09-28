@@ -1,3 +1,18 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -75,6 +90,7 @@ cc_library(
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tfrt/ifrt:checkpoint_loader",
         "//tensorflow/core/tfrt/ifrt:ifrt_config_proto_cc",
         "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
@@ -125,6 +141,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
 )
@@ -219,6 +236,7 @@ tf_cc_shared_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/tfrt/fallback:device_with_custom_allocator",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/mlrt/bytecode",
@@ -232,8 +250,16 @@ tf_cc_shared_test(
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:hostcontext",
         "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/backends/profiler/cpu:host_tracer",  # buildcleaner: keep
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/platform:status_matchers",
+        "@xla//xla/tsl/profiler/utils:group_events",
+        "@xla//xla/tsl/profiler/utils:preprocess_xplane",
+        "@xla//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "@xla//xla/tsl/profiler/utils:xplane_schema",
+        "@xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 
@@ -259,6 +285,7 @@ tf_cc_shared_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/tfrt/fallback:fallback_state",
@@ -279,6 +306,7 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/mlrt/interpreter:interpreter_testutil",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

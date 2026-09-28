@@ -33,12 +33,13 @@ set -e
 set -x
 
 N_BUILD_JOBS=$(grep -c ^processor /proc/cpuinfo)
-# If rocm-smi exists locally (it should) use it to find
+# amd-smi replaces the deprecated rocm-smi CLI as of ROCm 7.14.
+# If amd-smi exists locally (it should) use it to find
 # out how many GPUs we have to test with.
-rocm-smi -i
+amd-smi list
 STATUS=$?
 if [ $STATUS -ne 0 ]; then TF_GPU_COUNT=1; else
-   TF_GPU_COUNT=$(rocm-smi -i|grep 'Device ID' |grep 'GPU' |wc -l)
+   TF_GPU_COUNT=$(amd-smi list|grep -c '^GPU:')
 fi
 if [[ $TF_GPU_COUNT -lt 4 ]]; then
     echo "Found only ${TF_GPU_COUNT} gpus, multi-gpu tests need atleast 4 gpus."

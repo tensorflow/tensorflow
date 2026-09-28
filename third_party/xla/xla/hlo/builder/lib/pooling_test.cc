@@ -71,7 +71,7 @@ std::vector<int64_t> ExpandWithBatchAndFeatureDimensions(
 }
 
 using PoolingTest =
-    ClientLibraryTestRunnerMixin<HloPjRtInterpreterReferenceMixin<HloTestBase>>;
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
 
 TEST_F(PoolingTest, MaxPool2D) {
   XlaBuilder builder(TestName());

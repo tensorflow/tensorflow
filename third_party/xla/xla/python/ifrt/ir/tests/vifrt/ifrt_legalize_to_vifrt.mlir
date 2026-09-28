@@ -383,6 +383,31 @@ func.func @token_type(%arg0: !token0) -> !token1 attributes {ifrt.function} {
   return %0: !token1
 }
 
+!string0 = !ifrt.array<tensor<2x4x!ifrt.string>,
+                       #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>
+!string1 = !ifrt.array<tensor<2x4x!ifrt.string>,
+                       #ifrt.sharding_param<1x1 to [0] on 2>, [2, 3]>
+// CHECK: "vifrt.FuncV1"()
+// CHECK-SAME: <{
+// CHECK-DAG: arg_attrs = []
+// CHECK-DAG: function_type = #vifrt.type_v1<!vifrt.func_v1<(!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">>>
+// CHECK-DAG: res_attrs = []
+// CHECK-DAG: sym_name = "string_type"
+// CHECK-DAG: sym_visibility = "vifrt.default"
+// CHECK-SAME: }>
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @string_type(%arg0: !string0) -> !string1 attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV2"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
+  // CHECK-DAG: reuse = false
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4x!vifrt.string_v1>, #vifrt.sharding_param_v2<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!string0) -> !string1
+  return %0: !string1
+}
+
 // Important: The test verifying CallOps must be last. This is necessary because
 // in order to test serialization roundtrip the tests in this file are not split
 // into per file tests. However, during deserialization we do not know where to
@@ -465,7 +490,7 @@ func.func @op_call(
   return %1 : !array_op_call
 }
 
-// CHECK-NOT @add_one
+// CHECK-NOT: @add_one
 module @add_one attributes {sym_visibility = "private"} {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -474,7 +499,7 @@ module @add_one attributes {sym_visibility = "private"} {
   }
 }
 
-// CHECK-NOT @"escaped-module"
+// CHECK-NOT: @"escaped-module"
 module @"escaped-module" attributes {sym_visibility = "private"} {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
@@ -483,7 +508,7 @@ module @"escaped-module" attributes {sym_visibility = "private"} {
   }
 }
 
-// CHECK-NOT @add_two
+// CHECK-NOT: @add_two
 module @add_two attributes {sym_visibility = "private"} {
   func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>

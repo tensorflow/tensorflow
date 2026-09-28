@@ -19,18 +19,17 @@ namespace py = pybind11;
 
 namespace {
 
-py::handle ConvertAttr(py::handle value, std::string attr_type) {
+py::object ConvertAttr(py::handle value, std::string attr_type) {
   tensorflow::Safe_PyObjectPtr result =
       ::tensorflow::ConvertPyObjectToAttributeType(
           value.ptr(), ::tensorflow::AttributeTypeFromName(attr_type));
   if (!result) {
     throw py::error_already_set();
   }
-  Py_INCREF(result.get());
-  return result.release();
+  return py::reinterpret_steal<py::object>(result.release());
 }
 
-py::handle SerializedAttrValueToPyObject(std::string attr_value_string) {
+py::object SerializedAttrValueToPyObject(std::string attr_value_string) {
   tensorflow::AttrValue attr_value;
   attr_value.ParseFromString(attr_value_string);
   tensorflow::Safe_PyObjectPtr result =
@@ -38,14 +37,13 @@ py::handle SerializedAttrValueToPyObject(std::string attr_value_string) {
   if (!result) {
     throw py::error_already_set();
   }
-  Py_INCREF(result.get());
-  return result.release();
+  return py::reinterpret_steal<py::object>(result.release());
 }
 
 }  // namespace
 
 // Expose op_def_util.h functions via Python.
-PYBIND11_MODULE(_op_def_util, m) {
+PYBIND11_MODULE(_op_def_util, m, py::mod_gil_not_used()) {
   // Note: the bindings below are added for testing purposes; but the functions
   // are expected to be called from c++, not Python.
   m.def("ConvertPyObjectToAttributeType", ConvertAttr, py::arg("value"),

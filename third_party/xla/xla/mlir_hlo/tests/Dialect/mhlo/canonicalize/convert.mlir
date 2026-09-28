@@ -402,3 +402,21 @@ func.func @const_complex_complex() -> tensor<complex<f64>> {
   %0 = mhlo.convert %cst :  (tensor<complex<f32>>) -> tensor<complex<f64>>
   func.return %0 : tensor<complex<f64>>
 }
+
+// -----
+
+// CHECK-LABEL: func @const_dense_resource
+func.func @const_dense_resource() -> tensor<4xi32> {
+  %cst = mhlo.constant dense_resource<dense_elements_f32> : tensor<4xf32>
+  // CHECK: mhlo.convert
+  %0 = mhlo.convert %cst : (tensor<4xf32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      dense_elements_f32: "0x400000000000803F000000400000404000008040"
+    }
+  }
+#-}

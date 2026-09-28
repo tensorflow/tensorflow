@@ -146,6 +146,10 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
+
   // Deallocates the given stream.
   void DeallocateStream(Stream* stream) override;
 
@@ -245,6 +249,7 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Mutex for blas, dnn, and fft.
   absl::Mutex mu_;
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<dnn::DnnSupport> dnn_ ABSL_GUARDED_BY(mu_);
   absl::Status InitBlas();
 };
 

@@ -160,7 +160,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client) {
   CompilationTimer timer;
-  auto record_time = llvm::make_scope_exit([&timer] {
+  auto record_time = llvm::scope_exit([&timer] {
     phase2_bridge_compilation_time->GetCell(kFullBridge)
         ->Add(timer.ElapsedCyclesInMilliseconds());
   });

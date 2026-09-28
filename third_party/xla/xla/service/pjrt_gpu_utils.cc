@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -34,7 +34,7 @@ namespace {
 
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetTargetConfigProto(
     PjRtClient* const client) {
-  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                    client->GetTopologyDescription());
   auto it = topology->Attributes().find("target_config");
   if (it == topology->Attributes().end()) {

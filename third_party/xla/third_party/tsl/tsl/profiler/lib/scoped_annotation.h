@@ -35,8 +35,8 @@ namespace tsl::profiler {
 
 // Adds an annotation to all activities through the currently registered
 // TraceCollector until PopAnnotation() is called.
-template <typename T>
-void PushAnnotation(const T& generator) {
+template <typename Generator>
+void PushAnnotation(const Generator& generator) {
   if (auto domain = DefaultProfilerDomain();
       TF_PREDICT_FALSE(domain != nullptr)) {
     RangePush(domain, generator());
@@ -47,6 +47,23 @@ void PushAnnotation(const T& generator) {
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
     AnnotationStack::PushAnnotation(
         static_cast<absl::string_view>(generator()));
+  }
+#endif
+}
+
+template <typename AnnotationGenerator, typename RangeGenerator>
+void PushAnnotation(const AnnotationGenerator& annotation_generator,
+                    const RangeGenerator& range_generator) {
+  if (auto domain = DefaultProfilerDomain();
+      TF_PREDICT_FALSE(domain != nullptr)) {
+    RangePush(domain, range_generator());
+    return;
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+    AnnotationStack::PushAnnotation(
+        static_cast<absl::string_view>(annotation_generator()));
   }
 #endif
 }
@@ -87,12 +104,23 @@ inline void PopAnnotation() {
 // This will add 'my kernels' to both kernels in the profiler UI
 class ScopedAnnotation {
  public:
-  template <typename T>
-  explicit ScopedAnnotation(T&& annotation) {
-    PushAnnotation(std::forward<T>(annotation));
+  template <typename Generator>
+  explicit ScopedAnnotation(Generator&& generator) {
+    PushAnnotation(std::forward<Generator>(generator));
   }
 
-  // Pops the name passed in the constructor from the current annotation.
+  // The annotation generator provides the string pushed to the annotation
+  // stack. The range generator provides the object pushed to the profiler
+  // domain's range stack, which can carry a compact registered name and a
+  // structured payload.
+  template <typename AnnotationGenerator, typename RangeGenerator>
+  explicit ScopedAnnotation(AnnotationGenerator&& annotation_generator,
+                            RangeGenerator&& range_generator) {
+    PushAnnotation(std::forward<AnnotationGenerator>(annotation_generator),
+                   std::forward<RangeGenerator>(range_generator));
+  }
+
+  // Pops the annotation or range pushed by the constructor.
   ~ScopedAnnotation() { PopAnnotation(); }
 
   static bool IsEnabled() {

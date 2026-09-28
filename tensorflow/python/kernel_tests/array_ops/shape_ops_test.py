@@ -147,6 +147,15 @@ class ShapeOpsTest(test.TestCase):
     self._testAll(np.random.randn(2, 3, 5, 7, 11))
     self._testAll(np.random.randn(2, 3, 5, 7, 11, 13))
 
+  @test_util.run_deprecated_v1
+  def testOutTypeMustBeIntegral(self):
+    # Regression test: when the input's shape is fully known at graph
+    # construction time, shape() takes a constant-folding shortcut that
+    # used to skip the out_type validation the Shape op itself enforces.
+    x = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+    with self.assertRaisesRegex(ValueError, "out_type"):
+      array_ops.shape(x, out_type=dtypes.float32)
+
   def testBool(self):
     self._testAll(np.random.choice((False, True), size=(2,)))
     self._testAll(np.random.choice((False, True), size=(2, 3)))
@@ -401,6 +410,32 @@ class ShapeOpsTest(test.TestCase):
                           np.zeros([1, 2, 1]), [3])
         self.assertRaises(ValueError, array_ops.squeeze,
                           np.zeros([1, 2, 1]), [2, 3])
+
+  def testSqueezeWithTensorAxisError(self):
+    """Test that passing a Tensor as axis raises TypeError (issue #62504)."""
+    # Test with int tensor
+    input_tensor = constant_op.constant([[1, 2, 3]], dtype=dtypes.float32)
+    axis_tensor = constant_op.constant(0, dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        TypeError, r"axis.*must be.*integer.*list.*not a Tensor"
+    ):
+      array_ops.squeeze(input_tensor, axis_tensor)
+
+    # Test with float tensor
+    input_tensor = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
+    axis_tensor = constant_op.constant(0.0, dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        TypeError, r"axis.*must be.*integer.*list.*not a Tensor"
+    ):
+      array_ops.squeeze(input_tensor, axis_tensor)
+
+    # Test with a list containing a Tensor
+    input_tensor = constant_op.constant([[1, 2, 3]], dtype=dtypes.float32)
+    axis_list = [constant_op.constant(0, dtype=dtypes.int32)]
+    with self.assertRaisesRegex(
+        TypeError, r"axis.*must be.*integer.*list.*cannot.*contain Tensors"
+    ):
+      array_ops.squeeze(input_tensor, axis_list)
 
   @test_util.run_deprecated_v1
   def testSqueezeGradient(self):

@@ -318,12 +318,15 @@
 // CHECK-NEXT:  %[[broadcast_32:[^ ]+]] = f32[] broadcast(%[[constant_269]]), dimensions={}
 // CHECK-NEXT:  %[[log_10:[^ ]+]] = f32[] log(%[[arg1_1]])
 // CHECK-NEXT:  %[[constant_212:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[compare_44:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[constant_212]]), direction=LE
+// CHECK-NEXT:  %[[compare_44:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[constant_212]]), direction=LT
 // CHECK-NEXT:  %[[floor_7:[^ ]+]] = f32[] floor(%[[arg0_1]])
 // CHECK-NEXT:  %[[compare_45:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[floor_7]]), direction=EQ
 // CHECK-NEXT:  %[[and_16:[^ ]+]] = pred[] and(%[[compare_44]], %[[compare_45]])
 // CHECK-NEXT:  %[[constant_237:[^ ]+]] = f32[] constant(nan)
 // CHECK-NEXT:  %[[broadcast_26:[^ ]+]] = f32[] broadcast(%[[constant_237]]), dimensions={}
+// CHECK-NEXT:  %[[compare_49:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[constant_212]]), direction=EQ
+// CHECK-NEXT:  %[[constant_271:[^ ]+]] = f32[] constant(-inf)
+// CHECK-NEXT:  %[[broadcast_34:[^ ]+]] = f32[] broadcast(%[[constant_271]]), dimensions={}
 // CHECK-NEXT:  %[[constant_213:[^ ]+]] = f32[] constant(0.5)
 // CHECK-NEXT:  %[[compare_43:[^ ]+]] = pred[] compare(%[[arg0_1]], %[[constant_213]]), direction=LT
 // CHECK-NEXT:  %[[constant_218:[^ ]+]] = f32[] constant(2.01490307)
@@ -460,7 +463,8 @@
 // CHECK-NEXT:  %[[divide_108:[^ ]+]] = f32[] divide(%[[multiply_120]], %[[sine_4]])
 // CHECK-NEXT:  %[[subtract_81:[^ ]+]] = f32[] subtract(%[[subtract_80]], %[[divide_108]])
 // CHECK-NEXT:  %[[select_113:[^ ]+]] = f32[] select(%[[compare_43]], %[[subtract_81]], %[[subtract_80]])
-// CHECK-NEXT:  %[[select_114:[^ ]+]] = f32[] select(%[[and_16]], %[[broadcast_26]], %[[select_113]])
+// CHECK-NEXT:  %[[select_121:[^ ]+]] = f32[] select(%[[compare_49]], %[[broadcast_34]], %[[select_113]])
+// CHECK-NEXT:  %[[select_114:[^ ]+]] = f32[] select(%[[and_16]], %[[broadcast_26]], %[[select_121]])
 // CHECK-NEXT:  %[[subtract_82:[^ ]+]] = f32[] subtract(%[[log_10]], %[[select_114]])
 // CHECK-NEXT:  %[[multiply_122:[^ ]+]] = f32[] multiply(%[[while_2]]#1, %[[subtract_82]])
 // CHECK-NEXT:  %[[add_277:[^ ]+]] = f32[] add(%[[while_2]]#14, %[[multiply_122]])
@@ -471,12 +475,15 @@
 // CHECK-NEXT:  %[[constant_242:[^ ]+]] = f32[] constant(1)
 // CHECK-NEXT:  %[[add_278:[^ ]+]] = f32[] add(%[[arg0_1]], %[[constant_242]])
 // CHECK-NEXT:  %[[constant_243:[^ ]+]] = f32[] constant(0)
-// CHECK-NEXT:  %[[compare_47:[^ ]+]] = pred[] compare(%[[add_278]], %[[constant_243]]), direction=LE
+// CHECK-NEXT:  %[[compare_47:[^ ]+]] = pred[] compare(%[[add_278]], %[[constant_243]]), direction=LT
 // CHECK-NEXT:  %[[floor_9:[^ ]+]] = f32[] floor(%[[add_278]])
 // CHECK-NEXT:  %[[compare_48:[^ ]+]] = pred[] compare(%[[add_278]], %[[floor_9]]), direction=EQ
 // CHECK-NEXT:  %[[and_18:[^ ]+]] = pred[] and(%[[compare_47]], %[[compare_48]])
 // CHECK-NEXT:  %[[constant_268:[^ ]+]] = f32[] constant(nan)
 // CHECK-NEXT:  %[[broadcast_31:[^ ]+]] = f32[] broadcast(%[[constant_268]]), dimensions={}
+// CHECK-NEXT:  %[[compare_50:[^ ]+]] = pred[] compare(%[[add_278]], %[[constant_243]]), direction=EQ
+// CHECK-NEXT:  %[[constant_272:[^ ]+]] = f32[] constant(-inf)
+// CHECK-NEXT:  %[[broadcast_35:[^ ]+]] = f32[] broadcast(%[[constant_272]]), dimensions={}
 // CHECK-NEXT:  %[[constant_244:[^ ]+]] = f32[] constant(0.5)
 // CHECK-NEXT:  %[[compare_46:[^ ]+]] = pred[] compare(%[[add_278]], %[[constant_244]]), direction=LT
 // CHECK-NEXT:  %[[constant_249:[^ ]+]] = f32[] constant(2.01490307)
@@ -613,7 +620,8 @@
 // CHECK-NEXT:  %[[divide_128:[^ ]+]] = f32[] divide(%[[multiply_133]], %[[sine_5]])
 // CHECK-NEXT:  %[[subtract_93:[^ ]+]] = f32[] subtract(%[[subtract_92]], %[[divide_128]])
 // CHECK-NEXT:  %[[select_116:[^ ]+]] = f32[] select(%[[compare_46]], %[[subtract_93]], %[[subtract_92]])
-// CHECK-NEXT:  %[[select_117:[^ ]+]] = f32[] select(%[[and_18]], %[[broadcast_31]], %[[select_116]])
+// CHECK-NEXT:  %[[select_122:[^ ]+]] = f32[] select(%[[compare_50]], %[[broadcast_35]], %[[select_116]])
+// CHECK-NEXT:  %[[select_117:[^ ]+]] = f32[] select(%[[and_18]], %[[broadcast_31]], %[[select_122]])
 // CHECK-NEXT:  %[[subtract_94:[^ ]+]] = f32[] subtract(%[[log_11]], %[[select_117]])
 // CHECK-NEXT:  %[[multiply_135:[^ ]+]] = f32[] multiply(%[[while_3]]#3, %[[subtract_94]])
 // CHECK-NEXT:  %[[add_340:[^ ]+]] = f32[] add(%[[while_3]]#6, %[[multiply_135]])

@@ -23,7 +23,8 @@ namespace xla::gpu::nvptx {
 // Determine PTX version from CUDA version.
 stream_executor::SemanticVersion
 DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::SemanticVersion cuda_version);
+    stream_executor::SemanticVersion cuda_version,
+    int compute_capability_major = 0);
 
 }  // namespace xla::gpu::nvptx
 

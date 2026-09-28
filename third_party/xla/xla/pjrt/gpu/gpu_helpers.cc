@@ -27,13 +27,13 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/service/platform_util.h"
@@ -65,7 +65,7 @@ static size_t RoundUpGpuMemoryLimit(size_t allocator_memory) {
 absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       se::Platform * platform,
       PlatformUtil::GetPlatform(platform_name ? *platform_name : "gpu"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -121,7 +121,7 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   std::unique_ptr<tsl::SubAllocator> sub_allocator;
 
   if (enable_unified_memory) {
-    ASSIGN_OR_RETURN(auto unified_memory_allocator,
+    ABSL_ASSIGN_OR_RETURN(auto unified_memory_allocator,
                      executor->CreateMemoryAllocator(
                          stream_executor::MemorySpace::kUnified));
     sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
@@ -169,6 +169,33 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
   opts.enable_spatial_partitioning = enable_spatial_partitioning;
+  if (enable_spatial_partitioning) {
+    // Default memory (S(0), upper end) mixes buffers with different lifetimes.
+    // Keep the BFC padding-retention heuristic for both owned holes and
+    // central-gap carves: retaining a small remainder as padding can prevent a
+    // longer-lived allocation in that remainder from blocking coalescing later.
+    // This trades immediate internal fragmentation for potentially less
+    // external fragmentation; it does not guarantee better memory utilization.
+    //
+    // Collective memory (S(1), lower end) is expected to be primarily transient
+    // temporaries, with less mixing of lifetimes to justify retaining padding.
+    // Keep exact splitting for both owned holes and central-gap carves so
+    // usable remainders remain free. Exact gap splitting also keeps collective
+    // chunk sizes independent of default-memory activity while the gap has
+    // capacity, as required for reproducible NCCL symmetric-window offsets. The
+    // transient lifetime pattern is an expectation, not an allocator invariant;
+    // collective memory can still suffer external fragmentation.
+    //
+    // Break equal-size ties toward each space's outer arena boundary: lower
+    // addresses for collective memory, higher addresses for default memory.
+    // Size remains the primary best-fit key.
+    opts.lower_end_policy = {tsl::BFCAllocator::HoleOrder::kAscendingAddress,
+                             tsl::BFCAllocator::SplitPolicy::kExact,
+                             tsl::BFCAllocator::SplitPolicy::kExact};
+    opts.upper_end_policy = {tsl::BFCAllocator::HoleOrder::kDescendingAddress,
+                             tsl::BFCAllocator::SplitPolicy::kRetainPadding,
+                             tsl::BFCAllocator::SplitPolicy::kRetainPadding};
+  }
   return std::make_shared<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
@@ -179,7 +206,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
-  ASSIGN_OR_RETURN(auto collective_memory_allocator,
+  ABSL_ASSIGN_OR_RETURN(auto collective_memory_allocator,
                    executor->CreateMemoryAllocator(
                        stream_executor::MemorySpace::kCollective));
   auto sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
@@ -215,19 +242,9 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
       absl::StrCat("GPU_collectivememory_", device_ordinal, "_bfc"), opts);
 }
 
-// Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed pool of pinned memory.
-//
-// The pool size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment
-// variable, which defaults to 64GB.
-//
-// If XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
-// preallocated, and the preallocated size is controlled by
-// XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
-// 16GB in this case.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
-    se::StreamExecutor* executor) {
-  ASSIGN_OR_RETURN(
+    se::StreamExecutor* executor, bool preallocate) {
+  ABSL_ASSIGN_OR_RETURN(
       auto host_memory_allocator,
       executor->CreateMemoryAllocator(stream_executor::MemorySpace::kHost));
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
@@ -236,16 +253,12 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
                                       /*index=*/0,
                                       /*alloc_visitors=*/{},
                                       /*free_visitors=*/{}));
-  bool xla_pjrt_gpu_host_memory_preallocate;
-  RETURN_IF_ERROR(
-      tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
-                              &xla_pjrt_gpu_host_memory_preallocate));
 
   const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
-      xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
+      preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
                                default_xla_pjrt_gpu_host_memory_limit_gb,
                                &xla_pjrt_gpu_host_memory_limit_gb));
@@ -254,7 +267,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
       xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
 
   tsl::BFCAllocator::Options opts;
-  opts.allow_growth = !xla_pjrt_gpu_host_memory_preallocate;
+  opts.allow_growth = !preallocate;
   return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
                                              kGpuHostMemoryLimitBytes,
                                              /*name=*/"xla_gpu_host_bfc", opts);

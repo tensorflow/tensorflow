@@ -40,6 +40,29 @@ and
 These errors are typically caused by an internal compiler bug or by a
 custom kernel exceeding its allocation limit.
 
+## Usable Limits {#usable-limits}
+
+Different TPU hardware have different Vmem sizes. In addition, different
+hardware may reserve different amounts of Vmem for various activities, thereby
+limiting the amount that can be allocated to Scoped Vmem.
+
+Below are the typical limits on various hardware.
+
+<!-- LINT.IfChange(scoped_vmem_limits) -->
+
+| Hardware   | Limit (human-friendly) | Limit (KiB) | Limit (bytes) |
+| :--------- | ---------------------: | ----------: | ------------: |
+| TPU v2     | 16MB                   | 16384       | 16777216      |
+| TPU v3     | 16MB                   | 16384       | 16777216      |
+| TPU v4     | 16MB                   | 16384       | 16777216      |
+| TPU v4i    | 16MB                   | 16384       | 16777216      |
+| TPU v5e    | 128MB                  | 131072      | 134217728     |
+| TPU v5p    | 63.9MB                 | 65472       | 67043328      |
+| TPU v6e    | 127.9MB                | 131008      | 134152192     |
+| TPU 7x     | 63.9MB                 | 65472       | 67043328      |
+
+<!-- LINT.ThenChange() -->
+
 ## Debugging
 
 Carefully analyze the error message to identify if the error stems from a

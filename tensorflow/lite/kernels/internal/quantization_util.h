@@ -111,7 +111,7 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
 // static_cast would cause undefined behavior for the following cases, which
 // have well-defined behavior for this function:
 //
-//  1. If x is NaN, the result is zero.
+//  1. If x is NaN, the result is nan_result, which defaults to zero.
 //
 //  2. If the truncated form of x is above the representable range of IntOut,
 //     the result is std::numeric_limits<IntOut>::max().
@@ -125,47 +125,36 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
 // the results are undefined.
 // TODO(sfeuz): Replace by absl::SafeCast once available.
 template <class IntOut, class FloatIn>
-IntOut SafeCast(FloatIn x) {
+IntOut SafeCast(FloatIn x, IntOut nan_result = IntOut{0}) {
   static_assert(!std::numeric_limits<FloatIn>::is_integer,
                 "FloatIn is integer");
   static_assert(std::numeric_limits<IntOut>::is_integer,
                 "IntOut is not integer");
   static_assert(std::numeric_limits<IntOut>::radix == 2, "IntOut is base 2");
-
-  // Special case NaN, for which the logic below doesn't work.
+  static_assert(std::numeric_limits<FloatIn>::max_exponent >
+                    std::numeric_limits<IntOut>::digits,
+                "FloatIn cannot represent IntOut's exclusive upper bound");
   if (std::isnan(x)) {
-    return 0;
+    return nan_result;
   }
 
-  // Negative values all clip to zero for unsigned results.
-  if (!std::numeric_limits<IntOut>::is_signed && x < 0) {
-    return 0;
+  const FloatIn min_value =
+      static_cast<FloatIn>(std::numeric_limits<IntOut>::min());
+  if (x < min_value) {
+    return std::numeric_limits<IntOut>::min();
   }
 
-  // Handle infinities.
-  if (std::isinf(x)) {
-    return x < 0 ? std::numeric_limits<IntOut>::min()
-                 : std::numeric_limits<IntOut>::max();
+  // IntOut's exclusive upper bound is one greater than its maximum. Compute
+  // it from a representable power of two so that no rounded integer-to-float
+  // conversion can make an out-of-range value appear safe.
+  constexpr FloatIn kMaxExclusive =
+      static_cast<FloatIn>(std::numeric_limits<IntOut>::max() / 2 + 1) *
+      FloatIn{2};
+  if (x >= kMaxExclusive) {
+    return std::numeric_limits<IntOut>::max();
   }
 
-  // Set exp such that x == f * 2^exp for some f with |f| in [0.5, 1.0),
-  // unless x is zero in which case exp == 0. Note that this implies that the
-  // magnitude of x is strictly less than 2^exp.
-  int exp = 0;
-  std::frexp(x, &exp);
-
-  // Let N be the number of non-sign bits in the representation of IntOut. If
-  // the magnitude of x is strictly less than 2^N, the truncated version of x
-  // is representable as IntOut. The only representable integer for which this
-  // is not the case is kMin for signed types (i.e. -2^N), but that is covered
-  // by the fall-through below.
-  if (exp <= std::numeric_limits<IntOut>::digits) {
-    return x;
-  }
-
-  // Handle numbers with magnitude >= 2^N.
-  return x < 0 ? std::numeric_limits<IntOut>::min()
-               : std::numeric_limits<IntOut>::max();
+  return static_cast<IntOut>(x);
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/kernels/internal/quantization_util.h)
 

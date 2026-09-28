@@ -57,8 +57,8 @@ Value CreateOrFindGlobalStringConstant(Location loc, StringRef global_name,
     Type ptr_type = LLVM::LLVMPointerType::get(b->getContext());
     Value global_ptr =
         LLVM::AddressOfOp::create(*b, loc, ptr_type, symbol_name);
-    Value c0 =
-        LLVM::ConstantOp::create(*b, loc, b->getI64Type(), b->getIndexAttr(0));
+    Value c0 = LLVM::ConstantOp::create(*b, loc, b->getI64Type(),
+                                        b->getI64IntegerAttr(0));
     return LLVM::GEPOp::create(*b, loc, ptr_type, symbol_type, global_ptr,
                                ValueRange{c0, c0});
   }

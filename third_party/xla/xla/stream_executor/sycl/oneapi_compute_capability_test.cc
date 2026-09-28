@@ -23,32 +23,90 @@ namespace {
 
 TEST(OneAPIComputeCapabilityTest, ProtoTest1) {
   OneAPIComputeCapabilityProto proto;
-  proto.set_architecture("bmg");
-  auto compute_capability = OneAPIComputeCapability(proto);
+  proto.set_architecture("BMG");
+  OneAPIComputeCapability compute_capability = OneAPIComputeCapability(proto);
   EXPECT_TRUE(compute_capability.IsBMG());
   EXPECT_FALSE(compute_capability.IsDG2());
   EXPECT_FALSE(compute_capability.IsPVC());
 }
 
-TEST(OneAPIComputeCapabilityTest, ToProtoTest1) {
-  OneAPIComputeCapabilityProto proto =
-      OneAPIComputeCapability(0xc, 0x37).ToProto();
-  EXPECT_EQ(proto.architecture(), "DG2");
+TEST(OneAPIComputeCapabilityTest, ProtoTest2) {
+  OneAPIComputeCapabilityProto proto;
+  proto.set_architecture("DG2");
+  proto.set_variant("G11");
+  OneAPIComputeCapability compute_capability = OneAPIComputeCapability(proto);
+  EXPECT_FALSE(compute_capability.IsBMG());
+  EXPECT_TRUE(compute_capability.IsDG2());
+  EXPECT_FALSE(compute_capability.IsPVC());
 }
 
-TEST(OneAPIComputeCapabilityTest, ToProtoTest2) {
-  OneAPIComputeCapabilityProto proto = OneAPIComputeCapability("bmg").ToProto();
-  EXPECT_EQ(proto.architecture(), "BMG");
+TEST(OneAPIComputeCapabilityTest, ComputeCapabilityFromName) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("pvc", "vg");
+  EXPECT_FALSE(compute_capability.IsBMG());
+  EXPECT_FALSE(compute_capability.IsDG2());
+  EXPECT_TRUE(compute_capability.IsPVC());
+}
+
+TEST(OneAPIComputeCapabilityTest, ComputeCapabilityFromGenAndVer) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability(0x14, 0x2);
+  EXPECT_TRUE(compute_capability.IsBMG());
+  EXPECT_FALSE(compute_capability.IsDG2());
+  EXPECT_FALSE(compute_capability.IsPVC());
+}
+
+TEST(OneAPIComputeCapabilityTest, ComputeCapabilityForUnknownDevice) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("Device", "Variant");
+  EXPECT_FALSE(compute_capability.IsBMG());
+  EXPECT_FALSE(compute_capability.IsDG2());
+  EXPECT_FALSE(compute_capability.IsPVC());
+  EXPECT_EQ(compute_capability.ToString(), "Unknown");
+}
+
+TEST(OneAPIComputeCapabilityTest, ComputeCapabilityForUnknownVariant) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("BMG", "Variant");
+  EXPECT_FALSE(compute_capability.IsBMG());
+  EXPECT_FALSE(compute_capability.IsDG2());
+  EXPECT_FALSE(compute_capability.IsPVC());
+  EXPECT_EQ(compute_capability.ToString(), "Xe2");
 }
 
 TEST(OneAPIComputeCapabilityTest, ToString) {
-  EXPECT_EQ(OneAPIComputeCapability::BMG().ToString(), "BMG");
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("DG2", "G10");
+  EXPECT_EQ(compute_capability.ToString(), "DG2_G10");
 }
 
-TEST(OneAPIComputeCapabilityTest, PlatformCCTest) {
+TEST(OneAPIComputeCapabilityTest, ToProto) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("PVC", "VG");
+  OneAPIComputeCapabilityProto proto = compute_capability.ToProto();
+  EXPECT_EQ(proto.architecture(), "PVC");
+  EXPECT_EQ(proto.variant(), "VG");
+}
+
+TEST(OneAPIComputeCapabilityTest, ToProtoUnknownDevice) {
+  OneAPIComputeCapability compute_capability =
+      OneAPIComputeCapability("ABC", "DEF");
+  OneAPIComputeCapabilityProto proto = compute_capability.ToProto();
+  EXPECT_EQ(proto.architecture(), "Unknown");
+  EXPECT_EQ(proto.variant(), "");
+}
+
+TEST(OneAPIComputeCapabilityTest, UtilityFunc) {
+  OneAPIComputeCapability compute_capability = OneAPIComputeCapability::BMG();
+  EXPECT_TRUE(compute_capability.IsBMG());
+  EXPECT_FALSE(compute_capability.IsDG2());
+  EXPECT_FALSE(compute_capability.IsPVC());
+}
+
+TEST(OneAPIComputeCapabilityTest, GetterFunc) {
   OneAPIComputeCapability compute_capability = OneAPIComputeCapability::DG2();
-  EXPECT_EQ(compute_capability.generation(), 0xc);
-  EXPECT_EQ(compute_capability.version(), 0x37);
+  EXPECT_EQ(compute_capability.architecture(), "DG2");
+  EXPECT_EQ(compute_capability.variant(), "G10");
 }
 
 }  // namespace

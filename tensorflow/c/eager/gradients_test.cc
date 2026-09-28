@@ -14,26 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
-#include "tensorflow/c/experimental/gradients/array_grad.h"
-#include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/not_differentiable.h"
-#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
-#include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
@@ -123,10 +126,11 @@ absl::Status RecordOperationWithNullGradientFunctionModel(
   AbstractTensorHandle* neg_output;
   TF_RETURN_IF_ERROR(ops::Neg(ctx, inputs[0], &neg_output, "Neg"));
   tape.RecordOperation(inputs, {neg_output}, nullptr, "Neg");
+  inputs[0]->Ref();
   return tape.ComputeGradient(ctx,
                               /*targets=*/{neg_output},
                               /*sources=*/inputs,
-                              /*output_gradients=*/{}, outputs);
+                              /*output_gradients=*/{inputs[0]}, outputs);
 }
 
 TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
@@ -161,6 +165,139 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
       "or NotDifferentiableGradientFunction.",
       s.message());
   ASSERT_EQ(nullptr, outputs[0]);
+  EXPECT_TRUE(x.get()->RefCountIsOne());
+}
+
+class DummyGradientFunction : public GradientFunction {
+ public:
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
+    if (!grad_inputs.empty() && !grad_outputs.empty()) {
+      grad_inputs[0] = grad_outputs[0];
+      if (grad_inputs[0]) {
+        grad_inputs[0]->Ref();
+      }
+    }
+    return absl::OkStatus();
+  }
+};
+
+TEST_P(CppGradients, TestMarkAsResult) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    absl::Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    x.reset(x_raw);
+  }
+
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  AbstractOperationPtr op(ctx.get()->CreateOperation());
+  ForwardOperation forward_op;
+  absl::Status s =
+      Reset(op.get(), "Identity", /*raw_device_name=*/nullptr, &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  s = AddInput(op.get(), x.get(), &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  int num_retvals = 1;
+  s = op->Execute(absl::MakeSpan(temp_outputs), &num_retvals);
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+
+  Tape tape(/*persistent=*/false);
+  tape.Watch(x.get());
+  tape.RecordOperation({x.get()}, temp_outputs, new DummyGradientFunction,
+                       "Identity");
+
+  std::vector<AbstractTensorHandle*> outputs(1);
+  x.get()->Ref();  // Pass ownership of this gradient to ComputeGradient
+  s = tape.ComputeGradient(ctx.get(),
+                           /*targets=*/temp_outputs,
+                           /*sources=*/{temp_outputs[0]},
+                           /*output_gradients=*/{x.get()},
+                           absl::MakeSpan(outputs));
+  ASSERT_EQ(errors::OK, s.code());
+  ASSERT_EQ(x.get(), outputs[0]);
+  outputs[0]->Unref();
+  EXPECT_TRUE(x.get()->RefCountIsOne());
+}
+
+struct DummyTensor {
+  int64_t id;
+  int64_t GetID() const { return id; }
+  tensorflow::DataType GetDType() const { return tensorflow::DT_FLOAT; }
+  int* ZerosLike() const { return nullptr; }
+};
+
+struct DummyBackwardFunction {};
+
+class MockVSpace
+    : public eager::VSpace<int, DummyBackwardFunction, DummyTensor> {
+ public:
+  mutable int delete_gradient_called_ = 0;
+
+  int64_t NumElements(int* tensor) const override { return 1; }
+  int* AggregateGradients(
+      gtl::ArraySlice<int*> gradient_tensors) const override {
+    return gradient_tensors[0];
+  }
+  absl::Status CallBackwardFunction(
+      const std::string& op_type, DummyBackwardFunction* backward_function,
+      const std::vector<int64_t>& unneeded_gradients,
+      gtl::ArraySlice<int*> output_gradients,
+      absl::Span<int*> result) const override {
+    for (int* g : output_gradients) {
+      if (g) DeleteGradient(g);
+    }
+    return absl::InternalError("Intentional failure");
+  }
+  absl::Status BuildOnesLike(const DummyTensor& t,
+                             int** result) const override {
+    *result = new int(1);
+    return absl::OkStatus();
+  }
+  int64_t TensorId(int* tensor) const override { return 0; }
+  DummyTensor TapeTensorFromGradient(int* gradient) const override {
+    return DummyTensor{0};
+  }
+  void MarkAsResult(int* gradient) const override {}
+  void DeleteGradient(int* gradient) const override {
+    delete_gradient_called_++;
+    delete gradient;
+  }
+};
+
+TEST(GradientTapeTest, MemoryLeakOnFailure) {
+  eager::GradientTape<int, DummyBackwardFunction, DummyTensor> tape(
+      /*persistent=*/false);
+  tape.Watch(1);
+
+  DummyBackwardFunction* bw = new DummyBackwardFunction();
+  tape.RecordOperation(
+      "TestOp", {DummyTensor{2}}, {1}, {tensorflow::DT_FLOAT},
+      [bw]() { return bw; }, [](DummyBackwardFunction* bw) { delete bw; });
+
+  MockVSpace vspace;
+  std::vector<int*> results(1);
+  absl::Status s =
+      tape.ComputeGradient(vspace, {2}, {1}, {}, {}, absl::MakeSpan(results),
+                           /*build_default_zeros_grads=*/false);
+
+  ASSERT_EQ(error::INTERNAL, s.code());
+  EXPECT_EQ(1, vspace.delete_gradient_called_)
+      << "Expected gradient to be deleted (memory leak if 0)";
 }
 
 TEST_P(CppGradients, TestExecuteWithLargerOutputsVectorDoesNotCrash) {
@@ -235,6 +372,51 @@ INSTANTIATE_TEST_SUITE_P(
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #endif
+TEST(GradientTapeTest, TapeVSpaceLeakOnBackwardFunctionError) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    absl::Status s = BuildImmediateExecutionContext(false, &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
+    x.reset(x_raw);
+  }
+
+  Tape tape(/*persistent=*/false);
+  tape.Watch(x.get());
+  AbstractTensorHandle* neg_output;
+  absl::Status s = ops::Neg(ctx.get(), x.get(), &neg_output, "Neg");
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+  AbstractTensorHandle* neg_output2;
+  s = ops::Neg(ctx.get(), x.get(), &neg_output2, "Neg2");
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
+
+  tape.RecordOperation({x.get()}, {neg_output, neg_output2}, nullptr, "Neg");
+  x.get()->Ref();
+
+  std::vector<AbstractTensorHandle*> outputs;
+  s = tape.ComputeGradient(ctx.get(),
+                           /*targets=*/{neg_output},
+                           /*sources=*/{},
+                           /*output_gradients=*/{x.get()},
+                           absl::MakeSpan(outputs));
+  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
+  neg_output->Unref();
+  neg_output2->Unref();
+
+  EXPECT_TRUE(x.get()->RefCountIsOne());
+}
+
 }  // namespace
 }  // namespace internal
 }  // namespace gradients

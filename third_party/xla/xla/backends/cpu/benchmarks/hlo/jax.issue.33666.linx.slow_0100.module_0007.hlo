@@ -1,0 +1,287 @@
+HloModule jit__normal, entry_computation_layout={(u32[2]{0})->f32[20,200]{1,0}}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}, frontend_attributes={xla.sdy.meshes={empty_mesh = #sdy.mesh<[]>}}
+
+%closed_call.1 (Arg_0.4: s32[], Arg_1.3: u32[20,200], Arg_2.3: u32[20,200], Arg_3.2: u32[], Arg_4.1: u32[], Arg_5.1: u32[], Arg_6.1: u32[4], Arg_7.1: u32[4]) -> (s32[], u32[20,200], u32[20,200], u32[], u32[], /*index=5*/u32[], u32[4], u32[4]) {
+  %Arg_0.4 = s32[] parameter(0)
+  %constant.39 = s32[] constant(1)
+  %add.16 = s32[] add(%Arg_0.4, %constant.39), metadata={op_name="add"}
+  %Arg_1.3 = u32[20,200]{1,0} parameter(1)
+  %Arg_2.3 = u32[20,200]{1,0} parameter(2)
+  %add.17 = u32[20,200]{1,0} add(%Arg_1.3, %Arg_2.3), metadata={op_name="add"}
+  %Arg_6.1 = u32[4]{0} parameter(6)
+  %slice.6 = u32[1]{0} slice(%Arg_6.1), slice={[0:1]}, metadata={op_name="slice"}
+  %squeeze.6 = u32[] reshape(%slice.6), metadata={op_name="squeeze"}
+  %shift_left.8 = u32[20,200]{1,0} broadcast(%squeeze.6), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.9 = u32[20,200]{1,0} shift-left(%Arg_2.3, %shift_left.8), metadata={op_name="shift_left"}
+  %constant.38 = u32[] constant(32)
+  %sub.5 = u32[] subtract(%constant.38, %squeeze.6), metadata={op_name="sub"}
+  %shift_right_logical.9 = u32[20,200]{1,0} broadcast(%sub.5), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.10 = u32[20,200]{1,0} shift-right-logical(%Arg_2.3, %shift_right_logical.9), metadata={op_name="shift_right_logical"}
+  %or.5 = u32[20,200]{1,0} or(%shift_left.9, %shift_right_logical.10), metadata={op_name="or"}
+  %xor.6 = u32[20,200]{1,0} xor(%add.17, %or.5), metadata={op_name="xor"}
+  %add.18 = u32[20,200]{1,0} add(%add.17, %xor.6), metadata={op_name="add"}
+  %slice.7 = u32[1]{0} slice(%Arg_6.1), slice={[1:2]}, metadata={op_name="slice"}
+  %squeeze.7 = u32[] reshape(%slice.7), metadata={op_name="squeeze"}
+  %shift_left.10 = u32[20,200]{1,0} broadcast(%squeeze.7), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.11 = u32[20,200]{1,0} shift-left(%xor.6, %shift_left.10), metadata={op_name="shift_left"}
+  %sub.6 = u32[] subtract(%constant.38, %squeeze.7), metadata={op_name="sub"}
+  %shift_right_logical.11 = u32[20,200]{1,0} broadcast(%sub.6), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.12 = u32[20,200]{1,0} shift-right-logical(%xor.6, %shift_right_logical.11), metadata={op_name="shift_right_logical"}
+  %or.6 = u32[20,200]{1,0} or(%shift_left.11, %shift_right_logical.12), metadata={op_name="or"}
+  %xor.7 = u32[20,200]{1,0} xor(%add.18, %or.6), metadata={op_name="xor"}
+  %add.19 = u32[20,200]{1,0} add(%add.18, %xor.7), metadata={op_name="add"}
+  %slice.8 = u32[1]{0} slice(%Arg_6.1), slice={[2:3]}, metadata={op_name="slice"}
+  %squeeze.8 = u32[] reshape(%slice.8), metadata={op_name="squeeze"}
+  %shift_left.12 = u32[20,200]{1,0} broadcast(%squeeze.8), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.13 = u32[20,200]{1,0} shift-left(%xor.7, %shift_left.12), metadata={op_name="shift_left"}
+  %sub.7 = u32[] subtract(%constant.38, %squeeze.8), metadata={op_name="sub"}
+  %shift_right_logical.13 = u32[20,200]{1,0} broadcast(%sub.7), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.14 = u32[20,200]{1,0} shift-right-logical(%xor.7, %shift_right_logical.13), metadata={op_name="shift_right_logical"}
+  %or.7 = u32[20,200]{1,0} or(%shift_left.13, %shift_right_logical.14), metadata={op_name="or"}
+  %xor.8 = u32[20,200]{1,0} xor(%add.19, %or.7), metadata={op_name="xor"}
+  %add.20 = u32[20,200]{1,0} add(%add.19, %xor.8), metadata={op_name="add"}
+  %Arg_3.2 = u32[] parameter(3)
+  %add.21 = u32[20,200]{1,0} broadcast(%Arg_3.2), dimensions={}, metadata={op_name="add"}
+  %add.22 = u32[20,200]{1,0} add(%add.20, %add.21), metadata={op_name="add"}
+  %slice.9 = u32[1]{0} slice(%Arg_6.1), slice={[3:4]}, metadata={op_name="slice"}
+  %squeeze.9 = u32[] reshape(%slice.9), metadata={op_name="squeeze"}
+  %shift_left.14 = u32[20,200]{1,0} broadcast(%squeeze.9), dimensions={}, metadata={op_name="shift_left"}
+  %shift_left.15 = u32[20,200]{1,0} shift-left(%xor.8, %shift_left.14), metadata={op_name="shift_left"}
+  %sub.8 = u32[] subtract(%constant.38, %squeeze.9), metadata={op_name="sub"}
+  %shift_right_logical.15 = u32[20,200]{1,0} broadcast(%sub.8), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.16 = u32[20,200]{1,0} shift-right-logical(%xor.8, %shift_right_logical.15), metadata={op_name="shift_right_logical"}
+  %or.8 = u32[20,200]{1,0} or(%shift_left.15, %shift_right_logical.16), metadata={op_name="or"}
+  %xor.9 = u32[20,200]{1,0} xor(%add.20, %or.8), metadata={op_name="xor"}
+  %Arg_4.1 = u32[] parameter(4)
+  %add.23 = u32[20,200]{1,0} broadcast(%Arg_4.1), dimensions={}, metadata={op_name="add"}
+  %add.24 = u32[20,200]{1,0} add(%xor.9, %add.23), metadata={op_name="add"}
+  %add.25 = s32[] add(%Arg_0.4, %constant.39), metadata={op_name="add"}
+  %convert_element_type.1 = u32[] convert(%add.25), metadata={op_name="convert_element_type"}
+  %add.26 = u32[20,200]{1,0} broadcast(%convert_element_type.1), dimensions={}, metadata={op_name="add"}
+  %add.27 = u32[20,200]{1,0} add(%add.24, %add.26), metadata={op_name="add"}
+  %Arg_5.1 = u32[] parameter(5)
+  %Arg_7.1 = u32[4]{0} parameter(7)
+  ROOT %tuple.1 = (s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) tuple(%add.16, %add.22, %add.27, %Arg_4.1, %Arg_5.1, /*index=5*/%Arg_3.2, %Arg_7.1, %Arg_6.1)
+}
+
+%region_0.2 (arg_tuple.1: (s32[], s32[], u32[20,200], u32[20,200], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> (s32[], s32[], u32[20,200], u32[20,200], u32[], /*index=5*/u32[], u32[], u32[4], u32[4]) {
+  %arg_tuple.1 = (s32[], s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.9 = s32[] get-tuple-element(%arg_tuple.1), index=0
+  %constant.40 = s32[] constant(1)
+  %add.29 = s32[] add(%get-tuple-element.9, %constant.40), metadata={op_name="while/body/add"}
+  %get-tuple-element.10 = s32[] get-tuple-element(%arg_tuple.1), index=1
+  %get-tuple-element.11 = u32[20,200]{1,0} get-tuple-element(%arg_tuple.1), index=2
+  %get-tuple-element.12 = u32[20,200]{1,0} get-tuple-element(%arg_tuple.1), index=3
+  %get-tuple-element.13 = u32[] get-tuple-element(%arg_tuple.1), index=4
+  %get-tuple-element.14 = u32[] get-tuple-element(%arg_tuple.1), index=5
+  %get-tuple-element.15 = u32[] get-tuple-element(%arg_tuple.1), index=6
+  %get-tuple-element.16 = u32[4]{0} get-tuple-element(%arg_tuple.1), index=7
+  %get-tuple-element.17 = u32[4]{0} get-tuple-element(%arg_tuple.1), index=8
+  %closed_call.9 = (s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], u32[], /*index=5*/u32[], u32[4]{0}, u32[4]{0}) call(%get-tuple-element.10, %get-tuple-element.11, %get-tuple-element.12, %get-tuple-element.13, %get-tuple-element.14, /*index=5*/%get-tuple-element.15, %get-tuple-element.16, %get-tuple-element.17), to_apply=%closed_call.1, metadata={op_name="while/body/closed_call"}
+  %closed_call.10 = s32[] get-tuple-element(%closed_call.9), index=0, metadata={op_name="while/body/closed_call"}
+  %closed_call.11 = u32[20,200]{1,0} get-tuple-element(%closed_call.9), index=1, metadata={op_name="while/body/closed_call"}
+  %closed_call.12 = u32[20,200]{1,0} get-tuple-element(%closed_call.9), index=2, metadata={op_name="while/body/closed_call"}
+  %closed_call.13 = u32[] get-tuple-element(%closed_call.9), index=3, metadata={op_name="while/body/closed_call"}
+  %closed_call.14 = u32[] get-tuple-element(%closed_call.9), index=4, metadata={op_name="while/body/closed_call"}
+  %closed_call.15 = u32[] get-tuple-element(%closed_call.9), index=5, metadata={op_name="while/body/closed_call"}
+  %closed_call.16 = u32[4]{0} get-tuple-element(%closed_call.9), index=6, metadata={op_name="while/body/closed_call"}
+  %closed_call.17 = u32[4]{0} get-tuple-element(%closed_call.9), index=7, metadata={op_name="while/body/closed_call"}
+  ROOT %tuple.3 = (s32[], s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%add.29, %closed_call.10, %closed_call.11, %closed_call.12, %closed_call.13, /*index=5*/%closed_call.14, %closed_call.15, %closed_call.16, %closed_call.17)
+}
+
+%region_1.3 (arg_tuple.3: (s32[], s32[], u32[20,200], u32[20,200], u32[], /*index=5*/u32[], u32[], u32[4], u32[4])) -> pred[] {
+  %arg_tuple.3 = (s32[], s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) parameter(0)
+  %get-tuple-element.28 = s32[] get-tuple-element(%arg_tuple.3), index=1
+  %get-tuple-element.29 = u32[20,200]{1,0} get-tuple-element(%arg_tuple.3), index=2
+  %get-tuple-element.30 = u32[20,200]{1,0} get-tuple-element(%arg_tuple.3), index=3
+  %get-tuple-element.31 = u32[] get-tuple-element(%arg_tuple.3), index=4
+  %get-tuple-element.32 = u32[] get-tuple-element(%arg_tuple.3), index=5
+  %get-tuple-element.33 = u32[] get-tuple-element(%arg_tuple.3), index=6
+  %get-tuple-element.34 = u32[4]{0} get-tuple-element(%arg_tuple.3), index=7
+  %get-tuple-element.35 = u32[4]{0} get-tuple-element(%arg_tuple.3), index=8
+  %get-tuple-element.27 = s32[] get-tuple-element(%arg_tuple.3), index=0
+  %constant.42 = s32[] constant(5)
+  ROOT %lt.1 = pred[] compare(%get-tuple-element.27, %constant.42), direction=LT, metadata={op_name="while/cond/lt"}
+}
+
+%threefry2x32.4 (Arg_0.5: u32[], Arg_1.4: u32[], Arg_2.4: u32[20,200], Arg_3.3: u32[20,200]) -> (u32[20,200], u32[20,200]) {
+  %constant.43 = s32[] constant(0)
+  %Arg_2.4 = u32[20,200]{1,0} parameter(2)
+  %Arg_0.5 = u32[] parameter(0)
+  %add.30 = u32[20,200]{1,0} broadcast(%Arg_0.5), dimensions={}, metadata={op_name="add"}
+  %add.31 = u32[20,200]{1,0} add(%Arg_2.4, %add.30), metadata={op_name="add"}
+  %Arg_3.3 = u32[20,200]{1,0} parameter(3)
+  %Arg_1.4 = u32[] parameter(1)
+  %add.32 = u32[20,200]{1,0} broadcast(%Arg_1.4), dimensions={}, metadata={op_name="add"}
+  %add.33 = u32[20,200]{1,0} add(%Arg_3.3, %add.32), metadata={op_name="add"}
+  %xor.10 = u32[] xor(%Arg_0.5, %Arg_1.4), metadata={op_name="xor"}
+  %constant.44 = u32[] constant(466688986)
+  %xor.11 = u32[] xor(%xor.10, %constant.44), metadata={op_name="xor"}
+  %constant.45 = u32[4]{0} constant({13, 15, 26, 6})
+  %constant.46 = u32[4]{0} constant({17, 29, 16, 24})
+  %while.11 = (s32[], s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) tuple(%constant.43, %constant.43, %add.31, %add.33, %Arg_1.4, /*index=5*/%xor.11, %Arg_0.5, %constant.45, %constant.46), metadata={op_name="while"}
+  %while.12 = (s32[], s32[], u32[20,200]{1,0}, u32[20,200]{1,0}, u32[], /*index=5*/u32[], u32[], u32[4]{0}, u32[4]{0}) while(%while.11), condition=%region_1.3, body=%region_0.2, metadata={op_name="while"}
+  %while.13 = s32[] get-tuple-element(%while.12), index=0, metadata={op_name="while"}
+  %while.14 = s32[] get-tuple-element(%while.12), index=1, metadata={op_name="while"}
+  %while.17 = u32[] get-tuple-element(%while.12), index=4, metadata={op_name="while"}
+  %while.18 = u32[] get-tuple-element(%while.12), index=5, metadata={op_name="while"}
+  %while.19 = u32[] get-tuple-element(%while.12), index=6, metadata={op_name="while"}
+  %while.20 = u32[4]{0} get-tuple-element(%while.12), index=7, metadata={op_name="while"}
+  %while.21 = u32[4]{0} get-tuple-element(%while.12), index=8, metadata={op_name="while"}
+  %while.15 = u32[20,200]{1,0} get-tuple-element(%while.12), index=2, metadata={op_name="while"}
+  %while.16 = u32[20,200]{1,0} get-tuple-element(%while.12), index=3, metadata={op_name="while"}
+  ROOT %tuple.5 = (u32[20,200]{1,0}, u32[20,200]{1,0}) tuple(%while.15, %while.16)
+}
+
+%_uniform.5 (Arg_0.6: u32[2], Arg_1.5: f32[], Arg_2.5: f32[]) -> f32[20,200] {
+  %Arg_1.5 = f32[] parameter(1)
+  %broadcast_in_dim.2 = f32[1,1]{1,0} reshape(%Arg_1.5), metadata={op_name="broadcast_in_dim"}
+  %max.4 = f32[1,1]{1,0} broadcast(%broadcast_in_dim.2), dimensions={0,1}, metadata={op_name="max"}
+  %max.5 = f32[] reshape(%max.4), metadata={op_name="max"}
+  %max.6 = f32[20,200]{1,0} broadcast(%max.5), dimensions={}, metadata={op_name="max"}
+  %Arg_0.6 = u32[2]{0} parameter(0)
+  %slice.10 = u32[1]{0} slice(%Arg_0.6), slice={[0:1]}, metadata={op_name="slice"}
+  %squeeze.10 = u32[] reshape(%slice.10), metadata={op_name="squeeze"}
+  %slice.11 = u32[1]{0} slice(%Arg_0.6), slice={[1:2]}, metadata={op_name="slice"}
+  %squeeze.11 = u32[] reshape(%slice.11), metadata={op_name="squeeze"}
+  %iota_2x32_shape.13 = u64[20]{0} iota(), iota_dimension=0, metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.14 = u64[20,200]{1,0} broadcast(%iota_2x32_shape.13), dimensions={0}, metadata={op_name="iota_2x32_shape"}
+  %constant.51 = u64[] constant(200)
+  %iota_2x32_shape.12 = u64[20,200]{1,0} broadcast(%constant.51), dimensions={}, metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.17 = u64[20,200]{1,0} multiply(%iota_2x32_shape.14, %iota_2x32_shape.12), metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.15 = u64[200]{0} iota(), iota_dimension=0, metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.16 = u64[20,200]{1,0} broadcast(%iota_2x32_shape.15), dimensions={1}, metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.18 = u64[20,200]{1,0} add(%iota_2x32_shape.17, %iota_2x32_shape.16), metadata={op_name="iota_2x32_shape"}
+  %constant.50 = u64[] constant(32)
+  %iota_2x32_shape.11 = u64[20,200]{1,0} broadcast(%constant.50), dimensions={}, metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.19 = u64[20,200]{1,0} shift-right-logical(%iota_2x32_shape.18, %iota_2x32_shape.11), metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.21 = u32[20,200]{1,0} convert(%iota_2x32_shape.19), metadata={op_name="iota_2x32_shape"}
+  %iota_2x32_shape.20 = u32[20,200]{1,0} convert(%iota_2x32_shape.18), metadata={op_name="iota_2x32_shape"}
+  %call.1 = (u32[20,200]{1,0}, u32[20,200]{1,0}) call(%squeeze.10, %squeeze.11, %iota_2x32_shape.21, %iota_2x32_shape.20), to_apply=%threefry2x32.4
+  %get-tuple-element.38 = u32[20,200]{1,0} get-tuple-element(%call.1), index=0
+  %get-tuple-element.39 = u32[20,200]{1,0} get-tuple-element(%call.1), index=1
+  %xor.13 = u32[20,200]{1,0} xor(%get-tuple-element.38, %get-tuple-element.39), metadata={op_name="xor"}
+  %constant.49 = u32[] constant(9)
+  %shift_right_logical.18 = u32[20,200]{1,0} broadcast(%constant.49), dimensions={}, metadata={op_name="shift_right_logical"}
+  %shift_right_logical.19 = u32[20,200]{1,0} shift-right-logical(%xor.13, %shift_right_logical.18), metadata={op_name="shift_right_logical"}
+  %constant.48 = u32[] constant(1065353216)
+  %or.10 = u32[20,200]{1,0} broadcast(%constant.48), dimensions={}, metadata={op_name="or"}
+  %or.11 = u32[20,200]{1,0} or(%shift_right_logical.19, %or.10), metadata={op_name="or"}
+  %bitcast_convert_type.1 = f32[20,200]{1,0} bitcast-convert(%or.11), metadata={op_name="bitcast_convert_type"}
+  %constant.47 = f32[] constant(1)
+  %sub.11 = f32[20,200]{1,0} broadcast(%constant.47), dimensions={}, metadata={op_name="sub"}
+  %sub.12 = f32[20,200]{1,0} subtract(%bitcast_convert_type.1, %sub.11), metadata={op_name="sub"}
+  %Arg_2.5 = f32[] parameter(2)
+  %broadcast_in_dim.3 = f32[1,1]{1,0} reshape(%Arg_2.5), metadata={op_name="broadcast_in_dim"}
+  %sub.13 = f32[1,1]{1,0} subtract(%broadcast_in_dim.3, %broadcast_in_dim.2), metadata={op_name="sub"}
+  %mul.5 = f32[1,1]{1,0} broadcast(%sub.13), dimensions={0,1}, metadata={op_name="mul"}
+  %mul.6 = f32[] reshape(%mul.5), metadata={op_name="mul"}
+  %mul.7 = f32[20,200]{1,0} broadcast(%mul.6), dimensions={}, metadata={op_name="mul"}
+  %mul.8 = f32[20,200]{1,0} multiply(%sub.12, %mul.7), metadata={op_name="mul"}
+  %add.38 = f32[1,1]{1,0} broadcast(%broadcast_in_dim.2), dimensions={0,1}, metadata={op_name="add"}
+  %add.39 = f32[] reshape(%add.38), metadata={op_name="add"}
+  %add.40 = f32[20,200]{1,0} broadcast(%add.39), dimensions={}, metadata={op_name="add"}
+  %add.41 = f32[20,200]{1,0} add(%mul.8, %add.40), metadata={op_name="add"}
+  ROOT %max.7 = f32[20,200]{1,0} maximum(%max.6, %add.41), metadata={op_name="max"}
+}
+
+%_normal_real.6 (Arg_0.7: u32[2]) -> f32[20,200] {
+  %Arg_0.7 = u32[2]{0} parameter(0)
+  %constant.76 = f32[] constant(-0.99999994)
+  %constant.77 = f32[] constant(1)
+  %jit__uniform_.1 = f32[20,200]{1,0} call(%Arg_0.7, %constant.76, %constant.77), to_apply=%_uniform.5, metadata={op_name="jit(_uniform)"}
+  %erf_inv.120 = f32[20,200]{1,0} abs(%jit__uniform_.1), metadata={op_name="erf_inv"}
+  %constant.54 = f32[] constant(1)
+  %erf_inv.63 = f32[20,200]{1,0} broadcast(%constant.54), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.121 = pred[20,200]{1,0} compare(%erf_inv.120, %erf_inv.63), direction=EQ, metadata={op_name="erf_inv"}
+  %constant.53 = f32[] constant(inf)
+  %erf_inv.62 = f32[20,200]{1,0} broadcast(%constant.53), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.122 = f32[20,200]{1,0} multiply(%jit__uniform_.1, %erf_inv.62), metadata={op_name="erf_inv"}
+  %erf_inv.85 = f32[20,200]{1,0} negate(%jit__uniform_.1), metadata={op_name="erf_inv"}
+  %erf_inv.86 = f32[20,200]{1,0} multiply(%jit__uniform_.1, %erf_inv.85), metadata={op_name="erf_inv"}
+  %erf_inv.87 = f32[20,200]{1,0} log-plus-one(%erf_inv.86), metadata={op_name="erf_inv"}
+  %erf_inv.88 = f32[20,200]{1,0} negate(%erf_inv.87), metadata={op_name="erf_inv"}
+  %constant.75 = f32[] constant(5)
+  %erf_inv.84 = f32[20,200]{1,0} broadcast(%constant.75), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.89 = pred[20,200]{1,0} compare(%erf_inv.88, %erf_inv.84), direction=LT, metadata={op_name="erf_inv"}
+  %constant.56 = f32[] constant(1.50140941)
+  %erf_inv.65 = f32[20,200]{1,0} broadcast(%constant.56), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.55 = f32[] constant(2.83297682)
+  %erf_inv.64 = f32[20,200]{1,0} broadcast(%constant.55), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.116 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.65, %erf_inv.64), metadata={op_name="erf_inv"}
+  %constant.58 = f32[] constant(0.246640727)
+  %erf_inv.67 = f32[20,200]{1,0} broadcast(%constant.58), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.57 = f32[] constant(1.00167406)
+  %erf_inv.66 = f32[20,200]{1,0} broadcast(%constant.57), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.113 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.67, %erf_inv.66), metadata={op_name="erf_inv"}
+  %constant.60 = f32[] constant(-0.00417768164)
+  %erf_inv.69 = f32[20,200]{1,0} broadcast(%constant.60), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.59 = f32[] constant(0.00943887047)
+  %erf_inv.68 = f32[20,200]{1,0} broadcast(%constant.59), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.110 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.69, %erf_inv.68), metadata={op_name="erf_inv"}
+  %constant.62 = f32[] constant(-0.00125372503)
+  %erf_inv.71 = f32[20,200]{1,0} broadcast(%constant.62), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.61 = f32[] constant(-0.0076224613)
+  %erf_inv.70 = f32[20,200]{1,0} broadcast(%constant.61), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.107 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.71, %erf_inv.70), metadata={op_name="erf_inv"}
+  %constant.64 = f32[] constant(0.00021858087)
+  %erf_inv.73 = f32[20,200]{1,0} broadcast(%constant.64), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.63 = f32[] constant(0.00573950773)
+  %erf_inv.72 = f32[20,200]{1,0} broadcast(%constant.63), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.104 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.73, %erf_inv.72), metadata={op_name="erf_inv"}
+  %constant.66 = f32[] constant(-4.39150654e-06)
+  %erf_inv.75 = f32[20,200]{1,0} broadcast(%constant.66), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.65 = f32[] constant(-0.00367342844)
+  %erf_inv.74 = f32[20,200]{1,0} broadcast(%constant.65), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.101 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.75, %erf_inv.74), metadata={op_name="erf_inv"}
+  %constant.68 = f32[] constant(-3.5233877e-06)
+  %erf_inv.77 = f32[20,200]{1,0} broadcast(%constant.68), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.67 = f32[] constant(0.00134934322)
+  %erf_inv.76 = f32[20,200]{1,0} broadcast(%constant.67), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.98 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.77, %erf_inv.76), metadata={op_name="erf_inv"}
+  %constant.70 = f32[] constant(3.43273939e-07)
+  %erf_inv.79 = f32[20,200]{1,0} broadcast(%constant.70), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.69 = f32[] constant(0.000100950558)
+  %erf_inv.78 = f32[20,200]{1,0} broadcast(%constant.69), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.95 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.79, %erf_inv.78), metadata={op_name="erf_inv"}
+  %constant.72 = f32[] constant(2.81022636e-08)
+  %erf_inv.81 = f32[20,200]{1,0} broadcast(%constant.72), dimensions={}, metadata={op_name="erf_inv"}
+  %constant.71 = f32[] constant(-0.000200214257)
+  %erf_inv.80 = f32[20,200]{1,0} broadcast(%constant.71), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.94 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.81, %erf_inv.80), metadata={op_name="erf_inv"}
+  %constant.74 = f32[] constant(2.5)
+  %erf_inv.83 = f32[20,200]{1,0} broadcast(%constant.74), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.90 = f32[20,200]{1,0} subtract(%erf_inv.88, %erf_inv.83), metadata={op_name="erf_inv"}
+  %erf_inv.91 = f32[20,200]{1,0} sqrt(%erf_inv.88), metadata={op_name="erf_inv"}
+  %constant.73 = f32[] constant(3)
+  %erf_inv.82 = f32[20,200]{1,0} broadcast(%constant.73), dimensions={}, metadata={op_name="erf_inv"}
+  %erf_inv.92 = f32[20,200]{1,0} subtract(%erf_inv.91, %erf_inv.82), metadata={op_name="erf_inv"}
+  %erf_inv.93 = f32[20,200]{1,0} select(%erf_inv.89, %erf_inv.90, %erf_inv.92), metadata={op_name="erf_inv"}
+  %erf_inv.96 = f32[20,200]{1,0} multiply(%erf_inv.94, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.97 = f32[20,200]{1,0} add(%erf_inv.95, %erf_inv.96), metadata={op_name="erf_inv"}
+  %erf_inv.99 = f32[20,200]{1,0} multiply(%erf_inv.97, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.100 = f32[20,200]{1,0} add(%erf_inv.98, %erf_inv.99), metadata={op_name="erf_inv"}
+  %erf_inv.102 = f32[20,200]{1,0} multiply(%erf_inv.100, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.103 = f32[20,200]{1,0} add(%erf_inv.101, %erf_inv.102), metadata={op_name="erf_inv"}
+  %erf_inv.105 = f32[20,200]{1,0} multiply(%erf_inv.103, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.106 = f32[20,200]{1,0} add(%erf_inv.104, %erf_inv.105), metadata={op_name="erf_inv"}
+  %erf_inv.108 = f32[20,200]{1,0} multiply(%erf_inv.106, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.109 = f32[20,200]{1,0} add(%erf_inv.107, %erf_inv.108), metadata={op_name="erf_inv"}
+  %erf_inv.111 = f32[20,200]{1,0} multiply(%erf_inv.109, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.112 = f32[20,200]{1,0} add(%erf_inv.110, %erf_inv.111), metadata={op_name="erf_inv"}
+  %erf_inv.114 = f32[20,200]{1,0} multiply(%erf_inv.112, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.115 = f32[20,200]{1,0} add(%erf_inv.113, %erf_inv.114), metadata={op_name="erf_inv"}
+  %erf_inv.117 = f32[20,200]{1,0} multiply(%erf_inv.115, %erf_inv.93), metadata={op_name="erf_inv"}
+  %erf_inv.118 = f32[20,200]{1,0} add(%erf_inv.116, %erf_inv.117), metadata={op_name="erf_inv"}
+  %erf_inv.119 = f32[20,200]{1,0} multiply(%erf_inv.118, %jit__uniform_.1), metadata={op_name="erf_inv"}
+  %erf_inv.123 = f32[20,200]{1,0} select(%erf_inv.121, %erf_inv.122, %erf_inv.119), metadata={op_name="erf_inv"}
+  %constant.52 = f32[] constant(1.41421354)
+  %mul.10 = f32[20,200]{1,0} broadcast(%constant.52), dimensions={}, metadata={op_name="mul"}
+  ROOT %mul.11 = f32[20,200]{1,0} multiply(%erf_inv.123, %mul.10), metadata={op_name="mul"}
+}
+
+ENTRY %main.7 (key.1: u32[2]) -> f32[20,200] {
+  %key.1 = u32[2]{0} parameter(0), metadata={op_name="key"}
+  %custom-call.1 = u32[2]{0} custom-call(%key.1), custom_call_target="Sharding", sharding={replicated}, frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@empty_mesh, [{}]>]>"}
+  ROOT %jit__normal_real_.1 = f32[20,200]{1,0} call(%custom-call.1), to_apply=%_normal_real.6, metadata={op_name="jit(_normal)/jit(_normal_real)"}
+}
+

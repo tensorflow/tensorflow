@@ -108,6 +108,44 @@ TEST(UniformQuantizedConvolutionParamsTest,
               ElementsAreArray({1, 2}));
 }
 
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeInvalidOutputFeatureDimension) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 3
+                                            input_spatial_dimensions: 1
+                                            input_spatial_dimensions: 2
+                                            kernel_output_feature_dimension: 3
+                                            kernel_input_feature_dimension: 2
+                                            kernel_spatial_dimensions: 0
+                                            kernel_spatial_dimensions: 1
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 10
+                                            output_spatial_dimensions: 1
+                                            output_spatial_dimensions: 2
+                                          )pb",
+                                          &dimension_numbers));
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{2, 2},
+                                           /*lhs_dilation=*/{3, 3},
+                                           /*rhs_dilation=*/{4, 4},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/2,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"EXPLICIT",
+                                           /*padding_list=*/{1, 1, 2, 2});
+  // output_feature_dimension (10) is out of bounds for a 4-D lhs shape and
+  // must be rejected. Regression test for a copy-paste bug where
+  // output_batch_dimension was validated twice and output_feature_dimension
+  // was never validated at all, allowing out-of-bounds writes downstream in
+  // CalculateOutputShape().
+  EXPECT_FALSE(
+      params
+          .ValidateOrFillParamsAndValidateShape(/*lhs_shape=*/{2, 3, 4, 2},
+                                                /*rhs_shape=*/{2, 3, 1, 2})
+          .ok());
+}
+
 TEST(UniformQuantizedConvolutionParamsTest, CalculateOutputShapeDefaultAttr) {
   UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
   UniformQuantizedConvolutionParams params(/*window_strides=*/{},

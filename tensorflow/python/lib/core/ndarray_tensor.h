@@ -34,7 +34,7 @@ absl::Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor,
 // in `ret` may have its own Python reference to `ndarray`s data. After `ret`
 // is destroyed, this reference must (eventually) be decremented via
 // ClearDecrefCache().
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 absl::Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
                              Safe_TF_TensorPtr* ret);
 
@@ -42,7 +42,7 @@ absl::Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
 // TODO(kkb): This is an old conversion function that does not support TFRT.
 // Currently it's used for session, py_func, and an internal project.  Migrate
 // them.
-ABSL_MUST_USE_RESULT
+[[nodiscard]]
 absl::Status NdarrayToTensor(PyObject* obj, Tensor* ret);
 
 // Creates a numpy array in 'ret' which either aliases the content of 't' or has

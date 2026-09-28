@@ -211,6 +211,10 @@ class RocmExecutor : public GpuExecutor {
 
   // Cache of peer access capabilities. Populated during Init().
   absl::flat_hash_map<int, bool> peer_access_cache_;
+
+  // Mapping from allocated pointers to memory space.
+  absl::flat_hash_map<void*, MemorySpace> tracked_allocations_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace stream_executor::gpu

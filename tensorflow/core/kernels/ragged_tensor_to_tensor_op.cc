@@ -512,11 +512,11 @@ class RaggedTensorToTensorOp : public RaggedTensorToTensorBaseOp<INDEX_TYPE> {
     // the copy below would read past the values buffer into adjacent heap
     // memory.
     const int64_t num_values = values_tensor.dim_size(0);
-    OP_REQUIRES(
-        context, static_cast<int64_t>(output_index_size) <= num_values,
-        errors::InvalidArgument(
-            "row_partition_tensors indicate ", output_index_size,
-            " values, but the values tensor has only ", num_values, " values"));
+    OP_REQUIRES(context, static_cast<int64_t>(output_index_size) <= num_values,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "row_partition_tensors indicate ", output_index_size,
+                    " values, but the values tensor has only ", num_values,
+                    " values")));
 
     // Broadcast the default value to value_element_size.  (We can skip this
     // if default_value_tensor.NumElements() == 1, since we use std::fill

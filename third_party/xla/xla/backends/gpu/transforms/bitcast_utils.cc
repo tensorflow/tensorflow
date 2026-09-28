@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout.h"
@@ -413,7 +413,7 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
 // - transpose does not change layout (checks);
 absl::StatusOr<BitcastParams> CalculateBitcastOfTranspose(
     const HloTransposeInstruction* transpose, const Shape& result_shape) {
-  ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       BitcastParams result,
       CalculateBitcastOfTransposeImpl(
           transpose, result_shape, transpose->shape(),

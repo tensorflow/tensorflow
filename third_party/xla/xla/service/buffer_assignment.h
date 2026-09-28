@@ -222,6 +222,7 @@ class BufferAllocation {
     Index index() const { return allocation_->index(); }
     int64_t offset() const { return offset_; }
     int64_t size() const { return size_; }
+    bool empty() const { return size_ == 0; }
     PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {
@@ -701,11 +702,7 @@ class BufferAssignment {
   int64_t HloBufferSize(const HloBuffer& buffer) {
     auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
     if (inserted) {
-      int64_t result = 0;
-      for (const HloValue* value : buffer.values()) {
-        result = std::max(result, buffer_size_(*value));
-      }
-      it->second = result;
+      it->second = buffer.ComputeSize(buffer_size_);
     }
     return it->second;
   }
@@ -756,7 +753,6 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
-      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
       std::optional<BufferValue::Color> temp_buffer_color);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
@@ -875,8 +871,6 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
-  using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
-                                            std::vector<const HloComputation*>>;
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
@@ -906,9 +900,13 @@ class BufferAssigner {
     std::unique_ptr<memory_space_assignment::PresetAssignments>
         preset_assignments;
 
-    const PrivateStacks* private_stacks = nullptr;
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare;
+    // The packing strategy to use for multi-page (page_size > 0) heap
+    // allocation.
+    GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy
+        multi_page_strategy =
+            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
 
@@ -924,6 +922,12 @@ class BufferAssigner {
             buffer_assignment::
                 AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
 
+    // Color of "view" buffers that are pointer stand-ins aliasing into another
+    // allocation (see memory_space_assignment::Options::dus_view_color for the
+    // definition of views). Buffers of this color are skipped during
+    // assignment: they get no allocation of their own. std::nullopt disables
+    // the behavior.
+    std::optional<BufferValue::Color> dus_view_color;
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
 
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
@@ -1046,9 +1050,9 @@ class BufferAssigner {
 
   // Returns true if buffer's live range interferences with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
-                           const HloLiveRange::TimeBound& live_range1,
+                           const HloLiveRange::LiveRangeBounds& live_range1,
                            const HloValue* buffer2,
-                           const HloLiveRange::TimeBound& live_range2,
+                           const HloLiveRange::LiveRangeBounds& live_range2,
                            BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added
@@ -1096,7 +1100,6 @@ class BufferAssigner {
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
       buffer_assignment::BufferAssignmentAlgorithmProto::Value
           buffer_assignment_algorithm,
-      const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
       std::optional<BufferAssignment::BufferIsolationOptions>
@@ -1145,17 +1148,6 @@ class BufferAssigner {
                       absl::flat_hash_set<const HloValue*>>
   SplitBuffersByColor(
       const absl::flat_hash_set<const HloValue*>& buffers) const;
-
-  // Split a set of buffers into several sets, each of which contains buffers
-  // with defining instructions that are dominated by the given private stack
-  // computation. This function CHECK-fails if there are outstanding buffers
-  // that do not have a dominating private stack computation.
-  absl::flat_hash_map<const HloComputation*,
-                      absl::flat_hash_set<const HloValue*>>
-  SplitBuffersByPrivateStackComputation(
-      const absl::flat_hash_set<const HloValue*>& buffers,
-      absl::Span<const HloComputation* const> private_stack_computations,
-      const CallGraph& call_graph) const;
 
   const AliasInfo* alias_info_;
   Options opts_;

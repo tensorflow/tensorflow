@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

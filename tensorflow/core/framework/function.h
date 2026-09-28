@@ -384,7 +384,7 @@ class FunctionRecord : public core::RefCounted {
   const FunctionDef& fdef() const;
   const StackTracesMap& stack_traces() const;
   const OpRegistrationData& op_registration_data() const;
-  const bool finalized() const;
+  bool finalized() const;
 
  private:
   bool finalized_ = false;
@@ -913,7 +913,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
                                    Handle* handle) = 0;
   absl::Status Instantiate(const std::string& function_name, AttrSlice attrs,
                            Handle* handle) {
-    auto opts = absl::make_unique<InstantiateOptions>();
+    auto opts = std::make_unique<InstantiateOptions>();
     return Instantiate(function_name, attrs, *opts, handle);
   }
 
@@ -1094,7 +1094,7 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
 // Returns the device of the `arg_index`-th function input. Update
 // `composite_devices` if the input device is a composite device.
 std::string GetFunctionResourceInputDevice(
-    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    const Tensor& input, int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<std::string, std::vector<std::string>>*
         composite_devices);
 
@@ -1131,7 +1131,7 @@ class CustomKernelCreator {
 
 typedef
 #if !defined(IS_MOBILE_PLATFORM)
-    absl::variant<Tensor, eager::RemoteTensorHandle*>
+    std::variant<Tensor, eager::RemoteTensorHandle*>
         FunctionArg;
 #else
     absl::variant<Tensor>
@@ -1139,7 +1139,7 @@ typedef
 #endif
 
 // Either a local tensor or the shape of a remote tensor.
-typedef absl::variant<Tensor, TensorShape> FunctionRet;
+typedef std::variant<Tensor, TensorShape> FunctionRet;
 
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {

@@ -211,6 +211,19 @@ int SmallestBitWidth(const Container& args) {
   return bits;
 }
 
+std::optional<HloInstructionAdaptor> FindCollectiveHero(
+    const HloFusionAdaptor& fusion) {
+  std::optional<HloInstructionAdaptor> collective_hero;
+  for (HloInstructionAdaptor instr : fusion.MakeInstructionPostOrder()) {
+    if (instr.opcode() == HloOpcode::kAllGather ||
+        instr.opcode() == HloOpcode::kAllReduce) {
+      collective_hero = instr;
+      break;
+    }
+  }
+  return collective_hero;
+}
+
 }  // namespace
 
 bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind) {
@@ -241,8 +254,17 @@ HloFusionAnalysis HloFusionAnalysis::Create(
     const se::DeviceDescription* device_info) {
   absl::InlinedVector<HloInstructionAdaptor, 2> roots = fusion->GetRoots();
   absl::InlinedVector<HloInstructionAdaptor, 2> heroes;
-  for (auto root : roots) {
-    heroes.push_back(FindNonTrivialHero(root));
+
+  if (backend_config.kind() == kTritonCollectiveFusionKind) {
+    if (std::optional<HloInstructionAdaptor> collective_hero =
+            FindCollectiveHero(*fusion);
+        collective_hero.has_value()) {
+      heroes.push_back(collective_hero.value());
+    }
+  } else {
+    for (auto root : roots) {
+      heroes.push_back(FindNonTrivialHero(root));
+    }
   }
 
   InputOutputInfo input_output_info{

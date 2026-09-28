@@ -18,7 +18,12 @@ limitations under the License.
 
 #include <memory>  // IWYU pragma: keep
 
+#include "absl/status/statusor.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"  // IWYU pragma: keep
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 
 namespace xla::xtile {
@@ -26,6 +31,12 @@ namespace xla::xtile {
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/xtile/ir/transforms/passes.h.inc"
+
+// Creates arithmetic ops to convert `value` from `src_ty` to `dst_ty`.
+// Returns an error if the conversion is not supported.
+absl::StatusOr<mlir::Value> LowerConvert(mlir::ImplicitLocOpBuilder& builder,
+                                         mlir::Location loc, mlir::Value value,
+                                         mlir::Type src_ty, mlir::Type dst_ty);
 
 }  // namespace xla::xtile
 

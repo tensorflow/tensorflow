@@ -14,24 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/custom_call_program.pb.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program_serdes.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.pb.h"
@@ -43,7 +41,7 @@ namespace {
 
 // Serialization/deserialization for `CustomCallProgram`.
 class CustomCallProgramSerDes
-    : public llvm::RTTIExtends<CustomCallProgramSerDes, SerDes> {
+    : public RTTIExtends<CustomCallProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CustomCallProgram";
@@ -59,8 +57,7 @@ class CustomCallProgramSerDes
                        " for CustomCallProgram serialization"));
     }
 
-    const CustomCallProgram& program =
-        llvm::cast<CustomCallProgram>(serializable);
+    const CustomCallProgram& program = cast<CustomCallProgram>(serializable);
     CustomCallProgramProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
     proto.set_type(program.type);
@@ -71,10 +68,10 @@ class CustomCallProgramSerDes
                            proto.mutable_serialized_program_text());
     program.devices->ToProto(*proto.mutable_devices(), version);
     for (const ArraySpec& spec : program.input_specs) {
-      RETURN_IF_ERROR(spec.ToProto(*proto.add_input_specs(), version));
+      ABSL_RETURN_IF_ERROR(spec.ToProto(*proto.add_input_specs(), version));
     }
     for (const ArraySpec& spec : program.output_specs) {
-      RETURN_IF_ERROR(spec.ToProto(*proto.add_output_specs(), version));
+      ABSL_RETURN_IF_ERROR(spec.ToProto(*proto.add_output_specs(), version));
     }
     return proto.SerializeAsCord();
   }
@@ -83,7 +80,7 @@ class CustomCallProgramSerDes
       const absl::Cord& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
-        llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
+        dyn_cast_or_null<DeserializeProgramOptions>(options.get());
     if (deserialize_program_options == nullptr) {
       return absl::InvalidArgumentError(
           "DeserializeProgramOptions must be provided");
@@ -101,13 +98,13 @@ class CustomCallProgramSerDes
                        " for CustomCallProgram deserialization"));
     }
 
-    ASSIGN_OR_RETURN(DeviceListRef devices,
+    ABSL_ASSIGN_OR_RETURN(DeviceListRef devices,
                      DeviceList::FromProto(deserialize_program_options->client,
                                            proto.devices()));
     std::vector<ArraySpec> input_specs;
     input_specs.reserve(proto.input_specs_size());
     for (const ArraySpecProto& spec_proto : proto.input_specs()) {
-      ASSIGN_OR_RETURN(ArraySpec spec,
+      ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
                        ArraySpec::FromProto(deserialize_program_options->client,
                                             spec_proto));
       input_specs.push_back(std::move(spec));
@@ -115,7 +112,7 @@ class CustomCallProgramSerDes
     std::vector<ArraySpec> output_specs;
     output_specs.reserve(proto.output_specs_size());
     for (const ArraySpecProto& spec_proto : proto.output_specs()) {
-      ASSIGN_OR_RETURN(ArraySpec spec,
+      ABSL_ASSIGN_OR_RETURN(ArraySpec spec,
                        ArraySpec::FromProto(deserialize_program_options->client,
                                             spec_proto));
       output_specs.push_back(std::move(spec));
@@ -137,7 +134,7 @@ class CustomCallProgramSerDes
 
 // Serialization/deserialization for `CustomCallCompileOptions`.
 class CustomCallCompileOptionsSerDes
-    : public llvm::RTTIExtends<CustomCallCompileOptionsSerDes, SerDes> {
+    : public RTTIExtends<CustomCallCompileOptionsSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
     return "xla::ifrt::CustomCallCompileOptions";
@@ -152,8 +149,7 @@ class CustomCallCompileOptionsSerDes
           absl::StrCat("Unsupported ", version.version_number(),
                        " for CustomCallCompileOptions serialization"));
     }
-    const auto& compile_options =
-        llvm::cast<CustomCallCompileOptions>(serializable);
+    const auto& compile_options = cast<CustomCallCompileOptions>(serializable);
 
     if (version.version_number() >= SerDesVersionNumber(4)) {
       CustomCallCompileOptionsProto proto;

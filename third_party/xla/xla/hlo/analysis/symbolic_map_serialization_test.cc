@@ -140,6 +140,9 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprWithVariableMap) {
   // dim/symbol parsing is not triggered when the variable map is provided.
   variable_map["dim_bar"] = v1;
 
+  EXPECT_EQ(ParseSymbolicExpr("foo + dim_bar * 2", &ctx, variable_map),
+            v0 + v1 * 2);
+
   absl::string_view expr_str = "foo + dim_bar * 2";
   SymbolicExpr expr =
       ParseSymbolicExprAndAdvance(&expr_str, &ctx, variable_map);

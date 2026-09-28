@@ -55,7 +55,7 @@ std::string DebugInfo(PythonAPIInfo* api_info) { return api_info->DebugInfo(); }
 using PythonAPIInfo = tensorflow::PythonAPIInfo;
 using InferredAttributes = tensorflow::PythonAPIInfo::InferredAttributes;
 
-PYBIND11_MODULE(_pywrap_python_api_info, m) {
+PYBIND11_MODULE(_pywrap_python_api_info, m, py::mod_gil_not_used()) {
   py::class_<PythonAPIInfo>(m, "PythonAPIInfo")
       .def(py::init<const std::string&>())
       .def("InitializeFromRegisteredOp",

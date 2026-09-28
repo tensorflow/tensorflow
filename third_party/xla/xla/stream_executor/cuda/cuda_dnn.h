@@ -95,6 +95,19 @@ class CudnnGraph : public dnn::DnnGraph {
       std::optional<int64_t> local_device_ordinal = std::nullopt) const;
 };
 
+// Returns whether the loaded cuDNN runtime supports deviceless
+// DeviceProperties (added in cuDNN 9.8). Informational (e.g. for test skips);
+// CudnnGraph::Prepare does not guard on this, the frontend rejects older
+// runtimes itself.
+bool SupportsDevicelessDeviceProperties();
+
+// Returns whether the loaded cuDNN runtime can prepare convolution graphs
+// devicelessly for the given target. Runtimes older than 9.19 crash (SIGSEGV
+// observed with 9.8.0) inside the deviceless heuristics query for
+// Blackwell-generation (sm_100+) targets instead of returning an error, so
+// callers must refuse such probes rather than attempt them.
+bool SupportsDevicelessConvGraphs(const DeviceDescription& gpu_device_info);
+
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
 class CudnnSupport : public dnn::DnnSupport {

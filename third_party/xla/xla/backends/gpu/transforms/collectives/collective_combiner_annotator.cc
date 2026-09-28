@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
@@ -102,11 +102,11 @@ absl::StatusOr<Metadata> GetSchedulingMetadata(
     const GpuAliasInfo* alias_info) {
   std::unique_ptr<HloModule> cloned_module = module.Clone();
   AnnotateCollectives(cloned_module.get());
-  RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
-  ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
+  ABSL_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
+  ABSL_ASSIGN_OR_RETURN(ScheduleMetadata schedule_metadata,
                    ScheduleGpuModule(cloned_module.get(), pointer_size,
                                      device_info, mlir_context, alias_info));
-  RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
+  ABSL_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
   return Metadata{schedule_metadata.peak_memory_usage,
                   SyncCollectiveIds(*cloned_module)};
 }
@@ -126,7 +126,7 @@ int64_t MaxAvailableMemory(const HloModule& module,
 absl::StatusOr<bool> CollectiveCombinerAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ASSIGN_OR_RETURN(Metadata metadata,
+  ABSL_ASSIGN_OR_RETURN(Metadata metadata,
                    GetSchedulingMetadata(*module, pointer_size_, device_info_,
                                          mlir_context_, alias_info_));
   int64_t combiner_threshold =

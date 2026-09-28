@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/status_macros.h"
+#include "absl/status/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -44,7 +44,7 @@ AsyncThunkSequence MemcpyFusion::Emit(
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* src_instr =
         fusion.operand(root->operand(0)->parameter_number());
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
@@ -52,12 +52,12 @@ AsyncThunkSequence MemcpyFusion::Emit(
   }
 
   std::vector<BufferAllocation::Slice> dst_buffers;
-  RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+  ABSL_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       fusion.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+        ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                          ir_emitter_context.buffer_assignment().GetUniqueSlice(
                              &fusion, index));
         dst_buffers.push_back(slice);

@@ -22,12 +22,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "absl/strings/cord.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/concurrency/future.h"
@@ -41,7 +41,7 @@ namespace ifrt {
 // legacy compilation options that are not included in the program.
 //
 // TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
-struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
+struct CompileOptions : RTTIExtends<CompileOptions, Serializable> {
   static char ID;  // NOLINT
 
   // When executing the program with `LoadedExecutable::ExecuteBundle()`, apply
@@ -65,7 +65,7 @@ struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
 // ready the them for execution. This will enable ahead-of-time compilation,
 // better separation between compilation, loading, and serialization and
 // deserialization.
-class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
+class Compiler : public RTTIExtends<Compiler, RTTIRoot> {
  public:
   // TODO(hyeontaek): Move executable loading to `Client`.
   absl::StatusOr<ExecutableRef> Compile(
@@ -96,7 +96,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // use standard IFRT deserialization instead of this custom deserialization
   // function.
   virtual tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
+      const absl::Cord& serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 
   static char ID;  // NOLINT

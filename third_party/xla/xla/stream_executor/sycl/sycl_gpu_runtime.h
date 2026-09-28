@@ -21,10 +21,12 @@ limitations under the License.
 #include <sycl/sycl.hpp>
 // clang-format on
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "xla/stream_executor/sycl/sycl_status.h"
@@ -52,7 +54,7 @@ class SyclDevicePool {
   // This function assumes that the device pool is not modified after
   // initialization. If this assumption is violated, the context may become
   // invalid.
-  static absl::StatusOr<::sycl::context> GetDeviceContext();
+  static absl::StatusOr<const ::sycl::context&> GetDeviceContext();
 
   // Returns the number of devices in the pool.
   static absl::StatusOr<int> GetDeviceCount();
@@ -64,8 +66,11 @@ class SyclDevicePool {
   static absl::StatusOr<::sycl::device> GetDevice(int device_ordinal);
 
  private:
-  // The underlying device pool.
-  static DevicePool device_pool_;
+  // Leaked: libsycl/Level Zero teardown order relative to this static is
+  // oneAPI-version-dependent (after it pre-2026.x, before it in 2026.x+),
+  // making its destructor unsafe to run, so cleanup is deferred to the OS
+  // instead. Acceptable since this is a one-time allocation per program run.
+  static absl::NoDestructor<DevicePool> device_pool_;
 
   // Thread-safe initialization of device_pool_ with all Level-Zero backend GPUs
   // using absl::call_once.
@@ -119,8 +124,10 @@ class SyclStreamPool {
   static absl::Mutex stream_pool_mu_;
 
   // The underlying stream pool for each device. The device ordinal
-  // is used as the key.
-  static StreamPoolMap stream_pool_map_ ABSL_GUARDED_BY(stream_pool_mu_);
+  // is used as the key. Leaked for the same reason as
+  // SyclDevicePool::device_pool_.
+  static absl::NoDestructor<StreamPoolMap> stream_pool_map_
+      ABSL_GUARDED_BY(stream_pool_mu_);
 
   // Initializes and returns a pointer to the stream pool for the given device
   // ordinal.
@@ -138,6 +145,11 @@ struct SyclTimerProperties {
   // Bitmask for valid kernel timestamp bits.
   uint64_t timestamp_mask;
 };
+
+// Returns whether the complete range belongs to one driver-imported host
+// allocation.
+bool SyclIsHostMemoryRegistered(const ::sycl::device& device,
+                                const void* location, std::size_t size);
 
 // Returns the timer frequency (Hz) and valid timestamp bitmask for the given
 // device ordinal using the Level Zero backend.

@@ -25,11 +25,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         symbol_resolver = std::nullopt) {
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.add_thunks() = thunk_proto;
-  ASSIGN_OR_RETURN(ThunkSequence sequence,
+  ABSL_ASSIGN_OR_RETURN(ThunkSequence sequence,
                    DeserializeThunkSequenceProto(
                        thunk_sequence_proto, buffer_allocations, hlo_module,
                        platform_name, gpu_compute_capability, symbol_resolver));
@@ -952,12 +952,14 @@ TEST(ThunkProtoDeserializationTest, CublasLtGroupedMatmulThunk) {
         }
       )pb");
 
+  // Allocation #4 must cover the grouped-matmul B operand f32[2,407,400]
+  // (2 * 407 * 400 * sizeof(float) = 1302400), not the non-grouped 651200 size.
   std::vector<BufferAllocation> allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
       BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
-      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1302400, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };
@@ -1339,6 +1341,48 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
   EXPECT_THAT(round_trip_done, EqualsProto(done_proto));
 }
 
+TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
+  // Verify that AsyncStartThunk with kMemcpyD2HStreamId and kMemcpyH2DStreamId
+  // round-trips correctly through proto serialization.
+  for (MemcpyStreamId stream_id : {kMemcpyD2HStreamId, kMemcpyH2DStreamId}) {
+    Thunk::ThunkInfo start_info;
+    start_info.profile_annotation = "memcpy_async_start";
+
+    AsyncStartThunk start_thunk(start_info, stream_id, ThunkSequence{});
+    AsyncDoneThunk done_thunk(Thunk::ThunkInfo(),
+                              start_thunk.async_execution());
+
+    ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk.ToProto());
+    ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk.ToProto());
+
+    // The proto must have used the memcpy_stream_id field.
+    EXPECT_EQ(start_proto.async_start_thunk().execution_stream_id_case(),
+              AsyncStartThunkProto::kMemcpyStreamId);
+    EXPECT_EQ(start_proto.async_start_thunk().memcpy_stream_id(),
+              stream_id.value());
+
+    ThunkSequenceProto thunk_protos;
+    *thunk_protos.add_thunks() = start_proto;
+    *thunk_protos.add_thunks() = done_proto;
+    ASSERT_OK_AND_ASSIGN(
+        ThunkSequence sequence,
+        DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
+                                      /*hlo_module=*/nullptr, kTestPlatformName,
+                                      se::GpuComputeCapability()));
+
+    ASSERT_EQ(sequence.size(), 2);
+    auto* deserialized_start =
+        dynamic_cast<AsyncStartThunk*>(sequence[0].get());
+    ASSERT_NE(deserialized_start, nullptr);
+    EXPECT_TRUE(deserialized_start->execution_stream_id().is_memcpy());
+    EXPECT_EQ(deserialized_start->execution_stream_id().memcpy_id(), stream_id);
+
+    ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
+                         deserialized_start->ToProto());
+    EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
+  }
+}
+
 TEST(ThunkProtoDeserializationTest, SendThunk) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
@@ -1385,13 +1429,13 @@ TEST(ThunkProtoDeserializationTest, SendThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* send_thunk = dynamic_cast<SendThunk*>(thunk.get());
   ASSERT_NE(send_thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, send_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, send_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -1499,7 +1543,6 @@ TEST(ThunkProtoDeserializationTest, CollectiveKernelThunk) {
             }
             invocation_count_increment: 1
           }
-          is_async: false
           buffers {
             element_count: 64
             source_buffer {
@@ -1563,11 +1606,11 @@ TEST(ThunkProtoDeserializationTest, ConcurrentRegionIdPreserved) {
   SequentialThunk thunk(thunk_info, ThunkSequence{});
   EXPECT_EQ(thunk.concurrent_region_id(), 42);
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_TRUE(proto.thunk_info().has_concurrent_region_id());
   EXPECT_EQ(proto.thunk_info().concurrent_region_id(), 42);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> deserialized,
       DeserializeThunkProto(proto, /*buffer_allocations=*/{},
                             /*hlo_module=*/nullptr, kTestPlatformName,

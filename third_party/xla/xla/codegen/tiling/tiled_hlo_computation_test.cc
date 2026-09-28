@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

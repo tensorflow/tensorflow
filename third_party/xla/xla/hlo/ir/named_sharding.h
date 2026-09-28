@@ -32,16 +32,16 @@ limitations under the License.
 
 namespace xla {
 
+enum class ReductionOp {
+  kSum = 0,
+  kMax = 1,
+  kMin = 2,
+};
+
 // C++ representation for corresponding `OpSharding::NamedSharding` proto so
 // same documentation applies.
 class NamedSharding {
  public:
-  enum class ReductionOp {
-    kSum = 0,
-    kMax = 1,
-    kMin = 2,
-  };
-
   class DimensionSharding {
    public:
     bool operator==(const DimensionSharding& other) const {
@@ -142,6 +142,7 @@ class NamedSharding {
   absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
   ReductionOp reduction_op() const { return reduction_op_; }
+  void set_reduction_op(ReductionOp op) { reduction_op_ = op; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
   std::vector<OpMetadata>& mutable_metadata() { return metadata_; }

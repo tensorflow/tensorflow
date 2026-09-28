@@ -1522,8 +1522,36 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # eager execution (where the error is realized during kernel execution),
     # and XLA auto-clustering execution (where the error is realized in the xla
     # op kernel) which is triggered when running in eager op as function mode.
-    with self.assertRaisesRegex(Exception, r"shape.*2.*3|RET_CHECK failure"):
+    with self.assertRaisesRegex(
+        Exception, r"Must have updates\.shape|shape.*2.*3|RET_CHECK failure"
+    ):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterUpdateInvalidInnerShape(self):
+    v = resource_variable_ops.ResourceVariable(
+        array_ops.zeros([10, 0]), shape=tensor_shape.TensorShape(None)
+    )
+    self.evaluate(variables.global_variables_initializer())
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"Must have updates\.shape"
+    ):
+      self.evaluate(
+          resource_variable_ops.resource_scatter_update(
+              v.handle,
+              constant_op.constant(-1, dtype=dtypes.int64),
+              array_ops.zeros([5]),
+          )
+      )
+
+  @test_util.run_gpu_only
+  def testScatterUpdateDoesNotNarrowInt64Index(self):
+    with context.eager_mode(), ops.device("gpu:0"):
+      index = constant_op.constant([np.iinfo(np.int64).min], dtype=dtypes.int64)
+      for updates in (constant_op.constant(2.0), constant_op.constant([2.0])):
+        v = resource_variable_ops.ResourceVariable([1.0])
+        resource_variable_ops.resource_scatter_update(v.handle, index, updates)
+        self.assertAllEqual([1.0], v.numpy())
 
   @test_util.disable_xla("b/208334252")  # XLA doesn't have a deterministic impl
   def testScatterAddDeterministic(self):
@@ -1750,6 +1778,42 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsEqualTensorRank(self):
+    var = resource_variable_ops.ResourceVariable(
+        [10, 20, 30, 40, 50], name="var0", dtype=dtypes.float32
+    )
+    indices = constant_op.constant([1, 3, 4], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "rank"
+    ):
+      _ = resource_variable_ops.resource_gather(
+          resource=var.handle,
+          indices=indices,
+          dtype=dtypes.float32,
+          batch_dims=1,
+          validate_indices=True,
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsGreaterThanIndicesRank(self):
+    var = resource_variable_ops.ResourceVariable(
+        [[10, 20], [30, 40]], name="var0", dtype=dtypes.float32
+    )
+    # indices has rank 0 (scalar)
+    indices = constant_op.constant(1, dtype=dtypes.int32)
+    # batch_dims = 1 > indices.dims() = 0
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "rank"
+    ):
+      _ = resource_variable_ops.resource_gather(
+          resource=var.handle,
+          indices=indices,
+          dtype=dtypes.float32,
+          batch_dims=1,
+          validate_indices=True,
+      )
+
   @parameterized.parameters([
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
@@ -1863,6 +1927,41 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             batch_dims=-42,
         )
         self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather(
+            var.handle,
+            indices=[0],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherNdDtypeMismatch(self) -> None:
+    var = resource_variable_ops.ResourceVariable(
+        [1.0, 2.0], dtype=dtypes.float32, name="var_float_nd"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          r"(Trying to read variable with wrong dtype|dtype mismatch)",
+      ):
+        result = resource_variable_ops.resource_gather_nd(
+            var.handle,
+            indices=[[0]],
+            dtype=dtypes.float16,
+        )
+        self.evaluate(result)
+
 
 if __name__ == "__main__":
   test.main()

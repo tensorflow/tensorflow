@@ -21,10 +21,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -45,6 +45,7 @@ namespace xla {
 namespace gpu {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::xla::xtile::BlockLevelFusionConfig;
 
 // Checks if any config has is_tma_allowed set to true.
 bool AnyTmaAllowed(const std::vector<std::unique_ptr<BackendConfig>>& configs) {
@@ -54,6 +55,16 @@ bool AnyTmaAllowed(const std::vector<std::unique_ptr<BackendConfig>>& configs) {
     }
     return config->block_level().is_tma_allowed();
   });
+}
+
+// Returns the first device executor of the default platform.
+se::StreamExecutor* GetDefaultStreamExecutor() {
+  absl::StatusOr<se::Platform*> platform = PlatformUtil::GetDefaultPlatform();
+  CHECK_OK(platform.status());
+  absl::StatusOr<se::StreamExecutor*> stream_executor =
+      (*platform)->ExecutorForDevice(0);
+  CHECK_OK(stream_executor.status());
+  return *stream_executor;
 }
 
 // Test fixture for the TritonBlockLevelFusionEmitterBackend.
@@ -66,10 +77,7 @@ class TritonBlockLevelFusionEmitterBackendTest
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
       : debug_options_(GetDebugOptionsFromFlags()),
-        stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+        stream_executor_(GetDefaultStreamExecutor()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_,
                  compiler_.ShapeSizeBytesFunction(), &target_config_) {}

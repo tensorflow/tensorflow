@@ -237,7 +237,7 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
       mlir::kernel_gen::transforms::CreateBufferReusePass());
   // Approximate Tanh using standard operations.
   pm.addNestedPass<FuncOp>(
-      ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
+      ::mlir::mhlo::createLegalizeTanhToApproximationPass());
   // Transform the Linalg ops inside of the loop nest into parallel loops.
   pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToParallelLoopsPass());
 
@@ -249,8 +249,12 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Collapse and tile parallel loops for GPU only.
   pm.addNestedPass<FuncOp>(mlir::createCollapseParallelLoopsTo1DPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::createTileLoopsPass(tile_sizes, unroll_factors));
+  mlir::TileLoopsPassOptions tile_loops_options;
+  tile_loops_options.tile_sizes_ =
+      llvm::SmallVector<int64_t>(tile_sizes.begin(), tile_sizes.end());
+  tile_loops_options.unroll_factors_ =
+      llvm::SmallVector<int64_t>(unroll_factors.begin(), unroll_factors.end());
+  pm.addNestedPass<FuncOp>(mlir::createTileLoopsPass(tile_loops_options));
 
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
@@ -295,7 +299,7 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
-  pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferDeallocationPass());
+  pm.addNestedPass<FuncOp>(mlir::deallocation::createBufferDeallocation());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToLoopsPass());
 
@@ -359,9 +363,11 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
+  mlir::GpuKernelToROCDLPassOptions options;
+  options.chipset = architecture;
+  kernelPm.addPass(mlir::createGpuKernelToROCDLPass(options));
 #elif GOOGLE_CUDA
-  kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
+  kernelPm.addPass(mlir::createGpuKernelToNVVMPass());
   kernelPm.addPass(mlir::NVVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.

@@ -47,17 +47,17 @@ TEST(ExecutorCacheTest, GetReturnsExpectedExecutor) {
     }
     return executor;
   };
-  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
+  ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
   EXPECT_EQ(found, executor1);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
   EXPECT_EQ(found, executor1);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
+  ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
   EXPECT_EQ(found, executor0);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
+  ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
   EXPECT_EQ(found, executor1);
 }
 

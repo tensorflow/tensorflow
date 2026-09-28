@@ -14,18 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_macros.h"
-#include "llvm/Support/Casting.h"
-#include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
+#include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/tpu_xla_executable_abi_version.h"
 #include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
@@ -34,9 +37,13 @@ namespace xla {
 
 namespace tpu_xla_executable_abi_version_serdes {
 
+ABSL_ATTRIBUTE_WEAK
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutableAbiVersion>>
 PjRtExecutableAbiVersionFromProto(
-    const xla::PjRtExecutableAbiVersionProto& proto);
+    const xla::PjRtExecutableAbiVersionProto& proto) {
+  ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  return pjrt::CApiExecutableAbiVersionFromProto(proto, c_api);
+}
 
 }  // namespace tpu_xla_executable_abi_version_serdes
 
@@ -44,7 +51,7 @@ namespace {
 
 // IFRT SerDes implementation for XlaExecutableAbiVersion on TPU.
 class TpuXlaExecutableAbiVersionSerDes
-    : public llvm::RTTIExtends<TpuXlaExecutableAbiVersionSerDes,
+    : public ifrt::RTTIExtends<TpuXlaExecutableAbiVersionSerDes,
                                xla::ifrt::SerDes> {
  public:
   absl::string_view type_name() const override {
@@ -55,9 +62,9 @@ class TpuXlaExecutableAbiVersionSerDes
       const xla::ifrt::Serializable& serializable,
       std::unique_ptr<xla::ifrt::SerializeOptions> options) override {
     const auto& version =
-        llvm::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
+        ifrt::cast<xla::ifrt::XlaExecutableAbiVersion>(serializable);
 
-    ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
+    ABSL_ASSIGN_OR_RETURN(xla::PjRtExecutableAbiVersionProto proto,
                      version.ExecutableAbiVersion().ToProto());
     absl::Cord executable_abi_version;
     if (!proto.SerializeToString(&executable_abi_version)) {
@@ -75,7 +82,7 @@ class TpuXlaExecutableAbiVersionSerDes
       return absl::InvalidArgumentError(
           "Failed to parse PjRtExecutableAbiVersion from string.");
     }
-    ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::PjRtExecutableAbiVersion> runtime_abi_version,
         tpu_xla_executable_abi_version_serdes::
             PjRtExecutableAbiVersionFromProto(proto));
@@ -95,7 +102,6 @@ bool register_tpu_abi_version_serdes =
 
 }  // namespace
 
-[[maybe_unused]] char TpuXlaExecutableAbiVersion::ID = 0;
 [[maybe_unused]] char TpuXlaExecutableAbiVersionSerDes::ID = 0;
 
 }  // namespace xla

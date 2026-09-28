@@ -193,8 +193,8 @@ class BlasLt : public gpu::BlasLt {
     int8_t bias_type_ = 0;
   };  // class GroupedMatmulPlan
 
-  // Executes complex (C64/C128) matmuls via rocBLAS (rocblas_cgemm/zgemm),
-  // since hipBLASLt has no complex GEMM kernels in current ROCm releases.
+  // Executes complex (C64/C128) matmuls via rocBLAS (rocblas_cgemm/zgemm) when
+  // the hipBLASLt loaded at runtime has no algorithm for them.
   class RocBlasGemmPlan : public gpu::BlasLt::MatmulPlan {
    public:
     friend class BlasLt;
@@ -239,6 +239,10 @@ class BlasLt : public gpu::BlasLt {
   ~BlasLt() override = default;
 
  private:
+  // Fails if hipBLASLt does not handle the requested types.
+  absl::StatusOr<MatmulPlanPtr> GetHipBlasLtMatmulPlan(
+      const gpu::GemmConfig& cfg, Epilogue epilogue) const;
+
   StreamExecutor* executor_;
   mutable absl::Mutex mu_;
   Owned<hipblasLtHandle_t> handle_ ABSL_GUARDED_BY(mu_);

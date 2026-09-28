@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
@@ -67,6 +67,12 @@ template <>
 struct MaskFor<::xla::bfloat16> {
   using type = uint16_t;
   static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
+};
+
+template <>
+struct MaskFor<uint64_t> {
+  using type = uint64_t;
+  static constexpr type kStartBits = 1000;  // uint64_t: arbitrary point
 };
 
 // Fills vector with unique values using bit patterns starting from kStartBits
@@ -120,6 +126,8 @@ void RunSelectKTest() {
       stream_executor->AllocateArray<T>(batch * k, 0);
   se::DeviceAddress<uint32_t> d_indices_out =
       stream_executor->AllocateArray<uint32_t>(batch * k, 0);
+  se::DeviceAddress<uint8_t> d_scratch =
+      stream_executor->AllocateArray<uint8_t>(32 * 1024 * 1024, 0);
 
   // Copy host to device
   TF_ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
@@ -127,7 +135,7 @@ void RunSelectKTest() {
   // Run raft select_k
   TF_ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
                                 d_data_in, d_data_out, d_indices_out, batch, n,
-                                k));
+                                k, d_scratch));
 
   // Copy results back to host
   std::vector<T> h_data_out(batch * k);
@@ -152,5 +160,7 @@ TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
 TEST(RaftSelectKExecTest, SelectKBFloat16) {
   RunSelectKTest<::xla::bfloat16>();
 }
+
+TEST(RaftSelectKExecTest, SelectKUint64) { RunSelectKTest<uint64_t>(); }
 
 }  // namespace xla::gpu

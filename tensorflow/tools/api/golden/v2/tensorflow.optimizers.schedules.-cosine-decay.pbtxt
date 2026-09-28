@@ -4,12 +4,17 @@ tf_class {
   is_instance: "<class \'tf_keras.optimizers.schedules.learning_rate_schedule.LearningRateSchedule\'>"
   is_instance: "<class \'object\'>"
   member_method {
+    name: "__call__"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'initial_learning_rate\', \'decay_steps\', \'alpha\', \'name\', \'warmup_target\', \'warmup_steps\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\', \'None\', \'0\'], "
   }
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+    method_kind: CLASS
   }
   member_method {
     name: "get_config"

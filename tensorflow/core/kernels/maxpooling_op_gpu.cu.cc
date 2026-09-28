@@ -208,11 +208,15 @@ __global__ void MaxPoolBackward(const int nthreads,
                                 const int64_t* __restrict__ mask,
                                 const int top_offset, const int bottom_offset,
                                 dtype* __restrict__ bottom_diff,
-                                const bool include_batch_in_index) {
+                                const bool include_batch_in_index,
+                                const int input_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int offset =
         include_batch_in_index ? 0 : (index / top_offset) * bottom_offset;
-    GpuAtomicAdd(bottom_diff + offset + mask[index], top_diff[index]);
+    const int64_t write_index = offset + mask[index];
+    if (write_index >= 0 && write_index < input_size) {
+      GpuAtomicAdd(bottom_diff + write_index, top_diff[index]);
+    }
   }
 }
 
@@ -443,7 +447,7 @@ absl::Status MaxPoolBackwardWithArgmax<T>::operator()(
       MaxPoolBackward<T>,
       (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
       0, d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
-      bottom_diff, include_batch_in_index));
+      bottom_diff, include_batch_in_index, input_size));
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
 }
