@@ -108,6 +108,9 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
         np.array([np.inf]),
         np.array([-np.inf]),
         np.array([1.0, np.nan]),
+        # NaN is also found when it is not an extreme of the reductions used
+        # to detect it.
+        np.array([[1.0, np.nan], [3.0, 4.0]]),
     )
     for value in non_finite:
       with self.assertRaises(TypeError):
@@ -119,6 +122,12 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       with self.assertRaises(TypeError):
         constant_op.constant(np.array([np.nan]), dtype=dtype)
+
+    # Empty arrays and NumPy scalars take their respective shortcuts.
+    self.assertAllEqual([], constant_op.constant(
+        np.array([], dtype=np.float32), dtype=dtype))
+    self.assertAllEqual(1, constant_op.constant(
+        np.array(1.9, dtype=np.float32), dtype=dtype))
 
     # Finite floats keep the previous (truncating) behaviour.
     self.assertAllEqual([1], constant_op.constant(np.array([1.9]),

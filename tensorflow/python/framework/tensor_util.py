@@ -591,19 +591,31 @@ def AssertFiniteForIntegerDtype(values, dtype):
   Args:
     values: the value being converted. Only floating point `np.ndarray` /
       `np.generic` inputs are inspected; everything else is left alone.
-    dtype: the requested `DType`, or None. Only integer dtypes are inspected.
+    dtype: the requested `DType`, its enum value, or None. Only integer dtypes
+      are inspected.
 
   Raises:
     TypeError: if `dtype` is an integer dtype and `values` is a floating point
       array that contains NaN or Inf.
   """
-  if dtype is None or not dtype.is_integer:
+  # Ordered so that the cheapest tests come first: `convert_to_eager_tensor`
+  # runs on every tensor conversion, and the common Python-list / scalar paths
+  # return before `dtypes.as_dtype` is called.
+  if dtype is None:
     return
   if not isinstance(values, (np.ndarray, np.generic)):
     return
   if values.dtype.kind != "f":
     return
-  if np.isfinite(values).all():
+  dtype = dtypes.as_dtype(dtype)
+  if not dtype.is_integer:
+    return
+  if values.size == 0:
+    return
+  # `np.isfinite(values)` would allocate a temporary boolean array as large as
+  # `values`; the reductions below avoid that allocation, and both propagate
+  # NaN, so every non-finite element still reaches `np.isfinite`.
+  if np.isfinite(np.min(values)) and np.isfinite(np.max(values)):
     return
   raise TypeError(
       f"Cannot convert {np.array2string(np.asarray(values), threshold=8)} to "

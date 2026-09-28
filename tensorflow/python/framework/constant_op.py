@@ -108,7 +108,9 @@ def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
     # A NumPy array holding NaN or Inf is silently mapped to the smallest
     # representable integer by `ndarray.astype`, while the equivalent Python
     # list raises a TypeError. Reject it here so that both containers agree.
-    tensor_util.AssertFiniteForIntegerDtype(value, dtypes.as_dtype(dtype))
+    # Passing the enum keeps this hot path free of a `DType` conversion: the
+    # helper converts only after it knows `value` is a floating point array.
+    tensor_util.AssertFiniteForIntegerDtype(value, dtype)
   ctx.ensure_initialized()
   return ops.EagerTensor(value, ctx.device_name, dtype)
 

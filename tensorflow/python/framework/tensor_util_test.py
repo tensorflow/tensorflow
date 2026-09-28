@@ -61,6 +61,18 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     proto = tensor_util.make_tensor_proto(np.array([1.9]), dtype=dtype)
     self.assertAllEqual([1], tensor_util.MakeNdarray(proto))
 
+    # Empty inputs and NumPy scalars take their respective shortcuts.
+    self.assertAllEqual(
+        [],
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array([], dtype=np.float32),
+                                          dtype=dtype)))
+    self.assertAllEqual(
+        1,
+        tensor_util.MakeNdarray(
+            tensor_util.make_tensor_proto(np.array(1.9, dtype=np.float32),
+                                          dtype=dtype)))
+
     # Floating point dtypes still accept NaN and Inf.
     self.assertAllEqual(
         [np.nan],
