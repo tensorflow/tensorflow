@@ -293,15 +293,37 @@ class FunctionCacheTest(test.TestCase):
           "d",
       )
 
-  def testClear(self):
-    cache = function_cache.FunctionCache()
-    f_type = make_type(1)
-    ctx = function_cache.FunctionContext()
-    cache.add(MockFunction(f_type, "target_func"), ctx)
+  def testMaxCapacityInvalidRaisesValueError(self):
+    with self.assertRaises(ValueError):
+      function_cache.FunctionCache(max_capacity=0)
+    with self.assertRaises(ValueError):
+      function_cache.FunctionCache(max_capacity=-1)
 
-    self.assertIsNotNone(cache.lookup(f_type, ctx))
-    cache.clear()
-    self.assertIsNone(cache.lookup(f_type, ctx))
+  def testMaxCapacitySingleton(self):
+    cache = function_cache.FunctionCache(max_capacity=1)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    ctx = function_cache.FunctionContext()
+
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    self.assertIsNotNone(cache.lookup(f_type1, ctx))
+
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+    self.assertIsNone(cache.lookup(f_type1, ctx))
+    self.assertIsNotNone(cache.lookup(f_type2, ctx))
+
+  def testMaxCapacityReAddExistingKeyDoesNotEvict(self):
+    cache = function_cache.FunctionCache(max_capacity=2)
+    f_type1 = make_type(1)
+    f_type2 = make_type(2)
+    ctx = function_cache.FunctionContext()
+
+    cache.add(MockFunction(f_type1, "func1"), ctx)
+    cache.add(MockFunction(f_type2, "func2"), ctx)
+
+    cache.add(MockFunction(f_type1, "func1_updated"), ctx)
+    self.assertEqual(cache.lookup(f_type1, ctx).test_string, "func1_updated")
+    self.assertIsNotNone(cache.lookup(f_type2, ctx))
 
   def testMaxCapacityEvictionAndLRU(self):
     cache = function_cache.FunctionCache(max_capacity=2)
