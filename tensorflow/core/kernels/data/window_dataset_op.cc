@@ -25,10 +25,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -41,13 +39,13 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -130,8 +128,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64_t target_size = target_buffer_size_;
-      int64_t rest_elements = target_size < 0 ? -1 : n - target_size;
+      int64_t rest_elements = n - static_cast<int64_t>(target_buffer_size_);
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
       cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
@@ -184,7 +181,6 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     absl::Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) override {
-      const int64_t window_size = dataset()->window_size_;
       const int64_t window_shift = dataset()->window_shift_;
       const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
@@ -467,12 +463,11 @@ void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx,
       result >= 0 &&
           static_cast<uint64_t>(result) <= std::numeric_limits<size_t>::max(),
-      absl::InvalidArgumentError(absl::StrFormat(
-          "Window target buffer size overflow: (window_size=%lld - 1) * "
-          "window_stride=%lld + 1 is not representable.",
-          static_cast<long long>(window_size),
-          static_cast<long long>(window_stride))));
-          
+      absl::InvalidArgumentError(absl::StrCat(
+          "Window target buffer size overflow: (window_size=", window_size,
+          " - 1) * window_stride=", window_stride,
+          " + 1 is not representable.")));
+
   size_t target_buffer_size = static_cast<size_t>(result);
 
   *output = new Dataset(ctx, input, window_size, window_shift, window_stride,

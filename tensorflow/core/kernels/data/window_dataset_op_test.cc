@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -648,7 +648,7 @@ WindowDatasetParams WindowDatasetParamsWithOverflowingSizeAndStride() {
 TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
   EXPECT_THAT(Initialize(dataset_params),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+              tensorflow::testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("overflow")));
 }
 

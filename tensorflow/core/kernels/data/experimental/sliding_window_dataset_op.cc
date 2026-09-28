@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tensorflow/core/util/overflow.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -84,12 +82,11 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         ctx,
         result >= 0 &&
             static_cast<uint64_t>(result) <= std::numeric_limits<size_t>::max(),
-        absl::InvalidArgumentError(absl::StrFormat(
-            "Window target buffer size overflow: (window_size=%lld - 1) * "
-            "window_stride=%lld + 1 is not representable.",
-            static_cast<long long>(window_size),
-            static_cast<long long>(window_stride))));
-            
+        absl::InvalidArgumentError(absl::StrCat(
+            "Window target buffer size overflow: (window_size=", window_size,
+            " - 1) * window_stride=", window_stride,
+            " + 1 is not representable.")));
+
     size_t target_buffer_size = static_cast<size_t>(result);
 
     *output = new Dataset(ctx, window_size, window_shift, window_stride,
