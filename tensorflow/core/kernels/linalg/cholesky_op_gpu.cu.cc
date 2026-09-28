@@ -111,7 +111,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
 #endif
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be squares, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
