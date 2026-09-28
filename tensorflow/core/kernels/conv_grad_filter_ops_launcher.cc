@@ -399,6 +399,15 @@ void LaunchConv2DBackpropFilterOpImpl(
   // We compute filter backprop into temporary tensor, and then convert it to
   // the HWIO data format at the end.
 
+  // Validate filter element count before allocation to prevent OOM on invalid
+  // inputs. GPU transformation uses 32-bit indexing via To32Bit().
+  OP_REQUIRES(ctx,
+              filter_backprop->NumElements() <=
+                  std::numeric_limits<int32>::max(),
+              errors::InvalidArgument(
+                  "Filter tensor num elements (", filter_backprop->NumElements(),
+                  ") exceeds 32-bit limit for GPU transformation"));
+
   Tensor pre_transformed_filter_backprop;
   OP_REQUIRES_OK(
       ctx,
