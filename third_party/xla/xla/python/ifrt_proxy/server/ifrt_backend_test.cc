@@ -1231,6 +1231,7 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   std::vector<MockDevice> devices(4);
   for (int i = 0; i < 4; ++i) {
     EXPECT_CALL(devices[i], Id()).WillRepeatedly(Return(DeviceId(i)));
+    EXPECT_CALL(devices[i], IsAddressable()).WillRepeatedly(Return(true));
   }
 
   std::vector<xla::ifrt::Device*> addressable_devices;
@@ -1245,8 +1246,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
   EXPECT_CALL(*executable, devices())
       .WillOnce(Return(std::make_optional(device_list)));
-  EXPECT_CALL(*executable, addressable_devices())
-      .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
 
   TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
@@ -1913,8 +1912,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadataWithMpmd) {
     ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
-    ON_CALL(*executable, addressable_devices())
-        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>({})));
     ON_CALL(*executable, Fingerprint())
         .WillByDefault(Return("mpmd_fingerprint"));
 
@@ -1976,8 +1973,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMpmdCostAnalysis) {
     ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
-    ON_CALL(*executable, addressable_devices())
-        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
     ON_CALL(*executable, Fingerprint())
         .WillByDefault(Return("mpmd_fingerprint"));
 
@@ -2025,8 +2020,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
   ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
   auto empty_device_list = BasicDeviceList::Create({});
   ON_CALL(*executable, devices()).WillByDefault(Return(empty_device_list));
-  ON_CALL(*executable, addressable_devices())
-      .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
   ON_CALL(*executable, Fingerprint()).WillByDefault(Return("mpmd_fingerprint"));
 
   std::vector<xla::ifrt::Device*> mesh1_devices = {mock_devices_[0].get()};
