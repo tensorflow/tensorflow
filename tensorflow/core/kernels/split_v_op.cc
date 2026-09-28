@@ -129,18 +129,21 @@ class SplitVOpBase : public OpKernel {
                                        "input."));
         neg_one_dim = d;
       } else {
+        // Reject a negative size before summing it, so that
+        // 0 <= determined_size <= input_size_split_dim below. Otherwise a
+        // large negative size, such as the minimum of Tlen next to a -1, makes
+        // `input_size_split_dim - determined_size` overflow.
+        OP_REQUIRES(context, size >= 0,
+                    errors::InvalidArgument("Split size at index ", d,
+                                            " must be >= 0. Got: ", size));
         // Accumulate with an explicit overflow guard. `determined_size += size`
         // wraps for large `size_splits`, and a wrapped total can equal
         // `input_size_split_dim` and pass the check below, letting the aligned
         // slicing path compute an endpoint that reaches a fatal `Tensor::Slice`
         // invariant. Rejecting overflow here also keeps that later path safe,
         // since the accepted total then bounds every partial sum.
-        const bool overflow =
-            (size > 0 &&
-             determined_size > std::numeric_limits<Tlen>::max() - size) ||
-            (size < 0 &&
-             determined_size < std::numeric_limits<Tlen>::min() - size);
-        OP_REQUIRES(context, !overflow,
+        OP_REQUIRES(context,
+                    determined_size <= std::numeric_limits<Tlen>::max() - size,
                     absl::InvalidArgumentError(absl::StrCat(
                         "Sum of size_splits overflows the index type at index ",
                         d, ".")));

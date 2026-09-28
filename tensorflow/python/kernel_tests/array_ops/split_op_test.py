@@ -22,7 +22,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -132,17 +131,28 @@ class SplitOpTest(test.TestCase):
     # fatal `Tensor::Slice` invariant in the aligned slicing path. It must
     # raise instead.
     i64_max = (1 << 63) - 1
-    value = array_ops.reshape(
-        constant_op.constant([], dtype=dtypes.float32),
-        constant_op.constant([i64_max, 0], dtype=dtypes.int64))
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "overflow"):
-      self.evaluate(
-          gen_array_ops.SplitV(
-              value=value,
-              size_splits=constant_op.constant(
-                  [i64_max, i64_max, i64_max, 2], dtype=dtypes.int64),
-              axis=constant_op.constant(0, dtype=dtypes.int32),
-              num_split=4))
+    i32_max = (1 << 31) - 1
+    for input_size, size_splits, dtype in (
+        (i64_max, [i64_max, i64_max, i64_max, 2], dtypes.int64),
+        # A -1 does not keep the other sizes from overflowing.
+        (i64_max, [-1, i64_max, i64_max, 2], dtypes.int64),
+        # int32 sizes overflow at their own width. The shape function sums in
+        # int64, so an input of that size lets graph mode reach the kernel.
+        (2 * i32_max + 5, [i32_max, i32_max, 5], dtypes.int32),
+    ):
+      with self.subTest(size_splits=size_splits, dtype=dtype.name):
+        value = array_ops.reshape(
+            constant_op.constant([], dtype=dtypes.float32),
+            constant_op.constant([input_size, 0], dtype=dtypes.int64),
+        )
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError), "overflow"
+        ):
+          self.evaluate(
+              array_ops.split(
+                  value, constant_op.constant(size_splits, dtype=dtype), axis=0
+              )
+          )
 
   @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
