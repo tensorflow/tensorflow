@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -331,6 +333,85 @@ ENTRY entry {
   EXPECT_EQ(get_local_id(comp2, "add0"), 2);
   EXPECT_EQ(get_local_id(comp2, "mul0"), 3);
   EXPECT_EQ(get_local_id(comp2, "out"), 4);
+}
+
+// An instruction outside the destroyed computation that uses one of its
+// instructions is left with null operand slots, the state
+// DetachFromOperandsAndUsers leaves behind. The user names the instruction
+// twice so that every slot is scanned.
+TEST_F(HLOComputationTest, DestroyingComputationClearsOperandsOfOutsideUsers) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  auto builder = HloComputation::Builder("inside");
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, param));
+  std::unique_ptr<HloComputation> computation = builder.Build();
+
+  std::unique_ptr<HloInstruction> outside_user =
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate, negate);
+  ASSERT_EQ(outside_user->parent(), nullptr);
+  ASSERT_EQ(negate->user_count(), 1);
+
+  computation.reset();
+
+  EXPECT_EQ(outside_user->operand(0), nullptr);
+  EXPECT_EQ(outside_user->operand(1), nullptr);
+}
+
+// The reverse direction: an instruction of the destroyed computation uses an
+// outside instruction, twice. The outside instruction drops the deleted user
+// from its user list.
+TEST_F(HLOComputationTest, DestroyingComputationDropsUsersOfOutsideOperands) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  std::unique_ptr<HloInstruction> outside_operand =
+      HloInstruction::CreateParameter(0, shape, "outside");
+  auto builder = HloComputation::Builder("inside");
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, outside_operand.get(), outside_operand.get()));
+  std::unique_ptr<HloComputation> computation = builder.Build();
+  ASSERT_EQ(outside_operand->user_count(), 1);
+  ASSERT_EQ(outside_operand->users().front(), add);
+
+  computation.reset();
+
+  EXPECT_EQ(outside_operand->user_count(), 0);
+}
+
+// A computation removed from its module is destroyed by HloModule::Cleanup.
+// Unlike the two tests above, the outside instructions have a parent
+// computation here, so treating only parentless instructions as outside would
+// fail this test.
+TEST_F(HLOComputationTest, ModuleCleanupUnlinksEdgesToSurvivingComputations) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  // A plain HloModule: a VerifiedHloModule would fail on the null operand in
+  // its destructor.
+  HloModule module("module", GetModuleConfigForTest());
+
+  auto removed_builder = HloComputation::Builder("removed");
+  HloInstruction* removed_param = removed_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* removed_negate = removed_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, removed_param));
+  HloComputation* removed =
+      module.AddEmbeddedComputation(removed_builder.Build());
+
+  auto kept_builder = HloComputation::Builder("kept");
+  HloInstruction* kept_param = kept_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* kept_negate = kept_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, removed_negate));
+  module.AddEntryComputation(kept_builder.Build());
+  removed->AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, kept_param));
+  ASSERT_EQ(kept_negate->operand(0), removed_negate);
+  ASSERT_EQ(kept_param->user_count(), 1);
+
+  ASSERT_OK(module.RemoveEmbeddedComputation(removed));
+  module.Cleanup();
+
+  EXPECT_EQ(kept_negate->operand(0), nullptr);
+  EXPECT_EQ(kept_param->user_count(), 0);
 }
 
 TEST_F(HLOComputationTest, PrintWithCompactGTE) {

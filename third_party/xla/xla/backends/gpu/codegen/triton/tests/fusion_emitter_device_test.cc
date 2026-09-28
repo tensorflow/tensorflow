@@ -530,7 +530,7 @@ ENTRY main {
       auto xtile_module_and_hlo_module,
       CreateXTileIrAndFileCheck(std::move(module), "triton_softmax_computation",
                                 R"(
-CHECK:        xtile.entry_func @xtile_dialect_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[PID:.*]]: index)
+CHECK:        xtile.entry_func @xtile_dialect_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[PID:[^:]*]]: index{{( \{xla.range = \[0 : index, 124 : index\]\})?}})
 CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
 CHECK:       xtile.extract %[[P0]]
 CHECK-SAME:       [%[[PID]], %{{.*}}] [1, 128] [1, 1]
@@ -544,7 +544,7 @@ CHECK:        }
 
   TF_EXPECT_OK(LowerXTileIrToTritonAndFileCheck(
       xtile_module_and_hlo_module.first.get(), R"(
-CHECK:        xtile.entry_func @xtile_dialect_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[PID:.*]]: index)
+CHECK:        xtile.entry_func @xtile_dialect_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[PID:[^:]*]]: index{{( \{xla.range = \[0 : index, 124 : index\]\})?}})
 CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
 CHECK:       xtile.extract %[[P0]]
 CHECK-SAME:       [%[[PID]], %{{.*}}] [1, 128] [1, 1]
@@ -609,7 +609,7 @@ CHECK:         xtile.entry_func @xtile_dialect_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: memref<125x127xf32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: memref<127xf32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: memref<125x127xf32>
-CHECK-SAME:                      %[[TID:[A-Za-z0-9_]*]]: index)
+CHECK-SAME:                      %[[TID:[A-Za-z0-9_]*]]: index{{( \{xla.range = \[0 : index, 124 : index\]\})?}})
 CHECK:            xtile.extract %[[P0]][%[[TID]], %{{.*}}] [1, 128] [1, 1] : {{.*}} -> tensor<1x128xf32>
 CHECK:            %{{.*}} = arith.constant 0 : index
 CHECK:            xtile.extract %[[P1]][%{{.*}}] [128] [1] : {{.*}} -> tensor<128xf32>
@@ -625,7 +625,7 @@ CHECK:         xtile.entry_func @xtile_dialect_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: memref<125x127xf32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: memref<127xf32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: memref<125x127xf32>
-CHECK-SAME:                      %[[TID:[A-Za-z0-9_]*]]: index)
+CHECK-SAME:                      %[[TID:[A-Za-z0-9_]*]]: index{{( \{xla.range = \[0 : index, 124 : index\]\})?}})
 CHECK:            xtile.extract %[[P0]][%[[TID]], %{{.*}}] [1, 128] [1, 1] : {{.*}} -> tensor<1x128xf32>
 CHECK:            xtile.extract %[[P1]][%{{.*}}] [128] [1] : {{.*}} -> tensor<128xf32>
 CHECK:            tt.reduce
