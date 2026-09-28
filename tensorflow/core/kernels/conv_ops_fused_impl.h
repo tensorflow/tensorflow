@@ -38,6 +38,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <utility>

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/conv_grad_input_ops.h"
 
+#include <limits>
 #include <utility>
 
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"

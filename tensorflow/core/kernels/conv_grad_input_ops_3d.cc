@@ -17,10 +17,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
-
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
