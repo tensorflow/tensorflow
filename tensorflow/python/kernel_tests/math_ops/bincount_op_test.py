@@ -703,8 +703,8 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
   def test_sparse_bincount_negative_batch_fails(self):
     # Regression test for OOB write via negative batch index.
     # ValidateSparseTensor rejects the negative index during input validation,
-    # before the kernel loop runs; the `batch >= 0` check in SparseBincountOp
-    # is kept as defense in depth.
+    # before the kernel loop runs; the DCHECK in SparseBincountOp documents
+    # that invariant in debug builds.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
         "is out of bounds"):
