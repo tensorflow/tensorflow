@@ -136,7 +136,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
     const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -275,7 +275,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be square, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 

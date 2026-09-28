@@ -181,10 +181,12 @@ class DeterminantOpTest(test.TestCase):
         gen_linalg_ops.log_matrix_determinant,
     ):
       for bad_shape in ([], [2]):
-        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
-        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
-          with test_util.use_gpu():
-            self.evaluate(fn(val))
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+          val = constant_op.constant(np.zeros(bad_shape, dtype=dtype))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(val))
 
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))

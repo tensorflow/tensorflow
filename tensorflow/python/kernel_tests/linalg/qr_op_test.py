@@ -59,10 +59,12 @@ class QrOpTest(test.TestCase):
   def testInvalidRank(self):
     for fn in (linalg_ops.qr, gen_linalg_ops.qr):
       for bad_shape in ([], [2]):
-        val = constant_op.constant(np.zeros(bad_shape, dtype=np.float32))
-        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
-          with test_util.use_gpu():
-            self.evaluate(fn(val))
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+          val = constant_op.constant(np.zeros(bad_shape, dtype=dtype))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(val))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrentExecutesWithoutError(self):
