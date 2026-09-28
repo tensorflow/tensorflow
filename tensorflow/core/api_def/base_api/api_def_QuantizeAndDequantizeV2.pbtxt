@@ -11,7 +11,7 @@ END
     description: <<END
 If `range_given == True`, this specifies the minimum input value that needs to
 be represented, otherwise it is determined from the min value of the `input`
-tensor.
+tensor. If `axis` is specified, the shape of this tensor must be rank 1.
 END
   }
   in_arg {
@@ -19,7 +19,7 @@ END
     description: <<END
 If `range_given == True`, this specifies the maximum input value that needs to
 be represented, otherwise it is determined from the max value of the `input`
-tensor.
+tensor. If `axis` is specified, the shape of this tensor must be rank 1.
 END
   }
   attr {
