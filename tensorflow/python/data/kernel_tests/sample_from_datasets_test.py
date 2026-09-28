@@ -178,6 +178,34 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [])
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsRejectsIntegerWeights(self, weights_type):
+    # All-zero weights skip every dataset, so they must be type-checked before
+    # the skip replaces them.
+    weights = _get_weights_of_type(np.asarray([0, 0], np.int32), weights_type)
+    with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
+      dataset_ops.Dataset.sample_from_datasets(
+          [dataset_ops.Dataset.range(10),
+           dataset_ops.Dataset.range(20)],
+          weights=weights)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsRejectsNegativeWeights(self, weights_type):
+    # A negative or NaN weight is never selected, so like a zero weight it
+    # would keep sampling forever once the other dataset is exhausted.
+    for weights_list in ([-1., 1.], [np.nan, 1.]):
+      with self.subTest(weights=weights_list):
+        weights = _get_weights_of_type(np.asarray(weights_list), weights_type)
+        with self.assertRaisesRegex(ValueError, "must be non-negative"):
+          dataset_ops.Dataset.sample_from_datasets(
+              [dataset_ops.Dataset.range(10),
+               dataset_ops.Dataset.range(20)],
+              weights=weights)
+
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
     ds1 = dataset_ops.Dataset.from_tensors([1.0]).repeat()
