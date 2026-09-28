@@ -12751,6 +12751,7 @@ TEST_F(AlgebraicSimplifierTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifierOptions options;
+  options.set_rewrite_no_op_bitcast_convert_to_bitcast(false);
   ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
   options.set_is_layout_sensitive(true);
   ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());

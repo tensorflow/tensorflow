@@ -17,16 +17,22 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "Eigen/Core"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -151,6 +157,53 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
 
 class BitcastConvertHloTest : public HloInterpreterReferenceMixin<HloTestBase> {
 };
+
+// Same-width bitcasts between u16 and bf16 must preserve every bit, including
+// subnormals and NaN payloads.
+constexpr uint16_t kBf16EdgeBits[] = {0x0000, 0x0001, 0x8001, 0x007F,
+                                      0x0080, 0x3F80, 0x7F80, 0x7FC1};
+
+std::vector<Eigen::bfloat16> Bf16EdgeValues() {
+  std::vector<Eigen::bfloat16> values;
+  for (uint16_t b : kBf16EdgeBits) {
+    values.push_back(Eigen::bfloat16_impl::raw_uint16_to_bfloat16(b));
+  }
+  return values;
+}
+
+TEST_F(BitcastConvertHloTest, U16ToBF16PreservesSubnormals) {
+  absl::string_view hlo_string = R"(
+HloModule u16_to_bf16
+
+ENTRY main {
+  p = u16[8] parameter(0)
+  ROOT out = bf16[8] bitcast-convert(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Literal arg = LiteralUtil::CreateR1<uint16_t>(kBf16EdgeBits);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<Eigen::bfloat16>(Bf16EdgeValues()), result));
+}
+
+TEST_F(BitcastConvertHloTest, BF16ToU16PreservesSubnormals) {
+  absl::string_view hlo_string = R"(
+HloModule bf16_to_u16
+
+ENTRY main {
+  p = bf16[8] parameter(0)
+  ROOT out = u16[8] bitcast-convert(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Literal arg = LiteralUtil::CreateR1<Eigen::bfloat16>(Bf16EdgeValues());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<uint16_t>(kBf16EdgeBits), result));
+}
 
 TEST_F(BitcastConvertHloTest, S32to4S8) {
   absl::string_view hlo_string = R"(

@@ -454,7 +454,7 @@ class AlgebraicSimplifierOptions {
   bool enable_onednn_support_{false};
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
-  bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
+  bool rewrite_no_op_bitcast_convert_to_bitcast_{true};
   bool enable_conditional_simplification_{false};
   bool enable_hoist_transpose_of_reshape_{false};
   bool enable_fold_transpose_into_scatter_{false};
