@@ -443,6 +443,33 @@ class SplitOpTest(test.TestCase):
     assert s1.shape.as_list() == [1]
 
   @test_util.run_deprecated_v1
+  def testShapeFunctionRejectsSizeSplitsOverflow(self):
+    # The shape function summed size_splits in int64 without checks, so at
+    # graph construction these sizes wrapped around to the input size, and a
+    # large negative size next to a -1 overflowed the computed -1 size.
+    i64_max = (1 << 63) - 1
+    value = array_ops.reshape(
+        constant_op.constant([], dtype=dtypes.float32),
+        constant_op.constant([i64_max, 0], dtype=dtypes.int64),
+    )
+    with self.assertRaisesRegex(ValueError, "overflow"):
+      array_ops.split(
+          value,
+          constant_op.constant(
+              [i64_max, i64_max, i64_max, 2], dtype=dtypes.int64
+          ),
+          axis=0,
+      )
+    with self.assertRaisesRegex(
+        ValueError, "Split size at index 1 must be >= 0"
+    ):
+      array_ops.split(
+          constant_op.constant([1.0, 2.0, 3.0]),
+          constant_op.constant([-1, -(1 << 63)], dtype=dtypes.int64),
+          axis=0,
+      )
+
+  @test_util.run_deprecated_v1
   def testNonexistentDimTensor(self):
     x = array_ops.placeholder(dtypes.int32)
     values = np.zeros([5, 30])

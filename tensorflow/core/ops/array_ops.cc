@@ -718,7 +718,8 @@ REGISTER_OP("SplitV")
         }
         int64_t total_size = 0;
         bool has_neg_one = false;
-        for (const auto size : data) {
+        for (int i = 0; i < num_outputs; ++i) {
+          const int64_t size = data[i];
           if (size == -1) {
             if (has_neg_one) {
               return absl::InvalidArgumentError(
@@ -726,6 +727,17 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            // As in the SplitV kernel, reject a negative size before summing
+            // it and guard the sum, so that neither the sum nor
+            // `split_dim_size - total_size` below overflows.
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > std::numeric_limits<int64_t>::max() - size) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Sum of size_splits overflows int64 at index ", i, "."));
+            }
             total_size += size;
           }
         }
