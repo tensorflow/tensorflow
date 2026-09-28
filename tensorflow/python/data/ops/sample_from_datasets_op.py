@@ -64,13 +64,16 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       # Use the given `weights` as the probability of choosing the respective
       # input.
       if isinstance(weights, tensor.Tensor):
-        # Evaluate the tensor eagerly to filter zero-weight datasets,
-        # matching the behavior of list weights. This prevents an infinite
-        # loop in directed_interleave when a zero-weight dataset is never
-        # sampled but the stop_on_empty_dataset check never triggers.
-        weights_list = weights.numpy().tolist()
-        datasets, weights = _skip_datasets_with_zero_weight(
-            datasets, weights_list)
+        # Use get_static_value to safely retrieve constant tensor values in
+        # both eager and graph/tf.function contexts. If the weights are
+        # statically known (e.g. tf.constant), filter zero-weight datasets
+        # to prevent an infinite loop in directed_interleave when a zero-
+        # weight dataset is never sampled but stop_on_empty_dataset=False.
+        static_weights = ops.get_static_value(weights)
+        if static_weights is not None:
+          weights_list = static_weights.tolist()
+          datasets, weights = _skip_datasets_with_zero_weight(
+              datasets, weights_list)
         weights = ops.convert_to_tensor(weights, name="weights")
       else:
         datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
