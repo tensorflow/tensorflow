@@ -443,10 +443,9 @@ class SparseBincountOp : public OpKernel {
       for (int64_t i = 0; i < indices_mat.dimension(0); ++i) {
         const int64_t batch = indices_mat(i, 0);
         const Tidx bin = values_flat(i);
-        OP_REQUIRES(ctx, batch >= 0 && batch < out.dimension(0),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "Index out of bound. `batch` (", batch,
-                        ") must be in range [0, ", out.dimension(0), ").")));
+        DCHECK(batch >= 0 && batch < out.dimension(0))
+            << "Index out of bound. `batch` (" << batch
+            << ") must be in range [0, " << out.dimension(0) << ").";
         if (0 <= bin && bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
