@@ -432,8 +432,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
@@ -502,8 +500,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 

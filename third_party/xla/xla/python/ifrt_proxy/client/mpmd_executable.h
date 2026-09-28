@@ -147,9 +147,6 @@ class MpmdLoadedExecutable final
   std::optional<DeviceListRef> devices() const override {
     return loaded_executable_->devices();
   };
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override {
-    return loaded_executable_->addressable_devices();
-  }
 
   absl::StatusOr<
       absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>>
