@@ -156,9 +156,14 @@ def has_agent_reviewed_commit(reviews_url: str, commit_sha: str) -> bool:
         if not isinstance(reviews, list):
             return False
         for review in reviews:
+            author_login = (review.get("user") or {}).get("login") or ""
             body = review.get("body") or ""
             review_commit_id = review.get("commit_id") or ""
-            if review_commit_id == commit_sha and marker in body:
+            if (
+                author_login == "github-actions[bot]"
+                and review_commit_id == commit_sha
+                and marker in body
+            ):
                 return True
     except Exception as e:  # pylint: disable=broad-except
         print(
@@ -186,7 +191,7 @@ def post_pull_request_review(url: str, payload: dict[str, Any]) -> dict[str, Any
                 fallback_body += f"\n- **File**: `{ic.get('path', '')}` (Line {ic.get('line', 'N/A')}):\n{ic.get('body', '')}\n"
         fallback_payload: dict[str, Any] = {
             "body": fallback_body,
-            "event": payload.get("event", "COMMENT"),
+            "event": "COMMENT",
         }
         if payload.get("commit_id"):
             fallback_payload["commit_id"] = payload["commit_id"]
@@ -387,7 +392,9 @@ def _fetch_file_content_at_commit(
     if not _is_safe_relative_path(rel_path):
         return None
 
-    if head_sha and re.match(r"^[0-9a-fA-F]{7,40}$", head_sha):
+    if head_sha:
+        if not re.match(r"^[0-9a-fA-F]{7,40}$", head_sha):
+            return None
         try:
             res = subprocess.run(
                 ["git", "show", f"{head_sha}:{rel_path}"],
@@ -418,6 +425,7 @@ def _fetch_file_content_at_commit(
                 print(
                     f"Warning: GitHub API content fetch failed for {rel_path} at {head_sha}: {e}"
                 )
+        return None
 
     try:
         local_path = (repo_root / rel_path).resolve()
@@ -548,9 +556,15 @@ def run_pylint_on_changed_files(
                 *materialized_paths,
             ])
 
+            pylint_env = {
+                "PATH": os.environ.get("PATH", ""),
+                "HOME": os.environ.get("HOME", ""),
+            }
+
             res = subprocess.run(
                 cmd,
                 cwd=str(temp_dir_path),
+                env=pylint_env,
                 capture_output=True,
                 text=True,
                 timeout=120,

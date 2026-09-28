@@ -30,5 +30,6 @@ if not GITHUB_TOKEN:
 OWNER = os.getenv("OWNER")
 REPO = os.getenv("REPO")
 PULL_REQUEST_NUMBER = os.getenv("PULL_REQUEST_NUMBER")
+PR_HEAD_SHA = os.getenv("PR_HEAD_SHA")
 
 IS_INTERACTIVE = False

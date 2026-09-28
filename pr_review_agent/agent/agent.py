@@ -49,12 +49,32 @@ MODELS_POOL = [
 import re
 
 _PREFETCHED_PR_DETAILS = None
+_VERIFIED_HEAD_SHA: str | None = None
+_INITIAL_ENV_PR = __import__("os").getenv("PULL_REQUEST_NUMBER")
 
-def get_pull_request_details(pr_number: int) -> dict[str, Any]:
+
+def _get_trusted_pr_number() -> int:
+    """Resolves the authoritative PR number from trusted runtime configuration."""
+    import os
+    import agent.settings as settings_mod
+    from agent.utils import parse_number_string
+
+    if settings_mod.PULL_REQUEST_NUMBER != _INITIAL_ENV_PR and settings_mod.PULL_REQUEST_NUMBER is not None:
+        raw_pr = settings_mod.PULL_REQUEST_NUMBER
+    else:
+        raw_pr = os.getenv("PULL_REQUEST_NUMBER") or settings_mod.PULL_REQUEST_NUMBER
+    return parse_number_string(raw_pr)
+
+
+def get_pull_request_details() -> dict[str, Any]:
     """Fetch TensorFlow PR details along with file structural metadata."""
     global _PREFETCHED_PR_DETAILS
     if _PREFETCHED_PR_DETAILS is not None:
         return _PREFETCHED_PR_DETAILS
+
+    pr_number = _get_trusted_pr_number()
+    if not pr_number:
+        return error_response("Trusted PULL_REQUEST_NUMBER is not configured.")
 
     query = """
     query($owner: String!, $repo: String!, $prNumber: Int!) {
@@ -126,8 +146,11 @@ def get_pull_request_details(pr_number: int) -> dict[str, Any]:
             return error_response(f"GraphQL error ({e}) and REST fallback error ({e2})")
 
 
-def add_comment_to_pr(pr_number: int, comment: str) -> dict[str, Any]:
+def add_comment_to_pr(comment: str) -> dict[str, Any]:
     """Post review feedback to the PR."""
+    pr_number = _get_trusted_pr_number()
+    if not pr_number:
+        return error_response("Trusted PULL_REQUEST_NUMBER is not configured.")
     url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/issues/{pr_number}/comments"
     payload = {"body": comment}
     try:
@@ -138,12 +161,15 @@ def add_comment_to_pr(pr_number: int, comment: str) -> dict[str, Any]:
 
 
 def submit_pr_code_review(
-    pr_number: int,
     overall_assessment: str,
     summary_comment: str,
     inline_comments: list[dict[str, Any]]
 ) -> dict[str, Any]:
     """Post structured pull request review with top-level summary and line-level inline comments."""
+    _ = overall_assessment
+    pr_number = _get_trusted_pr_number()
+    if not pr_number:
+        return error_response("Trusted PULL_REQUEST_NUMBER is not configured.")
     url = f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/pulls/{pr_number}/reviews"
     formatted_comments = []
     for ic in (inline_comments or []):
@@ -161,7 +187,7 @@ def submit_pr_code_review(
                 "body": body
             })
 
-    head_sha = (
+    head_sha = _VERIFIED_HEAD_SHA or (
         (_PREFETCHED_PR_DETAILS or {})
         .get("pull_request", {})
         .get("headRefOid", "")
@@ -172,15 +198,9 @@ def submit_pr_code_review(
         if marker.strip() not in summary_comment:
             summary_comment = summary_comment.rstrip() + marker
 
-    event = "COMMENT"
-    if "Changes required" in overall_assessment:
-        event = "REQUEST_CHANGES"
-    elif "No actionable review comments" in overall_assessment:
-        event = "APPROVE"
-
     payload: dict[str, Any] = {
         "body": summary_comment,
-        "event": event,
+        "event": "COMMENT",
         "comments": formatted_comments
     }
     if head_sha:
@@ -577,10 +597,9 @@ Prefer NO findings over weak, filler, or duplicate recommendations.
 # Output Format and Tool Calling (`submit_pr_code_review_orchestrated`)
 
 When you complete your evaluation, you MUST call the `submit_pr_code_review_orchestrated` tool with:
-1. `pr_number`: The integer ID of the pull request.
-2. `summary_comment`: The top-level summary of the pull request, positive observations (if any), and overall architectural assessment. DO NOT put localized code defects or line-level suggestions in `summary_comment`! Keep `summary_comment` strictly for high-level overview.
-3. `overall_assessment`: Exactly one of: "No actionable review comments identified.", "Minor improvements suggested.", or "Changes required."
-4. `inline_comments`: An array of structured objects for every localized defect that passed the Stage 4 Validation Gate. Maximum 5 items total across all files. For each inline comment provide:
+1. `summary_comment`: The top-level summary of the pull request, positive observations (if any), and overall architectural assessment. DO NOT put localized code defects or line-level suggestions in `summary_comment`! Keep `summary_comment` strictly for high-level overview.
+2. `overall_assessment`: Exactly one of: "No actionable review comments identified.", "Minor improvements suggested.", or "Changes required."
+3. `inline_comments`: An array of structured objects for every localized defect that passed the Stage 4 Validation Gate. Maximum 5 items total across all files. For each inline comment provide:
    - `path`: The exact relative file path (e.g. `tensorflow/core/util/tensor_bundle/tensor_bundle.cc`).
    - `line`: The exact integer right-side line number extracted from the `[L...]` annotation in the diff (or `[LEFT L...]` if targeting deletion with `side="LEFT"`).
    - `side`: "RIGHT" for additions/context (default), or "LEFT" for deletions.
@@ -604,7 +623,8 @@ def make_review_agent(
     focus_areas: str,
     skip_areas: str,
     post_comment_callback=None,
-    pylint_output: str = ""
+    pylint_output: str = "",
+    commit_sha: str = ""
 ) -> LlmAgent:
     """Creates a fresh, immutable-base agent instance configured with Category Context and Pylint evidence."""
     pylint_evidence = (
@@ -612,8 +632,10 @@ def make_review_agent(
         if pylint_output and pylint_output.strip()
         else "No Pylint issues detected on modified lines."
     )
+    commit_line = f"- Verified Commit SHA: {commit_sha}\n" if commit_sha else ""
     context_block = (
         f"# PR Categorization Context\n"
+        f"{commit_line}"
         f"- Detected Category: {category}\n"
         f"- Reason: {reason}\n"
         f"- Focus Areas: {focus_areas}\n"
@@ -633,12 +655,15 @@ def make_review_agent(
     agent_instruction = context_block + IMMUTABLE_BASE_INSTRUCTIONS
     
     def submit_pr_code_review_orchestrated(
-        pr_number: int,
         overall_assessment: str,
         summary_comment: str,
         inline_comments: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """Post structured pull request review with pre-classified summary header and inline comments."""
+        global _VERIFIED_HEAD_SHA
+        if commit_sha:
+            _VERIFIED_HEAD_SHA = commit_sha
+
         header = f"Category: {category}\nReason: {reason}\n\n"
         if not summary_comment.startswith("Category:"):
             summary_comment = header + summary_comment
@@ -660,12 +685,15 @@ def make_review_agent(
                 })
 
         if post_comment_callback:
+            trusted_pr_number = _get_trusted_pr_number()
+            if not trusted_pr_number:
+                return error_response("Trusted PULL_REQUEST_NUMBER is not configured.")
             full_mock_output = f"{summary_comment}\n\nOverall Assessment: {overall_assessment}\n\n### Inline Comments:\n"
             for fc in formatted_comments:
                 full_mock_output += f"\n- [{fc['path']} L{fc['line']} ({fc['side']})]: {fc['body']}"
-            return post_comment_callback(pr_number, full_mock_output)
+            return post_comment_callback(trusted_pr_number, full_mock_output)
             
-        return submit_pr_code_review(pr_number, overall_assessment, summary_comment, formatted_comments)
+        return submit_pr_code_review(overall_assessment, summary_comment, formatted_comments)
 
     return LlmAgent(
         model=model_name,
@@ -678,21 +706,28 @@ def make_review_agent(
 
 async def run_pr_review(
     model_name: str,
-    pr_number: int,
-    category: str,
-    reason: str,
-    focus_areas: str,
-    skip_areas: str,
-    pylint_output: str = ""
+    pr_number: int | None = None,
+    category: str = "",
+    reason: str = "",
+    focus_areas: str = "",
+    skip_areas: str = "",
+    pylint_output: str = "",
+    commit_sha: str = ""
 ) -> str:
     """Orchestrates and executes the PR review runner using a fresh agent instance."""
+    global _VERIFIED_HEAD_SHA
+    if commit_sha:
+        _VERIFIED_HEAD_SHA = commit_sha
+
+    trusted_pr_number = _get_trusted_pr_number() or pr_number
     review_agent = make_review_agent(
         model_name=model_name,
         category=category,
         reason=reason,
         focus_areas=focus_areas,
         skip_areas=skip_areas,
-        pylint_output=pylint_output
+        pylint_output=pylint_output,
+        commit_sha=commit_sha
     )
     
     from google.adk.runners import InMemoryRunner
@@ -705,7 +740,7 @@ async def run_pr_review(
     session = await runner.session_service.create_session(app_name=APP_NAME, user_id=USER_ID)
     
     prompt = (
-        f"Execute your full workflow for pull request #{pr_number}:\n"
+        f"Execute your full workflow for pull request #{trusted_pr_number}:\n"
         f"1. Run the `get_pull_request_details` tool to fetch the diff and content.\n"
         f"2. Note that your pre-detected category is: {category}.\n"
         f"3. Analyze the code changes using the TensorFlow PR Review Guidelines style guide and the Static Analysis (Pylint) Evidence provided, "

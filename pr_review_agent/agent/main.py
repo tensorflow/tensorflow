@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import requests
 from os import environ
 
 from agent import agent
-from agent.settings import OWNER, REPO, PULL_REQUEST_NUMBER, GITHUB_BASE_URL
+from agent.settings import OWNER, REPO, PULL_REQUEST_NUMBER, PR_HEAD_SHA, GITHUB_BASE_URL
 from agent.utils import (
     call_agent_async,
     has_agent_reviewed_commit,
@@ -151,32 +152,64 @@ def clear_and_set_reaction(pr_number: int, add_content: str = "eyes"):
         print(f"Failed to balance PR reaction status lifecycle: {e}")
 
 
+_INITIAL_ENV_HEAD_SHA = environ.get("PR_HEAD_SHA")
+
+
+def _get_expected_head_sha() -> str:
+    """Resolves the expected labeled commit SHA from trusted runtime configuration."""
+    import agent.settings as settings_mod
+
+    if PR_HEAD_SHA != _INITIAL_ENV_HEAD_SHA and PR_HEAD_SHA is not None:
+        return PR_HEAD_SHA.strip()
+    if settings_mod.PR_HEAD_SHA != _INITIAL_ENV_HEAD_SHA and settings_mod.PR_HEAD_SHA is not None:
+        return settings_mod.PR_HEAD_SHA.strip()
+    return (environ.get("PR_HEAD_SHA") or PR_HEAD_SHA or "").strip()
+
+
 async def main():
-    pr_number = parse_number_string(PULL_REQUEST_NUMBER)
+    raw_pr = PULL_REQUEST_NUMBER if PULL_REQUEST_NUMBER is not None else environ.get("PULL_REQUEST_NUMBER")
+    pr_number = parse_number_string(raw_pr) or agent._get_trusted_pr_number()
     if not pr_number:
-        print(f"Error: Invalid pull request number received: {PULL_REQUEST_NUMBER}")
+        print(f"Error: Invalid pull request number received: {raw_pr}")
         return
 
     # 1. Clean old states and put down the looking eyes emoji
     clear_and_set_reaction(pr_number, add_content="eyes")
 
     # Fetch metadata once at startup
-    pr_details_response = agent.get_pull_request_details(pr_number)
+    pr_details_response = agent.get_pull_request_details()
     if pr_details_response.get("status") != "success":
         print(f"Error: Failed to retrieve PR details: {pr_details_response.get('error_message')}")
         return
 
+    pr_data = pr_details_response.get("pull_request", {})
+    expected_head_sha = _get_expected_head_sha()
+    current_head_sha = (pr_data.get("headRefOid") or "").strip()
+
+    if not expected_head_sha or not re.match(r"^[0-9a-fA-F]{7,40}$", expected_head_sha):
+        print("Error: Missing or invalid expected PR_HEAD_SHA. Aborting review.")
+        return
+
+    if expected_head_sha != current_head_sha:
+        print(
+            f"Head SHA mismatch: expected {expected_head_sha}, "
+            f"current {current_head_sha}. Aborting review."
+        )
+        return
+
+    verified_head_sha = expected_head_sha
+    pr_data["headRefOid"] = verified_head_sha
+    agent._VERIFIED_HEAD_SHA = verified_head_sha
+
     # Inject into the pre-fetched state storage so tools can reuse it
     agent._PREFETCHED_PR_DETAILS = pr_details_response
 
-    pr_data = pr_details_response.get("pull_request", {})
-    head_sha = pr_data.get("headRefOid", "")
     reviews_url = (
         f"{GITHUB_BASE_URL}/repos/{OWNER}/{REPO}/pulls/{pr_number}/reviews"
     )
-    if head_sha and has_agent_reviewed_commit(reviews_url, head_sha):
+    if has_agent_reviewed_commit(reviews_url, verified_head_sha):
         print(
-            f"Commit {head_sha} has already been reviewed by TensorFlow "
+            f"Commit {verified_head_sha} has already been reviewed by TensorFlow "
             f"PR Review Agent. Skipping duplicate review."
         )
         clear_and_set_reaction(pr_number, add_content="rocket")
@@ -196,7 +229,9 @@ async def main():
 
     # Run static analysis once per newly reviewed commit before model fallback loop
     print("Running Pylint static analysis on changed Python files...")
-    pylint_output = run_pylint_on_changed_files(files, diff, head_sha=head_sha)
+    pylint_output = run_pylint_on_changed_files(
+        files, diff, head_sha=verified_head_sha
+    )
     pr_data["pylint_output"] = pylint_output
     print(f"Pylint Analysis Summary:\n{pylint_output}\n")
 
@@ -214,14 +249,15 @@ async def main():
                 reason=reason,
                 focus_areas=focus_areas,
                 skip_areas=skip_areas,
-                pylint_output=pylint_output
+                pylint_output=pylint_output,
+                commit_sha=verified_head_sha
             )
             print(f"<<<< Agent Final Output: {response}\n")
-            if head_sha and not has_agent_reviewed_commit(
-                reviews_url, head_sha
+            if not has_agent_reviewed_commit(
+                reviews_url, verified_head_sha
             ):
                 print(
-                    f"⚠️ Review submission for commit {head_sha} was not "
+                    f"⚠️ Review submission for commit {verified_head_sha} was not "
                     f"confirmed on GitHub with {model_name}. "
                     f"Attempting alternative fallback..."
                 )
@@ -236,9 +272,9 @@ async def main():
             return 
 
         except (APIError, ClientError, ServerError) as e:
-            if head_sha and has_agent_reviewed_commit(reviews_url, head_sha):
+            if has_agent_reviewed_commit(reviews_url, verified_head_sha):
                 print(
-                    f"Review for commit {head_sha} was already submitted "
+                    f"Review for commit {verified_head_sha} was already submitted "
                     f"before API error. Completing successfully."
                 )
                 clear_and_set_reaction(pr_number, add_content="rocket")

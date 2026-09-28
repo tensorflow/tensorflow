@@ -73,12 +73,13 @@ class TestCommitIdempotency(unittest.TestCase):
 
     def setUp(self):
         agent._PREFETCHED_PR_DETAILS = None
+        agent._VERIFIED_HEAD_SHA = None
 
     @patch("agent.utils.get_request")
     def test_1_agent_marker_and_matching_commit_returns_true(
         self, mock_get_request
     ):
-        """1. matching agent marker + matching commit -> True"""
+        """1. matching github-actions[bot] author + agent marker + matching commit -> True"""
         sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e"
         body_text = (
             f"Category: Bug fix\n\nSummary...\n\n"
@@ -87,6 +88,7 @@ class TestCommitIdempotency(unittest.TestCase):
         mock_get_request.return_value = [
             {
                 "id": 999,
+                "user": {"login": "github-actions[bot]"},
                 "commit_id": sha,
                 "body": body_text,
             }
@@ -111,6 +113,7 @@ class TestCommitIdempotency(unittest.TestCase):
         mock_get_request.return_value = [
             {
                 "id": 999,
+                "user": {"login": "github-actions[bot]"},
                 "commit_id": old_sha,
                 "body": body_text,
             }
@@ -130,6 +133,7 @@ class TestCommitIdempotency(unittest.TestCase):
         mock_get_request.return_value = [
             {
                 "id": 1001,
+                "user": {"login": "github-actions[bot]"},
                 "commit_id": sha,
                 "body": "LGTM! Looks great to me.",
             }
@@ -153,6 +157,7 @@ class TestCommitIdempotency(unittest.TestCase):
         mock_get_request.return_value = [
             {
                 "id": 1002,
+                "user": {"login": "github-actions[bot]"},
                 "commit_id": sha,
                 "body": body_text,
             }
@@ -185,7 +190,6 @@ class TestCommitIdempotency(unittest.TestCase):
         mock_post.return_value = mock_resp
 
         res = agent.submit_pr_code_review(
-            pr_number=12345,
             overall_assessment="No actionable review comments identified.",
             summary_comment="Summary",
             inline_comments=[],
@@ -223,7 +227,8 @@ class TestCommitIdempotency(unittest.TestCase):
         # has a persisted agent review on GitHub
         mock_has_reviewed.return_value = True
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         # Verify LLM review was NOT invoked
         mock_run_pr_review.assert_not_called()
@@ -235,6 +240,7 @@ class TestPylintIntegration(unittest.TestCase):
 
     def setUp(self):
         agent._PREFETCHED_PR_DETAILS = None
+        agent._VERIFIED_HEAD_SHA = None
 
     def test_1_extract_modified_lines_from_unified_diff(self):
         """1. modified-line extraction from raw and annotated unified diffs"""
@@ -371,7 +377,8 @@ class TestPylintIntegration(unittest.TestCase):
         }
         mock_has_reviewed.return_value = True
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         mock_run_pylint.assert_not_called()
         mock_run_pr_review.assert_not_called()
@@ -420,7 +427,8 @@ class TestPylintIntegration(unittest.TestCase):
             "Review submitted successfully",
         ]
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         self.assertEqual(mock_run_pylint.call_count, 1)
         self.assertEqual(mock_run_pr_review.call_count, 2)
@@ -467,6 +475,7 @@ class TestModelFallback(unittest.TestCase):
 
     def setUp(self):
         agent._PREFETCHED_PR_DETAILS = None
+        agent._VERIFIED_HEAD_SHA = None
 
     def _mock_pr_payload(self, sha: str) -> dict:
         return {
@@ -510,7 +519,8 @@ class TestModelFallback(unittest.TestCase):
             "Review submitted successfully",
         ]
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         self.assertEqual(mock_run_pylint.call_count, 1)
         self.assertEqual(mock_run_pr_review.call_count, 2)
@@ -548,7 +558,8 @@ class TestModelFallback(unittest.TestCase):
             "Review submitted successfully",
         ]
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         self.assertEqual(mock_run_pylint.call_count, 1)
         self.assertEqual(mock_run_pr_review.call_count, 2)
@@ -574,7 +585,8 @@ class TestModelFallback(unittest.TestCase):
         mock_run_pylint.return_value = "No Pylint issues detected on modified lines."
         mock_run_pr_review.return_value = "Review submitted successfully"
 
-        asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            asyncio.run(main.main())
 
         self.assertEqual(mock_run_pylint.call_count, 1)
         self.assertEqual(mock_run_pr_review.call_count, 1)
@@ -608,8 +620,9 @@ class TestModelFallback(unittest.TestCase):
             *[_MockServerError("503 UNAVAILABLE") for _ in range(len(agent.MODELS_POOL) - 1)],
         ]
 
-        with self.assertRaises(RuntimeError) as ctx:
-            asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            with self.assertRaises(RuntimeError) as ctx:
+                asyncio.run(main.main())
 
         self.assertIn("All models in MODELS_POOL failed", str(ctx.exception))
         self.assertEqual(mock_run_pylint.call_count, 1)
@@ -638,10 +651,354 @@ class TestModelFallback(unittest.TestCase):
             "401 UNAUTHENTICATED: API key not valid."
         )
 
-        with self.assertRaises(_MockClientError):
-            asyncio.run(main.main())
+        with patch.dict(os.environ, {"PR_HEAD_SHA": sha}):
+            with self.assertRaises(_MockClientError):
+                asyncio.run(main.main())
 
         self.assertEqual(mock_run_pr_review.call_count, 1)
+
+
+class TestSecurityHardening(unittest.TestCase):
+
+    def setUp(self):
+        agent._PREFETCHED_PR_DETAILS = None
+        agent._VERIFIED_HEAD_SHA = None
+
+    @patch("agent.utils.post_pull_request_review")
+    def test_finding_1_review_event_always_comment_across_all_assessments(
+        self, mock_post_review
+    ):
+        """Finding 1: submit_pr_code_review always submits event='COMMENT' and preserves inline comments."""
+        sha = "1234567890abcdef1234567890abcdef12345678"
+        agent._VERIFIED_HEAD_SHA = sha
+        mock_post_review.return_value = {"id": 1}
+
+        assessments = [
+            "No actionable review comments identified.",
+            "Minor improvements suggested.",
+            "Changes required.",
+        ]
+        inline_input = [
+            {
+                "path": "tensorflow/python/foo.py",
+                "line": 10,
+                "side": "RIGHT",
+                "body": "**[Priority 1: Correctness]** Fix value.",
+                "suggestion_code": "x = 2",
+            }
+        ]
+        for assessment in assessments:
+            mock_post_review.reset_mock()
+            res = agent.submit_pr_code_review(
+                overall_assessment=assessment,
+                summary_comment="## Summary\nReview summary.",
+                inline_comments=inline_input,
+            )
+            self.assertEqual(res["status"], "success")
+            mock_post_review.assert_called_once()
+            url, payload = mock_post_review.call_args[0]
+            self.assertEqual(
+                url,
+                "https://api.github.com/repos/tensorflow/tensorflow/pulls/12345/reviews",
+            )
+            self.assertEqual(payload["event"], "COMMENT")
+            self.assertEqual(payload["commit_id"], sha)
+            self.assertEqual(len(payload["comments"]), 1)
+            self.assertIn("```suggestion\nx = 2\n```", payload["comments"][0]["body"])
+
+    @patch("agent.utils.requests.post")
+    def test_finding_1_422_fallback_review_event_is_explicitly_comment(
+        self, mock_post
+    ):
+        """Finding 1: 422 fallback in post_pull_request_review explicitly uses event='COMMENT'."""
+        resp_422 = MagicMock()
+        resp_422.status_code = 422
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.json.return_value = {"id": 42}
+        mock_post.side_effect = [resp_422, resp_200]
+
+        payload = {
+            "body": "Summary",
+            "event": "APPROVE",
+            "comments": [
+                {"path": "tensorflow/foo.py", "line": 5, "body": "Inline note"}
+            ],
+        }
+        utils.post_pull_request_review(
+            "https://api.github.com/repos/tensorflow/tensorflow/pulls/12345/reviews",
+            payload,
+        )
+        self.assertEqual(mock_post.call_count, 2)
+        fallback_payload = mock_post.call_args_list[1].kwargs["json"]
+        self.assertEqual(fallback_payload["event"], "COMMENT")
+
+    @patch("agent.agent.run_graphql_query")
+    @patch("agent.agent.get_diff")
+    def test_finding_2_llm_tools_reject_pr_number_and_bind_configured_pr(
+        self, mock_get_diff, mock_graphql
+    ):
+        """Finding 2: LLM-facing tools do not accept pr_number and bind to PULL_REQUEST_NUMBER."""
+        import inspect
+
+        self.assertNotIn(
+            "pr_number",
+            inspect.signature(agent.get_pull_request_details).parameters,
+        )
+        self.assertNotIn(
+            "pr_number",
+            inspect.signature(agent.submit_pr_code_review).parameters,
+        )
+        with self.assertRaises(TypeError):
+            agent.get_pull_request_details(pr_number=99999)  # pylint: disable=unexpected-keyword-arg
+        with self.assertRaises(TypeError):
+            agent.submit_pr_code_review(  # pylint: disable=unexpected-keyword-arg
+                pr_number=99999,
+                overall_assessment="Minor improvements suggested.",
+                summary_comment="Summary",
+                inline_comments=[],
+            )
+
+        captured_tools = []
+        with patch("agent.agent.LlmAgent") as mock_llm_agent:
+            agent.make_review_agent(
+                model_name="gemini-3.1-pro-preview",
+                category="Bug fix",
+                reason="Test",
+                focus_areas="Correctness",
+                skip_areas="Docs",
+            )
+            captured_tools = mock_llm_agent.call_args.kwargs["tools"]
+
+        self.assertEqual(len(captured_tools), 2)
+        for tool_fn in captured_tools:
+            self.assertNotIn(
+                "pr_number", inspect.signature(tool_fn).parameters
+            )
+
+        mock_get_diff.return_value = ""
+        mock_graphql.return_value = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "id": "PR_1",
+                        "number": 12345,
+                        "title": "Title",
+                        "body": "Body",
+                        "state": "OPEN",
+                        "headRefOid": "abcdef1234567890",
+                        "author": {"login": "dev"},
+                        "files": {"nodes": []},
+                        "comments": {"nodes": []},
+                        "commits": {"nodes": []},
+                    }
+                }
+            }
+        }
+        res = agent.get_pull_request_details()
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(
+            mock_graphql.call_args[0][1]["prNumber"], 12345
+        )
+
+    @patch("agent.utils.get_request")
+    def test_finding_3_idempotency_author_validation(self, mock_get_request):
+        """Finding 3: has_agent_reviewed_commit requires github-actions[bot] author + commit_id + marker."""
+        sha = "abcdef1234567890abcdef1234567890abcdef12"
+        marker = f"<!-- tensorflow-pr-review-agent: commit_sha={sha} -->"
+        reviews_url = "https://api.github.com/repos/tensorflow/tensorflow/pulls/12345/reviews"
+
+        # 1. Spoofed marker by another user -> False
+        mock_get_request.return_value = [
+            {
+                "id": 1,
+                "user": {"login": "malicious-contributor"},
+                "commit_id": sha,
+                "body": f"Spoofed review\n{marker}",
+            }
+        ]
+        self.assertFalse(utils.has_agent_reviewed_commit(reviews_url, sha))
+
+        # 2. Missing user field -> False
+        mock_get_request.return_value = [
+            {
+                "id": 2,
+                "user": None,
+                "commit_id": sha,
+                "body": f"Missing user\n{marker}",
+            }
+        ]
+        self.assertFalse(utils.has_agent_reviewed_commit(reviews_url, sha))
+
+        # 3. Legitimate bot user but wrong commit_id -> False
+        mock_get_request.return_value = [
+            {
+                "id": 3,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": "0000000000000000000000000000000000000000",
+                "body": f"Wrong commit\n{marker}",
+            }
+        ]
+        self.assertFalse(utils.has_agent_reviewed_commit(reviews_url, sha))
+
+        # 4. Legitimate github-actions[bot] + matching commit_id + marker -> True
+        mock_get_request.return_value = [
+            {
+                "id": 4,
+                "user": {"login": "github-actions[bot]"},
+                "commit_id": sha,
+                "body": f"Valid review\n{marker}",
+            }
+        ]
+        self.assertTrue(utils.has_agent_reviewed_commit(reviews_url, sha))
+
+    @patch("agent.utils._fetch_file_content_at_commit")
+    @patch("agent.utils.subprocess.run")
+    def test_finding_4_pylint_subprocess_minimal_environment(
+        self, mock_subproc_run, mock_fetch_content
+    ):
+        """Finding 4: Pylint subprocess receives only PATH and HOME in env and no secrets."""
+        files = [{"path": "tensorflow/python/foo.py", "changeType": "MODIFIED"}]
+        mock_fetch_content.return_value = "x = 1\n"
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = ""
+        mock_subproc_run.return_value = mock_proc
+
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_TOKEN": "secret-gh-token",
+                "GEMINI_API_KEY": "secret-gemini-key",
+                "OWNER": "tensorflow",
+                "REPO": "tensorflow",
+                "PULL_REQUEST_NUMBER": "12345",
+            },
+        ):
+            utils.run_pylint_on_changed_files(
+                files, raw_diff="", head_sha="abcdef12"
+            )
+
+        mock_subproc_run.assert_called_once()
+        passed_env = mock_subproc_run.call_args.kwargs.get("env")
+        self.assertIsNotNone(passed_env)
+        self.assertEqual(set(passed_env.keys()), {"PATH", "HOME"})
+        for forbidden_key in (
+            "GITHUB_TOKEN",
+            "GEMINI_API_KEY",
+            "OWNER",
+            "REPO",
+            "PULL_REQUEST_NUMBER",
+        ):
+            self.assertNotIn(forbidden_key, passed_env)
+
+    @patch("agent.main.clear_and_set_reaction")
+    @patch("agent.main.run_pylint_on_changed_files")
+    @patch("agent.main.has_agent_reviewed_commit")
+    @patch("agent.agent.get_pull_request_details")
+    @patch("agent.agent.run_pr_review", new_callable=AsyncMock)
+    def test_finding_5_head_sha_mismatch_aborts_before_pylint_and_gemini(
+        self,
+        mock_run_pr_review,
+        mock_get_details,
+        mock_has_reviewed,
+        mock_run_pylint,
+        mock_react,
+    ):
+        """Finding 5: expected_head_sha != current_head_sha aborts before Pylint, Gemini, or review."""
+        expected_sha = "1111111111111111111111111111111111111111"
+        current_sha = "2222222222222222222222222222222222222222"
+        mock_get_details.return_value = {
+            "status": "success",
+            "pull_request": {
+                "headRefOid": current_sha,
+                "title": "PR Title",
+                "body": "PR Body",
+                "diff": "@@ -1,1 +1,1 @@\n+x = 1",
+                "files": {
+                    "nodes": [
+                        {"path": "tensorflow/python/foo.py", "changeType": "MODIFIED"}
+                    ]
+                },
+            },
+        }
+
+        with patch.dict(os.environ, {"PR_HEAD_SHA": expected_sha}):
+            asyncio.run(main.main())
+
+        mock_has_reviewed.assert_not_called()
+        mock_run_pylint.assert_not_called()
+        mock_run_pr_review.assert_not_called()
+        mock_react.assert_called_once_with(12345, add_content="eyes")
+
+    @patch("agent.main.clear_and_set_reaction")
+    @patch("agent.main.run_pylint_on_changed_files")
+    @patch("agent.main.has_agent_reviewed_commit")
+    @patch("agent.agent.get_pull_request_details")
+    @patch("agent.agent.run_pr_review", new_callable=AsyncMock)
+    def test_finding_5_matching_head_sha_propagates_to_all_downstream_steps(
+        self,
+        mock_run_pr_review,
+        mock_get_details,
+        mock_has_reviewed,
+        mock_run_pylint,
+        mock_react,
+    ):
+        """Finding 5: expected_head_sha == current_head_sha passes verified SHA to all downstream calls."""
+        verified_sha = "3333333333333333333333333333333333333333"
+        mock_get_details.return_value = {
+            "status": "success",
+            "pull_request": {
+                "headRefOid": verified_sha,
+                "title": "PR Title",
+                "body": "PR Body",
+                "diff": "@@ -1,1 +1,1 @@\n+x = 1",
+                "files": {
+                    "nodes": [
+                        {"path": "tensorflow/python/foo.py", "changeType": "MODIFIED"}
+                    ]
+                },
+            },
+        }
+        mock_has_reviewed.side_effect = [False, True]
+        mock_run_pylint.return_value = "No Pylint issues detected on modified lines."
+        mock_run_pr_review.return_value = "Done"
+
+        with patch.dict(os.environ, {"PR_HEAD_SHA": verified_sha}):
+            asyncio.run(main.main())
+
+        self.assertEqual(agent._VERIFIED_HEAD_SHA, verified_sha)
+        mock_run_pylint.assert_called_once()
+        self.assertEqual(
+            mock_run_pylint.call_args.kwargs.get("head_sha"), verified_sha
+        )
+        mock_run_pr_review.assert_called_once()
+        self.assertEqual(
+            mock_run_pr_review.call_args.kwargs.get("commit_sha"), verified_sha
+        )
+        mock_react.assert_called_with(12345, add_content="rocket")
+
+    @patch("agent.utils.get_request")
+    @patch("agent.utils.subprocess.run")
+    def test_finding_5_supplied_head_sha_failure_does_not_read_local_base_files(
+        self, mock_subproc_run, mock_get_request
+    ):
+        """Finding 5: when head_sha is supplied and git/API fail, _fetch_file_content_at_commit returns None."""
+        from pathlib import Path
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 128
+        mock_subproc_run.return_value = mock_proc
+        mock_get_request.side_effect = RuntimeError("GitHub API unavailable")
+
+        with patch("pathlib.Path.read_text") as mock_read_text:
+            content = utils._fetch_file_content_at_commit(
+                Path("."),
+                "abcdef1234567890abcdef1234567890abcdef12",
+                "tensorflow/python/foo.py",
+            )
+            self.assertIsNone(content)
+            mock_read_text.assert_not_called()
 
 
 if __name__ == "__main__":
