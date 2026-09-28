@@ -236,7 +236,7 @@ class CumsumTest(test.TestCase):
     # The float32 accumulation is much closer to the exact result: the
     # relative L2 error drops from ~1.4e-1 to ~2e-3 on this input.
     exact = np.cumsum(x.astype(np.float64))
-    got = math_ops.cast(tf_out, dtypes.float32).numpy()
+    got = self.evaluate(math_ops.cast(tf_out, dtypes.float32))
     relative_error = np.linalg.norm(got - exact) / np.linalg.norm(exact)
     self.assertLess(relative_error, 1e-2)
 
