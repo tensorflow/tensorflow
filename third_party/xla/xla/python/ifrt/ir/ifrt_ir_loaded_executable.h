@@ -119,8 +119,6 @@ class IfrtIrLoadedExecutable
 
   std::optional<DeviceListRef> devices() const override;
 
-  absl::Span<Device* const> addressable_devices() const override;
-
   absl::StatusOr<absl::flat_hash_map<std::string, absl::Span<Device* const>>>
   GetMpmdAddressableDevices() const override;
 
