@@ -649,6 +649,8 @@ TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithOverflowingSizeAndStride();
   TF_ASSERT_OK(Initialize(dataset_params));
 
+  EXPECT_EQ(dataset_->Cardinality(), 0);
+
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   EXPECT_THAT(

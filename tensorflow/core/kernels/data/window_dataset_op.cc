@@ -72,6 +72,21 @@ constexpr char kSizeSuffix[] = ".size";
 constexpr char kCodeSuffix[] = ".code";
 constexpr char kErrorMessage[] = ".error_message";
 
+absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
+                                        int64_t window_stride) {
+  int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+  if (result >= 0) result = AddWithoutOverflow(result, 1);
+  if (result < 0 ||
+      static_cast<uint64_t>(result) > std::numeric_limits<size_t>::max()) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Window target buffer size overflow: (window_size=%lld - 1) * "
+        "window_stride=%lld + 1 is not representable.",
+        static_cast<long long>(window_size),
+        static_cast<long long>(window_stride)));
+  }
+  return static_cast<size_t>(result);
+}
+
 class WindowDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t window_size,
@@ -128,11 +143,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64_t target =
-          MultiplyWithoutOverflow(window_size_ - 1, window_stride_);
-      if (target >= 0) target = AddWithoutOverflow(target, 1);
-      // If the target overflows, no finite input can fill a complete window.
-      int64_t rest_elements = target < 0 ? -1 : n - target;
+      int64_t target_size =
+          TargetBufferSize(window_size_, window_stride_).value_or(-1);
+      int64_t rest_elements = target_size < 0 ? -1 : n - target_size;
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
       cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
@@ -417,21 +430,6 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
     std::string ErrorMessageKey(size_t index) {
       return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
-    }
-
-    absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
-                                            int64_t window_stride) {
-      int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
-      if (result >= 0) result = AddWithoutOverflow(result, 1);
-      if (result < 0 || static_cast<uint64_t>(result) >
-                            std::numeric_limits<size_t>::max()) {
-        return absl::InvalidArgumentError(absl::StrFormat(
-            "Window target buffer size overflow: (window_size=%lld - 1) * "
-            "window_stride=%lld + 1 is not representable.",
-            static_cast<long long>(window_size),
-            static_cast<long long>(window_stride)));
-      }
-      return static_cast<size_t>(result);
     }
 
     mutex mu_;
