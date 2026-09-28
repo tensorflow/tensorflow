@@ -5833,19 +5833,9 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
 
     Raises:
       ValueError: If name is not a string.
-      ValueError: If name contains characters that are not allowed in a scope
-        name (e.g., spaces). The allowed pattern is defined by
-        `_VALID_SCOPE_NAME_REGEX`.
     """
     if not isinstance(name, str):
       raise ValueError("name for name_scope must be a string.")
-    if name:
-      name_to_validate = name[:-1] if name.endswith("/") else name
-      if not _VALID_SCOPE_NAME_REGEX.match(name_to_validate):
-        raise ValueError(
-            f"'{name}' is not a valid scope name. A scope name has to match "
-            f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}"
-        )
     self._name = name
     self._exit_fns = []
 
@@ -5872,8 +5862,19 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       elif name[-1] == "/":
         scope_name = name
       elif old_name:
+        # Nested scope: validate with scope name regex (allows more chars)
+        if not _VALID_SCOPE_NAME_REGEX.match(name):
+          raise ValueError(
+              f"'{name}' is not a valid scope name. A scope name has to match "
+              f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}")
         scope_name = old_name + name + "/"
       else:
+        # Root scope: validate with op name regex (stricter, alphanumeric start)
+        if not _VALID_OP_NAME_REGEX.match(name):
+          raise ValueError(
+              f"'{name}' is not a valid root scope name. A root scope name "
+              f"has to match the following pattern: "
+              f"{_VALID_OP_NAME_REGEX.pattern}")
         scope_name = name + "/"
       ctx.scope_name = scope_name
 

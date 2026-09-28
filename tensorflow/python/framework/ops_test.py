@@ -2639,6 +2639,38 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with bar as scope_name:
       self.assertEqual("bar/", scope_name)
 
+  def testNameScopeV2InvalidCharsEagerNestedScope(self):
+    """Spaces and invalid chars should raise ValueError in eager nested scopes."""
+    with ops.name_scope_v2("valid_outer"):
+      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+        with ops.name_scope_v2("scope with spaces"):
+          pass
+      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+        with ops.name_scope_v2("invalid@scope"):
+          pass
+
+  def testNameScopeV2InvalidCharsEagerRootScope(self):
+    """Invalid root scope names should raise ValueError in eager mode."""
+    with self.assertRaisesRegex(ValueError, "is not a valid root scope name"):
+      with ops.name_scope_v2("_foo"):  # root scope must start with alphanumeric
+        pass
+    with self.assertRaisesRegex(ValueError, "is not a valid root scope name"):
+      with ops.name_scope_v2("scope with spaces"):
+        pass
+
+  def testNameScopeV2ValidNamesEager(self):
+    """Valid scope names should not raise in eager mode."""
+    with ops.name_scope_v2("valid_scope"):
+      pass
+    with ops.name_scope_v2("ValidScope123"):
+      pass
+    with ops.name_scope_v2("valid/nested"):
+      pass
+    with ops.name_scope_v2("absolute_path/"):
+      pass
+    with ops.name_scope_v2(""):
+      pass
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()
