@@ -1518,12 +1518,13 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     // Populate executable metadata.
     compile_resp->set_name(AsProtoStringData(executable->name()));
     compile_resp->set_num_devices(executable->num_devices());
-    for (const auto* device : executable->addressable_devices()) {
-      compile_resp->add_addressable_device_ids(device->Id().value());
-    }
     if (std::optional<xla::ifrt::DeviceListRef> device_list =
             executable->devices();
         device_list.has_value()) {
+      for (const auto* device :
+           (*device_list)->AddressableDeviceList()->devices()) {
+        compile_resp->add_addressable_device_ids(device->Id().value());
+      }
       for (const auto* device : (*device_list)->devices()) {
         compile_resp->add_device_ids(device->Id().value());
       }
