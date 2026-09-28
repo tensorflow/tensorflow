@@ -134,7 +134,7 @@ class ScatterNdOp : public ScatterOpBase<Device> {
                    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
 
     OP_REQUIRES(c,
-                ValidEmptyOutputShape(shape_input.NumElements(),
+                ValidEmptyOutputShape(shape.num_elements(),
                                       indices.shape().num_elements(),
                                       updates.shape().num_elements()),
                 absl::InvalidArgumentError(
