@@ -1061,12 +1061,12 @@ class RoundingTest(test.TestCase):
     # Scalar subnormal arrays: MSVC flushes negative subnormals to -0.0f
     # through an XMM register before bit_cast can read the original bits, so
     # the scalar path cannot be verified on Windows.  The vectorised (packet)
-    # path does not have this limitation and is tested on all platforms.
+    # path does not have this limitation and runs on all platforms.
     neg_subnormals = np.array(
         [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
     neg_subnormals_exp = np.array([-1.0, -1.0, -1.0, -1.0], dtype=np.float32)
 
-    # Elements that exercise packet logic but are safe on all platforms:
+    # Elements that exercise packet logic and are safe on all platforms:
     # signed zeros, positive subnormals, normals, inf, and NaN.  NaN inputs
     # must pass through floor unmodified (bit-identical), confirming that the
     # bit-mask correction never fires on NaN bit patterns.
@@ -1082,22 +1082,20 @@ class RoundingTest(test.TestCase):
         dtype=np.float32)
 
     with test_util.force_cpu():
-      # --- Scalar / short-array tests (skipped on Windows) ---
+      # --- Scalar / short-array test (skipped on Windows) ---
       if os.name != 'nt':
         out = self.evaluate(math_ops.floor(neg_subnormals))
         self.assertAllEqual(neg_subnormals_exp, out)
 
       # --- Vectorised (packet) test: runs on all platforms ---
-      # Build a 109-element array: 8 * 13 + 5 = 109 forces full SIMD packets
-      # (AVX=8-wide, AVX-512=16-wide) plus a scalar tail.  Negative subnormals
-      # are included so that packetOp is tested for the subnormal correction
-      # even on Windows (the packet path does not flush through the FP pipeline).
-      if os.name != 'nt':
-        base = np.concatenate([neg_subnormals, safe_base])
-        base_exp = np.concatenate([neg_subnormals_exp, safe_expected])
-      else:
-        base = safe_base
-        base_exp = safe_expected
+      # Build an array long enough to fill full SIMD packets (AVX=8-wide,
+      # AVX-512=16-wide) plus a scalar tail.  safe_base is placed first so
+      # that base[:5] (the scalar tail) contains only safe elements — on
+      # Windows this avoids the MSVC scalar-flush issue for the tail, while
+      # the negative subnormals in the full-packet region still exercise
+      # packetOp on all platforms.
+      base = np.concatenate([safe_base, neg_subnormals])
+      base_exp = np.concatenate([safe_expected, neg_subnormals_exp])
 
       x = np.concatenate([np.tile(base, 8), base[:5]])
       expected = np.concatenate([np.tile(base_exp, 8), base_exp[:5]])
@@ -1110,6 +1108,33 @@ class RoundingTest(test.TestCase):
         self.assertAllEqual(exp, out)
         # assertAllEqual treats -0.0 == +0.0; check sign bits explicitly.
         self.assertAllEqual(np.signbit(exp), np.signbit(out))
+
+  def testFloorSubnormalsAcrossDtypes(self):
+    """Verify floor of negative subnormals for double and bfloat16.
+
+    double and bfloat16 go through Eigen's scalar_floor_op (no FTZ/DAZ fix
+    yet) so this test records the current behaviour and will need to be updated
+    when the follow-up fix lands.  It also confirms that the dtype routing in
+    cwise_op_floor.cc does not accidentally break normal-value correctness.
+    """
+    dtype_cases = [
+        (np.float64, np.finfo(np.float64).tiny * 0.5),   # smallest neg sub
+        (dtypes_lib.bfloat16.as_numpy_dtype,
+         np.float32(np.finfo(np.float32).tiny * 0.5)),
+    ]
+    with test_util.force_cpu():
+      for dtype, neg_sub_val in dtype_cases:
+        with self.subTest(dtype=dtype):
+          # Normal values must always be correct.
+          normal_vals = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
+          expected_normal = np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=dtype)
+          out = self.evaluate(math_ops.floor(normal_vals))
+          self.assertAllEqual(expected_normal, out)
+
+          # -0.0 must be preserved as -0.0.
+          neg_zero = np.array([-0.0], dtype=dtype)
+          out_neg_zero = self.evaluate(math_ops.floor(neg_zero))
+          self.assertAllEqual(np.signbit(neg_zero), np.signbit(out_neg_zero))
 
   def testTypes(self):
     for dtype in [np.float16, np.float32, np.float64,

@@ -17,10 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-// floor_cpu applies the FTZ/DAZ workaround for negative subnormals on CPU.
-// GPU registration keeps functor::floor (Eigen's scalar_floor_op) because GPU
-// packet types have no integer_packet and GPU kernels do not run under CPU
-// FTZ/DAZ settings.
+// floor_cpu<float> applies the FTZ/DAZ workaround for negative float32
+// subnormals on CPU.  For all other types (Eigen::half, bfloat16, double),
+// floor_cpu<T> inherits from floor<T> and uses Eigen's vectorised
+// scalar_floor_op<T> unchanged — full SIMD throughput is preserved.
+// GPU registration uses functor::floor directly; GPU kernels do not run
+// under CPU FTZ/DAZ settings and GPU packet types have no integer_packet.
 REGISTER4(UnaryOp, CPU, "Floor", functor::floor_cpu, float, Eigen::half,
           bfloat16, double);
 
