@@ -3,15 +3,17 @@ op {
   in_arg {
     name: "input_min"
     description: <<END
-If `axis` is specified, the shape of the minimum input tensor
-must be rank 1.
+If `range_given == True`, this specifies the minimum input value that needs to
+be represented, otherwise it is determined from the min value of the `input`
+tensor. If `axis` is specified, the shape of this tensor must be rank 1.
 END
   }
   in_arg {
     name: "input_max"
     description: <<END
-If `axis` is specified, the shape of the maximum input tensor
-must be rank 1.
+If `range_given == True`, this specifies the maximum input value that needs to
+be represented, otherwise it is determined from the max value of the `input`
+tensor. If `axis` is specified, the shape of this tensor must be rank 1.
 END
   }
   summary: "Quantizes then dequantizes a tensor."
