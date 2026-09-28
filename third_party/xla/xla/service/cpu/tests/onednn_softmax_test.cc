@@ -29,7 +29,8 @@ limitations under the License.
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
@@ -44,12 +45,14 @@ std::string TestParamsToString(
 }
 
 class OneDnnSoftmaxTest
-    : public HloTestBaseLegacy,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
     return debug_options;
   }
 

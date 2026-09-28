@@ -408,13 +408,15 @@ void AddXtileToVectorPasses(mlir::OpPassManager& pm, bool msan_enabled,
 void AddNewXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(xtile::createVerifyLegalXTileOpsPass());
 
-  emitters::RegisterOptimizationPasses(pm);
-
   pm.addPass(xtile::createExpandXtileComplexOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(xtile::createStablehloLowerToArithPass());
   pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
   pm.addPass(cpu::createLegalizeNarrowFloatStoragePass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(cpu::createVectorizeXTilePass());
   pm.addPass(cpu::createLowerXTileEntryPass(
       cpu::LowerXTileEntryPassOptions{/*prefer_vector_width=*/vector_width}));
@@ -425,14 +427,8 @@ void AddNewXtileToVectorPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(mlir::createCSEPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
-
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
-
-  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
 
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -495,7 +491,6 @@ void AddNewVectorToLLVMPasses(mlir::OpPassManager& pm, bool fast_min_max,
       mlir::vector::VectorTransposeLowering::Shuffle16x16;
   pm.addPass(mlir::createConvertVectorToLLVMPass(options));
   pm.addPass(cpu::createLowerMemRefBitcastPass());
-  pm.addPass(cpu::createLowerToLLVMPass());
   pm.addPass(mlir::memref::createExpandStridedMetadataPass());
   pm.addPass(emitters::createSafeIntegerArithmeticPass());
 

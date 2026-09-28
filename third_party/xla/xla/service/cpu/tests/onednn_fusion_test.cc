@@ -21,7 +21,8 @@ limitations under the License.
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/error_spec.h"
 #include "xla/service/cpu/onednn_util.h"
-#include "xla/tests/restricted/hlo_test_base_legacy.h"
+#include "xla/tests/hlo_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -42,9 +43,17 @@ struct OneDnnFusionTestParams {
 };
 
 class OneDnnFusionTestBase
-    : public HloTestBaseLegacy,
+    : public HloInterpreterReferenceMixin<HloTestBase>,
       public ::testing::WithParamInterface<OneDnnFusionTestParams> {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloInterpreterReferenceMixin::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
+    debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
+    return debug_options;
+  }
+
   void SetUp() override {
     OneDnnFusionTestParams params = GetParam();
     data_type_ = params.dtype;

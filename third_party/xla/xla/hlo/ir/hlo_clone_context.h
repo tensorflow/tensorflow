@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/map_util.h"
 
 namespace xla {
@@ -34,7 +35,7 @@ class HloCloneContext {
   // Creates a new HloCloneContext object to clone HloInstruction and
   // HloComputation objects to be added to the module specified as argument.
   // The suffix string will be appended to computation names.
-  explicit HloCloneContext(HloModule* module, const std::string& suffix = "")
+  explicit HloCloneContext(HloModule* module, absl::string_view suffix = "")
       : module_(module), suffix_(suffix) {}
 
   HloModule* module() const { return module_; }
