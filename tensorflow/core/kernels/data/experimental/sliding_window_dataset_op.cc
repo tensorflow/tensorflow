@@ -78,8 +78,22 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                    << " is equal to window_size: " << window_size
                    << " and window_stride is 1, use `batch` instead.";
     }
+    int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+    if (result >= 0) result = AddWithoutOverflow(result, 1);
+    OP_REQUIRES(
+        ctx,
+        result >= 0 &&
+            static_cast<uint64_t>(result) <= std::numeric_limits<size_t>::max(),
+        absl::InvalidArgumentError(absl::StrFormat(
+            "Window target buffer size overflow: (window_size=%lld - 1) * "
+            "window_stride=%lld + 1 is not representable.",
+            static_cast<long long>(window_size),
+            static_cast<long long>(window_stride))));
+            
+    size_t target_buffer_size = static_cast<size_t>(result);
+
     *output = new Dataset(ctx, window_size, window_shift, window_stride,
-                          drop_remainder_, input);
+                          drop_remainder_, target_buffer_size, input);
   }
 
  private:
@@ -87,12 +101,13 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
    public:
     Dataset(OpKernelContext* ctx, int64_t window_size, int64_t window_shift,
             int64_t window_stride, bool drop_remainder,
-            const DatasetBase* input)
+            size_t target_buffer_size, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           window_size_(window_size),
           window_shift_(window_shift),
           window_stride_(window_stride),
           drop_remainder_(drop_remainder),
+          target_buffer_size_(target_buffer_size),
           input_(input) {
       input_->Ref();
 
@@ -191,8 +206,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           batch_elements.reserve(window_size);
 
           // Fill up buffer if not entire data was consumed.
-          TF_ASSIGN_OR_RETURN(const size_t target_size,
-                              TargetBufferSize(window_size, window_stride));
+          const size_t target_size = dataset()->target_buffer_size_;
           for (size_t i = buffer_.size(); i < target_size && input_impl_; ++i) {
             bool end_of_input;
             std::vector<Tensor> element;
@@ -324,21 +338,6 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
-                                              int64_t window_stride) {
-        int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
-        if (result >= 0) result = AddWithoutOverflow(result, 1);
-        if (result < 0 || static_cast<uint64_t>(result) >
-                              std::numeric_limits<size_t>::max()) {
-          return absl::InvalidArgumentError(absl::StrFormat(
-              "Window target buffer size overflow: (window_size=%lld - 1) * "
-              "window_stride=%lld + 1 is not representable.",
-              static_cast<long long>(window_size),
-              static_cast<long long>(window_stride)));
-        }
-        return static_cast<size_t>(result);
-      }
-
       mutex mu_;
       std::deque<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -348,6 +347,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
     const int64_t window_shift_;
     const int64_t window_stride_;
     const bool drop_remainder_;
+    const size_t target_buffer_size_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };

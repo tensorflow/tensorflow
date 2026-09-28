@@ -72,31 +72,18 @@ constexpr char kSizeSuffix[] = ".size";
 constexpr char kCodeSuffix[] = ".code";
 constexpr char kErrorMessage[] = ".error_message";
 
-absl::StatusOr<size_t> TargetBufferSize(int64_t window_size,
-                                        int64_t window_stride) {
-  int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
-  if (result >= 0) result = AddWithoutOverflow(result, 1);
-  if (result < 0 ||
-      static_cast<uint64_t>(result) > std::numeric_limits<size_t>::max()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Window target buffer size overflow: (window_size=%lld - 1) * "
-        "window_stride=%lld + 1 is not representable.",
-        static_cast<long long>(window_size),
-        static_cast<long long>(window_stride)));
-  }
-  return static_cast<size_t>(result);
-}
-
 class WindowDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t window_size,
-          int64_t window_shift, int64_t window_stride, bool drop_remainder)
+          int64_t window_shift, int64_t window_stride, bool drop_remainder,
+          size_t target_buffer_size)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         window_size_(window_size),
         window_shift_(window_shift),
         window_stride_(window_stride),
         drop_remainder_(drop_remainder),
+        target_buffer_size_(target_buffer_size),
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
@@ -143,8 +130,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64_t target_size =
-          TargetBufferSize(window_size_, window_stride_).value_or(-1);
+      int64_t target_size = target_buffer_size_;
       int64_t rest_elements = target_size < 0 ? -1 : n - target_size;
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
@@ -204,8 +190,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       std::vector<std::vector<Tensor>> window_elements;
       absl::Status status = absl::OkStatus();
       {
-        TF_ASSIGN_OR_RETURN(const size_t target_size,
-                            TargetBufferSize(window_size, window_stride));
+        const size_t target_size = dataset()->target_buffer_size_;
 
         mutex_lock l(mu_);
         if (!input_impl_ &&
@@ -442,6 +427,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   const int64_t window_shift_;
   const int64_t window_stride_;
   const bool drop_remainder_;
+  const size_t target_buffer_size_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
   const TraceMeMetadata traceme_metadata_;
@@ -475,8 +461,22 @@ void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<bool>(ctx, kDropRemainder, &drop_remainder));
 
+  int64_t result = MultiplyWithoutOverflow(window_size - 1, window_stride);
+  if (result >= 0) result = AddWithoutOverflow(result, 1);
+  OP_REQUIRES(
+      ctx,
+      result >= 0 &&
+          static_cast<uint64_t>(result) <= std::numeric_limits<size_t>::max(),
+      absl::InvalidArgumentError(absl::StrFormat(
+          "Window target buffer size overflow: (window_size=%lld - 1) * "
+          "window_stride=%lld + 1 is not representable.",
+          static_cast<long long>(window_size),
+          static_cast<long long>(window_stride))));
+          
+  size_t target_buffer_size = static_cast<size_t>(result);
+
   *output = new Dataset(ctx, input, window_size, window_shift, window_stride,
-                        drop_remainder);
+                        drop_remainder, target_buffer_size);
 }
 
 namespace {
