@@ -681,8 +681,9 @@ class AllReduceEmitter {
     mlir::triton::gpu::BarrierOp::create(builder_,
                                          mlir::triton::gpu::AddrSpace::Local);
     mtx::BlockBarrierOp::create(builder_, signal_buffers_, device_rank_,
-                                signal_value,
-                                builder_.getI32IntegerAttr(ctx_.world_size));
+                                signal_value, /*signal_slot=*/nullptr,
+                                builder_.getI32IntegerAttr(ctx_.world_size),
+                                /*signal_stride=*/nullptr);
     return mlir::success();
   }
 
@@ -1317,8 +1318,9 @@ absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
   // Inter-block barrier via signal flags. This blocks until all
   // remote ranks have also signaled.
   mtx::BlockBarrierOp::create(builder, signal_buffers_arg, rank_arg,
-                              signal_value,
-                              builder.getI32IntegerAttr(world_size));
+                              signal_value, /*signal_slot=*/nullptr,
+                              builder.getI32IntegerAttr(world_size),
+                              /*signal_stride=*/nullptr);
 
   return absl::OkStatus();
 }
