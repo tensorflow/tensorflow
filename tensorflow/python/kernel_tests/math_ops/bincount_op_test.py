@@ -683,9 +683,9 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               weights=[]))
 
   def test_sparse_bincount_rank0_fails(self):
-    # Regression test for OOB read/write via rank-0 SparseTensor bypass.
-    # ValidateSparseTensor now rejects ndims == 0 at the root, preventing
-    # the downstream OOB read on dense_shape(0) in SparseBincountOp.
+    # Rank-0 sparse inputs must be rejected before the kernel reads
+    # dense_shape(0). ValidateSparseTensor rejects ndims == 0 for
+    # index-validating callers.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
         "Input must be less than rank 2|"
