@@ -539,6 +539,10 @@ cc_library(
     name = "timestamp_utils",
     srcs = ["timestamp_utils.cc"],
     hdrs = ["timestamp_utils.h"],
+    visibility = internal_visibility([
+        "//xla/tsl/profiler:internal",
+        "//learning/brain/tpu/runtime/hal/xos/profiler:__pkg__",
+    ]),
     deps = [
         ":xplane_builder",
         ":xplane_schema",
