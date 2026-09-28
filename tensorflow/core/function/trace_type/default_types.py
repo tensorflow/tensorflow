@@ -41,10 +41,19 @@ NanMarker = object()
 
 def is_nan(x):
   """Checks if given value is a Python NaN."""
+  # Like _signs below, check the common exact types first.
+  t = type(x)
+  if t is float:
+    return math.isnan(x)
+  if t is int or t is bool or t is str:
+    return False
+
   if not isinstance(x, numbers.Number):
     return False
 
-  if isinstance(x, complex):
+  # numbers.Complex also covers complex types that do not subclass complex,
+  # such as np.complex64, whose imaginary part math.isnan would discard.
+  if isinstance(x, numbers.Complex) and not isinstance(x, numbers.Real):
     return math.isnan(x.real) or math.isnan(x.imag)
   else:
     return math.isnan(x)  # pyrefly: ignore[bad-argument-type]
@@ -52,6 +61,16 @@ def is_nan(x):
 
 def _signs(x):
   """Returns the signs of a float's or complex's parts, else None."""
+  # This runs for every Python scalar argument of every tf.function call, so
+  # check the common exact types before the slower abstract base classes.
+  t = type(x)
+  if t is int or t is bool or t is str:
+    return None
+  if t is float:
+    return math.copysign(1.0, x)
+  if t is complex:
+    return (math.copysign(1.0, x.real), math.copysign(1.0, x.imag))
+
   if isinstance(x, numbers.Integral) or not isinstance(x, numbers.Complex):
     return None
 
@@ -157,7 +176,12 @@ class Literal(trace.TraceType, serialization.Serializable):
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    return isinstance(other, Literal) and self._matches(other.value)
+    # Compare the cached type and signs rather than recomputing them: this
+    # runs on every trace cache lookup.
+    return (isinstance(other, Literal) and
+            self._value_type is other._value_type and
+            self.value == other.value and
+            self._value_signs == other._value_signs)
 
   def __hash__(self) -> int:
     return self._value_hash

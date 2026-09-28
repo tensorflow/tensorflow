@@ -110,6 +110,7 @@ py_test(
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

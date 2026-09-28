@@ -16,6 +16,8 @@
 
 import collections
 
+import numpy as np
+
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.core.function.trace_type import serialization
 from tensorflow.python.platform import test
@@ -103,6 +105,13 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(nan_literal, nan_literal)
     self.assertEqual(nan_literal, complex_nan)
     self.assertEqual(nan_literal, complex_nan_other)
+
+  def testLiteralNumpyComplexNan(self):
+    # np.complex64 does not subclass complex, and math.isnan would only look
+    # at its real part.
+    numpy_complex_nan = default_types.Literal(
+        np.complex64(complex(1, float('nan'))))
+    self.assertEqual(default_types.Literal(float('nan')), numpy_complex_nan)
 
   def testLiteralDistinguishesTypes(self):
     # 1, 1.0 and True compare equal but give tensors of different dtypes.
