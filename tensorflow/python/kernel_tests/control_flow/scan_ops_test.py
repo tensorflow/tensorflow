@@ -216,6 +216,30 @@ class CumsumTest(test.TestCase):
         for reverse in [True, False]:
           self._compareGradient([5, 10], axis, exclusive, reverse)
 
+  def testBfloat16AccumulatesInFloat32(self):
+    # bfloat16 keeps 8 mantissa bits, so summing a long sequence directly in
+    # bfloat16 rounds the running total at every step and drifts far from the
+    # exact result. The accumulation now happens in float32, matching the GPU
+    # kernel, while the output keeps the input dtype. See #115731.
+    np.random.seed(0)
+    x = np.random.randn(10000).astype(np.float32)
+    x_bf16 = constant_op.constant(x, dtype=dtypes.bfloat16)
+
+    tf_out = math_ops.cumsum(x_bf16)
+    self.assertEqual(tf_out.dtype, dtypes.bfloat16)
+    expected = math_ops.cast(
+        math_ops.cumsum(math_ops.cast(x_bf16, dtypes.float32)),
+        dtypes.bfloat16,
+    )
+    self.assertAllEqual(tf_out, expected)
+
+    # The float32 accumulation is much closer to the exact result: the
+    # relative L2 error drops from ~1.4e-1 to ~2e-3 on this input.
+    exact = np.cumsum(x.astype(np.float64))
+    got = math_ops.cast(tf_out, dtypes.float32).numpy()
+    relative_error = np.linalg.norm(got - exact) / np.linalg.norm(exact)
+    self.assertLess(relative_error, 1e-2)
+
 
 class CumprodTest(test.TestCase):
 
