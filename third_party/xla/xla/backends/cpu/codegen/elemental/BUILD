@@ -120,6 +120,7 @@ xla_cc_test(
     deps = [
         ":elemental_kernel_emitter",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:target_machine_test_base",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/analysis:alias_info",
@@ -132,7 +133,6 @@ xla_cc_test(
         "//xla/service:buffer_value",
         "//xla/service:logical_buffer",
         "//xla/service/cpu:cpu_executable",
-        "//xla/service/cpu:target_machine_features_stub",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

@@ -373,6 +373,9 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
           HloInstruction* new_bitcast =
               caller->AddInstruction(HloInstruction::CreateBitcast(
                   result_shape, caller->mutable_operand(number)));
+          // Clear sharding annotation since new_bitcast's output shape might be
+          // incompatible with the annotation.
+          new_bitcast->clear_sharding();
           ABSL_RETURN_IF_ERROR(
               caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
         }
@@ -425,8 +428,12 @@ absl::StatusOr<bool> MaybeInsertRootBitcast(
   }
 
   // Insert a new bitcast at the root.
-  computation->set_root_instruction(
-      root->AddInstruction(HloInstruction::CreateBitcast(root_shape, root)));
+  HloInstruction* new_root =
+      root->AddInstruction(HloInstruction::CreateBitcast(root_shape, root));
+  // Clear sharding annotation since new_root's output shape might be
+  // incompatible with the annotation.
+  new_root->clear_sharding();
+  computation->set_root_instruction(new_root);
 
   // Insert new bitcast for each caller's result.
   for (HloInstruction* caller : callers) {
@@ -434,6 +441,9 @@ absl::StatusOr<bool> MaybeInsertRootBitcast(
         HloInstruction::CreateBitcast(caller->shape(), caller));
     ABSL_RETURN_IF_ERROR(caller->ReplaceAllUsesWith(new_bitcast));
     *caller->mutable_shape() = root_shape;
+    // Clear sharding annotation since caller's updated shape might be
+    // incompatible with the annotation.
+    caller->clear_sharding();
   }
 
   return true;

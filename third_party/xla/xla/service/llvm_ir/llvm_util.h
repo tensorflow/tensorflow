@@ -317,6 +317,21 @@ int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 // module config.
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 
+// Sets the `contract` fast-math flag on every floating-point add, subtract and
+// multiply in `module`.
+//
+// Upstream LLVM is removing `TargetOptions::AllowFPOpFusion` as a global gate
+// on FMA formation, and XLA:CPU depends on that gate for all of its
+// contraction; the per-instruction flag is the replacement.
+//
+// Callers must run this as the last IR mutation before machine-code emission,
+// because middle-end passes read `contract` and change what they do when it is
+// set: InstCombine folds `tan(x) * cos(x)` to `sin(x)` for a contractable fmul
+// (InstCombineMulDivRem.cpp:1116), and Reassociate keeps a contractable
+// fadd/fmul pair together as a leaf instead of linearizing it into the
+// surrounding expression tree (Reassociate.cpp:191).
+void SetAllowContractOnFpArithmetic(llvm::Module& module);
+
 // Computes a conservative union of the metadata in "a" and "b".  For
 // aliasing-related metadata, this means the result can be applied to
 // instructions whose aliasing relationship can be described either by "a" *or*

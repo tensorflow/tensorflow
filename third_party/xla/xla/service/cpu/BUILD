@@ -1383,6 +1383,7 @@ tf_proto_library(
         ":onednn_config_proto",
         "//xla/backends/cpu:xnn_fusion_options_proto",
         "//xla/backends/cpu:ynn_fusion_options_proto",
+        "//xla/codegen/xtile:xtile_config_proto",
     ],
 )
 
@@ -1605,6 +1606,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",

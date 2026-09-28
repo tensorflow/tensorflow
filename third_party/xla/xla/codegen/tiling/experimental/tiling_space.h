@@ -194,9 +194,10 @@ class TilingSpace {
 
   bool IsSymbolic() const { return is_symbolic_; }
 
-  // Simplifies an expression using actual dimension and symbol bounds
+  // Simplifies expressions using actual dimension and symbol bounds
   // based on the assigned tile sizes and runtime variable bounds.
-  SymbolicExpr SimplifyExpression(const SymbolicExpr& expr) const;
+  llvm::SmallVector<SymbolicExpr> SimplifyExpressions(
+      const llvm::SmallVector<SymbolicExpr>& expressions) const;
 
   // Returns the list of valid tilings for the tiling space.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();

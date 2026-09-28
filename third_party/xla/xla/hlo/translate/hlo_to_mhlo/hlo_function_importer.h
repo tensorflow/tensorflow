@@ -201,8 +201,8 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertComparisonDirection(
       ComparisonDirection direction);
 
-  // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
-  mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
+  // Converts an XLA ComparisonOrder to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertComparisonOrder(ComparisonOrder order);
 
   // Converts an XLA CustomCallSchedule to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertCustomCallSchedule(CustomCallSchedule schedule);

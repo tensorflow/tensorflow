@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -3406,9 +3407,11 @@ ENTRY main {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* ag_start =
       FindCollectiveStarts(executable_module, HloOpcode::kAllGather).at(0);
-  // Both ag and its producer should have collective memory space 1
-  EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(), 1);
-  EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
+  // Both ag and its producer should have collective memory space.
+  EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(),
+            Layout::kCollectiveMemorySpace);
+  EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(),
+            Layout::kCollectiveMemorySpace);
 }
 
 TEST_F(CollectiveOpsTestE2E,
@@ -3457,7 +3460,8 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
   // space.
   for (auto ar : all_ar) {
     EXPECT_EQ(ar->operand(0)->opcode(), HloOpcode::kCopy);
-    EXPECT_EQ(ar->operand(0)->shape().layout().memory_space(), 1);
+    EXPECT_EQ(ar->operand(0)->shape().layout().memory_space(),
+              Layout::kCollectiveMemorySpace);
   }
 }
 

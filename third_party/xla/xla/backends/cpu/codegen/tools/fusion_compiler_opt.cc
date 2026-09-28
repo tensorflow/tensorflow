@@ -69,7 +69,8 @@ int main(int argc, char** argv) {
       "xtile-cpu-new-vector-to-llvm",
       "Run the conversion from Vector to LLVM dialect.",
       [](mlir::OpPassManager& pm, const XtileCpuPassOptions& options) {
-        xla::cpu::AddNewVectorToLLVMPasses(pm, options.fast_min_max);
+        xla::cpu::AddNewVectorToLLVMPasses(pm, options.fast_min_max,
+                                           /*vector_width=*/256);
       });
   return mlir::failed(MlirOptMain(
       argc, argv, "XLA:CPU Fusion compiler pass driver\n", registry));

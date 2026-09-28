@@ -36,6 +36,8 @@ InputSpec = benchmark.InputSpec
 
 _KERNEL_NAME_TEMPLATE = "matmul_{m}_{k}_{n}_{lhs_dtype}_{rhs_dtype}_{out_dtype}"
 
+_NO_ACCUMULATORS_DEFAULT_SUBBLOCK_M = 256
+
 
 def get_default_subblock_m(
     chip_version: pltpu.ChipVersion | None = None,
@@ -46,7 +48,12 @@ def get_default_subblock_m(
   if num_accumulators > 0:
     num_sublanes, _ = pinfo.vreg_size
     return num_sublanes * num_accumulators
-  return None
+  else:
+    # Accumulation occurs in vregs + vmem, so there may be additional spills
+    # that the cost model doesn't account for if there are too many
+    # accumulations in-flight. So we set subblock_m to a relatively low value
+    # to avoid this.
+    return _NO_ACCUMULATORS_DEFAULT_SUBBLOCK_M
 
 
 def select_window(

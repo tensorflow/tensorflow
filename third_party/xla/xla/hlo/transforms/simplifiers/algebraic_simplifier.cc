@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -7098,6 +7100,84 @@ absl::Status AlgebraicSimplifierVisitor::HandleReverse(
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleShuffle(HloInstruction* hlo) {
+  auto* shuffle = Cast<HloShuffleInstruction>(hlo);
+
+  switch (shuffle->mode()) {
+    case ShuffleMode::kRotate: {
+      // Accumulate shifts per dimension (in ascending order of dim).
+      absl::btree_map<int64_t, int64_t> combined_shifts;
+      for (int64_t i = 0; i < shuffle->dimensions().size(); ++i) {
+        combined_shifts[shuffle->dimensions()[i]] +=
+            shuffle->rotate().shifts(i);
+      }
+
+      // rotate(rotate(x, {d}, {m}), {d}, {n}) ==> rotate(x, {d}, {m + n})
+      HloInstruction* base_operand = shuffle->mutable_operand(0);
+      while (base_operand->opcode() == HloOpcode::kShuffle &&
+             Cast<HloShuffleInstruction>(base_operand)->mode() ==
+                 ShuffleMode::kRotate) {
+        auto* inner_shuffle = Cast<HloShuffleInstruction>(base_operand);
+        for (int64_t i = 0; i < inner_shuffle->dimensions().size(); ++i) {
+          combined_shifts[inner_shuffle->dimensions()[i]] +=
+              inner_shuffle->rotate().shifts(i);
+        }
+        base_operand = inner_shuffle->mutable_operand(0);
+      }
+
+      // Helper to check if base_operand is a splat along dim.
+      auto is_dim_splat = [&](int64_t dim) -> bool {
+        if (base_operand->IsConstant() &&
+            base_operand->literal().IsAllFirst()) {
+          return true;
+        }
+        if (base_operand->opcode() == HloOpcode::kBroadcast) {
+          return !absl::c_linear_search(base_operand->dimensions(), dim);
+        }
+        return false;
+      };
+
+      // Canonicalize shifts & dimensions, remove no-op dims.
+      DimensionVector new_dimensions;
+      DimensionVector new_shifts;
+      for (const auto& [dim, total_shift] : combined_shifts) {
+        int64_t dim_size = shuffle->shape().dimensions(dim);
+        // No-op: size 1 dim
+        if (dim_size <= 1) {
+          continue;
+        }
+        // No-op: splat along dim
+        if (is_dim_splat(dim)) {
+          continue;
+        }
+        int64_t norm_shift = shuffle::NormalizeShift(total_shift, dim_size);
+        // No-op: shift == 0
+        if (norm_shift == 0) {
+          continue;
+        }
+        new_dimensions.push_back(dim);
+        new_shifts.push_back(norm_shift);
+      }
+
+      // Replace if changed.
+      if (new_dimensions.empty()) {
+        return ReplaceInstruction(shuffle, base_operand);
+      }
+      if (base_operand != shuffle->operand(0) ||
+          new_dimensions != shuffle->dimensions() ||
+          !absl::c_equal(new_shifts, shuffle->rotate().shifts())) {
+        auto new_shuffle = HloInstruction::CreateShuffle(
+            shuffle->shape(), base_operand, new_dimensions,
+            shuffle::Rotate(new_shifts));
+        return ReplaceWithNewInstruction(shuffle, std::move(new_shuffle));
+      }
+      return absl::OkStatus();
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
 absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     HloInstruction* slice) {
   // Only try to do this for effective scalars. We could do the same for slicing
@@ -7194,8 +7274,16 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     // slice_elements align cleanly with the sub-dimension boundaries of the
     // operand. Otherwise, reordering would slice an interior dimension of the
     // operand, creating strided memory access and complex index decomposition.
+    //
+    // The first dimension of the slice is equivalent to the first non-unit
+    // dimension of the reshape.
+    int64_t sliced_dim_in_reshape = 0;
+    for (; sliced_dim_in_reshape < rank; ++sliced_dim_in_reshape) {
+      if (new_slice_shape.dimensions(sliced_dim_in_reshape) != 1) break;
+    }
+
     int64_t operand_sub_dim_elements = 1;
-    for (int64_t i = 1; i < rank; ++i) {
+    for (int64_t i = sliced_dim_in_reshape + 1; i < rank; ++i) {
       operand_sub_dim_elements *= new_slice_shape.dimensions(i);
     }
     if (operand_sub_dim_elements == 0 ||
@@ -8062,19 +8150,26 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     }
   }
 
-  // ds(ds(x,id),inner_id) -> ds(x, id + inner_id)
+  // ds(ds(x, inner_id), id) ->
+  //   ds(x, clamp(0, id, inner_size - outer_size) +
+  //         clamp(0, inner_id, operand_size - inner_size))
   if (operand->opcode() == HloOpcode::kDynamicSlice) {
     ABSL_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWithDifferentShape(
         0, operand->mutable_operand(0)));
     for (int64_t i = 1; i < dynamic_slice->operand_count(); ++i) {
       HloInstruction* index = dynamic_slice->mutable_operand(i);
+      index = index->AddInstruction(HloInstruction::CreateTernary(
+          index->shape(), HloOpcode::kClamp, MakeScalarLike(index, 0), index,
+          MakeScalarLike(index,
+                         operand->dynamic_slice_sizes()[i - 1] -
+                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
       HloInstruction* inner_index = operand->mutable_operand(i);
       inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
           inner_index->shape(), HloOpcode::kClamp,
           MakeScalarLike(inner_index, 0), inner_index,
           MakeScalarLike(inner_index,
                          operand->operand(0)->shape().dimensions(i - 1) -
-                             dynamic_slice->dynamic_slice_sizes()[i - 1])));
+                             operand->dynamic_slice_sizes()[i - 1])));
       if (inner_index->shape().element_type() !=
           index->shape().element_type()) {
         inner_index = inner_index->AddInstruction(

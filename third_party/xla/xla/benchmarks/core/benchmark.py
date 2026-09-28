@@ -59,7 +59,7 @@ def str_to_dtype(dtype_str: str) -> jnp.dtype:
   """Converts a string to a JAX/NumPy dtype."""
   if dtype_str not in STR_TO_DTYPE_MAPPING:
     raise ValueError(f"Unsupported dtype: {dtype_str}")
-  return STR_TO_DTYPE_MAPPING[dtype_str]
+  return STR_TO_DTYPE_MAPPING[dtype_str]  # pyrefly: ignore[bad-return]
 
 
 DTYPE_TO_STR_MAPPING = immutabledict.immutabledict(

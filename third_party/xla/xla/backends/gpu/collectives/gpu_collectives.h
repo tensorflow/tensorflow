@@ -160,6 +160,13 @@ class GpuCollectives : public Collectives {
     return SplitCommunicators(comms, color, keys, config, ranks);
   }
 
+  // Attaches GXL communicators to the given communicators if supported.
+  virtual absl::Status MaybeAttachGxlCommunicators(
+      const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+      absl::Span<Communicator* const> comms) {
+    return absl::OkStatus();
+  }
+
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 

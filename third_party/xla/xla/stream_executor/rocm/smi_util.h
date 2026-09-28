@@ -86,6 +86,10 @@ absl::StatusOr<SmiDeviceHandle> FindDevice(const BdfComponents& target_bdf)
 absl::StatusOr<PcieLinkStatus> QueryPcieLinkStatus(SmiDeviceHandle device)
     ABSL_EXCLUSIVE_LOCKS_REQUIRED(smi_mutex);
 
+// Returns the firmware reported peak device memory bandwidth in GB/s.
+absl::StatusOr<uint64_t> QueryPeakMemoryBandwidthGbps(SmiDeviceHandle device)
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(smi_mutex);
+
 // Returns the xGMI hive ID of the device. Fails if it is not in a hive, which
 // SMI does not distinguish from a failed query.
 absl::StatusOr<uint64_t> QueryHiveId(SmiDeviceHandle device)

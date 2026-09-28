@@ -37,8 +37,8 @@ func.func @iota_i32() -> tensor<1x2x3x4xi32> {
 // CHECK-LABEL: @iota_i32
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: [[[[0, 1, 2, 3],
-// CHECK{LITERAL}          [0, 1, 2, 3],
-// CHECK{LITERAL}          [0, 1, 2, 3]],
-// CHECK{LITERAL}         [[0, 1, 2, 3],
-// CHECK{LITERAL}          [0, 1, 2, 3],
-// CHECK{LITERAL}          [0, 1, 2, 3]]]]
+// CHECK{LITERAL}:          [0, 1, 2, 3],
+// CHECK{LITERAL}:          [0, 1, 2, 3]],
+// CHECK{LITERAL}:         [[0, 1, 2, 3],
+// CHECK{LITERAL}:          [0, 1, 2, 3],
+// CHECK{LITERAL}:          [0, 1, 2, 3]]]]

@@ -51,6 +51,7 @@ REGULAR_HLO_FILES = [
     "sort_full_1024x4096_bf16.hlo",
     "sum_axis_1x4096x1024_bf16.hlo",
     "topk_logits_k10_1x50000_bf16.hlo",
+    "vit_keras_jax_bf16.hlo",
     "xnn.parallel_dots.optimized.hlo",
     "xnn.sequential_dots.optimized.hlo",
     # go/keep-sorted end

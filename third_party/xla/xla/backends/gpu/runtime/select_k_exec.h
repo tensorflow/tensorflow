@@ -37,6 +37,7 @@ namespace xla::gpu {
 //   batch: Number of rows (matrices) in the batch.
 //   n: Number of columns (elements per row) in input matrices.
 //   k: Number of top elements to select per row.
+//   scratch_buffer: Pre-allocated device memory for RAFT workspace.
 //
 // Returns:
 //   absl::Status indicating success or failure of the operation.
@@ -48,7 +49,8 @@ absl::Status select_k_exec(int device_ordinal,
                            ::stream_executor::DeviceAddressBase data_out,
                            ::stream_executor::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
-                           std::uint32_t k);
+                           std::uint32_t k,
+                           ::stream_executor::DeviceAddressBase scratch_buffer);
 
 }  // namespace xla::gpu
 

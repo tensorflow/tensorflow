@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/host_offloading/host_offloading_executable.h"
 #include "xla/executable_run_options.h"
@@ -168,6 +169,88 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   ASSERT_OK(stream->BlockHostUntilDone());
 
   xla::Literal result_literal(ShapeUtil::MakeShape(S32, {}));
+  ASSERT_OK(stream->Memcpy(result_literal.untyped_data(), result,
+                           ShapeUtil::ByteSizeOf(result_literal.shape())));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),
+                                     result_literal));
+}
+
+TEST(HostExecuteStartThunkTest, RecordCommandBufferSingleArgSingleResult) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  if (stream_executor->GetDeviceDescription()
+          .gpu_compute_capability()
+          .IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCM yet.";
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  static constexpr char const* kHloModule = R"(
+    HloModule module
+    ENTRY add_inplace {
+      p0 = s32[] parameter(0)
+      ROOT add = s32[] add(p0, p0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kHloModule, {}));
+
+  se::DeviceAddressBase arg = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase result = stream_executor->Allocate(1 * sizeof(int32_t));
+
+  ASSERT_OK(stream->Memset32(&arg, 5, 4));
+  ASSERT_OK(stream->MemZero(&result, 4));
+
+  BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
+  BufferAllocation alloc_result(/*index=*/1, 4, /*color=*/0);
+
+  BufferAllocation::Slice slice_arg(&alloc_arg, 0, 4);
+  BufferAllocation::Slice slice_result(&alloc_result, 0, 4);
+
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CreateHostExecuteStartThunk(
+                           Thunk::ThunkInfo(), *hlo_module,
+                           {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
+                           {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
+
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_device_to_host_stream(stream.get());
+  executable_run_options.set_host_to_device_stream(stream.get());
+  ServiceExecutableRunOptions service_executable_run_options(
+      executable_run_options);
+
+  BufferAllocations allocations({arg, result}, 0, &allocator);
+
+  Thunk::ExecutionScopedState scoped_state;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      service_executable_run_options, allocations, stream.get(), stream.get(),
+      nullptr, nullptr, nullptr, {}, &scoped_state);
+
+  Thunk::InitializeParams init_params{.executor = stream_executor,
+                                      .buffer_allocations = &allocations,
+                                      .stream = stream.get(),
+                                      .execution_scoped_state = &scoped_state};
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+
+  ASSERT_OK(thunk->Initialize(init_params));
+  ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      thunk->Record(execute_params, record_params, Command::RecordCreate{{}},
+                    command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  Literal result_literal(ShapeUtil::MakeShape(S32, {}));
   ASSERT_OK(stream->Memcpy(result_literal.untyped_data(), result,
                            ShapeUtil::ByteSizeOf(result_literal.shape())));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<int32_t>(10),

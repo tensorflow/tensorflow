@@ -472,6 +472,19 @@ absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                                              llvm::ArrayRef<int64_t> tile_sizes,
                                              TensorValue input);
 
+// Trivial dimensions in output might be tiled with tile size > 1 and a
+// simple reshape op will fail as tile size of input and output are
+// different. For example:
+// f32[1,8] result = reshape(f32[2,4] operand)
+// where `result` has tile sizes [2,8]. Simple reshape will fail as we go from
+// 8 to 16 elements in a tile.
+// But if we represent this as a reshape followed by a broadcast
+//   [2,4] - reshape -> [8] - broadcast -> [1,8]
+// Broadcast handles the expansion of the tile size.
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    llvm::ArrayRef<int64_t> output_tile_sizes, TensorValue input);
+
 TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                llvm::ArrayRef<int64_t> tile_sizes,
                                llvm::SmallVector<int64_t> dimensions,

@@ -35,12 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/utils/test_metadata_config.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/client_library.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
@@ -75,7 +73,6 @@ static constexpr char kCompilationTimeStreamzName[] =
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
 
-static constexpr char kPlatformName[] = "Host";
 constexpr char kEntryFuncName[] = "main";
 
 static constexpr char kMlirModuleStr[] = R"(
@@ -99,10 +96,8 @@ absl::StatusOr<XlaCompilationResult> CompileWithComputation(
     bool use_serialized_mlir) {
   XlaCompilationResult compilation_result;
 
-  se::Platform* platform =
-      se::PlatformManager::PlatformWithName(kPlatformName).value();
-  auto client =
-      xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
+  TF_ASSIGN_OR_RETURN(auto* compiler,
+                      xla::GetDefaultPjRtCompiler(xla::CpuName()));
 
   bool use_tuple_args = true;
   std::vector<ShardingAndIndex> arg_core_mapping;
@@ -135,7 +130,7 @@ absl::StatusOr<XlaCompilationResult> CompileWithComputation(
       tensorflow::tf2xla::v1::CompileTensorflowGraphToHlo(
           computation, metadata_proto, use_tuple_args, shape_determination_fns,
           arg_shapes, tsl::DeviceType("XLA_TPU_JIT"), &arg_core_mapping,
-          &per_core_arg_shapes, client, &compilation_result);
+          &per_core_arg_shapes, compiler, &compilation_result);
 
   if (!compilation_status.ok()) return compilation_status;
 

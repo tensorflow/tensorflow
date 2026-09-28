@@ -1430,7 +1430,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   auto launch_on_device =
       [device_state, gpu_run_options = gpu_run_options,
        launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
-       context = options.context, raw_client = raw_client_, device = device_,
+       context = options.context, custom_options = options.custom_options,
+       raw_client = raw_client_, device = device_,
        device_assignment = device_assignment_, is_predetermined_error,
        compute_reservation = std::move(compute_reservation),
        send_device_memory = std::move(send_device_memory),
@@ -1480,6 +1481,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     if (context != nullptr) {
       run_options.set_ffi_execution_context(&context->ffi_context());
     }
+    run_options.set_custom_options(custom_options);
 
     absl::Status predetermined_error;
     for (size_t i = 0; i < extra_deps.size(); ++i) {
@@ -1759,6 +1761,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
+    case Layout::kCollectiveMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;
     default:

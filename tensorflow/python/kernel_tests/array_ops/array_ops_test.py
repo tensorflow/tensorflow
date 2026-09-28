@@ -2104,6 +2104,19 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
     tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
     self.assertAllEqual(result, tf_result)
 
+  def testScalarValue(self):
+    cdf = np.array([0, 0.2, 0.5, 0.6, 0.8, 1.0], dtype=np.float32)
+    values = (0.53, np.float32(0.53), constant_op.constant(0.53))
+
+    for value in values:
+      for side in ("left", "right"):
+        with self.subTest(value=value, side=side):
+          result = np.searchsorted(cdf, 0.53, side=side)
+          tf_result = self.evaluate(
+              array_ops.searchsorted(cdf, value, side=side)
+          )
+          self.assertAllEqual(result, tf_result)
+
   def testUpperBoundFloatRandomNd(self):
     dim_size = 7
     for d in range(1, 5):

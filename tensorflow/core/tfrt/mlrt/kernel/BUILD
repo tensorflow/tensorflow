@@ -296,6 +296,7 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/mlrt/interpreter:interpreter_testutil",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

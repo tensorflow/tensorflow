@@ -1,0 +1,219 @@
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -12,11 +12,13 @@
+ #include "llvm/Config/llvm-config.h"
+ #include "llvm/IR/DebugInfo.h"
+ #include "llvm/IR/IRBuilder.h"
++#include "llvm/IR/InstIterator.h"
+ #include "llvm/IR/IntrinsicInst.h"
+ #include "llvm/IR/LLVMContext.h"
+ #include "llvm/IR/LegacyPassManager.h"
+ #include "llvm/IR/Metadata.h"
+ #include "llvm/IR/Module.h"
++#include "llvm/IR/Operator.h"
+ #include "llvm/IR/PassManager.h"
+ #include "llvm/IR/Verifier.h"
+ #include "llvm/IRReader/IRReader.h"
+@@ -187,6 +189,14 @@
+   ScopedLLVMOption &operator=(const ScopedLLVMOption &) = delete;
+ };
+ 
++// Marks every floating-point operation in the module as contractable.
++void allowFPOpFusion(llvm::Module &module) {
++  for (llvm::Function &function : module)
++    for (llvm::Instruction &instruction : llvm::instructions(function))
++      if (llvm::isa<llvm::FPMathOperator>(&instruction))
++        instruction.setHasAllowContract(true);
++}
++
+ std::unique_ptr<TargetMachine>
+ createTargetMachine(llvm::Module *module, std::string proc,
+                     bool enable_fp_fusion, const std::string &features) {
+@@ -196,7 +206,7 @@
+   llvm::TargetOptions opt;
+   bool disableLLVMOpt = mlir::triton::tools::getBoolEnv("DISABLE_LLVM_OPT");
+   if (enable_fp_fusion)
+-    opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
++    allowFPOpFusion(*module);
+   opt.TrapUnreachable = true;
+   opt.MCOptions.AsmVerbose = true;
+   opt.MCOptions.PreserveAsmComments = true;
+
+--- a/test/Conversion/amd/async-ops-alias-scopes.mlir
++++ b/test/Conversion/amd/async-ops-alias-scopes.mlir
+@@ -18,7 +18,7 @@
+ 
+     // COMMON: rocdl.global.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+-    // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.store {{.*}} <{{.*}}alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %0 = ttg.async_copy_global_to_local %ptr, %arg1 mask %mask other %other : tensor<64x1x!tt.ptr<f32>, #blocked> -> <64x1xf32, #shared, #smem, mutable>
+ 
+     // COMMON: llvm.return
+@@ -44,7 +44,7 @@
+ 
+     // COMMON: rocdl.raw.ptr.buffer.load.async.lds {{.*}} <alias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // Check that store for 'other' has alias information set
+-    // COMMON: llvm.store {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}, noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.store {{.*}} <{{.*}}alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], {{.*}}noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %65 = amdg.buffer_load_to_local %arg1[%arg2] mask=%mask other=%other into %arg3 : !tt.ptr<f32>[tensor<8x64xi32, #blocked>] tensor<8x64xf32, #blocked> -> <8x64xf32, #shared, #smem, mutable>
+ 
+     // COMMON: llvm.return
+@@ -71,11 +71,11 @@
+     // Check alias information is added for different lowering paths
+ 
+     // Test lowering path in common MemoryOpToLLVM pattern
+-    // COMMON: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // COMMON: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %4 = ttg.local_load %arg1 token %3 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+ 
+     // Test lowering path in AMD's MemoryOpToLLVM pattern
+-    // GFX942: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++    // GFX942: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     // GFX950: rocdl.ds.read.tr16.b64 {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+     %5 = ttg.local_load %arg2 token %3 : !ttg.memdesc<16x16xf16, #shared, #smem, mutable> -> tensor<16x16xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 8}>>
+ 
+@@ -152,7 +152,7 @@
+     %2 = ttg.local_load %arg1 token %1 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+ 
+     %loop_result:2 = scf.for %arg14 = %c0_i32 to %loopIterCount step %c1_i32 iter_args(%arg10 = %1, %arg11 = %2) -> (!ttg.async.token, tensor<64x1xf16, #blocked>)  : i32 {
+-      // COMMON: llvm.load {{.*}} {alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
++      // COMMON: llvm.load {{.*}} <alias_scopes = [[[$LOCAL_LOAD_SCOPE]]], noalias_scopes = [[[$ASYNC_COPY_SCOPE]]]
+       %3 = ttg.local_load %arg1 token %arg10 : !ttg.memdesc<64x1xf16, #shared, #smem, mutable> -> tensor<64x1xf16, #blocked>
+       %4 = amdg.async_wait {num_inst = 1 : i32}
+       scf.yield %4, %3: !ttg.async.token, tensor<64x1xf16, #blocked>
+
+--- a/test/Conversion/amd/in_thread_transpose.mlir
++++ b/test/Conversion/amd/in_thread_transpose.mlir
+@@ -18,11 +18,11 @@
+ 
+     // CHECK-DAG: [[VEC1_TMP:%.*]] = llvm.insertelement [[VAL0]], [[VEC_UNDEF]]{{\[}}[[CST_0]] : i32] : vector<2xf16>
+     // CHECK-DAG: [[VEC1:%.*]] = llvm.insertelement [[VAL2]], [[VEC1_TMP]]{{\[}}[[CST_1]] : i32] : vector<2xf16>
+-    // CHECK-DAG: llvm.store [[VEC1]], {{.*}} {alignment = 4 : i64} : vector<2xf16>, !llvm.ptr<3>
++    // CHECK-DAG: llvm.store [[VEC1]], {{.*}} <alignment = 4> : vector<2xf16>, !llvm.ptr<3>
+ 
+     // CHECK-DAG: [[VEC2_TMP:%.*]] = llvm.insertelement [[VAL1]], [[VEC_UNDEF]]{{\[}}[[CST_0]] : i32] : vector<2xf16>
+     // CHECK-DAG: [[VEC2:%.*]] = llvm.insertelement [[VAL3]], [[VEC2_TMP]]{{\[}}[[CST_1]] : i32] : vector<2xf16>
+-    // CHECK-DAG: llvm.store [[VEC2]], {{.*}} {alignment = 4 : i64} : vector<2xf16>, !llvm.ptr<3>
++    // CHECK-DAG: llvm.store [[VEC2]], {{.*}} <alignment = 4> : vector<2xf16>, !llvm.ptr<3>
+ 
+     %0 = amdg.in_thread_transpose %arg0 : tensor<16x16xf16, #blocked> -> tensor<16x16xf16, #linear>
+     ttg.local_alloc %0 : (tensor<16x16xf16, #linear>) -> !ttg.memdesc<16x16xf16, #shared, #smem, mutable>
+
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -2434,7 +2434,7 @@
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @vectorize_shmem_load
+   // CHECK: llvm.load
+-  // CHECK-SAME: {alignment = 8 : i64} : !llvm.ptr<3> -> vector<2xi32>
++  // CHECK-SAME: <alignment = 8> : !llvm.ptr<3> -> vector<2xi32>
+   // CHECK-NOT: llvm.load
+   tt.func public @vectorize_shmem_load(%shmem : !ttg.memdesc<16x16xi8, #shared, #smem>) {
+     %0 = ttg.local_load %shmem : !ttg.memdesc<16x16xi8, #shared, #smem> -> tensor<16x16xi8, #blocked>
+@@ -2449,7 +2449,7 @@
+ #smem = #ttg.shared_memory
+ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   // CHECK-LABEL: @vectorize_shmem_store
+-  // CHECK-COUNT-4:  llvm.store {{.*}} {alignment = 16 : i64} : vector<4xi32>, !llvm.ptr<3>
++  // CHECK-COUNT-4:  llvm.store {{.*}} <alignment = 16> : vector<4xi32>, !llvm.ptr<3>
+   tt.func public @vectorize_shmem_store(%block : tensor<64x64xi32, #blocked>) {
+     %0 = ttg.local_alloc %block : (tensor<64x64xi32, #blocked>) -> !ttg.memdesc<64x64xi32, #shared, #smem>
+     tt.return
+
+--- a/test/Conversion/warp_specialize_to_llvm.mlir
++++ b/test/Conversion/warp_specialize_to_llvm.mlir
+@@ -212,7 +212,7 @@
+   // CHECK: [[DEFAULT]]:
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+-  // CHECK-NEXT: llvm.br [[SWITCH_LOOP]] {loop_annotation = #llvm.loop_annotation<licm = <disable = true>>}
++  // CHECK-NEXT: llvm.br [[SWITCH_LOOP]] loop_annotation = <licm = <disable = true>>
+ 
+   // CHECK: [[EXIT]]:
+   // CHECK-NEXT: llvm.return
+@@ -283,7 +283,7 @@
+   // AMD: [[DEFAULT]]:
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+-  // AMD-NEXT: llvm.br [[SWITCH_LOOP]] {loop_annotation = #llvm.loop_annotation<licm = <disable = true>>}
++  // AMD-NEXT: llvm.br [[SWITCH_LOOP]] loop_annotation = <licm = <disable = true>>
+ 
+   // AMD: [[EXIT]]:
+   // AMD-NEXT: llvm.return
+@@ -414,9 +414,9 @@
+ 
+   // CHECK: ^bb4:
+   // CHECK-NEXT: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] <alignment = 1> : !llvm.ptr<3> -> i32
+   // CHECK-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] <alignment = 1> : !llvm.ptr<3> -> i64
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+   // CHECK-NEXT: "use"([[ARG0]], [[ARG1]])
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+@@ -424,17 +424,17 @@
+   // CHECK: ^bb5:
+   // CHECK: [[INS:%.*]]:2 = "produce"()
+   // CHECK: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] <alignment = 1> : i32, !llvm.ptr<3>
+   // CHECK-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // CHECK-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] {alignment = 1 : i64}
++  // CHECK-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] <alignment = 1> : i64, !llvm.ptr<3>
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+   // CHECK-NEXT: "llvm.nvvm.barrier.cta.sync.all"([[C1]])
+ 
+   // AMD: ^bb4:
+   // AMD-NEXT: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: [[ARG0:%.*]] = llvm.load [[ARG0_PTR]] <alignment = 1> : !llvm.ptr<3> -> i32
+   // AMD-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: [[ARG1:%.*]] = llvm.load [[ARG1_PTR]] <alignment = 1> : !llvm.ptr<3> -> i64
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: "use"([[ARG0]], [[ARG1]])
+   // AMD-NEXT: rocdl.barrier
+@@ -442,9 +442,9 @@
+   // AMD: ^bb5:
+   // AMD: [[INS:%.*]]:2 = "produce"()
+   // AMD: [[ARG0_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 0] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: llvm.store [[INS]]#0, [[ARG0_PTR]] <alignment = 1> : i32, !llvm.ptr<3>
+   // AMD-NEXT: [[ARG1_PTR:%.*]] = llvm.getelementptr [[SMEM_ADDR]][0, 1] : (!llvm.ptr<3>) -> !llvm.ptr<3>, !llvm.struct<packed (i32, i64)>
+-  // AMD-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] {alignment = 1 : i64}
++  // AMD-NEXT: llvm.store [[INS]]#1, [[ARG1_PTR]] <alignment = 1> : i64, !llvm.ptr<3>
+   // AMD-NEXT: rocdl.barrier
+   // AMD-NEXT: rocdl.barrier
+ 
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpSpecializeToLLVM.cpp
+@@ -2,6 +2,7 @@
+ #include "TritonAMDGPUToLLVM/Passes.h"
+ #include "TritonAMDGPUToLLVM/TypeConverter.h"
+ #include "Utility.h"
++#include "llvm/Support/AMDGPUAddrSpace.h"
+ #include "mlir/Analysis/TopologicalSortUtils.h"
+ #include "mlir/Conversion/Passes.h"
+ #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+@@ -49,7 +50,7 @@
+   }
+ 
+   Type getBarrierHandleType(MLIRContext *ctx) const override {
+-    return LLVM::LLVMPointerType::get(ctx, targetInfo.getSharedAddressSpace());
++    return LLVM::LLVMPointerType::get(ctx, llvm::AMDGPUAS::BARRIER);
+   }
+ 
+   FailureOr<Value>
+@@ -80,7 +81,7 @@
+       nbarGV = LLVM::GlobalOp::create(
+           b, uloc, nbarTy, /*isConstant=*/false, LLVM::Linkage::Internal,
+           nbarAttr.getValue(), /*value=*/Attribute(), /*alignment=*/0,
+-          targetInfo.getSharedAddressSpace());
++          llvm::AMDGPUAS::BARRIER);
+       // Add initializer region that returns 'poison'
+       Block *initBlock = b.createBlock(&nbarGV.getInitializerRegion());
+       b.setInsertionPointToStart(initBlock);
+

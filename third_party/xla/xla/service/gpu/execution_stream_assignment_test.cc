@@ -109,8 +109,8 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
   HloModule Module
 
   ENTRY CopyStartAndCopyDone {
-    p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    p0 = f32[2,3]{1,0:S(7)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(7)}, u32[]) copy-start(p0)
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";

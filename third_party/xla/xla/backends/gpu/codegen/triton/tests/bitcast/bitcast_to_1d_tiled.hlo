@@ -1,19 +1,19 @@
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
-// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=false | FileCheck %s
+// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation=true | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=false
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation=true
 
 fusion {
   p = f32[1,1,1] parameter(0)
   ROOT bitcast = f32[1] bitcast(p)
 }
 
-// CHECK-ERROR: INVALID_ARGUMENT: Reshape input and output shapes must be the same, got 1x1x1 -> 2
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:      %[[ARG0:.*]]: memref<1x1x1xf32>,
 // CHECK-SAME:      %[[ARG1:.*]]: memref<1xf32>,
 // CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
 // CHECK:           %[[C0:.*]] = arith.constant 0 : index
-// CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] [1, 1, 1] : memref<1x1x1xf32> -> tensor<1x1x1xf32>
+// CHECK:           %[[EXTRACT:.*]] = xtile.extract %[[ARG0]][%[[C0]], %[[C0]], %[[C0]]] [1, 1, 1] {{.*}} : memref<1x1x1xf32> -> tensor<1x1x1xf32>
 // CHECK:           %[[UNSPLAT:.*]] = tt.unsplat %[[EXTRACT]] : tensor<1x1x1xf32>
 // CHECK:           %[[SPLAT:.*]] = tt.splat %[[UNSPLAT]] : f32 -> tensor<2xf32>
 // CHECK:           xtile.insert %[[SPLAT]] into %[[ARG1]][%[[C0]]] [2] [1] : tensor<2xf32> -> memref<1xf32>

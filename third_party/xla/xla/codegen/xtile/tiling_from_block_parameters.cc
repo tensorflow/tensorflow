@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 

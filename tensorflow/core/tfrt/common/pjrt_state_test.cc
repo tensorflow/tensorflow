@@ -129,4 +129,40 @@ TEST_F(PjRtStateTestFixture, GetOrCreatePjRtClientNotExist) {
   EXPECT_THAT(pjrt_client, testing::NotNull());
 }
 
+TEST_F(PjRtStateTestFixture, TestOnlyResetPjRtClientPreservesUnusedClients) {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_1,
+                          xla::GetXlaPjrtCpuClient(options));
+  xla::PjRtClient* pjrt_client_1_ptr = pjrt_client_1.get();
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
+                                          std::move(pjrt_client_1)));
+  TF_ASSERT_OK(pjrt_state_->MovePjRtClientToUnused(tensorflow::DEVICE_CPU));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client_2,
+                          xla::GetXlaPjrtCpuClient(options));
+  xla::PjRtClient* pjrt_client_2_ptr = pjrt_client_2.get();
+  TF_ASSERT_OK(pjrt_state_->SetPjRtClient(tensorflow::DEVICE_CPU,
+                                          std::move(pjrt_client_2)));
+
+  TF_ASSERT_OK(pjrt_state_->TestOnlyResetPjRtClient(tensorflow::DEVICE_CPU));
+
+  EXPECT_THAT(pjrt_state_->GetPjRtClient(tensorflow::DEVICE_CPU),
+              absl_testing::StatusIs(
+                  tensorflow::error::NOT_FOUND,
+                  HasSubstr("PjRt client not found for device type")));
+  // Verifies that both the previously retired client and the reset client are
+  // still alive in `unused_`.
+  EXPECT_EQ(pjrt_client_1_ptr->platform_name(), "cpu");
+  EXPECT_EQ(pjrt_client_2_ptr->platform_name(), "cpu");
+
+  // Resetting another device type (e.g., GPU) should not destroy unused
+  // clients.
+  TF_ASSERT_OK(pjrt_state_->TestOnlyResetPjRtClient(tensorflow::DEVICE_GPU));
+  EXPECT_EQ(pjrt_client_1_ptr->platform_name(), "cpu");
+  EXPECT_EQ(pjrt_client_2_ptr->platform_name(), "cpu");
+}
+
 }  // namespace

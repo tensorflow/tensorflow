@@ -14,6 +14,7 @@ limitations under the License.
 // from ROCm 7.13 on; smi_util_rocm_smi.cc takes its place below that.
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -149,6 +150,23 @@ absl::StatusOr<PcieLinkStatus> QueryPcieLinkStatus(SmiDeviceHandle device) {
   // so no scaling here, unlike rocm_smi's 0.1 GT/s field.
   return PcieLinkStatus{pcie_info.pcie_metric.pcie_speed,
                         pcie_info.pcie_metric.pcie_width};
+}
+
+absl::StatusOr<uint64_t> QueryPeakMemoryBandwidthGbps(SmiDeviceHandle device) {
+  amdsmi_gpu_metrics_t gpu_metrics = {};
+  if (amdsmi_status_t status =
+          amdsmi_get_gpu_metrics_info(ToProcessorHandle(device), &gpu_metrics);
+      status != AMDSMI_STATUS_SUCCESS) {
+    return SmiError("amdsmi_get_gpu_metrics_info", status);
+  }
+
+  // Firmware that does not populate this leaves the all ones sentinel behind.
+  uint64_t gbps = gpu_metrics.vram_max_bandwidth;
+  if (gbps == 0 || gbps == std::numeric_limits<uint64_t>::max()) {
+    return absl::UnavailableError(absl::StrCat(
+        "amd_smi gpu_metrics reports no peak VRAM bandwidth (got ", gbps, ")"));
+  }
+  return gbps;
 }
 
 absl::StatusOr<uint64_t> QueryHiveId(SmiDeviceHandle device) {

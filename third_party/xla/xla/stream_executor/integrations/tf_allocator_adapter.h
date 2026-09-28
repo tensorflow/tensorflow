@@ -148,8 +148,10 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   //
   // allocation_end: which end of a spatially partitioned allocator to serve
   //                 from. When one BFC allocator backs both kDefault and
-  //                 kCollective, the kCollective entry uses kUpper so its
-  //                 offsets stay independent of default-memory activity.
+  //                 kCollective, the kCollective entry uses kLower so its
+  //                 offsets from the fixed range base stay independent of
+  //                 default-memory activity, and the kDefault entry uses
+  //                 kUpper.
   struct AllocatorInfo {
     std::shared_ptr<tsl::Allocator> allocator;
     Stream* stream;

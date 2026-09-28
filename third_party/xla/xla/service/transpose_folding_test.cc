@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -47,6 +48,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
+using ::absl_testing::IsOkAndHolds;
 using TransposeFoldingTest = HloHardwareIndependentTestBase;
 
 TEST_F(TransposeFoldingTest, FoldDotTranspose) {
@@ -231,6 +233,88 @@ ENTRY entry_computation {
   EXPECT_THAT(callee->root_instruction(),
               op::Dot(op::Parameter(1), op::Parameter(0),
                       /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/1));
+}
+
+TEST_F(TransposeFoldingTest, DontFoldTransposeWrappedInCall) {
+  constexpr absl::string_view kHloString = R"(
+HloModule DontFoldTransposeWrappedInCall
+
+transpose_fn {
+  param.0 = f32[2,3]{1,0} parameter(0)
+  ROOT transpose = f32[3,2]{1,0} transpose(param.0), dimensions={1,0}
+}
+
+ENTRY entry_computation {
+  x = f32[2,3]{1,0} parameter(0)
+  y = f32[2,3]{1,0} parameter(1)
+  call_transpose = f32[3,2]{1,0} call(y), to_apply=transpose_fn
+  ROOT dot = f32[2,2]{1,0} dot(x, call_transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(TransposeFoldingTest, FoldDotTransposeInFooCalledOnce) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldDotTransposeInFooCalledOnce
+
+// CHECK-LABEL: %foo
+// CHECK-NOT: transpose
+// CHECK: ROOT %dot = f32[2,2]{1,0} dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+foo {
+  a = f32[2,3]{1,0} parameter(0)
+  b = f32[2,3]{1,0} parameter(1)
+  transpose_b = f32[3,2]{1,0} transpose(b), dimensions={1,0}
+  ROOT dot = f32[2,2]{1,0} dot(a, transpose_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+// CHECK-LABEL: ENTRY %entry_computation
+// CHECK: ROOT %call = f32[2,2]{1,0} call(%x, %y), to_apply=%foo
+ENTRY entry_computation {
+  x = f32[2,3]{1,0} parameter(0)
+  y = f32[2,3]{1,0} parameter(1)
+  ROOT call = f32[2,2]{1,0} call(x, y), to_apply=foo
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), kHloString), IsOkAndHolds(true));
+}
+
+TEST_F(TransposeFoldingTest, FoldDotTransposeInFooCalledTwice) {
+  constexpr absl::string_view kHloString = R"(
+HloModule FoldDotTransposeInFooCalledTwice
+
+// CHECK-LABEL: %foo
+// CHECK-NOT: transpose
+// CHECK: ROOT %dot = f32[2,2]{1,0} dot(%a, %b), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+foo {
+  a = f32[2,3]{1,0} parameter(0)
+  b = f32[2,3]{1,0} parameter(1)
+  transpose_b = f32[3,2]{1,0} transpose(b), dimensions={1,0}
+  ROOT dot = f32[2,2]{1,0} dot(a, transpose_b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+// CHECK-LABEL: ENTRY %entry_computation
+// CHECK: %call1 = f32[2,2]{1,0} call(%x1, %y1), to_apply=%foo
+// CHECK: %call2 = f32[2,2]{1,0} call(%x2, %y2), to_apply=%foo
+ENTRY entry_computation {
+  x1 = f32[2,3]{1,0} parameter(0)
+  y1 = f32[2,3]{1,0} parameter(1)
+  x2 = f32[2,3]{1,0} parameter(2)
+  y2 = f32[2,3]{1,0} parameter(3)
+  call1 = f32[2,2]{1,0} call(x1, y1), to_apply=foo
+  call2 = f32[2,2]{1,0} call(x2, y2), to_apply=foo
+  ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(call1, call2)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), kHloString), IsOkAndHolds(true));
 }
 
 // Test that a two dimension swap of the kernel gets folded into convolution.

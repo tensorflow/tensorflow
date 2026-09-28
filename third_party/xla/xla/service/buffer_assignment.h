@@ -752,7 +752,6 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
-      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
       std::optional<BufferValue::Color> temp_buffer_color);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
@@ -871,8 +870,6 @@ class BufferAssigner {
 
   using MustNotLiveOut = std::function<bool(
       const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
-  using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
-                                            std::vector<const HloComputation*>>;
 
   // The order in which to process buffers during buffer assignment.
   enum class BufferOrder {
@@ -902,7 +899,6 @@ class BufferAssigner {
     std::unique_ptr<memory_space_assignment::PresetAssignments>
         preset_assignments;
 
-    const PrivateStacks* private_stacks = nullptr;
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare;
     // The packing strategy to use for multi-page (page_size > 0) heap
@@ -1103,7 +1099,6 @@ class BufferAssigner {
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
       buffer_assignment::BufferAssignmentAlgorithmProto::Value
           buffer_assignment_algorithm,
-      const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
       std::optional<BufferAssignment::BufferIsolationOptions>
@@ -1152,17 +1147,6 @@ class BufferAssigner {
                       absl::flat_hash_set<const HloValue*>>
   SplitBuffersByColor(
       const absl::flat_hash_set<const HloValue*>& buffers) const;
-
-  // Split a set of buffers into several sets, each of which contains buffers
-  // with defining instructions that are dominated by the given private stack
-  // computation. This function CHECK-fails if there are outstanding buffers
-  // that do not have a dominating private stack computation.
-  absl::flat_hash_map<const HloComputation*,
-                      absl::flat_hash_set<const HloValue*>>
-  SplitBuffersByPrivateStackComputation(
-      const absl::flat_hash_set<const HloValue*>& buffers,
-      absl::Span<const HloComputation* const> private_stack_computations,
-      const CallGraph& call_graph) const;
 
   const AliasInfo* alias_info_;
   Options opts_;

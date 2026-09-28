@@ -144,6 +144,11 @@ static int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
 
 WorkDimensions GetWorkDimensions(const Shape& shape,
                                  const HloFusionInstruction& fusion) {
+  if (!shape.has_layout()) {
+    Shape shape_with_layout = shape;
+    LayoutUtil::SetToDefaultLayout(&shape_with_layout);
+    return GetWorkDimensions(shape_with_layout, fusion);
+  }
   auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
 
   if (minor_to_major.empty()) {
@@ -332,10 +337,9 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     }
     auto fusion_spec = GetLoopFusionSpec(fusion);
     if (IsDynamicUpdateSliceFusion(fusion_spec)) {
-      ABSL_ASSIGN_OR_RETURN(bool dus_inplace,
-                       CanEmitFusedDynamicUpdateSliceInPlace(
-                           fusion_spec.fusion(), buffer_assignment, &fusion));
-      if (dus_inplace) {
+      ABSL_ASSIGN_OR_RETURN(bool can_emit_dus,
+                       CanEmitFusedDynamicUpdateSlice(fusion_spec.fusion()));
+      if (can_emit_dus) {
         return EmitDynamicUpdateSliceFusionKernel(mlir_context, fusion,
                                                   buffer_assignment, name);
       }
