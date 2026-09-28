@@ -79,6 +79,17 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
   return absl::OkStatus();
 }
 
+static inline absl::Status CheckBoxesAreFinite(const Tensor& boxes) {
+  const auto boxes_flat = boxes.flat<float>();
+  for (int64_t i = 0; i < boxes_flat.size(); ++i) {
+    if (!std::isfinite(boxes_flat(i))) {
+      return absl::InvalidArgumentError(
+          "boxes contains at least one element that is not finite");
+    }
+  }
+  return absl::OkStatus();
+}
+
 // Conditionally calls the compute callback if all values in box_index are in
 // [0, batch_size) then calls done.
 template <typename Device>
@@ -395,20 +406,10 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
-    if (boxes.NumElements() > 0) {
-      bool only_finite = true;
-      auto boxes_flat = boxes.flat<float>();
-      for (int i = 0; i < boxes_flat.size(); ++i) {
-        if (!std::isfinite(boxes_flat(i))) {
-          only_finite = false;
-          break;
-        }
+    if constexpr (std::is_same_v<Device, CPUDevice>) {
+      if (boxes.NumElements() > 0) {
+        OP_REQUIRES_OK_ASYNC(context, CheckBoxesAreFinite(boxes), done);
       }
-      OP_REQUIRES_ASYNC(
-          context, only_finite,
-          absl::InvalidArgumentError(
-              "boxes contains at least one element that is not finite"),
-          done);
     }
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
@@ -526,7 +527,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
           const float in_y = (crop_height > 1)
                                  ? y1 * (image_height - 1) + y * height_scale
                                  : 0.5 * (y1 + y2) * (image_height - 1);
-          if (in_y < 0 || in_y > image_height - 1) {
+          if (!(in_y >= 0 && in_y <= image_height - 1)) {
             continue;
           }
           const int top_y_index = floorf(in_y);
@@ -537,7 +538,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
             const float in_x = (crop_width > 1)
                                    ? x1 * (image_width - 1) + x * width_scale
                                    : 0.5 * (x1 + x2) * (image_width - 1);
-            if (in_x < 0 || in_x > image_width - 1) {
+            if (!(in_x >= 0 && in_x <= image_width - 1)) {
               continue;
             }
 
@@ -654,20 +655,10 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
-    if (boxes.NumElements() > 0) {
-      bool only_finite = true;
-      auto boxes_flat = boxes.flat<float>();
-      for (int i = 0; i < boxes_flat.size(); ++i) {
-        if (!std::isfinite(boxes_flat(i))) {
-          only_finite = false;
-          break;
-        }
+    if constexpr (std::is_same_v<Device, CPUDevice>) {
+      if (boxes.NumElements() > 0) {
+        OP_REQUIRES_OK_ASYNC(context, CheckBoxesAreFinite(boxes), done);
       }
-      OP_REQUIRES_ASYNC(
-          context, only_finite,
-          absl::InvalidArgumentError(
-              "boxes contains at least one element that is not finite"),
-          done);
     }
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
@@ -760,7 +751,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
         const float in_y = (crop_height > 1)
                                ? y1 * (image_height - 1) + y * height_scale
                                : 0.5 * (y1 + y2) * (image_height - 1);
-        if (in_y < 0 || in_y > image_height - 1) {
+        if (!(in_y >= 0 && in_y <= image_height - 1)) {
           continue;
         }
         const int top_y_index = floorf(in_y);
@@ -771,7 +762,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
           const float in_x = (crop_width > 1)
                                  ? x1 * (image_width - 1) + x * width_scale
                                  : 0.5 * (x1 + x2) * (image_width - 1);
-          if (in_x < 0 || in_x > image_width - 1) {
+          if (!(in_x >= 0 && in_x <= image_width - 1)) {
             continue;
           }
           const int left_x_index = floorf(in_x);

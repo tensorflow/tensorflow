@@ -555,6 +555,34 @@ class CropAndResizeOpTestBase(test.TestCase):
                     err = max(err1, err2)
                     self.assertLess(err, 2e-3)
 
+  def testGradOpsRejectNonFiniteBoxes(self):
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    image = np.ones((1, 4, 4, 1), dtype=np.float32)
+    box_ind = np.array([0], dtype=np.int32)
+    image_size = np.array([1, 4, 4, 1], dtype=np.int32)
+    with test_util.force_cpu():
+      for bad_val in [np.nan, np.inf, -np.inf]:
+        boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "boxes contains at least one element that is not finite",
+        ):
+          self.evaluate(
+              image_ops.crop_and_resize_grad_boxes(
+                  grads, image, boxes_bad, box_ind
+              )
+          )
+        with self.assertRaisesRegex(
+            (errors_impl.InvalidArgumentError, ValueError),
+            "boxes contains at least one element that is not finite",
+        ):
+          self.evaluate(
+              image_ops.crop_and_resize_grad_image(
+                  grads, boxes_bad, box_ind, image_size, T=dtypes.float32
+              )
+          )
+
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RGBToHSVOpTestBase(test.TestCase):
