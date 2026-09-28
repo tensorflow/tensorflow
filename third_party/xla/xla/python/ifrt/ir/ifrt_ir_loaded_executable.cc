@@ -171,11 +171,6 @@ IfrtIrLoadedExecutable::GetHumanReadableProgramText() const {
   return result;
 }
 
-int IfrtIrLoadedExecutable::num_devices() const {
-  DCHECK(this);
-  return devices_->size();
-}
-
 int64_t IfrtIrLoadedExecutable::SizeOfGeneratedCodeInBytes() const {
   // TODO(b/261226026): Implement this API or remove it from IFRT.
   return -1;

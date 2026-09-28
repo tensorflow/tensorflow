@@ -204,7 +204,6 @@ TEST_F(CompilerTest, Compile) {
             "xla::ifrt::proxy::TestProgram");
 
   EXPECT_EQ(executable->name(), "foo-executable");
-  EXPECT_EQ(executable->num_devices(), 2);
   EXPECT_THAT(executable->devices(), Optional(device_list));
   EXPECT_THAT(executable->Fingerprint(),
               absl_testing::IsOkAndHolds(Optional(std::string("fingerprint"))));

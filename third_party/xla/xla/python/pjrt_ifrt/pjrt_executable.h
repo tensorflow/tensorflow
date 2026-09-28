@@ -322,11 +322,6 @@ class PjRtLoadedExecutable final
         });
   }
 
-  int num_devices() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->num_replicas() *
-           pjrt_loaded_executable_->num_partitions();
-  }
   int64_t SizeOfGeneratedCodeInBytes() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->SizeOfGeneratedCodeInBytes();
