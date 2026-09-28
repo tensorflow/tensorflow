@@ -113,7 +113,6 @@ class LoadedExecutable final
       absl::Span<BundleRef> args, const ExecuteOptions& options) override;
 
   std::optional<DeviceListRef> devices() const override;
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   void SetDeleteOptions(const DeleteOptions& options) override;
 
@@ -155,7 +154,6 @@ class LoadedExecutable final
   const std::string name_;
   const int num_devices_;
   const std::optional<DeviceListRef> devices_;
-  const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const xla::ifrt::UserContextRef user_context_;
 

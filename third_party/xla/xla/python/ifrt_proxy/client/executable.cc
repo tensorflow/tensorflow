@@ -358,7 +358,6 @@ LoadedExecutable::LoadedExecutable(
       name_(std::move(name)),
       num_devices_(num_devices),
       devices_(devices),
-      addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
       user_context_(xla::ifrt::UserContextScope::current()),
       output_spec_cache_(
@@ -805,7 +804,10 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
     if (result_needs_exec_status) {
       req->set_result_status_handle(status_handle);
     }
-    rpc_helper_->LoadedExecutableExecute(std::move(req));
+
+    // Fire and forget the RPC.
+    (void)rpc_helper_->LoadedExecutableExecute(std::move(req));
+
     if (result_needs_exec_status) {
       // Note that the RPCs within `FetchExecuteResult` need to be sent after
       // `LoadedExecutableExecute` above, or the server will not recognize the
@@ -877,11 +879,6 @@ LoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
 }
 std::optional<DeviceListRef> LoadedExecutable::devices() const {
   return devices_;
-}
-
-absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
-    const {
-  return addressable_devices_;
 }
 
 tsl::Future<> LoadedExecutable::FetchExecuteResult(
