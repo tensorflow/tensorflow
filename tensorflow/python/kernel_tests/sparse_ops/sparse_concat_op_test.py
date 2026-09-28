@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -457,6 +458,17 @@ class SparseConcatTest(test.TestCase):
         self.assertEqual(sp_concat.indices.get_shape().as_list(), [None, 3])
         self.assertEqual(sp_concat.values.get_shape().as_list(), [None])
         self.assertEqual(sp_concat.dense_shape.get_shape(), [3])
+
+  def testSparseConcatEmptyInputList(self):
+    from tensorflow.python.ops import gen_sparse_ops
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Input list must not be empty"
+    ):
+      self.evaluate(
+          gen_sparse_ops.sparse_concat(
+              indices=[], values=[], shapes=[], concat_dim=1
+          )
+      )
 
   def testConcatShape(self):
     # Test case for GitHub 21964.

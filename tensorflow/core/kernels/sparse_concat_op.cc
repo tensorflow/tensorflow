@@ -187,6 +187,7 @@ class SparseConcatOp : public OpKernel {
                     "Concat dimension must be in range [", -input_rank, ", ",
                     input_rank, "), got ", concat_dim_attr_)));
     TensorShape output_shape = input_shape;
+    int64_t final_concat_dim = output_shape.dim_size(concat_dim);
     // Accumulate the concat dimension with overflow-safe addition,
     // then use SetDimWithStatus so RecomputeNumElements can catch
     // output volume overflow from the enlarged shape.
@@ -197,24 +198,26 @@ class SparseConcatOp : public OpKernel {
           absl::InvalidArgumentError(absl::StrCat(
               "Ranks of all input tensors must match: expected ", input_rank,
               " but got ", current_shape.dims(), " at position ", i)));
+
       for (int j = 0; j < input_rank; ++j) {
-        if (j != concat_dim) {
-          OP_REQUIRES(
-              context, input_shape.dim_size(j) == current_shape.dim_size(j),
-              absl::InvalidArgumentError(absl::StrCat(
-                  "Input shapes must match: expected ", input_shape.dim_size(j),
-                  " for dimension ", j, " but got ", current_shape.dim_size(j),
-                  " at position ", i)));
-        } else {
-          int64_t new_dim = AddWithoutOverflow(output_shape.dim_size(j),
-                                               current_shape.dim_size(j));
-          OP_REQUIRES(context, new_dim >= 0,
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "Concat dimension overflowed at position ", i)));
-          OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(j, new_dim));
-        }
+        if (j == concat_dim) continue;
+        OP_REQUIRES(
+            context, input_shape.dim_size(j) == current_shape.dim_size(j),
+            absl::InvalidArgumentError(absl::StrCat(
+                "Input shapes must match: expected ", input_shape.dim_size(j),
+                " for dimension ", j, " but got ", current_shape.dim_size(j),
+                " at position ", i)));
       }
+
+      final_concat_dim = AddWithoutOverflow(final_concat_dim,
+                                            current_shape.dim_size(concat_dim));
+      OP_REQUIRES(context, final_concat_dim >= 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Concat dimension overflowed at position ", i)));
     }
+    OP_REQUIRES_OK(
+        context,
+        output_shape.SetDimWithStatus(concat_dim, final_concat_dim));
 
     Tensor* output_shape_out = nullptr;
     OP_REQUIRES_OK(
