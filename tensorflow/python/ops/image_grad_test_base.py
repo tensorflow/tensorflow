@@ -582,6 +582,26 @@ class CropAndResizeOpTestBase(test.TestCase):
               )
           )
 
+    if test_util.is_gpu_available():
+      with test_util.device(use_gpu=True):
+        for bad_val in [np.nan, np.inf, -np.inf]:
+          boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+          # On GPU, non-finite coordinates are safely skipped by the
+          # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
+          grad_boxes = self.evaluate(
+              image_ops.crop_and_resize_grad_boxes(
+                  grads, image, boxes_bad, box_ind
+              )
+          )
+          self.assertIsNotNone(grad_boxes)
+          grad_image = self.evaluate(
+              image_ops.crop_and_resize_grad_image(
+                  grads, boxes_bad, box_ind, image_size, T=dtypes.float32
+              )
+          )
+          self.assertIsNotNone(grad_image)
+
+
 
 
 @test_util.run_all_in_graph_and_eager_modes

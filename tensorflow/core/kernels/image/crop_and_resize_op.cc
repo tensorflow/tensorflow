@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/image/crop_and_resize_op.h"
 
+#include <cmath>
 #include <functional>
 #include <string>
 

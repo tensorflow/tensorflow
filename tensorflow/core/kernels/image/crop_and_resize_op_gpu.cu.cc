@@ -181,14 +181,14 @@ __global__ void CropAndResizeBackpropImageKernel(
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
                            : 0.5f * (y1 + y2) * (image_height - 1);
-    if (in_y < 0 || in_y > image_height - 1) {
+    if (!(in_y >= 0 && in_y <= image_height - 1)) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
                            : 0.5f * (x1 + x2) * (image_width - 1);
-    if (in_x < 0 || in_x > image_width - 1) {
+    if (!(in_x >= 0 && in_x <= image_width - 1)) {
       continue;
     }
 
@@ -283,14 +283,14 @@ __global__ void CropAndResizeBackpropBoxesKernel(
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
                            : 0.5f * (y1 + y2) * (image_height - 1);
-    if (in_y < 0 || in_y > image_height - 1) {
+    if (!(in_y >= 0 && in_y <= image_height - 1)) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
                            : 0.5f * (x1 + x2) * (image_width - 1);
-    if (in_x < 0 || in_x > image_width - 1) {
+    if (!(in_x >= 0 && in_x <= image_width - 1)) {
       continue;
     }
 
