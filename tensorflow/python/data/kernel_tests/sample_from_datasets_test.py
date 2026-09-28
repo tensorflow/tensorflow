@@ -310,9 +310,7 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         [d1, d2],
         weights=constant_op.constant([0.0, 1.0]),
         stop_on_empty_dataset=False)
-    result = list(ds.as_numpy_iterator())
-    # Only d2 elements should appear (d1 has zero weight)
-    self.assertAllEqual(result, [4, 5, 6])
+    self.assertDatasetProduces(ds, [4, 5, 6])
 
 
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
