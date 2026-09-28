@@ -35,6 +35,12 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
   """See `Dataset.sample_from_datasets()` for details."""
 
   def _skip_datasets_with_zero_weight(datasets, weights):
+    # stateless_multinomial never selects a negative or NaN weight either, so
+    # it would hang sampling like a zero weight does. It is not a probability,
+    # so reject it rather than skip it.
+    if not all(weight >= 0 for weight in weights):
+      raise ValueError(f"Invalid `weights`. `weights` must be non-negative "
+                       f"but got {weights}.")
     datasets_and_weights = [(dataset, weight)
                             for (dataset, weight) in zip(datasets, weights)
                             if weight > 0]
@@ -64,23 +70,22 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      #
-      # A dataset with zero weight is never selected, so it is never found to
-      # be empty, and unless `stop_on_empty_dataset` is set, sampling would
-      # never end once the other datasets are exhausted. Skip such datasets
-      # whenever the weights are available here: a list, or a tensor with a
-      # known value, such as an eager tensor or a constant.
-      if isinstance(weights, tensor.Tensor):
-        weights_value = tensor_util.constant_value(weights)
-        if weights_value is not None:
-          weights = weights_value
-      if not isinstance(weights, tensor.Tensor):
-        datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
       weights = ops.convert_to_tensor(weights, name="weights")
       if weights.dtype not in (dtypes.float32, dtypes.float64):
         raise TypeError(f"Invalid `weights`. `weights` type must be either "
                         f"`tf.float32` or `tf.float64` but is "
                         f"{weights.dtype}.")
+
+      # A dataset with zero weight is never selected, so it is never found to
+      # be empty, and unless `stop_on_empty_dataset` is set, sampling would
+      # never end once the other datasets are exhausted. Skip such datasets
+      # whenever the weights are known here, as they are for a list of
+      # numbers, an eager tensor or a constant.
+      weights_value = tensor_util.constant_value(weights)
+      if weights_value is not None:
+        datasets, weights = _skip_datasets_with_zero_weight(
+            datasets, weights_value)
+        weights = ops.convert_to_tensor(weights, name="weights")
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.
