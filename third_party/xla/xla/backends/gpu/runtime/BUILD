@@ -1140,6 +1140,7 @@ xla_test(
         ":custom_call_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

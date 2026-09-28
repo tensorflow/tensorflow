@@ -150,6 +150,7 @@ xla_cc_test(
     deps = [
         ":c_api",
         ":ffi",
+        "//xla:custom_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

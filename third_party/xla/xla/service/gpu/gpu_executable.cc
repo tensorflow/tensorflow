@@ -728,9 +728,13 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{
-        &collective_params,          &collective_clique_requests,
-        &collective_memory_requests, executor,
-        &buffer_allocations,         &execution_scoped_state};
+        &collective_params,
+        &collective_clique_requests,
+        &collective_memory_requests,
+        executor,
+        &buffer_allocations,
+        &execution_scoped_state,
+        run_options->run_options().custom_options()};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     ABSL_RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
