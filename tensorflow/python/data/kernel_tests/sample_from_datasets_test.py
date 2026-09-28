@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
@@ -293,6 +294,25 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, r"Invalid `datasets`. `datasets` should not be empty."):
       dataset_ops.Dataset.sample_from_datasets(datasets=[], weights=[])
+
+
+  def testZeroWeightTensorDoesNotHang(self):
+    """Regression test for GitHub issue #128108.
+
+    When weights is a tf.Tensor with a zero entry and stop_on_empty_dataset
+    is False, sample_from_datasets should terminate cleanly instead of
+    hanging in an infinite loop inside directed_interleave.
+    """
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+    # Pass weights as a tf.Tensor (the bug path) with a zero entry
+    ds = dataset_ops.Dataset.sample_from_datasets(
+        [d1, d2],
+        weights=constant_op.constant([0.0, 1.0]),
+        stop_on_empty_dataset=False)
+    result = list(ds.as_numpy_iterator())
+    # Only d2 elements should appear (d1 has zero weight)
+    self.assertAllEqual(result, [4, 5, 6])
 
 
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
