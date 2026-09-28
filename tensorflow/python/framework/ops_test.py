@@ -2671,6 +2671,16 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope_v2(""):
       pass
 
+  def testNameScopeV2InvalidCharsEagerTrailingSlash(self):
+    """Invalid characters should be rejected before trailing-slash handling."""
+    with self.assertRaisesRegex(ValueError, "is not a valid root scope name"):
+      with ops.name_scope_v2("invalid space/"):
+        pass
+    with ops.name_scope_v2("valid_outer"):
+      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+        with ops.name_scope_v2("invalid space/"):
+          pass
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()
