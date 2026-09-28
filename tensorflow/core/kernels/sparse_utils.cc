@@ -207,8 +207,9 @@ absl::Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
   int64_t nnz = indices.dim_size(0);
   int64_t ndims = indices.dim_size(1);
 
-  // Reject rank-0 tensors. If ndims=0, the inner bounds-checking loop
-  // never executes, allowing crafted inputs to bypass validation.
+  // Rank-0 sparse tensors have no index coordinates, so the loop below
+  // would accept them vacuously. Callers that request index validation
+  // assume rank >= 1 (e.g. they read shape(0)), so reject rank 0 here.
   if (ndims == 0) {
     return absl::InvalidArgumentError(
         "Sparse tensor must have at least 1 dimension (ndims >= 1), got 0.");
@@ -238,8 +239,7 @@ absl::Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
   int64_t nnz = indices.dim_size(0);
   int64_t ndims = indices.dim_size(1);
 
-  // Reject rank-0 tensors for consistency with the unordered variant
-  // and to prevent bounds-check bypass when ndims=0.
+  // Same policy as the unordered variant.
   if (ndims == 0) {
     return absl::InvalidArgumentError(
         "Sparse tensor must have at least 1 dimension (ndims >= 1), got 0.");
