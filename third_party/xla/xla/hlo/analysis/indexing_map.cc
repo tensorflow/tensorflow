@@ -922,6 +922,16 @@ RangeEvaluator IndexingMap::GetRangeEvaluator() const {
   return RangeEvaluator(*this, GetMLIRContext());
 }
 
+llvm::SmallVector<Interval> IndexingMap::ComputeResultRanges() const {
+  RangeEvaluator range_evaluator = GetRangeEvaluator();
+  llvm::SmallVector<Interval> ranges;
+  ranges.reserve(GetNumResults());
+  for (SymbolicExpr expr : symbolic_map_.GetResults()) {
+    ranges.push_back(range_evaluator.ComputeExpressionRange(expr));
+  }
+  return ranges;
+}
+
 const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
   return dim_vars_[dim_id].bounds;
 }

@@ -67,36 +67,6 @@ option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 
-# The TFLite runtime builds from this repository plus a few header-only TensorFlow
-# files (see tools/cmake/modules/Findtensorflow_headers.cmake). A full TensorFlow
-# source tree is only needed by the kernel tests.
-set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
-  "Directory that contains the TensorFlow project. Only needed when \
-TFLITE_KERNEL_TEST is ON."
-)
-if(TFLITE_KERNEL_TEST)
-  if(NOT TENSORFLOW_SOURCE_DIR)
-    message(STATUS "Downloading TensorFlow repository...")
-    include(FetchContent)
-    FetchContent_Declare(
-      tensorflow
-      GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
-      GIT_TAG v2.21.0-rc0
-      GIT_SHALLOW TRUE
-      GIT_PROGRESS TRUE
-      SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tensorflow-src
-    )
-    FetchContent_GetProperties(tensorflow)
-    if(NOT tensorflow_POPULATED)
-      FetchContent_Populate(tensorflow)
-    endif()
-    set(TENSORFLOW_SOURCE_DIR "${tensorflow_SOURCE_DIR}")
-  endif()
-  set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
-  set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
-  set(XLA_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/")
-endif()
-
 if(${CMAKE_CROSSCOMPILING})
   set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
   if(TFLITE_HOST_TOOLS_DIR STREQUAL "")
@@ -168,14 +138,6 @@ macro(populate_tflite_source_vars RELATIVE_DIR SOURCES_VAR)
     "${TFLITE_SOURCE_DIR}/${RELATIVE_DIR}" ${SOURCES_VAR} ${ARGN}
   )
 endmacro()
-# Simplifies inclusion of non-test sources and headers from a directory
-# relative to TF_SOURCE_DIR. See populate_source_vars() for the description of
-# arguments including and following SOURCES_VAR.
-macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
-  populate_source_vars(
-    "${TF_SOURCE_DIR}/${RELATIVE_DIR}" ${SOURCES_VAR} ${ARGN}
-  )
-endmacro()
 # Make sure all repos have licenses.
 set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK ON)
 # Additional library dependencies based upon enabled features.
@@ -197,14 +159,6 @@ find_package(ruy REQUIRED)
 # Header-only TensorFlow dependencies (xla/tsl/..., third_party/fft2d/...).
 find_package(tensorflow_headers REQUIRED)
 include_directories(${TENSORFLOW_HEADERS_INCLUDE_DIR})
-if(TENSORFLOW_SOURCE_DIR)
-  include_directories(
-    AFTER
-    ${TENSORFLOW_SOURCE_DIR}
-    ${TSL_SOURCE_DIR}
-    ${XLA_SOURCE_DIR}
-  )
-endif()
 # Download necessary dependencies.
 if(TFLITE_ENABLE_XNNPACK)
   # pthreadpool is used by XNNPACK.
