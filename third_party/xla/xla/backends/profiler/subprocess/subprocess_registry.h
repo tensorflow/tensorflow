@@ -20,13 +20,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace xla {
@@ -38,6 +41,37 @@ struct SubprocessInfo {
   int32_t pid;
   std::string address;
   std::shared_ptr<tensorflow::grpc::ProfilerService::Stub> profiler_stub;
+
+  // The fields below are optional and opt-in. Their defaults keep the behavior
+  // used by `RegisterSubprocess` and the subprocess profiler factory, so
+  // existing callers see no change.
+
+  // gRPC metadata (key, value) added to every Profile and Terminate RPC sent
+  // to this subprocess, for example to identify the caller to a profiler
+  // service that serves more than one client.
+  std::vector<std::pair<std::string, std::string>> grpc_metadata;
+
+  // Set to true to keep planes that carry no process id, for example planes
+  // from a subprocess that does not use `ProfilerSession`. They are tagged
+  // with `pid` and merged with a " [<pid>]" suffix. By default
+  // `MergeSubprocessXSpace` drops them.
+  bool keep_planes_without_pid = false;
+
+  // Set to true when this subprocess is the only process that profiles the
+  // devices. Its device planes (`/device:*`, `#Chip*`) and its
+  // `/host:metadata` plane are then moved into the merged XSpace unchanged,
+  // instead of getting a " [<pid>]" suffix, and the request keeps the caller's
+  // device type instead of forcing CPU. Only one subprocess per profiling
+  // session should set this, or the verbatim planes can collide.
+  bool device_owner = false;
+
+  // Deadline for the Profile RPC, measured from `Start()`. No deadline if
+  // unset. The Profile RPC normally ends when `Stop()` sends Terminate, so
+  // this only matters if the subprocess never answers.
+  std::optional<absl::Duration> profile_rpc_timeout;
+
+  // Deadline for the Terminate RPC sent by `Stop()`. No deadline if unset.
+  std::optional<absl::Duration> terminate_rpc_timeout;
 
   template <typename H>
   friend H AbslHashValue(H h, const SubprocessInfo& subprocess) {

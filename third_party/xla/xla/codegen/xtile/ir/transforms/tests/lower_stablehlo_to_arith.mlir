@@ -234,8 +234,18 @@ func.func @lower_pow_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor
 
 func.func @lower_pow_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
   // CHECK: math.ipowi
+  // CHECK-NOT: xla.is_unsigned
   %0 = stablehlo.power %arg0, %arg1 : tensor<2x4xi32>
   return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_pow_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: math.ipowi {{.*}} {xla.is_unsigned}
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.power %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
 }
 // -----
 
