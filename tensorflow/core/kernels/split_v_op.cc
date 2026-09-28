@@ -101,7 +101,15 @@ class SplitVOpBase : public OpKernel {
             "-input rank(-", input.dims(), ") <= split_dim < input rank (",
             input.dims(), "), but got ", split_dim_orig)));
 
-    Tlen input_size_split_dim = input_shape.dim_size(split_dim);
+    // Check that the input size fits in Tlen before converting it. Otherwise
+    // an int32 or int8 Tlen truncates it, and split sizes that sum to the
+    // truncated size silently drop the rest of the input.
+    const int64_t actual_input_size = input_shape.dim_size(split_dim);
+    OP_REQUIRES(context, actual_input_size <= std::numeric_limits<Tlen>::max(),
+                errors::InvalidArgument(
+                    "Input size along split_dim must be <= max(Tlen). Got: ",
+                    actual_input_size));
+    Tlen input_size_split_dim = static_cast<Tlen>(actual_input_size);
 
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
@@ -144,9 +152,9 @@ class SplitVOpBase : public OpKernel {
         // since the accepted total then bounds every partial sum.
         OP_REQUIRES(context,
                     determined_size <= std::numeric_limits<Tlen>::max() - size,
-                    absl::InvalidArgumentError(absl::StrCat(
+                    errors::InvalidArgument(
                         "Sum of size_splits overflows the index type at index ",
-                        d, ".")));
+                        d, "."));
         determined_size += size;
       }
     }
@@ -164,13 +172,6 @@ class SplitVOpBase : public OpKernel {
 
     if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
-    }
-
-    for (int i = 0; i < split_sizes_vec->size(); ++i) {
-      const Tlen& split_size = (*split_sizes_vec)[i];
-      OP_REQUIRES(context, split_size >= Tlen(0),
-                  errors::InvalidArgument("Split size at index ", i,
-                                          " must be >= 0. Got: ", split_size));
     }
 
     // Special case 2: split along the 1st dimension. The requirements are that
