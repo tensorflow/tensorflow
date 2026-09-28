@@ -63,7 +63,7 @@ class IntrinsicFunctionLib {
   std::vector<std::unique_ptr<IntrinsicFunction>> intrinsic_functions_;
   absl::flat_hash_map<absl::string_view, absl::string_view> targets_;
   const intrinsics::IntrinsicOptions options_;
-  std::vector<std::unique_ptr<CppGenIntrinsicLibrary>> ir_libraries_;
+  std::vector<CppGenIntrinsicLibrary> ir_libraries_;
 };
 
 }  // namespace xla::codegen

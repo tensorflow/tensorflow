@@ -206,6 +206,71 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "expm1",
+    srcs = ["expm1.cc"],
+    hdrs = ["expm1.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "expm1_32_ll",
+    src = "expm1.cc",
+    copts = [
+        "-mprefer-vector-width=256",
+    ],
+    deps = [
+        ":cpp_context_provider",
+        ":expm1",
+        ":vector_ops",
+    ],
+)
+
+cc_ir_header(
+    name = "expm1_64_ll",
+    src = "expm1.cc",
+    copts = [
+        "-mprefer-vector-width=512",
+    ] + if_oss(
+        [],
+        select({
+            ":x86_64": ["-mavx512f"],
+            "//conditions:default": [],
+        }),
+    ),
+    deps = [
+        ":cpp_context_provider",
+        ":expm1",
+        ":vector_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "expm1_test",
+    srcs = ["expm1_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":expm1",
+        ":expm1_32_ll",
+        ":expm1_64_ll",
+        ":vector_ops",
+        "//xla:types",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_binary(
     name = "dump_llvm_ir",
     srcs = ["dump_llvm_ir.cc"],
@@ -225,6 +290,8 @@ cc_library(
     deps = [
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
+        ":expm1_32_ll",
+        ":expm1_64_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",
