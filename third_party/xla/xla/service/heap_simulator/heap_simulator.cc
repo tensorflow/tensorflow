@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "third_party/ortools/ortools/algorithms/multikey_radix_sort.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -2055,6 +2056,69 @@ std::string RenderTimeByFreeChunks(
 
 }  // namespace
 
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive sort
+// strategy.
+//
+// Optimizations:
+// 1. Tuned cutoff: For small arrays (N < 3000), elements fit entirely
+//    within L1/L2 cache (<48 KB). `absl::c_sort` is faster than radix sort.
+// 2. Single pass to check sortedness, inversion profiling, diff_bits:
+//    - If `inversions == 0` or `diff_bits == 0`, chunks are already in order;
+//      returns immediately.
+//    - If nearly sorted (`inversions <= n / 10`), introsort does almost zero
+//      swaps and beats radix sort by >2x.
+// 3. AutoRadixSort:
+//    For high-entropy inputs with N >= 3000, dispatches to zero-allocation
+//    `operations_research::AutoRadixSort`, reusing the caller-provided scratch
+//    buffer without heap reallocations.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch) {
+  using Chunk = HeapSimulator::Chunk;
+  const size_t n = chunks.size();
+
+  // Small lists fit in L1/L2 cache and sort fastest with introsort.
+  if (n < 3000) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Single pass for sortedness, inversion count, and bitmask.
+  int64_t prev = chunks[0].offset;
+  const uint64_t first_key = static_cast<uint64_t>(prev);
+  uint64_t diff_bits = 0;
+  size_t inversions = 0;
+  const size_t max_inversions_for_stdsort = n / 10;
+
+  for (size_t i = 1; i < n; ++i) {
+    const int64_t curr = chunks[i].offset;
+    diff_bits |= (static_cast<uint64_t>(curr) ^ first_key);
+    if (curr < prev) {
+      ++inversions;
+    }
+    prev = curr;
+  }
+
+  // Immediate early exit for already-sorted or uniform arrays.
+  if (inversions == 0 || diff_bits == 0) {
+    return;
+  }
+
+  // For nearly-sorted data, introsort does almost no swaps and beats radix
+  // sort.
+  if (inversions <= max_inversions_for_stdsort) {
+    absl::c_sort(chunks, [](const Chunk& a, const Chunk& b) {
+      return a.offset < b.offset;
+    });
+    return;
+  }
+
+  // Use zero-allocation AutoRadixSort.
+  operations_research::AutoRadixSort(
+      chunks, scratch, [](const Chunk& chunk) { return chunk.offset; });
+}
+
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     SlicedAllocationFinder(
@@ -2556,12 +2620,8 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
-  const SlicedBufferInterval sliced_buffer_interval =
-      SlicedBufferInterval::CreateConstInterval(buffer_interval);
-  std::vector<Chunk> chunks =
-      FindChunkCandidates(sliced_buffer_interval, preferred_offset);
-  CHECK_EQ(chunks.size(), 1);
-  return chunks[0];
+  return FindUnslicedChunkCandidate(
+      buffer_interval, GetMaxColocationSize(buffer_interval), preferred_offset);
 }
 
 template <typename BufferType>
@@ -2588,9 +2648,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunksList(
         });
   }
 
-  // Sort used chunks by offset ascending.
-  std::sort(used_chunks_.begin(), used_chunks_.end(),
-            [](const Chunk& a, const Chunk& b) { return a.offset < b.offset; });
+  // Sort used chunks by offset ascending using adaptive hybrid sort.
+  AdaptiveHybridSortChunks(used_chunks_, radix_scratch_);
 
   free_chunks_list_.clear();
   if (used_chunks_.empty()) {
@@ -2770,6 +2829,65 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindUnslicedChunkCandidates(
   }
 
   return result;
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
+GlobalDecreasingSizeBestFitHeap<BufferType>::FindUnslicedChunkCandidate(
+    const BufferInterval& buffer_interval, int64_t max_colocation_size,
+    int64_t preferred_offset) const {
+  const std::vector<std::pair<int64_t, int64_t>>& free_chunks =
+      MakeFreeChunksList(buffer_interval, max_colocation_size);
+  CHECK(!free_chunks.empty());
+  const int64_t slice_size = buffer_interval.size;
+
+  // Fast path: try to place at preferred_offset if specified and aligned.
+  bool preferred_offset_specified = preferred_offset >= 0;
+  bool preferred_offset_aligned = preferred_offset % alignment_ == 0;
+
+  if (preferred_offset_specified && preferred_offset_aligned) {
+    auto it = std::upper_bound(
+        free_chunks.begin(), free_chunks.end(), preferred_offset,
+        [](int64_t offset, const std::pair<int64_t, int64_t>& free_chunk) {
+          return offset < free_chunk.first;
+        });
+    // Since `it` is the first chunk starting after `preferred_offset`, the only
+    // candidate chunk that could contain `preferred_offset` is `prev(it)`.
+    // If it extends far enough to fit `max_colocation_size`, place it directly.
+    if (it != free_chunks.begin()) {
+      const std::pair<int64_t, int64_t>& free_chunk = *std::prev(it);
+      if (preferred_offset < free_chunk.second &&
+          free_chunk.second - max_colocation_size >= preferred_offset) {
+        return Chunk::FromOffsetSize(preferred_offset, slice_size);
+      }
+    }
+  }
+
+  // If the fast path did not match a preferred_offset, we search free_chunks to
+  // find the tightest-fitting free space
+  int64_t best_offset = -1;
+  int64_t best_size = std::numeric_limits<int64_t>::max();
+  for (const std::pair<int64_t, int64_t>& free_chunk : free_chunks) {
+    // If the free chunk starts at an unaligned offset, we align it to the
+    // nearest aligned one
+    int64_t aligned_start = free_chunk.first;
+    if (aligned_start % alignment_ != 0) {
+      aligned_start += alignment_ - (aligned_start % alignment_);
+    }
+    // Check if the free chunk is large enough to fit the buffer size.
+    if (free_chunk.second - max_colocation_size < aligned_start) {
+      continue;
+    }
+    // If the free chunk is larger than the best size found so far, update
+    // the best size and best offset.
+    const int64_t size = free_chunk.second - free_chunk.first;
+    if (best_offset < 0 || size < best_size) {
+      best_size = size;
+      best_offset = aligned_start;
+    }
+  }
+  CHECK_GE(best_offset, 0);
+  return Chunk::FromOffsetSize(best_offset, slice_size);
 }
 
 template <typename BufferType>

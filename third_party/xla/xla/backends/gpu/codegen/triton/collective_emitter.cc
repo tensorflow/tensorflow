@@ -372,6 +372,56 @@ mlir::LogicalResult PopulateReductionComputation(
   return mlir::success();
 }
 
+// Emits code that reads the last barrier signal value posted by this block from
+// its own slot in the local rank's signal buffer (`SignalBuffers[rank]
+// [block_id * world_size + rank]`) and returns `last + 1` as the signal value
+// for this launch's first barrier. It replaces the host-provided invocation
+// count argument (see `CollectiveCodegenConfig::device_sync_count`).
+//
+// `BlockBarrierOp` writes the barrier signal value into
+// `SignalBuffers[0..world_size][block_id * world_size + rank]` (after a local
+// CTA barrier in `AllReduce`, or from warp 0 in `AllGather`), and no other rank
+// or block ever writes to `SignalBuffers[rank][block_id * world_size + rank]`.
+// For two-shot `AllReduce`, the second barrier writes `signal_value + 1`, so
+// the slot advances by 2 across launches and adding 1 at entry yields the next
+// launch's first signal value. Signal buffers are allocated and zeroed once per
+// executor, so the counter persists across executions (including CUDA graph
+// replays and device-side loops) without any extra store or thread barrier.
+mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
+                                      mlir::Value signal_buffers,
+                                      mlir::Value rank, mlir::Value block_id,
+                                      int64_t world_size) {
+  const auto ptr_to_i32_type =
+      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace);
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  mlir::Value signal_buffers_i64 =
+      ttir::BitcastOp::create(b, ptr_to_i64_type, signal_buffers);
+  // SignalBuffers[rank]
+  mlir::Value local_signal_buffer_i64 = ttir::LoadOp::create(
+      b, ttir::AddPtrOp::create(b, ptr_to_i64_type, signal_buffers_i64, rank),
+      ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
+      /*isVolatile=*/false);
+  mlir::Value local_signal_buffer =
+      ttir::IntToPtrOp::create(b, ptr_to_i32_type, local_signal_buffer_i64);
+  // SignalBuffers[rank][block_id * world_size + rank]
+  mlir::Value counter_index = arith::AddIOp::create(
+      b,
+      arith::MulIOp::create(
+          b, block_id,
+          arith::ConstantOp::create(
+              b, b.getI32IntegerAttr(static_cast<int32_t>(world_size)))),
+      rank);
+  mlir::Value counter_ptr = ttir::AddPtrOp::create(
+      b, ptr_to_i32_type, local_signal_buffer, counter_index);
+  // Volatile to make sure that every launch reads the counter from memory.
+  mlir::Value counter = ttir::LoadOp::create(
+      b, counter_ptr, ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
+      /*isVolatile=*/true);
+  return arith::AddIOp::create(
+      b, counter, arith::ConstantOp::create(b, b.getI32IntegerAttr(1)));
+}
+
 class AllReduceEmitter {
  public:
   static mlir::LogicalResult Emit(AllReduceEmitterContext ctx,
@@ -414,8 +464,8 @@ class AllReduceEmitter {
     const int32_t start_idx = ctx_.num_input_output_args;
     device_rank_ = ctx_.xtile_entry_fn.getArgument(start_idx);
     CHECK(device_rank_.getType().isInteger(32));
-    signal_value_ = ctx_.xtile_entry_fn.getArgument(start_idx + 1);
-    CHECK(signal_value_.getType().isInteger(32));
+    // The invocation count argument (`start_idx + 1`) is unused: the signal
+    // value comes from a counter in device memory (see Emit setup IR below).
     // !tt.ptr<i64>
     signal_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 2);
     // !tt.ptr<i64>
@@ -460,6 +510,9 @@ class AllReduceEmitter {
           << "Subtile shape: " << absl::StrJoin(subtile_shape_, ",");
     }
     // 3. Emit setup IR.
+    mlir::Value block_id = ttir::GetProgramIdOp::create(builder_, 0);
+    signal_value_ = EmitDeviceInvocationCount(
+        builder_, signal_buffers_, device_rank_, block_id, ctx_.world_size);
     if (remote_input_buffers_.getType() == ptr_to_i64_type_) {
       remote_input_buffers_i64_ = remote_input_buffers_;
     } else {
@@ -1246,9 +1299,9 @@ absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
   int32_t total_args = entry_func.getNumArguments();
   int32_t opaque_start =
       total_args - num_opaque_attr.getInt() - kNumTileIndexArgs;
-  // Layout: opaque[0]=rank, opaque[1]=signal_value, opaque[2]=signal_buffers
+  // Layout: opaque[0]=rank, opaque[1]=invocation count (unused, the signal
+  // value comes from a counter in device memory), opaque[2]=signal_buffers.
   mlir::Value rank_arg = entry_func.getArgument(opaque_start);
-  mlir::Value signal_value_arg = entry_func.getArgument(opaque_start + 1);
   mlir::Value signal_buffers_arg = entry_func.getArgument(opaque_start + 2);
 
   // Insert at the beginning of the entry block, right after program_id
@@ -1258,10 +1311,13 @@ absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
   auto loc = entry_func.getLoc();
   mlir::ImplicitLocOpBuilder builder(loc, &entry_block, entry_block.begin());
 
+  mlir::Value block_id = ttir::GetProgramIdOp::create(builder, 0);
+  mlir::Value signal_value = EmitDeviceInvocationCount(
+      builder, signal_buffers_arg, rank_arg, block_id, world_size);
   // Inter-block barrier via signal flags. This blocks until all
   // remote ranks have also signaled.
   mtx::BlockBarrierOp::create(builder, signal_buffers_arg, rank_arg,
-                              signal_value_arg,
+                              signal_value,
                               builder.getI32IntegerAttr(world_size));
 
   return absl::OkStatus();

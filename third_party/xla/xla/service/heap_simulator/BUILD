@@ -53,6 +53,7 @@ cc_library(
     deps = [
         ":allocation_block",
         ":free_chunks_manager",
+        "//third_party/ortools/ortools/algorithms:multikey_radix_sort",
         "//xla:comparison_util",
         "//xla:union_find",
         "//xla:util",
