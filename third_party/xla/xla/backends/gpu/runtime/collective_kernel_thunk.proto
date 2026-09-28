@@ -63,6 +63,12 @@ message CollectiveKernelSpecProto {
   repeated KernelArgDescriptorProto argument_descriptors = 4;
   int32 invocation_count_increment = 5;
   bool copy_input_to_scratch = 6;
+  // If true, the kernel derives its invocation counter from its own barrier
+  // slot in device memory (`SignalBuffers[rank][block_id * world_size + rank]`)
+  // and ignores the invocation count argument. Unset (false) for legacy kernels
+  // that read the invocation count argument.
+  // Will be deprecated and enabled by default by 01/03/2026.
+  bool device_sync_count = 7;
 }
 
 message CollectiveKernelThunkProto {

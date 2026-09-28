@@ -28,6 +28,7 @@ cc_library(
     srcs = ["subprocess_registry.cc"],
     hdrs = ["subprocess_registry.h"],
     visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
         "//xla/python:__pkg__",
     ]),
     deps = [
@@ -74,6 +75,7 @@ cc_library(
     hdrs = ["subprocess_profiling_session.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/xos/client:__pkg__",
         "//xla/python:__pkg__",
     ]),
     deps = [
@@ -174,17 +176,26 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/profiler/utils:tf_xplane_visitor",
+        "//xla/tsl/profiler/utils:timestamp_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
+        "@grpc//:grpc++",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

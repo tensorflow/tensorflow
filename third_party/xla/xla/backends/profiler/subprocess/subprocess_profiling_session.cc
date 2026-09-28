@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/subprocess/subprocess_profiling_session.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -51,15 +53,22 @@ namespace {
 // profiling.
 constexpr uint64_t kInfiniteDurationMs = std::numeric_limits<uint64_t>::max();
 
+// Plane name prefixes that a device-owning subprocess keeps unchanged.
+constexpr absl::string_view kDevicePlanePrefix = "/device:";
+constexpr absl::string_view kChipPlanePrefix = "#Chip";
+
 // Builds a ProfileRequest for the given subprocess and options.
 tensorflow::ProfileRequest BuildProfileRequest(
     const SubprocessInfo& subprocess_info,
     const tensorflow::ProfileOptions& options) {
   tensorflow::ProfileRequest request;
   *request.mutable_opts() = options;
-  // Only support CPU profiling for now. To support other device types, they
-  // will need to be updated to correctly handle subprocess traces.
-  request.mutable_opts()->set_device_type(tensorflow::ProfileOptions::CPU);
+  // Only support CPU profiling for now, unless the subprocess is the single
+  // device owner. To support other device types from several subprocesses,
+  // they will need to be updated to correctly handle subprocess traces.
+  if (!subprocess_info.device_owner) {
+    request.mutable_opts()->set_device_type(tensorflow::ProfileOptions::CPU);
+  }
   request.set_session_id(absl::StrCat("subprocess_", subprocess_info.pid, "_",
                                       absl::ToUnixMillis(absl::Now())));
   request.set_emit_xspace(true);
@@ -75,6 +84,25 @@ inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
                                s.error_message());
 }
 
+// Adds the subprocess metadata and the optional deadline to `context`.
+void ConfigureClientContext(const SubprocessInfo& subprocess_info,
+                            std::optional<absl::Duration> timeout,
+                            grpc::ClientContext& context) {
+  for (const auto& [key, value] : subprocess_info.grpc_metadata) {
+    context.AddMetadata(key, value);
+  }
+  if (timeout.has_value()) {
+    context.set_deadline(absl::ToChronoTime(absl::Now() + *timeout));
+  }
+}
+
+// Returns true for planes that a device-owning subprocess keeps unchanged.
+bool IsVerbatimPlane(absl::string_view name) {
+  return absl::StartsWith(name, kDevicePlanePrefix) ||
+         absl::StartsWith(name, kChipPlanePrefix) ||
+         name == tsl::profiler::kMetadataPlaneName;
+}
+
 }  // namespace
 
 absl::Status SubprocessProfilingSession::Start() {
@@ -83,22 +111,44 @@ absl::Status SubprocessProfilingSession::Start() {
         "Another subprocess profiling session already started.");
   }
   context_.set_wait_for_ready(true);
+  ConfigureClientContext(subprocess_info_, subprocess_info_.profile_rpc_timeout,
+                         context_);
   rpc_ = subprocess_info_.profiler_stub->AsyncProfile(&context_, request_,
                                                       &completion_queue_);
   if (!rpc_) {
-    return absl::InternalError("Failed to start profiling session.");
+    profile_rpc_status_ =
+        absl::InternalError("Failed to start profiling session.");
+    return profile_rpc_status_;
   }
   // Register a memory location for the response with a tag of 1. This tag will
   // be used to verify the results from the CompletionQueue::Next call in
   // Stop().
   rpc_->Finish(&response_, &grpc_status_, (void*)1);
+  profile_rpc_status_ = absl::FailedPreconditionError(
+      "Profile RPC is still running: Stop() was not called.");
   return absl::OkStatus();
+}
+
+bool SubprocessProfilingSession::WaitForProfileRpc() {
+  void* got_tag;
+  bool ok = false;
+  bool success = completion_queue_.Next(&got_tag, &ok);
+  // Whatever Next() returned, the queue holds no more events for this RPC.
+  rpc_finished_ = true;
+  // Verify the response is correct by checking for the tag we passed in the
+  // call to Finish(). See
+  // https://grpc.io/docs/languages/cpp/async/#async-client for more details.
+  return success && ok && got_tag == (void*)1;
 }
 
 absl::Status SubprocessProfilingSession::Stop() {
   if (!rpc_) {
     return absl::FailedPreconditionError(
         "Subprocess profiling session not started.");
+  }
+  if (rpc_finished_) {
+    return absl::FailedPreconditionError(
+        "Subprocess profiling session already stopped.");
   }
   // If there is an error, make sure to cancel the context to avoid
   // heap-use-after-free inside the gRPC library.
@@ -107,17 +157,37 @@ absl::Status SubprocessProfilingSession::Stop() {
   terminate_request.set_session_id(request_.session_id());
   tensorflow::TerminateResponse terminate_response;
   grpc::ClientContext context;
-  ABSL_RETURN_IF_ERROR(FromGrpcStatus(subprocess_info_.profiler_stub->Terminate(
-      &context, terminate_request, &terminate_response)));
+  ConfigureClientContext(subprocess_info_,
+                         subprocess_info_.terminate_rpc_timeout, context);
+  absl::Status terminate_status =
+      FromGrpcStatus(subprocess_info_.profiler_stub->Terminate(
+          &context, terminate_request, &terminate_response));
+  if (!terminate_status.ok()) {
+    // The Profile RPC may never end on its own now. Cancel it so that the
+    // completion queue can be drained before it is destroyed.
+    context_.TryCancel();
+  }
 
   // Wait for the response from the AsyncProfile+Finish calls.
-  void* got_tag;
-  bool ok = false;
-  bool success = completion_queue_.Next(&got_tag, &ok);
-  // Verify the response is correct by checking for the tag we passed in the
-  // call to Finish(). See
-  // https://grpc.io/docs/languages/cpp/async/#async-client for more details.
-  if (!success || !ok || got_tag != (void*)1) {
+  bool profile_rpc_ok = WaitForProfileRpc();
+  // Record how the Profile RPC itself ended. This is what decides whether
+  // there is data to collect: a failed Terminate does not matter if the Profile
+  // RPC already returned its response.
+  profile_rpc_status_ =
+      profile_rpc_ok
+          ? FromGrpcStatus(grpc_status_)
+          : absl::InternalError("Failed to get response from profiler service");
+  if (!profile_rpc_status_.ok() && !terminate_status.ok()) {
+    // A failed Terminate triggers the cancellation above, which usually ends
+    // the Profile RPC as CANCELLED. That alone does not say what went wrong,
+    // so keep the Terminate error too.
+    profile_rpc_status_ = absl::Status(
+        profile_rpc_status_.code(),
+        absl::StrCat(profile_rpc_status_.message(),
+                     "; Terminate failed: ", terminate_status.ToString()));
+  }
+  ABSL_RETURN_IF_ERROR(terminate_status);
+  if (!profile_rpc_ok) {
     return absl::InternalError("Failed to get response from profiler service");
   }
   ABSL_RETURN_IF_ERROR(FromGrpcStatus(grpc_status_));
@@ -129,20 +199,54 @@ absl::Status SubprocessProfilingSession::CollectData(
   if (space == nullptr) {
     return absl::InvalidArgumentError("space is null");
   }
+  if (!profile_rpc_status_.ok()) {
+    // A caller that keeps going when a subprocess fails still produces a
+    // profile, so record in it why this subprocess's planes are missing. There
+    // is no response to merge: it is only filled in when the RPC succeeds.
+    space->add_errors(absl::StrCat("Failed to collect profile from subprocess ",
+                                   subprocess_info_.DebugString(), ": ",
+                                   profile_rpc_status_.ToString()));
+    return absl::OkStatus();
+  }
   if (response_.empty_trace()) {
     space->add_warnings(
         absl::StrCat("No XSpace data returned from subprocess: ",
                      subprocess_info_.DebugString()));
   }
-  if (auto timestamps = tsl::profiler::GetSessionTimestamps(response_.xspace());
+  tensorflow::profiler::XSpace* subprocess_space = response_.mutable_xspace();
+  if (auto timestamps = tsl::profiler::GetSessionTimestamps(*subprocess_space);
       timestamps.has_value()) {
-    tsl::profiler::DenormalizeTimestamps(response_.mutable_xspace(),
-                                         timestamps->first);
+    tsl::profiler::DenormalizeTimestamps(subprocess_space, timestamps->first);
   } else {
     LOG(WARNING) << "No session timestamps found. Skipping denormalizing "
                     "timestamps.";
   }
-  tsl::profiler::MergeSubprocessXSpace(*space, response_.xspace());
+  if (subprocess_info_.device_owner) {
+    // Move the device and metadata planes as they are. MergeSubprocessXSpace
+    // would add a " [<pid>]" suffix, and tools only recognize these planes by
+    // their exact names.
+    auto* planes = subprocess_space->mutable_planes();
+    auto first_verbatim =
+        std::stable_partition(planes->pointer_begin(), planes->pointer_end(),
+                              [](const tensorflow::profiler::XPlane* plane) {
+                                return !IsVerbatimPlane(plane->name());
+                              });
+    const auto num_kept = first_verbatim - planes->pointer_begin();
+    for (auto it = first_verbatim; it != planes->pointer_end(); ++it) {
+      VLOG(1) << "Moving plane from device owner "
+              << subprocess_info_.DebugString()
+              << " unchanged: " << (*it)->name();
+      *space->add_planes() = std::move(**it);
+    }
+    planes->erase(planes->begin() + num_kept, planes->end());
+  }
+  if (subprocess_info_.keep_planes_without_pid) {
+    // MergeSubprocessXSpace drops planes without a pid. Tag them with the
+    // subprocess pid so they are kept.
+    tsl::profiler::SetXSpacePidIfNotSet(*subprocess_space,
+                                        subprocess_info_.pid);
+  }
+  tsl::profiler::MergeSubprocessXSpace(*space, *subprocess_space);
   // Do not fail other profilers due to subprocess profiling failure.
   return absl::OkStatus();
 }
@@ -154,6 +258,15 @@ SubprocessProfilingSession::SubprocessProfilingSession(
   // Set the empty trace flag to true by default. This will be set to false
   // once the response is received from the subprocess.
   response_.set_empty_trace(true);
+}
+
+SubprocessProfilingSession::~SubprocessProfilingSession() {
+  if (rpc_ && !rpc_finished_) {
+    // The completion queue must not be destroyed with the Profile RPC still
+    // pending, for example when Stop() was never called.
+    context_.TryCancel();
+    WaitForProfileRpc();
+  }
 }
 
 absl::StatusOr<std::unique_ptr<SubprocessProfilingSession>>
