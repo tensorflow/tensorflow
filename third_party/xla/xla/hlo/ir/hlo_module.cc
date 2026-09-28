@@ -595,6 +595,8 @@ std::string HloModule::ToString() const {
                                       : HloPrintOptions::ShortParsable();
   print_options.set_print_large_constants(
       db_options.xla_dump_large_constants());
+  print_options.set_print_custom_call_body(
+      db_options.xla_dump_custom_call_body());
   print_options.set_print_metadata(!db_options.xla_dump_disable_metadata());
   print_options.set_syntax_sugar_async_ops(
       db_options.xla_syntax_sugar_async_ops());

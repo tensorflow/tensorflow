@@ -714,6 +714,54 @@ TEST(DumpHloIfEnabled, CompactGte) {
   EXPECT_TRUE(absl::StrContains(data, "%p0#1"));
 }
 
+TEST(DumpHloIfEnabled, CustomCallBodyControlledByFlag) {
+  auto env = tsl::Env::Default();
+  const char* kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      ROOT cc = f32[10] custom-call(p0), custom_call_target="tpu_custom_call", backend_config={"custom_call_config":{"body":"very_long_custom_call_body","serialization_format":1}}
+    }
+  )";
+
+  {
+    HloModuleConfig config;
+    DebugOptions options = GetDebugOptionsFromFlags();
+    std::string dump_dir;
+    EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+    options.set_xla_dump_to(dump_dir);
+    options.set_xla_dump_hlo_as_text(true);
+    config.set_debug_options(options);
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnUnverifiedModule(kModuleStr, config));
+    auto paths = DumpHloModuleIfEnabled(*m, "dump_default");
+    ASSERT_FALSE(paths.empty());
+    std::string data;
+    EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+    EXPECT_TRUE(absl::StrContains(data, R"("body":"...")"));
+    EXPECT_FALSE(absl::StrContains(data, "very_long_custom_call_body"));
+  }
+
+  {
+    HloModuleConfig config;
+    DebugOptions options = GetDebugOptionsFromFlags();
+    std::string dump_dir;
+    EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+    options.set_xla_dump_to(dump_dir);
+    options.set_xla_dump_hlo_as_text(true);
+    options.set_xla_dump_custom_call_body(true);
+    config.set_debug_options(options);
+    ASSERT_OK_AND_ASSIGN(auto m,
+                         ParseAndReturnUnverifiedModule(kModuleStr, config));
+    auto paths = DumpHloModuleIfEnabled(*m, "dump_full");
+    ASSERT_FALSE(paths.empty());
+    std::string data;
+    EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+    EXPECT_TRUE(
+        absl::StrContains(data, R"("body":"very_long_custom_call_body")"));
+  }
+}
+
 class DumpModuleFilterTest : public ::testing::Test {
  protected:
   void SetUp() override {

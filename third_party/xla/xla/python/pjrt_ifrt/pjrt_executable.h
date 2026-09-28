@@ -322,11 +322,6 @@ class PjRtLoadedExecutable final
         });
   }
 
-  int num_devices() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->num_replicas() *
-           pjrt_loaded_executable_->num_partitions();
-  }
   int64_t SizeOfGeneratedCodeInBytes() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->SizeOfGeneratedCodeInBytes();
@@ -365,11 +360,6 @@ class PjRtLoadedExecutable final
       return std::nullopt;
     }
     return devices_;
-  }
-
-  absl::Span<Device* const> addressable_devices() const override {
-    DCHECK(this);
-    return addressable_devices_;
   }
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
