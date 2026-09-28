@@ -855,14 +855,13 @@ struct functor_traits<scalar_erfinv_op<float>> {
 //
 // See https://github.com/tensorflow/tensorflow/issues/123551.
 struct scalar_rsqrt_bfloat16_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16 operator()(
-      const bfloat16& a) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bfloat16
+  operator()(const bfloat16& a) const {
     return bfloat16(numext::rsqrt(static_cast<float>(a)));
   }
 
   template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(
-      const Packet& a) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a) const {
     return prsqrt(a);
   }
 };
