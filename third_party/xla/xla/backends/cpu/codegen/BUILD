@@ -48,8 +48,12 @@ cc_library(
     deps = [
         ":builtin_fp16",
         ":builtin_pow",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
+        "//xla/service/cpu:cpu_runtime",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:OrcShared",
@@ -106,6 +110,15 @@ cc_library(
 )
 
 cc_library(
+    name = "object_buffer_identifier",
+    hdrs = ["object_buffer_identifier.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "ir_compiler",
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
@@ -120,22 +133,26 @@ cc_library(
     ]),
     deps = [
         ":kernel_api_ir_builder",
+        ":object_buffer_identifier",
         ":polynomial_approximations",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/cpu/runtime:msan_emulated_tls",
         "//xla/codegen:intrinsic_lib",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:cpu_options",
+        "//xla/service/cpu:cpu_runtime",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:llvm_targets",  # fixdeps: keep
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -167,6 +184,7 @@ xla_cc_test(
     deps = [
         ":ir_compiler",
         ":kernel_api_ir_builder",
+        ":object_buffer_identifier",
         "//xla:debug_options_flags",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
@@ -609,11 +627,13 @@ cc_library(
     deps = [
         ":contiguous_section_memory_manager",
         ":jit_memory_mapper",
+        ":object_buffer_identifier",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
@@ -761,6 +781,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

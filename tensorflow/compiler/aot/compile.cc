@@ -206,6 +206,12 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
         flags.sanitize_abilists_dataflow, ',', absl::SkipEmpty()));
   }
 
+  if (flags.sanitize_memory || flags.sanitize_memory_track_origins > 0) {
+    aot_opts.set_sanitize_memory(true);
+    aot_opts.set_sanitize_memory_track_origins(
+        flags.sanitize_memory_track_origins);
+  }
+
   TF_RETURN_IF_ERROR(
       ConfigureKernelNamingConvention(aot_opts, computation, flags.cpp_class));
 
