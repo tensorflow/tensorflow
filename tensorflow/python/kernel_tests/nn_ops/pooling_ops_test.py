@@ -805,47 +805,54 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
 
   @test_util.run_in_graph_and_eager_modes
-  def testMaxPool1DOversizedWindowRaises(self):
-    # GitHub issue 125509.
-    if test_util.is_xla_enabled():
-      self.skipTest("XLA compiles 0-sized output tensor without raising")
-    input_data = constant_op.constant(
-        [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]], dtype=dtypes.float32)
+  def testMaxPool1DOversizedWindowReturnsEmpty(self):
+    # GitHub issue 125509: oversized VALID window yields an empty tensor.
+    input_data = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]],
+                          dtype=np.float32)
     devices = (
         ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
     )
     for device in devices:
       with ops.device(device):
-        with self.assertRaisesRegex(
-            (errors_impl.InvalidArgumentError, ValueError),
-            r"Negative dimension size|zero-sized spatial output|"
-            r"ksize dimension",
-        ):
-          self.evaluate(
-              nn_ops.max_pool1d(
-                  input_data, ksize=3, strides=1, padding="VALID")
+        if context.executing_eagerly():
+          y = nn_ops.max_pool1d(
+              constant_op.constant(input_data),
+              ksize=3,
+              strides=1,
+              padding="VALID",
           )
+          values = self.evaluate(y)
+        else:
+          # Unknown temporal size avoids graph-mode shape inference rejection.
+          x = array_ops.placeholder(dtypes.float32, shape=[1, None, 3])
+          y = nn_ops.max_pool1d(x, ksize=3, strides=1, padding="VALID")
+          values = self.evaluate(y, feed_dict={x: input_data})
+        self.assertEqual(values.shape, (1, 0, 3))
 
   @test_util.run_in_graph_and_eager_modes
-  def testMaxPoolOversizedWindowRaises(self):
-    if test_util.is_xla_enabled():
-      self.skipTest("XLA compiles 0-sized output tensor without raising")
-    t = constant_op.constant(1.0, shape=[1, 2, 1, 3])
+  def testMaxPoolOversizedWindowReturnsEmpty(self):
+    # Same oversized-window case as MaxPool1D expand (NHWC H=2, window_H=3).
+    input_data = np.ones([1, 2, 1, 3], dtype=np.float32)
     devices = (
         ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
     )
     for device in devices:
       with ops.device(device):
-        with self.assertRaisesRegex(
-            (errors_impl.InvalidArgumentError, ValueError),
-            r"Negative dimension size|zero-sized spatial output|"
-            r"ksize dimension",
-        ):
-          self.evaluate(
-              nn_ops.max_pool(
-                  t, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
-              )
+        if context.executing_eagerly():
+          y = nn_ops.max_pool(
+              constant_op.constant(input_data),
+              ksize=[1, 3, 1, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
           )
+          values = self.evaluate(y)
+        else:
+          x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          y = nn_ops.max_pool(
+              x, ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID"
+          )
+          values = self.evaluate(y, feed_dict={x: input_data})
+        self.assertEqual(values.shape, (1, 0, 1, 3))
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolEmptySpatialDimReturnsEmpty(self):

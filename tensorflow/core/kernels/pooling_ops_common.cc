@@ -251,10 +251,6 @@ void DnnPoolingImpl(OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
     return;
   }
 
-  if (pooling_mode == se::dnn::PoolingMode::kMaximum) {
-    OP_REQUIRES_OK(context, RequirePositiveSpatialOutput(params));
-  }
-
   if (params.out_height == 0 || params.out_width == 0) {
     return;
   }

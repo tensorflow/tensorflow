@@ -80,7 +80,10 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       TensorShape logical_shape = dnn_shape_input.IsMklTensor()
                                       ? dnn_shape_input.GetTfShape()
                                       : input_tensor_shape;
-      if (input_tensor.NumElements() != 0 && this->padding_ == Padding::VALID) {
+      bool int8_forward_inference =
+          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+      if (int8_forward_inference && input_tensor.NumElements() != 0 &&
+          this->padding_ == Padding::VALID) {
         const int ksize_size = this->ksize_.size();
         for (int i = 0; i < ksize_size; i++) {
           OP_REQUIRES(
@@ -105,13 +108,11 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // If input is an empty tensor, allocate an empty output tensor and return
-      if (input_tensor.NumElements() == 0) {
+      TensorShape out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+      if (input_tensor.NumElements() == 0 || out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
-        bool int8_forward_inference =
-            std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
 
         // Allocate an empty workspace tensor if not Quantized MaxPooling
         // Because Quantized MaxPooling does not have backward pass
@@ -156,8 +157,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       // Get a pooling op from the cached pool
       MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
       prop_kind pooling_prop_kind;
-      bool int8_forward_inference =
-          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (int8_forward_inference)
         pooling_prop_kind = prop_kind::forward_inference;
       else
