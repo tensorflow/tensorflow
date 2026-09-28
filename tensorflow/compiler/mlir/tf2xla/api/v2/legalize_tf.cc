@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/reproducer.pb.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/compile_only_client.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
@@ -158,7 +158,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::vector<tensorflow::TensorShape>& arg_shapes,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    xla::CompileOnlyClient* client) {
+    xla::PjRtCompiler* compiler) {
   CompilationTimer timer;
   auto record_time = llvm::scope_exit([&timer] {
     phase2_bridge_compilation_time->GetCell(kFullBridge)
@@ -174,7 +174,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     TF_RETURN_IF_ERROR(tf2xla::v1::CompileTensorflowGraphToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, tsl::DeviceType(device_type.str()), arg_core_mapping,
-        per_core_arg_shapes, client, compilation_result.get()));
+        per_core_arg_shapes, compiler, compilation_result.get()));
 
     DumpHloCompilationResult("legalize_tf_fallback.hlo",
                              compilation_result.get())
@@ -185,7 +185,7 @@ absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   auto combined_bridge_status = internal::LegalizeTfToHlo(
       std::get<0>(computation), metadata, use_tuple_args, device_type,
       shape_determination_fns, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes, custom_legalization_passes, client,
+      per_core_arg_shapes, custom_legalization_passes, compiler,
       compilation_result.get());
 
   if (combined_bridge_status.ok()) {

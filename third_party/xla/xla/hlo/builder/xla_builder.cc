@@ -1400,7 +1400,7 @@ absl::StatusOr<UnboundedBroadcastResult> BroadcastToOutputShapeWithUnbounded(
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions,
                            std::optional<ComparisonDirection> direction,
-                           std::optional<Comparison::Type> type) {
+                           std::optional<ComparisonOrder> order) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     ABSL_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1463,10 +1463,10 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      if (type == std::nullopt) {
+      if (order == std::nullopt) {
         return Compare(shape, updated_lhs, updated_rhs, *direction);
       }
-      return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
+      return Compare(shape, updated_lhs, updated_rhs, *direction, *order);
     }
 
     if (direction.has_value()) {
@@ -1491,18 +1491,17 @@ absl::StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs,
                                           XlaOp rhs,
                                           ComparisonDirection direction) {
   ABSL_ASSIGN_OR_RETURN(auto operand_shape, GetShape(lhs));
-  return Compare(
-      shape, lhs, rhs, direction,
-      Comparison::DefaultComparisonType(operand_shape.element_type()));
+  return Compare(shape, lhs, rhs, direction,
+                 Comparison::DefaultOrdering(operand_shape.element_type()));
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs,
                                           XlaOp rhs,
                                           ComparisonDirection direction,
-                                          Comparison::Type type) {
+                                          ComparisonOrder order) {
   HloInstructionProto instr;
   instr.set_comparison_direction(ComparisonDirectionToString(direction));
-  instr.set_comparison_type(ComparisonTypeToString(type));
+  instr.set_comparison_order(ComparisonOrderToShortString(order));
   *instr.mutable_shape() = shape.ToProto();
   return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
@@ -3125,6 +3124,28 @@ absl::StatusOr<XlaOp> XlaBuilder::RevInternal(
     instr.add_dimensions(dim);
   }
   return AddInstruction(std::move(instr), HloOpcode::kReverse, {operand});
+}
+
+XlaOp XlaBuilder::Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                          const ShuffleMode& mode) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    ABSL_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    ABSL_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferShuffleShape(
+                                      *operand_shape, dimensions, mode));
+    return ShuffleInternal(shape, operand, dimensions, mode);
+  });
+}
+
+absl::StatusOr<XlaOp> XlaBuilder::ShuffleInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+    const ShuffleMode& mode) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64_t dim : dimensions) {
+    instr.add_dimensions(dim);
+  }
+  *instr.mutable_shuffle_mode() = mode;
+  return AddInstruction(std::move(instr), HloOpcode::kShuffle, {operand});
 }
 
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
@@ -5696,12 +5717,12 @@ static XlaOp CompareTotalOrder(const XlaOp lhs, const XlaOp rhs,
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     ABSL_ASSIGN_OR_RETURN(auto operand_shape, b->GetShape(lhs));
     auto operand_element_type = operand_shape.element_type();
-    auto compare_type =
+    auto compare_order =
         primitive_util::IsFloatingPointType(operand_element_type)
-            ? Comparison::Type::kFloatTotalOrder
-            : Comparison::DefaultComparisonType(operand_element_type);
+            ? ComparisonOrder::kTotal
+            : Comparison::DefaultOrdering(operand_element_type);
     return Compare(lhs, rhs, broadcast_dimensions, comparison_direction,
-                   compare_type);
+                   compare_order);
   });
 }
 
@@ -5775,9 +5796,16 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type) {
+              ComparisonDirection direction, ComparisonOrder order) {
   return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
-                                 broadcast_dimensions, direction, compare_type);
+                                 broadcast_dimensions, direction, order);
+}
+
+XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
+              absl::Span<const int64_t> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type) {
+  return Compare(lhs, rhs, broadcast_dimensions, direction,
+                 Comparison::DefaultOrdering(compare_type));
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
@@ -6664,6 +6692,11 @@ XlaOp Transpose(const XlaOp operand, absl::Span<const int64_t> permutation) {
 
 XlaOp Rev(const XlaOp operand, absl::Span<const int64_t> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
+}
+
+XlaOp Shuffle(const XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode) {
+  return operand.builder()->Shuffle(operand, dimensions, mode);
 }
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,

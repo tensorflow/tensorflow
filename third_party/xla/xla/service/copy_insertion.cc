@@ -1608,7 +1608,19 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module, CustomBufferAnalysisFn custom_buffer_analysis) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
+  ABSL_ASSIGN_OR_RETURN(
+      HloInstructionMap<ShapeTree<bool>> instructions_to_copy,
+      ComputeSpecialCaseCopies(call_graph, execution_threads, module,
+                               *alias_analysis, custom_buffer_analysis));
+  return InsertSpecialCaseCopies(instructions_to_copy);
+}
 
+absl::StatusOr<HloInstructionMap<ShapeTree<bool>>>
+CopyInsertion::ComputeSpecialCaseCopies(
+    const CallGraph& call_graph,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    HloModule* module, const HloAliasAnalysis& alias_analysis,
+    CustomBufferAnalysisFn custom_buffer_analysis) {
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
@@ -1648,8 +1660,8 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   // Also, locate all input-output aliasing violations for operations that
   // cannot be done in place. Such aliasing can be created when some copies are
   // removed too aggressively by CopyRemoval.
-  for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
-    const HloBuffer& buffer = alias_analysis->GetBufferContainingValue(*value);
+  for (const HloValue* value : alias_analysis.dataflow_analysis().values()) {
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(*value);
     if (buffer.values().size() > 1 && ValueIsReadOnly(*value)) {
       VLOG(2) << "Value " << value->ToShortString()
               << " is read only, but its buffer contains more than one value. "
@@ -1676,13 +1688,12 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
               use.operand_number == 0) {
             continue;
           }
-          if (!alias_analysis->dataflow_analysis()
-                   .CanShareOperandBufferWithUser(
-                       /*operand=*/use.instruction->mutable_operand(
-                           use.operand_number),
-                       /*operand_index=*/use.operand_index,
-                       /*user=*/position.instruction,
-                       /*user_index=*/position.index, alias_info_)) {
+          if (!alias_analysis.dataflow_analysis().CanShareOperandBufferWithUser(
+                  /*operand=*/use.instruction->mutable_operand(
+                      use.operand_number),
+                  /*operand_index=*/use.operand_index,
+                  /*user=*/position.instruction,
+                  /*user_index=*/position.index, alias_info_)) {
             VLOG(2) << "Adding back copy: "
                     << use.instruction->operand(use.operand_number)->ToString()
                     << "@" << use.operand_index.ToString()
@@ -1699,7 +1710,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
 
   if (custom_buffer_analysis) {
     VLOG(2) << "Running custom buffer analysis";
-    custom_buffer_analysis(module, *alias_analysis, add_index_to_copy);
+    custom_buffer_analysis(module, alias_analysis, add_index_to_copy);
   }
 
   // Identify copies which must be added at root instructions
@@ -1719,9 +1730,9 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           bool copy_replicated =
               policy.copy_root_replicated_buffers ||
-              ShouldCopyConditionalRootAt(node, *alias_analysis, index);
+              ShouldCopyConditionalRootAt(node, alias_analysis, index);
           std::vector<const HloBuffer*> buffers_at_index =
-              alias_analysis->ComputeBuffersAt(root, index);
+              alias_analysis.ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
           for (const HloBuffer* buffer : buffers_at_index) {
             buffer_seen_before |= !seen.emplace(buffer, index).second;
@@ -1752,7 +1763,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         });
 
     for (const auto& pair :
-         alias_analysis->dataflow_analysis().GetInstructionValueSet(root)) {
+         alias_analysis.dataflow_analysis().GetInstructionValueSet(root)) {
       const ShapeIndex& index = pair.first;
       const HloValueSet& value_set = pair.second;
       for (const HloValue* value : value_set.values()) {
@@ -1766,8 +1777,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       }
     }
   }
+  return instructions_to_copy;
+}
 
-  // Add copy instructions indicated in 'instructions_to_copy' to the module.
+absl::Status CopyInsertion::InsertSpecialCaseCopies(
+    const HloInstructionMap<ShapeTree<bool>>& instructions_to_copy) {
   for (const auto& pair : instructions_to_copy) {
     HloInstruction* instruction = pair.first;
     const ShapeTree<bool>& indices_to_copy = pair.second;
@@ -1821,7 +1835,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
-                           ordering.get(), execution_threads);
+                           ordering.get(), execution_threads, view_color_);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
     LOG(INFO) << "Buffer values, in dependency order: ";

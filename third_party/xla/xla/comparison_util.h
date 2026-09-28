@@ -115,11 +115,6 @@ class Comparison {
   inline PrimitiveType GetPrimitiveType() const { return primitive_type_; }
   inline Order GetOrder() const { return order_; }
 
-  [[deprecated("Use GetPrimitiveType() and GetOrder()")]] inline Type GetType()
-      const {
-    return type_;
-  }
-
   inline bool IsEq() const { return dir_ == Direction::kEq; }
   inline bool IsNe() const { return dir_ == Direction::kNe; }
   inline bool IsGe() const { return dir_ == Direction::kGe; }
@@ -233,9 +228,6 @@ class Comparison {
   const PrimitiveType primitive_type_;
   // The ordering of the Comparison, e.g., kPartial.
   const Order order_;
-  // The Type of the Comparison. This tries to mesh together the ordering and
-  // the numerical data classification.
-  [[deprecated]] const Type type_;
 };
 
 using ComparisonDirection = Comparison::Direction;

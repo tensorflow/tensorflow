@@ -609,11 +609,10 @@ TEST_F(IsOpFullyQuantizedTest, TrueIfOpFullyQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("fully_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
-  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
-  ASSERT_THAT(add_op_itr,
-              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+  auto add_ops = func_op.getBody().getOps<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_ops.begin(), Ne(add_ops.end()));
 
-  EXPECT_TRUE(IsOpFullyQuantized(*add_op_itr));
+  EXPECT_TRUE(IsOpFullyQuantized(*add_ops.begin()));
 }
 
 TEST_F(IsOpFullyQuantizedTest, FalseIfOpNotQuantized) {
@@ -630,11 +629,10 @@ TEST_F(IsOpFullyQuantizedTest, FalseIfOpNotQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
-  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
-  ASSERT_THAT(add_op_itr,
-              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+  auto add_ops = func_op.getBody().getOps<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_ops.begin(), Ne(add_ops.end()));
 
-  EXPECT_FALSE(IsOpFullyQuantized(*add_op_itr));
+  EXPECT_FALSE(IsOpFullyQuantized(*add_ops.begin()));
 }
 
 TEST_F(IsOpFullyQuantizedTest, FalseIfOpPartiallyQuantized) {
@@ -651,13 +649,11 @@ TEST_F(IsOpFullyQuantizedTest, FalseIfOpPartiallyQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
   ASSERT_THAT(func_op, NotNull());
 
-  auto uniform_quantize_op_itr =
-      func_op.getBody().op_begin<mlir::stablehlo::UniformQuantizeOp>();
-  ASSERT_THAT(
-      uniform_quantize_op_itr,
-      Ne(func_op.getBody().op_end<mlir::stablehlo::UniformQuantizeOp>()));
+  auto uniform_quantize_ops =
+      func_op.getBody().getOps<mlir::stablehlo::UniformQuantizeOp>();
+  ASSERT_THAT(uniform_quantize_ops.begin(), Ne(uniform_quantize_ops.end()));
 
-  EXPECT_FALSE(IsOpFullyQuantized(*uniform_quantize_op_itr));
+  EXPECT_FALSE(IsOpFullyQuantized(*uniform_quantize_ops.begin()));
 }
 
 using IsOpNotQuantizedTest = QuantizationTestBase;
@@ -676,11 +672,10 @@ TEST_F(IsOpNotQuantizedTest, TrueIfOpNotQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("not_quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
-  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
-  ASSERT_THAT(add_op_itr,
-              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+  auto add_ops = func_op.getBody().getOps<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_ops.begin(), Ne(add_ops.end()));
 
-  EXPECT_TRUE(IsOpNotQuantized(*add_op_itr));
+  EXPECT_TRUE(IsOpNotQuantized(*add_ops.begin()));
 }
 
 TEST_F(IsOpNotQuantizedTest, FalseIfOpQuantized) {
@@ -697,11 +692,10 @@ TEST_F(IsOpNotQuantizedTest, FalseIfOpQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantized_add");
   ASSERT_THAT(func_op, NotNull());
 
-  auto add_op_itr = func_op.getBody().op_begin<mlir::stablehlo::AddOp>();
-  ASSERT_THAT(add_op_itr,
-              Ne(func_op.getBody().op_end<mlir::stablehlo::AddOp>()));
+  auto add_ops = func_op.getBody().getOps<mlir::stablehlo::AddOp>();
+  ASSERT_THAT(add_ops.begin(), Ne(add_ops.end()));
 
-  EXPECT_FALSE(IsOpNotQuantized(*add_op_itr));
+  EXPECT_FALSE(IsOpNotQuantized(*add_ops.begin()));
 }
 
 TEST_F(IsOpNotQuantizedTest, FalseIfOpPartiallyQuantized) {
@@ -718,15 +712,13 @@ TEST_F(IsOpNotQuantizedTest, FalseIfOpPartiallyQuantized) {
   auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
   ASSERT_THAT(func_op, NotNull());
 
-  auto uniform_quantize_op_itr =
-      func_op.getBody().op_begin<mlir::stablehlo::UniformQuantizeOp>();
-  ASSERT_THAT(
-      uniform_quantize_op_itr,
-      Ne(func_op.getBody().op_end<mlir::stablehlo::UniformQuantizeOp>()));
+  auto uniform_quantize_ops =
+      func_op.getBody().getOps<mlir::stablehlo::UniformQuantizeOp>();
+  ASSERT_THAT(uniform_quantize_ops.begin(), Ne(uniform_quantize_ops.end()));
 
   // `uniform_quantize` is considered partially quantized because its output is
   // a quantized tensor whereas its input is not quantized.
-  EXPECT_FALSE(IsOpNotQuantized(*uniform_quantize_op_itr));
+  EXPECT_FALSE(IsOpNotQuantized(*uniform_quantize_ops.begin()));
 }
 
 using UniformQuantizedTypeTest = QuantizationTestBase;

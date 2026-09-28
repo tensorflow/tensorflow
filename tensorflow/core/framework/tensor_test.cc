@@ -290,6 +290,18 @@ TEST(Tensor_Float8_E5m2fnuz, Simple) {
   TestCopies<float8_e5m2fnuz>(t);
 }
 
+TEST(Tensor_Float8_E8m0fnu, Simple) {
+  Tensor t(DT_FLOAT8_E8M0FNU, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e8m0fnu>()(a, b) =
+          static_cast<float8_e8m0fnu>((a + 1) * (b + 1));
+    }
+  }
+  TestCopies<float8_e8m0fnu>(t);
+}
+
 TEST(Tensor_Float4_E2m1fn, Simple) {
   Tensor t(DT_FLOAT4_E2M1FN, TensorShape({5, 7}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));

@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_EXPRESSION_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_EXPRESSION_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "xla/client/client.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -126,7 +131,7 @@ class XlaExpression {
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
   absl::StatusOr<std::optional<Tensor>> ResolveConstant(
-      xla::Client* client, bool dynamic_dimension_is_minus_one = false,
+      xla::PjRtClient* client, bool dynamic_dimension_is_minus_one = false,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be

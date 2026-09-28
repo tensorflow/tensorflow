@@ -97,6 +97,11 @@ class PlatformInfo:
     """Returns the number of accumulators on the TPU platform."""
     return self._tpu_info.num_accumulators
 
+  @property
+  def generation(self) -> int:
+    """Returns the generation of the TPU platform."""
+    return self._tpu_info.generation
+
   def get_emulated_dtype(
       self, dtype: jnp.dtype, supported_dtypes: Mapping[jnp.dtype, int]
   ) -> jnp.dtype:

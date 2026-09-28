@@ -73,6 +73,36 @@ absl::StatusOr<void*> GetDsoHandle(const std::string& name,
   VLOG(1) << message;
   return absl::Status(absl::StatusCode::kFailedPrecondition, message);
 }
+absl::StatusOr<void*> GetCudaDsoHandle(const std::string& name,
+                                       absl::string_view version) {
+  auto handle = GetDsoHandle(name, version);
+  if (handle.ok()) return handle;
+  auto primary_status = handle.status();
+
+  // Determine alternative major version across CUDA 12 and CUDA 13 ecosystems.
+  // Note: cuDNN does not support cross-major loading (cuDNN 8 lacks v9 entry
+  // points).
+  absl::string_view alt_version = "";
+  if (name == "cufft" || name == "cusolver") {
+    alt_version = (version == "12") ? "11" : (version == "11" ? "12" : "");
+  } else if (name == "cublas" || name == "cublasLt" || name == "cudart" ||
+             name == "nvrtc" || name == "cusparse" || name == "cupti") {
+    alt_version = (version == "13") ? "12" : (version == "12" ? "13" : "");
+  }
+
+  if (!alt_version.empty()) {
+    handle = GetDsoHandle(name, alt_version);
+    if (handle.ok()) return handle;
+  }
+
+  // Only CUPTI supports unversioned library fallback.
+  if (name == "cupti") {
+    handle = GetDsoHandle(name, "");
+    if (handle.ok()) return handle;
+  }
+
+  return primary_status;
+}
 }  // namespace
 
 namespace DsoLoader {
@@ -95,51 +125,47 @@ absl::StatusOr<void*> GetNvmlDsoHandle() {
 }
 
 absl::StatusOr<void*> GetNvrtcDsoHandle() {
-  return GetDsoHandle("nvrtc", GetCudaRtVersion());
+  return GetCudaDsoHandle("nvrtc", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaRtVersion());
+  return GetCudaDsoHandle("cudart", GetCudaRtVersion());
 }
 
 absl::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCublasVersion());
+  return GetCudaDsoHandle("cublas", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCublasLtDsoHandle() {
-  return GetDsoHandle("cublasLt", GetCublasVersion());
+  return GetCudaDsoHandle("cublasLt", GetCublasVersion());
 }
 
 absl::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCufftVersion());
+  return GetCudaDsoHandle("cufft", GetCufftVersion());
 }
 
 absl::StatusOr<void*> GetCusolverDsoHandle() {
-  return GetDsoHandle("cusolver", GetCusolverVersion());
+  return GetCudaDsoHandle("cusolver", GetCusolverVersion());
 }
 
 absl::StatusOr<void*> GetCusparseDsoHandle() {
-  return GetDsoHandle("cusparse", GetCusparseVersion());
+  return GetCudaDsoHandle("cusparse", GetCusparseVersion());
 }
 
 absl::StatusOr<void*> GetCuptiDsoHandle() {
-  // Load specific version of CUPTI this is built.
-  auto status_or_handle = GetDsoHandle("cupti", GetCuptiVersion());
-  if (status_or_handle.ok()) return status_or_handle;
-  // Load whatever libcupti.so user specified.
-  return GetDsoHandle("cupti", "");
+  return GetCudaDsoHandle("cupti", GetCuptiVersion());
 }
 
 absl::StatusOr<void*> GetCudnnDsoHandle() {
-  return GetDsoHandle("cudnn", GetCudnnVersion());
+  return GetCudaDsoHandle("cudnn", GetCudnnVersion());
 }
 
 absl::StatusOr<void*> GetNcclDsoHandle() {
-  return GetDsoHandle("nccl", GetNcclVersion());
+  return GetCudaDsoHandle("nccl", GetNcclVersion());
 }
 
 absl::StatusOr<void*> GetNvshmemDsoHandle() {
-  return GetDsoHandle("nvshmem_host", GetNvshmemVersion());
+  return GetCudaDsoHandle("nvshmem_host", GetNvshmemVersion());
 }
 
 absl::StatusOr<void*> GetNvInferDsoHandle() {

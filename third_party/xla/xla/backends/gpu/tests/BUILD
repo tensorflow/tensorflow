@@ -766,17 +766,22 @@ lit_test_suite_for_gpus(
             "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
+            "pdl.hlo",
+        ],
+        "mi300": [
+            "memory_bandwidth_fusion.hlo",
+            "dot_bf16.hlo",
+            "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
         "mi350": [
             "dot_bf16.hlo",
             "single_instruction.hlo",
-            "vectorization.hlo",
             "pdl.hlo",
         ],
-        "gfx1250": [
-            # TODO: re-enable once gfx1250 memory_bandwidth is finalized.
+        "mi450": [
+            # TODO: re-enable once mi450 memory_bandwidth is finalized.
             "memory_bandwidth_fusion.hlo",
             "single_instruction.hlo",
             "vectorization.hlo",
@@ -787,10 +792,11 @@ lit_test_suite_for_gpus(
         "a100_pcie_80",
         "a6000",
         "b200",
-        "gfx1250",
         "h100_sxm",
         "mi200",
+        "mi300",
         "mi350",
+        "mi450",
     ],
     tags = ["no-oneapi"],
     tools = [
@@ -1415,8 +1421,8 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     deps = [

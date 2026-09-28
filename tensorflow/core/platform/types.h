@@ -52,6 +52,7 @@ using tsl::float8_e4m3fn;
 using tsl::float8_e4m3fnuz;
 using tsl::float8_e5m2;
 using tsl::float8_e5m2fnuz;
+using tsl::float8_e8m0fnu;
 
 using tsl::kint16max;
 using tsl::kint16min;

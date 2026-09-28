@@ -498,6 +498,51 @@ TEST_F(ConfigAssignerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
       gpu_backend_config.gemm_backend_config().has_selected_algorithm());
 }
 
+TEST_F(ConfigAssignerPassTest, AutotuneLevel0UsesDefaultConfig) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  module->mutable_config().mutable_debug_options().set_xla_gpu_autotune_level(
+      0);
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CublasLtBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_,
+      &target_config));
+
+  auto get_backends_fn =
+      [backends =
+           std::make_shared<std::vector<std::unique_ptr<CodegenBackend>>>(
+               std::move(backends))]() mutable { return std::move(*backends); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConfigAssignerPass> pass,
+      ConfigAssignerPass::Create(
+          std::move(get_backends_fn), module->config().debug_options(),
+          target_config.device_description.gpu_compute_capability(),
+          stream_executor_, &thread_pool, &target_config,
+          /*alias_info=*/nullptr, /*mlir_context=*/nullptr,
+          /*shape_size_fn=*/[](const Shape& shape) { return 0; },
+          allocator_.get()));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              absl_testing::IsOkAndHolds(true));
+
+  // Verify that the backend config has been updated in the HLO with default
+  // config.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
+                       gemm->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(
+      gpu_backend_config.gemm_backend_config().has_selected_algorithm());
+  EXPECT_EQ(gpu_backend_config.gemm_backend_config().selected_algorithm(), 0);
+  EXPECT_EQ(gpu_backend_config.gemm_backend_config().autotune_workspace_size(),
+            80000);
+}
+
 TEST_F(ConfigAssignerPassTest, CublasGemmInNonDefaultStreamIsAutotuned) {
   const char kCublasCustomNonDefaultStreamCallHlo[] = R"""(
 HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}

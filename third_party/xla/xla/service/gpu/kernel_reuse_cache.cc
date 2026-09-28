@@ -196,7 +196,7 @@ absl::Status UpdateDiskKernelCache(absl::string_view path, const bool do_append,
   return absl::OkStatus();
 }
 
-std::pair<tsl::Future<const KernelReuseCache::Entry*>, bool>
+std::pair<tsl::Future<KernelReuseCache::Entry>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
     absl::Span<const emitters::KernelArgument> kernel_arguments,
@@ -209,7 +209,7 @@ KernelReuseCache::GetWithStatus(
   return GetWithStatus(std::move(fingerprint), generator);
 }
 
-std::pair<tsl::Future<const KernelReuseCache::Entry*>, bool>
+std::pair<tsl::Future<KernelReuseCache::Entry>, bool>
 KernelReuseCache::GetWithStatus(
     std::string fingerprint,
     absl::FunctionRef<tsl::Future<KernelReuseCache::Entry>()> generator) {
@@ -225,9 +225,7 @@ KernelReuseCache::GetWithStatus(
     it = cache_.insert({std::move(fingerprint), generator()}).first;
   }
 
-  return {it->second.Map(
-              [](const KernelReuseCache::Entry& entry) { return &entry; }),
-          cached};
+  return {it->second, cached};
 }
 
 }  // namespace xla::gpu

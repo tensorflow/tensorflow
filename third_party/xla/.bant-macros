@@ -33,7 +33,6 @@ exhaustive_xla_test = bant_forward_args(cc_test())
 
 # Binary rules
 xla_cc_binary = bant_forward_args(cc_binary())
-cc_binary = bant_forward_args(cc_binary())
 
 # Library rules
 onednn_cc_library = bant_forward_args(cc_library())

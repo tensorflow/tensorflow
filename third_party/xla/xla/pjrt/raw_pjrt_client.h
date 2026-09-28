@@ -269,6 +269,11 @@ class PjRtRawClient {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
 
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      LocalDeviceId local_device_id, absl::string_view description) const {
+    return nullptr;
+  }
+
   virtual absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
                                                int32_t launch_id,
                                                absl::Status error) {

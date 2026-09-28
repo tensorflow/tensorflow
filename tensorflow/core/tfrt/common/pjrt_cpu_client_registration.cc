@@ -17,13 +17,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -31,6 +32,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetCpuClient(
     const PjrtClientFactoryOptions& option) {
   xla::CpuClientOptions cpu_options;
   cpu_options.asynchronous = option.cpu_options.asynchronous;
+  cpu_options.intra_op_device = option.cpu_options.intra_op_device;
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(cpu_options));
@@ -39,5 +41,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetCpuClient(
 }
 
 REGISTER_PJRT_CLIENT_FACTORY(cpu_client, tensorflow::DEVICE_CPU, GetCpuClient);
+
+REGISTER_PJRT_CLIENT_FACTORY(xla_cpu_client, tensorflow::DEVICE_XLA_CPU,
+                             GetCpuClient);
 
 }  // namespace xla

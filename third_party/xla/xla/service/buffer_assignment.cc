@@ -680,7 +680,19 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
-  for (const auto& buffer_offset_size : assigned_buffers_) {
+  using Entry = std::pair<const HloValue* const, OffsetSize>;
+  std::vector<const Entry*> sorted;
+  sorted.reserve(assigned_buffers_.size());
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& kv : assigned_buffers_) {
+    sorted.push_back(&kv);
+  }
+  absl::c_sort(sorted, [](const Entry* a, const Entry* b) {
+    return a->first->id() < b->first->id();
+  });
+  proto.mutable_assigned()->Reserve(sorted.size());
+  for (const Entry* ptr : sorted) {
+    const auto& buffer_offset_size = *ptr;
     BufferAllocationProto::Assigned* proto_assigned = proto.add_assigned();
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
     proto_assigned->set_offset(buffer_offset_size.second.offset);
@@ -688,12 +700,6 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_element_type(
         buffer_offset_size.first->shape().element_type());
   }
-  absl::c_sort(*proto.mutable_assigned(),
-               [](const BufferAllocationProto::Assigned& assign1,
-                  const BufferAllocationProto::Assigned& assign2) {
-                 return assign1.logical_buffer_id() <
-                        assign2.logical_buffer_id();
-               });
   return proto;
 }
 
@@ -1592,11 +1598,21 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
   const HloDataflowAnalysis& dataflow = this->dataflow_analysis();
+  proto->mutable_logical_buffers()->Reserve(dataflow.values().size());
   for (BufferValue::Id id = 0; id < dataflow.values().size(); id++) {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
-      LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);
-      proto->add_logical_buffers()->Swap(&proto_buffer);
+      LogicalBufferProto* pb = proto->add_logical_buffers();
+      pb->set_id(value->id());
+      pb->set_size(buffer_size_(*value));
+      LogicalBufferProto::Location* loc = pb->mutable_defined_at();
+      loc->set_instruction_id(value->instruction()->unique_id());
+      for (int64_t i : value->index()) {
+        loc->add_shape_index(i);
+      }
+      if (value->has_color()) {
+        pb->set_color(value->color());
+      }
 
       // Fill buffer aliases.
       for (const HloValue* alias :
@@ -1607,13 +1623,17 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto->add_buffer_aliases();
-        LogicalBufferProto::Location proto_alias_location =
-            BufferValue::ToLocationProto(*alias->instruction(), alias->index());
         proto_alias->set_source_buffer_id(value->id());
-        proto_alias->mutable_location()->Swap(&proto_alias_location);
+        LogicalBufferProto::Location* aloc = proto_alias->mutable_location();
+        aloc->set_instruction_id(alias->instruction()->unique_id());
+        for (int64_t i : alias->index()) {
+          aloc->add_shape_index(i);
+        }
       }
     }
   }
+  proto->mutable_buffer_allocations()->Reserve(Allocations().size());
+  proto->mutable_peak_buffers()->Reserve(Allocations().size());
   for (const BufferAllocation& allocation : Allocations()) {
     BufferAllocationProto proto_allocation = allocation.ToProto();
     proto->add_buffer_allocations()->Swap(&proto_allocation);

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -41,6 +42,8 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/service/time_utils.h"
 #include "xla/service/tuple_util.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -75,6 +79,45 @@ std::string UsesToString(const std::vector<HloUse>& uses) {
     uses_str.push_back(use.ToString());
   }
   return absl::StrJoin(uses_str, ",");
+}
+
+void AppendToTupleOriginalValue(const HloInstruction* src_tuple,
+                                HloInstruction* dest_tuple,
+                                const HloInstruction* appended_instr) {
+  if (src_tuple == nullptr || dest_tuple == nullptr ||
+      !dest_tuple->shape().IsTuple() ||
+      dest_tuple->shape().tuple_shapes().empty()) {
+    return;
+  }
+  bool has_appended_ov =
+      appended_instr != nullptr && appended_instr->original_value() != nullptr;
+  if (src_tuple->original_value() == nullptr && !has_appended_ov) {
+    return;
+  }
+  int64_t new_tuple_index =
+      static_cast<int64_t>(dest_tuple->shape().tuple_shapes().size()) - 1;
+  if (src_tuple->original_value() != nullptr) {
+    int64_t src_size = src_tuple->original_value()->tree().num_children();
+    int64_t num_to_copy = std::min<int64_t>(src_size, new_tuple_index);
+    absl::flat_hash_map<int64_t, int64_t> old_to_new_tuple_idx;
+    for (int64_t i = 0; i < num_to_copy; ++i) {
+      old_to_new_tuple_idx[i] = i;
+    }
+    CopyOriginalValue(src_tuple, dest_tuple, old_to_new_tuple_idx);
+  } else {
+    dest_tuple->set_original_value(
+        std::make_shared<OriginalValue>(dest_tuple->shape()));
+  }
+  if (has_appended_ov && dest_tuple->original_value() != nullptr) {
+    CHECK_OK(
+        dest_tuple->original_value()->mutable_tree()->CopyCompatibleSubtreeFrom(
+            appended_instr->original_value()->tree(), {}, {new_tuple_index}))
+        << "Incompatible OriginalValue subtree for appended element at index "
+        << new_tuple_index << ": " << appended_instr->ToString();
+  }
+  CHECK(dest_tuple->original_value()->IsCompatibleWith(dest_tuple->shape()))
+      << "Updated OriginalValue is incompatible with shape: "
+      << dest_tuple->ToString();
 }
 
 // Helper function to compute the start time for a SlicedCopyAllocation.
@@ -270,6 +313,18 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
             replacement_instruction,
             TupleUtil::ReplaceTupleWith(producing_instruction, tuple_inst,
                                         use.operand_index));
+        if (replacement_instruction != tuple_inst) {
+          replacement_instruction->CopyOriginalValue(tuple_inst,
+                                                     /*clone=*/true);
+          if (replacement_instruction->original_value() != nullptr &&
+              producing_instruction->original_value() != nullptr) {
+            CHECK_OK(replacement_instruction->original_value()
+                         ->mutable_tree()
+                         ->CopyCompatibleSubtreeFrom(
+                             producing_instruction->original_value()->tree(),
+                             {}, use.operand_index));
+          }
+        }
       }
     } else if (!Shape::Equal().IgnoreSplitConfigInLayout()(
                    operand_shape, producing_instruction->shape())) {
@@ -281,6 +336,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
               << "; inserting a bitcast.";
       replacement_instruction = computation->AddInstruction(
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
+      replacement_instruction->CopyOriginalValue(producing_instruction);
       if (mutable_split_shape().has_value() &&
           producing_instruction->shape().layout().split_configs().size() != 0) {
         ABSL_ASSIGN_OR_RETURN(
@@ -314,7 +370,23 @@ HloInstruction* Allocation::AddGetTupleElements() const {
   CHECK(shape.IsArray()) << "Allocation shape is not an array. Shape = "
                          << shape.ToString()
                          << " position = " << defining_position().shape();
-  return TupleUtil::AddGetTupleElements(defining_position());
+  HloInstruction* result = TupleUtil::AddGetTupleElements(defining_position());
+  if (result != defining_position().instruction &&
+      result->original_value() == nullptr &&
+      defining_position().instruction->original_value() != nullptr) {
+    std::shared_ptr<OriginalValue> src_ov =
+        defining_position().instruction->original_value();
+    const auto& src_tree = src_ov->tree();
+    if (src_tree.find(defining_position().index) != src_tree.end()) {
+      auto new_ov = std::make_shared<OriginalValue>(result->shape());
+      CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+          src_tree, defining_position().index, {}));
+      if (!new_ov->IsEmpty()) {
+        result->set_original_value(std::move(new_ov));
+      }
+    }
+  }
+  return result;
 }
 
 Allocation::Allocation(HloPosition defining_position, MemorySpace memory_space,
@@ -520,10 +592,12 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     if (!ShapeUtil::CompatibleIgnoringFpPrecision(
             producing_instruction->shape(),
             copy_start_->operand(source_operand_index_)->shape())) {
-      producing_instruction =
+      HloInstruction* bitcast =
           computation->AddInstruction(HloInstruction::CreateBitcast(
               copy_start_->operand(source_operand_index_)->shape(),
               producing_instruction));
+      bitcast->CopyOriginalValue(producing_instruction);
+      producing_instruction = bitcast;
     }
     ABSL_RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(source_operand_index_,
                                                     producing_instruction));
@@ -539,6 +613,7 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
         dest_shape, HloOpcode::kCopyDone, copy_start_));
   }
+  copy_done_->CopyOriginalValue(producing_instruction);
   VLOG(4) << "Created " << copy_start_->name()
           << " for copy allocation: " << ToString();
 
@@ -1038,11 +1113,37 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
       original_allocation_.AddGetTupleElements();
   int new_tuple_index = calling_instruction_->shape().tuple_shapes().size();
 
+  HloInstruction* old_while_operand = calling_instruction_->mutable_operand(0);
   ABSL_ASSIGN_OR_RETURN(
       HloInstruction * new_while_operand,
-      TupleUtil::ReplaceTupleWith(producing_instruction,
-                                  calling_instruction_->mutable_operand(0),
+      TupleUtil::ReplaceTupleWith(producing_instruction, old_while_operand,
                                   {new_tuple_index}));
+  AppendToTupleOriginalValue(old_while_operand, new_while_operand,
+                             producing_instruction);
+  // Also replace the while op with a tuple that has the old shape. Note that we
+  // need to first take a snapshot of the users before calling ExtractPrefix
+  // since ExtractPrefix introduces additional gte users.
+  std::vector<HloInstruction*> while_users = calling_instruction_->users();
+  HloInstruction* tuple_with_old_shape =
+      TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
+  if (std::shared_ptr<OriginalValue> src_ov =
+          calling_instruction_->original_value();
+      src_ov != nullptr) {
+    tuple_with_old_shape->CopyOriginalValue(calling_instruction_,
+                                            /*clone=*/true);
+    const auto& src_tree = src_ov->tree();
+    for (int64_t i = 0; i < new_tuple_index; ++i) {
+      HloInstruction* gte = tuple_with_old_shape->mutable_operand(i);
+      if (src_tree.find({i}) != src_tree.end()) {
+        auto gte_ov = std::make_shared<OriginalValue>(gte->shape());
+        CHECK_OK(gte_ov->mutable_tree()->CopyCompatibleSubtreeFrom(src_tree,
+                                                                   {i}, {}));
+        if (!gte_ov->IsEmpty()) {
+          gte->set_original_value(std::move(gte_ov));
+        }
+      }
+    }
+  }
   ABSL_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
       0, new_while_operand));
   *calling_instruction_->mutable_shape() = new_while_operand->shape();
@@ -1052,17 +1153,13 @@ absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
   *calling_instruction_->while_body()
        ->parameter_instruction(0)
        ->mutable_shape() = new_while_operand->shape();
+  ABSL_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
+      while_users, tuple_with_old_shape));
+
+  AppendToWhileLoopOriginalValue(calling_instruction_, {producing_instruction});
   HloPosition defining_position = original_defining_position();
   defining_position.index = {new_tuple_index};
   set_original_defining_position(defining_position);
-  // Also replace the while op with a tuple that has the old shape. Note that we
-  // need to first take a snapshot of the users before calling ExtractPrefix
-  // since ExtractPrefix introduces additional gte users.
-  std::vector<HloInstruction*> while_users = calling_instruction_->users();
-  HloInstruction* tuple_with_old_shape =
-      TupleUtil::ExtractPrefix(calling_instruction_, new_tuple_index);
-  ABSL_RETURN_IF_ERROR(calling_instruction_->ReplaceAllUsesWithDifferentShape(
-      while_users, tuple_with_old_shape));
 
   HloInstruction* final_instruction = AddGetTupleElements();
   HloComputation* computation = final_instruction->parent();
@@ -1077,12 +1174,15 @@ absl::Status ParentAllocation::PostProcess() {
   // new root. Doing the post-process step later ensures the root has been
   // updated with other changes, and we can safely add the additional parameter.
   HloComputation* while_body = calling_instruction_->while_body();
-  ABSL_ASSIGN_OR_RETURN(HloInstruction * new_while_body_root,
-                   TupleUtil::ReplaceTupleWith(
-                       AddGetTupleElements(), while_body->root_instruction(),
-                       original_defining_position().index));
+  HloInstruction* old_body_root = while_body->root_instruction();
+  HloInstruction* added_element = AddGetTupleElements();
+  ABSL_ASSIGN_OR_RETURN(
+      HloInstruction * new_while_body_root,
+      TupleUtil::ReplaceTupleWith(added_element, old_body_root,
+                                  original_defining_position().index));
   while_body->set_root_instruction(new_while_body_root,
                                    /*accept_different_shape=*/true);
+  AppendToTupleOriginalValue(old_body_root, new_while_body_root, added_element);
   return absl::OkStatus();
 }
 

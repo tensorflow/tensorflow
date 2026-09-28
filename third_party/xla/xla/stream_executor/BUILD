@@ -370,6 +370,7 @@ cc_library(
         ":stream_executor_h",
         "//xla/service:device_assignment",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -389,6 +390,7 @@ xla_cc_test(
     srcs = ["device_address_vmm_allocator_test.cc"],
     deps = [
         ":device_address",
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":memory_allocation",
         ":memory_reservation",
@@ -483,7 +485,7 @@ cc_library(
     hdrs = ["launch_dim.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":launch_dim_proto_cc",
@@ -872,7 +874,7 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":kernel",

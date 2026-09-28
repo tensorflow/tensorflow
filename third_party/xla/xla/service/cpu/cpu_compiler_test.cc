@@ -99,6 +99,7 @@ ENTRY main {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.add_xla_cpu_experimental_ynn_fusion_type(
       xla::DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  debug_options.set_xla_cpu_experimental_onednn_custom_call(false);
   debug_options.mutable_xla_backend_extra_options()->insert(
       {"xla_is_host_offload", "true"});
   config.set_debug_options(debug_options);

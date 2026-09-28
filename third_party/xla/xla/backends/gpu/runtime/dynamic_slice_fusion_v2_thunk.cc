@@ -76,11 +76,18 @@ static int64_t ComputeSliceOffset(const DynamicSliceConfig& config,
   return config.byte_offset() + iteration * config.byte_stride();
 }
 
-// Computes the raw byte offset from actual offset expressions. Runtime scalar
-// parameters are D2H-copied from device before evaluation.
+// Computes the byte offset from actual offset expressions, clamping each
+// dimension's start index to [0, src_dim - dst_dim] per DS/DUS semantics.
+// Runtime scalar parameters are D2H-copied from device before evaluation.
 static absl::StatusOr<int64_t> ComputeSliceOffset(
-    const Shape& src_shape, absl::Span<const Offset> offsets,
+    const Shape& src_shape, const Shape& dst_shape,
+    absl::Span<const Offset> offsets,
     absl::Span<const std::pair<int64_t, int64_t>> parameters) {
+  if (src_shape.dimensions().size() != dst_shape.dimensions().size()) {
+    return Internal(
+        "Source shape %s and destination shape %s must have the same rank",
+        ShapeUtil::HumanString(src_shape), ShapeUtil::HumanString(dst_shape));
+  }
   auto byte_strides = ShapeUtil::ByteStrides(src_shape);
   if (!byte_strides.has_value()) {
     return InvalidArgument("Failed to compute byte strides for shape %s",
@@ -92,6 +99,8 @@ static absl::StatusOr<int64_t> ComputeSliceOffset(
     int64_t dim = offset.dimension_number;
     ABSL_ASSIGN_OR_RETURN(int64_t idx,
                      DynamicSliceFusion::Evaluate(offset.expr, parameters));
+    int64_t max_idx = src_shape.dimensions(dim) - dst_shape.dimensions(dim);
+    idx = std::clamp(idx, int64_t{0}, max_idx);
     byte_offset += idx * (*byte_strides)[dim];
   }
   return byte_offset;
@@ -308,8 +317,9 @@ static absl::Status VerifySliceOffset(
   // Compare offsets after clamping both to [0, buffer_size - slice_size].
   int64_t buffer_size = ShapeUtil::ByteSizeOf(src_shape);
   int64_t slice_size = ShapeUtil::ByteSizeOf(dst_shape);
-  ABSL_ASSIGN_OR_RETURN(int64_t offset_from_exprs,
-                   ComputeSliceOffset(src_shape, *offsets, parameters));
+  ABSL_ASSIGN_OR_RETURN(
+      int64_t offset_from_exprs,
+      ComputeSliceOffset(src_shape, dst_shape, *offsets, parameters));
   int64_t actual_offset =
       ClampSliceOffset(offset_from_exprs, buffer_size, slice_size);
   int64_t annotated_offset = ClampSliceOffset(

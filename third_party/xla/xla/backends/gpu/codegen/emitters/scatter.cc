@@ -601,19 +601,14 @@ ScatterWithDistributedIndices::ScatterWithDistributedIndices(
                             num_indices_per_warp_ * num_warps_);
 }
 
-void ScatterWithDistributedIndices::ComputeIndexing(
-    MLIRContext* mlir_context, IndexingMap* updates_map,
-    IndexingMap* indices_map) const {
-  // Compute thread id mapping based on the first update operand.
+IndexingMap ScatterWithDistributedIndices::ComputeThreadIdToUpdateIdMap(
+    MLIRContext* mlir_context) const {
   auto thread_x = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
                                 mlir_context);
   auto block_x = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
                                mlir_context);
   auto warp_id = thread_x / warp_size_;
   auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
-  auto warp_id_in_slice =
-      (block_x * num_warps_ + warp_id) % num_warps_per_slice_;
-  auto lane_id = thread_x % warp_size_;
   auto index_id_loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
   auto index_vector_id = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
 
@@ -623,27 +618,53 @@ void ScatterWithDistributedIndices::ComputeIndexing(
 
   auto grid_vars =
       DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1});
+  IndexingMap thread_id_to_update_id_map{
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2,
+                       {vectorized_index_id_expr}),
+      grid_vars,
+      {IndexingMap::Variable{
+           {0, num_indices_per_warp_ / indices_vector_size_ - 1},
+           "index_id_loop"},
+       IndexingMap::Variable{{0, indices_vector_size_ - 1}, "index_vector_id"}},
+      /*rt_vars=*/{},
+      {std::make_pair(vectorized_index_id_expr,
+                      Interval{0, description_.num_slices - 1})}};
+  thread_id_to_update_id_map.Simplify();
+  return thread_id_to_update_id_map;
+}
+
+void ScatterWithDistributedIndices::ComputeIndexing(
+    MLIRContext* mlir_context, IndexingMap* updates_map,
+    IndexingMap* indices_map) const {
   if (indices_map) {
+    IndexingMap update_id_map = ComputeThreadIdToUpdateIdMap(mlir_context);
     auto index_dim_loop = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
+    auto range_vars = update_id_map.GetRangeVars();
+    range_vars.push_back(IndexingMap::Variable{
+        {0, description_.index_vector_length - 1}, "index_dim"});
     *indices_map = IndexingMap{
-        SymbolicMap::Get(mlir_context, kGpuGridDims, 3,
-                         {vectorized_index_id_expr, index_dim_loop}),
-        grid_vars,
-        {IndexingMap::Variable{
-             {0, num_indices_per_warp_ / indices_vector_size_ - 1},
-             "index_id_loop"},
-         IndexingMap::Variable{{0, indices_vector_size_ - 1},
-                               "index_vector_id"},
-         IndexingMap::Variable{{0, description_.index_vector_length - 1},
-                               "index_dim"}},
-        /*rt_vars=*/{},
-        {std::make_pair(vectorized_index_id_expr,
-                        Interval{0, description_.num_slices - 1})}};
+        SymbolicMap::Get(
+            mlir_context, kGpuGridDims, /*num_symbols=*/3,
+            {update_id_map.GetSymbolicMap().GetResult(0), index_dim_loop}),
+        update_id_map.GetDimVars(), std::move(range_vars),
+        /*rt_vars=*/{}, update_id_map.GetSymbolicConstraints()};
 
     indices_map->Simplify();
   }
 
   if (updates_map) {
+    // Compute thread id mapping based on the first update operand.
+    auto thread_x = CreateDimExpr(
+        MlirKernelFusion::kIndexingMapThreadIdxDims[0], mlir_context);
+    auto block_x = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                                 mlir_context);
+    auto warp_id = thread_x / warp_size_;
+    auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
+    auto warp_id_in_slice =
+        (block_x * num_warps_ + warp_id) % num_warps_per_slice_;
+    auto lane_id = thread_x % warp_size_;
+    auto grid_vars =
+        DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1});
     auto index_id = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
     auto update_dim_loop = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
     auto vector_id = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
@@ -717,14 +738,8 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   }
   MLIRContext* mlir_context = b.getContext();
 
-  auto thread_id_to_update_id_map = IndexingMap(
-      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2,
-                       {indices_map.GetSymbolicMap().GetResult(0)}),
-      indices_map.GetDimVars(),
-      /*range_vars = */
-      {indices_map.GetRangeVars().begin(),
-       indices_map.GetRangeVars().begin() + 2},
-      /*rt vars = */ {}, indices_map.GetSymbolicConstraints());
+  IndexingMap thread_id_to_update_id_map =
+      ComputeThreadIdToUpdateIdMap(mlir_context);
 
   // Convert index_id_loop and index_vector_id to dimension variables.
   IndexingMap slice_indexing =
@@ -735,7 +750,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   Value is_inbounds_init = arith::ConstantIntOp::create(b, b.getI1Type(), 0);
   Value slice_id_init = arith::ConstantIndexOp::create(b, 0);
   std::vector<Value> indices_init(description_.index_vector_length,
-                                  arith::ConstantIndexOp::create(b, -1));
+                                  arith::ConstantIndexOp::create(b, 0));
   Value accumulator_init = InitializeAccumulator(b);
   SmallVector<Value> inits =
       Pack({slice_id_init, indices_init, is_inbounds_init, accumulator_init,
@@ -774,32 +789,26 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     auto new_trimmed_offsets =
         helper.ExtractOffsets(nested_b, thread_id_to_index_id_value.front());
 
-    // Check if the offsets changed.
-    Value offsets_changed =
-        EmitInequalityCheck(nested_b, trimmed_offsets, new_trimmed_offsets);
-
-    for (int i = 0; i < description_.index_vector_length; ++i) {
-      new_trimmed_offsets[i] =
-          arith::SelectOp::create(nested_b, offsets_changed,
-                                  new_trimmed_offsets[i], trimmed_offsets[i]);
-    }
+    Value is_first_iteration =
+        arith::CmpIOp::create(nested_b, arith::CmpIPredicate::eq, iter_slice_id,
+                              arith::ConstantIndexOp::create(nested_b, 0));
+    // Check if the offsets changed (or if this is the first iteration).
+    Value offsets_changed = arith::OrIOp::create(
+        nested_b, is_first_iteration,
+        EmitInequalityCheck(nested_b, trimmed_offsets, new_trimmed_offsets));
 
     auto new_offsets = PadWithZeros(new_trimmed_offsets, output_rank,
                                     scatter_indices_to_operand_dims, nested_b);
 
     // Write accumulated values into the tensor if the offsets changed.
-    Value is_not_first_iteration =
-        arith::CmpIOp::create(b, arith::CmpIPredicate::ne, iter_slice_id,
-                              arith::ConstantIndexOp::create(b, 0));
-    Value write_to_output_required = arith::AndIOp::create(
-        b, is_not_first_iteration,
-        arith::AndIOp::create(b, offsets_changed, iter_is_inbounds));
-    iter_output = helper
-                      .WriteAccumulatorsToOutput(b, write_to_output_required,
-                                                 thread_and_block_ids,
-                                                 iter_slice_id, slice_indexing,
-                                                 offsets, iter_acc, iter_output)
-                      .front();
+    Value write_to_output_required =
+        arith::AndIOp::create(nested_b, offsets_changed, iter_is_inbounds);
+    iter_output =
+        helper
+            .WriteAccumulatorsToOutput(
+                nested_b, write_to_output_required, thread_and_block_ids,
+                iter_slice_id, slice_indexing, offsets, iter_acc, iter_output)
+            .front();
 
     // Update `is_inbounds` if the offsets changed.
     Value new_is_inbounds = UpdateIsInbounds(

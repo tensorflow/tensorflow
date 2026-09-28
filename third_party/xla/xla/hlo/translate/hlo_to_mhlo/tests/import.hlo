@@ -2061,7 +2061,7 @@ add {
   ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }
 
-// CHECK-LABEL : func private parition_id
+// CHECK-LABEL: func private @partition_id
 %partition_id {
   // CHECK: mhlo.partition_id : tensor<ui32>
   ROOT %pid = u32[] partition-id()
@@ -2075,7 +2075,7 @@ add {
   // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
 }
 
-// CHECK-LABEL : func private domain
+// CHECK-LABEL: func private @domain
 %domain (Arg_0.1: u32[]) -> u32[] {
   // CHECK: "mhlo.domain"(
   // CHECK-SAME: {entry_metadata = "{maximal device=1}", exit_metadata = "{}", kind = #mhlo<kind sharding>}

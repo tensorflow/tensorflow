@@ -51,8 +51,10 @@ class KernelReuseCache {
     std::optional<se::ClusterDim> cluster_dim;
     int64_t shmem_bytes = 0;
     // Reference counted so that consumers can share the binary instead of
-    // copying it. May be null for entries that carry no binary.
-    std::shared_ptr<const std::vector<uint8_t>> binary;
+    // copying it. Default-initialized to an empty vector so `binary` is
+    // non-null even for default-constructed entries.
+    std::shared_ptr<const std::vector<uint8_t>> binary =
+        std::make_shared<const std::vector<uint8_t>>();
     stream_executor::gpu::TmaMetadata tma_metadata;
     bool use_pdl = false;
   };
@@ -80,9 +82,7 @@ class KernelReuseCache {
   // Retrieves the cache entry for the given computation, or generates it
   // asynchronously using the given generator function and stores it in the
   // cache.
-  //
-  // The returned pointer is never nullptr.
-  std::pair<tsl::Future<const Entry*>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<Entry>, bool /*was_cached*/> GetWithStatus(
       const HloComputation* fused_computation,
       absl::Span<const emitters::KernelArgument> kernel_arguments,
       absl::string_view discriminator,
@@ -92,11 +92,9 @@ class KernelReuseCache {
   // asynchronously using the given generator function and stores it in the
   // cache.
   //
-  // The returned pointer is never nullptr.
-  //
   // A non-OK status is returned if the entry is not found and the generator
   // failed.
-  std::pair<tsl::Future<const Entry*>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<Entry>, bool /*was_cached*/> GetWithStatus(
       std::string fingerprint,
       absl::FunctionRef<tsl::Future<Entry>()> generator);
 

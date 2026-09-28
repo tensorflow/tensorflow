@@ -5689,5 +5689,46 @@ TEST_F(BufferAssignmentTest, FromProtoRejectsNegativeSize) {
   EXPECT_THAT(result.status().message(), ::testing::HasSubstr("negative"));
 }
 
+TEST_F(BufferAssignmentTest,
+       ToProtoSortsAssignedBuffersAndPopulatesNestedTupleAliases) {
+  const char* const hlo_text = R"(
+    HloModule test
+    cond {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT cond_res = pred[] constant(true)
+    }
+    body {
+      p = (f32[4]{0}, f32[8]{0}) parameter(0)
+      gte0 = f32[4]{0} get-tuple-element(p), index=0
+      gte1 = f32[8]{0} get-tuple-element(p), index=1
+      neg0 = f32[4]{0} negate(gte0)
+      ROOT out = (f32[4]{0}, f32[8]{0}) tuple(neg0, gte1)
+    }
+    ENTRY e {
+      p0 = (f32[4]{0}, f32[8]{0}) parameter(0)
+      ROOT loop = (f32[4]{0}, f32[8]{0}) while(p0), condition=cond, body=body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  std::unique_ptr<BufferAssignment> buffers = RunBufferAssignment(module.get());
+  BufferAssignmentProto proto = buffers->ToProto();
+
+  EXPECT_FALSE(proto.logical_buffers().empty());
+  EXPECT_FALSE(proto.buffer_aliases().empty());
+  for (const BufferAllocationProto& alloc : proto.buffer_allocations()) {
+    for (int i = 1; i < alloc.assigned_size(); ++i) {
+      EXPECT_LT(alloc.assigned(i - 1).logical_buffer_id(),
+                alloc.assigned(i).logical_buffer_id());
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> roundtrip,
+      BufferAssignment::FromProto(proto, module.get(), &BufferSizeBytes,
+                                  &alias_info_));
+  EXPECT_EQ(roundtrip->Allocations().size(), buffers->Allocations().size());
+}
+
 }  // namespace
 }  // namespace xla

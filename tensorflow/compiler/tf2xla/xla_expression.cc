@@ -15,11 +15,36 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 
+#include <cstdint>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -148,7 +173,7 @@ absl::StatusOr<Tensor> XlaExpression::ResolveDynamism() const {
 }
 
 absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
-    xla::Client* client, bool dynamic_dimension_is_minus_one,
+    xla::PjRtClient* client, bool dynamic_dimension_is_minus_one,
     xla::ValueInferenceMode mode) const {
   switch (kind()) {
     case Kind::kConstant:
@@ -191,17 +216,28 @@ absl::StatusOr<std::optional<Tensor>> XlaExpression::ResolveConstant(
     return {std::nullopt};
   }
 
-  if (!client)
+  if (!client) {
     return absl::InvalidArgumentError("client is required to resolve constant");
+  }
 
   TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
                       handle().builder()->BuildConstantSubGraph(
                           handle(), dynamic_dimension_is_minus_one));
 
-  TF_ASSIGN_OR_RETURN(xla::Literal literal,
-                      client->ComputeConstant(constant_graph, &layout));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_exec,
+      client->CompileAndLoad(constant_graph, xla::CompileOptions()));
+  xla::ExecuteOptions execute_options;
+  TF_ASSIGN_OR_RETURN(auto results,
+                      loaded_exec->Execute({{}}, execute_options));
+  if (results.empty() || results[0].empty() || results[0][0] == nullptr) {
+    return absl::InternalError("Constant computation produced no output");
+  }
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
+                      results[0][0]->ToLiteralSync());
   Tensor tensor;
-  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype(), &tensor));
+  TF_RETURN_IF_ERROR(
+      LiteralToHostTensor(literal->Relayout(layout), dtype(), &tensor));
   return {tensor};
 }
 

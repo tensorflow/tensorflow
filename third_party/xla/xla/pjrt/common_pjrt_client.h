@@ -1260,9 +1260,7 @@ class CommonPjRtDevice : public PjRtDevice {
   absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
+      absl::string_view description) const override;
 
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;

@@ -36,12 +36,22 @@ def read_patch_series(ctx, series_spec):
             fail("Patch series file does not exist: %s" % series_label)
         for line in ctx.read(series_file).splitlines():
             line = line.strip()
-            if line and not line.startswith("#"):
-                patch_path = series_file.dirname
-                for part in line.split("/"):
-                    if part and part != ".":
-                        patch_path = patch_path.get_child(part)
-                patches.append(patch_path)
+            if not line or line.startswith("#"):
+                continue
+            patch_path = series_file.dirname
+            for part in line.split("/"):
+                if part and part != ".":
+                    patch_path = patch_path.get_child(part)
+
+            # `dirname` and `get_child` are pure path arithmetic and do not
+            # register a dependency, so watch each patch explicitly. Otherwise
+            # the implicit watch inside `ctx.patch` is the first access to the
+            # file and forces a Skyframe restart after the archive has already
+            # been downloaded and extracted.
+            ctx.watch(patch_path)
+            if not patch_path.exists:
+                fail("Patch file listed in %s does not exist: %s" % (series_label, patch_path))
+            patches.append(patch_path)
     return patches
 
 def _get_link_dict(ctx, link_files, build_file):

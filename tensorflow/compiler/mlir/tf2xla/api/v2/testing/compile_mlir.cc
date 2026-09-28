@@ -24,10 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/utils/test_metadata_config.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/client_library.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -51,10 +49,8 @@ absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.rollout_state = rollout_state;
   mlir_to_hlo_args.mlir_module = mlir_module_str;
 
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(
-      auto client, xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform));
+  TF_ASSIGN_OR_RETURN(auto* compiler,
+                      xla::GetDefaultPjRtCompiler(xla::CpuName()));
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
@@ -72,7 +68,7 @@ absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   return LegalizeMlirToHlo(mlir_to_hlo_args, metadata_proto, use_tuple_args,
                            device_type, custom_legalization_passes,
                            /*shape_determination_fns=*/{}, arg_shapes,
-                           &arg_core_mapping, &per_core_arg_shapes, client);
+                           &arg_core_mapping, &per_core_arg_shapes, compiler);
 }
 
 }  // namespace testing

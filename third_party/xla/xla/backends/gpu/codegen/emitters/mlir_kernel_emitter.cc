@@ -408,20 +408,20 @@ AsyncThunkSequence MlirKernelFusion::Emit(
   bool kernel_cached = cached;
   return future_entry.Map([&fusion, thunk_info = std::move(thunk_info),
                            args = std::move(args), kernel_cached](
-                              const KernelReuseCache::Entry* entry) mutable
+                              const KernelReuseCache::Entry& entry) mutable
                               -> absl::StatusOr<ThunkSequence> {
     if (kernel_cached) {
-      VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
+      VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry.kernel_name;
     }
     ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
                      kernel::CreateSharedCubinCustomKernel(
-                         entry->kernel_name, entry->binary, args.args().size(),
-                         entry->launch_dimensions.block_counts(),
-                         entry->launch_dimensions.thread_counts_per_block(),
-                         entry->shmem_bytes));
+                         entry.kernel_name, entry.binary, args.args().size(),
+                         entry.launch_dimensions.block_counts(),
+                         entry.launch_dimensions.thread_counts_per_block(),
+                         entry.shmem_bytes));
 
     return ThunkSequence::Of<CustomKernelThunk>(
-        thunk_info, std::move(custom_kernel), args, entry->use_pdl);
+        thunk_info, std::move(custom_kernel), args, entry.use_pdl);
   });
 }
 

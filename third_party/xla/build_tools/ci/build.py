@@ -246,7 +246,6 @@ class Build:
           )
       )
     cmds.append(self.bazel_command(subcommand=self.subcommand))
-    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
 
     return cmds
 

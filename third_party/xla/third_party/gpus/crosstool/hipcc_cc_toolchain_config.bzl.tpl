@@ -1166,12 +1166,6 @@ def _impl(ctx):
         flag_sets = [
             flag_set(
                 actions = all_compile_actions + all_link_actions,
-                flag_groups = [
-                    flag_group(
-                        flags = ["--rocm-path=" + _rocm_path] +
-                                ["--offload-arch=" + arch for arch in _hipcc_config.gpu_architectures],
-                    ),
-                ],
             ),
         ],
     )

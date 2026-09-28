@@ -39,6 +39,12 @@ message NumericMismatch {
   optional double percentage_of_elems_exceeding_both_errors = 6;
   optional int64 output_shape_index = 7;
   optional bool result_of_reduce = 8;
+  repeated int64 tensor_dimensions = 9;
+  repeated int64 mismatch_box_min = 10;
+  repeated int64 mismatch_box_max = 11;
+  repeated int64 top_mismatch_index = 12;
+  optional int64 mismatch_count = 13;
+  optional int64 total_elements = 14;
 }
 
 message NumericCheck {

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
+#include "tsl/platform/context.h"
 
 namespace tensorflow {
 namespace data {
@@ -571,11 +572,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
           runner_thread_.reset(Env::Default()->StartThread(
               /*thread_options=*/{}, "tf_data_parallel_map",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy)));
+              tsl::WithCurrentContext(
+                  std::bind(&Iterator::RunnerThread, this, ctx_copy))));
           if (ctx->stats_aggregator()) {
             stats_thread_.reset(Env::Default()->StartThread(
                 /*thread_options=*/{}, "tf_data_parallel_map_stats",
-                std::bind(&Iterator::StatsThread, this, ctx_copy)));
+                tsl::WithCurrentContext(
+                    std::bind(&Iterator::StatsThread, this, ctx_copy))));
           }
         }
       }

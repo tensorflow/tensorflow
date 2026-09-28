@@ -63,7 +63,7 @@ cc_library(
     ],
     visibility = internal_visibility([
         ":friends",
-        "//xla/backends/gpu/libraries/native_custom_call_thunks:handler_allowlist",
+        "//xla:native_custom_call_handler_allowlist",
     ]),
     deps = [
         ":backend_config",
@@ -169,7 +169,6 @@ xla_cc_test(
     srcs = ["hlo_computation_test.cc"],
     deps = [
         ":hlo",
-        "//third_party/gloop/util/task:status_matchers",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
