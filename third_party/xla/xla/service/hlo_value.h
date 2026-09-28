@@ -130,6 +130,12 @@ class HloValue : public BufferValue {
   // 'positions' as this is set at construction time.
   void SetPositions(absl::Span<const HloPosition> positions);
 
+  // Same, with the liveness supplied: `live_out_of_module` says whether one
+  // of the positions, the defining one included, is the root of the module's
+  // entry computation. Spares the walk to the module for every value.
+  void SetPositions(absl::Span<const HloPosition> positions,
+                    bool live_out_of_module);
+
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
 

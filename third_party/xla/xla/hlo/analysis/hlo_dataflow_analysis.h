@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
@@ -150,7 +151,7 @@ class HloDataflowAnalysis {
   HloValue& GetValue(HloValue::Id value_id);
 
   // Returns the total number of HloValues.
-  int64_t value_count() const { return values_.size(); }
+  int64_t value_count() const { return values_vector_.size(); }
 
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
@@ -224,6 +225,54 @@ class HloDataflowAnalysis {
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
   absl::Status RunImpl();
 
+  // Every instruction of every computation on an included thread: the
+  // computations in module post order, each computation's instructions in
+  // post order. The ids of the values instructions define, and value_sets_,
+  // follow this order; phi ids follow the propagation order.
+  struct PostOrder {
+    std::vector<HloComputation*> computations;
+    // computations[c] owns instructions[computation_begin[c]] up to, and not
+    // including, instructions[computation_begin[c + 1]].
+    std::vector<int64_t> computation_begin;
+    // One past the largest local id among the instructions of computations[c].
+    std::vector<int32_t> computation_local_id_end;
+    std::vector<HloInstruction*> instructions;
+  };
+  PostOrder MakePostOrder() const;
+
+  // Maps each instruction to its index in PostOrder::instructions in O(1),
+  // through the unique id of its computation and its local id, both dense
+  // integers the module assigns. Local ids move when HloComputation::Cleanup
+  // compacts a computation, which a pass may do while it still holds the
+  // analysis (the window prefetch path of memory space assignment does), so a
+  // lookup checks the instruction it lands on and falls back to a pointer
+  // keyed map when the ids have moved.
+  class InstructionIndexTable {
+   public:
+    // Numbers the instructions of `post_order` 0, 1, ... in order.
+    void Build(const PostOrder& post_order);
+
+    // Returns the index of `instruction`, or -1 for an instruction the
+    // analysis does not know (on an excluded thread, or added later).
+    int32_t IndexOf(const HloInstruction* instruction) const;
+
+   private:
+    int32_t SlowIndexOf(const HloInstruction* instruction) const;
+
+    // Per computation unique id: where the computation's local ids start in
+    // indices_, -1 for a computation without value sets, and one past its
+    // largest local id when the analysis ran.
+    std::vector<int32_t> computation_offsets_;
+    std::vector<int32_t> computation_local_id_ends_;
+    // Per computation offset plus local id, the index; -1 in a hole.
+    std::vector<int32_t> indices_;
+    // Per index, the instruction, to detect moved local ids.
+    std::vector<const HloInstruction*> instructions_;
+    // Built from instructions_ on the first lookup that misses.
+    mutable absl::once_flag by_pointer_once_;
+    mutable absl::flat_hash_map<const HloInstruction*, int32_t> by_pointer_;
+  };
+
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
   // records those phi values as well as their inputs in a phi graph.
@@ -251,7 +300,7 @@ class HloDataflowAnalysis {
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
   // then propagated throughout the HLO graph by calling Propagate.
-  absl::Status InitializeInstructionValueSets();
+  absl::Status InitializeInstructionValueSets(const PostOrder& post_order);
 
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).
@@ -312,7 +361,7 @@ class HloDataflowAnalysis {
   // Propagates the dataflow through the module. In particular, it propagates
   // the HloValueSet from its defining instruction to the users of the
   // instructions.
-  void Propagate();
+  void Propagate(const PostOrder& post_order);
 
   // Returns the result of the SSA Phi function applied to the given inputs at
   // the given instruction.
@@ -338,15 +387,16 @@ class HloDataflowAnalysis {
 
   std::unique_ptr<CallGraph> call_graph_;
 
-  // The map of all HloValues in the module. We pass around pointers to the
-  // mapped HloValues, so the underlying container must keep them valid despite
-  // mutations touching other map entries.
-  absl::flat_hash_map<HloValue::Id, std::unique_ptr<HloValue>> values_;
+  // All HloValues in the module, indexed by HloValue::Id; a deleted value
+  // leaves a null entry. We pass around pointers to the HloValues, so each one
+  // stays where it was allocated.
+  std::vector<std::unique_ptr<HloValue>> values_;
 
-  // A map from instruction to InstructionValueSet.
-  absl::flat_hash_map<const HloInstruction*,
-                      std::unique_ptr<InstructionValueSet>>
-      value_sets_;
+  // The InstructionValueSet of each instruction, at the index
+  // instruction_indices_ maps the instruction to. Filled once, in
+  // InitializeInstructionValueSets, and never resized after that.
+  std::vector<InstructionValueSet> value_sets_;
+  InstructionIndexTable instruction_indices_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily
