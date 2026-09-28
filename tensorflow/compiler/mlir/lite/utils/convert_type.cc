@@ -34,8 +34,6 @@ namespace tflite {
 
 using absl::StatusOr;
 
-namespace errors = tensorflow::errors;
-
 tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
   if (type.isF16()) {
     return tflite::TensorType_FLOAT16;
