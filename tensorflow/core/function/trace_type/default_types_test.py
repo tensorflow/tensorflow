@@ -15,6 +15,7 @@
 """Tests for default_types."""
 
 import collections
+import math
 
 import numpy as np
 
@@ -103,15 +104,26 @@ class DefaultTypesTest(test.TestCase):
     complex_nan = default_types.Literal(complex(float('nan'), 1))
     complex_nan_other = default_types.Literal(complex(1, float('nan')))
     self.assertEqual(nan_literal, nan_literal)
-    self.assertEqual(nan_literal, complex_nan)
-    self.assertEqual(nan_literal, complex_nan_other)
+    self.assertEqual(nan_literal, default_types.Literal(float('nan')))
+    self.assertEqual(complex_nan, complex_nan_other)
+    # NaNs of different types trace differently, like other values do.
+    self.assertNotEqual(nan_literal, complex_nan)
+    self.assertNotEqual(nan_literal, complex_nan_other)
+    # The traced function sees a NaN of the type it was called with.
+    placeholder = complex_nan.placeholder_value(None)
+    self.assertIsInstance(placeholder, complex)
+    self.assertTrue(math.isnan(placeholder.real))
 
   def testLiteralNumpyComplexNan(self):
     # np.complex64 does not subclass complex, and math.isnan would only look
     # at its real part.
     numpy_complex_nan = default_types.Literal(
         np.complex64(complex(1, float('nan'))))
-    self.assertEqual(default_types.Literal(float('nan')), numpy_complex_nan)
+    self.assertEqual(
+        default_types.Literal(np.complex64(complex(float('nan'), 1))),
+        numpy_complex_nan,
+    )
+    self.assertNotEqual(default_types.Literal(float('nan')), numpy_complex_nan)
 
   def testLiteralDistinguishesTypes(self):
     # 1, 1.0 and True compare equal but give tensors of different dtypes.
@@ -149,6 +161,10 @@ class DefaultTypesTest(test.TestCase):
       default_types.Literal(1).cast(True, None)
     with self.assertRaises(ValueError):
       default_types.Literal(0.0).cast(-0.0, None)
+    with self.assertRaises(ValueError):
+      default_types.Literal(float('nan')).cast(
+          complex(float('nan'), float('nan')), None
+      )
 
   def testLiteralSupertypes(self):
     literal_a = default_types.Literal(1)

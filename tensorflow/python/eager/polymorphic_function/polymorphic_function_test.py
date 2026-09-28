@@ -2091,6 +2091,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(to_tensor(1).dtype, dtypes.int32)
     self.assertEqual(to_tensor(1.0).dtype, dtypes.float32)
     self.assertEqual(to_tensor(True).dtype, dtypes.bool)
+    self.assertEqual(to_tensor(float('nan')).dtype, dtypes.float32)
+    self.assertEqual(
+        to_tensor(complex(float('nan'), 1)).dtype, dtypes.complex128
+    )
 
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`

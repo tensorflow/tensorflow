@@ -17,7 +17,7 @@
 import collections
 import math
 import numbers
-from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type
+from typing import Any, Dict as PythonDict, Hashable, List as PythonList, Optional, Sequence, Tuple as PythonTuple, Type, Union
 import weakref
 
 from tensorflow.core.function.trace_type import default_types_pb2
@@ -41,7 +41,7 @@ NanMarker = object()
 NoneType = type(None)
 
 
-def is_nan(x):
+def is_nan(x: Any) -> bool:
   """Checks if given value is a Python NaN."""
   # Like _signs below, check the common exact types first.
   t = type(x)
@@ -63,7 +63,7 @@ def is_nan(x):
     return math.isnan(x)  # pyrefly: ignore[bad-argument-type]
 
 
-def _signs(x):
+def _signs(x: Any) -> Optional[Union[float, PythonTuple[float, float]]]:
   """Returns the signs of a float's or complex's parts, else None."""
   # This runs for every Python scalar argument of every tf.function call, so
   # check the common exact types before the slower abstract base classes.
@@ -88,17 +88,22 @@ class Literal(trace.TraceType, serialization.Serializable):
   """Represents a Literal type like bool, int or string."""
 
   def __init__(self, value: Any):
+    # Values that compare equal can still trace differently: 1, 1.0 and True
+    # give tensors of different dtypes, and math.copysign or a division tells
+    # 0.0 and -0.0 apart. So a Literal only matches values of the same type
+    # and sign. The type is taken before a NaN is replaced below, so that NaNs
+    # of different types do not match either.
+    self._value_type = type(value)
+
     # We match nan values against each other even though Python doesn't.
     if is_nan(value):
+      # Keep the NaN itself for placeholder_value, so that the traced function
+      # sees a NaN of the type it was called with.
+      self._nan_value = value
       value = NanMarker
 
     self.value = value
     self._value_hash = hash(value)
-    # Values that compare equal can still trace differently: 1, 1.0 and True
-    # give tensors of different dtypes, and math.copysign or a division tells
-    # 0.0 and -0.0 apart. So a Literal only matches values of the same type
-    # and sign.
-    self._value_type = type(value)
     self._value_signs = None if value is NanMarker else _signs(value)
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
@@ -159,12 +164,13 @@ class Literal(trace.TraceType, serialization.Serializable):
       return list(self.value)
 
     if self.value is NanMarker:
-      return float("nan")
+      return self._nan_value
 
     return self.value
 
   def cast(self, value: Any, casting_context: Any) -> Any:
-    if self.value is NanMarker and is_nan(value):
+    if (self.value is NanMarker and type(value) is self._value_type and
+        is_nan(value)):
       return value
 
     if self._matches(value):
