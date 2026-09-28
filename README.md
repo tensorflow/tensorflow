@@ -128,11 +128,11 @@ You can find more community-supported platforms and configurations in the
 Build Type                    | Artifacts
 ----------------------------- | ---------
 **Linux CPU**                 | [PyPI](https://pypi.org/project/tf-nightly/)
-**Linux GPU**                 | [PyPI](https://pypi.org/project/tf-nightly-gpu/)
+**Linux GPU**                 | [PyPI](https://pypi.org/project/tf-nightly/)
 **Linux XLA**                 | TBA
 **macOS**                     | [PyPI](https://pypi.org/project/tf-nightly/)
 **Windows CPU**               | [PyPI](https://pypi.org/project/tf-nightly/)
-**Windows GPU**               | [PyPI](https://pypi.org/project/tf-nightly-gpu/)
+**Windows GPU**               | [PyPI](https://pypi.org/project/tf-nightly/)
 **Android**                   | [LiteRT](https://www.tensorflow.org/lite/guide/android)
 **Raspberry Pi 0 and 1**      | [Py3](https://storage.googleapis.com/tensorflow-nightly/tensorflow-1.10.0-cp34-none-linux_armv6l.whl)
 **Raspberry Pi 2 and 3**      | [Py3](https://storage.googleapis.com/tensorflow-nightly/tensorflow-1.10.0-cp34-none-linux_armv7l.whl)
