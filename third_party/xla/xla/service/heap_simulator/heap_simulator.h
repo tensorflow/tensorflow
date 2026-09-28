@@ -347,6 +347,11 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   int64_t max_heap_size_ = 0;
 };
 
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive hybrid
+// sort strategy.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch);
+
 // Node in BufferIntervalTree that stores the alloc and free times of a buffer,
 // and the chunk assigned to it.
 struct BufferIntervalTreeNode {
@@ -1075,6 +1080,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
+  mutable std::vector<Chunk> radix_scratch_;
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
