@@ -968,25 +968,32 @@ def transpose(a, axes=None):
   if maybe_rank is not None and isinstance(axes, (tuple, list)):
     # Match np.transpose behavior: raise a ValueError at trace time for
     # invalid `axes` instead of letting the underlying op produce an
-    # opaque error deeper in the stack.
+    # opaque error deeper in the stack. Duplicate detection uses a single
+    # integer bitmask (no intermediate list/set allocations), and only
+    # runs when the static rank and Python-int entries are known.
     if len(axes) != maybe_rank:
       raise ValueError(
-          f'axes don\'t match array. Expected {maybe_rank} axes, got '
-          f'{len(axes)}.'
+          f"axes don't match array. Expected {maybe_rank} axes, got "
+          f"{len(axes)}."
       )
-    normalized_axes = []
+    normalized_mask = 0
+    seen_int_axes = 0
     for ax in axes:
       if isinstance(ax, (int, np.integer)):
         normalized = ax + maybe_rank if ax < 0 else ax
         if normalized < 0 or normalized >= maybe_rank:
           raise ValueError(
-              f'Argument `axes` (received axes={ax}) is out of bounds for '
-              f'input {a} of rank {maybe_rank}.'
+              f"Argument 'axes' (received axes={ax}) is out of bounds for "
+              f"array of rank {maybe_rank}."
           )
-        normalized_axes.append(normalized)
-    if len(normalized_axes) == maybe_rank and len(set(normalized_axes)) != len(
-        normalized_axes
-    ):
+        bit = 1 << normalized
+        if normalized_mask & bit:
+          raise ValueError('repeated axis in transpose')
+        normalized_mask |= bit
+        seen_int_axes += 1
+    if seen_int_axes == maybe_rank and normalized_mask != (
+        1 << maybe_rank
+    ) - 1:
       raise ValueError('repeated axis in transpose')
 
   if axes is not None:
