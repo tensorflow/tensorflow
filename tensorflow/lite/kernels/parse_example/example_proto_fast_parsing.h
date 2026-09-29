@@ -121,7 +121,7 @@ class Feature {
       *dtype = DT_INVALID;
       return absl::OkStatus();
     }
-    uint8_t oneof_tag = static_cast<uint8_t>(*serialized_.data());
+    uint8_t oneof_tag = static_cast<uint8_t>(serialized_[0]);
     serialized_.remove_prefix(1);
     switch (oneof_tag) {
       case kDelimitedTag(1):
@@ -248,7 +248,7 @@ class Feature {
             uint32_t buffer32;
             if (!stream.ReadLittleEndian32(&buffer32)) return false;
             if (index < float_list->size()) {
-              float_list->data()[index] = absl::bit_cast<float>(buffer32);
+              (*float_list)[index] = absl::bit_cast<float>(buffer32);
               ++index;
             }
           }
@@ -268,7 +268,7 @@ class Feature {
           uint32_t buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
           if (index < static_cast<int64_t>(float_list->size())) {
-            float_list->data()[index] = absl::bit_cast<float>(buffer32);
+            (*float_list)[index] = absl::bit_cast<float>(buffer32);
             ++index;
           }
         }
