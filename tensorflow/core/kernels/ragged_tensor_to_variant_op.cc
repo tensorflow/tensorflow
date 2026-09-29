@@ -304,6 +304,21 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
                      context->allocate_output(0, dense_values_shape, &out));
       // ConcatCPU assumes non-empty output.
       if (dense_values_shape.num_elements() == 0) return;
+      // ConcatCPU writes the sum of the input lengths into `out` without
+      // bounding it by the output size, so a crafted set of encoded variants
+      // whose values exceed `dense_values_shape` would overflow `out`. Require
+      // the concatenated length to match the length implied by
+      // `dense_values_shape`.
+      int64_t total_values = 0;
+      for (const Tensor& t : values) {
+        total_values += t.NumElements();
+      }
+      OP_REQUIRES(
+          context, total_values == dense_values_shape.num_elements(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected the number of encoded ragged values (", total_values,
+              ") to match the number of values implied by dense_values_shape (",
+              dense_values_shape.num_elements(), ")")));
       // Multiple flat_values tensors: concatenate them together.
       using Piece = typename TTypes<VALUE_TYPE, 2>::Matrix;
       using ConstPiece = typename TTypes<VALUE_TYPE, 2>::ConstMatrix;

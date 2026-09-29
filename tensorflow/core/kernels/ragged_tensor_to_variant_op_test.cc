@@ -541,5 +541,24 @@ TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsIncreasingError) {
                                  "row_splits[1]=3"));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeTooSmallError) {
+  // The encoded variants carry 3 + 2 = 5 values, but dense_values_shape
+  // implies only 2, so concatenating the values would write past the output.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (5) to match "
+                  "the number of values implied by dense_values_shape (2)"));
+}
+
 }  // namespace
 }  // namespace tensorflow
