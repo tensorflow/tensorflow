@@ -1,0 +1,46 @@
+// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-4 %s
+
+add_region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[16,32] parameter(0)
+  c_zero = f32[] constant(0)
+  red = f32[16] reduce(p, c_zero), dimensions={1}, to_apply=add_region, backend_config={sizes:[8]}
+  bcast = f32[16,32] broadcast(red), dimensions={0}
+  x = f32[16,32] add(p, bcast)
+  slice0 = f32[16,16] slice(x), slice={[0:16], [0:16]}
+  slice1 = f32[16,16] slice(x), slice={[0:16], [16:32]}
+  ROOT concat = f32[16,32] concatenate(slice0, slice1), dimensions={1}
+}
+
+ENTRY main {
+  p = f32[16,32] parameter(0)
+  ROOT r = f32[16,32] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4", "16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// `red` feeds both concat operands, so tiling duplicates it into both concat
+// regions and its reduction loop is emitted once per `scf.if` branch.
+
+// CHECK-LABEL: xtile.entry_func @triton_fn
+// CHECK:         %[[IF:.*]] = scf.if
+// CHECK:           %[[THEN_ACC:.*]] = scf.for
+// CHECK:             arith.addf
+// CHECK:           "tt.reduce"(%[[THEN_ACC]])
+// CHECK:         } else {
+// CHECK:           %[[ELSE_ACC:.*]] = scf.for
+// CHECK:             arith.addf
+// CHECK:           "tt.reduce"(%[[ELSE_ACC]])
+// CHECK:         xtile.insert %[[IF]] into %arg1

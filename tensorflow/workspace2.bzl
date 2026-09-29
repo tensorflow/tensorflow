@@ -67,6 +67,7 @@ load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
 load("@xla//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
+load("@xla//third_party/xz:workspace.bzl", xz = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -255,6 +256,7 @@ def _tf_repositories():
     )
 
     xnnpack()
+    xz()
 
     # XNNPack dependency.
     tf_http_archive(
