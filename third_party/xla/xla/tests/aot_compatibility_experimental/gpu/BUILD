@@ -30,7 +30,6 @@ xla_test(
         "gb300",
     ],
     tags = [
-        "broken",
         "multi_gpu",
         "no_oss",
     ],
