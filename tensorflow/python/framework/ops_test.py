@@ -2639,31 +2639,41 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with bar as scope_name:
       self.assertEqual("bar/", scope_name)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerNestedScope(self):
     """Spaces and invalid chars should raise ValueError in eager nested scopes."""
     with ops.name_scope_v2("valid_outer"):
-      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
         with ops.name_scope_v2("scope with spaces"):
           pass
-      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
         with ops.name_scope_v2("invalid@scope"):
           pass
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerRootScope(self):
-    """Spaces and illegal chars should raise ValueError in eager root scope."""
-    # Leading underscores are valid in TF scope names (used internally)
-    with ops.name_scope_v2("_valid_leading_underscore"):
-      pass
-    # Spaces and special chars must raise
-    with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+    """Spaces and illegal chars should raise ValueError in root scope.
+
+    Note: a leading underscore is valid in a *nested* scope but is rejected at
+    the root level in both graph and eager modes (because root scopes must
+    conform to _VALID_OP_NAME_REGEX, which requires the first character to be
+    alphanumeric or '.').
+    """
+    # Leading underscore is invalid at root level in both modes.
+    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+      with ops.name_scope_v2("_invalid_at_root"):
+        pass
+    # Spaces and special chars must always raise.
+    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
       with ops.name_scope_v2("scope with spaces"):
         pass
-    with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
       with ops.name_scope_v2("invalid@scope"):
         pass
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2ValidNamesEager(self):
-    """Valid scope names should not raise in eager mode."""
+    """Valid scope names should not raise in graph or eager mode."""
     with ops.name_scope_v2("valid_scope"):
       pass
     with ops.name_scope_v2("ValidScope123"):
@@ -2675,13 +2685,14 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope_v2(""):
       pass
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerTrailingSlash(self):
     """Invalid characters should be rejected before trailing-slash handling."""
-    with self.assertRaisesRegex(ValueError, "is not a valid root scope name"):
+    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
       with ops.name_scope_v2("invalid space/"):
         pass
     with ops.name_scope_v2("valid_outer"):
-      with self.assertRaisesRegex(ValueError, "is not a valid scope name"):
+      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
         with ops.name_scope_v2("invalid space/"):
           pass
 
