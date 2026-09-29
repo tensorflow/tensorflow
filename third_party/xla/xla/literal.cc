@@ -2957,20 +2957,44 @@ LiteralProto LiteralBase::ToProto() const {
   return proto;
 }
 
+const void* LiteralBase::untyped_data() const {
+  return root_piece().untyped_data();
+}
+
 const void* LiteralBase::untyped_data(const ShapeIndex& shape_index) const {
   return piece(shape_index).untyped_data();
+}
+
+void* MutableLiteralBase::untyped_data() {
+  return mutable_root_piece().untyped_data();
 }
 
 void* MutableLiteralBase::untyped_data(const ShapeIndex& shape_index) {
   return piece(shape_index).untyped_data();
 }
 
+int64_t LiteralBase::size_bytes() const {
+  return root_piece().size_bytes_dense();
+}
+
 int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes_dense();
 }
 
+int64_t LiteralBase::total_size_bytes() const {
+  return root_piece().total_bytes_dense();
+}
+
 int64_t LiteralBase::total_size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).total_bytes_dense();
+}
+
+int64_t LiteralBase::element_count() const {
+  return root_piece().element_count();
+}
+
+int64_t LiteralBase::element_count(const ShapeIndex& index) const {
+  return piece(index).element_count();
 }
 
 std::string LiteralBase::GetR1U8AsString() const {
