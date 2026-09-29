@@ -201,6 +201,7 @@ class TilingSpace {
 
   int64_t num_dimensions() const { return dimensions_.size(); }
   int64_t num_parallel_dimensions() const;
+  int64_t num_sequential_dimensions() const;
   int64_t num_rt_vars() const { return rt_vars_.size(); }
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,
@@ -243,8 +244,12 @@ class TilingSpace {
       const llvm::SmallVector<SymbolicExpr>& expressions,
       llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
-  // Returns the list of valid tilings for the tiling space.
-  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
+  // Returns the list of valid tilings for the tiling space. If
+  // `tile_reduction_dimensions` is set, tile sizes for the sequential
+  // dimensions of reduces are enumerated too; otherwise each of them is covered
+  // by a single tile of the dimension size.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
+      bool tile_reduction_dimensions = false);
 
  private:
   absl::Status InitializeDimensions(

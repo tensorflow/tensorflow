@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
@@ -67,14 +68,18 @@ absl::Status ProfilerPasses::Status() {
   return status_;
 }
 
-bool ProfilerPasses::NeedMorePasses() {
+absl::StatusOr<bool> ProfilerPasses::NeedMorePasses() {
   absl::MutexLock l(&mutex_);
-  if (!status_.ok()) return false;
+  if (!status_.ok()) return status_;
 #if !defined(IS_MOBILE_PLATFORM)
   if (multi_pass_profiler_ == nullptr) {
     return false;
   }
-  return multi_pass_profiler_->NeedMorePasses();
+  absl::StatusOr<bool> need_more = multi_pass_profiler_->NeedMorePasses();
+  if (!need_more.ok()) {
+    status_ = need_more.status();
+  }
+  return need_more;
 #else
   return false;
 #endif

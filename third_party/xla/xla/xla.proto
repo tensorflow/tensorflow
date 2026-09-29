@@ -1952,7 +1952,14 @@ message DebugOptions {
   // Requires sm_90+ and CUDA 13.3+ (tileiras) at runtime. Off by default.
   optional bool xla_gpu_experimental_enable_tensor_ir = 557;
 
-  // Next id: 558
+  // If true, the block-level (Triton) tiling search also enumerates tile sizes
+  // for reduction dimensions, i.e. reductions may be emitted as a loop over
+  // tiles.
+  // TODO(b/534676634): Only fusions with a single reduce over a single
+  // dimension are tiled for now; extend to the other cases.
+  optional bool xla_gpu_experimental_enable_reduction_dimension_tiling = 558;
+
+  // Next id: 559
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

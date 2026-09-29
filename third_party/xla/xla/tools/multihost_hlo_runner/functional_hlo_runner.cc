@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -85,18 +87,13 @@ limitations under the License.
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/profiler_session.h"
-#include "tsl/profiler/protobuf/profiler_options.pb.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace FunctionalHloRunner {
@@ -596,13 +593,41 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
 
+  auto refresh_argument_ptrs = [&]() -> absl::Status {
+    if (running_options.recreate_buffers_between_repeats) {
+      device_buffers.clear();
+      argument_ptrs.clear();
+      ABSL_ASSIGN_OR_RETURN(device_buffers,
+                       create_argument_buffers_on_device(flatten_arguments));
+      argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+      return absl::OkStatus();
+    }
+    switch (parameter_type) {
+      case ParameterType::kOneTupleOfArrays:
+        argument_ptrs = CreateArgumentPointersBasedOnAliasing(
+            output_buffers, device_buffers,
+            get_output_index_for_one_tuple_of_arrays);
+        break;
+      case ParameterType::kOneListOfArrays:
+        argument_ptrs = CreateArgumentPointersBasedOnAliasing(
+            output_buffers, device_buffers,
+            get_output_index_for_one_list_of_arrays);
+        break;
+      case ParameterType::kOther:
+        argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+        break;
+    }
+    return absl::OkStatus();
+  };
+
   bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
     const bool profile_current_repeat =
         (running_options.profiler != nullptr) &&
         (repeat >= running_options.num_repeats -
-                       running_options.num_repeats_with_profiler);
+                       running_options.num_repeats_with_profiler) &&
+        (!running_options.multipass_profiling || is_last_repeat);
 
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -628,14 +653,46 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         running_options.profiler->CreateSession();
         has_active_profiler_session = true;
       }
-      futures->clear();
-      ABSL_ASSIGN_OR_RETURN(
-          output_buffers,
-          executable->Execute(argument_ptrs, execute_options, futures));
-      for (auto& future : *futures) {
-        ABSL_RETURN_IF_ERROR(future.Await());
-      }
 
+      auto execute_once = [&]() -> absl::Status {
+        futures->clear();
+        ABSL_ASSIGN_OR_RETURN(
+            std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+                new_output_buffers,
+            executable->Execute(argument_ptrs, execute_options, futures));
+        for (auto& future : *futures) {
+          ABSL_RETURN_IF_ERROR(future.Await());
+        }
+        output_buffers = std::move(new_output_buffers);
+        return absl::OkStatus();
+      };
+
+      if (running_options.multipass_profiling && profile_current_repeat) {
+        bool executed_in_multipass = false;
+        while (true) {
+          ABSL_ASSIGN_OR_RETURN(bool need_more_pass,
+                           running_options.profiler->NeedMorePasses());
+          if (!need_more_pass) {
+            break;
+          }
+          if (executed_in_multipass) {
+            ABSL_RETURN_IF_ERROR(refresh_argument_ptrs());
+          }
+          running_options.profiler->StartPass();
+          running_options.profiler->PushRange("hlo_runner_pass");
+          absl::Cleanup end_pass = [&] {
+            running_options.profiler->PopRange();
+            running_options.profiler->StopPass();
+          };
+          ABSL_RETURN_IF_ERROR(execute_once());
+          executed_in_multipass = true;
+        }
+        if (!executed_in_multipass) {
+          ABSL_RETURN_IF_ERROR(execute_once());
+        }
+      } else {
+        ABSL_RETURN_IF_ERROR(execute_once());
+      }
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
           is_last_repeat;
@@ -647,23 +704,8 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
-    if (!is_last_repeat) {
-      switch (parameter_type) {
-        case ParameterType::kOneTupleOfArrays:
-          argument_ptrs = CreateArgumentPointersBasedOnAliasing(
-              output_buffers, device_buffers,
-              get_output_index_for_one_tuple_of_arrays);
-          break;
-        case ParameterType::kOneListOfArrays:
-          argument_ptrs = CreateArgumentPointersBasedOnAliasing(
-              output_buffers, device_buffers,
-              get_output_index_for_one_list_of_arrays);
-          break;
-        case ParameterType::kOther:
-          argument_ptrs =
-              CreateArgumentPointersFromDeviceBuffers(device_buffers);
-          break;
-      }
+    if (!is_last_repeat && !running_options.recreate_buffers_between_repeats) {
+      ABSL_RETURN_IF_ERROR(refresh_argument_ptrs());
     }
   }
 
@@ -1811,58 +1853,6 @@ absl::StatusOr<ResolveTopologyResult> ResolveTopology(
 }
 
 }  // namespace FunctionalHloRunner
-
-HLORunnerProfiler::HLORunnerProfiler(absl::string_view dump_path,
-                                     bool keep_xspace)
-    : dump_path_(dump_path), keep_xspace_(keep_xspace) {}
-
-absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> HLORunnerProfiler::Create(
-    absl::string_view dump_path, bool keep_xspace) {
-  if (dump_path.empty()) {
-    return absl::InvalidArgumentError(
-        "Please provide a valid dump path to save XSpace results to disk.");
-  }
-  return std::make_unique<HLORunnerProfiler>(dump_path, keep_xspace);
-}
-
-void HLORunnerProfiler::CreateSession() {
-  auto options = tsl::ProfilerSession::DefaultOptions();
-  session_ = tsl::ProfilerSession::Create(options);
-}
-
-void HLORunnerProfiler::UploadSession() {
-  xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
-  // Stops the ProfilerSession
-  CHECK_OK(session_->CollectData(xspace_.get()));
-
-  CHECK(!dump_path_.empty());
-
-  std::string unique_dump_path = dump_path_;
-  if (session_index_ > 0) {
-    absl::string_view stem = dump_path_;
-    absl::string_view suffix = "";
-    const std::string::size_type dot_pos = dump_path_.rfind('.');
-    const std::string::size_type slash_pos = dump_path_.rfind('/');
-    if (dot_pos != std::string::npos &&
-        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
-      suffix = stem.substr(dot_pos);
-      stem = stem.substr(0, dot_pos);
-    }
-    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
-  }
-  ++session_index_;
-
-  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
-  // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
-  if (!keep_xspace_) {
-    xspace_ = nullptr;
-  }
-}
-
-const tensorflow::profiler::XSpace* HLORunnerProfiler::GetXSpace() {
-  return xspace_.get();
-}
 
 void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   auto set_manual_sharding = [](HloInstruction* hlo) {

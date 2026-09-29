@@ -579,6 +579,7 @@ cc_library(
         ":triton_emitter_constraints",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
