@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -201,6 +202,38 @@ TEST_F(GatherOpTest, Error_BatchDimsOutOfRange) {
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Expected batch_dims in the range [-1, 1], but got 10"))
+      << s;
+}
+
+TEST_F(GatherOpTest, Error_AxisInt64Max) {
+  MakeOp(DT_FLOAT, DT_INT64);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int64_t>(TensorShape({4}), {0, 4, 1, 2});
+  AddInputFromArray<int64_t>(TensorShape({}),
+                             {std::numeric_limits<int64_t>::max()});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(),
+      "axis must be less than std::numeric_limits<int64_t>::max()"))
+      << s;
+}
+
+TEST_F(GatherOpTest, Error_AxisInt64Min) {
+  MakeOp(DT_FLOAT, DT_INT64);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int64_t>(TensorShape({4}), {0, 4, 1, 2});
+  AddInputFromArray<int64_t>(TensorShape({}),
+                             {std::numeric_limits<int64_t>::min()});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(),
+      "axis must be greater than std::numeric_limits<int64_t>::min()"))
       << s;
 }
 
