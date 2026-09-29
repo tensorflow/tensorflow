@@ -605,17 +605,21 @@ def AssertFiniteForIntegerDtype(values, dtype):
     return
   if not isinstance(values, (np.ndarray, np.generic)):
     return
-  if values.dtype.kind != "f":
+  # Reject floating point and complex inputs (kind "f" or "c"); integer and
+  # other kinds are never inspected. Complex values can carry NaN or Inf in
+  # either the real or the imaginary plane.
+  if values.dtype.kind not in ("f", "c"):
     return
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_integer:
     return
   if values.size == 0:
     return
-  # `np.isfinite(values)` would allocate a temporary boolean array as large as
-  # `values`; the reductions below avoid that allocation, and both propagate
-  # NaN, so every non-finite element still reaches `np.isfinite`.
-  if np.isfinite(np.min(values)) and np.isfinite(np.max(values)):
+  # A single traversal rejects NaN and Inf in any element, including the real
+  # or imaginary plane of complex inputs. This is one pass over `values`
+  # rather than the two full passes that separate `np.min`/`np.max` reductions
+  # would require on the eager hot path.
+  if np.all(np.isfinite(values)):
     return
   raise TypeError(
       f"Cannot convert {np.array2string(np.asarray(values), threshold=8)} to "

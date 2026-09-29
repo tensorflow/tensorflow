@@ -94,44 +94,58 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(xt.numpy()[3], 3)
 
   @parameterized.named_parameters(
-      ("Int8", dtypes.int8),
-      ("Int32", dtypes.int32),
-      ("Int64", dtypes.int64),
-      ("Uint8", dtypes.uint8),
+      *[{
+          "testcase_name": f"_{int_d.name}_{np.dtype(flt_d).name}",
+          "int_dtype": int_d,
+          "float_dtype": flt_d,
+      } for int_d in (dtypes.int8, dtypes.int32, dtypes.int64, dtypes.uint8)
+        for flt_d in (np.float16, np.float32, np.float64)]
   )
-  def test_non_finite_to_integer_dtype_raises(self, dtype):
+  def test_non_finite_to_integer_dtype_raises(self, int_dtype, float_dtype):
     # A NumPy array holding NaN or Inf must not be silently mapped to the
     # smallest representable integer. That disagrees with the Python-list
-    # conversion path, which rejects such values with a TypeError.
+    # conversion path, which rejects such values with a TypeError. The check
+    # must hold regardless of the floating point precision of the input.
     non_finite = (
-        np.array([np.nan]),
-        np.array([np.inf]),
-        np.array([-np.inf]),
-        np.array([1.0, np.nan]),
-        # NaN is also found when it is not an extreme of the reductions used
-        # to detect it.
-        np.array([[1.0, np.nan], [3.0, 4.0]]),
+        np.array([np.nan], dtype=float_dtype),
+        np.array([np.inf], dtype=float_dtype),
+        np.array([-np.inf], dtype=float_dtype),
+        np.array([1.0, np.nan], dtype=float_dtype),
+        # NaN must also be detected when it is not an extreme element.
+        np.array([[1.0, np.nan], [3.0, 4.0]], dtype=float_dtype),
     )
     for value in non_finite:
       with self.assertRaises(TypeError):
-        constant_op.constant(value, dtype=dtype)
+        constant_op.constant(value, dtype=int_dtype)
       with self.assertRaises(TypeError):
-        ops.convert_to_tensor(value, dtype=dtype)
+        ops.convert_to_tensor(value, dtype=int_dtype)
 
     # Graph construction must reject them as well.
     with ops.Graph().as_default():
       with self.assertRaises(TypeError):
-        constant_op.constant(np.array([np.nan]), dtype=dtype)
+        constant_op.constant(np.array([np.nan], dtype=float_dtype),
+                             dtype=int_dtype)
+
+    # Complex inputs with a non-finite real or imaginary plane are rejected
+    # too: complex kinds were previously skipped by the guard.
+    for cdt in (dtypes.complex64, dtypes.complex128):
+      cfloat = np.dtype(cdt.as_numpy_dtype)
+      with self.assertRaises(TypeError):
+        constant_op.constant(np.array([complex(np.nan, 1.0)], dtype=cfloat),
+                             dtype=int_dtype)
+      with self.assertRaises(TypeError):
+        constant_op.constant(np.array([complex(1.0, np.inf)], dtype=cfloat),
+                             dtype=int_dtype)
 
     # Empty arrays and NumPy scalars take their respective shortcuts.
     self.assertAllEqual([], constant_op.constant(
-        np.array([], dtype=np.float32), dtype=dtype))
+        np.array([], dtype=float_dtype), dtype=int_dtype))
     self.assertAllEqual(1, constant_op.constant(
-        np.array(1.9, dtype=np.float32), dtype=dtype))
+        np.array(1.9, dtype=float_dtype), dtype=int_dtype))
 
     # Finite floats keep the previous (truncating) behaviour.
-    self.assertAllEqual([1], constant_op.constant(np.array([1.9]),
-                                                  dtype=dtype))
+    self.assertAllEqual([1], constant_op.constant(
+        np.array([1.9], dtype=float_dtype), dtype=int_dtype))
 
   def test_eager_const_grad_error(self):
 
