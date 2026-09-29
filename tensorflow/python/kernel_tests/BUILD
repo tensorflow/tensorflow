@@ -217,8 +217,8 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops_impl",
-        "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
