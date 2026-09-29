@@ -25,7 +25,7 @@ if(TENSORFLOW_HEADERS_INCLUDE_DIR)
 endif()
 
 set(_tensorflow_headers_base_url
-  "https://raw.githubusercontent.com/tensorflow/tensorflow/v2.21.0-rc0"
+  "https://raw.githubusercontent.com/tensorflow/tensorflow/v2.21.0"
 )
 set(_tensorflow_headers_dir "${CMAKE_BINARY_DIR}/tensorflow_headers")
 # <path in the TensorFlow repository>|<include path>|<sha256>
