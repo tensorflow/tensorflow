@@ -109,18 +109,22 @@ void RunSelectOp(const D* cond, const T* x, const T* y, T* output,
     } else {
       TFLITE_DCHECK_EQ(cond_stride_0, 1);
       if (x_stride_0 == 0 && y_stride_0 == 0) {
+        const T x0 = *x;
+        const T y0 = *y;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : *y;
+          output[i] = cond[i] ? x0 : y0;
         }
       } else if (x_stride_0 == 0) {
+        const T x0 = *x;
         TFLITE_DCHECK_EQ(y_stride_0, 1);
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : y[i];
+          output[i] = cond[i] ? x0 : y[i];
         }
       } else if (y_stride_0 == 0) {
+        const T y0 = *y;
         TFLITE_DCHECK_EQ(x_stride_0, 1);
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? x[i] : *y;
+          output[i] = cond[i] ? x[i] : y0;
         }
       } else {
         TFLITE_DCHECK_EQ(x_stride_0, 1);
@@ -242,6 +246,57 @@ void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
   TFLITE_CHECK_LE(input_x_shape.DimensionsCount(), 8);
   TFLITE_CHECK_LE(input_y_shape.DimensionsCount(), 8);
   TFLITE_CHECK_LE(output_shape.DimensionsCount(), 8);
+
+  if (input_condition_shape.DimensionsCount() <= 5 &&
+      input_x_shape.DimensionsCount() <= 5 &&
+      input_y_shape.DimensionsCount() <= 5 &&
+      output_shape.DimensionsCount() <= 5) {
+    NdArrayDesc<5> desc_condition;
+    NdArrayDesc<5> desc_x;
+    NdArrayDesc<5> desc_y;
+    NdArrayDesc<5> desc_output;
+    const RuntimeShape extended_output_shape =
+        RuntimeShape::ExtendedShape(5, output_shape);
+    CopyDimsToDesc(extended_output_shape, &desc_output);
+    NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
+                                        input_y_shape, &desc_condition, &desc_x,
+                                        &desc_y);
+
+    for (int n = 0; n < desc_output.extents[0]; ++n) {
+      int out_idx_n = desc_output.extents[1] * n;
+      int cond_idx_n = desc_condition.strides[0] * n;
+      int in_idx1_n = desc_x.strides[0] * n;
+      int in_idx2_n = desc_y.strides[0] * n;
+      for (int b = 0; b < desc_output.extents[1]; ++b) {
+        int out_idx_b = (out_idx_n + b) * desc_output.extents[2];
+        int cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
+        int in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
+        int in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
+        for (int y = 0; y < desc_output.extents[2]; ++y) {
+          int out_idx_y = (out_idx_b + y) * desc_output.extents[3];
+          int cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
+          int in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
+          int in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
+          for (int x = 0; x < desc_output.extents[3]; ++x) {
+            int out_idx = (out_idx_y + x) * desc_output.extents[4];
+            int cond_idx = cond_idx_y + desc_condition.strides[3] * x;
+            int in_idx1 = in_idx1_y + desc_x.strides[3] * x;
+            int in_idx2 = in_idx2_y + desc_y.strides[3] * x;
+            for (int c = 0; c < desc_output.extents[4]; ++c) {
+              output_data[out_idx] = input_condition_data[cond_idx]
+                                         ? input_x_data[in_idx1]
+                                         : input_y_data[in_idx2];
+              out_idx++;
+              cond_idx += desc_condition.strides[4];
+              in_idx1 += desc_x.strides[4];
+              in_idx2 += desc_y.strides[4];
+            }
+          }
+        }
+      }
+    }
+    return;
+  }
 
   BroadcastSelectSimple(input_condition_shape, input_condition_data,
                         input_x_shape, input_x_data, input_y_shape,
