@@ -94,6 +94,7 @@ message DebugOptions {
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
     HOST_EXECUTE = 12;
+    COLLECTIVES_KERNEL = 13;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
