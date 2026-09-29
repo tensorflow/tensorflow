@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 
 #include <complex>
+#include <limits>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -3884,8 +3885,9 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdempotent) {
 
 TEST_F(ArithmeticOptimizerTest, RemoveLogicalNot) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
-  Output b = ops::Const(s.WithOpName("b"), -3.14f, {32});
+  // Integers are totally ordered, so all six comparisons can be inverted.
+  Output a = ops::Const(s.WithOpName("a"), 314, {32});
+  Output b = ops::Const(s.WithOpName("b"), -314, {32});
   Output eq = ops::Equal(s.WithOpName("eq"), a, b);
   Output neq = ops::NotEqual(s.WithOpName("neq"), a, b);
   Output lt = ops::Less(s.WithOpName("lt"), a, b);
@@ -3981,6 +3983,92 @@ TEST_F(ArithmeticOptimizerTest, RemoveLogicalNot) {
   auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), tensors_expected.size());
   EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorEqual<bool>(tensors[i], tensors_expected[i]);
+  }
+}
+
+// For floating point operands Not(Less(x, y)) is not GreaterEqual(x, y): every
+// ordering comparison with a NaN is false. Only Equal/NotEqual may be inverted.
+TEST_F(ArithmeticOptimizerTest, RemoveLogicalNotKeepsFloatOrderingComparisons) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), {nan, 1.0f, nan, 2.0f}, {4});
+  Output b = ops::Const(s.WithOpName("b"), {5.0f, nan, nan, 1.0f}, {4});
+  Output eq = ops::Equal(s.WithOpName("eq"), a, b);
+  Output neq = ops::NotEqual(s.WithOpName("neq"), a, b);
+  Output lt = ops::Less(s.WithOpName("lt"), a, b);
+  Output le = ops::LessEqual(s.WithOpName("le"), a, b);
+  Output gt = ops::Greater(s.WithOpName("gt"), a, b);
+  Output ge = ops::GreaterEqual(s.WithOpName("ge"), a, b);
+  Output not_eq1 = ops::LogicalNot(s.WithOpName("not_eq1"), eq);
+  Output not_neq = ops::LogicalNot(s.WithOpName("not_neq"), neq);
+  Output not_lt = ops::LogicalNot(s.WithOpName("not_lt"), lt);
+  Output not_le = ops::LogicalNot(s.WithOpName("not_le"), le);
+  Output not_gt = ops::LogicalNot(s.WithOpName("not_gt"), gt);
+  Output not_ge = ops::LogicalNot(s.WithOpName("not_ge"), ge);
+  Output id_not_eq = ops::Identity(s.WithOpName("id_not_eq"), not_eq1);
+  Output id_not_neq = ops::Identity(s.WithOpName("id_not_neq"), not_neq);
+  Output id_not_lt = ops::Identity(s.WithOpName("id_not_lt"), not_lt);
+  Output id_not_le = ops::Identity(s.WithOpName("id_not_le"), not_le);
+  Output id_not_gt = ops::Identity(s.WithOpName("id_not_gt"), not_gt);
+  Output id_not_ge = ops::Identity(s.WithOpName("id_not_ge"), not_ge);
+
+  GrapplerItem item;
+  item.fetch = {"id_not_eq", "id_not_neq", "id_not_lt",
+                "id_not_le", "id_not_gt",  "id_not_ge"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveLogicalNot(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    // Equal and NotEqual are still inverted in place.
+    if (node.name() == "eq") {
+      EXPECT_EQ(node.op(), "NotEqual");
+      ++found;
+    }
+    if (node.name() == "neq") {
+      EXPECT_EQ(node.op(), "Equal");
+      ++found;
+    }
+    // The ordering comparisons and their LogicalNot are left untouched.
+    if (node.name() == "lt") {
+      EXPECT_EQ(node.op(), "Less");
+      ++found;
+    }
+    if (node.name() == "le") {
+      EXPECT_EQ(node.op(), "LessEqual");
+      ++found;
+    }
+    if (node.name() == "gt") {
+      EXPECT_EQ(node.op(), "Greater");
+      ++found;
+    }
+    if (node.name() == "ge") {
+      EXPECT_EQ(node.op(), "GreaterEqual");
+      ++found;
+    }
+    if (node.name() == "id_not_lt") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "not_lt");
+      ++found;
+    }
+    if (node.name() == "id_not_ge") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "not_ge");
+      ++found;
+    }
+  }
+  EXPECT_EQ(found, 8);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(tensors.size(), tensors_expected.size());
   for (int i = 0; i < item.fetch.size(); ++i) {
     test::ExpectTensorEqual<bool>(tensors[i], tensors_expected[i]);
   }
