@@ -83,24 +83,28 @@ using ::absl_testing::StatusIs;
 using ::testing::ElementsAre;
 
 static constexpr absl::string_view kProfileName = "test_kernel_profiler";
-static constexpr absl::string_view kKernelName = "six_argument_kernel";
+static constexpr absl::string_view kKernelName = "five_argument_kernel";
 static constexpr int64_t kNumElements = 128;
 
 // Test kernel was compiled using following CUDA source:
-// __global__ void six_argument_kernel(int64_t* input_buffer,          // 1
-//                                     int64_t* output_buffer,         // 2
-//                                     int64_t rank,                   // 3
-//                                     int64_t signal_value            // 4
-//                                     int64_t* signal_buffers,        // 5
-//                                     int64_t* remote_buffers,        // 6
+// __global__ void five_argument_kernel(int64_t* input_buffer,         // 1
+//                                      int64_t* output_buffer,        // 2
+//                                      int64_t rank,                  // 3
+//                                      int32_t** signal_buffers,      // 4
+//                                      int64_t* remote_buffers        // 5
 // ) {
-//   (void)rank;
-//   (void)signal_buffers;
 //   (void)remote_buffers;
+//   // Mirrors EmitDeviceInvocationCount: the invocation count is derived from
+//   // this block's barrier slot SignalBuffers[rank][blockIdx.x * world_size +
+//   // rank], without a thread barrier or a store. The test launches a single
+//   // block, so the slot index reduces to `rank`.
+//   int32_t* local_signal_buffer = signal_buffers[rank];
+//   int32_t signal_count =
+//       *(volatile int32_t*)&local_signal_buffer[rank] + 1;
 //   int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 //   for (int i = idx; i < kNumElements; i += gridDim.x * blockDim.x) {
 //     if (i < kNumElements) {
-//       output_buffer[i] = input_buffer[i] + signal_value;
+//       output_buffer[i] = input_buffer[i] + signal_count;
 //     }
 //   }
 // }
@@ -109,23 +113,34 @@ static constexpr absl::string_view kKernelSource = R"(
   .target sm_90
   .address_size 64
 
-  .visible .entry six_argument_kernel(
+  .visible .entry five_argument_kernel(
   .param .u64 .ptr .align 1 input_buffer,
   .param .u64 .ptr .align 1 output_buffer,
   .param .u64 rank,
-  .param .u64 signal_value,
   .param .u64 .ptr .align 1 signal_buffers,
   .param .u64 .ptr .align 1 remote_buffers
   )
   {
   .reg .pred %p<3>;
-  .reg .b32 %r<7>;
-  .reg .b64 %rd<11>;
+  .reg .b32 %r<8>;
+  .reg .b64 %rd<14>;
 
   ld.param.b64 %rd4, [input_buffer];
   cvta.to.global.u64 %rd1, %rd4;
   ld.param.b64 %rd5, [output_buffer];
   cvta.to.global.u64 %rd2, %rd5;
+  ld.param.u32 %r7, [rank];
+  ld.param.b64 %rd11, [signal_buffers];
+  cvta.to.global.u64 %rd11, %rd11;
+  mul.wide.u32 %rd12, %r7, 8;
+  add.s64 %rd11, %rd11, %rd12;
+  ld.global.u64 %rd13, [%rd11];
+  cvta.to.global.u64 %rd13, %rd13;
+  mul.wide.u32 %rd12, %r7, 4;
+  add.s64 %rd13, %rd13, %rd12;
+  ld.volatile.global.s32 %r7, [%rd13];
+  add.s32 %r7, %r7, 1;
+  cvt.s64.s32 %rd3, %r7;
   mov.u32 %r3, %ctaid.x;
   mov.u32 %r1, %ntid.x;
   mov.u32 %r4, %tid.x;
@@ -133,7 +148,6 @@ static constexpr absl::string_view kKernelSource = R"(
   setp.gt.s32 %p1, %r6, 127;
   @%p1 bra $L__BB0_3;
   //
-  ld.param.b64 %rd3, [signal_value];
   mov.u32 %r5, %nctaid.x;
   mul.lo.s32 %r2, %r5, %r1;
   $L__BB0_2: //
@@ -198,7 +212,6 @@ CollectiveKernelSpec CreateCollectiveKernelSpec(
           {{KernelArgType::kInputBuffer, 0},
            {KernelArgType::kOutputBuffer, 0},
            {KernelArgType::kRuntimeRank},
-           {KernelArgType::kInvocationCount},
            {KernelArgType::kScratchBuffer, 0},
            {KernelArgType::kScratchBuffer, 1}},
       },

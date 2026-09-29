@@ -178,6 +178,17 @@ struct CollectiveCodegenConfig {
   // this amount. For one-shot collectives, this is 1. For two-shot collectives,
   // this is 2 and so on.
   uint32_t sync_count_increment = 1;
+  // If true, the kernel derives its barrier signal value from device memory and
+  // ignores the host-provided invocation count argument, so the runtime does
+  // not advance the host-side count. Each block reads the last signal value it
+  // posted from its own barrier slot (`SignalBuffers[rank][block_id *
+  // world_size + rank]`) in the local rank's signal buffer (scratch buffer 0),
+  // which `BlockBarrierOp` updates on every barrier synchronization. The signal
+  // buffer is zeroed only once, when the thunk is initialized, so the counter
+  // persists across executions and kernels can be replayed from CUDA graphs
+  // (including device-side loops) without updating their arguments. False only
+  // for legacy kernels that read the invocation count argument.
+  bool device_sync_count = true;
 };
 
 // This structure contains the information required to configure and launch a

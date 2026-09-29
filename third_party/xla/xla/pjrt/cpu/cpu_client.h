@@ -161,11 +161,12 @@ class PjRtCpuRawClient : public PjRtRawClient {
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) override;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
@@ -339,7 +340,8 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
 
 class CpuExecutableLoadState : public PjRtExecutableLoadState {
  public:
-  explicit CpuExecutableLoadState() = default;
+  explicit CpuExecutableLoadState(PjRtCpuRawClient* raw_client)
+      : raw_client_(raw_client) {}
 
   ~CpuExecutableLoadState() override = default;
 
@@ -353,6 +355,7 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
       int attempt) override;
 
  private:
+  PjRtCpuRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
 };
 
