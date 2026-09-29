@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -244,6 +245,89 @@ TEST_F(AllGatherTest, TwoDimensional2Gpu) {
     }
   }
 
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+// Runs 10 consequent all-gathers with FUSION command buffers enabled and
+// verifies that all of them use XLA's one-shot all-gather kernel and are placed
+// into command buffers.
+TEST_F(AllGatherTest, TenConsequentAllGathersWithCudaGraphs) {
+  constexpr int32_t kNumReplicas = 2;
+  constexpr int kNumAllGathers = 10;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    p0 = f32[16] parameter(0)
+    ag0 = f32[32] all-gather(p0), dimensions={0}, replica_groups={{0,1}}
+    ag1 = f32[64] all-gather(ag0), dimensions={0}, replica_groups={{0,1}}
+    ag2 = f32[128] all-gather(ag1), dimensions={0}, replica_groups={{0,1}}
+    ag3 = f32[256] all-gather(ag2), dimensions={0}, replica_groups={{0,1}}
+    ag4 = f32[512] all-gather(ag3), dimensions={0}, replica_groups={{0,1}}
+    ag5 = f32[1024] all-gather(ag4), dimensions={0}, replica_groups={{0,1}}
+    ag6 = f32[2048] all-gather(ag5), dimensions={0}, replica_groups={{0,1}}
+    ag7 = f32[4096] all-gather(ag6), dimensions={0}, replica_groups={{0,1}}
+    ag8 = f32[8192] all-gather(ag7), dimensions={0}, replica_groups={{0,1}}
+    ROOT ag9 = f32[16384] all-gather(ag8), dimensions={0}, replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  // The fixture enables COLLECTIVE_KERNEL_ALL_GATHER, so the 10 all-gathers
+  // lower to XLA's Triton one-shot all-gather kernel (CollectiveKernelThunk)
+  // instead of NCCL. Collective kernels are recorded into command buffers
+  // with the FUSION command buffer type, so COLLECTIVES isn't needed.
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.set_xla_gpu_all_gather_combine_threshold_bytes(0);
+  // Command buffers are formed at the thunk level, so dump the thunk sequence
+  // to check which collectives were placed into them.
+  debug_options.set_xla_dump_to(dump_dir.path());
+
+  Literal input_r0 = LiteralUtil::CreateR1<float>(std::vector<float>(16, 1.0f));
+  Literal input_r1 = LiteralUtil::CreateR1<float>(std::vector<float>(16, 2.0f));
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  // Every all-gather must use KERNEL_STRATEGY_TRITON_ONE_SHOT (XLA one-shot
+  // kernel, not NCCL).
+  VerifyOneShotAllGather(result.optimized_module);
+
+  // All one-shot all-gathers must be recorded into command buffers, and none
+  // may fall back to NCCL.
+  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts one_shot,
+                       CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
+  EXPECT_EQ(one_shot.in_command_buffer, kNumAllGathers);
+  EXPECT_EQ(one_shot.outside_command_buffer, 0);
+  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts nccl,
+                       CountThunksInDump(dump_dir.path(), "kAllGather"));
+  EXPECT_EQ(nccl.in_command_buffer + nccl.outside_command_buffer, 0);
+
+  // Each all-gather concatenates the two ranks' buffers, so the result is 512
+  // repetitions of [16 x 1.0, 16 x 2.0] on both replicas.
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  std::vector<float> expected_data;
+  expected_data.reserve(16384);
+  for (int rep = 0; rep < 512; ++rep) {
+    expected_data.insert(expected_data.end(), 16, 1.0f);
+    expected_data.insert(expected_data.end(), 16, 2.0f);
+  }
+  Literal expected = LiteralUtil::CreateR1<float>(expected_data);
   for (int i = 0; i < kNumReplicas; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
         << "Mismatch at replica " << i;
