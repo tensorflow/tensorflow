@@ -3078,32 +3078,6 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           nn_ops.conv2d(
               input_val, filter_val, strides=[1, 1, 1, 2], padding="SAME"))
 
-    # TODO(b/195689143): Will enable when fixed for V2 behavior
-    # # Filter larger than input.
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    #   filter_val = np.ones([20, 21, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    #   filter_val = np.ones([21, 20, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
-    #
-    # # Filter larger than input + padding.
-    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-    #   input_val = np.ones([32, 20, 20, 3])
-    # filter_val = np.ones([24, 25, 3, 2])
-    #   self.evaluate(
-    #       nn_ops.conv2d(
-    #           input_val,
-    #           filter_val,
-    #           strides=[1, 1, 1, 1],
-    #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
-
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, "filter must not have zero elements"
@@ -3138,6 +3112,45 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               out_backprop_val,
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+
+  @test_util.run_deprecated_v1
+  def testFilterLargerThanInputByAtMostStride(self):
+    # The kernels give an empty output when the filter overhangs the input by
+    # at most the stride, so shape inference accepts it too.
+    input_t = array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3])
+    for filter_shape, strides, padding, expected in (
+        ([20, 21, 3, 2], [1, 1, 1, 1], "VALID", [32, 1, 0, 2]),
+        ([21, 20, 3, 2], [1, 1, 1, 1], "VALID", [32, 0, 1, 2]),
+        ([22, 23, 3, 2], [1, 2, 3, 1], "VALID", [32, 0, 0, 2]),
+        (
+            [24, 25, 3, 2],
+            [1, 1, 1, 1],
+            [[0, 0], [2, 2], [2, 2], [0, 0]],
+            [32, 1, 0, 2],
+        ),
+    ):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=filter_shape)
+      out = nn_ops.conv2d(input_t, filter_t, strides=strides, padding=padding)
+      self.assertEqual(out.shape.as_list(), expected)
+
+    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+      filter_t = array_ops.placeholder(dtypes.float32, shape=[22, 20, 3, 2])
+      nn_ops.conv2d(input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+
+  @test_util.run_deprecated_v1
+  def testFilterLargerThanInputGradient(self):
+    input_t = constant_op.constant(np.ones([2, 4, 4, 3]), dtypes.float32)
+    filter_t = constant_op.constant(np.ones([5, 5, 3, 2]), dtypes.float32)
+    out = nn_ops.conv2d(
+        input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID"
+    )
+    self.assertEqual(out.shape.as_list(), [2, 0, 0, 2])
+    self.assertEqual(self.evaluate(out).shape, (2, 0, 0, 2))
+    input_grad, filter_grad = gradients_impl.gradients(
+        math_ops.reduce_sum(out), [input_t, filter_t]
+    )
+    self.assertAllEqual(self.evaluate(input_grad), np.zeros([2, 4, 4, 3]))
+    self.assertAllEqual(self.evaluate(filter_grad), np.zeros([5, 5, 3, 2]))
 
   def testConvOpEdgeCases(self):
     # Illegal strides.

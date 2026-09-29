@@ -489,6 +489,13 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
       grouped_filter_shape, out_backprop_shape, attrs.dilations, attrs.strides,
       attrs.padding, attrs.data_format, &dims, attrs.explicit_paddings));
 
+  // An empty `out_backprop` would be a convolution window with a zero-sized
+  // dimension below, which XLA rejects. The filter gradient is zero then.
+  if (output_tensor_shape.num_elements() == 0) {
+    return xla::Broadcast(xla::Zero(builder, activations_shape.element_type()),
+                          filter_shape.dimensions());
+  }
+
   // Obtain some useful dimensions:
   // The last two dimensions of the filter are the input and output shapes.
   int num_dims = attrs.num_spatial_dims + 2;

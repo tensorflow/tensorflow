@@ -17,6 +17,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
@@ -50,6 +51,16 @@ class Conv1DTest(test.TestCase):
           else:
             self.assertEqual(len(output), 2)
             self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFilterWiderThanInput(self):
+    # A filter wider than the input by at most the stride gives an empty
+    # output in graph mode too, not a shape inference error.
+    x = array_ops.ones([1, 4, 3])
+    filters = array_ops.ones([5, 3, 2])
+    for stride in [1, 2]:
+      c = nn_ops.conv1d(x, filters, stride, padding="VALID")
+      self.assertAllEqual(self.evaluate(c).shape, [1, 0, 2])
 
   def testExpandedBatch(self):
     """Test that argument passing to conv1d is handled properly."""

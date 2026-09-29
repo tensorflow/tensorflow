@@ -309,6 +309,15 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
       return;
     }
 
+    // If shapes are valid but `out_backprop` is empty, filter_backprop should
+    // be set to all zeros.
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(context->eigen_device<Device>(),
+               filter_backprop->template flat<T>());
+      return;
+    }
+
     int64_t pad_top, pad_bottom;
     int64_t pad_left, pad_right;
     if (padding_ == Padding::EXPLICIT) {

@@ -36,12 +36,14 @@ absl::Status GetWindowedOutputSizeFromDims(InferenceContext* c,
 // The V2 version computes the same outputs with arbitrary dilation_rate, and
 // supports EXPLICIT padding. For detailed equations, refer to the comments
 // for GetWindowedOutputSize(). The 'padding_before' and 'padding_after'
-// parameters are only used if padding_type == EXPLICIT.
+// parameters are only used if padding_type == EXPLICIT. If
+// 'allow_empty_output' is true, a window that overhangs the padded input by
+// at most 'stride' gives an output size of 0 instead of an error.
 absl::Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
     DimensionOrConstant filter_size, int64_t dilation_rate, int64_t stride,
     Padding padding_type, int64_t padding_before, int64_t padding_after,
-    DimensionHandle* output_size);
+    DimensionHandle* output_size, bool allow_empty_output = false);
 
 // Transfers shape of input(0) to output(0).
 absl::Status UnchangedShape(shape_inference::InferenceContext* c);
@@ -127,6 +129,12 @@ absl::Status ConvShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that support explicit padding.
 absl::Status Conv2DShapeWithExplicitPadding(
+    shape_inference::InferenceContext* c);
+
+// Shape function for Conv2D. Like Conv2DShapeWithExplicitPadding, but also
+// accepts a filter that overhangs the input by at most the stride, for which
+// the kernels return an empty output.
+absl::Status Conv2DShapeWithExplicitPaddingAllowEmptyOutput(
     shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that do not support explicit
