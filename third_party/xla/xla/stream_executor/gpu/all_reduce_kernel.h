@@ -57,7 +57,7 @@ void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
 
 // The maximum number of input pointers that can be passed to the all-reduce
 // kernel.
-inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
+inline constexpr int64_t kMaxNumAllReduceInputPtrs = 64;
 inline constexpr int64_t kNumElementsPerThread = 4;
 
 // A pointer to a buffer that does not alias with other buffers.
