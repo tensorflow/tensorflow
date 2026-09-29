@@ -430,5 +430,31 @@ ENTRY main {
             std::make_pair(int64_t{0}, int64_t{1}));
 }
 
+TEST_F(SortUtilsTest, MatchWeakOrderIsNumpyOrder) {
+  constexpr char kHlo[] = R"(
+HloModule test_module
+
+compare {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT cmp = pred[] compare(p0, p1), direction=LT, order=WEAK
+}
+
+ENTRY main {
+  x = f32[10] parameter(0)
+  ROOT sort = f32[10] sort(x), dimensions={0}, to_apply=compare
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const auto* compare = Cast<HloCompareInstruction>(
+      module->GetComputationWithName("compare")->root_instruction());
+
+  EXPECT_EQ(MatchSimpleSortComparator(compare),
+            std::make_pair(int64_t{-1}, int64_t{-1}));
+  EXPECT_EQ(MatchNumpySortComparator(compare),
+            std::make_pair(int64_t{0}, int64_t{1}));
+}
+
 }  // namespace
 }  // namespace xla

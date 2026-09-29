@@ -82,7 +82,6 @@ class IfrtIrLoadedExecutable
 
   UserContextRef user_context() const override { return user_context_; }
 
-  int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
   absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats()
       const override;

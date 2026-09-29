@@ -1243,7 +1243,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
 
   auto executable = std::make_unique<MockLoadedExecutable>();
   EXPECT_CALL(*executable, name()).WillOnce(Return("executable_name"));
-  EXPECT_CALL(*executable, num_devices()).WillOnce(Return(4));
   EXPECT_CALL(*executable, devices())
       .WillOnce(Return(std::make_optional(device_list)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
@@ -1909,7 +1908,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadataWithMpmd) {
     MockMpmdLoadedExecutable* executable = e.get();
 
     ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
     ON_CALL(*executable, Fingerprint())
@@ -1970,7 +1968,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMpmdCostAnalysis) {
     MockMpmdLoadedExecutable* executable = e.get();
 
     ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
     auto device_list = BasicDeviceList::Create({});
     ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
     ON_CALL(*executable, Fingerprint())
@@ -2017,7 +2014,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
   auto executable = std::make_unique<MockMpmdLoadedExecutable>();
 
   ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
-  ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
   auto empty_device_list = BasicDeviceList::Create({});
   ON_CALL(*executable, devices()).WillByDefault(Return(empty_device_list));
   ON_CALL(*executable, Fingerprint()).WillByDefault(Return("mpmd_fingerprint"));

@@ -1955,6 +1955,8 @@ cc_library(
         ":collective_params",
         ":collective_thunk",
         ":collective_thunk_proto_cc",
+        ":command",
+        ":command_state",
         ":thunk",
         ":thunk_proto_cc",
         ":traced_command",
@@ -1974,6 +1976,7 @@ cc_library(
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_handle",
         "//xla/stream_executor:kernel",
@@ -1981,6 +1984,7 @@ cc_library(
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/tsl/util:safe_reinterpret_cast",
@@ -1988,6 +1992,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
@@ -5424,6 +5429,36 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "device_slot",
+    hdrs = ["device_slot.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
+    ],
+)
+
+cc_library(
+    name = "vector_storage",
+    srcs = ["vector_storage.cc"],
+    hdrs = ["vector_storage.h"],
+    visibility = ["//visibility:private"],
+    deps = [":device_slot"],
+)
+
+xla_cc_test(
+    name = "vector_storage_test",
+    srcs = ["vector_storage_test.cc"],
+    deps = [
+        ":device_slot",
+        ":vector_storage",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )

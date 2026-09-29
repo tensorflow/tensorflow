@@ -205,7 +205,6 @@ class LoadedExecutable : public RTTIExtends<LoadedExecutable, RTTIRoot> {
   // prototyping.
 
   // TODO(hyeontaek): Factor some of them out as `XlaCompatibleExecutable`.
-  virtual int num_devices() const = 0;
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats()
       const = 0;

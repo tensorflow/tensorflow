@@ -133,6 +133,52 @@ ArrayRef<T> MakeArrayRef(const absl::Span<const T> span) {
   return ArrayRef(span.data(), span.size());
 }
 
+absl::StatusOr<TensorValue> EmitAllGather(
+    EmitterContext& emitter_ctx, const HloAllGatherInstruction* all_gather,
+    const ge::TiledHloInstruction& tiled_all_gather, ValueRange operands) {
+  if (all_gather->device_list()->replica_groups().empty()) {
+    return Internal(
+        "Triton emitting AllGather without replica groups is not supported.");
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : all_gather->replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  std::optional<int64_t> channel_handle = all_gather->channel_id();
+  bool use_global_device_ids = all_gather->use_global_device_ids();
+
+  ImplicitLocOpBuilder& b = emitter_ctx.b();
+  ABSL_ASSIGN_OR_RETURN(
+      auto output_element_type,
+      xtile::PrimitiveTypeToMlirType(b, all_gather->shape().element_type()));
+  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_all_gather.tile().GetStaticTileSizes());
+  auto output_type =
+      mlir::RankedTensorType::get(tile_sizes, output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(all_gather->replica_groups().size()),
+       static_cast<int64_t>(
+           all_gather->replica_groups()[0].replica_ids_size())},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto channel_handle_attr =
+      channel_handle ? mlir::stablehlo::ChannelHandleAttr::get(b.getContext(),
+                                                               *channel_handle,
+                                                               /*type=*/0)
+                     : nullptr;
+  auto all_gather_op = mlir::stablehlo::AllGatherOp::create(
+      b, mlir::TypeRange{output_type}, operands,
+      all_gather->all_gather_dimension(), replica_groups_attr,
+      channel_handle_attr, use_global_device_ids);
+  return mlir::cast<TensorValue>(all_gather_op.getResult(0));
+}
+
 absl::StatusOr<TensorValue> EmitAllReduce(
     EmitterContext& emitter_ctx, const HloAllReduceInstruction* all_reduce,
     const ge::TiledHloInstruction& tiled_all_reduce, ValueRange operands) {
@@ -1884,8 +1930,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   // Please keep the cases in alphabetical order.
   switch (hlo->opcode()) {
     case HloOpcode::kAllGather: {
-      // AllGather is a no-op. Tile extraction handles the data movement.
-      return emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(0));
+      return EmitAllGather(emitter_ctx, xla::Cast<HloAllGatherInstruction>(hlo),
+                           tiled_hlo, operands);
     }
     case HloOpcode::kAllReduce: {
       const HloComputation* computation =

@@ -142,10 +142,7 @@ TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
-  TF_ASSERT_OK(config);
-  ASSERT_TRUE((*config)->has_algorithm());
-  MIOpenBackendConfig algorithm_config = (*config)->algorithm();
-  EXPECT_EQ(algorithm_config.algo_id(), 0);
+  EXPECT_THAT(config, absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCall) {

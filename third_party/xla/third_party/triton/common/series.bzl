@@ -64,5 +64,6 @@ common_patch_list = [
     "//third_party/triton:common/llvm_cl979526570.patch",
     "//third_party/triton:common/llvm_cl983115707.patch",
     "//third_party/triton:common/llvm_cl986804242.patch",
+    "//third_party/triton:common/useStrictPropertiesInAssemblyFormat.patch",
     # Add new patches just above this line
 ]
