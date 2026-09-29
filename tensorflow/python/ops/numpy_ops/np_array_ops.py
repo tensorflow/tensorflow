@@ -1610,19 +1610,33 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
   m = asarray(m)
 
   maybe_rank = m.shape.rank
+  if isinstance(axes, (tuple, list, range, np.ndarray)) and len(axes) != 2:
+    # Validate the sequence length even when the static rank is unknown:
+    # otherwise invalid lengths only surface as unpacking errors further
+    # down.
+    raise ValueError('len(axes) must be 2.')
   if maybe_rank is not None and isinstance(
       axes, (tuple, list, range, np.ndarray)
   ):
-    if len(axes) != 2:
-      raise ValueError('len(axes) must be 2.')
-    if builtins.all(isinstance(axis, (int, np.integer)) for axis in axes):
-      norm_axes = [axis + maybe_rank if axis < 0 else axis for axis in axes]
-      if builtins.any(axis < 0 or axis >= maybe_rank for axis in norm_axes):
-        raise ValueError(
-            f'Axes={tuple(axes)} out of range for array of rank {maybe_rank}.'
-        )
-      if norm_axes[0] == norm_axes[1]:
+    # Direct scalar checks on the green path (no intermediate list, no
+    # generator expressions). NumPy checks for duplicate axes before
+    # out-of-range axes; `abs(ax0 - ax1) == maybe_rank` catches
+    # mixed-sign duplicates such as (0, -3) on a rank-3 array.
+    ax0, ax1 = axes[0], axes[1]
+    if isinstance(ax0, (int, np.integer)) and isinstance(
+        ax1, (int, np.integer)
+    ):
+      if ax0 == ax1 or builtins.abs(ax0 - ax1) == maybe_rank:
         raise ValueError('Axes must be different.')
+      if (
+          ax0 < -maybe_rank
+          or ax0 >= maybe_rank
+          or ax1 < -maybe_rank
+          or ax1 >= maybe_rank
+      ):
+        raise ValueError(
+            f'Axes={tuple(axes)} out of range for array of ndim={maybe_rank}.'
+        )
 
   m_rank = array_ops.rank(m)
   ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access

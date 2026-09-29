@@ -2092,6 +2092,15 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # axes must have exactly two entries.
     with self.assertRaisesRegex(ValueError, 'must be 2'):
       tnp.rot90(a, axes=(0,))
+    with self.assertRaisesRegex(ValueError, 'must be 2'):
+      tnp.rot90(a, axes=(0, 1, 2))
+    # Sub-2D inputs are invalid with the default axes=(0, 1), matching
+    # NumPy's check order: the vector's default axes trip the duplicate
+    # check (abs(0 - 1) == ndim), and a scalar trips the bounds check.
+    with self.assertRaisesRegex(ValueError, 'out of range'):
+      tnp.rot90(tnp.ones(()))
+    with self.assertRaisesRegex(ValueError, 'must be different'):
+      tnp.rot90(tnp.ones(3))
     # In-bounds negative axes remain valid.
     self.assertAllClose(tnp.rot90(a, axes=(-2, -1)), onp.rot90(
         onp.ones((2, 3)), axes=(-2, -1)), check_dtypes=False)
