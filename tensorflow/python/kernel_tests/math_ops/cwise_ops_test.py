@@ -1060,7 +1060,7 @@ class RoundingTest(test.TestCase):
   def testNegativeFloat32SubnormalsFloorToMinusOne(self):
     # Scalar subnormal arrays: MSVC flushes negative subnormals to -0.0f
     # through an XMM register before bit_cast can read the original bits, so
-    # the scalar path cannot be verified on Windows.  The vectorised (packet)
+    # the scalar path cannot be verified on Windows.  The vectorized (packet)
     # path does not have this limitation and runs on all platforms.
     neg_subnormals = np.array(
         [-4.21023219e-44, -1e-40, -1e-38, -1.40129846e-45], dtype=np.float32)
@@ -1068,8 +1068,10 @@ class RoundingTest(test.TestCase):
 
     # Elements that exercise packet logic and are safe on all platforms:
     # signed zeros, positive subnormals, normals, inf, and NaN.  NaN inputs
-    # must pass through floor unmodified (bit-identical), confirming that the
-    # bit-mask correction never fires on NaN bit patterns.
+    # confirm that the bit-mask correction never fires on NaN bit patterns.
+    # IEEE-754 does not guarantee sign-bit preservation for quiet NaNs under
+    # arithmetic operations such as floor, so the sign-bit check below
+    # intentionally excludes NaN elements.
     safe_base = np.array(
         [-0.0, 0.0, 1e-40, 1.40129846e-45,   # signed zeros, pos subnormals
          -0.5, -1.0, 2.5, -np.inf, np.inf,
@@ -1083,11 +1085,15 @@ class RoundingTest(test.TestCase):
 
     with test_util.force_cpu():
       # --- Scalar / short-array test (skipped on Windows) ---
+      # Use an explicit CPU device to ensure the CPU kernel is exercised even
+      # when the test suite is run under a GPU or XLA-GPU session config where
+      # force_cpu() alone may not prevent GPU dispatch.
       if os.name != 'nt':
-        out = self.evaluate(math_ops.floor(neg_subnormals))
+        with ops.device('/device:CPU:0'):
+          out = self.evaluate(math_ops.floor(neg_subnormals))
         self.assertAllEqual(neg_subnormals_exp, out)
 
-      # --- Vectorised (packet) test: runs on all platforms ---
+      # --- Vectorized (packet) test: runs on all platforms ---
       # Build an array long enough to fill full SIMD packets (AVX=8-wide,
       # AVX-512=16-wide) plus a scalar tail.  safe_base is placed first so
       # that base[:5] (the scalar tail) contains only safe elements — on
@@ -1104,36 +1110,43 @@ class RoundingTest(test.TestCase):
           (x, expected),
           (np.tile(base, (8, 1)), np.tile(base_exp, (8, 1))),
       ):
-        out = self.evaluate(math_ops.floor(inp))
+        with ops.device('/device:CPU:0'):
+          out = self.evaluate(math_ops.floor(inp))
         self.assertAllEqual(exp, out)
-        # assertAllEqual treats -0.0 == +0.0; check sign bits explicitly.
-        self.assertAllEqual(np.signbit(exp), np.signbit(out))
+        # assertAllEqual treats -0.0 == +0.0; check sign bits for non-NaN
+        # elements only.  IEEE-754 does not specify sign-bit semantics for
+        # quiet NaNs under arithmetic operations like floor, so SIMD
+        # implementations may not preserve the sign bit of negative NaNs.
+        non_nan_mask = ~np.isnan(exp)
+        self.assertAllEqual(
+            np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
   def testFloorSubnormalsAcrossDtypes(self):
-    """Verify floor of negative subnormals for double and bfloat16.
+    """Verify floor correctness for double and bfloat16 on CPU.
 
     double and bfloat16 go through Eigen's scalar_floor_op (no FTZ/DAZ fix
-    yet) so this test records the current behaviour and will need to be updated
-    when the follow-up fix lands.  It also confirms that the dtype routing in
-    cwise_op_floor.cc does not accidentally break normal-value correctness.
+    yet).  This test confirms that the dtype routing in cwise_op_floor.cc
+    does not accidentally break normal-value correctness or -0.0 sign
+    preservation for these types.
     """
     dtype_cases = [
-        (np.float64, np.finfo(np.float64).tiny * 0.5),   # smallest neg sub
-        (dtypes_lib.bfloat16.as_numpy_dtype,
-         np.float32(np.finfo(np.float32).tiny * 0.5)),
+        np.float64,
+        dtypes_lib.bfloat16.as_numpy_dtype,
     ]
     with test_util.force_cpu():
-      for dtype, neg_sub_val in dtype_cases:
+      for dtype in dtype_cases:
         with self.subTest(dtype=dtype):
           # Normal values must always be correct.
           normal_vals = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
           expected_normal = np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=dtype)
-          out = self.evaluate(math_ops.floor(normal_vals))
+          with ops.device('/device:CPU:0'):
+            out = self.evaluate(math_ops.floor(normal_vals))
           self.assertAllEqual(expected_normal, out)
 
           # -0.0 must be preserved as -0.0.
           neg_zero = np.array([-0.0], dtype=dtype)
-          out_neg_zero = self.evaluate(math_ops.floor(neg_zero))
+          with ops.device('/device:CPU:0'):
+            out_neg_zero = self.evaluate(math_ops.floor(neg_zero))
           self.assertAllEqual(np.signbit(neg_zero), np.signbit(out_neg_zero))
 
   def testTypes(self):

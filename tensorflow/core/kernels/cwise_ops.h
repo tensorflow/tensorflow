@@ -935,14 +935,16 @@ struct functor_traits<igamma_op<Scalar>> {
 // never goes through an FP register) and test whether the sign bit is set and
 // the value is not negative zero (0x80000000).  bit_cast is placed inside the
 // conditional so it is only evaluated when r == 0.0f, short-circuiting the
-// memcpy for the common (non-zero result) fast path.
+// memcpy for the common (non-zero result) fast path.  Negative NaNs also
+// satisfy bit_cast(x) > 0x80000000u, but are safely excluded because
+// numext::floor(NaN) returns NaN for which r == 0.0f is always false.
 //
 // Packet path: SIMD vectorization is kept enabled.  The correction adds two
 // integer-domain comparisons per packet (pandnot + two pcmp_eq) that are
 // immune to FTZ/DAZ flushing.  These run unconditionally on every packet;
 // the cost is two extra SIMD integer ops on top of pfloor, which is
 // acceptable given that the alternative (PacketAccess = false) would degrade
-// all float32 floor throughput by 4–8×.
+// all float32 floor throughput by 4-8x.
 //
 //   1. r_bits == 0x80000000: r is exactly -0.0f (both a subnormal input and
 //      a genuine -0.0f input produce r = -0.0f, so we need the second guard).
@@ -958,7 +960,8 @@ struct scalar_cpu_floor_float_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
     // bit_cast reads raw bits via memcpy, never through an FP register.
-    // Inside the conditional: only evaluated when r == 0.0f.
+    // Only evaluated when r == 0.0f; short-circuits for normal inputs.
+    // Negative NaNs are excluded because floor(NaN) is NaN != 0.0f.
     return (r == 0.0f && numext::bit_cast<uint32_t>(x) > 0x80000000u)
                ? -1.0f
                : r;
@@ -1195,15 +1198,15 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
 
-// floor_cpu is the CPU-only specialisation of floor that applies the FTZ/DAZ
+// floor_cpu is the CPU-only specialization of floor that applies the FTZ/DAZ
 // workaround for negative float32 subnormals.  It is a separate type (not a
-// specialisation of floor<T>) to avoid an ODR violation: GPU translation units
+// specialization of floor<T>) to avoid an ODR violation: GPU translation units
 // see only floor<T> using Eigen's scalar_floor_op<T>, while CPU translation
 // units use floor_cpu<T>.
 //
 // Only float32 is overridden here.  double, bfloat16, and Eigen::half pass
 // through to floor<T> (Eigen's scalar_floor_op) and retain full SIMD
-// vectorisation; the subnormal fix for those types is tracked as a follow-up.
+// vectorization; the subnormal fix for those types is tracked as a follow-up.
 //
 // GPU packet types (e.g. float4) have no integer_packet, so
 // scalar_cpu_floor_float_op must never be instantiated in GPU compilation
