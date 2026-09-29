@@ -266,9 +266,10 @@ TEST_F(LinSpaceOpTest, LargeSequence_Half) {
 TEST_F(LinSpaceOpTest, Monotonic_Bfloat16_Int64Index) {
   MakeOp(DT_BFLOAT16, DT_INT64);
 
-  // 600 indices exercise the int64 index kernels. bfloat16 keeps integers exact
-  // only to 256, so casting i to bfloat16 inside the loop collapsed
-  // neighbouring indices onto the same value and stair-stepped the output.
+  // 600 indices exercise the int64 index kernels. The step (1/599) is smaller
+  // than the bfloat16 spacing above 0.25, so neighbouring outputs may be equal;
+  // each one must still be the bfloat16 nearest to i / (num - 1). Rounding the
+  // step and the index to bfloat16 before multiplying drifted by several ulps.
   constexpr int64_t num = 600;
   AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(0.0f)});
   AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(1.0f)});
@@ -277,10 +278,15 @@ TEST_F(LinSpaceOpTest, Monotonic_Bfloat16_Int64Index) {
 
   const auto flat = GetOutput(0)->flat<bfloat16>();
   ASSERT_EQ(num, GetOutput(0)->NumElements());
-  for (int64_t i = 1; i < num; ++i) {
-    ASSERT_GT(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
-        << "flat(" << i << ") did not exceed flat(" << i - 1
-        << "); indices past 256 plateaued when i was cast to bfloat16";
+  const double step = 1.0 / static_cast<double>(num - 1);
+  for (int64_t i = 1; i < num - 1; ++i) {
+    ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
+        << "flat(" << i << ") decreased below flat(" << i - 1 << ")";
+    ASSERT_EQ(static_cast<float>(
+                  static_cast<bfloat16>(step * static_cast<double>(i))),
+              static_cast<float>(flat(i)))
+        << "flat(" << i << ") is not the nearest bfloat16 to " << i << "/"
+        << num - 1;
   }
   EXPECT_EQ(0.0f, static_cast<float>(flat(0)));
   EXPECT_EQ(1.0f, static_cast<float>(flat(num - 1)));
