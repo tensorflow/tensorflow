@@ -43,9 +43,7 @@ build_test(
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
-    deps = [
-        "@com_google_absl//absl/status:statusor",
-    ],
+    deps = ["@com_google_absl//absl/strings:string_view"],
 )
 
 cc_library(
@@ -182,11 +180,35 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_runner_profiler",
+    srcs = ["hlo_runner_profiler.cc"],
+    hdrs = ["hlo_runner_profiler.h"],
+    deps = [
+        ":profiler_interface",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@tsl//tsl/profiler/lib:profiler_passes",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/lib:profiler_session_impl",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
     deps = [
         ":hlo_input_output_format",
+        ":hlo_runner_profiler",
         ":profiler_interface",
         "//xla:debug_options_flags",
         "//xla:future",
@@ -245,11 +267,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
-        "@tsl//tsl/profiler/lib:profiler_factory_impl",
-        "@tsl//tsl/profiler/lib:profiler_session",
-        "@tsl//tsl/profiler/lib:profiler_session_impl",
-        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -338,6 +355,75 @@ xla_test(
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
     ] + if_cuda(["//xla/tsl/cuda:nvml"]),
+)
+
+cc_library(
+    name = "simple_multipass_tracer_for_test",
+    testonly = True,
+    srcs = ["simple_multipass_tracer_for_test.cc"],
+    hdrs = ["simple_multipass_tracer_for_test.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/profiler/lib:multi_pass_profiler_controller",
+        "@tsl//tsl/profiler/lib:profiler_collection",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+xla_test(
+    name = "multipass_functional_hlo_runner_test",
+    srcs = ["multipass_functional_hlo_runner_test.cc"],
+    backend_args = if_google(
+        {
+            "gpu": ["--heap_check="],
+            "a100": ["--heap_check="],
+        },
+        {},
+    ),
+    backend_tags = {
+        "gpu": [
+            "nomsan",
+            "requires-gpu-sm80-only",
+        ],
+        "nvgpu_any": [
+            "broken",
+            "no_oss",
+        ],
+        "amdgpu_any": [
+            "broken",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    data = [":hlo_files"],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":create_client",
+        ":functional_hlo_runner",
+        ":hlo_input_output_format",
+        ":hlo_runner_profiler",
+        ":simple_multipass_tracer_for_test",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tests:xla_test_backend_predicates",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
 )
 
 tsl_pybind_extension(
