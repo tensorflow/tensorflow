@@ -87,9 +87,16 @@ class ScanOp : public OpKernel {
     // every step and drifts far from the exact result. Upcast to float32 for
     // the accumulation and cast the result back; this matches the GPU kernel,
     // preserves the documented output dtype, and avoids committing the
-    // 16-bit rounding error on the CPU path. The upcast also applies to
-    // cumprod, which shares this implementation. See GitHub issue #115731.
+    // 16-bit rounding error on the CPU path. This branch is deliberately
+    // limited to the Sum and Prod reducers used by Cumsum and Cumprod; other
+    // reducers that share this kernel (e.g. the LogSumExpReducer used by
+    // CumulativeLogsumexp) must keep their original in-dtype path. See GitHub
+    // issue #115731.
     if constexpr (std::is_same_v<Device, CPUDevice> &&
+                  (std::is_same_v<Reducer,
+                                   Eigen::internal::SumReducer<T>> ||
+                   std::is_same_v<Reducer,
+                                   Eigen::internal::ProdReducer<T>>) &&
                   (std::is_same_v<T, ::tensorflow::bfloat16> ||
                    std::is_same_v<T, Eigen::half>)) {
       Tensor float_input;

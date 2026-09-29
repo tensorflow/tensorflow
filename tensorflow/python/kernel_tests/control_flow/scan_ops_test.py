@@ -67,7 +67,7 @@ def handle_options(func, x, axis, exclusive, reverse):
   return x
 
 
-class CumsumTest(test.TestCase):
+class CumsumTest(test.TestCase, parameterized.TestCase):
 
   valid_dtypes = [
       np.int32,
