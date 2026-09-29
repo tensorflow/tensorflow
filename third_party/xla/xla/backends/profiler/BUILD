@@ -45,3 +45,24 @@ cc_library(
     ),
     alwayslink = True,
 )
+
+cc_library(
+    name = "simple_multipass_tracer",
+    srcs = ["simple_multipass_tracer.cc"],
+    hdrs = ["simple_multipass_tracer.h"],
+    visibility = [
+        "//xla:internal",
+        "//xla/tsl/profiler:friends",
+    ],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/profiler/lib:profiler_collection",
+        "@tsl//tsl/profiler/lib:profiler_factory",
+        "@tsl//tsl/profiler/lib:profiler_interface",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)

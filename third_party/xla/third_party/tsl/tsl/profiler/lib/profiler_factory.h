@@ -30,16 +30,30 @@ namespace profiler {
 using ProfilerFactory = std::function<std::unique_ptr<ProfilerInterface>(
     const tensorflow::ProfileOptions&)>;
 
+using MultiPassProfilerFactory =
+    std::function<std::unique_ptr<MultiPassProfilerInterface>(
+        const tensorflow::ProfileOptions&)>;
+
 // Registers a profiler factory. Should be invoked at most once per factory.
 void RegisterProfilerFactory(ProfilerFactory factory);
+
+// Registers a multi-pass profiler factory. Should be invoked at most once per
+// factory.
+void RegisterMultiPassProfilerFactory(MultiPassProfilerFactory factory);
 
 // Invokes all registered profiler factories with the given options, and
 // returns the instantiated (non-null) profiler interfaces.
 std::vector<std::unique_ptr<ProfilerInterface>> CreateProfilers(
     const tensorflow::ProfileOptions& options);
 
+// Invokes all registered multi-pass profiler factories with the given options,
+// and returns the instantiated (non-null) multi-pass profiler interfaces.
+std::vector<std::unique_ptr<MultiPassProfilerInterface>>
+CreateMultiPassProfilers(const tensorflow::ProfileOptions& options);
+
 // For testing only.
 void ClearRegisteredProfilersForTest();
+void ClearRegisteredMultiPassProfilersForTest();
 
 }  // namespace profiler
 }  // namespace tsl

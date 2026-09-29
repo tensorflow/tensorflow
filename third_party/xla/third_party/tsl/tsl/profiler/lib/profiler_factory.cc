@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/const_init.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "tsl/profiler/lib/multi_pass_profiler_controller.h"
 #include "tsl/profiler/lib/profiler_controller.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -29,9 +31,15 @@ namespace profiler {
 namespace {
 
 absl::Mutex mu(absl::kConstInit);
+absl::Mutex mu_multipass(absl::kConstInit);
 
 std::vector<ProfilerFactory>* GetFactories() {
   static auto factories = new std::vector<ProfilerFactory>();
+  return factories;
+}
+
+std::vector<MultiPassProfilerFactory>* GetMultiPassFactories() {
+  static auto factories = new std::vector<MultiPassProfilerFactory>();
   return factories;
 }
 
@@ -40,6 +48,11 @@ std::vector<ProfilerFactory>* GetFactories() {
 void RegisterProfilerFactory(ProfilerFactory factory) {
   absl::MutexLock lock(mu);
   GetFactories()->push_back(std::move(factory));
+}
+
+void RegisterMultiPassProfilerFactory(MultiPassProfilerFactory factory) {
+  absl::MutexLock lock(mu_multipass);
+  GetMultiPassFactories()->push_back(std::move(factory));
 }
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
@@ -56,9 +69,35 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
   return result;
 }
 
+std::vector<std::unique_ptr<MultiPassProfilerInterface>>
+CreateMultiPassProfilers(const tensorflow::ProfileOptions& options) {
+  std::vector<std::unique_ptr<MultiPassProfilerInterface>> multipass_profilers;
+  {
+    absl::MutexLock lock(mu_multipass);
+    VLOG(3) << "Creating MultiPassProfilers() with "
+            << GetMultiPassFactories()->size() << " factories.";
+    for (const auto& factory : *GetMultiPassFactories()) {
+      auto profiler = factory(options);
+      if (profiler == nullptr) {
+        continue;
+      }
+      multipass_profilers.emplace_back(
+          std::make_unique<MultiPassProfilerController>(std::move(profiler)));
+    }
+    VLOG(3) << "Created " << multipass_profilers.size()
+            << " multipass profilers.";
+  }
+  return multipass_profilers;
+}
+
 void ClearRegisteredProfilersForTest() {
   absl::MutexLock lock(mu);
   GetFactories()->clear();
+}
+
+void ClearRegisteredMultiPassProfilersForTest() {
+  absl::MutexLock lock(mu_multipass);
+  GetMultiPassFactories()->clear();
 }
 
 }  // namespace profiler

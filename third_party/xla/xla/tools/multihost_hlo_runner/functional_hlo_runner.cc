@@ -601,7 +601,8 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     const bool profile_current_repeat =
         (running_options.profiler != nullptr) &&
         (repeat >= running_options.num_repeats -
-                       running_options.num_repeats_with_profiler);
+                       running_options.num_repeats_with_profiler) &&
+        (!running_options.enable_multipass_profiling || is_last_repeat);
 
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -627,14 +628,30 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         running_options.profiler->CreateSession();
         has_active_profiler_session = true;
       }
-      futures->clear();
-      ABSL_ASSIGN_OR_RETURN(
-          output_buffers,
-          executable->Execute(argument_ptrs, execute_options, futures));
-      for (auto& future : *futures) {
-        ABSL_RETURN_IF_ERROR(future.Await());
-      }
 
+      auto execute_once = [&]() -> absl::Status {
+        futures->clear();
+        ABSL_ASSIGN_OR_RETURN(
+            output_buffers,
+            executable->Execute(argument_ptrs, execute_options, futures));
+        for (auto& future : *futures) {
+          ABSL_RETURN_IF_ERROR(future.Await());
+        }
+        return absl::OkStatus();
+      };
+
+      if (running_options.enable_multipass_profiling &&
+          profile_current_repeat) {
+        while (running_options.profiler->NeedMorePass()) {
+          running_options.profiler->StartPass();
+          running_options.profiler->PushRange("hlo_runner");
+          ABSL_RETURN_IF_ERROR(execute_once());
+          running_options.profiler->PopRange();
+          running_options.profiler->StopPass();
+        }
+      } else {
+        ABSL_RETURN_IF_ERROR(execute_once());
+      }
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
           is_last_repeat;
@@ -1774,58 +1791,6 @@ absl::StatusOr<ResolveTopologyResult> ResolveTopology(
 }
 
 }  // namespace FunctionalHloRunner
-
-HLORunnerProfiler::HLORunnerProfiler(absl::string_view dump_path,
-                                     bool keep_xspace)
-    : dump_path_(dump_path), keep_xspace_(keep_xspace) {}
-
-absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> HLORunnerProfiler::Create(
-    absl::string_view dump_path, bool keep_xspace) {
-  if (dump_path.empty()) {
-    return absl::InvalidArgumentError(
-        "Please provide a valid dump path to save XSpace results to disk.");
-  }
-  return std::make_unique<HLORunnerProfiler>(dump_path, keep_xspace);
-}
-
-void HLORunnerProfiler::CreateSession() {
-  auto options = tsl::ProfilerSession::DefaultOptions();
-  session_ = tsl::ProfilerSession::Create(options);
-}
-
-void HLORunnerProfiler::UploadSession() {
-  xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
-  // Stops the ProfilerSession
-  CHECK_OK(session_->CollectData(xspace_.get()));
-
-  CHECK(!dump_path_.empty());
-
-  std::string unique_dump_path = dump_path_;
-  if (session_index_ > 0) {
-    absl::string_view stem = dump_path_;
-    absl::string_view suffix = "";
-    const std::string::size_type dot_pos = dump_path_.rfind('.');
-    const std::string::size_type slash_pos = dump_path_.rfind('/');
-    if (dot_pos != std::string::npos &&
-        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
-      suffix = stem.substr(dot_pos);
-      stem = stem.substr(0, dot_pos);
-    }
-    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
-  }
-  ++session_index_;
-
-  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
-  // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
-  if (!keep_xspace_) {
-    xspace_ = nullptr;
-  }
-}
-
-const tensorflow::profiler::XSpace* HLORunnerProfiler::GetXSpace() {
-  return xspace_.get();
-}
 
 void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   auto set_manual_sharding = [](HloInstruction* hlo) {

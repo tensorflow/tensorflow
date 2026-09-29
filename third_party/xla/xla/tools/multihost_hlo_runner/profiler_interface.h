@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_MULTIHOST_HLO_RUNNER_PROFILER_INTERFACE_H_
 #define XLA_TOOLS_MULTIHOST_HLO_RUNNER_PROFILER_INTERFACE_H_
 
+#include "absl/strings/string_view.h"
 namespace xla {
 
 // Interface for profiler plugins. If being set in RunningOptions, profiling
@@ -27,6 +28,20 @@ class ProfilerInterface {
   virtual void CreateSession() = 0;
   // Uploads profiling session data after finishing running HLO module.
   virtual void UploadSession() = 0;
+
+  // Multipass profiling interface methods.
+  // Returns true if multipass profiling is enabled for this profiler.
+  virtual bool EnableMultiPass() { return false; }
+  // Returns true if another profiling pass is required.
+  virtual bool NeedMorePass() { return false; }
+  // Starts a profiling pass.
+  virtual void StartPass() {}
+  // Pushes a named range to delimit profiling regions within the active pass.
+  virtual void PushRange(absl::string_view name) {}
+  // Pops the innermost named range within the active pass.
+  virtual void PopRange() {}
+  // Stops the active profiling pass.
+  virtual void StopPass() {}
 };
 }  // namespace xla
 
