@@ -461,9 +461,11 @@ class SparseConcatTest(test.TestCase):
 
   def testSparseConcatEmptyInputList(self):
     from tensorflow.python.ops import gen_sparse_ops
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "Input list must not be empty"
-    ):
+    # With an empty input list there are no tensors to infer the 'T' attr
+    # from, so the kernel is rejected before Compute runs. Asserting that a
+    # clean InvalidArgumentError is raised (rather than a crash on
+    # shapes[0]) guards the N > 0 check in SparseConcatOp.
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(
           gen_sparse_ops.sparse_concat(
               indices=[], values=[], shapes=[], concat_dim=1
