@@ -47,4 +47,11 @@ jobs:
         pip install pylint==2.13.9 "numpy<2.0.0" wheel
     - name: Run PyLint on changed files
       run: |
-        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
+        py_files=$(echo "${{ steps.get_file_changes.outputs.files}}" \
+          | tr " " "\n" | grep "\.py$" || true)
+        if [ -z "$py_files" ]; then
+          echo "No Python files changed; skipping PyLint."
+          exit 0
+        fi
+        echo "$py_files" | xargs -r pylint \
+          --rcfile=tensorflow/tools/ci_build/pylintrc

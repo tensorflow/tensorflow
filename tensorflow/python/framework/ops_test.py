@@ -2641,12 +2641,13 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerNestedScope(self):
-    """Spaces and invalid chars should raise ValueError in eager nested scopes."""
+    """Spaces and invalid chars raise ValueError in eager nested scopes."""
+    invalid_msg = "is not a valid (root )?scope name"
     with ops.name_scope_v2("valid_outer"):
-      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+      with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("scope with spaces"):
           pass
-      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+      with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("invalid@scope"):
           pass
 
@@ -2659,15 +2660,16 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     conform to _VALID_OP_NAME_REGEX, which requires the first character to be
     alphanumeric or '.').
     """
+    invalid_msg = "is not a valid (root )?scope name"
     # Leading underscore is invalid at root level in both modes.
-    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+    with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("_invalid_at_root"):
         pass
     # Spaces and special chars must always raise.
-    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+    with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("scope with spaces"):
         pass
-    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+    with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("invalid@scope"):
         pass
 
@@ -2701,13 +2703,13 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope_v2("valid_outer"):
       with ops.name_scope_v2("invalid space/"):
         pass
+    invalid_msg = "is not a valid (root )?scope name"
     # Non-trailing-slash names with invalid chars must still raise.
-    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+    with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("invalid space"):
         pass
     with ops.name_scope_v2("valid_outer"):
-      with self.assertRaisesRegex(
-          ValueError, "is not a valid (root )?scope name"):
+      with self.assertRaisesRegex(ValueError, invalid_msg):
         with ops.name_scope_v2("invalid space"):
           pass
 
