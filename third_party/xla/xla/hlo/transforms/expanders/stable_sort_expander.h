@@ -33,8 +33,10 @@ class StableSortExpander : public OpExpanderPass {
  public:
   absl::string_view name() const override { return "stable-sort-expander"; }
 
- private:
+ protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
+
+ private:
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 };

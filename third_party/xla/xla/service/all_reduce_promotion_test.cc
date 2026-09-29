@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -55,9 +54,9 @@ TEST_F(AllReducePromotionTest, SimplePromotionAllReduce) {
     ROOT cp = u16[2] all-reduce(a1), replica_groups={}, to_apply=sum
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -85,9 +84,9 @@ TEST_F(AllReducePromotionTest, SimplePromotionReduceScatter) {
     ROOT cp = u16[1] reduce-scatter(a1), dimensions={0}, replica_groups={}, to_apply=sum
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass_, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -116,10 +115,10 @@ TEST_F(AllReducePromotionTest, AllReduceOnly_AllReduceStillPromoted) {
     ROOT cp = u16[2] all-reduce(a1), replica_groups={}, to_apply=sum
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&all_reduce_only_pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloPass(&all_reduce_only_pass_, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -148,10 +147,10 @@ TEST_F(AllReducePromotionTest, AllReduceOnly_ReduceScatterUntouched) {
     ROOT cp = u16[1] reduce-scatter(a1), dimensions={0}, replica_groups={}, to_apply=sum
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&all_reduce_only_pass_, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloPass(&all_reduce_only_pass_, module.get()));
   EXPECT_FALSE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceScatter().WithShape(U16, {1})));

@@ -112,38 +112,36 @@ void OriginalValue::ClearInternalNodeValues() {
 }
 
 OriginalValue::OriginalValue(
-    TupleTree<std::optional<OriginalArray>>::Node&& root_node)
-    : data_(TupleTree<std::optional<OriginalArray>>(std::move(root_node))) {
+    TupleTree<std::optional<OriginalArray>>::Node&& root_node,
+    std::optional<std::string> call_hierarchy)
+    : tree_(TupleTree<std::optional<OriginalArray>>(std::move(root_node))),
+      call_hierarchy_(std::move(call_hierarchy)) {
   ClearInternalNodeValues();
 }
-OriginalValue::OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree)
-    : data_(std::move(tree)) {
+OriginalValue::OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree,
+                             std::optional<std::string> call_hierarchy)
+    : tree_(std::move(tree)), call_hierarchy_(std::move(call_hierarchy)) {
   ClearInternalNodeValues();
 }
 OriginalValue::OriginalValue(
-    const TupleTree<std::optional<OriginalArray>>& tree)
-    : data_(tree) {
+    const TupleTree<std::optional<OriginalArray>>& tree,
+    std::optional<std::string> call_hierarchy)
+    : tree_(tree), call_hierarchy_(std::move(call_hierarchy)) {
   ClearInternalNodeValues();
 }
 
-OriginalValue::OriginalValue(SyntheticCallType synthetic) : data_(synthetic) {}
-
-OriginalValue OriginalValue::SyntheticCall() {
-  OriginalValue result(SyntheticCallType{});
+std::string OriginalValue::ToString() const {
+  auto node_or = tree().ToNode();
+  CHECK_OK(node_or.status());
+  std::string result = NodeToString(*node_or);
+  if (call_hierarchy_.has_value()) {
+    absl::StrAppend(&result, ",[\"", *call_hierarchy_, "\"]");
+  }
   return result;
 }
 
-std::string OriginalValue::ToString() const {
-  if (is_synthetic_call()) {
-    return "[synthetic_call]";
-  }
-  auto node_or = tree().ToNode();
-  CHECK_OK(node_or.status());
-  return NodeToString(*node_or);
-}
-
 bool OriginalValue::operator==(const OriginalValue& other) const {
-  if (is_synthetic_call() != other.is_synthetic_call()) {
+  if (call_hierarchy_ != other.call_hierarchy_) {
     return false;
   }
   if (is_synthetic_call()) {
@@ -173,13 +171,23 @@ OriginalValueProto OriginalValue::ToProto() const {
       }
     }
   }
+  if (call_hierarchy_.has_value()) {
+    original_value_proto.set_call_hierarchy(*call_hierarchy_);
+  }
   return original_value_proto;
 }
 
 std::shared_ptr<OriginalValue> OriginalValue::FromProto(
     const xla::OriginalValueProto& original_value_proto) {
+  std::optional<std::string> call_hierarchy;
+  if (original_value_proto.has_call_hierarchy()) {
+    call_hierarchy = original_value_proto.call_hierarchy();
+  }
   if (original_value_proto.is_synthetic_call()) {
-    return std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
+    auto result = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(), /*call_hierarchy=*/"");
+    result->set_call_hierarchy(std::move(call_hierarchy));
+    return result;
   }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
@@ -198,7 +206,8 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
     }
   }
   return std::make_shared<OriginalValue>(
-      TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(nodes)));
+      TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(nodes)),
+      std::move(call_hierarchy));
 }
 
 std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
@@ -244,6 +253,26 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     return has_original_value ? original_value : nullptr;
   }
 
+  if (instruction->opcode() == HloOpcode::kWhile) {
+    auto original_value = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(instruction->shape()),
+        absl::StrCat(prefix, instruction->name(), "#$"));
+    for (auto& leaf : original_value->mutable_original_arrays()) {
+      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
+    }
+    return original_value;
+  }
+
+  if (instruction->opcode() == HloOpcode::kCall) {
+    auto original_value = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(instruction->shape()),
+        absl::StrCat(prefix, instruction->name()));
+    for (auto& leaf : original_value->mutable_original_arrays()) {
+      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
+    }
+    return original_value;
+  }
+
   // Default case: create a new tree with leaves pointing to this instruction.
   auto original_value = std::make_shared<OriginalValue>(
       TupleTree<std::optional<OriginalArray>>(instruction->shape()));
@@ -266,26 +295,6 @@ bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
     return true;
   }
   return tree().IsStructurallyCompatible(shape);
-}
-
-std::optional<std::string> OriginalValue::GetOriginalCallLikeInstructions()
-    const {
-  if (is_synthetic_call()) {
-    // Synthetic call are transparent and hence resulting in empty call
-    // instructions.
-    return "";
-  }
-  if (IsEmpty()) {
-    // Currently we don't track original call information separately and rely
-    // on the first leaf to find the original call information. So if there are
-    // no leaves we return std::nullopt.
-    return std::nullopt;
-  }
-  auto original_array = original_arrays().begin()->second;
-  if (!original_array.has_value()) {
-    return std::nullopt;
-  }
-  return original_array->instruction_name;
 }
 
 }  // namespace xla

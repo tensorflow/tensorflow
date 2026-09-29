@@ -1719,6 +1719,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",

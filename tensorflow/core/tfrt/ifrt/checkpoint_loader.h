@@ -18,17 +18,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/tsl/concurrency/future.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -49,14 +50,32 @@ class CheckpointLoader {
     bool run_placer_grappler_on_functions;
   };
 
+  // Bookkeeping record of a variable materialized in the ResourceManager, so
+  // FreezeCleanup can delete the entries that turn out to be device-only.
+  struct MaterializedVariable {
+    std::string runtime_name;
+    std::string container;
+    std::string name;
+  };
+
   explicit CheckpointLoader(
       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
-      bool use_async_restore = true)
+      bool use_async_restore = true,
+      bool materialize_variables_in_resource_manager = false)
       : ifrt_restore_tensor_registry_(ifrt_restore_tensor_registry),
         checkpoint_loader_work_queue_(checkpoint_loader_work_queue),
-        use_async_restore_(use_async_restore) {}
+        use_async_restore_(use_async_restore),
+        materialize_variables_in_resource_manager_(
+            materialize_variables_in_resource_manager) {}
   virtual ~CheckpointLoader() = default;
+
+  bool materialize_variables_in_resource_manager() const {
+    return materialize_variables_in_resource_manager_;
+  }
+  void set_materialize_variables_in_resource_manager(bool enabled) {
+    materialize_variables_in_resource_manager_ = enabled;
+  }
 
   // Called before `Load` to do some preparation work.
   virtual absl::Status PrepareRestore(const PrepareRestoreArgs& args);
@@ -75,6 +94,15 @@ class CheckpointLoader {
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
   bool use_async_restore_ = true;
+  bool materialize_variables_in_resource_manager_ = false;
+
+  absl::Mutex materialized_variables_mu_;
+  // When materialize_variables_in_resource_manager is true: everything
+  // materialized in the ResourceManager so far.
+  std::vector<MaterializedVariable> materialized_variables_
+      ABSL_GUARDED_BY(materialized_variables_mu_);
+  ResourceMgr* host_resource_manager_
+      ABSL_GUARDED_BY(materialized_variables_mu_) = nullptr;  // Not owned.
 };
 
 }  // namespace ifrt_serving

@@ -73,9 +73,9 @@ jobs:
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-g2-16-l4-1gpu",
+            pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 GPU L4",
+            name: "XLA Linux x86 GPU T4",
             repo: "openxla/xla",
           },
           {
@@ -97,9 +97,9 @@ jobs:
             repo: "jax-ml/jax",
           },
           {
-            pool: "linux-x86-g2-16-l4-1gpu",
+            pool: "linux-x86-n2-16",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
-            name: "JAX Linux x86 GPU L4",
+            name: "JAX Linux x86 GPU T4",
             repo: "jax-ml/jax",
           },
         ]

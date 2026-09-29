@@ -96,8 +96,7 @@ void EntryFuncOp::build(mlir::OpBuilder& builder, mlir::OperationState& state,
                         mlir::ArrayRef<mlir::Type> memref_arg_types,
                         mlir::ArrayRef<mlir::NamedAttribute> attrs,
                         mlir::ArrayRef<mlir::DictionaryAttr> memref_arg_attrs) {
-  state.addAttribute(mlir::SymbolTable::getSymbolAttrName(),
-                     builder.getStringAttr(name));
+  state.getOrAddProperties<Properties>().sym_name = builder.getStringAttr(name);
   mlir::SmallVector<mlir::Type> arg_types(memref_arg_types.begin(),
                                           memref_arg_types.end());
   // Append the tile id index type.

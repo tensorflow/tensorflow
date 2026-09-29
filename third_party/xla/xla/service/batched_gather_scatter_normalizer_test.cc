@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -244,7 +245,7 @@ ENTRY %entry (start_indices: s32[4,40,1]) -> s32[4,40,2] {
     index_vector_dim=2, slice_sizes={1,2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module,
       RunAndCheckHloRewrite(kModuleStr, BatchedGatherScatterNormalizer(),
                             /*expect_change=*/false));

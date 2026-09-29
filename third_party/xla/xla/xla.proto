@@ -1845,7 +1845,12 @@ message DebugOptions {
   // for all instructions. Accepts textproto of autotuner.CandidateConfigs.
   optional string xla_candidate_configs_file = 544;
 
-  // Next id: 545
+  // If true, allows skipping defensive copy insertion for S(1) collective
+  // memory parameters that have input-output aliasing and execute on all
+  // available devices in the topology.
+  optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
+
+  // Next id: 546
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

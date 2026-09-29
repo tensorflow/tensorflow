@@ -23,7 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_address.h"
@@ -199,8 +201,8 @@ TEST(KernelTest, PackArgumentsWithInt64) {
   int64_t someint64 = 1234;
   args.emplace_back(somemem);
   args.emplace_back(someint64);
-  TF_ASSERT_OK_AND_ASSIGN(auto packed_args_ptr,
-                          PackKernelArgs(args, KernelMetadata()));
+  ASSERT_OK_AND_ASSIGN(auto packed_args_ptr,
+                       PackKernelArgs(args, KernelMetadata()));
   ASSERT_EQ(packed_args_ptr->number_of_arguments(), 2);
   ASSERT_EQ(packed_args_ptr->number_of_shared_bytes(), 0);
   const auto packed = packed_args_ptr->argument_addresses();

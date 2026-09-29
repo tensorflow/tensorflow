@@ -181,6 +181,12 @@ class RocmComputeCapability {
     return gfx9_mi300_series() || gfx12();
   }
 
+  // Whether a system-scope release store to a peer's memory becomes visible to
+  // that peer without extra cache maintenance. gfx90a does not guarantee it.
+  // TODO(magaonka-amd): Evaluate upcoming hardware for hand-written collective
+  // kernel support and enable it accordingly.
+  bool has_peer_visible_atomics() const { return gfx9_mi300_series(); }
+
   bool has_hipblaslt() const {
     return IsThisGfxInAnyList(kMI300Series, kMI200Series, kGfx12Discrete,
                               kGfx11Discrete, kGfx11Apu) ||

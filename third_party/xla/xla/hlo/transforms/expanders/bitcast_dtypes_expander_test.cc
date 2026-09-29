@@ -20,7 +20,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -316,6 +318,27 @@ ENTRY entry {
   BitcastDtypesExpander expander;
   ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
   EXPECT_TRUE(changed);
+}
+
+TEST_F(BitcastDtypesExpanderTest, SkipsFilteredBitcastConvert) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_filtered
+
+ENTRY main {
+  p = s32[10] parameter(0)
+  ROOT out = s8[10,4] bitcast-convert(p)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander(
+      /*extra_filter=*/[](const HloInstruction* instr) { return false; });
+  ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kBitcastConvert);
 }
 
 }  // namespace

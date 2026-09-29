@@ -35,9 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
@@ -119,7 +117,7 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
@@ -192,8 +190,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -235,8 +233,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::string profiled_instructions_text_proto = R"pb(
@@ -288,8 +286,8 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnVerifiedModule(kHloModule));
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   ASSERT_TRUE(
       tsl::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));

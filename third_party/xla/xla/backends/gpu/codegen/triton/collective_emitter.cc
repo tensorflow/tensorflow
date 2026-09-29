@@ -107,10 +107,7 @@ using ReductionComputationEmitter = absl::AnyInvocable<xtile::TensorValue(
     mlir::ImplicitLocOpBuilder&, xtile::TensorValue, xtile::TensorValue)>;
 
 // The main memory space on a device (HBM).
-// Use GPU dialect address space which is platform-independent.
-static constexpr auto kGlobalAddressSpace =
-    static_cast<std::underlying_type_t<mlir::gpu::AddressSpace>>(
-        mlir::gpu::AddressSpace::Global);
+static constexpr auto kGlobalAddressSpace = ttir::PtrAddrSpace::Global;
 
 // Metadata arguments for the collective emitter.
 // device_rank, signal_value, signal_buffers.
@@ -419,9 +416,9 @@ class AllReduceEmitter {
     CHECK(device_rank_.getType().isInteger(32));
     signal_value_ = ctx_.xtile_entry_fn.getArgument(start_idx + 1);
     CHECK(signal_value_.getType().isInteger(32));
-    // !tt.ptr<!tt.ptr<i32>>
+    // !tt.ptr<i64>
     signal_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 2);
-    // !tt.ptr<!tt.ptr<i64>>
+    // !tt.ptr<i64>
     remote_input_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 3);
 
     // 2. Constants and types.
@@ -463,8 +460,12 @@ class AllReduceEmitter {
           << "Subtile shape: " << absl::StrJoin(subtile_shape_, ",");
     }
     // 3. Emit setup IR.
-    remote_input_buffers_i64_ = ttir::BitcastOp::create(
-        builder_, ptr_to_i64_type_, remote_input_buffers_);
+    if (remote_input_buffers_.getType() == ptr_to_i64_type_) {
+      remote_input_buffers_i64_ = remote_input_buffers_;
+    } else {
+      remote_input_buffers_i64_ = ttir::BitcastOp::create(
+          builder_, ptr_to_i64_type_, remote_input_buffers_);
+    }
     const mlir::Type i64_type = builder_.getI64Type();
     // Check if last bit of signal_value is 0 or 1.
     mlir::Value signal_value = signal_value_;
@@ -503,7 +504,7 @@ class AllReduceEmitter {
 
   // Emits instructions to get the pointer to the remote buffer of the given
   // rank.
-  // We have a !tt.ptr<!tt.ptr<i64>> pointing to the base of the remote
+  // We have a !tt.ptr<i64> pointing to the base of the remote
   // buffers. We add the rank index to the base pointer and load to get to the
   // base pointer of the remote buffer of the given rank. Then we add the buffer
   // offset to get the pointer to the correct buffer inside (double buffering).
@@ -1133,10 +1134,9 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
   fn_arg_types.push_back(b.getI32Type());
   // signal_value: i32
   fn_arg_types.push_back(b.getI32Type());
-  // signal_buffers: !tt.ptr<!tt.ptr<i32>>
-  fn_arg_types.push_back(ttir::PointerType::get(
-      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace),
-      kGlobalAddressSpace));
+  // signal_buffers: !tt.ptr<i64>
+  fn_arg_types.push_back(
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
 
   // For AllGather, the input parameter already maps to the symmetric scratch
   // buffer via RequiredReplicaIdBounds/SelectBufferOp, so we don't add
@@ -1148,21 +1148,11 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
   }
 
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    PrimitiveType type = p->shape().element_type();
-    mlir::Type ir_type;
-    if (type == U16) {
-      ir_type = b.getI16Type();
-    } else if (type == S4) {
-      ir_type = b.getI4Type();
-    } else {
-      ABSL_ASSIGN_OR_RETURN(ir_type, xtile::PrimitiveTypeToMlirType(b, type));
-    }
+    (void)p;
     // Also add the remote/scratch buffers for collectives.
-    // !tt.ptr<!tt.ptr<type>>
-    fn_arg_types.push_back(ttir::PointerType::get(
-        ttir::PointerType::get(xtile::StorageType(ir_type),
-                               kGlobalAddressSpace),
-        kGlobalAddressSpace));
+    // !tt.ptr<i64>
+    fn_arg_types.push_back(
+        ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
   }
   // num_metadata_args =
   return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;

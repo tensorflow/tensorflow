@@ -1579,8 +1579,21 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 R"(HloModule test, entry_computation_layout={(f32[])->f32[]}
 
 ENTRY %test (v1: f32[]) -> f32[] {
-  %v1 = f32[] parameter(0), origin={[synthetic_call]}
-  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={[synthetic_call]}
+  %v1 = f32[] parameter(0), origin={(),[""]}
+  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={(),[""]}
+}
+
+)"
+},
+
+{
+"OriginalValueWithCallHierarchy",
+R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0})->(f32[], f32[3]{0})}
+
+ENTRY %test (v1: f32[], v2: f32[3]) -> (f32[], f32[3]) {
+  %v1 = f32[] parameter(0), origin={{"v1"},["call_result#$"]}
+  %v2 = f32[3]{0} parameter(1), origin={{"v2"},["w1#0/w2#1"]}
+  ROOT %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), origin={({"v1"}, {"v2"}),["w1#$"]}
 }
 
 )"
@@ -7048,6 +7061,33 @@ ENTRY %test {
 
   ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
                   "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
+TEST_F(HloParserTest, OriginalValueWithCallHierarchy) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  %a = f32[2,10]{1,0} parameter(0), origin={{"a"},["call_result#$"]}
+  ROOT %v = abs(%a), origin={{"v"},["w1#*/w2#$"]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={{\"a\"},[\"call_result#$\"]}");
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={{\"v\"},[\"w1#*/w2#$\"]}");
+
+  const HloInstruction* a =
+      module->entry_computation()->parameter_instruction(0);
+  ASSERT_NE(a->original_value(), nullptr);
+  ASSERT_TRUE(a->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*a->original_value()->call_hierarchy(), "call_result#$");
+
+  const HloInstruction* v = module->entry_computation()->root_instruction();
+  ASSERT_NE(v->original_value(), nullptr);
+  ASSERT_TRUE(v->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*v->original_value()->call_hierarchy(), "w1#*/w2#$");
 }
 
 TEST_F(HloParserTest, DeduplicateOriginalValues) {

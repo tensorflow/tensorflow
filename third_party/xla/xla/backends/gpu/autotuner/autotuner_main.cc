@@ -307,7 +307,7 @@ absl::Status InsertTuningResultsToCache(
                        &status_mu, &insert_status]() {
       absl::Status s = autotuner_cache->Insert(instr, cached_config);
       if (!s.ok()) {
-        absl::MutexLock lock(&status_mu);
+        absl::MutexLock lock(status_mu);
         insert_status.Update(s);
       }
       counter.DecrementCount();

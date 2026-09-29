@@ -51,6 +51,8 @@ cc_library(
         ":use_static_tensorrt": [],
         "//conditions:default": [":tensorrt_lib"],
     }),
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkstatic = 1,
     deps = [
         ":tensorrt_headers",

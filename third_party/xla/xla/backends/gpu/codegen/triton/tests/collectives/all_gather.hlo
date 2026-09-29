@@ -35,7 +35,7 @@ ENTRY entry {
 // CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]: memref<256x128xf32>,
 // CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:   %[[ARG3:[a-zA-Z0-9_]+]]: i32,
-// CHECK-SAME:   %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<i32>>,
+// CHECK-SAME:   %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
 // CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index)
 
 // CHECK:        %[[IDX0:.*]] = xla.apply_indexing #[[MAP0]](%[[PID]])

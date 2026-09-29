@@ -450,6 +450,8 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["@tsl//tsl/platform:stacktrace_handler_hdrs"],
+    # -supports_dynamic_linker: Forces static linking even with --dynamic_mode=fully
+    features = ["-supports_dynamic_linker"],
     linkstatic = 1,
     deps = [
         "@tsl//tsl/platform",

@@ -296,7 +296,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_gpu_test_base",
         "//xla:error_spec",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/stream_executor:device_description",
@@ -535,6 +534,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
+        "//xla/stream_executor:platform_manager",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -1829,8 +1829,8 @@ xla_cc_test(
     name = "host_cross_compilation_test",
     srcs = ["host_cross_compilation_test.cc"],
     tags = [
-        "cuda-only",
         "gpu",
+        "no-oneapi",
     ],
     deps = [
         "//xla:xla_data_proto_cc",

@@ -328,6 +328,13 @@ std::optional<bool> CompareSize(
   const int64_t a_size = size_of(*a);
   const int64_t b_size = size_of(*b);
   if (a_size != b_size) {
+    // Unbounded size is considered larger than any bounded size.
+    if (a_size == Shape::kUnboundedSize) {
+      return true;
+    }
+    if (b_size == Shape::kUnboundedSize) {
+      return false;
+    }
     return a_size > b_size;  // use ">" for decreasing size.
   }
   return std::nullopt;
@@ -621,9 +628,9 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   // offset, since -1 <= size_ is true for any non-negative allocation size.
   TF_RET_CHECK(offset >= 0)
       << "LogicalBuffer " << buffer << " has a negative offset: " << offset;
-  TF_RET_CHECK(size >= 0) << "LogicalBuffer " << buffer
-                          << " has a negative size: " << size;
-  TF_RET_CHECK(offset <= size_)
+  TF_RET_CHECK(size >= 0 || size == Shape::kUnboundedSize)
+      << "LogicalBuffer " << buffer << " has a negative size: " << size;
+  TF_RET_CHECK(offset <= size_ || size == Shape::kUnboundedSize)
       << "LogicalBuffer " << buffer << " offset out of range";
   TF_RET_CHECK(offset + size <= size_)
       << "LogicalBuffer " << buffer

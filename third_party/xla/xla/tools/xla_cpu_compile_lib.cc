@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -33,7 +34,8 @@ namespace xla {
 
 absl::StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::optional<cpu::TargetMachineOptions> target_config) {
+    std::optional<cpu::TargetMachineOptions> target_config,
+    CompilationResult* result) {
   cpu::CpuCompiler cpu_compiler;
   Compiler::CompileOptions compile_options;
   if (target_config.has_value()) {
@@ -43,6 +45,9 @@ absl::StatusOr<std::string> AotCompileCpuExecutable(
   ABSL_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
+  if (result != nullptr && !executables.empty()) {
+    *result->mutable_hlo_module() = executables[0]->module().ToProto();
+  }
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                    cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();

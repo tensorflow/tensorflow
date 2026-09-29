@@ -63,7 +63,8 @@ const HloInstruction* PassthroughDegenerateAddingReshapes(
 }
 
 bool ShouldConsiderSchedule(HloInstruction* hlo) {
-  return hlo->opcode() != HloOpcode::kCollectivePermute;
+  return hlo->opcode() != HloOpcode::kCollectivePermute &&
+         hlo->opcode() != HloOpcode::kAllToAll;
 }
 
 HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
@@ -84,7 +85,8 @@ HloInstruction* MayConsiderCollective(HloInstruction* hlo, bool for_replicas) {
   if (coll->constrain_layout()) {
     return nullptr;
   }
-  if (coll->opcode() == HloOpcode::kAllGather) {
+  if (coll->opcode() == HloOpcode::kAllGather ||
+      coll->opcode() == HloOpcode::kAllToAll) {
     return coll;
   }
   // Consider broadcast -> dynamic-update-slice -> all-reduce as all-gather.

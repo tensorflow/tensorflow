@@ -33,8 +33,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -97,9 +95,8 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, NoPipelineOverhead) {
     ROOT add = f32[2,4] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(Initialize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK(Initialize(module.get()));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
   const float expected_compute_elapsed = std::max(
@@ -166,10 +163,9 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
     ROOT add = f32[2,4] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // Set the window size 64B.
-  TF_ASSERT_OK(
+  ASSERT_OK(
       Initialize(module.get(),
                  /*pipeline_overhead_window_size_mib=*/(64.0 / 1024 / 1024)));
 
@@ -254,9 +250,8 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, LatencyBoundCompute) {
     ROOT add = f32[2,2] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(Initialize(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK(Initialize(module.get()));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
   EXPECT_EQ(cost_analysis_->GetInstructionElapsedDueToCompute(*add), 1.0f);

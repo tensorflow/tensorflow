@@ -98,7 +98,7 @@ class BuildType(enum.Enum):
   XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_CPU_WORKSPACE_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS = enum.auto()
@@ -118,7 +118,7 @@ class BuildType(enum.Enum):
 
   JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
 
   @classmethod
   def from_str(cls, s):
@@ -251,7 +251,7 @@ class Build:
     return cmds
 
 
-_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103, 120)
+_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103, 107, 120)
 
 
 def _tag_filters_only_for_compute_capability(
@@ -349,7 +349,7 @@ def nvidia_gpu_build_with_compute_capability(
       build_tag_filters=build_tag_filters,
       options=options,
       repo_env=repo_env,
-      extra_setup_commands=(["nvidia-smi"],),
+      extra_setup_commands=(["nvidia-smi"],) if multi_gpu else (),
   )
 
 
@@ -459,7 +459,7 @@ Build(
 )
 
 nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=75,
     multi_gpu=False,
@@ -843,7 +843,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda13",),
     target_patterns=(
@@ -875,7 +875,6 @@ Build(
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
-    extra_setup_commands=(["nvidia-smi"],),
 )
 
 

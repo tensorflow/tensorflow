@@ -63,6 +63,14 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       profiler_client.monitor('localhost:6006', 2000)
 
+  def testMonitor_NoneServiceAddrRaises(self):
+    with self.assertRaises(TypeError):
+      profiler_client.monitor(None, -625, -625)
+
+  def testTrace_NoneServiceAddrRaises(self):
+    with self.assertRaises(TypeError):
+      profiler_client.trace(None, None, -625)
+
 
 if __name__ == '__main__':
   test.main()

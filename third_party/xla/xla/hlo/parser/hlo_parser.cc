@@ -7943,8 +7943,11 @@ bool HloParserImpl::ParseAndAddOriginalArray(
   return true;
 }
 
-// original_value ::= '{' '<synthetic_call>' | ( '('* original_array [','] ')'*
-// | original_value ) '}'
+// original_value ::= '{' node [ ',' call_hierarchy ] '}'
+// call_hierarchy ::= '[' '"' string '"' ']'
+// node           ::= '{' [ original_array ] '}'
+//                  | '(' [ node { ',' node } ] ')'
+// original_array ::= '"' instruction_name '"' [ ' ' shape_index ]
 bool HloParserImpl::ParseOriginalValueImpl(
     std::optional<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
@@ -7967,7 +7970,8 @@ bool HloParserImpl::ParseOriginalValueImpl(
     if (!ParseToken(TokKind::kRbrace, "Expects '}' to end original value")) {
       return false;
     }
-    original_value.emplace(OriginalValue::SyntheticCall());
+    original_value.emplace(TupleTree<std::optional<OriginalArray>>(),
+                           /*call_hierarchy=*/"");
     return true;
   }
 
@@ -7975,6 +7979,7 @@ bool HloParserImpl::ParseOriginalValueImpl(
       original_value_arrays;
 
   ShapeIndex leaf_shape_index;
+  std::optional<std::string> call_hierarchy;
   while (lexer_.GetKind() != TokKind::kRbrace) {
     switch (lexer_.GetKind()) {
       case TokKind::kLparen:
@@ -7987,7 +7992,23 @@ bool HloParserImpl::ParseOriginalValueImpl(
         break;
       case TokKind::kComma:
         lexer_.Lex();
-        ++leaf_shape_index.back();
+        if (lexer_.GetKind() == TokKind::kLsquare) {
+          if (call_hierarchy.has_value()) {
+            return TokenError("Duplicate call_hierarchy in original_value.");
+          }
+          lexer_.Lex();  // Eat '['.
+          std::string call_hierarchy_str;
+          if (!ParseString(&call_hierarchy_str)) {
+            return TokenError("Expects a string for call_hierarchy.");
+          }
+          call_hierarchy = std::move(call_hierarchy_str);
+          if (!ParseToken(TokKind::kRsquare,
+                          "Expects ']' to end call_hierarchy")) {
+            return false;
+          }
+        } else if (!leaf_shape_index.empty()) {
+          ++leaf_shape_index.back();
+        }
         break;
       case TokKind::kLbrace:
         if (!ParseAndAddOriginalArray(leaf_shape_index,
@@ -7997,14 +8018,18 @@ bool HloParserImpl::ParseOriginalValueImpl(
         break;
       default:
         return TokenError(
-            "Expects '[synthetic]' or a tuple tree of original arrays in "
-            "original_value field.");
+            "Expects a tuple tree of original arrays in original_value "
+            "field.");
     }
   }
 
-  lexer_.Lex();
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' to end original value")) {
+    return false;
+  }
+
   original_value.emplace(TupleTree<std::optional<OriginalArray>>(
-      absl::MakeSpan(original_value_arrays)));
+                             absl::MakeSpan(original_value_arrays)),
+                         std::move(call_hierarchy));
   return true;
 }
 

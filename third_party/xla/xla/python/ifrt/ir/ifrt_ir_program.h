@@ -214,15 +214,24 @@ struct IfrtIRCompileOptions
           std::string, std::variant<std::string, bool, int64_t, double>>&
           options);
 
-  std::string mlir_dump_to;
-  std::string mlir_dump_pass_re;
-  std::string mlir_dump_func_re;
-  bool mlir_enable_timing;
-  std::string dot_graph_dump_to;
-  int64_t dot_graph_min_executable_peak_memory_bytes;
-  float dot_graph_min_executable_flops;
-  int64_t dot_graph_min_per_device_transfer_size_bytes;
-  bool strict_memory_reservation;
+  // Returns the fingerprint of the compile options.
+  // If `include_device_assignments` is true, the fingerprint includes the
+  // device assignments.
+  // If `include_loaded_exec_binding` is true, the fingerprint includes the
+  // loaded executable binding.
+  absl::StatusOr<uint64_t> Fingerprint(
+      bool include_device_assignments = true,
+      bool include_loaded_exec_binding = true) const;
+
+  std::string mlir_dump_to = "";
+  std::string mlir_dump_pass_re = "";
+  std::string mlir_dump_func_re = ".*";
+  bool mlir_enable_timing = false;
+  std::string dot_graph_dump_to = "";
+  int64_t dot_graph_min_executable_peak_memory_bytes = 0;
+  float dot_graph_min_executable_flops = 0.0;
+  int64_t dot_graph_min_per_device_transfer_size_bytes = 0;
+  bool strict_memory_reservation = false;
 
   static char ID;  // NOLINT
 };

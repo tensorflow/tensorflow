@@ -135,8 +135,8 @@ TEST(KernelArgPackingSpecTest, FromProto) {
         relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 1 }
       )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelArgPackingSpec spec,
-                          KernelArgPackingSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(KernelArgPackingSpec spec,
+                       KernelArgPackingSpec::FromProto(proto));
   EXPECT_THAT(
       spec.BuildArgument(PackKernelArgs(std::vector{MakeDevicePointer(0xff41),
                                                     MakeDevicePointer(0xff42)},
@@ -161,7 +161,7 @@ TEST(KernelArgsPackingSpecTest, BuildArguments) {
   spec.AddAddressArgument(/*argument_index=*/0);
   spec.AddConstantArgument(0x1234);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelArgsPackedVector> packed_args,
       spec.BuildArguments(
           PackKernelArgs(std::vector{MakeDevicePointer(0xff42)}, 0)
@@ -209,9 +209,9 @@ TEST(KernelArgsPackingSpecTest, FromProto) {
         kernel_arguments { data: "\x34\x12\x00\x00" }
       )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelArgsPackingSpec spec,
-                          KernelArgsPackingSpec::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(KernelArgsPackingSpec spec,
+                       KernelArgsPackingSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelArgsPackedVector> arguments,
       spec.BuildArguments(
           PackKernelArgs(std::vector{MakeDevicePointer(0xff42)}, 0)

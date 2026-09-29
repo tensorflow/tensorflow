@@ -182,9 +182,18 @@ MakeTestPjRtStreamExecutorClient(
                                    {/*stack_size=*/512 * 1024}),
       first_executor, std::move(gpu_run_options));
   auto platform_id = tsl::Fingerprint64(platform_name);
+  PjRtPluginAttributes attrs;
+  attrs.pjrt_c_api_major_version = 0;
+  attrs.pjrt_c_api_minor_version = 0;
+  attrs.attributes["serialize_with_sdy"] = true;
+  attrs.attributes["allows_recursion"] = false;
+  attrs.attributes["allows_execute_recursion"] = true;
+  attrs.attributes["use_stream_based_compaction"] = true;
+  attrs.attributes["dump_on_deserialize"] = true;
   auto result = std::make_unique<PjRtStreamExecutorClient>(
       platform_id, std::move(platform_name), "<unknown>", process_index,
-      std::move(topology), std::move(raw_client), std::move(kv_store));
+      std::move(topology), std::move(raw_client), std::move(kv_store),
+      std::move(attrs));
   std::vector<std::unique_ptr<PjRtDevice>> devices_copy;
   devices_copy.reserve(devices.size());
   for (auto& device : devices) {
@@ -510,7 +519,7 @@ TEST(PjRtStreamExecutorClientTest, MakeAllocationReadyEventAsync) {
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), S32, {1024}, /*byte_strides=*/std::nullopt,
                        PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, memory_space, /*device_layout=*/nullptr));
+                       []() {}, memory_space, /*device_layout=*/nullptr));
   TF_ASSERT_OK(buffer->GetReadyFuture().Await());
   Shape shape = buffer->on_device_shape();
   TF_ASSERT_OK_AND_ASSIGN(auto result,

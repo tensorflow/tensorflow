@@ -102,8 +102,21 @@ TEST(OriginalValueTest, ToStringTuple) {
 }
 
 TEST(OriginalValueTest, ToStringSynthetic) {
-  OriginalValue value = OriginalValue::SyntheticCall();
-  EXPECT_EQ(value.ToString(), "[synthetic_call]");
+  OriginalValue value(Node::Tuple(), /*call_hierarchy=*/"");
+  EXPECT_EQ(value.ToString(), "(),[\"\"]");
+}
+
+TEST(OriginalValueTest, ToStringWithCallHierarchy) {
+  OriginalValue value(Node::Leaf(OriginalArray{"call_result", {}}),
+                      /*call_hierarchy=*/"call_result#$");
+  EXPECT_EQ(value.ToString(), "{\"call_result\"},[\"call_result#$\"]");
+}
+
+TEST(OriginalValueTest, ToStringTupleWithCallHierarchy) {
+  OriginalValue value(Node::Tuple({Node::Leaf(OriginalArray{"inst1", {}}),
+                                   Node::Leaf(OriginalArray{"inst2", {}})}),
+                      /*call_hierarchy=*/"w1#$");
+  EXPECT_EQ(value.ToString(), "({\"inst1\"}, {\"inst2\"}),[\"w1#$\"]");
 }
 
 TEST(OriginalValueTest, ProtoSerde) {
@@ -125,7 +138,7 @@ TEST(OriginalValueTest, ProtoSerde) {
   EXPECT_EQ(*value_with_null_from_proto, value_with_null);
 
   // Test with synthetic call.
-  OriginalValue value_synthetic = OriginalValue::SyntheticCall();
+  OriginalValue value_synthetic(Node::Tuple(), /*call_hierarchy=*/"");
   OriginalValueProto proto_synthetic = value_synthetic.ToProto();
   std::shared_ptr<OriginalValue> value_synthetic_from_proto =
       OriginalValue::FromProto(proto_synthetic);
@@ -138,6 +151,33 @@ TEST(OriginalValueTest, ProtoSerde) {
   std::shared_ptr<OriginalValue> value_empty_from_proto =
       OriginalValue::FromProto(proto_empty);
   EXPECT_EQ(*value_empty_from_proto, value_empty);
+}
+
+TEST(OriginalValueTest, ProtoSerdeWithCallHierarchy) {
+  OriginalValue value(Node::Leaf(OriginalArray{"inst1", {}}),
+                      /*call_hierarchy=*/"w1#$/w2#$");
+
+  OriginalValueProto proto = value.ToProto();
+  EXPECT_TRUE(proto.has_call_hierarchy());
+  EXPECT_EQ(proto.call_hierarchy(), "w1#$/w2#$");
+
+  std::shared_ptr<OriginalValue> value_from_proto =
+      OriginalValue::FromProto(proto);
+  EXPECT_EQ(*value_from_proto, value);
+  ASSERT_TRUE(value_from_proto->call_hierarchy().has_value());
+  EXPECT_EQ(*value_from_proto->call_hierarchy(), "w1#$/w2#$");
+}
+
+TEST(OriginalValueTest, ProtoSerdeWithoutCallHierarchy) {
+  OriginalValue value(Node::Leaf(OriginalArray{"inst1", {}}));
+
+  OriginalValueProto proto = value.ToProto();
+  EXPECT_FALSE(proto.has_call_hierarchy());
+
+  std::shared_ptr<OriginalValue> value_from_proto =
+      OriginalValue::FromProto(proto);
+  EXPECT_EQ(*value_from_proto, value);
+  EXPECT_FALSE(value_from_proto->call_hierarchy().has_value());
 }
 
 TEST(OriginalValueTest, FromProtoWithNegativeShapeIndexReturnsNull) {
@@ -199,8 +239,15 @@ TEST(OriginalValueTest, EqualityAndHashing) {
   OriginalValue value_with_root_value(Node::Tuple(
       OriginalArray{"root", {}}, {Node::Leaf(OriginalArray{"inst1", {1}}),
                                   Node::Leaf(OriginalArray{"inst2", {2}})}));
-  OriginalValue synthetic1 = OriginalValue::SyntheticCall();
-  OriginalValue synthetic2 = OriginalValue::SyntheticCall();
+  OriginalValue synthetic1(Node::Tuple(), /*call_hierarchy=*/"");
+  OriginalValue synthetic2(Node::Tuple(), /*call_hierarchy=*/"");
+  OriginalValue value_with_hierarchy(Node::Leaf(OriginalArray{"inst1", {}}),
+                                     /*call_hierarchy=*/"w1#$");
+  OriginalValue value_with_hierarchy_dup(Node::Leaf(OriginalArray{"inst1", {}}),
+                                         /*call_hierarchy=*/"w1#$");
+  OriginalValue value_with_diff_hierarchy(
+      Node::Leaf(OriginalArray{"inst1", {}}),
+      /*call_hierarchy=*/"w2#$");
 
   EXPECT_EQ(value1, value2);
   EXPECT_NE(value1, value3);
@@ -209,6 +256,9 @@ TEST(OriginalValueTest, EqualityAndHashing) {
   EXPECT_EQ(value4, value_with_root_value);
   EXPECT_EQ(synthetic1, synthetic2);
   EXPECT_NE(value1, synthetic1);
+  EXPECT_EQ(value_with_hierarchy, value_with_hierarchy_dup);
+  EXPECT_NE(value_with_hierarchy, value_with_diff_hierarchy);
+  EXPECT_NE(value1, value_with_hierarchy);  // Same tree, different hierarchy.
 
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       value1,
@@ -219,6 +269,9 @@ TEST(OriginalValueTest, EqualityAndHashing) {
       value_with_root_value,
       synthetic1,
       synthetic2,
+      value_with_hierarchy,
+      value_with_hierarchy_dup,
+      value_with_diff_hierarchy,
   }));
 }
 
@@ -287,13 +340,12 @@ ENTRY main {
   ROOT gte = f32[] get-tuple-element(tuple), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   HloInstruction* gte = module->entry_computation()->root_instruction();
 
   tuple->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(tuple->shape(), /*call_hierarchy=*/""));
   gte->set_original_value(OriginalValue::CreateFromInstruction(gte));
 
   EXPECT_EQ(gte->original_value(), nullptr);
@@ -307,8 +359,7 @@ ENTRY main {
  ROOT p0 = (f32[], f32[]) parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
 
@@ -325,15 +376,14 @@ ENTRY main {
   ROOT tuple = (f32[], f32[]) tuple(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
   HloInstruction* tuple = module->entry_computation()->root_instruction();
 
   p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
   p1->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(p1->shape(), /*call_hierarchy=*/""));
   tuple->set_original_value(OriginalValue::CreateFromInstruction(tuple));
 
   ASSERT_NE(tuple->original_value(), nullptr);
@@ -348,8 +398,7 @@ ENTRY main {
   ROOT p0 = f32[] parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
 
@@ -371,11 +420,10 @@ ENTRY main {
   ROOT p0 = f32[] parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(
-      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
+      std::make_shared<OriginalValue>(p0->shape(), /*call_hierarchy=*/""));
 
   std::unique_ptr<HloInstruction> clone = p0->Clone();
 
@@ -398,8 +446,7 @@ ENTRY main {
   ROOT add = f32[] add(n0, n1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
   HloInstruction* n0 = FindInstruction(module.get(), "n0");
@@ -440,13 +487,14 @@ ENTRY main {
   ROOT add = f32[] add(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
 
-  auto value1 = std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
-  auto value2 = std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
+  auto value1 =
+      std::make_shared<OriginalValue>(p0->shape(), /*call_hierarchy=*/"");
+  auto value2 =
+      std::make_shared<OriginalValue>(p1->shape(), /*call_hierarchy=*/"");
 
   p0->set_original_value(value1);
   p1->set_original_value(value2);
@@ -470,8 +518,7 @@ ENTRY main {
   ROOT gte = f32[] get-tuple-element(tuple), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* gte = module->entry_computation()->root_instruction();
 
   EXPECT_NE(gte->original_value(), nullptr);
@@ -527,6 +574,61 @@ ENTRY main {
               Optional(Eq(OriginalArray{"p2"})));
   EXPECT_THAT(dest->original_value()->original_array({1}),
               Optional(Eq(OriginalArray{"p0"})));
+}
+
+TEST_F(OriginalValueHloTest, ParseCallHierarchy) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0), origin={{"p0"},["call_result#$"]}
+  ROOT p1 = f32[] parameter(1), origin={{"p1"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* p0 =
+      module->entry_computation()->parameter_instruction(0);
+  const HloInstruction* p1 =
+      module->entry_computation()->parameter_instruction(1);
+
+  ASSERT_NE(p0->original_value(), nullptr);
+  ASSERT_TRUE(p0->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*p0->original_value()->call_hierarchy(), "call_result#$");
+  EXPECT_EQ(p0->original_value()->ToString(), R"({"p0"},["call_result#$"])");
+
+  ASSERT_NE(p1->original_value(), nullptr);
+  EXPECT_FALSE(p1->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(p1->original_value()->ToString(), R"({"p1"})");
+}
+
+TEST_F(OriginalValueHloTest, ParseTupleWithCallHierarchy) {
+  const char* hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[] parameter(0), origin={{"p0"}}
+  p1 = f32[] parameter(1), origin={{"p1"}}
+  ROOT tuple = (f32[], f32[]) tuple(p0, p1), origin={({"p0"}, {"p1"}),["w1#$"]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* tuple = module->entry_computation()->root_instruction();
+
+  ASSERT_NE(tuple->original_value(), nullptr);
+  ASSERT_TRUE(tuple->original_value()->call_hierarchy().has_value());
+  EXPECT_EQ(*tuple->original_value()->call_hierarchy(), "w1#$");
+}
+
+TEST_F(OriginalValueHloTest, CallHierarchyAccessor) {
+  OriginalValue value(Node::Leaf(OriginalArray{"inst1", {}}));
+  EXPECT_FALSE(value.call_hierarchy().has_value());
+
+  value.set_call_hierarchy("w1#$");
+  ASSERT_TRUE(value.call_hierarchy().has_value());
+  EXPECT_EQ(*value.call_hierarchy(), "w1#$");
+
+  value.set_call_hierarchy(std::nullopt);
+  EXPECT_FALSE(value.call_hierarchy().has_value());
 }
 
 }  // namespace

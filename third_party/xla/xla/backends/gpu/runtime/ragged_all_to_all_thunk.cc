@@ -161,6 +161,10 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
           ->config()
           .debug_options()
           .xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback();
+  config.enable_gxl = instr->GetModule()
+                          ->config()
+                          .debug_options()
+                          .xla_gpu_enable_gxl_ragged_all_to_all();
 
   config.collectives_mode = instr->GetModule()
                                 ->config()
@@ -269,6 +273,8 @@ absl::Status CheckRaggedAllToAllBounds(
   int device_ordinal = stream.parent()->device_ordinal();
   se::StreamExecutor* stream_executor = stream.parent();
 
+  ABSL_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
   se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
   PrimitiveType element_type = buffers[0].element_type;
 
@@ -306,10 +312,12 @@ absl::Status CheckRaggedAllToAllBounds(
     int64_t recv_sz = recv_sizes_host[i];
 
     TF_RET_CHECK(in_offset >= 0 && out_offset >= 0)
-        << "RaggedAllToAll: Negative offsets detected!";
+        << "RaggedAllToAll: Negative offsets detected! (in_offset=" << in_offset
+        << ", out_offset=" << out_offset << ", index=" << i << ")";
 
     TF_RET_CHECK(send_sz >= 0 && recv_sz >= 0)
-        << "RaggedAllToAll: Negative sizes detected!";
+        << "RaggedAllToAll: Negative sizes detected! (send_sz=" << send_sz
+        << ", recv_sz=" << recv_sz << ", index=" << i << ")";
 
     max_read_index = std::max(max_read_index, in_offset + send_sz);
     max_write_index = std::max(max_write_index, out_offset + send_sz);
@@ -572,6 +580,9 @@ RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key,
   if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
     clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements();
     clique_reqs.barrier_reqs->use_cross_device_barrier = true;
+  }
+  if (config_.enable_gxl) {
+    clique_reqs.use_gxl = true;
   }
   return clique_reqs;
 }
@@ -872,7 +883,7 @@ RaggedAllToAllThunk::FromProto(
           thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(),
           thunk_proto.allow_fallback_to_nccl(), thunk_proto.collectives_mode(),
           thunk_proto.use_device_kernel(),
-          fast_interconnect_slice_size_override},
+          fast_interconnect_slice_size_override, thunk_proto.enable_gxl()},
       std::move(buffers));
 }
 
@@ -900,6 +911,7 @@ absl::StatusOr<ThunkProto> RaggedAllToAllThunk::ToProto() const {
   thunk_proto->set_use_device_kernel(config_.use_device_kernel);
   thunk_proto->set_fast_interconnect_slice_size_override(
       config_.fast_interconnect_slice_size_override.value_or(0));
+  thunk_proto->set_enable_gxl(config_.enable_gxl);
 
   return proto;
 }
@@ -922,7 +934,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
   }
 
   auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
-  if (gpu_comm->gxl_communicator() != nullptr) {
+  if (config_.enable_gxl && gpu_comm->gxl_communicator() != nullptr) {
     GxlCommunicator* gxl_nccl_comm = gpu_comm->gxl_communicator();
     return gxl_nccl_comm->RunRaggedAllToAllGxl(
         &stream, device_buffers[0].element_type,

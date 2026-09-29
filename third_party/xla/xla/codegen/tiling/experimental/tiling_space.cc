@@ -556,6 +556,40 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   return tiling_space;
 }
 
+std::unique_ptr<TilingSpace> TilingSpace::Clone() const {
+  auto cloned = std::make_unique<TilingSpace>();
+  cloned->mlir_context_ = mlir_context_;
+  cloned->is_symbolic_ = is_symbolic_;
+  cloned->constraint_ = constraint_;
+  cloned->divisibility_constraints_ = divisibility_constraints_;
+
+  cloned->dimensions_ = dimensions_;
+  cloned->hlo_to_dimension_.reserve(cloned->dimensions_.size());
+  for (const auto& dim : cloned->dimensions_) {
+    cloned->hlo_to_dimension_[std::make_pair(dim.hlo, dim.dim_position)] = &dim;
+  }
+
+  cloned->rt_vars_ = rt_vars_;
+  cloned->hlo_to_rt_var_.reserve(hlo_to_rt_var_.size());
+  // Populating an unordered map from another unordered map is order-independent
+  // since keys are unique and elements are only accessed via direct lookups.
+  // NOLINTNEXTLINE
+  for (const auto& [key, rt_var_ptr] : hlo_to_rt_var_) {
+    cloned->hlo_to_rt_var_[key] = &cloned->rt_vars_[rt_var_ptr->id];
+  }
+
+  cloned->tiled_roots_.reserve(tiled_roots_.size());
+  for (const auto& root_tile : tiled_roots_) {
+    cloned->tiled_roots_.push_back(root_tile.CloneWithNewTilingSpace(*cloned));
+  }
+
+  cloned->dim_vars_indexing_ = dim_vars_indexing_;
+  cloned->range_vars_indexing_ = range_vars_indexing_;
+  cloned->rt_vars_indexing_ = rt_vars_indexing_;
+
+  return cloned;
+}
+
 int64_t TilingSpace::num_parallel_dimensions() const {
   return absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
     return dim.type == DimensionSemantics::kParallel;

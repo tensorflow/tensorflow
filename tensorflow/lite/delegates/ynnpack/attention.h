@@ -27,7 +27,6 @@ namespace tflite {
 namespace ynnpack {
 
 bool IsSdpa(const TfLiteRegistration* registration, const TfLiteNode* node);
-bool IsSdpa(TfLiteContext* context, int node_index);
 
 TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
                              const TfLiteNode* node, TfLiteContext* context);

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/platform.h"
@@ -34,9 +35,8 @@ TEST(GpuTestKernelsFatbinTest, GetGpuTestKernelsFatbin) {
         PlatformManager::PlatformWithName(platform_name);
     if (platform.ok()) {
       found_at_least_one_platform = true;
-      TF_ASSERT_OK_AND_ASSIGN(
-          std::vector<uint8_t> fatbin,
-          GetGpuTestKernelsFatbin(platform.value()->Name()));
+      ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
+                           GetGpuTestKernelsFatbin(platform.value()->Name()));
       EXPECT_FALSE(fatbin.empty());
     }
   }

@@ -20,11 +20,15 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -100,6 +104,49 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_3,
                        xla::ParseAndReturnUnverifiedModule(hlo_with_nan));
   EXPECT_TRUE(ModuleContainsConstantInfOrNan(*module_3));
+}
+
+TEST(HloIsolationApiTest, RunIsolationTestRespectsRejectUnconstrainedOps) {
+  const absl::string_view kHlo = R"hlo(
+HloModule masked_reduction_with_sqrt
+%max_reducer (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum = f32[] maximum(%x, %y)
+}
+
+ENTRY main {
+  mask = pred[10] parameter(0)
+  data = f32[10] parameter(1)
+  data_sqrt = f32[10] sqrt(data)
+  c_neg_inf = f32[] constant(-inf)
+  b_neg_inf = f32[10] broadcast(c_neg_inf), dimensions={}
+  sel = f32[10] select(mask, data_sqrt, b_neg_inf)
+  ROOT r = f32[] reduce(sel, c_neg_inf), dimensions={0}, to_apply=%max_reducer
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+
+  ModuleIsolationOptions options;
+  options.run_module_fn =
+      [](std::unique_ptr<HloModule> /*m*/, HloRunnerInterface* /*r*/,
+         absl::Span<const Literal> /*i*/,
+         const RunModuleOptions& /*run_opts*/) -> absl::StatusOr<Literal> {
+    return LiteralUtil::CreateR0<float>(0.0f);
+  };
+
+  options.reject_unconstrained_ops = true;
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result_rejected,
+      RunIsolationTestOnModule(*module, nullptr, nullptr, options));
+  EXPECT_FALSE(result_rejected.is_intentional_inf_nan());
+
+  options.reject_unconstrained_ops = false;
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result_allowed,
+      RunIsolationTestOnModule(*module, nullptr, nullptr, options));
+  EXPECT_TRUE(result_allowed.is_intentional_inf_nan());
 }
 
 }  // namespace

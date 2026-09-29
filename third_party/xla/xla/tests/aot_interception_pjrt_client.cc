@@ -364,6 +364,8 @@ AOTInterceptionPjrtClient::Compile(const XlaComputation& computation,
                "kGoldenVerification mode for computation ["
             << computation.name()
             << "]. Compiling fresh and verifying against golden.";
+    options.executable_build_options.mutable_debug_options()
+        ->set_xla_gpu_exclude_nondeterministic_ops(true);
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> exec,
                      inner_client_->Compile(computation, std::move(options)));
 
@@ -399,6 +401,8 @@ AOTInterceptionPjrtClient::CompileAndLoad(const XlaComputation& computation,
                "kGoldenVerification mode for computation ["
             << computation.name()
             << "]. Compiling fresh and verifying against golden.";
+    options.executable_build_options.mutable_debug_options()
+        ->set_xla_gpu_exclude_nondeterministic_ops(true);
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<PjRtLoadedExecutable> exec,
         inner_client_->CompileAndLoad(computation, std::move(options)));

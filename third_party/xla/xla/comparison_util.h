@@ -124,6 +124,7 @@ class Comparison {
   inline bool IsNe() const { return dir_ == Direction::kNe; }
   inline bool IsGe() const { return dir_ == Direction::kGe; }
   inline bool IsGt() const { return dir_ == Direction::kGt; }
+  inline bool IsLe() const { return dir_ == Direction::kLe; }
   inline bool IsLt() const { return dir_ == Direction::kLt; }
   inline bool IsTotalOrder() const { return order_ == Order::kTotal; }
   inline bool IsPartialOrder() const { return order_ == Order::kPartial; }

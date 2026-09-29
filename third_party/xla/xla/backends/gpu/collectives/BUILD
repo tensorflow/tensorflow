@@ -718,10 +718,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/stream_executor/cuda:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":nccl_errors",
         ":nccl_types",
@@ -1173,9 +1170,7 @@ cc_library(
         "no-oneapi",
         "rocm-only",
     ],
-    visibility = [
-        "//xla/backends/gpu/runtime:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":rccl_errors",
         "//xla:util",

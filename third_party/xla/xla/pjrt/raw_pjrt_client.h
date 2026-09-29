@@ -173,23 +173,37 @@ class PjRtRawClient {
     return std::nullopt;
   }
 
-  // Maps host memory for DMA transfers.
+  // Experimental: Maps memory for fast transfers. May have backend specific
+  // alignment requirements (most backends will require at least a page).
   virtual absl::Status DmaMap(void* data, size_t size) {
     return absl::UnimplementedError("DmaMap is not supported.");
   }
 
-  // Unmaps host memory previously mapped for DMA.
+  // Experimental: Unmaps memory for fast transfers. Caller is responsible to
+  // ensure that all data transfers are complete before calling DmaUnmap.
   virtual absl::Status DmaUnmap(void* data) {
     return absl::UnimplementedError("DmaUnmap is not supported.");
+  }
+
+  // Returns the host memory allocator for the client or null if not supported.
+  virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
+    return nullptr;
   }
 
   // Returns the required byte alignment for host memory when performing DMA.
   virtual size_t GetDmaHostAlignment() const { return 1; }
 
+  virtual void LaunchOnDevice(LocalDeviceId device_id,
+                              absl::AnyInvocable<void()> execute_fn) const {
+    async_work_runner()->Execute(std::move(execute_fn));
+  }
+
   virtual void UpdateGlobalProcessInfo(
       absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
   }
+
+  virtual void RecordMemoryStats() {}
 
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
@@ -222,6 +236,13 @@ class PjRtRawClient {
   virtual absl::Status TransferFromOutfeed(LocalDeviceId local_device_id,
                                            MutableBorrowingLiteral literal) {
     return absl::UnimplementedError("TransferToOutfeed is not supported");
+  }
+
+  virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
+                                    PjRtDeviceEventRef event,
+                                    std::intptr_t stream) {
+    return absl::UnimplementedError(
+        "WaitUntilBufferReadyOnStream is only implemented for GPU.");
   }
 
   virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,

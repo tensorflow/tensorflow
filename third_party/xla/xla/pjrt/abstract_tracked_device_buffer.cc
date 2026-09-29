@@ -130,6 +130,26 @@ Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
   return definition_future;
 }
 
+absl::StatusOr<PjRtDeviceEventRef>
+AbstractTrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (definition_events().empty()) {
+    auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
+    PjRtDeviceEventPromiseRef usage_event_promise;
+    PjRtDeviceEventRef usage_event;
+    ABSL_ASSIGN_OR_RETURN(std::tie(usage_event_promise, usage_event),
+                     client->CreateLinkedEventPromise(
+                         memory_space, "GetDefinitionEvent 0-sized"));
+    usage_event_promise.SetReady();
+    return usage_event;
+  }
+  if (definition_events().size() != 1) {
+    return absl::InternalError(
+        "GetMergedDefinitionEvent only supported on TPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return definition_events_[0];
+}
+
 absl::Status AbstractTrackedDeviceBuffer::BlockForOperationsToComplete(
     PjRtMemorySpace* memory_space) {
   for (const auto& ev : usage_events_) {
@@ -152,7 +172,8 @@ absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
     PjRtMemorySpace* memory_space, std::intptr_t stream) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
   for (const auto& event : definition_events()) {
-    ABSL_RETURN_IF_ERROR(client->WaitOnStream(memory_space, event, stream));
+    ABSL_RETURN_IF_ERROR(
+        client->raw_client()->WaitOnStream(memory_space, event, stream));
   }
   return absl::OkStatus();
 }

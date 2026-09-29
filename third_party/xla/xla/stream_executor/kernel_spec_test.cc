@@ -125,8 +125,8 @@ TEST(KernelLoaderSpec, PtxKernelFromProto) {
     arity: 42
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
-                          KernelLoaderSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                       KernelLoaderSpec::FromProto(proto));
   EXPECT_THAT(spec.kernel_name(), "kernel_name");
   EXPECT_THAT(spec.arity(), 42);
   EXPECT_THAT(spec.cuda_ptx_in_memory(),
@@ -151,8 +151,8 @@ TEST(KernelLoaderSpec, CubinKernelFromProto) {
     arity: 42
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
-                          KernelLoaderSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                       KernelLoaderSpec::FromProto(proto));
   EXPECT_THAT(spec.kernel_name(), "kernel_name");
   std::array<uint8_t, 5> kCubin = {'C', 'U', 'B', 'I', 'N'};
   EXPECT_THAT(spec.arity(), 42);
@@ -189,8 +189,8 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
     return InventPointerToCudaKernel(0x1234567890);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
-                          KernelLoaderSpec::FromProto(proto, symbol_resolver));
+  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
+                       KernelLoaderSpec::FromProto(proto, symbol_resolver));
   EXPECT_EQ(spec.kernel_name(), "kernel_name");
   EXPECT_EQ(spec.arity(), 42);
   EXPECT_THAT(spec.in_process_symbol(),
@@ -249,7 +249,7 @@ TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
             kernel_arguments { data: "\x34\x12\x00\x00" }
           )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArgsPackingSpec kernel_args_packing_spec,
       KernelArgsPackingSpec::FromProto(kernel_args_packing_spec_proto));
 

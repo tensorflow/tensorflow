@@ -195,6 +195,9 @@ class Tile {
   // the original tile.
   Tile CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const;
 
+  // Creates a copy of the tile associated with a new tiling space.
+  Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
+
   bool operator==(const Tile& other) const;
 
   // This allows GUnit to print the tile.

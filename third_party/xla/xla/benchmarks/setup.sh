@@ -28,18 +28,60 @@ echo "Repository root: ${REPO_ROOT}"
 echo "Virtual environment directory: ${VENV_DIR}"
 echo "============================================================"
 
-# Check for python3
-if ! command -v python3 &> /dev/null; then
-  echo "Error: python3 is not installed or not found in PATH." >&2
+# Minimum Python version required (JAX 0.11+ requires Python >= 3.12)
+MIN_PYTHON_MAJOR=3
+MIN_PYTHON_MINOR=12
+
+# Find suitable python binary
+PYTHON_BIN="${PYTHON:-}"
+
+if [[ -z "${PYTHON_BIN}" ]]; then
+  for candidate in python3.12 python3.13 python3; do
+    if command -v "${candidate}" &> /dev/null; then
+      if "${candidate}" -c "import sys; sys.exit(0 if sys.version_info >= (${MIN_PYTHON_MAJOR}, ${MIN_PYTHON_MINOR}) else 1)" 2>/dev/null; then
+        PYTHON_BIN="${candidate}"
+        break
+      fi
+    fi
+  done
+fi
+
+if [[ -z "${PYTHON_BIN}" ]] || ! command -v "${PYTHON_BIN}" &> /dev/null; then
+  echo "Error: Python >= ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} is required (JAX 0.11+ requires Python >= ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR})." >&2
+  echo "Please install Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} or higher, or specify PYTHON=/path/to/python in the environment." >&2
   exit 1
 fi
 
-# Create virtual environment if it does not already exist
+if ! "${PYTHON_BIN}" -c "import sys; sys.exit(0 if sys.version_info >= (${MIN_PYTHON_MAJOR}, ${MIN_PYTHON_MINOR}) else 1)" 2>/dev/null; then
+  CURRENT_PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')"
+  echo "Error: Python >= ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} is required, but ${PYTHON_BIN} is ${CURRENT_PY_VER}." >&2
+  echo "JAX 0.11+ requires Python >= ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}." >&2
+  echo "Please install Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} or higher, or specify PYTHON=/path/to/python in the environment." >&2
+  exit 1
+fi
+
+echo "Using Python: $("${PYTHON_BIN}" --version) (${PYTHON_BIN})"
+
+# Create virtual environment if it does not exist, or recreate if incompatible
+if [[ -d "${VENV_DIR}" ]]; then
+  if [[ -f "${VENV_DIR}/bin/python3" ]]; then
+    if ! "${VENV_DIR}/bin/python3" -c "import sys; sys.exit(0 if sys.version_info >= (${MIN_PYTHON_MAJOR}, ${MIN_PYTHON_MINOR}) else 1)" 2>/dev/null; then
+      EXISTING_PY_VER="$("${VENV_DIR}/bin/python3" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo 'unknown')"
+      echo "Warning: Existing virtual environment at ${VENV_DIR} uses Python ${EXISTING_PY_VER}, but Python >= ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} is required."
+      echo "Recreating virtual environment with $("${PYTHON_BIN}" --version)..."
+      rm -rf "${VENV_DIR}"
+    else
+      echo "Using existing virtual environment at ${VENV_DIR}."
+    fi
+  else
+    echo "Virtual environment at ${VENV_DIR} appears incomplete. Recreating..."
+    rm -rf "${VENV_DIR}"
+  fi
+fi
+
 if [[ ! -d "${VENV_DIR}" ]]; then
   echo "Creating virtual environment at ${VENV_DIR}..."
-  python3 -m venv "${VENV_DIR}"
-else
-  echo "Using existing virtual environment at ${VENV_DIR}."
+  "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 fi
 
 # Activate virtual environment

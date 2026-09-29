@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/autotuner/cpu_codegen_backend.h"
 #include "xla/backends/cpu/autotuner/cpu_profiler.h"
 #include "xla/backends/cpu/autotuner/llvm_kernel_backend.h"
+#include "xla/backends/cpu/autotuner/ynnpack_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/util.h"
@@ -48,10 +49,13 @@ absl::StatusOr<bool> CpuAutotuner::RunImpl(
   ABSL_ASSIGN_OR_RETURN(auto compiler, CpuCodegenBackend::CreateBackendCompiler());
   ABSL_ASSIGN_OR_RETURN(auto llvm_kernel_backend,
                    LlvmKernelBackend::Create(compiler.get()));
+  ABSL_ASSIGN_OR_RETURN(auto ynnpack_backend,
+                   YnnpackBackend::Create(compiler.get()));
   std::unique_ptr<Profiler> profiler = CpuProfiler::Create(ProfileOptions());
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(llvm_kernel_backend));
+  codegen_backends.push_back(std::move(ynnpack_backend));
 
   ABSL_ASSIGN_OR_RETURN(auto orchestrator,
                    CodegenOrchestrator::Create(std::move(codegen_backends),

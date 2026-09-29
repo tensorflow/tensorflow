@@ -120,7 +120,7 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonNestedGemmFusionKind =
     "__triton_nested_gemm_fusion";
 
-// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+// Fusions that use cuDNN have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 inline constexpr absl::string_view kUncompilableFusion =

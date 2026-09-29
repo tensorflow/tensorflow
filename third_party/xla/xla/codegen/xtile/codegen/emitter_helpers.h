@@ -238,6 +238,10 @@ mlir::Type GetSignlessType(mlir::Type t);
 // operand to tt.dot_scaled.
 bool IsTritonDotScaledOperandType(PrimitiveType type);
 
+// Returns true if `scale` is provably all ones. Looks through value-preserving
+// ops and fusion parameters, as the scale may be defined outside the fusion.
+bool IsAllOnesScale(const HloInstruction& scale);
+
 // Some Triton dot-scaled value dtypes are smaller than one byte. XTile stores
 // those logical elements inside byte-sized carrier elements, so storage shapes
 // and offsets are expressed in carrier elements rather than logical elements.

@@ -2310,4 +2310,13 @@ void HloComputation::SetUniqueIdHelper(int64_t id) {
   }
 }
 
+bool HloComputation::IsEntryInstUnboundedDynamic() const {
+  for (HloInstruction* instruction : parameter_instructions()) {
+    if (instruction->shape().is_unbounded_dynamic()) {
+      return true;
+    }
+  }
+  return root_instruction()->shape().is_unbounded_dynamic();
+}
+
 }  // namespace xla

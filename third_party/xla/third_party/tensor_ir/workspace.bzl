@@ -13,5 +13,8 @@ def repo():
         sha256 = TENSOR_IR_SHA256,
         strip_prefix = "tensor-ir-{}".format(TENSOR_IR_COMMIT),
         urls = tf_mirror_urls("https://github.com/NVIDIA/tensor-ir/archive/{}.tar.gz".format(TENSOR_IR_COMMIT)),
-        patch_file = ["//third_party/tensor_ir:patches/unused_variable.patch"],
+        patch_file = [
+            "//third_party/tensor_ir:patches/unused_variable.patch",
+            "//third_party/tensor_ir:patches/symbol_op_interface.patch",
+        ],
     )

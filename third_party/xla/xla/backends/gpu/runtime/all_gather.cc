@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Alignment.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -92,13 +94,22 @@ absl::Status IsAllGatherKernelSupported(
   }
   // Check if the device supports Triton collective codegen:
   // CUDA: Requires compute capability 9.0+ (Hopper or newer)
-  // ROCm: All versions with Triton support are enabled
   if (!device_info.cuda_compute_capability().IsAtLeastHopper() &&
       !device_info.gpu_compute_capability().IsRocm()) {
     return absl::UnimplementedError(absl::StrFormat(
         "Triton collective codegen requires CUDA compute capability >= 9.0 "
-        "(Hopper or newer) or a ROCm device with Triton support. Got: %s.",
+        "(Hopper or newer) or a supported ROCm device. Got: %s.",
         device_info.gpu_compute_capability().ToString()));
+  }
+  // ROCm: the cross-device barrier relies on a system-scope release store
+  // becoming visible to peers without extra cache maintenance, which gfx90a
+  // does not guarantee.
+  if (const auto* rocm_cc =
+          device_info.gpu_compute_capability().rocm_compute_capability();
+      rocm_cc != nullptr && !rocm_cc->has_peer_visible_atomics()) {
+    return absl::UnimplementedError(
+        absl::StrCat("Collective kernels are not supported on ",
+                     rocm_cc->gfx_version(), "."));
   }
   // TODO(b/383125489): Support variadic arguments.
   if (num_operands != 1) {

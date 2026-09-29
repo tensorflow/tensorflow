@@ -102,8 +102,6 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 constexpr float kBytesPerSecond = 100;
-constexpr absl::string_view kTestModeLabel =
-    "xla::memory_space_assignment::test_mode";
 
 const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
@@ -19610,6 +19608,140 @@ ENTRY %Comp_spmd {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_NO_FATAL_FAILURE(AssignMemorySpace(module.get()));
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       AsyncPipelinedWhileAlternateMemoryPositionSplashAttention) {
+  // Realistic HLO pattern from Splash Attention forward pass with async
+  // pipelining enabled (xla_disable_while_loop_copies="true").
+  // DynamicSlice prefetches Key/Value slices from large HBM base buffers into
+  // alternate memory (VMEM).
+  // DynamicUpdateSlice writes Output accumulator slices from VMEM into a large
+  // HBM base buffer.
+  const absl::string_view hlo_string = R"hlo(
+HloModule SplashAttentionPipelinedWhile, is_scheduled=true
+
+%async_ds_comp (base: bf16[4,384,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[1,128,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %i0 = s32[] parameter(1)
+  %i1 = s32[] parameter(2)
+  %i2 = s32[] parameter(3)
+  ROOT %ds = bf16[1,128,128]{2,1,0} dynamic-slice(%base, %i0, %i1, %i2), dynamic_slice_sizes={1,128,128}
+}
+
+%async_dus_comp (base: bf16[4,384,128], update: bf16[1,128,128], i0: s32[], i1: s32[], i2: s32[]) -> bf16[4,384,128] {
+  %base = bf16[4,384,128]{2,1,0} parameter(0)
+  %update = bf16[1,128,128]{2,1,0} parameter(1)
+  %i0 = s32[] parameter(2)
+  %i1 = s32[] parameter(3)
+  %i2 = s32[] parameter(4)
+  ROOT %dus = bf16[4,384,128]{2,1,0} dynamic-update-slice(%base, %update, %i0, %i1, %i2)
+}
+
+%WhileBody (body_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[])) {
+  %body_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%body_param), index=0
+  %c1 = s32[] constant(1)
+  %next_iter = s32[] add(%iter, %c1)
+  %ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=1
+  %slice_data = bf16[1,128,128]{2,1,0} async-done(%ds_state), calls=%async_ds_comp
+  %dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%body_param), index=2
+  %dus_done = bf16[4,384,128]{2,1,0} async-done(%dus_state), calls=%async_dus_comp
+  %ds_contexts = (bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]) get-tuple-element(%ds_state), index=0
+  %k_base = bf16[4,384,128]{2,1,0} get-tuple-element(%ds_contexts), index=0
+  %c0 = s32[] constant(0)
+  %next_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %next_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%dus_done, %slice_data, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  ROOT %root_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%next_iter, %next_ds, %next_dus)
+}
+
+%WhileCond (cond_param: (s32[], ((bf16[4,384,128], s32[], s32[], s32[]), bf16[1,128,128], s32[]), ((bf16[4,384,128], bf16[1,128,128], s32[], s32[], s32[]), bf16[4,384,128], s32[]))) -> pred[] {
+  %cond_param = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) parameter(0)
+  %iter = s32[] get-tuple-element(%cond_param), index=0
+  %limit = s32[] constant(16)
+  ROOT %cmp = pred[] compare(%iter, %limit), direction=LT
+}
+
+ENTRY %Entry (k_base: bf16[4,384,128], o_base: bf16[4,384,128], update_slice: bf16[1,128,128]) -> (bf16[1,128,128], bf16[4,384,128]) {
+  %k_base = bf16[4,384,128]{2,1,0} parameter(0)
+  %o_base = bf16[4,384,128]{2,1,0} parameter(1)
+  %update_slice = bf16[1,128,128]{2,1,0} parameter(2)
+  %c0 = s32[] constant(0)
+  %init_ds = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) async-start(%k_base, %c0, %c0, %c0), calls=%async_ds_comp
+  %init_dus = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) async-start(%o_base, %update_slice, %c0, %c0, %c0), output_to_operand_aliasing={{1}: (0, {})}, calls=%async_dus_comp
+  %init_tuple = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) tuple(%c0, %init_ds, %init_dus)
+  %while = (s32[], ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]), ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[])) while(%init_tuple), condition=%WhileCond, body=%WhileBody, frontend_attributes={xla_disable_while_loop_copies="true"}
+  %final_ds_state = ((bf16[4,384,128]{2,1,0}, s32[], s32[], s32[]), bf16[1,128,128]{2,1,0}, s32[]) get-tuple-element(%while), index=1
+  %final_slice = bf16[1,128,128]{2,1,0} async-done(%final_ds_state), calls=%async_ds_comp
+  %final_dus_state = ((bf16[4,384,128]{2,1,0}, bf16[1,128,128]{2,1,0}, s32[], s32[], s32[]), bf16[4,384,128]{2,1,0}, s32[]) get-tuple-element(%while), index=2
+  %final_dus = bf16[4,384,128]{2,1,0} async-done(%final_dus_state), calls=%async_dus_comp
+  ROOT %out_tuple = (bf16[1,128,128]{2,1,0}, bf16[4,384,128]{2,1,0}) tuple(%final_slice, %final_dus)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HloInstruction* while_inst =
+      module->entry_computation()->GetInstructionWithName("while");
+  ASSERT_NE(while_inst, nullptr);
+  HloInstruction* body_param =
+      while_inst->while_body()->parameter_instruction(0);
+  ASSERT_NE(body_param, nullptr);
+  HloInstruction* root_tuple = while_inst->while_body()->root_instruction();
+  ASSERT_NE(root_tuple, nullptr);
+
+  // 1. Verify wrapped opcode inspection for the pipelined while loop:
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/1,
+                                                *alias_analysis),
+            HloOpcode::kDynamicSlice);
+  EXPECT_EQ(GetAsyncPipelinedWhileWrappedOpcode(while_inst, /*tuple_idx=*/2,
+                                                *alias_analysis),
+            HloOpcode::kDynamicUpdateSlice);
+
+  // 2. DynamicSlice tuple index 1:
+  // Base tensor {1, 0, 0} must remain in default memory (false).
+  // Prefetched slice output {1, 1} resides in alternate memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {1, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {1, 1}}, *alias_analysis));
+
+  // 3. DynamicUpdateSlice tuple index 2:
+  // Base tensor {2, 0, 0} and dynamic-update-slice output {2, 1} must remain
+  // in default memory (false). Update slice {2, 0, 1} resides in alternate
+  // memory (true).
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{while_inst, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{body_param, {2, 1}}, *alias_analysis));
+
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 0}}, *alias_analysis));
+  EXPECT_TRUE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 0, 1}}, *alias_analysis));
+  EXPECT_FALSE(IsAsyncPipelinedWhileAlternateMemoryPosition(
+      HloPosition{root_tuple, {2, 1}}, *alias_analysis));
 }
 
 }  // namespace

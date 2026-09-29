@@ -52,9 +52,8 @@ TEST_F(KernelCallTest, ParseBasicConfiguration) {
     shared_mem_bytes = 1024
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "test_kernel");
   EXPECT_EQ(kernel_call.kernel_data,
@@ -84,9 +83,8 @@ TEST_F(KernelCallTest, ParseWithOutputIndices) {
     output_indices = [1, 3, 5]
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "kernel_with_outputs");
   EXPECT_EQ(kernel_call.block_dim.x, 10);
@@ -117,9 +115,8 @@ TEST_F(KernelCallTest, ParseMinimalConfiguration) {
     shared_mem_bytes = 0
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "minimal_kernel");
   EXPECT_EQ(kernel_call.kernel_data, ".entry minimal_kernel() { ret; }");
@@ -147,9 +144,8 @@ TEST_F(KernelCallTest, ParseLargeDimensions) {
     shared_mem_bytes = 49152
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "large_kernel");
   EXPECT_EQ(kernel_call.block_dim.x, 65535);
@@ -176,9 +172,8 @@ TEST_F(KernelCallTest, ParseEmptyOutputIndices) {
     output_indices = []
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "no_outputs");
   EXPECT_EQ(kernel_call.shared_mem, 512);
@@ -200,9 +195,8 @@ TEST_F(KernelCallTest, ParseSingleOutputIndex) {
     output_indices = [0]
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "single_output");
   EXPECT_EQ(kernel_call.shared_mem, 256);
@@ -225,9 +219,8 @@ TEST_F(KernelCallTest, ParseComplexkernel_data) {
     output_indices = [2, 4, 6, 8]
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      KernelCall kernel_call,
-      KernelCall::Parse(backend_config, mlir_context_.get()));
+  ASSERT_OK_AND_ASSIGN(KernelCall kernel_call,
+                       KernelCall::Parse(backend_config, mlir_context_.get()));
 
   EXPECT_EQ(kernel_call.name, "complex_kernel");
   EXPECT_THAT(kernel_call.kernel_data, HasSubstr(".version 7.5"));

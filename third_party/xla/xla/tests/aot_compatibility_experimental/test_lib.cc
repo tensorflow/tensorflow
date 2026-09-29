@@ -162,5 +162,11 @@ AotCompatibilityTest::AotCompatibilityTest(AotTestParam param)
           }(param),
           HloTestBaseOptions()) {}
 
+DebugOptions AotCompatibilityTest::GetDebugOptionsForTest() const {
+  DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+  return debug_options;
+}
+
 }  // namespace aot_compatibility_experimental
 }  // namespace xla

@@ -179,6 +179,21 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         result = sess.run(out, {a: test_input, index: [1]})
       self.assertAllEqual([max_value], result)
 
+  def testReduceEuclideanNorm(self, index_dtype):
+
+    def reference_euclidean_norm(dtype, inp, axis):
+      inp = inp.astype(dtype)
+      return np.sqrt(np.sum(inp * np.conj(inp), axis)).astype(dtype)
+
+    for dtype in [np.float32, np.float64]:
+      self._testReduction(
+          math_ops.reduce_euclidean_norm,
+          functools.partial(reference_euclidean_norm, dtype),
+          dtype,
+          self.REAL_DATA,
+          index_dtype,
+      )
+
   def testReduceAll(self, index_dtype):
     self._testReduction(math_ops.reduce_all, np.all, np.bool_, self.BOOL_DATA,
                         index_dtype)

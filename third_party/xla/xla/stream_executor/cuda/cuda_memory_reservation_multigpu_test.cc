@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_memory_reservation.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -38,9 +38,9 @@ static constexpr uint64_t kTestSize = 1024 * 1024;
 class CudaMemoryReservationTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         platform_, PlatformManager::PlatformWithId(cuda::kCudaPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
   }
 
   Platform* platform_ = nullptr;
@@ -57,13 +57,13 @@ TEST_F(CudaMemoryReservationTest, SetAccessGrantsPeerDeviceAccess) {
                  << platform_->VisibleDeviceCount();
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto alloc, CudaRawMemoryAllocation::Create(executor_, kTestSize));
-  TF_ASSERT_OK_AND_ASSIGN(auto res,
-                          CudaMemoryReservation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto alloc,
+                       CudaRawMemoryAllocation::Create(executor_, kTestSize));
+  ASSERT_OK_AND_ASSIGN(auto res,
+                       CudaMemoryReservation::Create(executor_, kTestSize));
 
   const size_t alloc_size = alloc->address().size();
-  TF_ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
+  ASSERT_OK_AND_ASSIGN(auto mapping, res->MapTo(0, 0, alloc_size, *alloc));
 
   CUdeviceptr base_ptr = reinterpret_cast<CUdeviceptr>(res->address().opaque());
   for (int32_t peer = 0; peer < platform_->VisibleDeviceCount(); ++peer) {

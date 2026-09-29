@@ -148,6 +148,8 @@ REGISTER_XLA_OP(Name("Lgamma"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
 XLAJIT_MAKE_UNARY(BesselI0e, xla::BesselI0e(x));
 XLAJIT_MAKE_UNARY(BesselI1e, xla::BesselI1e(x));
+XLAJIT_MAKE_UNARY(BesselI0, xla::BesselI0e(x) * xla::Exp(xla::Abs(x)));
+XLAJIT_MAKE_UNARY(BesselI1, xla::BesselI1e(x) * xla::Exp(xla::Abs(x)));
 
 }  // namespace
 }  // namespace tensorflow

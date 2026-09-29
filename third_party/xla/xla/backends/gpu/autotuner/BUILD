@@ -631,6 +631,7 @@ xla_test(
         "gpu",
         "rocm-only",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":hipblaslt",
         "//xla:autotuning_proto_cc",
@@ -1063,6 +1064,7 @@ xla_test(
     tags = [
         "rocm-only",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":miopen",
         "//xla:autotuning_proto_cc",

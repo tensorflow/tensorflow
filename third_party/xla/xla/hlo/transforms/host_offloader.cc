@@ -139,8 +139,13 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     const HloInstruction* instruction) const {
   if (instruction->opcode() == HloOpcode::kReduce) {
     // TODO(b/333902007): Remove this once trivial reduces no longer appear.
+    // A variadic reduce has a tuple shape; the verifier guarantees all its
+    // elements have the same dimensions, so the first one is representative.
+    const Shape& output_shape = instruction->shape().IsTuple()
+                                    ? instruction->shape().tuple_shapes(0)
+                                    : instruction->shape();
     return ShapeUtil::TrueNumDimensions(instruction->operand(0)->shape()) ==
-           ShapeUtil::TrueNumDimensions(instruction->shape());
+           ShapeUtil::TrueNumDimensions(output_shape);
   }
   if (instruction->opcode() == HloOpcode::kReshape) {
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
@@ -338,9 +343,18 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       const Shape& output_shape = ShapeUtil::GetSubshape(
           instruction->GetModule()->entry_computation_layout().result_shape(),
           instruction_and_shape_index.shape_index);
-      CHECK(output_shape.has_layout())
-          << "Expecting output shape of entry computation to have a layout.";
-      if (output_shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      // The output may be a tuple (e.g. a variadic reduce is the root); it is
+      // output streamed when every leaf is in host memory.
+      bool output_in_host_memory = true;
+      ShapeUtil::ForEachLeafShape(
+          output_shape, [&](const Shape& leaf, const ShapeIndex&) {
+            CHECK(leaf.has_layout())
+                << "Expecting output shape of entry computation to have a "
+                   "layout.";
+            output_in_host_memory &=
+                leaf.layout().memory_space() == Layout::kHostMemorySpace;
+          });
+      if (output_in_host_memory) {
         VLOG(2) << absl::StreamFormat(
             "Memory offloaded starting from %s is output streamed",
             starting_instruction_and_index.ToString());

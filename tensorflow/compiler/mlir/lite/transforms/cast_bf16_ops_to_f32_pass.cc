@@ -153,7 +153,6 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   MLIRContext& ctx = getContext();
   RewritePatternSet patterns(&ctx);
   func::FuncOp func_op = getOperation();
-
   patterns.add<CastBf16OpsToF32, RemoveUnneededCastOps>(&ctx);
 
   if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {

@@ -94,7 +94,9 @@ class TfSavedModel_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfSavedModel_Dialect, mnemonic, traits> {
 }
 
-def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
+def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor", [
+    SymbolName, SymbolVisibility, Symbol
+]> {
   let summary = "Represents a global tensor value.";
   let description = [{
     Represents a tensor that is not bound to the lifetime of any particular
@@ -123,7 +125,8 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
     StrAttr:$sym_name,
     OptionalAttr<ElementsAttr>:$value,
     TypeAttr:$type,
-    UnitAttr:$is_mutable
+    UnitAttr:$is_mutable,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 
   let hasVerifier = 1;
@@ -155,7 +158,9 @@ def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
   let hasCanonicalizer = 1;
 }
 
-def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [Symbol]> {
+def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [
+    SymbolName, SymbolVisibility, Symbol
+]> {
   let summary = "Represents an asset in saved model.";
   let description = [{
     Represents an asset in the saved model that points to an external file. It
@@ -171,7 +176,8 @@ def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [Symbol]> {
 
   let arguments = (ins
     StrAttr:$sym_name,
-    StrAttr:$filename
+    StrAttr:$filename,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 }
 

@@ -37,8 +37,6 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -159,7 +157,7 @@ ENTRY main {
   // With contracting dims sharded and matching, windowed einsum for
   // reduce-scatter pattern should respect max_windowed_einsum_iteration
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/2,
@@ -173,7 +171,7 @@ ENTRY main {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/4,
@@ -204,7 +202,7 @@ ENTRY main {
 
   // Batch dims with windowed einsum should also respect max_iterations
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/4,
                              /*max_windowed_einsum_iteration=*/3,
@@ -236,7 +234,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/16,
                              /*max_windowed_einsum_iteration=*/32,
@@ -261,7 +259,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/32,
                              /*max_windowed_einsum_iteration=*/32,
@@ -287,7 +285,7 @@ ENTRY main {
 }
 )";
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/64,
                              /*max_windowed_einsum_iteration=*/32,
@@ -316,7 +314,7 @@ ENTRY main {
 
   // Test with max_windowed_einsum_iteration = 0 (should disable)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/0,
@@ -330,7 +328,7 @@ ENTRY main {
   // Test with max_windowed_einsum_iteration = 1 (should disable for 8
   // partitions)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/1,
@@ -344,7 +342,7 @@ ENTRY main {
 
   // Test with max_windowed_einsum_iteration = INT64_MAX (should enable)
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_partitions=*/8,
                              /*max_windowed_einsum_iteration=*/INT64_MAX,
@@ -369,8 +367,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[1,8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(op::Transpose(op::AllToAll(
@@ -389,8 +387,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall({"__op$block_scaled_dot"}, op::Parameter(0),
@@ -411,8 +409,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -436,8 +434,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -457,11 +455,31 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
+}
+
+TEST_P(DotHandlerTest, MXCustomCall_Unreduced) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
+  lhs_scale = f8e4m3fn[1024,16]{1,0} parameter(1), sharding={devices=[1,8]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={unreduced}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall({"__op$block_scaled_dot"}));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
 TEST_P(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
@@ -476,8 +494,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CollectivePermute(op::CustomCall({"__op$block_scaled_dot"})));
@@ -496,8 +514,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -518,8 +536,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
@@ -537,8 +555,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -558,8 +576,8 @@ ENTRY entry {
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_partitions=*/8));
   VLOG(1) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

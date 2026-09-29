@@ -40,9 +40,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -156,7 +154,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleLayerLoop) {
       }
 
     )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
   // The total elapsed time is the summation of the elapsed time of each
   // instruction. Here are the overhead of each instruction (secs):
   // %increment: 12 * 42
@@ -207,7 +205,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, NestedLayerLoop) {
         ROOT %while_outer = (s32[]) while(tuple(%constant.0)), condition=%outer.condition, body=%outer.body
       }
     )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
   // The inner loop is derived from the SingleLayerLoop test, whose overhead is
   // 1226 seconds.
 
@@ -237,7 +235,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncCopyOverhead) {
       }
 
     )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   // Since the HLO does not contain memory access, pass an empty allocation
   // sequence for test.
@@ -265,7 +263,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, AsyncCopyWithComputationOverhead) {
       }
 
     )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
   // The neg_compute read/write 16 bytes in total, thus, it requires 16 seconds
   // for default memory access. Since it only requires 2 FLOPs computation which
   // requires 2 seconds, it is a  memory-bound instruction which does not have
@@ -288,7 +286,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest, SingleAsyncSliceCopyOverhead) {
         ROOT slice-done = f32[768,2048]{1,0:T(8,128)S(1)} slice-done(((f32[3072,2048]), f32[768,2048]{1,0:S(1)}, s32[]) slice-start)
       }
       )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   memory_space_assignment::AllocationSequence allocations;
   // The expected elapsed time is 768 * 2048 * 4 / 1 = 6291456.
@@ -316,7 +314,7 @@ TEST_F(MemorySpaceAssignmentSimulatorTest,
         ROOT copy-done-overlap = f32[128]{0:S(1)} copy-done(copy-start-overlap)
       }
       )";
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   // The overhead of each instruction is:
   // slice-done: 64 * 4 / 1 = 256 sec (default memory access)
@@ -366,7 +364,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest, AsyncCopyAlreadyCompleted) {
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   const HloInstruction* copy_done_inst = instruction_map_["copy-done.1"];
   // Process the copy-start.1
@@ -394,7 +392,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest, AsyncCopyFullBandwidth) {
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
   const HloInstruction* copy_done_inst = instruction_map_["copy-done.1"];
 
   // The elapsed time for copy-done.1 is 128 * 4 / 1 = 512.
@@ -420,7 +418,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest, AsyncCopySharedBandwidth) {
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
   const HloInstruction* copy_done_2_inst = instruction_map_["copy-done.2"];
@@ -455,7 +453,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest, AsyncCopyTransferPartialProcess) {
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
   const HloInstruction* copy_done_1_inst = instruction_map_["copy-done.1"];
@@ -502,7 +500,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest,
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
   const HloInstruction* neg_inst = instruction_map_["neg"];
 
@@ -540,7 +538,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest,
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
   const HloInstruction* copy_start_2_inst = instruction_map_["copy-start.2"];
@@ -584,7 +582,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest,
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   const HloInstruction* copy_start_1_inst = instruction_map_["copy-start.1"];
 
@@ -619,7 +617,7 @@ TEST_F(SimulateAsyncCopyLikeDoneTest,
       }
     )";
 
-  TF_ASSERT_OK(Initialize(hlo_string));
+  ASSERT_OK(Initialize(hlo_string));
 
   float compute_elapsed_time =
       runtime_simulator_

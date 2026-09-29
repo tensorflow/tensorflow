@@ -93,6 +93,7 @@ struct XlaCompileOptions {
     std::string target_cpu;
     std::string target_features;
     std::string target_triple;
+    std::string cpu_target_config_path;
   };
 
   SymbolRepoOptions repo_options;

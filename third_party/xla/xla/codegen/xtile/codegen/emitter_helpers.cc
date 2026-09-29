@@ -262,6 +262,33 @@ bool IsPackedTritonDotScaledOperandType(PrimitiveType type) {
          primitive_util::IsSubByteNonPredType(type);
 }
 
+bool IsAllOnesScale(const HloInstruction& scale) {
+  const HloInstruction* value = &scale;
+  while (true) {
+    switch (value->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConvert:
+      case HloOpcode::kCopy:
+      case HloOpcode::kReshape:
+        value = value->operand(0);
+        break;
+      case HloOpcode::kParameter: {
+        const HloInstruction* fusion = value->parent()->FusionInstruction();
+        if (fusion == nullptr ||
+            value->parameter_number() >= fusion->operand_count()) {
+          return false;
+        }
+        value = fusion->operand(value->parameter_number());
+        break;
+      }
+      default:
+        return value->opcode() == HloOpcode::kConstant &&
+               value->literal().IsAll(1);
+    }
+  }
+}
+
 absl::StatusOr<SmallVector<int64_t>> GetStorageShape(
     ArrayRef<int64_t> logical_shape_dims, const Shape& logical_shape) {
   SmallVector<int64_t> storage_shape(logical_shape_dims.begin(),

@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
-#include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/cpu_device_memory.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/execution_stream_event_map.h"
@@ -233,7 +232,6 @@ class PjRtCpuRawClient : public PjRtRawClient {
   LocalDeviceState* GetLocalDeviceState(LocalDeviceId local_device_id);
 
  private:
-  friend class PjRtCpuClient;
   friend class CpuExecutableLoadState;
   friend class CpuPjRtRawLoadedExecutable;
 
@@ -294,22 +292,11 @@ class PjRtCpuRawClient : public PjRtRawClient {
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;
 };
 
-class PjRtCpuClient final : public CommonPjRtClientImpl {
- public:
-  ~PjRtCpuClient() override;
-
- private:
-  friend class PjRtCpuLoadedExecutable;
-  friend class CpuPjRtRawLoadedExecutable;
-  friend class CpuExecutableLoadState;
-  friend absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
-      CpuClientOptions options);
-
-  PjRtCpuClient(int process_index,
-                std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
-                std::unique_ptr<PjRtCpuRawClient> raw_client,
-                std::unique_ptr<CpuTopologyDescription> topology);
-};
+// Standalone factory that creates a CommonPjRtClientImpl for CPU using the
+// given raw client, topology, and process ID.
+std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
+    std::unique_ptr<PjRtCpuRawClient> raw_client,
+    std::shared_ptr<const CpuTopologyDescription> topology, int process_id);
 
 class PjRtCpuLoadedExecutable;
 class PjRtCpuExecutable;
@@ -425,7 +412,6 @@ class PjRtCpuExecutable final : public PjRtExecutable {
       std::optional<CompileOptions>&& options);
 
  private:
-  friend class PjRtCpuClient;
   friend class CpuPjRtRawLoadedExecutable;
   friend class PjRtCpuLoadedExecutable;
   friend class CpuExecutableLoadState;

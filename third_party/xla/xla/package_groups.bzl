@@ -52,6 +52,11 @@ def xla_package_groups(name = "xla_package_groups"):
         packages = ["public"],
     )
 
+    native.package_group(
+        name = "native_custom_call_handler_allowlist",
+        packages = ["public"],
+    )
+
 def xla_test_friend_package_group(name):
     """Defines visibility group for XLA tests.
 

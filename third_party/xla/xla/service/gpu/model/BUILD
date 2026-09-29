@@ -662,6 +662,7 @@ cc_library(
         "//xla/codegen/tiling:symbolic_tile",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
+        "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
         "//xla/hlo/analysis:interval",

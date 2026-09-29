@@ -538,6 +538,10 @@ class MatrixDiagTest(test.TestCase):
   def testInvalidShape(self):
     with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.matrix_diag(0)
+    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+      array_ops.matrix_diag([1, 2], k=[1, 2])
+    with self.assertRaisesRegex(ValueError, "must have at least rank 2"):
+      array_ops.matrix_diag([1, 2], k=(-1, 1))
 
   @test_util.run_deprecated_v1
   def testInvalidShapeAtEval(self):

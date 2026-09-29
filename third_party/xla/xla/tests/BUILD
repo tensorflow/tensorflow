@@ -120,6 +120,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_value",
         "//xla/service:hlo_verifier",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1365,11 +1366,6 @@ xla_test(
 xla_test(
     name = "get_default_platform_test",
     srcs = ["get_default_platform_test.cc"],
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "interpreter",
-    ],
     deps = [
         ":hlo_pjrt_test_base",
         "//xla/service:platform_util",
@@ -3271,6 +3267,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -38,7 +38,7 @@ xla_cc_test(
     srcs = ["gpu_bandwidth_benchmark_test.cc"],
     tags = [
         "cuda-only",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":gpu_bandwidth_benchmark",
