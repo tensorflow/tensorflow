@@ -980,67 +980,112 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
-    return emitOpError("Memory spaces do not match.");
+  FAILUREOR_ASSIGN_OR_RETURN(
+      auto result_type, inferResultType(src_ty, tgt_ty.getElementType(),
+                                        [this]() { return emitOpError(); }));
+  if (result_type != tgt_ty) {
+    return emitOpError("Expected result type to be ") << result_type;
   }
-  if (src_ty.getRank() != tgt_ty.getRank()) {
-    return emitOpError("Ranks do not match.");
-  }
-  if (src_ty.getRank() <= 1) {
-    return emitOpError("Not implemented: 1d memref bitcast.");
-  }
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  for (int i = 0; i < src_ty.getRank(); ++i) {
-    auto src_dim_size = src_ty.getDimSize(i);
-    auto tgt_dim_size = tgt_ty.getDimSize(i);
-    if (i == src_ty.getRank() - 2) {
-      auto src_bits = src_dim_size * src_bitwidth;
-      auto tgt_bits = tgt_dim_size * tgt_bitwidth;
-      if (src_bits != tgt_bits) {
-        return emitOpError(
-                   "Expected the same number of bits on the 2nd minormost "
-                   "dim: (")
-               << src_dim_size << " * " << src_bitwidth << ") vs ("
-               << tgt_dim_size << " * " << tgt_bitwidth << ")";
-        ;
-      }
-    } else {
-      if (src_dim_size != tgt_dim_size) {
-        return emitOpError("Expected the same dim size on dim ")
-               << i << ": " << src_dim_size << " vs " << tgt_dim_size;
-      }
-    }
-  }
-  // Source and target attributes may be different before propagation is done by
-  // the canonicalizer, so we allow this when attributes are "unset" in the
-  // target type.
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!tgt_layout) {
-    return success();
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  if (!src_layout) {
-    return emitOpError("Expected a tiled layout for the input memref.");
-  }
-  return verifyTiling();
+  return success();
 }
 
-mlir::InFlightDiagnostic MemRefBitcastOp::verifyTiling() {
-  auto src_ty = getMemRefType(getInput());
-  auto tgt_ty = getType();
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  // TODO(jevinjiang): verify memref tiling is valid. Here we just assume the
-  // source and target tilings are valid.
-  auto src_tile = src_layout.getTiles().front().dimensions();
-  auto tgt_tile = tgt_layout.getTiles().front().dimensions();
-  if (src_tile[0] * src_bitwidth != tgt_tile[0] * tgt_bitwidth) {
-    return emitOpError("Invalid memref bitcast.");
+mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
+    const MemRefType input_type, const Type result_elem_type,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  const int8_t input_bitwidth = getElementTypeBitwidth(input_type);
+  const int8_t result_bitwidth = getTypeBitwidth(result_elem_type);
+  if (input_bitwidth == result_bitwidth) {
+    return MemRefType(
+        MemRefType::Builder(input_type).setElementType(result_elem_type));
   }
-  return {};
+  const int64_t rank = input_type.getRank();
+  if (rank < 2) {
+    return emit_error() << "Cannot bitcast along 2nd minor in 1D memref";
+  }
+  if (input_type.isDynamicDim(rank - 2)) {
+    return emit_error() << "Not implemented: Dynamic 2nd minor dimension";
+  }
+  if (input_type.getDimSize(rank - 2) * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Input 2nd minor dimension bits not a multiple of "
+                           "result bitwidth";
+  }
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[rank - 2] =
+      input_type.getDimSize(rank - 2) * input_bitwidth / result_bitwidth;
+
+  if (auto affine_layout = dyn_cast<AffineMapAttr>(input_type.getLayout());
+      affine_layout && affine_layout.isIdentity()) {
+    // An affine map layout is interpreted as "unset"/"unknown" (non-standard
+    // semantics)
+    return MemRefType(MemRefType::Builder(input_type)
+                          .setShape(result_shape)
+                          .setElementType(result_elem_type));
+  }
+  const auto input_layout =
+      dyn_cast<tpu::TiledLayoutAttr>(input_type.getLayout());
+  if (input_layout == nullptr) {
+    return emit_error() << "Expected a tiled layout for the input memref.";
+  }
+  ArrayRef<xla::Tile> input_tiles = input_layout.getTiles();
+  while (!input_tiles.empty() && llvm::all_of(input_tiles.back().dimensions(),
+                                              llvm::equal_to<int64_t>(1))) {
+    input_tiles = input_tiles.drop_back(1);
+  }
+  const int64_t num_input_tiles = input_tiles.size();
+  for (int64_t i = 0; i < num_input_tiles - 1; ++i) {
+    if (input_tiles[i].dimensions().size() <
+        input_tiles[i + 1].dimensions().size()) {
+      // NOTE: TiledLayoutAttr verification allows tiles that tile across
+      // previous levels, like T(256)(128)(2, 1), but it enforces that
+      // previous levels are evenly divided by later levels.
+      return emit_error() << "Not implemented: Tile at level " << i + 1
+                          << " tiles across previous tiles.";
+    }
+  }
+
+  const bool has_interleaving_tile =
+      !input_tiles.empty() && input_tiles.back().dimensions().size() >= 2 &&
+      *(input_tiles.back().dimensions().end() - 1) == 1;
+  const int64_t input_factor =
+      has_interleaving_tile ? *(input_tiles.back().dimensions().end() - 2) : 1;
+  if (input_factor * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Not implemented: Input 2nd minor interleaving tile "
+                           "bits not a multiple of result bitwidth";
+  }
+  const int64_t result_factor = input_factor * input_bitwidth / result_bitwidth;
+  SmallVector<xla::Tile> result_tiles;
+  result_tiles.reserve(input_tiles.size());
+  for (const xla::Tile& input_tile : input_tiles) {
+    const int64_t tile_rank = input_tile.dimensions().size();
+    SmallVector<int64_t> tile;
+    if (tile_rank == 0) {
+      continue;  // Skip
+    }
+    if (tile_rank == 1) {
+      // Recall we checked tiles are of decreasing rank. This is part of a
+      // suffix of 1D tiles. The input factor must be 1 since the last tile
+      // is not of the form (..., A, 1).
+      // The suffix ...(A)(B)(C) becomes ...(1, A)(1, B)(1, C)
+      CHECK_EQ(input_factor, 1);
+      CHECK_NE(result_factor, 1);  // Identical bitwidths handled above
+      tile.push_back(1);
+    }
+    tile.append(input_tile.dimensions().begin(), input_tile.dimensions().end());
+    CHECK_EQ(*(tile.end() - 2) * result_factor % input_factor, 0);
+    *(tile.end() - 2) = *(tile.end() - 2) * result_factor / input_factor;
+    // Since tiles are of decreasing rank and higher level tiles divide lower
+    // level tiles, we can safely remove all-1s tiles.
+    if (!llvm::all_of(tile, llvm::equal_to<int64_t>(1))) {
+      result_tiles.emplace_back(tile);
+    }
+  }
+  if (!has_interleaving_tile && result_factor != 1) {
+    result_tiles.emplace_back(xla::Tile({result_factor, 1}));
+  }
+  auto result_layout = tpu::TiledLayoutAttr::get(
+      input_type.getContext(), result_tiles, input_layout.getTileStrides());
+  return MemRefType::get(result_shape, result_elem_type, result_layout,
+                         input_type.getMemorySpace());
 }
 
 LogicalResult MemRefBitcastOp::canonicalize(MemRefBitcastOp op,

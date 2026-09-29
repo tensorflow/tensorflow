@@ -1419,7 +1419,9 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
+        ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
