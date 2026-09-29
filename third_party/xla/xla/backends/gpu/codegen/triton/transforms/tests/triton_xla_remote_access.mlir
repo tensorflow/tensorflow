@@ -62,8 +62,8 @@ tt.func @get_peer_ptr(
   // Load metadata->buffer_root_ptrs[argument_offset + peer_id] + offset.
   // CHECK-NEXT: %11 = arith.addi %10, %6 : i64
   // CHECK-NEXT: %12 = tt.int_to_ptr %11 : i64 -> !tt.ptr<i64>
-  %arg_0_peer_ptr = triton_xla.get_peer_ptr %arg0, %peer_id, %metadata,
-     { argument_index = 0 : i32, world_size = 2 : i32 } :
+  %arg_0_peer_ptr = triton_xla.get_peer_ptr %arg0, %peer_id, %metadata
+     <argument_index = 0, world_size = 2> :
      (!tt.ptr<i64>, i64, !tt.ptr<i64>) -> !tt.ptr<i64>
 
   // Load metadata->rank
@@ -90,8 +90,8 @@ tt.func @get_peer_ptr(
   // CHECK-NEXT: %24 = arith.addi %23, %19 : i64
   // CHECK-NEXT: %25 = tt.int_to_ptr %24 : i64 -> !tt.ptr<i64>
 
-  %arg_1_peer_ptr = triton_xla.get_peer_ptr %arg1, %peer_id, %metadata,
-     { argument_index = 1 : i32, world_size = 2 : i32 } :
+  %arg_1_peer_ptr = triton_xla.get_peer_ptr %arg1, %peer_id, %metadata
+     <argument_index = 1, world_size = 2> :
      (!tt.ptr<i64>, i64, !tt.ptr<i64>) -> !tt.ptr<i64>
   
   // Avoid optimizing away the get_peer_ptr calls, by returning xor of the two

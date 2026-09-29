@@ -204,7 +204,7 @@ def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
     let summary = "Remove a size-1 dimension from a tensor.";
     let arguments = (ins TT_Tensor:$src, I32Attr:$axis);
     let results = (outs TT_Tensor:$result);
-    let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
+    let assemblyFormat = "$src prop-dict attr-dict `:` type($src) `->` type($result)";
 }
 
 def TTXLA_GetTidOp : TTXLA_Op<"get_tid", [Pure]> {
@@ -411,7 +411,7 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
   let results = (outs);
 
   let assemblyFormat = [{
-    $signal_buffers `,` $device_rank `,` $signal_value `,` ($signal_slot^ `,`)? attr-dict `:`
+    $signal_buffers `,` $device_rank `,` $signal_value (`,` $signal_slot^)? prop-dict attr-dict `:`
     functional-type(operands, results)
   }];
 
@@ -449,7 +449,7 @@ def TTXLA_GetPeerPtrOp : TTXLA_Op<"get_peer_ptr", [Pure]> {
   let results = (outs Arg<TT_PtrLike, "", [MemRead<GlobalMemory>]>:$result);
 
   let assemblyFormat = [{
-    $address `,` $peer_id `,` $metadata `,` attr-dict `:`
+    $address `,` $peer_id `,` $metadata prop-dict attr-dict `:`
     functional-type(operands, results)
   }];
 }

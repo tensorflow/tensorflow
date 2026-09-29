@@ -107,12 +107,13 @@ using absl::StrCat;
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads,
-    bool propagate_through_calls)
+    bool propagate_through_calls, bool propagate_through_control_flow)
     : module_(module),
       execution_threads_(std::move(execution_threads)),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
       propagate_through_calls_(propagate_through_calls),
+      propagate_through_control_flow_(propagate_through_control_flow),
       call_graph_(CallGraph::Build(&module)) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
@@ -477,8 +478,10 @@ bool HloDataflowAnalysis::UpdateAsyncChainOutputValueSet(
     HloInstruction* async_op) {
   CHECK(async_op->IsAsynchronous());
   bool changed = false;
-  bool is_thread_included = HloInstruction::IsThreadIncluded(
-      async_op->async_execution_thread(), execution_threads_);
+  bool is_thread_included =
+      propagate_through_control_flow_ &&
+      HloInstruction::IsThreadIncluded(async_op->async_execution_thread(),
+                                       execution_threads_);
 
   if (!is_thread_included && async_op->opcode() == HloOpcode::kAsyncStart) {
     // AsyncStart in a non-included thread has the output values defined, no
@@ -562,6 +565,9 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
   for (int64_t i = 0; i < async_start->operand_count(); ++i) {
     changed |= UpdateAsyncChainOperandValueSet(async_start, i,
                                                async_start->operand(i));
+  }
+  if (!propagate_through_control_flow_) {
+    return changed;
   }
 
   bool is_dus =
@@ -745,6 +751,9 @@ bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
 
 bool HloDataflowAnalysis::UpdateConditionalValueSet(
     HloInstruction* conditional) {
+  if (!propagate_through_control_flow_) {
+    return false;
+  }
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
   std::vector<const InstructionValueSet*> inputs(conditional->branch_count());
   for (int j = 0; j < conditional->branch_count(); ++j) {
@@ -784,7 +793,8 @@ bool HloDataflowAnalysis::UpdateOptimizationBarrierValueSet(
   // Optimization Barriers just forward their operand. Given that barriers can
   // have a tuple operand, we iterate through its indexes, like for copies.
   // Unlike copies though we also propagate the top-level value.
-  CHECK_EQ(barrier->opcode(), HloOpcode::kOptimizationBarrier);
+  CHECK(barrier->opcode() == HloOpcode::kOptimizationBarrier ||
+        barrier->IsCustomCall(kCallMarkerAfterTarget));
   bool changed = false;
   for (auto& pair : GetInstructionValueSet(barrier)) {
     const ShapeIndex& index = pair.first;
@@ -884,6 +894,9 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
             callsite.instruction()->operand(parameter->parameter_number())));
       }
     } else if (opcode == HloOpcode::kWhile) {
+      if (!propagate_through_control_flow_) {
+        continue;
+      }
       // In a while instruction, the while operand (ie, the init value) and the
       // backedge are dataflow inputs to the parameter instruction. This is the
       // case for parameters of both the body and condition computations.
@@ -900,6 +913,9 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
       }
       need_phi = true;
     } else if (opcode == HloOpcode::kConditional) {
+      if (!propagate_through_control_flow_) {
+        continue;
+      }
       CHECK_EQ(parameter->parameter_number(), 0);
       auto conditional = callsite.instruction();
       // Conditional has branch_count+1 operands. Operand 0 is the branch_index,
@@ -921,6 +937,9 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
       CHECK(found_parent);
       need_phi = true;
     } else if (opcode == HloOpcode::kAsyncStart) {
+      if (!propagate_through_control_flow_) {
+        continue;
+      }
       const HloInstruction* async_done =
           callsite.instruction()->async_chain_done();
       // When an async chain crosses a while loop boundary, async_chain_done()
@@ -977,7 +996,8 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
 }
 
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
-  CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
+  CHECK(tuple->opcode() == HloOpcode::kTuple ||
+        tuple->IsCustomCall(kCallMarkerBeforeTarget));
   bool changed = false;
   for (int64_t i = 0; i < tuple->operands().size(); ++i) {
     // Copy the value set(s) of each operand into the respective position in the
@@ -1002,6 +1022,9 @@ bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
 }
 
 bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
+  if (!propagate_through_control_flow_) {
+    return false;
+  }
   CHECK_EQ(xla_while->opcode(), HloOpcode::kWhile);
   const InstructionValueSet* const inputs[] = {
       &GetInstructionValueSet(xla_while->while_body()->root_instruction()),
@@ -1220,6 +1243,14 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCollectivePermuteDoneValueSet(instruction);
     case HloOpcode::kOptimizationBarrier:
       return UpdateOptimizationBarrierValueSet(instruction);
+    case HloOpcode::kCustomCall:
+      if (instruction->custom_call_target() == kCallMarkerBeforeTarget) {
+        return UpdateTupleValueSet(instruction);
+      }
+      if (instruction->custom_call_target() == kCallMarkerAfterTarget) {
+        return UpdateOptimizationBarrierValueSet(instruction);
+      }
+      return false;
     default:
       break;
   }
@@ -1340,6 +1371,10 @@ void HloDataflowAnalysis::Propagate() {
             callsite.instruction()->opcode() == HloOpcode::kCall) {
           continue;
         }
+        if (!propagate_through_control_flow_ &&
+            callsite.instruction()->opcode() != HloOpcode::kCall) {
+          continue;
+        }
         if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
           // Add the while itself, and the body and condition parameters.
           add_to_worklist(callsite.instruction());
@@ -1395,6 +1430,9 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
     const bool is_regular_call_computation =
         IsRegularCallComputation(call_graph_node);
+    const bool is_control_flow_computation =
+        !call_graph_node.caller_callsites().empty() &&
+        !is_regular_call_computation;
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
@@ -1436,9 +1474,13 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
-        case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kConditional:
+          if (!propagate_through_control_flow_) {
+            define_all_values();
+          }
+          break;
+        case HloOpcode::kAddDependency:
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kDomain:
         case HloOpcode::kOptimizationBarrier:
@@ -1459,7 +1501,9 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kEmbedded ||
-              (!propagate_through_calls_ && is_regular_call_computation)) {
+              (!propagate_through_calls_ && is_regular_call_computation) ||
+              (!propagate_through_control_flow_ &&
+               is_control_flow_computation)) {
             // Parameters of computations called in a parallel context (eg, map
             // and reduce) as well as parameters of dead computations define all
             // values in their output. Otherwise the values of the parameter
@@ -1474,6 +1518,14 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // values flow from their operands.
           define_value_at(/*index=*/{});
           break;
+        case HloOpcode::kCustomCall:
+          if (instruction->custom_call_target() == kCallMarkerBeforeTarget) {
+            define_value_at(/*index=*/{});
+          } else if (instruction->custom_call_target() !=
+                     kCallMarkerAfterTarget) {
+            define_all_values();
+          }
+          break;
         case HloOpcode::kAsyncStart: {
           // AsyncStart produces a tuple of {{aliased operands}, {destination},
           // contexts}. It defines all of the tuple-shaped values and the
@@ -1481,8 +1533,10 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           //
           // If the thread is excluded, then we don't track the contained
           // dataflow, and define the destination values too.
-          bool thread_included = HloInstruction::IsThreadIncluded(
-              instruction->async_execution_thread(), execution_threads_);
+          bool thread_included =
+              propagate_through_control_flow_ &&
+              HloInstruction::IsThreadIncluded(
+                  instruction->async_execution_thread(), execution_threads_);
           define_all_values([&](const ShapeIndex& index) {
             return ShapeUtil::GetSubshape(instruction->shape(), index)
                        .IsTuple() ||
@@ -1493,23 +1547,55 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         }
         case HloOpcode::kAsyncUpdate: {
           // AsyncUpdate produces a tuple of {{aliased operands}, {destination},
-          // contexts}. It defines all of the tuple-shaped values and the
-          // contexts.
+          // contexts}. It defines all of the tuple values and the contexts.
+          // When the async thread is excluded (or control flow propagation is
+          // disabled) and the output at {1, ...} is late bound, AsyncUpdate
+          // also defines the newly bound output values.
+          bool thread_included =
+              propagate_through_control_flow_ &&
+              HloInstruction::IsThreadIncluded(
+                  instruction->async_execution_thread(), execution_threads_);
+          const Shape& prev_shape = instruction->operand(0)->shape();
           define_all_values([&](const ShapeIndex& index) {
-            return ShapeUtil::GetSubshape(instruction->shape(), index)
-                       .IsTuple() ||
-                   index.front() > 1;
+            if (ShapeUtil::GetSubshape(instruction->shape(), index).IsTuple() ||
+                index.front() > 1) {
+              return true;
+            }
+            if (!thread_included && index.front() == 1) {
+              return !ShapeUtil::IndexIsValid(prev_shape, index) ||
+                     !ShapeUtil::Compatible(
+                         ShapeUtil::GetSubshape(instruction->shape(), index),
+                         ShapeUtil::GetSubshape(prev_shape, index));
+            }
+            return false;
           });
           break;
         }
-        case HloOpcode::kAsyncDone:
+        case HloOpcode::kAsyncDone: {
           // AsyncDone's output aliases its output. It defines all remaining
-          // tuple-shaped values.
+          // tuple values, plus any late bound output values when the async
+          // thread is excluded (or control flow propagation is disabled).
+          bool thread_included =
+              propagate_through_control_flow_ &&
+              HloInstruction::IsThreadIncluded(
+                  instruction->async_execution_thread(), execution_threads_);
+          const Shape& prev_shape = instruction->operand(0)->shape();
           define_all_values([&](const ShapeIndex& index) {
-            return ShapeUtil::GetSubshape(instruction->shape(), index)
-                .IsTuple();
+            if (ShapeUtil::GetSubshape(instruction->shape(), index).IsTuple()) {
+              return true;
+            }
+            if (!thread_included) {
+              ShapeIndex src_index = {1};
+              src_index.insert(src_index.end(), index.begin(), index.end());
+              return !ShapeUtil::IndexIsValid(prev_shape, src_index) ||
+                     !ShapeUtil::Compatible(
+                         ShapeUtil::GetSubshape(instruction->shape(), index),
+                         ShapeUtil::GetSubshape(prev_shape, src_index));
+            }
+            return false;
           });
           break;
+        }
         case HloOpcode::kCopyStart:
           // CopyStart produces a tuple of {destination buffer, aliased operand,
           // U32 context}.
@@ -1655,13 +1741,14 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads,
     bool propagate_through_calls,
-    std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses) {
+    std::optional<absl::FunctionRef<bool(const HloValue&)>> precompute_uses,
+    bool propagate_through_control_flow) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = absl::WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
-                              execution_threads, propagate_through_calls));
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, execution_threads,
+      propagate_through_calls, propagate_through_control_flow));
   ABSL_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
   if (precompute_uses.has_value()) {
     std::vector<HloValue*> values;

@@ -43,8 +43,8 @@ fusion{
 // CHECK-SAME:     : tensor<4096x!tt.ptr<f32>>
 
 // CHECK:        ttg.barrier local
-// CHECK:        triton_xla.block_barrier %[[ARG4]], %[[ARG2]], %[[SIGNAL_VALUE]],
-// CHECK-SAME:    {world_size = 2 : i32} : (!tt.ptr<i64>, i32, i32)
+// CHECK:        triton_xla.block_barrier %[[ARG4]], %[[ARG2]], %[[SIGNAL_VALUE]]
+// CHECK-SAME:    <world_size = 2> : (!tt.ptr<i64>, i32, i32)
 
 // CHECK:        xtile.insert
 // CHECK-SAME:     : tensor<4096xf32> -> memref<65536xf32>
