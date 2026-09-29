@@ -403,7 +403,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
               (const, final));
@@ -432,8 +431,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
@@ -473,7 +470,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
               (const, final));
@@ -502,8 +498,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteBundleResult>, ExecuteBundle,
               (absl::Span<BundleRef> args, const ExecuteOptions& options),
               (final));
-  MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
-              (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
   MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
