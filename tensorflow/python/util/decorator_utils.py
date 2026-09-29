@@ -102,7 +102,8 @@ def add_notice_to_docstring(doc,
     lines = [no_doc_str]
   else:
     lines = _normalize_docstring(doc).splitlines()
-    lines[0] += ' ' + suffix_str
+    if lines and suffix_str and not lines[0].rstrip().endswith(suffix_str):
+      lines[0] += ' ' + suffix_str
 
   if not notice:
     raise ValueError('The `notice` arg must not be empty.')
