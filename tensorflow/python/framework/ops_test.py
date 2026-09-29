@@ -2687,13 +2687,28 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerTrailingSlash(self):
-    """Invalid characters should be rejected before trailing-slash handling."""
-    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+    """Trailing-slash names bypass regex validation in both modes.
+
+    In graph mode, Graph.name_scope routes trailing-slash names directly to
+    name_from_scope_name() without any regex check.  Eager mode mirrors this:
+    names ending in '/' are treated as absolute-path scopes and are not
+    validated, so 'invalid space/' does NOT raise.
+    Non-trailing-slash names with invalid chars still raise.
+    """
+    # Trailing-slash names bypass validation — should NOT raise.
+    with ops.name_scope_v2("invalid space/"):
+      pass
+    with ops.name_scope_v2("valid_outer"):
       with ops.name_scope_v2("invalid space/"):
         pass
+    # Non-trailing-slash names with invalid chars must still raise.
+    with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
+      with ops.name_scope_v2("invalid space"):
+        pass
     with ops.name_scope_v2("valid_outer"):
-      with self.assertRaisesRegex(ValueError, "is not a valid (root )?scope name"):
-        with ops.name_scope_v2("invalid space/"):
+      with self.assertRaisesRegex(
+          ValueError, "is not a valid (root )?scope name"):
+        with ops.name_scope_v2("invalid space"):
           pass
 
   @test_util.run_deprecated_v1
