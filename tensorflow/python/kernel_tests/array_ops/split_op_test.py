@@ -442,6 +442,13 @@ class SplitOpTest(test.TestCase):
     assert s0.shape.as_list() == [2]
     assert s1.shape.as_list() == [1]
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSingleSplitWithMinusOne(self):
+    # A single -1 size takes the whole input, as in shape inference.
+    value = constant_op.constant([1, 2, 3], dtype=dtypes.int32)
+    result = array_ops.split(value, [-1], axis=0)
+    self.assertAllEqual(result[0], [1, 2, 3])
+
   @test_util.run_deprecated_v1
   def testShapeFunctionRejectsSizeSplitsOverflow(self):
     # The shape function summed size_splits in int64 without checks, so at

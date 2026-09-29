@@ -115,7 +115,9 @@ class SplitVOpBase : public OpKernel {
     if (num_split == 1) {
       context->set_output(0, context->input(0));
       OP_REQUIRES(
-          context, (*split_sizes_vec)[0] == input_size_split_dim,
+          context,
+          (*split_sizes_vec)[0] == input_size_split_dim ||
+              (*split_sizes_vec)[0] == -1,
           errors::InvalidArgument("If there is only one output, it must have "
                                   "the same size as the input. Input size: ",
                                   input_size_split_dim,
