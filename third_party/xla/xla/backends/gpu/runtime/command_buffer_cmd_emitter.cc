@@ -57,6 +57,26 @@ namespace {
 // A context for tracking thunks to commands conversion details.
 struct ConversionContext {
   std::vector<Command::ResourceUses> extra_resources;
+
+  void Append(CommandSequence& commands, Command* command,
+              const ConvertToCommandsOptions& options) {
+    if (options.synchronization_mode ==
+        CommandExecutor::SynchronizationMode::kLHS) {
+      // Preserve the existing serial order of the flattened command sequence.
+      // The executor infers this order from token dependencies.
+      //
+      // TODO(shawnwang18): This serial chain is temporary. It serializes
+      // flattened AsyncStartThunk bodies with the main stream. Replace it with
+      // fork/join dependencies for AsyncStartThunk / AsyncDoneThunk in
+      // https://github.com/openxla/xla/pull/48900.
+      Command::ResourceUses dependencies;
+      if (!commands.empty()) {
+        dependencies.push_back(ResourceUse::Read(commands.back()->token()));
+      }
+      extra_resources.push_back(std::move(dependencies));
+    }
+    commands.Append(command);
+  }
 };
 
 // A thunk with its concurrent region id in the case where inherited
@@ -162,7 +182,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       auto& conditional_thunk = static_cast<ConditionalThunk&>(thunk);
       ABSL_RETURN_IF_ERROR(
           SetOrUpdateCommandBufferBranchExecutors(conditional_thunk, options));
-      cmd_sequence.Append(&conditional_thunk);
+      ctx.Append(cmd_sequence, &conditional_thunk, options);
       return absl::OkStatus();
     }
     case Thunk::Kind::kAsyncDone:
@@ -171,7 +191,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kWhile: {
       auto& while_thunk = static_cast<WhileThunk&>(thunk);
       ABSL_RETURN_IF_ERROR(SetOrUpdateCommandBufferExecutors(while_thunk, options));
-      cmd_sequence.Append(&while_thunk);
+      ctx.Append(cmd_sequence, &while_thunk, options);
       return absl::OkStatus();
     }
     case Thunk::Kind::kDynamicSliceFusion: {
@@ -183,7 +203,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       ABSL_RETURN_IF_ERROR(
           dynamic_slice_fusion_thunk.SetOrUpdateCommandBufferExecutor(
               std::move(cmds)));
-      cmd_sequence.Append(&dynamic_slice_fusion_thunk);
+      ctx.Append(cmd_sequence, &dynamic_slice_fusion_thunk, options);
       return absl::OkStatus();
     }
     // Sequential thunk does not have any special semantics and we simply inline
@@ -213,7 +233,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   if (auto* command = dynamic_cast<Command*>(&thunk)) {
     // Command/thunk hybrids are owned by the input ThunkSequence and outlive
     // the returned CommandSequence, so command sequences borrow them directly.
-    cmd_sequence.Append(command);
+    ctx.Append(cmd_sequence, command, options);
     return absl::OkStatus();
   }
 
