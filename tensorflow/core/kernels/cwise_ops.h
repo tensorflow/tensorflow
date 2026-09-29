@@ -90,10 +90,10 @@ struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/false>>
     : functor_traits<scalar_pow_op<T, T>> {};
 
 template <typename T>
-struct tf_scalar_pow_op<T, /*IsComplex=*/true> {
+struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
                                                      const T& exponent) const {
-    if (exponent == T(0)) {
+    if (TF_PREDICT_FALSE(exponent == T(0))) {
       return T(1);
     }
     return scalar_pow_op<T, T>()(base, exponent);

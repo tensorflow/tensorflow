@@ -863,8 +863,11 @@ class BinaryOpTest(test.TestCase):
               complex(0.0, 0.0),
               complex(-0.0, 0.0),
               complex(0.0, -0.0),
+              complex(-0.0, -0.0),
               1 + 2j,
               np.nan,
+              complex(np.inf, 0.0),
+              complex(0.0, np.inf),
           ],
           dtype=dtype,
       )
@@ -872,6 +875,17 @@ class BinaryOpTest(test.TestCase):
       with test_util.force_cpu():
         result = self.evaluate(math_ops.pow(bases, exponents))
       self.assertAllEqual(result, np.ones_like(bases))
+
+      with test_util.force_cpu():
+        broadcast_result = self.evaluate(
+            math_ops.pow(bases, np.array(0, dtype=dtype))
+        )
+      self.assertAllEqual(broadcast_result, np.ones_like(bases))
+
+      empty = np.array([], dtype=dtype)
+      with test_util.force_cpu():
+        empty_result = self.evaluate(math_ops.pow(empty, empty))
+      self.assertAllEqual(empty_result, empty)
 
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
