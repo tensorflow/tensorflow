@@ -822,6 +822,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/diale
      }
      if (!hlo::isCompatibleForHloTypeInference(
              argType, bodyBlock.getArgument(i).getType())) {
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -54,6 +54,7 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
 diff --ruN a/stablehlo/stablehlo/dialect/Register.cpp b/stablehlo/stablehlo/dialect/Register.cpp
 --- stablehlo/stablehlo/dialect/Register.cpp
 +++ stablehlo/stablehlo/dialect/Register.cpp
@@ -940,7 +951,15 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloEnums.td b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -2525,8 +2525,9 @@
+@@ -38,6 +38,7 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ class StableHLO_Op<string mnemonic, list<Trait> traits = []> :
+@@ -2525,8 +2526,9 @@
        "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
        "::mlir::ArrayRef<::mlir::NamedAttribute>":$attributes
      ), [{
@@ -964,6 +983,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.h b/stablehlo/stablehlo/di
  }  // namespace vhlo
  }  // namespace mlir
  
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -63,6 +63,7 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+ 
+ #endif  // STABLEHLO_DIALECT_VHLO_DIALECT
 diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
 --- stablehlo/stablehlo/dialect/VhloEnums.td
 +++ stablehlo/stablehlo/dialect/VhloEnums.td
