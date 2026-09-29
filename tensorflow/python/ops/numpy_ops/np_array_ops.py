@@ -977,7 +977,6 @@ def transpose(a, axes=None):
           f"{len(axes)}."
       )
     normalized_mask = 0
-    seen_int_axes = 0
     for ax in axes:
       if isinstance(ax, (int, np.integer)):
         normalized = ax + maybe_rank if ax < 0 else ax
