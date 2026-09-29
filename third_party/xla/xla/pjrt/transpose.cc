@@ -1269,7 +1269,6 @@ absl::Status TransposePlan::Initialize() {
     b_stride1_size = std::min(b_stride1_size, b_dims_[pos_stride1b_in_b]);
   }
 
-  constexpr int kMaxOuterBlockElems = 16;
   if (inner_kernel_is_memcpy_) {
     inner_block_elems_ = -1;
     outer_block_elems_a_ = -1;

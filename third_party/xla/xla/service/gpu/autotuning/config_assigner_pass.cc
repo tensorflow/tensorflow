@@ -342,6 +342,8 @@ Autotuner::Options GetAutotunerOptions(const DebugOptions& debug_options,
     autotuner_options.excluded_backends.push_back(
         autotuner::Backend::HIPBLASLT_FISSION);
   }
+  autotuner_options.preferred_backend =
+      debug_options.xla_autotuner_preferred_backend();
   autotuner_options.correctness_check_options.enable_correctness_check =
       is_buffer_check_supported && debug_options.xla_gpu_autotune_level() >= 4;
   autotuner_options.correctness_check_options.relative_tolerance =
@@ -359,8 +361,7 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
     const DebugOptions& debug_options,
     const se::GpuComputeCapability& gpu_version) {
   bool do_not_autotune_cublas =
-      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0;
+      debug_options.xla_gpu_experimental_disable_binary_libraries();
   bool do_not_autotune_cudnn =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       (do_not_autotune_cublas && !gpu_version.IsRocm());
@@ -372,7 +373,8 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
 
   return [do_not_autotune_cublas, do_not_autotune_cudnn,
-          enable_fusion_autotuner](const HloInstruction& instruction) -> bool {
+          enable_fusion_autotuner,
+          gpu_version](const HloInstruction& instruction) -> bool {
     AutotuneDecision decision = ShouldAssignConfigToInstruction(
         do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
         instruction);

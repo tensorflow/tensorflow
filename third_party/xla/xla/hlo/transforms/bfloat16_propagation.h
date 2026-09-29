@@ -387,6 +387,8 @@ class BFloat16Propagation : public HloModulePass {
   // Whether the last processed HLO module has been changed by this pass.
   bool changed_ = false;
 
+  // Valid between HloDataflowAnalysis::Run in RunImpl and the first rewrite
+  // of the module; reset at that boundary.
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 
   absl::flat_hash_set<absl::string_view> execution_threads_;

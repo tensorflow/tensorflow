@@ -57,6 +57,11 @@ std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
     absl::Span<HloInstructionAdaptor const> roots);
 
 // Returns whether the fusion represented by 'fusion_adaptor' can be emitted
+// with the dynamic update slice emitter.
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSlice(
+    const HloFusionAdaptor& fusion_adaptor);
+
+// Returns whether the fusion represented by 'fusion_adaptor' can be emitted
 // with the dynamic update slice in-place emitter. If 'fusion_adaptor'
 // represents a single fusion computation, 'fusion' should provide the fusion
 // instruction corresponding to that fusion computation. 'get_allocation_slice'

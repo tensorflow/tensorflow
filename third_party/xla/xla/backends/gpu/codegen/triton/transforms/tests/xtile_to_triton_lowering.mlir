@@ -80,25 +80,133 @@ func.func @lower_dot_scaled_in_loop_non_canonical(
 // -----
 
 // CHECK-LABEL: func.func @scan_lowering(
-// CHECK-SAME: %[[INPUT0:.*]]: tensor<16x16x16xf32>, %[[INIT0:.*]]: tensor<16x16xf32>
-func.func @scan_lowering(%input0: tensor<16x16x16xf32>, %init0: tensor<16x16xf32>) -> (tensor<16x16x16xf32>) {
+// CHECK-SAME: %[[INPUT0:.*]]: tensor<16x16x16xf32>, %[[INIT0:.*]]: tensor<16x16x1xf32>
+func.func @scan_lowering(%input0: tensor<16x16x16xf32>, %init0: tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>) {
   // CHECK: %[[SCAN:.*]] = "tt.scan"(%[[INPUT0]]) <{axis = 2 : i32, reverse = false}> ({
   // CHECK:   ^bb0(%[[ARG0:.*]]: f32, %[[ARG1:.*]]: f32):
   // CHECK:     %[[ADD:.*]] = arith.addf %[[ARG0]], %[[ARG1]] : f32
   // CHECK:     tt.scan.return %[[ADD]] : f32
   // CHECK: }
 
-  // CHECK-DAG: %[[BCAST_INIT0:.*]] = stablehlo.broadcast_in_dim %[[INIT0]], dims = [0, 1] : (tensor<16x16xf32>) -> tensor<16x16x16xf32>
+  // CHECK-DAG: %[[BCAST_INIT0:.*]] = tt.broadcast %[[INIT0]] : tensor<16x16x1xf32> -> tensor<16x16x16xf32>
   // CHECK-DAG: %[[RES1:.*]] = arith.addf %[[BCAST_INIT0]], %[[SCAN]] : tensor<16x16x16xf32>
   // CHECK: return %[[RES1]] : tensor<16x16x16xf32>
 
-  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 {scan_dim_size = 16 : i64} : (tensor<16x16x16xf32>), (tensor<16x16xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16xf32>) {
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 {scan_dim_size = 16 : i64} : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
   ^bb0(%arg0: f32, %arg1: f32):
     %add = arith.addf %arg0, %arg1 : f32
     xtile.yield %add : f32
   }
   return %0 : tensor<16x16x16xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @scan_lowering_carry(
+// CHECK-SAME: %[[INPUT0:.*]]: tensor<16x16x16xf32>, %[[INIT0:.*]]: tensor<16x16x1xf32>
+func.func @scan_lowering_carry(%input0: tensor<16x16x16xf32>, %init0: tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>, tensor<16x16x1xf32>) {
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0> : tensor<16x16x16xi32>
+  // CHECK-DAG: %[[LAST:.*]] = arith.constant dense<15> : tensor<16x16x16xi32>
+  // CHECK: %[[SCAN:.*]] = "tt.scan"(%[[INPUT0]]) <{axis = 2 : i32, reverse = false}> ({
+  // CHECK: %[[BCAST_INIT0:.*]] = tt.broadcast %[[INIT0]] : tensor<16x16x1xf32> -> tensor<16x16x16xf32>
+  // CHECK: %[[RES0:.*]] = arith.addf %[[BCAST_INIT0]], %[[SCAN]] : tensor<16x16x16xf32>
+
+  // The carry is the last element along the scan dimension, which is selected
+  // with a masked reduction over the bitcast integer values.
+  // CHECK: %[[RANGE:.*]] = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+  // CHECK: %[[EXPAND0:.*]] = tt.expand_dims %[[RANGE]] {axis = 0 : i32} : tensor<16xi32> -> tensor<1x16xi32>
+  // CHECK: %[[EXPAND1:.*]] = tt.expand_dims %[[EXPAND0]] {axis = 1 : i32} : tensor<1x16xi32> -> tensor<1x1x16xi32>
+  // CHECK: %[[IOTA:.*]] = tt.broadcast %[[EXPAND1]] : tensor<1x1x16xi32> -> tensor<16x16x16xi32>
+  // CHECK: %[[MASK:.*]] = arith.cmpi eq, %[[IOTA]], %[[LAST]] : tensor<16x16x16xi32>
+  // CHECK: %[[BITCAST:.*]] = tt.bitcast %[[RES0]] : tensor<16x16x16xf32> -> tensor<16x16x16xi32>
+  // CHECK: %[[MASKED:.*]] = arith.select %[[MASK]], %[[BITCAST]], %[[ZERO]]
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 2 : i32}> ({
+  // CHECK:   ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+  // CHECK:     %[[OR:.*]] = arith.ori %[[LHS]], %[[RHS]] : i32
+  // CHECK:     tt.reduce.return %[[OR]] : i32
+  // CHECK: }) : (tensor<16x16x16xi32>) -> tensor<16x16xi32>
+  // CHECK: %[[EXPAND:.*]] = tt.expand_dims %[[REDUCE]] {axis = 2 : i32} : tensor<16x16xi32> -> tensor<16x16x1xi32>
+  // CHECK: %[[RES1:.*]] = tt.bitcast %[[EXPAND]] : tensor<16x16x1xi32> -> tensor<16x16x1xf32>
+  // CHECK-NOT: tt.gather
+  // CHECK-NOT: tt.reshape
+  // CHECK: return %[[RES0]], %[[RES1]]
+
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 {scan_dim_size = 16 : i64} : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
+  ^bb0(%arg0: f32, %arg1: f32):
+    %add = arith.addf %arg0, %arg1 : f32
+    xtile.yield %add : f32
+  }
+  return %0, %1 : tensor<16x16x16xf32>, tensor<16x16x1xf32>
+}
+
+// -----
+
+// The carry of a 1D scan is a rank-1 tensor, not a rank-zero tensor, which
+// TritonGPU does not support.
+// CHECK-LABEL: func.func @scan_lowering_1d_carry(
+// CHECK-SAME: %[[INPUT0:.*]]: tensor<16xf32>, %[[INIT0:.*]]: tensor<1xf32>
+func.func @scan_lowering_1d_carry(%input0: tensor<16xf32>, %init0: tensor<1xf32>) -> (tensor<16xf32>, tensor<1xf32>) {
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0> : tensor<16xi32>
+  // CHECK-DAG: %[[LAST:.*]] = arith.constant dense<15> : tensor<16xi32>
+  // CHECK: %[[SCAN:.*]] = "tt.scan"(%[[INPUT0]]) <{axis = 0 : i32, reverse = false}> ({
+  // CHECK: %[[BCAST_INIT0:.*]] = tt.broadcast %[[INIT0]] : tensor<1xf32> -> tensor<16xf32>
+  // CHECK: %[[RES0:.*]] = arith.addf %[[BCAST_INIT0]], %[[SCAN]] : tensor<16xf32>
+  // CHECK: %[[RANGE:.*]] = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+  // CHECK: %[[MASK:.*]] = arith.cmpi eq, %[[RANGE]], %[[LAST]] : tensor<16xi32>
+  // CHECK: %[[BITCAST:.*]] = tt.bitcast %[[RES0]] : tensor<16xf32> -> tensor<16xi32>
+  // CHECK: %[[MASKED:.*]] = arith.select %[[MASK]], %[[BITCAST]], %[[ZERO]]
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}> ({
+  // CHECK:   ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+  // CHECK:     %[[OR:.*]] = arith.ori %[[LHS]], %[[RHS]] : i32
+  // CHECK:     tt.reduce.return %[[OR]] : i32
+  // CHECK: }) : (tensor<16xi32>) -> i32
+  // Reducing a rank-1 tensor returns a scalar, which is splatted back to the
+  // unit dimension of the carry.
+  // CHECK: %[[SPLAT:.*]] = tt.splat %[[REDUCE]] : i32 -> tensor<1xi32>
+  // CHECK: %[[RES1:.*]] = tt.bitcast %[[SPLAT]] : tensor<1xi32> -> tensor<1xf32>
+  // CHECK-NOT: tt.gather
+  // CHECK-NOT: tt.reshape
+  // CHECK: return %[[RES0]], %[[RES1]]
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 {scan_dim_size = 16 : i64} : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
+  ^bb0(%arg0: f32, %arg1: f32):
+    %add = arith.addf %arg0, %arg1 : f32
+    xtile.yield %add : f32
+  }
+  return %0, %1 : tensor<16xf32>, tensor<1xf32>
+}
+
+// -----
+
+// The carry of a reverse scan is the first element along the scan dimension.
+// CHECK-LABEL: func.func @reverse_scan_lowering_carry(
+func.func @reverse_scan_lowering_carry(%input0: tensor<16xf32>, %init0: tensor<1xf32>) -> (tensor<16xf32>, tensor<1xf32>) {
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0> : tensor<16xi32>
+  // CHECK: %[[SCAN:.*]] = "tt.scan"(%{{.*}}) <{axis = 0 : i32, reverse = true}> ({
+  // CHECK: %[[RES0:.*]] = arith.addf %{{.*}}, %[[SCAN]] : tensor<16xf32>
+  // The mask therefore compares against index 0 instead of the last index.
+  // CHECK: %[[RANGE:.*]] = tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+  // CHECK: %[[MASK:.*]] = arith.cmpi eq, %[[RANGE]], %[[ZERO]] : tensor<16xi32>
+  // CHECK: %[[BITCAST:.*]] = tt.bitcast %[[RES0]] : tensor<16xf32> -> tensor<16xi32>
+  // CHECK: %[[MASKED:.*]] = arith.select %[[MASK]], %[[BITCAST]], %[[ZERO]]
+  // CHECK: %[[REDUCE:.*]] = "tt.reduce"(%[[MASKED]]) <{axis = 0 : i32}> ({
+  // CHECK:   ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+  // CHECK:     %[[OR:.*]] = arith.ori %[[LHS]], %[[RHS]] : i32
+  // CHECK:     tt.reduce.return %[[OR]] : i32
+  // CHECK: }) : (tensor<16xi32>) -> i32
+  // CHECK: %[[SPLAT:.*]] = tt.splat %[[REDUCE]] : i32 -> tensor<1xi32>
+  // CHECK: %[[RES1:.*]] = tt.bitcast %[[SPLAT]] : tensor<1xi32> -> tensor<1xf32>
+  // CHECK-NOT: tt.gather
+  // CHECK-NOT: tt.reshape
+  // CHECK: return %[[RES0]], %[[RES1]]
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 {scan_dim_size = 16 : i64, is_reverse = true} : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
+  ^bb0(%arg0: f32, %arg1: f32):
+    %add = arith.addf %arg0, %arg1 : f32
+    xtile.yield %add : f32
+  }
+  return %0, %1 : tensor<16xf32>, tensor<1xf32>
+}
+
+// -----
 
 // CHECK: func @lower_dot_scaled_without_add_falls_back_to_xtile(%[[LHS:.*]]: tensor<128x128xf8E5M2>, %[[LHS_SCALE:.*]]: tensor<128x4xi8>, %[[RHS:.*]]: tensor<128x256xf8E5M2>, %[[RHS_SCALE:.*]]: tensor<256x4xi8>) -> tensor<128x256xf32> {
 func.func @lower_dot_scaled_without_add_falls_back_to_xtile(

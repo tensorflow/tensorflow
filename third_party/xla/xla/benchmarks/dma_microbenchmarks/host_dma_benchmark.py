@@ -14,26 +14,14 @@
 
 """JAX microbenchmarks for measuring DMA bandwidth between host and TPU."""
 
-from absl import flags
 from absl.testing import absltest
 import jax
 import jax.numpy as jnp
 from xla.benchmarks.dma_microbenchmarks import memory_base
 
 
-_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
-    "number_of_measurements",
-    default=5,
-    help="Number of measurements to take. Default: 5",
-)
-
-
 class HostDmaBenchmarks(memory_base.MemoryBenchmarks):
   """Test suite measuring DMA bandwidth between host memory and TPU memory."""
-
-  def setUp(self):
-    super().setUp()
-    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
 
   def test_device_to_host_bandwidth_single_dma(self):
     """Measure device to host bandwidth using a single DMA transaction."""

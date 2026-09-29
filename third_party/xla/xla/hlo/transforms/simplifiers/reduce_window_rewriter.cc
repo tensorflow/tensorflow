@@ -857,10 +857,8 @@ absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
   }
 
   bool changed = false;
-  for (const auto& computation : module->computations(execution_threads)) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (const HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (auto* scan = DynCast<HloScanInstruction>(instruction)) {

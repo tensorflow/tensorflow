@@ -33,24 +33,21 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "gloo/algorithm.h"
 #include "gloo/allgather.h"
 #include "gloo/allreduce.h"
 #include "gloo/context.h"
 #include "gloo/math.h"
-#include "gloo/reduce_scatter.h"
 #include "gloo/transport/device.h"
 #include "gloo/transport/unbound_buffer.h"
 #include "gloo/types.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/backends/cpu/collectives/gloo_reduce_scatter.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -187,7 +184,6 @@ Future<> GlooCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   return absl::OkStatus();
 }
 
-static constexpr uint8_t kCollectivePermuteSlotPrefix = 0x40;
 
 Future<> GlooCommunicator::CollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
@@ -321,126 +317,14 @@ Future<> GlooCommunicator::AllGather(se::DeviceAddressBase send_buffer,
   return absl::OkStatus();
 }
 
-template <typename T>
-absl::Status ReduceScatterHelper(std::shared_ptr<gloo::Context> context,
-                                 ReductionKind reduction_kind, void* buffer,
-                                 size_t chunk_elems) {
-  const gloo::ReductionFunction<T>* reduction_function = nullptr;
-  if constexpr (is_complex_v<T>) {
-    switch (reduction_kind) {
-      case ReductionKind::SUM:
-        reduction_function = gloo::ReductionFunction<T>::sum;
-        break;
-      case ReductionKind::PRODUCT:
-        reduction_function = gloo::ReductionFunction<T>::product;
-        break;
-      default:
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Unsupported reduction kind: ", static_cast<int>(reduction_kind)));
-    }
-  } else {
-    switch (reduction_kind) {
-      case ReductionKind::SUM:
-        reduction_function = gloo::ReductionFunction<T>::sum;
-        break;
-      case ReductionKind::PRODUCT:
-        reduction_function = gloo::ReductionFunction<T>::product;
-        break;
-      case ReductionKind::MAX:
-        reduction_function = gloo::ReductionFunction<T>::max;
-        break;
-      case ReductionKind::MIN:
-        reduction_function = gloo::ReductionFunction<T>::min;
-        break;
-      default:
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Unsupported reduction kind: ", static_cast<int>(reduction_kind)));
-    }
-  }
-  try {
-    std::vector<int> recv_elems(context->size, chunk_elems);
-    gloo::ReduceScatterHalvingDoubling<T> algorithm(
-        context, std::vector<T*>{reinterpret_cast<T*>(buffer)},
-        chunk_elems * context->size, recv_elems, reduction_function);
-    algorithm.run();
-  } catch (std::exception& e) {
-    return absl::UnknownError(
-        absl::StrCat("Gloo ReduceScatter failed: ", e.what()));
-  }
-  return absl::OkStatus();
-}
-
 Future<> GlooCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
                                          se::DeviceAddressBase recv_buffer,
                                          PrimitiveType dtype, size_t count,
                                          ReductionKind reduction_kind,
                                          const Executor& executor) {
-  size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
-  std::unique_ptr<char[]> temp(new char[chunk_bytes * context_->size]);
-  std::memcpy(temp.get(), send_buffer.opaque(), chunk_bytes * context_->size);
-  switch (dtype) {
-    case S8:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<int8_t>(context_, reduction_kind,
-                                                  temp.get(), count));
-      break;
-    case PRED:
-    case U8:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<uint8_t>(context_, reduction_kind,
-                                                   temp.get(), count));
-      break;
-    case S16:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<int16_t>(context_, reduction_kind,
-                                                   temp.get(), count));
-      break;
-    case U16:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<uint16_t>(context_, reduction_kind,
-                                                    temp.get(), count));
-      break;
-    case S32:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<int32_t>(context_, reduction_kind,
-                                                   temp.get(), count));
-      break;
-    case U32:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<uint32_t>(context_, reduction_kind,
-                                                    temp.get(), count));
-      break;
-    case S64:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<int64_t>(context_, reduction_kind,
-                                                   temp.get(), count));
-      break;
-    case U64:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<uint64_t>(context_, reduction_kind,
-                                                    temp.get(), count));
-      break;
-    case BF16:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<bfloat16>(context_, reduction_kind,
-                                                    temp.get(), count));
-      break;
-    case F16:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<gloo::float16>(
-          context_, reduction_kind, temp.get(), count));
-      break;
-    case F32:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<float>(context_, reduction_kind,
-                                                 temp.get(), count));
-      break;
-    case F64:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<double>(context_, reduction_kind,
-                                                  temp.get(), count));
-      break;
-    case C64:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<std::complex<float>>(
-          context_, reduction_kind, temp.get(), count));
-      break;
-    case C128:
-      ABSL_RETURN_IF_ERROR(ReduceScatterHelper<std::complex<double>>(
-          context_, reduction_kind, temp.get(), count));
-      break;
-    default:
-      return absl::InvalidArgumentError("Unknown datatype in reducescatter");
-  }
-  std::memcpy(recv_buffer.opaque(), temp.get(), chunk_bytes);
-  return absl::OkStatus();
+  ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  return GlooReduceScatter(context_, send_buffer, recv_buffer, dtype, count,
+                           reduction_kind, cpu_executor->timeout());
 }
 
 }  // namespace xla::cpu

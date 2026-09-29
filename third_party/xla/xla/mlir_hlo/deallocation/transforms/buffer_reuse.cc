@@ -16,7 +16,6 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <utility>
 
 #include "deallocation/transforms/passes.h"

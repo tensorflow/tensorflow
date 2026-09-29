@@ -248,6 +248,12 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferReverseShape(
       const Shape& operand_shape, absl::Span<const int64_t> dimensions);
 
+  // Infers the shape of a shuffle instruction, which rearranges the operand's
+  // elements along the given dimensions according to `mode`.
+  static absl::StatusOr<Shape> InferShuffleShape(
+      const Shape& operand_shape, absl::Span<const int64_t> dimensions,
+      const ShuffleMode& mode);
+
   // Infers the shape produced by a slice operation spanning from the starts to
   // the limits in the original shape's dimensions.
   //
@@ -368,7 +374,8 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      const SparsityConfig& sparsity_config = {});
 
   // Helper that infers the shape produced by performing a ragged dot operation
   // with the given LHS and RHS shapes. An optional preferred_element_type can

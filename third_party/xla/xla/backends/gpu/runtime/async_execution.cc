@@ -70,7 +70,16 @@ AsyncExecution::ExecutionGuard::ExecutionGuard(se::Event* event,
                                                se::Stream* async_stream)
     : event_(event), async_stream_(async_stream) {}
 
+AsyncExecution::ExecutionGuard::ExecutionGuard(ExecutionGuard&& other) noexcept
+    : event_(std::exchange(other.event_, nullptr)),
+      async_stream_(std::exchange(other.async_stream_, nullptr)) {}
+
 AsyncExecution::ExecutionGuard::~ExecutionGuard() {
+  // Nothing to do for moved-from ExecutionGuards.
+  if (async_stream_ == nullptr) {
+    return;
+  }
+
   // If we fail to record completion event on a stream it is unsafe to continue
   // as the following computations might not see all the updates done by the
   // async execution.
@@ -138,9 +147,11 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
   // Wait for all prior operations on `stream` before launching operations on
   // `async_stream`. We use a stream-level wait (not the shared event) so that
   // the event remains exclusively used for the async→main completion signal.
-  // This is critical for pipelined send/recv where multiple Start() calls can
-  // happen before Done() (the event is safely overwritten on the async stream
-  // because the stream is ordered).
+  // This matters for pipelined send/recv, where several start thunks share one
+  // execution and Start()/Done() alternate across loop iterations: each Start()
+  // re-records the shared event on the ordered async stream after the previous
+  // Done() has waited on it. A second Start() before the matching Done() is
+  // rejected by the counter check above.
   ABSL_RETURN_IF_ERROR(async_stream->WaitFor(stream));
 
   return ExecutionGuard(event, async_stream);

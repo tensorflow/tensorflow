@@ -37,11 +37,28 @@ namespace xla {
 absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
     std::vector<ConfigRunner::ConfigProfile>& results,
     int scratch_bytes_window_size_us,
-    absl::Span<const autotuner::Backend> excluded_backends) {
+    absl::Span<const autotuner::Backend> excluded_backends,
+    autotuner::Backend preferred_backend) {
   auto is_excluded = [&](const ConfigRunner::ConfigProfile& result) {
     return result.config.codegen_backend != nullptr &&
            absl::c_linear_search(excluded_backends,
                                  result.config.codegen_backend->backend());
+  };
+
+  auto is_preferred = [&](const ConfigRunner::ConfigProfile& result) {
+    return preferred_backend != autotuner::Backend::UNSPECIFIED_BACKEND &&
+           result.config.codegen_backend != nullptr &&
+           result.config.codegen_backend->backend() == preferred_backend;
+  };
+
+  bool has_preferred_configs =
+      absl::c_any_of(results, [&](const ConfigRunner::ConfigProfile& r) {
+        return !r.failure.has_value() && !is_excluded(r) && is_preferred(r);
+      });
+
+  auto is_eligible = [&](const ConfigRunner::ConfigProfile& r) {
+    return !r.failure.has_value() && !is_excluded(r) &&
+           (!has_preferred_configs || is_preferred(r));
   };
 
   absl::Duration min_duration = absl::InfiniteDuration();
@@ -55,7 +72,7 @@ absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
           result.config.ToString(), ": Backend excluded from selection (",
           autotuner::Backend_Name(result.config.codegen_backend->backend()),
           ")"));
-    } else if (result.duration < min_duration) {
+    } else if (is_eligible(result) && result.duration < min_duration) {
       min_duration = result.duration;
       best_result = &result;
     }
@@ -78,8 +95,7 @@ absl::StatusOr<ConfigRunner::ConfigProfile> PickBestConfig(
   absl::Duration min_duration_with_optimized_scratch_bytes =
       absl::InfiniteDuration();
   for (ConfigRunner::ConfigProfile& result : results) {
-    if (!result.failure.has_value() && !is_excluded(result) &&
-        result.duration <= duration_limit) {
+    if (is_eligible(result) && result.duration <= duration_limit) {
       bool current_result_is_better =
           result.scratch_bytes < min_scratch_bytes ||
           (result.scratch_bytes == min_scratch_bytes &&

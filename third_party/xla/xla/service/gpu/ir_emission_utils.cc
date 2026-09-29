@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -220,26 +219,10 @@ bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
           hlo.custom_call_target() == "mosaic_gpu_v2");
 }
 
-bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo) {
-  if (!IsCustomCallToMosaicGpu(hlo)) {
-    return false;
-  }
-
-  const std::string& backend_config = hlo.raw_backend_config_string();
-  // TODO(b/546817872): Remove multimem_parameters check once backward
-  // compatibility period is over.
-  return absl::StrContains(backend_config, "symmetric_memory_parameters") ||
-         absl::StrContains(backend_config, "multimem_parameters");
-}
-
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo) {
   return IsCustomCallToMosaicGpu(hlo) &&
          RE2::PartialMatch(hlo.raw_backend_config_string(),
                            "uses_xla_collective_metadata\\s*=\\s*[tT]rue");
-}
-
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
-  return IsMosaicWithSymmetricParameter(hlo);
 }
 
 static bool IsContiguousSlice(

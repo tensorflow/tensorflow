@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
 #include "xla/hlo/testlib/test.h"
@@ -78,6 +80,43 @@ TEST(SemaphoreTest, ConcurrentTest) {
   EXPECT_FALSE(a_done.HasBeenNotified());
   semaphore.Release(1);
   a_done.WaitForNotification();
+}
+
+TEST(SemaphoreTest, ScopedReservationMoveAssignment) {
+  Semaphore sem(10);
+  EXPECT_EQ(sem.value(), 10);
+  {
+    auto r1 = sem.ScopedAcquire(5);
+    EXPECT_EQ(sem.value(), 5);
+    {
+      auto r2 = sem.ScopedAcquire(3);
+      EXPECT_EQ(sem.value(), 2);
+
+      // Moving r2 into r1 should release r1's previous reservation (5 units).
+      r1 = std::move(r2);
+      // Immediately after move assignment, r1 has 3 units, so value should be
+      // 2 + 5 = 7.
+      EXPECT_EQ(sem.value(), 7);
+      EXPECT_EQ(r1.amount(), 3);
+    }
+    // r2 was destroyed above. If r2 erroneously retained its reservation,
+    // destroying it would have released tokens and increased sem.value().
+    // Because r2 was properly disarmed by the move, sem.value() remains 7.
+    EXPECT_EQ(sem.value(), 7);
+  }
+  // After r1 goes out of scope, sem should be back to full capacity (10).
+  EXPECT_EQ(sem.value(), 10);
+
+  // Test self move-assignment
+  {
+    auto r3 = sem.ScopedAcquire(4);
+    EXPECT_EQ(sem.value(), 6);
+    auto& r3_ref = r3;
+    r3 = std::move(r3_ref);
+    EXPECT_EQ(sem.value(), 6);
+    EXPECT_EQ(r3.amount(), 4);
+  }
+  EXPECT_EQ(sem.value(), 10);
 }
 
 }  // namespace

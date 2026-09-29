@@ -165,6 +165,7 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -745,19 +746,61 @@ absl::Status PjRtStreamExecutorRawClient::TransferFromOutfeed(
 }
 
 absl::StatusOr<std::intptr_t>
-PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
+PjRtStreamExecutorRawClient::GetStreamForExternalReadyEvents(
+    LocalDeviceId local_device_id) const {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   absl::down_cast<PjRtStreamExecutorClient*>(client())
-                       ->raw_client()
-                       ->GetLocalDeviceState(local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   se::Stream* stream = local_device->GetExternalReadyEventStream();
   void* raw_stream = stream->platform_specific_handle().stream;
   if (raw_stream == nullptr) {
     return Unimplemented(
         "GetStreamForExternalReadyEvents not implemented for platform '%s'.",
-        platform_name());
+        local_device->executor()->GetPlatform()->Name());
   }
   return absl::bit_cast<std::intptr_t>(raw_stream);
+}
+
+absl::StatusOr<tsl::AllocatorStats>
+PjRtStreamExecutorRawClient::GetAllocatorStats(
+    LocalDeviceId local_device_id) const {
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  if (!allocator_adapter) {
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto allocator,
+                   allocator_adapter->GetAllocator(local_device_id.value()));
+
+  auto stats = allocator->GetStats();
+  if (!stats.has_value()) {
+    return Unimplemented(
+        "GetAllocatorStats() is not supported by this allocator");
+  }
+  return *stats;
+}
+
+absl::Status PjRtStreamExecutorRawClient::ClearMemoryStats(
+    LocalDeviceId local_device_id) {
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  if (!allocator_adapter) {
+    return absl::UnimplementedError(
+        "ClearMemoryStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto allocator,
+                   allocator_adapter->GetAllocator(local_device_id.value()));
+
+  // Call the ClearStats() method on the underlying tsl::Allocator
+  // (BFCAllocator)
+  if (allocator->ClearStats()) {
+    return absl::OkStatus();
+  }
+
+  return absl::UnavailableError(
+      "ClearStats not supported by the underlying allocator");
 }
 
 namespace {
@@ -1387,7 +1430,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   auto launch_on_device =
       [device_state, gpu_run_options = gpu_run_options,
        launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
-       context = options.context, raw_client = raw_client_, device = device_,
+       context = options.context, custom_options = options.custom_options,
+       raw_client = raw_client_, device = device_,
        device_assignment = device_assignment_, is_predetermined_error,
        compute_reservation = std::move(compute_reservation),
        send_device_memory = std::move(send_device_memory),
@@ -1437,6 +1481,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     if (context != nullptr) {
       run_options.set_ffi_execution_context(&context->ffi_context());
     }
+    run_options.set_custom_options(custom_options);
 
     absl::Status predetermined_error;
     for (size_t i = 0; i < extra_deps.size(); ++i) {
@@ -1716,6 +1761,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
+    case Layout::kCollectiveMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;
     default:

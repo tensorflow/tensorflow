@@ -61,6 +61,10 @@ class TargetMachineFeaturesStub : public TargetMachineFeatures {
     LOG(FATAL) << "Unexpected call to " << __func__;
   }
 
+  const llvm::TargetMachine* target_machine() const final {
+    LOG(FATAL) << "Unexpected call to " << __func__;
+  }
+
  private:
   std::function<int64_t(int64_t)> min_alignment_;
 };

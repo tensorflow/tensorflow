@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
+#include "tsl/platform/context.h"
 
 namespace tsl {
 
@@ -1115,10 +1116,10 @@ template <typename T, int&... ExplicitParameterBarrier, typename F,
               typename tsl::Future<T>::value_type, R>>* = nullptr>
 [[nodiscard]] Future<T> MakeFutureOn(Executor& executor, F&& f) {
   auto [promise, future] = MakePromise<T>();
-  executor.Execute(
-      [promise = std::move(promise), f = std::forward<F>(f)]() mutable {
-        promise.Set(std::move(f)());
-      });
+  executor.Execute([promise = std::move(promise),
+                    f = WithCurrentContext(std::forward<F>(f))]() mutable {
+    promise.Set(std::move(f)());
+  });
   return std::move(future);
 }
 
@@ -1351,7 +1352,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 
     // Extend the lifetime of the underlying async value storage by copying
     // the reference to it, to avoid use-after-free inside the `f` functor.
-    executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+    executor.Execute([&value, ref = ptr.CopyRef(),
+                      f = WithCurrentContext(std::move(f)),
                       promise = std::move(promise)]() mutable {
       SetPromise<R, U>(std::move(promise), std::move(f))(value);
     });
@@ -1416,13 +1418,15 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     // value storage by copying the reference to it, to avoid use-after-free
     // inside the `f` functor.
     if constexpr (is_move_only) {
-      executor.Execute([value = std::move(value), f = std::move(f),
+      executor.Execute([value = std::move(value),
+                        f = WithCurrentContext(std::move(f)),
                         promise = std::move(promise)]() mutable {
         SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
                                           std::move(f))(std::move(value));
       });
     } else {
-      executor.Execute([&value, ref = ptr.CopyRef(), f = std::move(f),
+      executor.Execute([&value, ref = ptr.CopyRef(),
+                        f = WithCurrentContext(std::move(f)),
                         promise = std::move(promise)]() mutable {
         SetPromise<R, U, /*rvalue=*/true>(std::move(promise),
                                           std::move(f))(value);
@@ -1580,7 +1584,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
     // Pass `status` by value because it's cheap to copy, instead of extending
     // the lifetime of the underlying async value storage.
     executor.Execute(absl::bind_front(
-        SetPromise<R, U>(std::move(promise), std::move(f)), status));
+        SetPromise<R, U>(std::move(promise), WithCurrentContext(std::move(f))),
+        status));
   });
 
   return std::move(future);
@@ -1714,7 +1719,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();
@@ -1738,7 +1743,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();

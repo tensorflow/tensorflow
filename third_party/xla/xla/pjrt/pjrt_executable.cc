@@ -164,15 +164,35 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
 }
 
 bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options) {
-  for (int i = compile_options.env_option_overrides.size() - 1; i >= 0; --i) {
-    const auto& [k, v] = compile_options.env_option_overrides[i];
+  bool early_exit_with_layouts =
+      compile_options.executable_build_options.has_debug_options() &&
+      compile_options.executable_build_options.debug_options()
+          .xla_early_exit_with_layouts();
+  DebugOptions::EarlyExitPoint early_exit_point =
+      compile_options.executable_build_options.has_debug_options()
+          ? compile_options.executable_build_options.debug_options()
+                .xla_gpu_experimental_early_exit()
+          : DebugOptions::EARLY_EXIT_POINT_UNSET;
+
+  // Some callers may not have called compile_options.ApplyAllOptionOverrides,
+  // so we check the env_option_overrides directly.
+  for (const auto& [k, v] : compile_options.env_option_overrides) {
     if (k == "xla_early_exit_with_layouts") {
-      return std::get<bool>(v);
+      if (const bool* b = std::get_if<bool>(&v)) {
+        early_exit_with_layouts = *b;
+      }
+    } else if (k == "xla_gpu_experimental_early_exit") {
+      if (const std::string* s = std::get_if<std::string>(&v)) {
+        DebugOptions::EarlyExitPoint override_point;
+        if (DebugOptions::EarlyExitPoint_Parse(*s, &override_point)) {
+          early_exit_point = override_point;
+        }
+      }
     }
   }
-  return compile_options.executable_build_options.has_debug_options() &&
-         compile_options.executable_build_options.debug_options()
-             .xla_early_exit_with_layouts();
+
+  return early_exit_with_layouts ||
+         early_exit_point != DebugOptions::EARLY_EXIT_POINT_UNSET;
 }
 
 MultiSliceConfig::~MultiSliceConfig() = default;

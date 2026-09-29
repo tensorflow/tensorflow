@@ -135,6 +135,17 @@ func.func @skip_reshape_with_attr(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
 
 // -----
 
+// A rank zero result has no unit dimensions to squeeze.
+// CHECK-LABEL: func @skip_reshape_to_rank_zero
+func.func @skip_reshape_to_rank_zero(%arg0: tensor<1xf32>) -> tensor<f32> {
+  // CHECK-NOT: triton_xla.squeeze_dims
+  // CHECK: tt.reshape {{.*}} : tensor<1xf32> -> tensor<f32>
+  %0 = tt.reshape %arg0 : tensor<1xf32> -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
 #arg_enc = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [1, 1], order = [1, 0]}>
 #res_enc = #ttg.blocked<{sizePerThread = [1], threadsPerWarp = [32], warpsPerCTA = [1], order = [0]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {

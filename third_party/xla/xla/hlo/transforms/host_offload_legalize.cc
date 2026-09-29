@@ -738,7 +738,8 @@ absl::Status MoveCopyDown(
 
 // Returns true if the copy should be moved. A copy can be moved if there is
 // always a place for it after being moved back to device.
-bool ShouldMoveCopyDown(HloInstruction* copy_to_move) {
+bool ShouldMoveCopyDown(HloInstruction* copy_to_move,
+                        const CallGraph& call_graph) {
   std::queue<host_offload_utils::InstructionAndShapeIndex> queue;
   queue.push(host_offload_utils::InstructionAndShapeIndex(copy_to_move));
   while (!queue.empty()) {
@@ -754,7 +755,7 @@ bool ShouldMoveCopyDown(HloInstruction* copy_to_move) {
 
     // Push successors onto the queue to be visited.
     absl::StatusOr<std::vector<host_offload_utils::InstructionAndShapeIndex>>
-        successors = host_offload_utils::GetSuccessors(current);
+        successors = host_offload_utils::GetSuccessors(current, call_graph);
     if (!successors.ok()) {
       return false;
     }
@@ -943,7 +944,7 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
   for (auto it = copies_to_move.rbegin(); it != copies_to_move.rend(); ++it) {
     InstructionAndIndex& copy_to_move_and_index = *it;
     HloInstruction* copy_to_move = copy_to_move_and_index.instruction;
-    if (ShouldMoveCopyDown(copy_to_move)) {
+    if (ShouldMoveCopyDown(copy_to_move, *call_graph)) {
       ABSL_RETURN_IF_ERROR(MoveCopyDown(copy_to_move_and_index, call_graph,
                                    processed_annotations, to_remove));
       changed = true;

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {

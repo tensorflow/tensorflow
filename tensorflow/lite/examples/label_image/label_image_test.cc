@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <ios>
 #include <limits>
 #include <string>
 #include <utility>

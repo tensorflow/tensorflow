@@ -104,50 +104,6 @@ namespace xla {
 
 class StreamExecutorExecutable;
 
-class PjRtStreamExecutorDevice : public CommonPjRtDevice {
- public:
-  PjRtStreamExecutorDevice(int id, bool is_addressable, int local_device_id,
-                           int process_index, int process_index_in_partition,
-                           int partition_index, std::string device_kind,
-                           LocalChipId local_hardware_id = LocalChipId(-1))
-      : CommonPjRtDevice(
-            std::make_unique<PjRtStreamExecutorDeviceDescription>(
-                id, local_device_id, process_index, process_index_in_partition,
-                partition_index, std::move(device_kind)),
-            LocalDeviceId(local_device_id),
-            local_hardware_id.value() != -1
-                ? local_hardware_id
-                : (is_addressable ? LocalChipId(local_device_id)
-                                  : LocalChipId(-1)),
-            is_addressable) {}
-
-  ~PjRtStreamExecutorDevice() override = default;
-
-  // Must set client exactly once.
-  void SetClient(PjRtClient* client) override {
-    CommonPjRtDevice::SetClient(client);
-    // We have to define debug_string_ and to_string_ here, because
-    // platform_name() requires client_ to be set.
-    std::string device_name =
-        absl::StrCat(MakeAsciiTitlecase(platform_name()), "Device");
-
-    description().SetDebugString(absl::StrCat(platform_name(), ":", id()));
-    description().SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
-  }
-
-  PjRtStreamExecutorDeviceDescription& description() {
-    return *static_cast<PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-  const PjRtStreamExecutorDeviceDescription& description() const override {
-    return *static_cast<const PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-
-  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
-      const override;
-};
-
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
  public:
   PjRtStreamExecutorMemorySpace(int id, PjRtDevice* device,
@@ -289,6 +245,14 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
+
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents(
+      LocalDeviceId local_device_id) const override;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats(
+      LocalDeviceId local_device_id) const override;
+
+  absl::Status ClearMemoryStats(LocalDeviceId local_device_id) override;
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
       absl::Span<const PjRtRawBufferRef> buffers,
