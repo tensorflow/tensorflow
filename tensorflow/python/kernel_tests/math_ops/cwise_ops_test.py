@@ -1122,14 +1122,15 @@ class RoundingTest(test.TestCase):
             np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
   def testFloorSubnormalsAcrossDtypes(self):
-    """Verify floor correctness for double and bfloat16 on CPU.
+    """Verify floor correctness for float16, double, and bfloat16 on CPU.
 
-    double and bfloat16 go through Eigen's scalar_floor_op (no FTZ/DAZ fix
-    yet).  This test confirms that the dtype routing in cwise_op_floor.cc
-    does not accidentally break normal-value correctness or -0.0 sign
-    preservation for these types.
+    These types go through Eigen's scalar_floor_op (no FTZ/DAZ fix yet).
+    This test confirms that the dtype routing in cwise_op_floor.cc does not
+    accidentally break normal-value correctness or -0.0 sign preservation
+    for any of the non-float32 types registered by the CPU kernel.
     """
     dtype_cases = [
+        np.float16,
         np.float64,
         dtypes_lib.bfloat16.as_numpy_dtype,
     ]
