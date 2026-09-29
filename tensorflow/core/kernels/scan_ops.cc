@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/cast_op.h"
 
 namespace tensorflow {
 
@@ -96,9 +95,11 @@ class ScanOp : public OpKernel {
       Tensor float_input;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input.shape(),
                                             &float_input));
-      functor::CastFunctor<CPUDevice, float, T> to_float;
-      to_float(d, float_input.template flat<float>(),
-               input.template flat<T>());
+      // Upcast the 16-bit input to float32 for the accumulation. This is the
+      // same cast the CPU CastFunctor performs; we inline it to avoid pulling
+      // in an extra kernel header.
+      float_input.template flat<float>().device(d) =
+          input.template flat<T>().template cast<float>();
 
       Tensor float_output;
       OP_REQUIRES_OK(ctx,
@@ -117,8 +118,9 @@ class ScanOp : public OpKernel {
             Eigen::internal::ProdReducer<float>(), reverse_, exclusive_);
       }
 
-      functor::CastFunctor<CPUDevice, T, float> to_t;
-      to_t(d, output->template flat<T>(), float_output.template flat<float>());
+      // Cast the float32 result back to the original 16-bit dtype.
+      output->template flat<T>().device(d) =
+          float_output.template flat<float>().template cast<T>();
       return;
     }
 
