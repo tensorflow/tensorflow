@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
 namespace tflite {
