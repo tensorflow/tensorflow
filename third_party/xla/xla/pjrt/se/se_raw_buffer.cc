@@ -286,7 +286,7 @@ PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   ABSL_ASSIGN_OR_RETURN(
       auto promise_and_event,
       client_->CreateLinkedEventPromise(
-          memory_space_,
+          local_device_->local_device_id(), memory_space_->kind_id(),
           "PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent"));
   auto [promise, event] = std::move(promise_and_event);
 
