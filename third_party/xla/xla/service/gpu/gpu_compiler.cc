@@ -2193,7 +2193,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true,
           /*use_experimental_tiling=*/
-          debug_options.xla_gpu_experimental_enable_tiling_propagation());
+          debug_options.xla_gpu_experimental_enable_tiling_propagation(),
+          thread_pool, &mlir_context_pool_);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
