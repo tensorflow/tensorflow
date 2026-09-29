@@ -62,6 +62,10 @@ struct Roll<GPUDevice, T> {
     if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(num_elements, d);
+    TF_CHECK_OK(config.status());
+
     auto dim_bytes = sizeof(int32_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
 
@@ -74,10 +78,6 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_bytes);
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
-
-    absl::StatusOr<GpuLaunchConfig64> config =
-        GetGpuLaunchConfig64(num_elements, d);
-    OP_REQUIRES_OK(const_cast<OpKernelContext*>(context), config.status());
 
     TF_CHECK_OK(
         GpuLaunchKernel(RollKernel<T>, config->block_count,
