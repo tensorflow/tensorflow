@@ -710,9 +710,13 @@ REGISTER_OP("SplitV")
               AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
         } else if (size_splits->dtype() == DT_INT8) {
           data = AsInt64<int8_t>(size_splits, size_splits->shape().dim_size(0));
-        } else {
+        } else if (size_splits->dtype() == DT_INT64) {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
+        } else {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Unexpected dtype for size_splits: ",
+                           DataTypeString(size_splits->dtype())));
         }
         if (num_outputs != data.size()) {
           return absl::InvalidArgumentError(

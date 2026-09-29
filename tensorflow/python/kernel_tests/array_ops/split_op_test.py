@@ -460,6 +460,14 @@ class SplitOpTest(test.TestCase):
     self.assertEqual(result[0].shape.as_list(), [1])
     self.assertEqual(result[1].shape.as_list(), [2])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInt8SizeSplitsExecution(self):
+    value = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+    result = self.evaluate(array_ops.split(value, splits, axis=0))
+    self.assertAllEqual(result[0], [1.0])
+    self.assertAllEqual(result[1], [2.0, 3.0])
+
   @test_util.run_deprecated_v1
   def testShapeFunctionRejectsSizeSplitsOverflow(self):
     # The shape function summed size_splits in int64 without checks, so at
