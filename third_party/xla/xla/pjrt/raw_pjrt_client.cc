@@ -18,14 +18,14 @@ limitations under the License.
 namespace xla {
 
 void PjRtRawClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
+    LocalDeviceId local_device_id, int memory_kind_id,
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
   auto error = absl::UnimplementedError(
-      absl::StrCat("ScheduleRemoteSend is not implemented for %s",
-                   memory_space->DebugString()));
+      absl::StrCat("ScheduleRemoteSend is not implemented for device ",
+                   local_device_id.value(), " kind ", memory_kind_id));
   on_done(error, /*sends_were_enqueued=*/false);
   usage_event_promise.SetError(error);
 }
