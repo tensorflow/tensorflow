@@ -997,7 +997,9 @@ def transpose(a, axes=None):
       raise ValueError('repeated axis in transpose')
 
   if axes is not None:
-    axes = asarray(axes)
+    # Specify an integer dtype explicitly: asarray([]) would otherwise
+    # infer float64, which the Transpose op's `Tperm` attr rejects.
+    axes = asarray(axes, dtype=np.int32)
   return array_ops.transpose(a=a, perm=axes)
 
 
