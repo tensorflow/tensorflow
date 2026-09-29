@@ -165,9 +165,6 @@ struct CollectiveCodegenConfig {
   // buffer before kernel launch. The kernel receives the scratch buffer as
   // its input argument.
   bool copy_input_to_scratch = false;
-  // If true, a cross-rank barrier is emitted before the tile loop. The barrier
-  // waits until all ranks have populated the symmetric scratch buffers.
-  bool emit_entry_barrier = false;
   // Specs for input operand buffers.
   std::vector<IoBufferSpec> input_buffer_specs;
   // Specs for output result buffers.

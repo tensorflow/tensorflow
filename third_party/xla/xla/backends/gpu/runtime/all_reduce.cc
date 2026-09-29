@@ -466,7 +466,6 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
           /* .copy_input_to_scratch= */ false,
-          /* .emit_entry_barrier= */ false,
           /* .input_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .output_buffer_specs= */

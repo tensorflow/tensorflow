@@ -4108,6 +4108,17 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       int64_t rank = input_shape.size();
       if ((index < -rank || index >= rank)) return failure();
       index = (index + rank) % rank;
+      // The eager kernel and the tf2xla bridge reject duplicate reduction
+      // axes with an InvalidArgumentError. Emit the same message here so
+      // auto-clustering does not silently accept what the other two
+      // execution paths reject.
+      // https://github.com/tensorflow/tensorflow/issues/119360
+      if (reduced_dimensions_bitmap[index]) {
+        return op.emitOpError()
+               << "Invalid reduction arguments: Axes contains duplicate "
+                  "dimension: "
+               << index;
+      }
       reduced_dimensions_bitmap[index] = true;
       xla_dimensions.push_back(index);
     }
