@@ -25,7 +25,6 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -55,8 +54,7 @@ class SparseXentOpTestBase(test.TestCase):
     labels_mat = np.zeros_like(probs).astype(probs.dtype)
     labels_mat[np.arange(batch_size), labels] = 1.0
     gradient = (probs - labels_mat)
-    loss = np.negative(
-        np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1))
+    loss = -np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1)
     return loss, gradient
 
   def _testXent(self, np_labels, np_logits):
@@ -191,16 +189,43 @@ class SparseXentOpTestBase(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testDoublePreservesSmallGradient(self):
+    tail_logit = 37.42994775023705
     tail_probability = 5.551115123125776e-17
     for label_dtype in np.int32, np.int64:
-      _, gradient = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+      _, gradient = self._opFwdBwd(
           labels=np.array([0], dtype=label_dtype),
-          features=np.array([[37.42994775023705, 0.0]], dtype=np.float64))
+          logits=np.array([[tail_logit, 0.0]], dtype=np.float64))
       gradient = self.evaluate(gradient)
       self.assertAllClose(
           [[-tail_probability, tail_probability]], gradient, rtol=1e-14,
           atol=0)
       self.assertEqual(gradient[0, 0], -gradient[0, 1])
+
+      smaller_tail = np.exp(-tail_logit - 1.0)
+      labels = np.array([0, 1, 2], dtype=label_dtype)
+      logits = np.array(
+          [[tail_logit, 0.0, -1.0], [0.0, 0.0, 0.0],
+           [0.0, -1.0, tail_logit]], dtype=np.float64)
+      _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+      gradient = self.evaluate(gradient)
+      expected = [
+          [-(tail_probability + smaller_tail), tail_probability, smaller_tail],
+          [1.0 / 3.0, -2.0 / 3.0, 1.0 / 3.0],
+          [tail_probability, smaller_tail, -(tail_probability + smaller_tail)],
+      ]
+      self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
+      for row, label in enumerate(labels):
+        non_label_sum = sum(
+            gradient[row, col] for col in range(3) if col != label
+        )
+        self.assertEqual(gradient[row, label], -non_label_sum)
+
+      _, single_gradient = self._opFwdBwd(
+          labels=np.array([0], dtype=label_dtype),
+          logits=np.array([[1.0]], dtype=np.float64))
+      single_gradient = self.evaluate(single_gradient)
+      self.assertEqual(single_gradient[0, 0], 0.0)
+      self.assertFalse(np.signbit(single_gradient[0, 0]))
 
   def testHalf(self):
     for label_dtype in np.int32, np.int64:
