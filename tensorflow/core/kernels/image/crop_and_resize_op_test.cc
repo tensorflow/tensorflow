@@ -47,6 +47,22 @@ class CropAndResizeOpTest : public OpsTestBase {
   }
 };
 
+class CropAndResizeGradImageOpTest : public OpsTestBase {
+ protected:
+  void MakeOp() {
+    TF_EXPECT_OK(NodeDefBuilder("crop_and_resize_grad_image_op",
+                                "CropAndResizeGradImage")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("T", DT_FLOAT)
+                     .Attr("method", "bilinear")
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
 #define REGISTER_TEST(T)                                               \
   TEST_F(CropAndResizeOpTest, TestCropAndResize##T) {                  \
     MakeOp<T>(0, "bilinear");                                          \
@@ -408,6 +424,19 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "box_index has values outside [0, batch_size)"))
       << s;
+}
+
+TEST_F(CropAndResizeGradImageOpTest, RejectsRankOneEmptyBoxes) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({0, 1, 1, 1}), {});
+  AddInputFromArray<float>(TensorShape({0}), {});
+  AddInputFromArray<int32_t>(TensorShape({0}), {});
+  AddInputFromArray<int32_t>(TensorShape({4}), {2, 7, 7, 1});
+
+  absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status)) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(), "boxes must be 2-D"))
+      << status;
 }
 
 TEST_F(CropAndResizeOpTest, TestWithSharding) {
