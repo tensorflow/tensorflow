@@ -217,6 +217,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           ctx->MergeCheckpoint(
               input_contexts_[selected_input + 1].checkpoint());
           if (!end_of_selected_input) {
+            num_exhausted_retries_ = 0;  // Made forward progress; reset guard.
             return absl::OkStatus();
           }
 
@@ -237,10 +238,26 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
             *end_of_sequence = true;
             return absl::OkStatus();
           }
+          // This input just became exhausted; continue sampling from the
+          // remaining active inputs.
+          num_exhausted_retries_ = 0;
+        } else {
+          // The selected input was already exhausted (its impl is null).
+          // This can happen under dynamic zero-weight tensors: the logit for an
+          // exhausted dataset is -inf, but stateless_multinomial can still
+          // sample it on rare draws.  Track consecutive misses; once we have
+          // retried more than num_active_inputs_ times without making forward
+          // progress, all remaining active inputs must also be drained —
+          // terminate cleanly instead of spinning forever (CPU-peg / deadlock).
+          ++num_exhausted_retries_;
+          if (num_exhausted_retries_ > num_active_inputs_) {
+            selector_input_impl_.reset();
+            *end_of_sequence = true;
+            return absl::OkStatus();
+          }
+          VLOG(2) << "DirectedInterleave selected an exhausted input: "
+                  << selected_input;
         }
-
-        VLOG(2) << "DirectedInterleave selected an exhausted input: "
-                << selected_input;
       }
     }
 
@@ -314,6 +331,10 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
         TF_GUARDED_BY(mu_);
     int64_t num_active_inputs_ TF_GUARDED_BY(mu_);
+    // Consecutive count of selector picks that landed on an already-
+    // exhausted input. Used to detect all-exhausted state under
+    // dynamic (non-static) zero-weight tensors.
+    int64_t num_exhausted_retries_ TF_GUARDED_BY(mu_) = 0;
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

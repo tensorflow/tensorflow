@@ -23,8 +23,8 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
@@ -296,6 +296,7 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset_ops.Dataset.sample_from_datasets(datasets=[], weights=[])
 
 
+  @combinations.generate(test_base.default_test_combinations())
   def testZeroWeightTensorDoesNotHang(self):
     """Regression test for GitHub issue #128108.
 
@@ -305,12 +306,36 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     """
     d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
-    # Pass weights as a tf.Tensor (the bug path) with a zero entry
+    # Pass weights as a tf.constant (static tensor) with a zero entry.
+    # tensor_util.constant_value can resolve this statically so zero-weight
+    # datasets are pruned before logit computation.
     ds = dataset_ops.Dataset.sample_from_datasets(
         [d1, d2],
         weights=constant_op.constant([0.0, 1.0]),
         stop_on_empty_dataset=False)
     self.assertDatasetProduces(ds, [4, 5, 6])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZeroWeightDynamicTensorDoesNotHang(self):
+    """Regression: dynamic zero-weight tf.Tensor must not spin forever.
+
+    When weights arrive as a @tf.function argument, tensor_util.constant_value
+    returns None and the Python-level pruning cannot remove the zero-weight
+    dataset.  The C++ DirectedInterleaveDataset kernel must therefore detect
+    the all-exhausted condition and terminate cleanly instead of deadlocking.
+    """
+    d1 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    d2 = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+
+    @def_function.function
+    def make_sampled(w):
+      return dataset_ops.Dataset.sample_from_datasets(
+          [d1, d2], weights=w, stop_on_empty_dataset=False)
+
+    ds = make_sampled(constant_op.constant([0.0, 1.0]))
+    # All elements from d2 must appear; the iteration must terminate.
+    result = self.getDatasetOutput(ds, requires_initialization=True)
+    self.assertCountEqual(result, [4, 5, 6])
 
 
 class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
