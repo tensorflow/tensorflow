@@ -218,7 +218,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           return absl::OkStatus();
         }
 
-        int num_elements = 1 + (buffer_.size() - 1) / window_stride;
+        size_t num_elements = 1 + (buffer_.size() - 1) / window_stride;
         window_elements.reserve(num_elements);
         for (size_t i = 0; i < num_elements; ++i) {
           status.Update(buffer_[window_stride * i].status);
@@ -229,7 +229,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         }
 
         // Shift the window, discarding elements if necessary.
-        int buffer_size = buffer_.size();
+        size_t buffer_size = buffer_.size();
         if (window_shift >= buffer_size) {
           for (size_t i = buffer_size; input_impl_ && i < window_shift; ++i) {
             bool end_of_input;
