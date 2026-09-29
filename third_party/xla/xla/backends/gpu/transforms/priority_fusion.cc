@@ -723,7 +723,8 @@ class PriorityFusionQueue {
         producer, consumer, use_multi_output_fusion);
 
     absl::StatusOr<TiledRunTimeDataOrError> result_or_status =
-        combined_gpu_performance_model_.TryFindBestTilingForFusion(*fusion);
+        combined_gpu_performance_model_.TryFindBestTilingForFusionAsync(*fusion)
+            .Await();
 
     // Convert absl::Status into FusionDecision. We don't distinguish between
     // status and FusionDecision here, because both indicate that tile analysis

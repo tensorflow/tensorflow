@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_filter.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/collective_utils.h"
-#include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/util/command_line_flags.h"
@@ -303,6 +302,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_trace_annotation_level(0);
   opts.set_xla_gpu_enable_cupti_multi_subscriber(true);
 
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES_KERNEL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
@@ -522,7 +522,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -2958,7 +2958,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
         return true;
       },
-      stream_executor::IsLibNvJitLinkSupported(),
+      /*default_value_for_display=*/true,
       "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
   flag_list->push_back(tsl::Flag(

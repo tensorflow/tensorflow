@@ -700,6 +700,47 @@ TEST_P(TileAnalysisTest, CollectiveDotBasic) {
   )"));
 }
 
+TEST_P(TileAnalysisTest, CollectiveDotReduceScatter) {
+  ASSERT_OK_AND_ASSIGN(const TiledHloComputation tiled_computation,
+                       ParseAndTile(R"hlo(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    fusion {
+      p0 = f32[128,256] parameter(0)
+      p1 = f32[256,512] parameter(1)
+      dot = f32[128,512] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT rs = f32[64,512] reduce-scatter(dot), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+    }
+
+    ENTRY main {
+      p0 = f32[128,256] parameter(0)
+      p1 = f32[256,512] parameter(1)
+      ROOT fusion = f32[64,512] fusion(p0, p1), kind=kCustom, calls=fusion
+    })hlo",
+                                    {8, 32, 32}));
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 64 tile size: 8 dim ID:0 hlo: %rs = f32[64,512]{1,0} reduce-scatter(%dot), replica_groups={{0,1}}, dimensions={0}, to_apply=%add
+      1 type: parallel size: 512 tile size: 32 dim ID:1 hlo: %rs = f32[64,512]{1,0} reduce-scatter(%dot), replica_groups={{0,1}}, dimensions={0}, to_apply=%add
+      2 type: sequential size: 256 tile size: 32 dim ID:2 hlo: %dot = f32[128,512]{1,0} dot(%p0, %p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    Root tiles:
+      0 root tile:  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
+
+    Tiled HLO:
+      dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)  offsets [tid_0 * 16, tid_1 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 512]
+      region #0 {
+        p0.1.tile_0 = parameter(0)  offsets [tid_0 * 16, tid_2 * 32] sizes [16, 32] strides [1, 1] upper bounds [128, 256]
+        p1.1.tile_0 = parameter(1)  offsets [tid_2 * 32, tid_1 * 32] sizes [32, 32] strides [1, 1] upper bounds [256, 512]
+      }
+      rs.tile_0 = reduce-scatter(dot.tile_0)  offsets [tid_0 * 8, tid_1 * 32] sizes [8, 32] strides [1, 1] upper bounds [64, 512]
+  )"));
+}
+
 TEST_F(SingleOutputFusionTileAnalysisTest, SimpleFusion) {
   absl::StatusOr<TiledHloComputation> parse_result = ParseAndTile(R"hlo(
     fusion {

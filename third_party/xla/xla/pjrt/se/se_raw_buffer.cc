@@ -147,6 +147,16 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
+          if (staging_buffer == nullptr) {
+            return ResourceExhausted(
+                "Failed to allocate a %d-byte pinned host staging buffer for "
+                "a host-to-device transfer. The pinned host pool may be "
+                "exhausted or fragmented (see "
+                "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the underlying pinned "
+                "allocation failed; check earlier allocator warnings for the "
+                "root cause.",
+                transfer_size);
+          }
           auto copy_to_staging_buffer = [src, transfer_size,
                                          staging_buffer]() mutable {
             tsl::profiler::TraceMe trace("H2D Copy To Staging Buffer");
@@ -218,6 +228,16 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
           alloc_opts.local_device_id = local_device->local_device_id();
           staging_buffer = client->GetHostMemoryAllocator()->Allocate(
               transfer_size, alloc_opts);
+          if (staging_buffer == nullptr) {
+            return ResourceExhausted(
+                "Failed to allocate a %d-byte pinned host staging buffer for "
+                "a device-to-host transfer. The pinned host pool may be "
+                "exhausted or fragmented (see "
+                "XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the underlying pinned "
+                "allocation failed; check earlier allocator warnings for the "
+                "root cause.",
+                transfer_size);
+          }
           ABSL_RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
@@ -367,6 +387,18 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     std::shared_ptr<void> staging_buffer =
         client_->GetHostMemoryAllocator()->Allocate(GetOnDeviceSizeInBytes(),
                                                     alloc_opts);
+    if (GetOnDeviceSizeInBytes() > 0 && staging_buffer == nullptr) {
+      absl::Status s = ResourceExhausted(
+          "Failed to allocate a %d-byte pinned host staging buffer for a "
+          "device-to-device transfer. The pinned host pool may be exhausted or "
+          "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
+          "underlying pinned allocation failed; check earlier allocator "
+          "warnings for the root cause.",
+          GetOnDeviceSizeInBytes());
+      definition_event_promise.SetError(s);
+      src_usage_event_promise.SetError(s);
+      return;
+    }
     auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
         staging_buffer.get(), 0, GetOnDeviceSizeInBytes(), {});
     if (!d2h_event.ok()) {
