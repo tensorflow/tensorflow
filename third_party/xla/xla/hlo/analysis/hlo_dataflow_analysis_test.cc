@@ -4332,5 +4332,109 @@ ENTRY main {
   }
 }
 
+TEST_F(HloDataflowAnalysisTest, DisablePropagateThroughControlFlow) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+callee {
+  ROOT call_param = f32[] parameter(0)
+}
+
+while_cond {
+  param = f32[] parameter(0)
+  ROOT cond = pred[] constant(false)
+}
+
+while_body {
+  param = f32[] parameter(0)
+  ROOT add = f32[] add(param, param)
+}
+
+ENTRY main {
+  const0 = f32[] constant(1.0)
+  call_inst = f32[] call(const0), to_apply=callee
+  ROOT while_inst = f32[] while(call_inst), condition=while_cond, body=while_body
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* const0 = FindInstruction(module_.get(), "const0");
+  HloInstruction* call_inst = FindInstruction(module_.get(), "call_inst");
+  HloInstruction* call_param =
+      module_->GetComputationWithName("callee")->parameter_instruction(0);
+  HloInstruction* while_inst = FindInstruction(module_.get(), "while_inst");
+  HloInstruction* body_param =
+      module_->GetComputationWithName("while_body")->parameter_instruction(0);
+
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/false,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+  {
+    ASSERT_OK_AND_ASSIGN(
+        auto analysis,
+        HloDataflowAnalysis::Run(
+            *module_, /*ssa_form=*/false, /*bitcast_defines_value=*/false,
+            /*execution_threads=*/{}, /*propagate_through_calls=*/true,
+            /*precompute_uses=*/std::nullopt,
+            /*propagate_through_control_flow=*/false));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_inst));
+    EXPECT_FALSE(analysis->ValueIsDefinedAt(call_param));
+    EXPECT_THAT(analysis->GetValueSet(call_inst).values(),
+                ::testing::Contains(&analysis->GetValueDefinedAt(const0)));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(while_inst));
+    EXPECT_TRUE(analysis->ValueIsDefinedAt(body_param));
+    EXPECT_THAT(analysis->GetValueSet(body_param).values(),
+                ::testing::Not(
+                    ::testing::Contains(&analysis->GetValueDefinedAt(const0))));
+  }
+}
+
+TEST_F(HloDataflowAnalysisTest, CallMarkerCustomCalls) {
+  const char* hlo_text = R"hlo(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  before = (f32[4], f32[4]) custom-call(p0, p1), custom_call_target="__xla_internal_call_marker_before"
+  gte0 = f32[4] get-tuple-element(before), index=0
+  gte1 = f32[4] get-tuple-element(before), index=1
+  add = f32[4] add(gte0, gte1)
+  ROOT after = f32[4] custom-call(add), custom_call_target="__xla_internal_call_marker_after"
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(
+                                    hlo_text, GetModuleConfigForTest()));
+  HloInstruction* p0 = FindInstruction(module_.get(), "p0");
+  HloInstruction* p1 = FindInstruction(module_.get(), "p1");
+  HloInstruction* before = FindInstruction(module_.get(), "before");
+  HloInstruction* add = FindInstruction(module_.get(), "add");
+  HloInstruction* after = FindInstruction(module_.get(), "after");
+
+  ASSERT_OK_AND_ASSIGN(auto analysis, HloDataflowAnalysis::Run(*module_));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(before, {}));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(before, {0}));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {0}),
+            &analysis->GetValueDefinedAt(p0));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(before, {1}),
+            &analysis->GetValueDefinedAt(p1));
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(after));
+  EXPECT_EQ(&analysis->GetUniqueValueAt(after),
+            &analysis->GetValueDefinedAt(add));
+}
+
 }  // namespace
 }  // namespace xla
