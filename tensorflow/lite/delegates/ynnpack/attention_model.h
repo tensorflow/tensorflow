@@ -42,7 +42,7 @@ class AttentionModel : public MultiOpModel {
   AttentionModel(int b, int t, int s, int h, int n, float scale,
                  bool transpose_io, bool use_delegate,
                  const TfLiteYNNPackDelegateOptions& delegate_options,
-                 AttentionImpl impl);
+                 AttentionImpl impl, int n_kv = -1);
 
   int query() const { return query_id_; }
   int key() const { return key_id_; }

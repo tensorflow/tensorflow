@@ -727,6 +727,42 @@ class UnaryOpTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   @test_util.run_in_graph_and_eager_modes
+  def testComplexSignSmallMagnitude(self):
+    """Regression test for #116945: sign(z) must not return 0 for small |z|.
+
+    Eigen's scalar_sign_op computes |z|^2 = re^2 + im^2 as a float32
+    intermediate, which underflows to 0 when |z| < sqrt(float32_tiny) ~=
+    1.08e-19, causing sign(z) to incorrectly return 0.
+    """
+    # Test values with magnitudes below the underflow threshold.
+    for dtype in [np.complex64, np.complex128]:
+      small_values = np.array(
+          [
+              1e-20 + 0j,
+              1e-30 + 0j,
+              0 + 1e-20j,
+              -1e-20 + 0j,
+              1e-20 + 1e-20j,
+          ],
+          dtype=dtype,
+      )
+
+      result = self.evaluate(math_ops.sign(constant_op.constant(small_values)))
+
+      # sign(z) for nonzero z must be z / |z| (unit magnitude), never 0.
+      for i, z in enumerate(small_values):
+        expected = z / np.abs(z)
+        self.assertNotEqual(
+            result[i], 0, msg=f"sign({z}) returned 0 for dtype={dtype.__name__}"
+        )
+        self.assertAllClose(
+            result[i],
+            expected,
+            rtol=1e-5,
+            msg=f"sign({z}) incorrect for dtype={dtype.__name__}",
+        )
+
+  @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
@@ -766,6 +802,26 @@ class UnaryOpTest(test.TestCase):
 
         # Always check the full array including boundary/pole values.
         self.assertAllClose(expected, y_val)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testLogSigmoidSecondDerivativePreservesSmallValue(self):
+    for x_val, expected in [
+        (-37.42994775023705, -5.551115123125775e-17),
+        (37.42994775023705, -5.551115123125775e-17),
+        (0.0, -0.25),
+    ]:
+      x = constant_op.constant(x_val, dtype=dtypes_lib.float64)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          y = math_ops.log_sigmoid(x)
+        grad = inner_tape.gradient(y, x)
+      grad_grad = outer_tape.gradient(grad, x)
+
+      self.assertAllClose(
+          expected, self.evaluate(grad_grad), rtol=1e-14, atol=1e-18
+      )
 
 
 if __name__ == "__main__":

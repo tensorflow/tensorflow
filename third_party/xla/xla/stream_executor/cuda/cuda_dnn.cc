@@ -202,7 +202,8 @@ std::string CudnnStatusToString(cudnnStatus_t status) {
 
 // RAII wrapper for all calls to cuDNN with a cuDNN handle argument.
 //
-// See CudnnAccess::GetHandle() for details.
+// See CudnnAccess::GetHandle() and CudnnAccess::GetCompilationHandle() for
+// details.
 class CudnnHandle {
  public:
   // Takes ownership of the lock to access cuDNN using handle.
@@ -211,6 +212,11 @@ class CudnnHandle {
       : context_(executor->Activate()),
         lock_(std::move(lock)),
         handle_(handle) {}
+
+  // Takes ownership of the lock to access cuDNN using handle. Doesn't activate
+  // a CUDA context.
+  CudnnHandle(std::unique_ptr<absl::MutexLock> lock, cudnnHandle_t handle)
+      : lock_(std::move(lock)), handle_(handle) {}
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
@@ -249,6 +255,7 @@ class CudnnAccess {
   explicit CudnnAccess(cudnnHandle_t handle) : handle_(handle) {}
 
   absl::Status InitializeCompilationHandle() {
+    absl::MutexLock lock(compilation_mutex_);
     if (cudnnCreate(&compilation_handle_) != CUDNN_STATUS_SUCCESS) {
       return absl::InternalError(
           "Creation of compilation cudnn handle failed.");
@@ -257,7 +264,6 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
@@ -295,11 +301,15 @@ class CudnnAccess {
     return CudnnHandle(executor, std::move(lock), handle_);
   }
 
-  absl::StatusOr<cudnnHandle_t> GetCompilationHandle() {
+  // Creates a CudnnHandle instance for the compilation handle, which is used
+  // to build cuDNN graphs and execution plans.
+  absl::StatusOr<CudnnHandle> GetCompilationHandle() {
+    auto lock = std::make_unique<absl::MutexLock>(compilation_mutex_);
+    compilation_mutex_.AssertHeld();
     if (!compilation_handle_) {
       return absl::InternalError("CudnnAccess not properly initialized.");
     }
-    return compilation_handle_;
+    return CudnnHandle(std::move(lock), compilation_handle_);
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
@@ -323,8 +333,13 @@ class CudnnAccess {
   // cuDNN library handle.
   cudnnHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 
-  // Shared compilation handle for all threads calling GetCompilationHandle()
-  cudnnHandle_t compilation_handle_ = nullptr;
+  // Guards the use of compilation_handle_ below. Separate from mutex_ so that
+  // compilation doesn't block execution.
+  absl::Mutex compilation_mutex_;
+
+  // Shared compilation handle for all threads calling GetCompilationHandle().
+  cudnnHandle_t compilation_handle_ ABSL_GUARDED_BY(compilation_mutex_) =
+      nullptr;  // Owned.
 };
 
 namespace {
@@ -5871,7 +5886,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
-  if (engine_options.require_determinism) {
+  if (!engine_options.require_determinism) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_0);
   }
 
@@ -6888,12 +6903,14 @@ absl::Status CudnnGraph::Prepare(dnn::DnnSupport* dnn_support,
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(auto cudnn_handle,
+    // Holds the lock on the shared compilation handle until the end of scope.
+    ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
                      cudnn_support.cudnn_->GetCompilationHandle());
     RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.validate());
-    RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.build_operation_graph(cudnn_handle));
+    RETURN_IF_CUDNN_FRONTEND_ERROR(
+        graph_.build_operation_graph(cudnn.handle()));
     ABSL_RETURN_IF_ERROR(create_and_filter_plans());
-    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn_handle));
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.check_support(cudnn.handle()));
   } else {
     // Deviceless mode. No cuDNN version guard needed: DeviceProperties
     // deserialization inside BuildDeviceProperties rejects runtimes < 9.8.
@@ -6914,13 +6931,13 @@ absl::Status CudnnGraph::Build(dnn::DnnSupport* dnn_support,
   if (dnn_support) {
     const CudnnSupport& cudnn_support =
         static_cast<CudnnSupport&>(*dnn_support);
-    ABSL_ASSIGN_OR_RETURN(auto cudnn_handle,
+    ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
                      cudnn_support.cudnn_->GetCompilationHandle());
     if (plan_id.has_value()) {
       RETURN_CUDNN_FRONTEND_STATUS(
-          graph_.build_plan_at_index(cudnn_handle, *plan_id));
+          graph_.build_plan_at_index(cudnn.handle(), *plan_id));
     }
-    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn_handle));
+    RETURN_CUDNN_FRONTEND_STATUS(graph_.build_plans(cudnn.handle()));
   } else {
     // no need to set_device_properties, it is done in Prepare()
     if (plan_id.has_value()) {

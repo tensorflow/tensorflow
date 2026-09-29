@@ -23,7 +23,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
+#include "absl/base/casts.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
@@ -61,13 +63,48 @@ __device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
   return res.v;
 }
 
+// Converts IEEE 754 floating-point keys (32-bit float and 16-bit bfloat16)
+// to order-preserving unsigned integers. This establishes a well-defined total
+// ordering, properly handling special values such as NaNs and signed zeroes
+// during integer sorting.
+namespace details {
+template <typename T>
+__device__ __forceinline__ auto ToOrdered(T x) {
+  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
+    uint32_t val = absl::bit_cast<uint32_t>(x);
+    return (val & 0x80000000u) ? ~val : (val | 0x80000000u);
+  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+    uint16_t val = absl::bit_cast<uint16_t>(x);
+    return (val & 0x8000u) ? static_cast<uint16_t>(~val)
+                           : static_cast<uint16_t>(val | 0x8000u);
+  } else {
+    return x;
+  }
+}
+
+template <typename T, typename OrderedT>
+__device__ __forceinline__ T FromOrdered(OrderedT val) {
+  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
+    uint32_t u = (val & 0x80000000u) ? (val ^ 0x80000000u) : ~val;
+    return absl::bit_cast<T>(u);
+  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+    uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
+                                 : static_cast<uint16_t>(~val);
+    return absl::bit_cast<T>(u);
+  } else {
+    return val;
+  }
+}
+}  // namespace details
+
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
 // implementations below.
 template <typename T, typename V>
 struct Descending {
+  using OrderedKey = decltype(details::ToOrdered(T{}));
   struct KVT {
-    T key;
+    OrderedKey key;
     V idx;
   };
 
@@ -165,7 +202,7 @@ struct TopK {
     // TODO(doak): Use bitonic sort.
 #pragma unroll
     for (int i = 0; i < K; i++) {
-      tmp[i] = {key[Idx(i)], VT(Idx(i))};
+      tmp[i] = {details::ToOrdered(key[Idx(i)]), VT(Idx(i))};
     }
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -181,7 +218,7 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv{key[Idx(idx)], VT(Idx(idx))};
+      KVT kv{details::ToOrdered(key[Idx(idx)]), VT(Idx(idx))};
       Push(tmp, kv);
     }
     Reduce(tmp, WarpSize);
@@ -215,7 +252,7 @@ struct TopK {
       return;
     }
     for (int i = 0; i < num_outputs_; ++i) {
-      keys[i] = tmp[i].key;
+      keys[i] = details::FromOrdered<KT>(tmp[i].key);
       idxs[i] = tmp[i].idx;
     }
   }

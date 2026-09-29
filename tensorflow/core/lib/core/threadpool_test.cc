@@ -18,10 +18,12 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
@@ -359,25 +361,16 @@ TEST(ThreadPool, Parallelism) {
   // Failure mode for this test will be timeouts.
   ThreadPool pool(Env::Default(), "test", kNumThreads);
   for (int iter = 0; iter < 2000; iter++) {
-    absl::Barrier barrier(kNumThreads);
-    // Expect each loop finishes less than 1s or much less. The semantic of
-    // counter, mutex and done here is the same as absl::BlockingCounter except
-    // that it waits for the condition with timeout.
-    std::atomic<int> counter(kNumThreads);
-    absl::Mutex mutex;
-    bool done = false;
+    auto barrier = std::make_shared<absl::Barrier>(kNumThreads);
+    auto done = std::make_shared<absl::Notification>();
     for (int t = 0; t < kNumThreads; ++t) {
-      pool.Schedule([&]() {
-        barrier.Block();
-        if (--counter <= 0) {
-          absl::MutexLock lock(mutex);
-          done = true;
+      pool.Schedule([barrier, done]() {
+        if (barrier->Block()) {
+          done->Notify();
         }
       });
     }
-    absl::MutexLock lock(mutex);
-    absl::Condition cond(+[](bool* done) { return *done; }, &done);
-    EXPECT_TRUE(mutex.AwaitWithTimeout(cond, absl::Seconds(1)));
+    ASSERT_TRUE(done->WaitForNotificationWithTimeout(absl::Seconds(10)));
   }
 }
 

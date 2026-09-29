@@ -118,7 +118,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 115
+#define PJRT_API_MINOR 116
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2045,8 +2045,14 @@ struct PJRT_ExecuteOptions {
   // replicas and partitions, so this is a flat span. Must outlive execution.
   PJRT_HloOutputCallbackInfo* hlo_output_callbacks;
   size_t num_hlo_output_callbacks;
+  // Per-execution custom options passed to the runtime (see
+  // `xla::ExecuteOptions::custom_options`). The list is owned by the caller and
+  // is only valid for the duration of the C API call. The plugin must copy the
+  // values if it needs to store them.
+  const PJRT_NamedValue* custom_options;
+  size_t num_custom_options;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_hlo_output_callbacks);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_custom_options);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;

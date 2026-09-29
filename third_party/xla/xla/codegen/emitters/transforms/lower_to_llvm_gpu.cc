@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
@@ -77,6 +78,13 @@ constexpr double kLn2 = 0.6931471805599453;
 // log2(e), used to express exp(x) = exp2(x * log2(e)).
 constexpr double kLog2e = 1.4426950408889634;
 
+// Smallest normal f32; v_log_f32 flushes anything below it to zero.
+constexpr double kMinNormalF32 = 0x1p-126;
+
+// Scale applied to subnormal log arguments, and its correction in ln(2) units.
+constexpr double kSubnormalScale = 0x1p64;
+constexpr double kSubnormalScaleLn2 = 64 * kLn2;
+
 // Lowers a scalar bf16 unary `math` op to the matching native gfx1250 bf16
 // transcendental instruction (v_exp_bf16, v_sqrt_bf16, v_rsq_bf16, v_tanh_bf16,
 // v_log_bf16, ...) via its `llvm.amdgcn.*` intrinsic, when the op maps 1:1 to
@@ -109,16 +117,14 @@ struct TranscendentalBF16ToAMDGPU : public mlir::ConvertOpToLLVMPattern<OpTy> {
   llvm::StringRef intrinsic;
 };
 
-// Lowers a scalar bf16 `math.log` on gfx1250 by rewriting
-// log(x) = log2(x) * ln(2) and computing log2 with the native `v_log_f32`
-// transcendental (the `llvm.amdgcn.log` intrinsic) in f32.
+// Lowers a scalar bf16 `math.log` by rewriting log(x) = log2(x) * ln(2) and
+// computing log2 with the native `v_log_f32` transcendental (the
+// `llvm.amdgcn.log` intrinsic) in f32.
 //
-// Everything is computed in f32 and rounded to bf16 only once, at the end.
-// Using f32 log2 rather than the native bf16 `v_log_bf16` (which only has
-// bf16 mantissa precision) makes the result correctly-rounded, for one extra
-// input widening. The input `fpext` is exact (a bit
-// shift) and the trailing `fmul` + `fptrunc` fuse into one `v_fma_mixlo_bf16`,
-// so this lowers to `v_lshlrev_b32` + `v_log_f32` + `v_fma_mixlo_bf16`.
+// Everything is computed in f32 and rounded to bf16 once, which makes every
+// bf16 input correctly rounded. Only f32 instructions are needed, so this
+// applies to every AMD GPU, and it stays well under the cost of upcasting the
+// op to f32 and calling `__ocml_log_f32`.
 struct LogBF16ToAMDGPU
     : public mlir::ConvertOpToLLVMPattern<mlir::math::LogOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -135,32 +141,53 @@ struct LogBF16ToAMDGPU
     mlir::Type f32 = rewriter.getF32Type();
     mlir::Value x_f32 =
         mlir::LLVM::FPExtOp::create(rewriter, loc, f32, operand);
-    mlir::Value log2x =
-        mlir::LLVM::CallIntrinsicOp::create(
-            rewriter, loc, /*resultType=*/f32,
-            rewriter.getStringAttr("llvm.amdgcn.log"), mlir::ValueRange{x_f32})
-            .getResults();
+    // v_log_f32 flushes subnormals to zero and a bf16 subnormal is still
+    // subnormal in f32, so scale those up first and correct the result below.
+    // The abs costs nothing; it folds into a source modifier on the compare.
+    mlir::Value min_normal = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, kMinNormalF32));
+    mlir::Value abs_x = mlir::LLVM::FAbsOp::create(rewriter, loc, x_f32);
+    mlir::Value is_subnormal = mlir::LLVM::FCmpOp::create(
+        rewriter, loc, mlir::LLVM::FCmpPredicate::olt, abs_x, min_normal);
+    mlir::Value scale = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, kSubnormalScale));
+    mlir::Value scaled_x =
+        mlir::LLVM::FMulOp::create(rewriter, loc, x_f32, scale);
+    mlir::Value log_arg = mlir::LLVM::SelectOp::create(
+        rewriter, loc, is_subnormal, scaled_x, x_f32);
+    mlir::Value log2x = mlir::LLVM::CallIntrinsicOp::create(
+                            rewriter, loc, /*resultType=*/f32,
+                            rewriter.getStringAttr("llvm.amdgcn.log"),
+                            mlir::ValueRange{log_arg})
+                            .getResults();
     mlir::Value ln2_f32 = mlir::LLVM::ConstantOp::create(
         rewriter, loc, f32, rewriter.getFloatAttr(f32, kLn2));
     mlir::Value logx_f32 =
         mlir::LLVM::FMulOp::create(rewriter, loc, log2x, ln2_f32);
-    rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, bf16, logx_f32);
+    mlir::Value zero = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, 0.0));
+    mlir::Value scale_ln2 = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, kSubnormalScaleLn2));
+    mlir::Value correction = mlir::LLVM::SelectOp::create(
+        rewriter, loc, is_subnormal, scale_ln2, zero);
+    // Multiply then subtract so the two contract into one fma.
+    mlir::Value result =
+        mlir::LLVM::FSubOp::create(rewriter, loc, logx_f32, correction);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, bf16, result);
     return mlir::success();
   }
 };
 
-// Lowers a scalar bf16 `math.exp` on gfx1250 by rewriting
-// exp(x) = 2^(x * log2(e)) and computing exp2 with the native `v_exp_f32`
-// transcendental (the `llvm.amdgcn.exp2` intrinsic) in f32.
+// Lowers a scalar bf16 `math.exp` by rewriting exp(x) = 2^(x * log2(e)) and
+// computing exp2 with the native `v_exp_f32` transcendental (the
+// `llvm.amdgcn.exp2` intrinsic) in f32.
 //
-// Everything is computed in f32: the bf16 input is widened to f32, scaled by
-// an f32 log2(e), exponentiated in f32, and the result rounded once to bf16.
-// Scaling and exponentiating in f32 rather than using the native bf16
-// `v_exp_bf16` (which would round x * log2(e) to bf16 before exponentiating)
-// keeps the result accurate: the bf16-rounded-exponent error otherwise grows
-// with |x| and can overflow to inf, which is why the native bf16 exp path was
-// removed. Lowers to
-// `v_lshlrev_b32` + `v_mul_f32` + `v_exp_f32` + `v_cvt_pk_bf16_f32`.
+// Everything is computed in f32 and rounded to bf16 once. Doing it in f32
+// rather than with the native bf16 `v_exp_bf16` (which would round x * log2(e)
+// to bf16 before exponentiating) keeps the error from growing with |x| and
+// overflowing to inf, which is why the native bf16 exp path was removed. Only
+// f32 instructions are needed, so this applies to every AMD GPU, and every
+// bf16 input is correctly rounded apart from two near-ties.
 struct ExpBF16ToAMDGPU
     : public mlir::ConvertOpToLLVMPattern<mlir::math::ExpOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -177,15 +204,19 @@ struct ExpBF16ToAMDGPU
     mlir::Type f32 = rewriter.getF32Type();
     mlir::Value x_f32 =
         mlir::LLVM::FPExtOp::create(rewriter, loc, f32, operand);
-    mlir::Value log2e = mlir::LLVM::ConstantOp::create(
-        rewriter, loc, f32, rewriter.getFloatAttr(f32, kLog2e));
+    // v_exp_f32 flushes subnormal results to zero. Halving the exponent keeps
+    // exp2 normal, and squaring below reaches the subnormals because an
+    // ordinary f32 multiply does round to them.
+    mlir::Value half_log2e = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, f32, rewriter.getFloatAttr(f32, kLog2e / 2));
     mlir::Value scaled =
-        mlir::LLVM::FMulOp::create(rewriter, loc, x_f32, log2e);
-    mlir::Value exp2x = mlir::LLVM::CallIntrinsicOp::create(
-                            rewriter, loc, /*resultType=*/f32,
-                            rewriter.getStringAttr("llvm.amdgcn.exp2"),
-                            mlir::ValueRange{scaled})
-                            .getResults();
+        mlir::LLVM::FMulOp::create(rewriter, loc, x_f32, half_log2e);
+    mlir::Value root = mlir::LLVM::CallIntrinsicOp::create(
+                           rewriter, loc, /*resultType=*/f32,
+                           rewriter.getStringAttr("llvm.amdgcn.exp2"),
+                           mlir::ValueRange{scaled})
+                           .getResults();
+    mlir::Value exp2x = mlir::LLVM::FMulOp::create(rewriter, loc, root, root);
     rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, bf16, exp2x);
     return mlir::success();
   }
@@ -233,16 +264,18 @@ class LowerToLLVMGPUPass
         mlir::configureGpuToROCDLConversionLegality(target);
         mlir::populateAMDGPUToROCDLConversionPatterns(converter, patterns,
                                                       *maybeChipset);
-        // On gfx1250 emit native bf16 transcendentals (v_exp_bf16, v_sqrt_bf16,
-        // v_rsq_bf16, v_tanh_bf16, v_log_bf16, ...) instead of upcasting to f32
-        // and calling __ocml_*_f32. Higher benefit than the default MathToROCDL
-        // patterns so it wins for scalar bf16 ops.
+        // Higher benefit than the default MathToROCDL patterns so these win for
+        // scalar bf16 ops.
+        mlir::PatternBenefit benefit(2);
+        // exp and log need only f32 transcendentals, so they apply everywhere;
+        // MathToROCDL has no bf16 lowering for them at all.
+        patterns.add<LogBF16ToAMDGPU>(converter, benefit);
+        patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
+        // The rest map 1:1 onto native bf16 transcendentals, which only gfx1250
+        // has; elsewhere MathToROCDL upcasts to f32 and calls __ocml_*_f32.
         if (device_spec_.gpu()
                 .rocm_compute_capability()
                 .has_bf16_transcendental_support()) {
-          mlir::PatternBenefit benefit(2);
-          patterns.add<LogBF16ToAMDGPU>(converter, benefit);
-          patterns.add<ExpBF16ToAMDGPU>(converter, benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::Exp2Op>>(
               converter, "llvm.amdgcn.exp2", benefit);
           patterns.add<TranscendentalBF16ToAMDGPU<mlir::math::SqrtOp>>(

@@ -1,0 +1,72 @@
+// RUN: fusion_to_xtile %s | fusion_compiler_opt --xtile-cpu-xtile-to-vector \
+// RUN:   --xtile-cpu-vector-to-llvm | FileCheck %s --check-prefix=CHECK-LLVM
+// RUN: test_correctness %s
+
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR
+// RUN: fusion_to_xtile %s | fusion_compiler_opt \
+// RUN:   --xtile-cpu-new-xtile-to-vector --xtile-cpu-new-vector-to-llvm \
+// RUN:   | FileCheck %s --check-prefix=NEW-VECTOR-LLVM
+// RUN: test_correctness %s --xla_cpu_use_new_xtile_lowering=true
+
+// The tile does not divide the minor dimension, so the reads are guarded by an
+// `scf.if` that picks between an in-bounds read and a masked read. None of the
+// data movement may happen on bf16 vectors: x86 has no legal vector register
+// class for bf16 without AVX512-BF16, so SelectionDAG would scalarize the merge
+// and the masked accesses and emit one `__truncsfbf2` libcall per element.
+// `xtile-cpu-legalize-narrow-float-storage` views the buffers as i16, so bf16
+// only shows up right at `arith.extf`/`arith.truncf`.
+
+fusion {
+  p0 = bf16[100,100] parameter(0)
+  p1 = bf16[100,100] parameter(1)
+  c0 = f32[100,100] convert(p0)
+  c1 = f32[100,100] convert(p1)
+  a = f32[100,100] add(c0, c1)
+  ROOT r = bf16[100,100] convert(a)
+}
+
+// NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl
+// NEW-VECTOR-SAME:    %[[ARG0:.*]]: memref<100x100xbf16>, %[[ARG1:.*]]: memref<100x100xbf16>, %[[ARG2:.*]]: memref<100x100xbf16>
+
+// NEW-VECTOR-DAG: %[[PAD:.*]] = arith.constant 0 : i16
+// NEW-VECTOR-DAG: %[[OUT:.*]] = xtile.memref_bitcast %[[ARG2]] : memref<100x100xbf16> -> memref<100x100xi16>
+// NEW-VECTOR-DAG: %[[IN0:.*]] = xtile.memref_bitcast %[[ARG0]] : memref<100x100xbf16> -> memref<100x100xi16>
+// NEW-VECTOR:     scf.for
+// NEW-VECTOR:       %[[COND:.*]] = arith.cmpi sge
+// NEW-VECTOR:       %[[R0:.*]] = scf.if %[[COND]] -> (vector<1x16xi16>) {
+// NEW-VECTOR:         vector.transfer_read %[[IN0]]{{.*}}, %[[PAD]] {in_bounds = [true, true]} : memref<100x100xi16>, vector<1x16xi16>
+// NEW-VECTOR:       } else {
+// NEW-VECTOR:         %[[MASK:.*]] = vector.create_mask {{.*}} : vector<1x16xi1>
+// NEW-VECTOR:         vector.transfer_read %[[IN0]]{{.*}}, %[[PAD]], %[[MASK]] : memref<100x100xi16>, vector<1x16xi16>
+// NEW-VECTOR:       }
+// NEW-VECTOR:       %[[R0_BF16:.*]] = arith.bitcast %[[R0]] : vector<1x16xi16> to vector<1x16xbf16>
+// NEW-VECTOR:       arith.extf %[[R0_BF16]] : vector<1x16xbf16> to vector<1x16xf32>
+// NEW-VECTOR:       %[[TRUNC:.*]] = arith.truncf %{{.*}} : vector<1x16xf32> to vector<1x16xbf16>
+// NEW-VECTOR:       %[[TRUNC_I16:.*]] = arith.bitcast %[[TRUNC]] : vector<1x16xbf16> to vector<1x16xi16>
+// NEW-VECTOR:       vector.transfer_write %[[TRUNC_I16]], %[[OUT]]{{.*}} : vector<1x16xi16>, memref<100x100xi16>
+
+// NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+// NEW-VECTOR-LLVM-NOT:     xtile.memref_bitcast
+// NEW-VECTOR-LLVM:         ^bb{{[0-9]+}}(%{{.*}}: !llvm.array<1 x vector<16xi16>>)
+// NEW-VECTOR-LLVM:         ^bb{{[0-9]+}}(%{{.*}}: !llvm.array<1 x vector<16xi16>>)
+// NEW-VECTOR-LLVM-NOT:     llvm.intr.masked.{{.*}}vector<16xbf16>
+// NEW-VECTOR-LLVM:         llvm.intr.masked.store{{.*}}vector<16xi16>
+// NEW-VECTOR-LLVM-NOT:     llvm.intr.masked.{{.*}}vector<16xbf16>
+
+// CHECK-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
+
+ENTRY main {
+  p0 = bf16[100,100] parameter(0)
+  p1 = bf16[100,100] parameter(1)
+  ROOT fusion = bf16[100,100] fusion(p0, p1), kind=kLoop, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16"]}],
+          "num_ctas":"1"
+        }
+      }
+    }
+}

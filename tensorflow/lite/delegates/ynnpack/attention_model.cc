@@ -109,6 +109,8 @@ TfLiteStatus RuntimeBmmEval(TfLiteContext* context, TfLiteNode* node) {
 
   int B = input_a->dims->data[0];
   int N = input_a->dims->data[1];
+  int N_kv = input_b->dims->data[1];
+  int g = (N_kv > 0) ? (N / N_kv) : 1;
 
   const float* a_data = input_a->data.f;
   const float* b_data = input_b->data.f;
@@ -123,12 +125,13 @@ TfLiteStatus RuntimeBmmEval(TfLiteContext* context, TfLiteNode* node) {
 
     for (int b = 0; b < B; ++b) {
       for (int n = 0; n < N; ++n) {
+        int kv_n = n / g;
         for (int t = 0; t < T; ++t) {
           for (int s = 0; s < s_active; ++s) {
             float sum = 0.0f;
             for (int h = 0; h < H; ++h) {
               int a_idx = ((b * N + n) * T + t) * H + h;
-              int b_idx = ((b * N + n) * S + s) * H + h;
+              int b_idx = ((b * N_kv + kv_n) * S + s) * H + h;
               sum += a_data[a_idx] * b_data[b_idx];
             }
             int o_idx = ((b * N + n) * T + t) * S + s;
@@ -144,12 +147,13 @@ TfLiteStatus RuntimeBmmEval(TfLiteContext* context, TfLiteNode* node) {
 
     for (int b = 0; b < B; ++b) {
       for (int n = 0; n < N; ++n) {
+        int kv_n = n / g;
         for (int t = 0; t < T; ++t) {
           for (int h = 0; h < H; ++h) {
             float sum = 0.0f;
             for (int s = 0; s < s_active; ++s) {
               int a_idx = ((b * N + n) * T + t) * S + s;
-              int b_idx = ((b * N + n) * H + h) * S + s;
+              int b_idx = ((b * N_kv + kv_n) * H + h) * S + s;
               sum += a_data[a_idx] * b_data[b_idx];
             }
             int o_idx = ((b * N + n) * T + t) * H + h;
@@ -205,22 +209,25 @@ TfLiteRegistration* Register_DummySDPA() {
 AttentionModel::AttentionModel(
     int b, int t, int s, int h, int n, float scale, bool transpose_io,
     bool use_delegate, const TfLiteYNNPackDelegateOptions& delegate_options,
-    AttentionImpl impl) {
+    AttentionImpl impl, int n_kv) {
+  if (n_kv <= 0) {
+    n_kv = n;
+  }
   std::vector<int> query_shape = transpose_io ? std::vector<int>{b, t, n, h}
                                               : std::vector<int>{b, n, t, h};
-  std::vector<int> key_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                                            : std::vector<int>{b, n, s, h};
+  std::vector<int> key_shape = transpose_io ? std::vector<int>{b, s, n_kv, h}
+                                            : std::vector<int>{b, n_kv, s, h};
 
   std::vector<int> value_shape;
   if (impl == AttentionImpl::kOdmlRuntimeBmm) {
-    value_shape = transpose_io ? std::vector<int>{b, h, n, s}
-                               : std::vector<int>{b, n, h, s};
+    value_shape = transpose_io ? std::vector<int>{b, h, n_kv, s}
+                               : std::vector<int>{b, n_kv, h, s};
   } else if (impl == AttentionImpl::kOdmlSdpa) {
-    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                               : std::vector<int>{b, n, h, s};
+    value_shape = transpose_io ? std::vector<int>{b, s, n_kv, h}
+                               : std::vector<int>{b, n_kv, h, s};
   } else {  // kFullSequence
-    value_shape = transpose_io ? std::vector<int>{b, s, n, h}
-                               : std::vector<int>{b, n, s, h};
+    value_shape = transpose_io ? std::vector<int>{b, s, n_kv, h}
+                               : std::vector<int>{b, n_kv, s, h};
   }
 
   std::vector<int> mask_shape = transpose_io ? std::vector<int>{b, t, 1, s}

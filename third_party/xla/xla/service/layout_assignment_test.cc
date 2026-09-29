@@ -43,13 +43,12 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -526,7 +525,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
   absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
-    const LogicalBuffer& buffer = buffer_constraint.buffer();
+    const HloValue& buffer = buffer_constraint.buffer();
     const HloInstruction* instruction = buffer.instruction();
 
     // Force the operands' layout to the output layout.
@@ -1641,6 +1640,35 @@ ENTRY %PreserveMemorySpaceOnConflict {
                   .layout()
                   .minor_to_major(),
               ElementsAre(1, 0));
+}
+
+TEST_F(LayoutAssignmentTest, PreserveMemorySpaceOnlyLayout) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY %PreserveMemorySpaceOnlyLayout {
+  %param0 = f32[8,1024]{:S(5)} parameter(0)
+  ROOT %copy = f32[8,1024] copy(%param0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> m,
+      ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest()));
+  EXPECT_IS_OK(AssignLayoutsAndVerifyHlo(
+      m.get(), m->mutable_entry_computation_layout()));
+
+  // Layout should be set now (minor_to_major assigned).
+  EXPECT_TRUE(m->entry_computation_layout().parameter_layout(0).LayoutIsSet());
+  EXPECT_TRUE(m->entry_computation_layout()
+                  .parameter_layout(0)
+                  .MinorToMajorInLayoutIsSet());
+  // Memory space should be preserved in the module's entry computation layout.
+  EXPECT_EQ(m->entry_computation_layout()
+                .parameter_layout(0)
+                .shape()
+                .layout()
+                .memory_space(),
+            Layout::kHostMemorySpace);
 }
 
 TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {

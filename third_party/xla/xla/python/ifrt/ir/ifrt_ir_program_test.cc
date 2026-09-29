@@ -209,7 +209,7 @@ TEST(IfrtIRCompileOptionsTest, FingerprintLoadedExecBindingUnsupportedError) {
 }
 
 TEST(IfrtIRProgramTest, IfrtIrModuleSameFingerprint) {
-  static constexpr absl::string_view kIfrtModule = R"(
+  static constexpr absl::string_view kIfrtModule = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -226,7 +226,7 @@ module {
     }
   }
 }
-)";
+)mlir";
   mlir::MLIRContext context;
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                        support::ParseMlirModuleString(kIfrtModule, context));
@@ -236,7 +236,7 @@ module {
 }
 
 TEST(IfrtIRProgramTest, IfrtIrModuleDifferentDevicesDifferentFingerprints) {
-  static constexpr absl::string_view kIfrtModuleDevice0 = R"(
+  static constexpr absl::string_view kIfrtModuleDevice0 = R"mlir(
 !array0 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
   func.func @main(%arg0: !array0) -> !array0 attributes {ifrt.function} {
@@ -251,8 +251,8 @@ module {
     }
   }
 }
-)";
-  static constexpr absl::string_view kIfrtModuleDevice1 = R"(
+)mlir";
+  static constexpr absl::string_view kIfrtModuleDevice1 = R"mlir(
 !array1 = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [1]>
 module {
   func.func @main(%arg0: !array1) -> !array1 attributes {ifrt.function} {
@@ -267,7 +267,7 @@ module {
     }
   }
 }
-)";
+)mlir";
   mlir::MLIRContext context;
   ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module0,
@@ -281,7 +281,7 @@ module {
 }
 
 TEST(IfrtIRProgramTest, IfrtIrModuleDifferentShardingDifferentFingerprints) {
-  static constexpr absl::string_view kIfrtModuleSharding1 = R"(
+  static constexpr absl::string_view kIfrtModuleSharding1 = R"mlir(
 !array = !ifrt.array<tensor<4xi32>, #ifrt.sharding_param<1 to [0] on 2>, [0, 1]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -296,8 +296,8 @@ module {
     }
   }
 }
-)";
-  static constexpr absl::string_view kIfrtModuleSharding2 = R"(
+)mlir";
+  static constexpr absl::string_view kIfrtModuleSharding2 = R"mlir(
 !array = !ifrt.array<tensor<4xi32>, #ifrt.sharding_param<2 to [0] on 2>, [0, 1]>
 module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -312,7 +312,7 @@ module {
     }
   }
 }
-)";
+)mlir";
   mlir::MLIRContext context;
   ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module1,
@@ -326,7 +326,7 @@ module {
 }
 
 TEST(IfrtIRProgramTest, IfrtIrModuleIgnoresDebugInfo) {
-  static constexpr absl::string_view kIfrtModule1 = R"(
+  static constexpr absl::string_view kIfrtModule1 = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module @ifrt_mod {
   func.func @main(%arg0: !array loc("arg_loc1")) -> !array
@@ -340,8 +340,8 @@ module @ifrt_mod {
       return %arg0 : tensor<2xi32>
   }
 } loc("module_loc1")
-)";
-  static constexpr absl::string_view kIfrtModule2 = R"(
+)mlir";
+  static constexpr absl::string_view kIfrtModule2 = R"mlir(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module @ifrt_mod {
   func.func @main(%arg0: !array loc("arg_loc2")) -> !array attributes {ifrt.function} {
@@ -354,7 +354,7 @@ module @ifrt_mod {
     return %arg0 : tensor<2xi32>
   }
 } loc("module_loc2")
-)";
+)mlir";
   mlir::MLIRContext context;
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module1,
                        support::ParseMlirModuleString(kIfrtModule1, context));

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -68,6 +69,11 @@ class RandomIndexShuffleOp : public OpKernel {
   explicit RandomIndexShuffleOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr(kRounds, &rounds_));
+    OP_REQUIRES(
+        context, rounds_ >= 4 && rounds_ % 2 == 0,
+        absl::InvalidArgumentError(absl::StrCat(
+            "rounds must be an even integer greater than or equal to 4, but ",
+            "got ", rounds_)));
   }
 
   void Compute(OpKernelContext* context) override {

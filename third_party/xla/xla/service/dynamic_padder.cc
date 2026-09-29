@@ -2050,7 +2050,8 @@ absl::Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
 absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SliceToDynamic" ||
-      hlo->custom_call_target() == "PadToStatic") {
+      hlo->custom_call_target() == "PadToStatic" ||
+      hlo->custom_call_target() == "PadRealToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
     return absl::OkStatus();

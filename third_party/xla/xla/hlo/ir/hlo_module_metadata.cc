@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/metrics.pb.h"
 #include "xla/tsl/platform/env.h"
@@ -107,7 +108,7 @@ absl::Status HloModuleMetadata::set_custom_metadata(
   return absl::OkStatus();
 }
 
-absl::Status HloModuleMetadata::set_key_value_metric(const std::string& key,
+absl::Status HloModuleMetadata::set_key_value_metric(absl::string_view key,
                                                      int64_t value) {
   ABSL_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                    GetCurrentHloPassMetadata());

@@ -347,7 +347,10 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
   )
   ones_shape = array_ops.concat([segment_ids_shape, remaining_shape], 0)
   ones = array_ops.ones(ones_shape, dtype=grad.dtype)
-  scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
+  # Empty segments must stay zero when differentiating this gradient for JVPs.
+  scaled_grad = math_ops.div_no_nan(
+      grad, math_ops.segment_sum(ones, op.inputs[1])
+  )
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
@@ -821,9 +824,10 @@ def _XDivyGrad(op: ops.Operation, grad):
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   with ops.control_dependencies([grad]):
-    not_zero_x = math_ops.cast(
-        math_ops.not_equal(x, math_ops.cast(0., dtype=x.dtype)), dtype=x.dtype)
-    partial_x = gen_math_ops.xdivy(not_zero_x, y)
+    # The gradient of xdivy w.r.t. x is 1 / y for all x (including x=0),
+    # because d/dx (x / y) = 1 / y. The zero-mask should only apply to
+    # the forward value, not the derivative w.r.t. x.
+    partial_x = math_ops.reciprocal(y)
     partial_y = gen_math_ops.xdivy(math_ops.negative(x), y**2)
     return (array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx),
             array_ops.reshape(math_ops.reduce_sum(partial_y * grad, ry), sy))

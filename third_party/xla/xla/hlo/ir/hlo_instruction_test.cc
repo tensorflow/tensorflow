@@ -207,6 +207,45 @@ TEST_F(HloInstructionTest, BlockScalingConfigToString) {
   }
 }
 
+TEST_F(HloInstructionTest, DotBlockScalingAndSparsityToString) {
+  HloComputation::Builder builder("main");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {64, 64}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {128, 64}), "rhs"));
+  auto lhs_scale = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(F8E8M0FNU, {64, 2}), "lhs_scale"));
+  auto lhs_indices = builder.AddInstruction(HloInstruction::CreateParameter(
+      3, ShapeUtil::MakeShape(S8, {64, 16}), "lhs_indices"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+
+  SparsityConfig sp;
+  sp.mutable_lhs()->set_idx(3);
+  sp.mutable_lhs()->set_num_non_zero(2);
+  sp.mutable_lhs()->set_block_size(4);
+  sp.mutable_lhs()->set_dimension(1);
+  sp.mutable_lhs()->set_stride(1);
+
+  BlockScalingConfig bs;
+  bs.mutable_lhs()->set_scale_idx(2);
+  bs.mutable_lhs()->add_strides(1);
+  bs.mutable_lhs()->add_strides(32);
+  bs.mutable_lhs()->add_steps(1);
+  bs.mutable_lhs()->add_steps(1);
+
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(BF16, {64, 64}), {lhs, rhs, lhs_scale, lhs_indices},
+      dnums, precision_config, sp, bs));
+
+  EXPECT_EQ(
+      dot->ToString(),
+      R"(%dot = bf16[64,64]{1,0} dot(%lhs, %rhs, %lhs_scale, %lhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity_config={lhs={sparsity=2x4 dimension=1 stride=1 idx=3}}, block_scaling_config={lhs={scale_idx=2 strides=1x32 steps=1x1}})");
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");
@@ -1048,6 +1087,40 @@ TEST_F(HloInstructionTest, CompareProtoRoundTripWithOrder) {
       static_cast<const HloCompareInstruction*>(clone.get());
   EXPECT_EQ(compare_clone->direction(), ComparisonDirection::kLt);
   EXPECT_EQ(compare_clone->order(), ComparisonOrder::kTotal);
+}
+
+TEST_F(HloInstructionTest,
+       AsyncUpdatePreservesOutputToOperandAliasingRoundTrip) {
+  constexpr absl::string_view kHloString = R"(
+HloModule AsyncUpdateAliasing
+
+%async_computation (param_0: f32[10]) -> f32[10] {
+  %param_0 = f32[10] parameter(0)
+  ROOT %neg = f32[10] negate(%param_0)
+}
+
+ENTRY %main (p0: f32[10]) -> f32[10] {
+  %p0 = f32[10] parameter(0)
+  %async-start = ((f32[10]), f32[10], u32[]) async-start(%p0), calls=%async_computation
+  %async-update = ((f32[10]), f32[10], u32[]) async-update(%async-start), output_to_operand_aliasing={{2}: (0, {2})}
+  ROOT %async-done = f32[10] async-done(%async-update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloInstruction* async_update =
+      module->entry_computation()->root_instruction()->mutable_operand(0);
+  ASSERT_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  ASSERT_FALSE(async_update->output_operand_aliasing().empty());
+
+  HloModuleProto proto = module->ToProto();
+  ASSERT_OK_AND_ASSIGN(auto roundtrip_module,
+                       HloModule::CreateFromProto(proto, module->config()));
+  HloInstruction* roundtrip_async_update = roundtrip_module->entry_computation()
+                                               ->root_instruction()
+                                               ->mutable_operand(0);
+  ASSERT_EQ(roundtrip_async_update->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(roundtrip_async_update->output_operand_aliasing(),
+            async_update->output_operand_aliasing());
 }
 
 }  // namespace

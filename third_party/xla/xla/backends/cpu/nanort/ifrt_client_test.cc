@@ -17,6 +17,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
@@ -35,6 +36,7 @@
 #include "xla/literal_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -109,6 +111,135 @@ TEST(NanoIfrtClientTest, BigResult) {
     // Should be (a+a)^2 * 1024
     EXPECT_EQ(v, 692224.0);
   }
+}
+
+// Compiles and runs a program that XLA assigns a non-default layout to the
+// result of, and returns that result. Logically the result is a [2, 3, 1] f32
+// array holding {1, 2, 3, 2, 4, 6}, but it is physically stored in a permuted
+// minor-to-major order, so reading its buffer verbatim yields the wrong
+// values. The `batch` dimension is 2 because permuting size-1 dimensions does
+// not change the linear order of the bytes, which would mask the difference.
+absl::StatusOr<ifrt::ArrayRef> ExecuteTransposed3dProgram(
+    NanoIfrtClient* client) {
+  static constexpr absl::string_view kProgram = R"(
+    module {
+      func.func @main(%arg0: tensor<2x1x4xf32>, %arg1: tensor<3x4x1xf32>) -> tensor<2x3x1xf32> {
+        %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+          dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>
+        } : (tensor<2x1x4xf32>, tensor<3x4x1xf32>) -> tensor<2x1x3x1xf32>
+        %1 = stablehlo.transpose %0, dims = [2, 1, 0, 3] : (tensor<2x1x3x1xf32>) -> tensor<3x1x2x1xf32>
+        %2 = stablehlo.reshape %1 : (tensor<3x1x2x1xf32>) -> tensor<3x1x2xf32>
+        %3 = stablehlo.transpose %2, dims = [0, 2, 1] : (tensor<3x1x2xf32>) -> tensor<3x2x1xf32>
+        %4 = stablehlo.transpose %3, dims = [1, 0, 2] : (tensor<3x2x1xf32>) -> tensor<2x3x1xf32>
+        return %4 : tensor<2x3x1xf32>
+      }
+    })";
+
+  mlir::MLIRContext context;
+  ABSL_ASSIGN_OR_RETURN(auto module, xla::ParseMlirModuleString(kProgram, context));
+  ABSL_ASSIGN_OR_RETURN(
+      auto executable,
+      client->GetDefaultCompiler()
+          ->CompileAndLoad(std::make_unique<ifrt::HloProgram>(*module), nullptr)
+          .Await());
+
+  ifrt::DType dtype(ifrt::DType::kF32);
+  std::vector<float> arg0_data = {1.0f, 0.0f, 0.0f, 0.0f,
+                                  2.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> arg1_data = {1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f,
+                                  0.0f, 0.0f, 3.0f, 0.0f, 0.0f, 0.0f};
+
+  ABSL_ASSIGN_OR_RETURN(
+      auto arg0_array,
+      client->MakeArrayFromHostBuffer(
+          arg0_data.data(), dtype, ifrt::Shape({2, 1, 4}), std::nullopt,
+          client->default_sharding(), /*layout=*/nullptr,
+          ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
+          /*on_done_with_host_buffer=*/nullptr));
+  ABSL_ASSIGN_OR_RETURN(
+      auto arg1_array,
+      client->MakeArrayFromHostBuffer(
+          arg1_data.data(), dtype, ifrt::Shape({3, 4, 1}), std::nullopt,
+          client->default_sharding(), /*layout=*/nullptr,
+          ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  // Execution is synchronous, so the argument buffers only need to stay alive
+  // for the duration of this call.
+  ifrt::ArrayRef args[] = {arg0_array, arg1_array};
+  ABSL_ASSIGN_OR_RETURN(auto result,
+                   executable->Execute(absl::MakeSpan(args), {}, std::nullopt));
+  if (result.outputs.size() != 1) {
+    return absl::InternalError("Expected exactly one output.");
+  }
+  return result.outputs[0];
+}
+
+// Byte strides of a densely packed [2, 3, 1] f32 array, which is how the tests
+// below ask to read the result back.
+constexpr std::array<int64_t, 3> kTransposed3dByteStrides = {12, 4, 4};
+
+// The logical contents of the array returned by ExecuteTransposed3dProgram().
+const std::vector<float>& Transposed3dExpectedData() {
+  static const auto* const kExpected =
+      new std::vector<float>{1.0f, 2.0f, 3.0f, 2.0f, 4.0f, 6.0f};
+  return *kExpected;
+}
+
+TEST(NanoIfrtClientTest, Transposed3dOutputBatch2) {
+  auto client = NanoIfrtClient::Create();
+  ASSERT_OK_AND_ASSIGN(ifrt::ArrayRef output,
+                       ExecuteTransposed3dProgram(client.get()));
+
+  std::vector<float> result_data(6);
+  ASSERT_OK(
+      output
+          ->CopyToHostBuffer(result_data.data(),
+                             absl::MakeConstSpan(kTransposed3dByteStrides),
+                             ifrt::ArrayCopySemantics::kAlwaysCopy)
+          .Await());
+
+  EXPECT_EQ(result_data, Transposed3dExpectedData());
+}
+
+// A copied array aliases the source's buffer, so it has to report the source's
+// layout. If the layout is dropped, the copy claims the default layout and
+// hands back the physically transposed bytes verbatim.
+TEST(NanoIfrtClientTest, CopyArraysPreservesTransposedLayout) {
+  auto client = NanoIfrtClient::Create();
+  ASSERT_OK_AND_ASSIGN(ifrt::ArrayRef output,
+                       ExecuteTransposed3dProgram(client.get()));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> source_layout,
+                       output->pjrt_layout());
+  // Guards the test itself: if XLA ever stops assigning a non-default layout
+  // to this program's result, the test below would pass vacuously.
+  ASSERT_NE(source_layout, nullptr);
+
+  ifrt::ArrayRef arrays[] = {output};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ifrt::ArrayRef> copies,
+      client->CopyArrays(absl::MakeSpan(arrays), /*devices=*/std::nullopt,
+                         /*memory_kind=*/std::nullopt,
+                         ifrt::ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_EQ(copies.size(), 1);
+
+  // What a caller actually observes: reading the copy back must produce the
+  // same values as reading the source.
+  std::vector<float> result_data(6);
+  ASSERT_OK(
+      copies[0]
+          ->CopyToHostBuffer(result_data.data(),
+                             absl::MakeConstSpan(kTransposed3dByteStrides),
+                             ifrt::ArrayCopySemantics::kAlwaysCopy)
+          .Await());
+  EXPECT_EQ(result_data, Transposed3dExpectedData());
+
+  // And the mechanism behind it.
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> copy_layout,
+                       copies[0]->pjrt_layout());
+  ASSERT_NE(copy_layout, nullptr);
+  EXPECT_EQ(*copy_layout, *source_layout);
 }
 
 //===----------------------------------------------------------------------===//

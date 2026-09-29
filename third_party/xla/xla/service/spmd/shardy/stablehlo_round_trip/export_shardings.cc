@@ -108,6 +108,8 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
+        CHECK(sharding) << "null sharding while exporting func @"
+                        << funcOp.getSymName().str();
         return sharding.getMesh(symbolTable);
       };
 
@@ -415,6 +417,9 @@ NamedSharding convertToNamedSharding(
   }
 
   if (sdyMesh.getAxes().size() == manualAxes.size()) {
+    // Every axis is manual, so there is nothing left to shard over. HLO's
+    // canonical form for this omits the dimension shardings entirely; import
+    // restores them from the value's type.
     return NamedSharding::Manual(mesh);
   }
 
@@ -497,11 +502,6 @@ HloSharding convertToHloSharding(
   if (mesh.getAxes().size() == manualAxes.size()) {
     return HloSharding::Manual();
   }
-  // TODO(b/438306205): Remove this check once we support both unreduced and
-  // manual axes in subgroup sharding.
-  CHECK(sdySharding.getUnreducedAxes().empty() || manualAxes.empty())
-      << "Only one of unreduced and manual axes can be present: "
-      << mlir::sdy::attributeToString(sdySharding);
 
   // Iterate the dim shardings.
   for (auto [index, dimSharding] :

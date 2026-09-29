@@ -221,7 +221,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
   b.set_block_dim_limit_y(65536);
   b.set_block_dim_limit_z(65536);
   // Keep in sync with GetRocmMemoryBandwidth in rocm_memory_bandwidth.cc.
-  b.set_memory_bandwidth(6'810'000'000'000);
+  b.set_memory_bandwidth(7'782'000'000'000);
   b.set_l2_cache_size(4 * 1024 * 1024);
   b.set_clock_rate_ghz(2.2);
   b.set_device_memory_size(270'566'162'432);

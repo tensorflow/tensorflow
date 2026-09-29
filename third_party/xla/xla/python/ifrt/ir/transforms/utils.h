@@ -86,6 +86,12 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
 // Returns a pretty string representation of the location.
 std::string GetPrettyLocation(mlir::Location loc);
 
+// Returns a pretty string representation of the location of the given argument
+// in the given module.
+//
+// REQUIRES: 0 <= index < module.getNumArgOperands().
+std::string GetArgPrettyLocation(int index, mlir::ModuleOp module);
+
 // Extracts the XlaCompileOptions overrides for the given atom program module.
 // Returns nullptr if no overrides are found.
 absl::StatusOr<XlaCompileOptions*> GetModuleXlaCompileOverrides(

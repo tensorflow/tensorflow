@@ -447,14 +447,6 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
           absl::MakeSpan(opaque_args_types), mlir_context,
           use_experimental_tiling, enable_same_shape_multi_output_fusion));
 
-  if (fusion_kind == kTritonCollectiveFusionKind &&
-      CreateCollectiveCodegenConfig(&fusion).emit_entry_barrier) {
-    const HloInstruction* root = hlo_computation->root_instruction();
-    int32_t world_size = root->replica_groups()[0].replica_ids_size();
-    ABSL_RETURN_IF_ERROR(
-        EmitCollectiveEntryBarrier(triton_module.get(), world_size));
-  }
-
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     auto suffix = absl::StrCat(fusion.name(), ".before_validation.ttir.txt");

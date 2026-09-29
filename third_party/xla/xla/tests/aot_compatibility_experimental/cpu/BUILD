@@ -12,7 +12,7 @@ xla_test(
     backends = ["cpu"],
     data = glob(["executables/elementwise_aot_test_cpu/**/*.pbtxt"]),
     tags = [
-        "manual",
+        "broken",
         "no_oss",
     ],
     deps = [

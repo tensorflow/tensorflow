@@ -129,7 +129,7 @@ class XlaOpKernelContext {
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
-  bool ValidateInputsAreSameShape(OpKernel* op) TF_MUST_USE_RESULT;
+  TF_MUST_USE_RESULT bool ValidateInputsAreSameShape(OpKernel* op);
 
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,

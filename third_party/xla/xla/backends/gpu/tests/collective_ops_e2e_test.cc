@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/collective_domain.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -45,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -187,6 +191,14 @@ class AsyncCollectiveOps
             /*enable_symmetric_buffer=*/std::get<1>(GetParam()),
             /*memory_size=*/8 * kGB,
             /*collectives_memory_size=*/std::get<1>(GetParam()) ? 8 * kGB : 0) {
+  }
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_emit_collective_reduce(true);
+    return debug_options;
   }
 };
 
@@ -546,6 +558,113 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcastDynamicRoot) {
   }
 }
 
+TEST_P(AsyncCollectiveOps, AsyncCollectiveReduce) {
+  // collective-reduce reduces across the replica group and writes the result
+  // only to the root rank (rank 0 of the group by default), unlike all-reduce.
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    one = u32[] constant(1)
+    val = u32[] add(id, one)
+    ROOT cr = u32[] collective-reduce(val), replica_groups={{0, 1}},
+        to_apply=apply_op
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  if (enable_async_) {
+    const HloInstruction* cr_start =
+        FindCollectiveStart(hlo_module, HloOpcode::kCollectiveReduce);
+    const HloInstruction* cr_done =
+        FindCollectiveDone(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_start, NotNull());
+    EXPECT_THAT(cr_done, NotNull());
+  } else {
+    EXPECT_THAT(FindInstruction(hlo_module, HloOpcode::kCollectiveReduce),
+                NotNull());
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Sum of (replica_id + 1) over replicas {0, 1} = 1 + 2 = 3, written to the
+  // root rank (replica 0). Non-root outputs are left undefined by the reduce.
+  LiteralTestUtil::ExpectR0Equal<uint32_t>(3, results[0]);
+}
+
+TEST_P(AsyncCollectiveOps, AsyncCollectiveReduceDynamicRoot) {
+  // The reduce root is supplied at run time by the trailing S32 operand. With
+  // `replica_groups={{0, 1}}` a static reduce would write to replica 0, so
+  // selecting root rank 1 at run time proves the root is chosen dynamically.
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    one = u32[] constant(1)
+    val = u32[] add(id, one)
+    p = u32[2] broadcast(val), dimensions={}
+    root = s32[1] constant({1})
+    ROOT cr = u32[2] collective-reduce(p, root), replica_groups={{0, 1}},
+        to_apply=apply_op, has_dynamic_root=true
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
+  if (enable_async_) {
+    const HloInstruction* cr_start =
+        FindCollectiveStart(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_start, NotNull());
+    if (cr_start != nullptr) {
+      EXPECT_TRUE(Cast<HloCollectiveReduceInstruction>(
+                      cr_start->async_wrapped_instruction())
+                      ->has_dynamic_root());
+    }
+  } else {
+    const HloInstruction* cr_sync =
+        FindInstruction(hlo_module, HloOpcode::kCollectiveReduce);
+    EXPECT_THAT(cr_sync, NotNull());
+    if (cr_sync != nullptr) {
+      EXPECT_TRUE(
+          Cast<HloCollectiveReduceInstruction>(cr_sync)->has_dynamic_root());
+    }
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // Reduced sum (3) is written to the runtime-selected root rank (replica 1).
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({3, 3}, results[1]);
+}
+
 TEST_P(CollectivesModeOps, AllGather) {
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -636,6 +755,108 @@ TEST_P(CollectivesModeOps, AllGatherMixedTypes) {
                                              tuple_results[0]);
     LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
                                           tuple_results[1]);
+  }
+}
+
+// Extend multi-input AllGather coverage to large BF16 buffers and four GPUs.
+class AllGatherGroupedTest : public CollectiveOpsE2ETestBase {
+ public:
+  AllGatherGroupedTest()
+      : CollectiveOpsE2ETestBase(/*memory_size=*/256 * kMB,
+                                 /*collectives_memory_size=*/128 * kMB) {}
+
+ protected:
+  static constexpr int kNumReplicas = 4;
+  static constexpr int kNumBuffers = 2;
+  static constexpr int64_t kElementsPerRank = 8388608;
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options = CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
+    // Use synchronous AllGather with private memory and no graph capture.
+    options.add_xla_gpu_disable_async_collectives(DebugOptions::ALLGATHER);
+    options.set_xla_gpu_all_gather_mode(
+        DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+    options.clear_xla_gpu_enable_command_buffer();
+    return options;
+  }
+
+  static Literal MakeInput(int buffer, int rank) {
+    Literal input = Literal::CreateFromShape(
+        ShapeUtil::MakeShape(BF16, {kElementsPerRank}));
+    // All values are integers in [0, 127], exactly representable in BF16.
+    std::mt19937 rng(buffer * kNumReplicas + rank);
+    std::uniform_int_distribution<int> distribution(0, 15);
+    const int base = (buffer * kNumReplicas + rank) * 16;
+    absl::Span<bfloat16> data = input.data<bfloat16>();
+    for (int64_t i = 0; i < kElementsPerRank; ++i) {
+      data[i] = bfloat16(static_cast<float>(base + distribution(rng)));
+    }
+    return input;
+  }
+};
+
+TEST_F(AllGatherGroupedTest, LargeTwoInputs4GpuBF16) {
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  // Gather two 16 MiB inputs per rank using two calls in the same group.
+  constexpr absl::string_view kHlo = R"(
+HloModule grouped_all_gather
+
+ENTRY main {
+  a = bf16[8388608]{0} parameter(0)
+  b = bf16[8388608]{0} parameter(1)
+  ROOT gathered = (bf16[33554432]{0}, bf16[33554432]{0})
+    all-gather(a, b), dimensions={0},
+    replica_groups={{0,1,2,3}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHlo, kNumReplicas));
+
+  // Prepare inputs and expected outputs.
+  std::vector<std::vector<Literal>> inputs(kNumReplicas);
+  Literal expected = Literal::CreateFromShape(
+      module->entry_computation()->root_instruction()->shape());
+  for (int buffer = 0; buffer < kNumBuffers; ++buffer) {
+    for (int rank = 0; rank < kNumReplicas; ++rank) {
+      inputs[rank].push_back(MakeInput(buffer, rank));
+      const auto data = inputs[rank].back().data<bfloat16>();
+      std::copy(
+          data.begin(), data.end(),
+          expected.data<bfloat16>({buffer}).begin() + rank * kElementsPerRank);
+    }
+  }
+  std::vector<std::vector<Literal*>> arguments(kNumReplicas);
+  for (int rank = 0; rank < kNumReplicas; ++rank) {
+    arguments[rank].reserve(kNumBuffers);
+    for (int buffer = 0; buffer < kNumBuffers; ++buffer) {
+      arguments[rank].push_back(&inputs[rank][buffer]);
+    }
+  }
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution,
+                       ExecuteReplicated(std::move(module), arguments));
+
+  // Check that one AllGather with two inputs remains after compilation.
+  int all_gather_count = 0;
+  for (const HloComputation* computation :
+       execution.optimized_module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAllGather) {
+        ++all_gather_count;
+        EXPECT_EQ(instruction->operand_count(), kNumBuffers);
+      }
+    }
+  }
+  EXPECT_EQ(all_gather_count, 1);
+
+  ASSERT_EQ(execution.results.size(), kNumReplicas);
+  for (int rank = 0; rank < kNumReplicas; ++rank) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, execution.results[rank]))
+        << "destination rank " << rank;
   }
 }
 
@@ -3301,9 +3522,11 @@ ENTRY main {
                           test_runner().HloModuleFromWrapped(executable.get()));
   const HloInstruction* ag_start =
       FindCollectiveStarts(executable_module, HloOpcode::kAllGather).at(0);
-  // Both ag and its producer should have collective memory space 1
-  EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(), 1);
-  EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(), 1);
+  // Both ag and its producer should have collective memory space.
+  EXPECT_EQ(ag_start->shape().tuple_shapes()[1].layout().memory_space(),
+            Layout::kCollectiveMemorySpace);
+  EXPECT_EQ(ag_start->operand(0)->shape().layout().memory_space(),
+            Layout::kCollectiveMemorySpace);
 }
 
 TEST_F(CollectiveOpsTestE2E,
@@ -3352,7 +3575,8 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
   // space.
   for (auto ar : all_ar) {
     EXPECT_EQ(ar->operand(0)->opcode(), HloOpcode::kCopy);
-    EXPECT_EQ(ar->operand(0)->shape().layout().memory_space(), 1);
+    EXPECT_EQ(ar->operand(0)->shape().layout().memory_space(),
+              Layout::kCollectiveMemorySpace);
   }
 }
 

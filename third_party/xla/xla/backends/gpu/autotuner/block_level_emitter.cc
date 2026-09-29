@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
@@ -46,8 +45,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "triton/Version.h"
 
@@ -126,9 +123,11 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
                             ->config()
                             .debug_options()
                             .xla_gpu_fusion_autotune_top_k_configs();
-  ABSL_ASSIGN_OR_RETURN(TopKTiledRunTimeDataOrError tiled_runtime_data,
-                   indexing_performance_model_.TryFindTopKBestTilingsForFusion(
-                       *fusion_adaptor, num_configs));
+  ABSL_ASSIGN_OR_RETURN(
+      TopKTiledRunTimeDataOrError tiled_runtime_data,
+      indexing_performance_model_
+          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, num_configs)
+          .Await());
 
   if (std::holds_alternative<FusionDecision>(tiled_runtime_data)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
@@ -155,9 +154,10 @@ BlockLevelEmitterBackend::GetCostModelConfig(const HloInstruction& instr) {
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));
 
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_runtime_data_or_error,
-      indexing_performance_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+  ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
+                   indexing_performance_model_
+                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {

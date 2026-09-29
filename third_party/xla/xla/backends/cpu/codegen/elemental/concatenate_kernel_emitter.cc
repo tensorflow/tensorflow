@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -29,7 +28,6 @@ limitations under the License.
 #include "llvm/IR/Analysis.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
@@ -70,10 +68,9 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
 absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
   if (absl::Status status = CanDoFastConcatenate(*instr_); !status.ok()) {
-    VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
-            << ": " << status.message();
-    return ElementalKernelEmitter(instr_, buffer_assignment_, target_machine_)
-        .EmitKernelDefinition();
+    return Internal(
+        "Concatenate is not supported by ConcatenateKernelEmitter: %s",
+        status.message());
   }
 
   auto ctx = std::make_unique<llvm::LLVMContext>();
@@ -83,8 +80,9 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
     return Internal("HloModule is null");
   }
 
-  const auto& backend_config = instr_->backend_config<BackendConfig>();
-  const auto& partitions = backend_config->outer_dimension_partitions();
+  const auto backend_config =
+      instr_->backend_config<BackendConfig>().value_or(BackendConfig());
+  const auto& partitions = backend_config.outer_dimension_partitions();
   auto total_workgroups =
       absl::c_accumulate(partitions, 1, std::multiplies<int64_t>());
 
@@ -93,7 +91,8 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
       KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
 
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
-      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
+      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx,
+      target_machine_);
 
   ABSL_ASSIGN_OR_RETURN(
       KernelApiIrBuilder::KernelPrototype kernel_prototype,

@@ -64,6 +64,6 @@ SelectAlgo choose_select_k_algorithm<uint64_t>(uint32_t rows, uint32_t cols,
 template absl::Status select_k_exec<std::uint64_t>(
     int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
     se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
-    std::uint32_t);
+    std::uint32_t, se::DeviceAddressBase);
 
 }  // namespace xla::gpu

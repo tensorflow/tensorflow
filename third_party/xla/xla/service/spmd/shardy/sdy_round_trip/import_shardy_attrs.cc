@@ -212,20 +212,22 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
       if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding), funcOp.getContext())) {
+              parseShardingFromString(oldSharding),
+              mlir::sdy::getTensorRank(argType), funcOp.getContext())) {
         funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
       }
     }
     funcOp.removeArgAttr(argNum, kXlaShardingAttr);
   }
 
-  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
+  for (auto [resNum, resType] : llvm::enumerate(funcOp.getResultTypes())) {
     if (auto oldSharding =
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
       HloSharding hloSharding = parseShardingFromString(oldSharding);
       if (!hloSharding.IsSingleDevice()) {
-        if (auto sdySharding =
-                convertToSdyShardingAttr(hloSharding, funcOp.getContext())) {
+        if (auto sdySharding = convertToSdyShardingAttr(
+                hloSharding, mlir::sdy::getTensorRank(resType),
+                funcOp.getContext())) {
           funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
         }
       }
@@ -261,18 +263,21 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
     // future.
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
             op)) {
-      op->setAttr(kShardingAttr,
-                  convertToSdySharding(parseShardingFromString(shardingAttr),
-                                       op->getContext()));
+      if (auto sdySharding =
+              convertToSdySharding(parseShardingFromString(shardingAttr),
+                                   op->getResultTypes(), op->getContext())) {
+        op->setAttr(kShardingAttr, sdySharding);
+      }
     } else if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
           targetName == "X64Combine" ||
           isPythonCallbackCustomCall(customCallOp)) {
-        customCallOp->setAttr(
-            kShardingAttr,
-            convertToSdySharding(parseShardingFromString(shardingAttr),
-                                 customCallOp->getContext()));
+        if (auto sdySharding = convertToSdySharding(
+                parseShardingFromString(shardingAttr),
+                customCallOp->getResultTypes(), customCallOp->getContext())) {
+          customCallOp->setAttr(kShardingAttr, sdySharding);
+        }
       }
     }
 

@@ -33,14 +33,27 @@ ENTRY entry {
 // CHECK:      xtile.entry_func @triton_fn(
 // CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]: memref<2xi64>,
 // CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]: memref<256x128xf32>,
-// CHECK-SAME:   %[[ARG2:[a-zA-Z0-9_]+]]: i32,
-// CHECK-SAME:   %[[ARG3:[a-zA-Z0-9_]+]]: i32,
-// CHECK-SAME:   %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
-// CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index)
+// CHECK-SAME:   %[[RANK:[a-zA-Z0-9_]+]]: i32,
+// CHECK-SAME:   %[[INVOCATION_COUNT:[a-zA-Z0-9_]+]]: i32,
+// CHECK-SAME:   %[[SIGNAL_BUFFERS:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
+// CHECK-SAME:   %[[PID:[a-zA-Z0-9_]+]]: index {xla.range = [0 : index, 127 : index]})
 
-// CHECK:        %[[IDX0:.*]] = xla.apply_indexing #[[MAP0]](%[[PID]])
-// CHECK:        %[[IDX1:.*]] = xla.apply_indexing #[[MAP1]](%[[PID]])
-// CHECK:        %[[IDX2:.*]] = xla.apply_indexing #[[MAP2]](%[[PID]])
+// CHECK-DAG:    %[[IDX0:.*]] = xla.apply_indexing #[[MAP0]](%[[PID]])
+// CHECK-DAG:    %[[IDX1:.*]] = xla.apply_indexing #[[MAP1]](%[[PID]])
+// CHECK-DAG:    %[[IDX2:.*]] = xla.apply_indexing #[[MAP2]](%[[PID]])
+// CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:    %[[WORLD_SIZE:.*]] = arith.constant 2 : i32
+// CHECK:        %[[BLOCK_ID:.*]] = tt.get_program_id x
+// CHECK:        %[[SIGNAL_BUFFER_ADDR:.*]] = tt.addptr %[[SIGNAL_BUFFERS]], %[[RANK]]
+// CHECK:        %[[SIGNAL_BUFFER_INT:.*]] = tt.load %[[SIGNAL_BUFFER_ADDR]]
+// CHECK:        %[[SIGNAL_BUFFER:.*]] = tt.int_to_ptr %[[SIGNAL_BUFFER_INT]]
+// CHECK:        %[[BLOCK_OFFSET:.*]] = arith.muli %[[BLOCK_ID]], %[[WORLD_SIZE]]
+// CHECK:        %[[COUNTER_IDX:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[RANK]]
+// CHECK:        %[[COUNTER_PTR:.*]] = tt.addptr %[[SIGNAL_BUFFER]], %[[COUNTER_IDX]]
+// CHECK:        %[[COUNTER:.*]] = tt.load %[[COUNTER_PTR]] {isVolatile = true}
+// CHECK:        %[[SIGNAL_VALUE:.*]] = arith.addi %[[COUNTER]], %[[C1]]
+// CHECK:        triton_xla.block_barrier %[[SIGNAL_BUFFERS]], %[[RANK]], %[[SIGNAL_VALUE]]
+// CHECK-SAME:     <world_size = 2>
 // CHECK:        %[[BUF:.*]] = xtile.select_buffer %[[ARG0]][%[[IDX2]]] : memref<2xi64> -> memref<128x128xf32>
 // CHECK:        %[[EXT:.*]] = xtile.extract %[[BUF]][%[[IDX0]], %[[IDX1]]] [16, 16] [1, 1] : memref<128x128xf32> -> tensor<16x16xf32>
 // CHECK:        %[[IDX3:.*]] = xla.apply_indexing #[[MAP3]](%[[PID]])

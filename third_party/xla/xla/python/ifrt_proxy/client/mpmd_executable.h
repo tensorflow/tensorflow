@@ -58,8 +58,7 @@ class MpmdLoadedExecutable final
  public:
   MpmdLoadedExecutable(
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-      uint64_t handle, std::string name, int num_devices,
-      std::optional<DeviceListRef> devices,
+      uint64_t handle, std::string name, std::optional<DeviceListRef> devices,
       std::vector<xla::ifrt::Device*> addressable_devices,
       absl::StatusOr<
           absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
@@ -92,7 +91,6 @@ class MpmdLoadedExecutable final
     return loaded_executable_->user_context();
   }
 
-  int num_devices() const override { return loaded_executable_->num_devices(); }
   int64_t SizeOfGeneratedCodeInBytes() const override {
     return loaded_executable_->SizeOfGeneratedCodeInBytes();
   }
@@ -147,9 +145,6 @@ class MpmdLoadedExecutable final
   std::optional<DeviceListRef> devices() const override {
     return loaded_executable_->devices();
   };
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override {
-    return loaded_executable_->addressable_devices();
-  }
 
   absl::StatusOr<
       absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>>

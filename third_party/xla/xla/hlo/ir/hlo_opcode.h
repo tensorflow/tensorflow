@@ -100,7 +100,7 @@ namespace xla {
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                          \
   V(kDivide, "divide", 2)                                                      \
   V(kDomain, "domain", 1)                                                      \
-  V(kDot, "dot", 2)                                                            \
+  V(kDot, "dot", kHloOpcodeIsVariadic)                                         \
   V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)                  \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)                      \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
@@ -165,6 +165,7 @@ namespace xla {
   V(kShiftLeft, "shift-left", 2)                                               \
   V(kShiftRightArithmetic, "shift-right-arithmetic", 2)                        \
   V(kShiftRightLogical, "shift-right-logical", 2)                              \
+  V(kShuffle, "shuffle", 1)                                                    \
   V(kSign, "sign", 1)                                                          \
   V(kSin, "sine", 1)                                                           \
   V(kSinh, "sinh", 1)                                                          \

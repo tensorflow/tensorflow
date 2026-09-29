@@ -84,6 +84,7 @@ exports_files([
     "decode_image_op.cc",
     "encode_jpeg_op.cc",
     "encode_png_op.cc",
+    "encode_jxl_op.cc",
 ])
 
 # Private support libraries ---------------------------------------------------
@@ -121,6 +122,7 @@ cc_library(
         ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
+        ":encode_jxl_op",
         ":encode_png_op",
         ":extract_image_patches_op",
         ":extract_jpeg_shape_op",
@@ -256,6 +258,17 @@ tf_kernel_library(
     name = "encode_jpeg_op",
     prefix = "encode_jpeg_op",
     deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "encode_jxl_op",
+    prefix = "encode_jxl_op",
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:mutex",
+    ],
 )
 
 tf_kernel_library(
@@ -561,6 +574,7 @@ filegroup(
             "*_test_*",
             "decode_image_op.*",
             "encode_png_op.*",
+            "encode_jxl_op.*",
             "encode_jpeg_op.*",
             "extract_jpeg_shape_op.*",
             "decode_jpeg_op.*",

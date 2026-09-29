@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/config_assigner_pass.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
