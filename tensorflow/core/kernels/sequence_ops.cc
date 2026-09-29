@@ -206,11 +206,15 @@ class LinSpaceOp : public OpKernel {
     auto flat = out->flat<T>();
     flat(0) = start;
     if (num > 1) {
-      // Route int->half/bfloat16 casts through double for MSVC.
-      const T step =
-          (stop - start) / static_cast<T>(static_cast<double>(num - 1));
+      // Interpolate in double, narrow once on store. In T, (stop - start) and
+      // the index casts both overflow to +Inf for half/bfloat16, which zeroes
+      // step and turns every interior element into NaN (0 * +Inf). The single
+      // narrowing cast is also what keeps this portable across MSVC/GCC/Clang.
+      const double start_d = static_cast<double>(start);
+      const double stop_d = static_cast<double>(stop);
+      const double step = (stop_d - start_d) / static_cast<double>(num - 1);
       for (Tnum i = 1; i < num - 1; ++i) {
-        flat(i) = start + step * static_cast<T>(static_cast<double>(i));
+        flat(i) = static_cast<T>(start_d + step * static_cast<double>(i));
       }
       // Ensure final value == stop; float arithmetic won't guarantee this.
       flat(num - 1) = stop;

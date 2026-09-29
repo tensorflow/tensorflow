@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -223,6 +225,79 @@ TEST_F(LinSpaceOpTest, Simple_Bfloat16) {
   test::FillValues<bfloat16>(
       &expected, {bfloat16(3.0f), bfloat16(5.0f), bfloat16(7.0f)});
   test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
+}
+
+TEST_F(LinSpaceOpTest, LargeSequence_Half) {
+  MakeOp(DT_HALF, DT_INT32);
+
+  // 70000 - 1 is past half's largest finite value (65504). With the
+  // interpolation done in T, num - 1 and every i >= 65520 overflowed to +Inf,
+  // step became 0, and the interior filled with 0 * +Inf = NaN.
+  constexpr int32_t num = 70000;
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.0f)});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(1.0f)});
+  AddInputFromArray<int32_t>(TensorShape({}), {num});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const Tensor* output = GetOutput(0);
+  ASSERT_EQ(num, output->NumElements());
+  const auto flat = output->flat<Eigen::half>();
+
+  int32_t non_finite = 0;
+  int32_t first_non_finite = -1;
+  for (int32_t i = 0; i < num; ++i) {
+    if (!std::isfinite(static_cast<float>(flat(i)))) {
+      if (first_non_finite < 0) first_non_finite = i;
+      ++non_finite;
+    }
+  }
+  EXPECT_EQ(0, non_finite) << non_finite << " of " << num
+                           << " elements were NaN or Inf, first at index "
+                           << first_non_finite;
+
+  const double step = 1.0 / (num - 1);
+  for (int32_t i : {1, 300, 65519, 65520, 65521, num - 2}) {
+    EXPECT_NEAR(i * step, static_cast<float>(flat(i)), 1e-3) << "index " << i;
+  }
+  EXPECT_EQ(0.0f, static_cast<float>(flat(0)));
+  EXPECT_EQ(1.0f, static_cast<float>(flat(num - 1)));
+}
+
+TEST_F(LinSpaceOpTest, Monotonic_Bfloat16_Int64Index) {
+  MakeOp(DT_BFLOAT16, DT_INT64);
+
+  // 600 indices exercise the int64 index kernels. bfloat16 keeps integers exact
+  // only to 256, so casting i to bfloat16 inside the loop collapsed
+  // neighbouring indices onto the same value and stair-stepped the output.
+  constexpr int64_t num = 600;
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(0.0f)});
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(1.0f)});
+  AddInputFromArray<int64_t>(TensorShape({}), {num});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto flat = GetOutput(0)->flat<bfloat16>();
+  ASSERT_EQ(num, GetOutput(0)->NumElements());
+  for (int64_t i = 1; i < num; ++i) {
+    ASSERT_GT(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
+        << "flat(" << i << ") did not exceed flat(" << i - 1
+        << "); indices past 256 plateaued when i was cast to bfloat16";
+  }
+  EXPECT_EQ(0.0f, static_cast<float>(flat(0)));
+  EXPECT_EQ(1.0f, static_cast<float>(flat(num - 1)));
+}
+
+TEST_F(LinSpaceOpTest, Single_Half) {
+  MakeOp(DT_HALF, DT_INT32);
+
+  // num == 1 must return [start] without dividing by num - 1 == 0.
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(9.0f)});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(100.0f)});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_HALF, TensorShape({1}));
+  test::FillValues<Eigen::half>(&expected, {Eigen::half(9.0f)});
+  test::ExpectTensorEqual<Eigen::half>(expected, *GetOutput(0));
 }
 
 }  // namespace
