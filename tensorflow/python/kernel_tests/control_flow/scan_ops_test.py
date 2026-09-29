@@ -230,29 +230,33 @@ class CumsumTest(test.TestCase, parameterized.TestCase):
     # bfloat16 and float16 keep only ~8 / ~10 mantissa bits, so accumulating a
     # long sequence directly in the 16-bit type rounds the running total at
     # every step and drifts far from the exact result. The CPU kernel now
-    # accumulates in float32 (matching the GPU kernel) and casts the result
-    # back, so the output must match the float32 accumulation reference for
-    # every axis / flag combination. See #115731.
+    # accumulates in float32 and casts the result back, so on CPU the output
+    # must equal the float32 accumulation reference for every axis / flag
+    # combination. See #115731.
+    #
+    # The equality only holds on CPU. The float32 upcast lives in the CPU
+    # branch of ScanOp::Compute; the GPU kernel still accumulates in the
+    # 16-bit type (with a hierarchical CUB block scan), so it is left
+    # untouched and produces a different rounding. Pin the device to CPU so
+    # this assertion measures the code path under test on every platform,
+    # including the GPU test target.
     op = getattr(math_ops, op_name)
     np.random.seed(0)
     x = np.random.randn(100, 50).astype(np.float32)
     x_low = constant_op.constant(x, dtype=dtype)
 
-    tf_out = op(x_low, axis=axis, exclusive=exclusive, reverse=reverse)
-    self.assertEqual(tf_out.dtype, dtype)
+    with test_util.force_cpu():
+      tf_out = op(x_low, axis=axis, exclusive=exclusive, reverse=reverse)
+      self.assertEqual(tf_out.dtype, dtype)
 
-    # Reference: upcast the 16-bit input to float32, run the scan there, and
-    # cast the result back. On CPU this is the same float32 scan the kernel
-    # performs, so the two agree bit-for-bit. On GPU the 16-bit kernel and the
-    # float32 kernel use different parallel reduction orders, so after casting
-    # back to 16 bits the values may differ by a single ULP; the tolerance
-    # below accommodates that while still rejecting a genuine 16-bit
-    # accumulation, whose error on these inputs is orders of magnitude larger.
-    expected = math_ops.cast(
-        op(math_ops.cast(x_low, dtypes.float32),
-           axis=axis, exclusive=exclusive, reverse=reverse),
-        dtype)
-    self.assertAllClose(tf_out, expected, rtol=1e-2, atol=1e-2)
+      # Reference: upcast the 16-bit input to float32, run the scan there, and
+      # cast the result back. This is exactly what the CPU kernel performs, so
+      # the two agree bit-for-bit.
+      expected = math_ops.cast(
+          op(math_ops.cast(x_low, dtypes.float32),
+             axis=axis, exclusive=exclusive, reverse=reverse),
+          dtype)
+    self.assertAllEqual(tf_out, expected)
 
   def testBfloat16AccuracyVsExact(self):
     # Regression for #115731: on CPU the bfloat16 running total used to be
