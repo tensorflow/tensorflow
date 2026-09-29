@@ -380,12 +380,16 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
       )
     if norm1 == norm2:
       raise ValueError('axis1 and axis2 cannot be the same axis')
+    # Reassign after validation so the error messages above keep the
+    # original user-supplied values and the fast path below consumes
+    # normalized, non-negative axes.
+    axis1, axis2 = norm1, norm2
 
   if (
       maybe_rank is not None
       and offset == 0
-      and (axis1 == maybe_rank - 2 or axis1 == -2)
-      and (axis2 == maybe_rank - 1 or axis2 == -1)
+      and axis1 == maybe_rank - 2
+      and axis2 == maybe_rank - 1
   ):
     return array_ops.matrix_diag_part(a)
 
@@ -870,6 +874,7 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
           f'Argument `axis` (received axis={axis}) is out of bounds '
           f'for input of rank {maybe_rank}.'
       )
+    axis = normalized
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
