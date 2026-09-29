@@ -2381,6 +2381,15 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
      results.push_back(dotGeneral);
      start = limit;
+@@ -2747,7 +2747,7 @@
+   }
+   rewriter.replaceOpWithNewOp<mlir::stablehlo::DotGeneralOp>(
+       op, op.getResult().getType(), ValueRange{op.getLhs(), op.getRhs()},
+-      attributes);
++      typename DotGeneralOp::Properties{}, attributes);
+   return success();
+ }
+ 
 @@ -2930,8 +2930,18 @@
        SmallVector<int64_t> sliceShape(inputType.getShape().begin(),
                                        inputType.getShape().end());
@@ -2519,6 +2528,32 @@ diff --ruN a/stablehlo/stablehlo/transforms/PassUtils.h b/stablehlo/stablehlo/tr
                        Value val);
  
  // Check if any of the given types are mlir::quant::QuantizedType.
+diff --ruN a/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp
+@@ -520,6 +520,7 @@
+     }
+ 
+     rewriter.replaceOpWithNewOp<OpType>(op, op->getResultTypes(), operandsI32,
++                                        typename OpType::Properties{},
+                                         op->getAttrs());
+     return success();
+   }
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -97,8 +97,9 @@
+       }
+       newOperands.push_back(operand.get());
+     }
+-    rewriter.replaceOpWithNewOp<CustomCallOp>(op, op.getResultTypes(),
+-                                              newOperands, newAttrs);
++    rewriter.replaceOpWithNewOp<CustomCallOp>(
++        op, op.getResultTypes(), newOperands,
++        typename CustomCallOp::Properties{}, newAttrs);
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp
@@ -2562,7 +2597,15 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloComplexMathExpander.cpp b/s
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 --- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
 +++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-@@ -865,8 +865,9 @@
+@@ -636,6 +636,7 @@
+   // Execute conversion target op.
+   SmallVector<Value, 2> operands{lhsFloat32Tensor, rhsFloat32Tensor};
+   rewriter.replaceOpWithNewOp<OpType>(op, resFloat32TensorType, operands,
++                                      typename OpType::Properties{},
+                                       op->getAttrs());
+   return success();
+ }
+@@ -865,8 +866,9 @@
                            Type resultType, Value& lhs, Value& rhs,
                            ArrayRef<NamedAttribute> attrs,
                            const DotLikeDimensionNumbers& dims) {
@@ -2574,7 +2617,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/s
  }
  
  // Template specialization for Convolution op.
-@@ -915,8 +916,9 @@
+@@ -915,8 +917,9 @@
        }
      }
    }
