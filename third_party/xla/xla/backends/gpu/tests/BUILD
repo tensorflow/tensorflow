@@ -763,7 +763,6 @@ lit_test_suite_for_gpus(
             "dot_bf16.hlo",
             "element_wise_row_vectorization.hlo",
             "scatter_bf16.hlo",
-            "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
             "pdl.hlo",
@@ -777,13 +776,11 @@ lit_test_suite_for_gpus(
         ],
         "mi350": [
             "dot_bf16.hlo",
-            "single_instruction.hlo",
             "pdl.hlo",
         ],
         "mi450": [
             # TODO: re-enable once mi450 memory_bandwidth is finalized.
             "memory_bandwidth_fusion.hlo",
-            "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
@@ -1172,15 +1169,18 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_for_library",
         "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:path",
     ] + if_google([
         # In OSS this dependency is added automatically for xla_test targets. See
         # third_party/tensorflow/compiler/xla/xla.default.bzl.
@@ -1678,6 +1678,7 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1710,6 +1711,7 @@ xla_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

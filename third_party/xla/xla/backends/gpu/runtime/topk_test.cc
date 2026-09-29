@@ -143,6 +143,9 @@ TEST_P(TopKKernelTest, TopKFloat) {
     EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
         << " k=" << k << ", batch_size=" << batch_size << " i=" << i;
   }
+  executor->Deallocate(&input_buffer);
+  executor->Deallocate(&output_values);
+  executor->Deallocate(&output_indices);
 }
 
 TEST_P(TopKKernelTest, TopKPackedNegative) {
@@ -204,6 +207,9 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
     EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
         << " k=" << k << ", batch_size=" << batch_size << " i=" << i;
   }
+  executor->Deallocate(&input_buffer);
+  executor->Deallocate(&output_values);
+  executor->Deallocate(&output_indices);
 }
 
 TEST_P(TopKKernelTest, EnsureSerializable) {
