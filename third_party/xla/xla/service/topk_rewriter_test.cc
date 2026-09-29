@@ -712,6 +712,20 @@ ENTRY TopK {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(TopkRewriterTest, TopKWithSingleTupleUser) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule topk
+ENTRY main {
+  x = f32[7] parameter(0)
+  top = (f32[3], s32[3]) topk(x), k=3, largest=true
+  ROOT result = ((f32[3], s32[3])) tuple(top)
+})"));
+  ASSERT_OK_AND_ASSIGN(bool changed, TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::Tuple(op::Slice(), op::Slice())));
+}
+
 TEST_F(TopkRewriterTest, TopKDecompositionPacked) {
   const std::string hlo_string = R"(
 HloModule topk
