@@ -40,6 +40,7 @@ def TFFramework_Dialect : Dialect {
   }];
 
   let useDefaultTypePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/moe_block_scale.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -185,15 +186,11 @@ class MoeExpertsDelegateKernel::Impl {
         return false;
       }
       const int count = NumElements(t);
-      if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
-        if (count != static_cast<int>(num_rows)) {
-          TF_LITE_KERNEL_LOG(
-              context,
-              "%s node #%d %s element count %d does not match rows %zu",
-              kMoeCustomOp, node_index, name, count, num_rows);
-          return false;
-        }
-      } else if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+      // One scale per row is per-output-channel quantization; any exact
+      // multiple of the row count is blockwise, with that multiple being the
+      // number of blocks along the input axis.
+      if (attr.weight_type == MoeExpertsAttributes::WeightType::kInt8 ||
+          attr.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
         if (count <= 0 || (static_cast<size_t>(count) % num_rows != 0)) {
           TF_LITE_KERNEL_LOG(
               context,
@@ -646,55 +643,6 @@ class MoeExpertsDelegateKernel::Impl {
     }
   }
 
-  static void CopyAndDequantizeExpertWeightRowsInt8(
-      const int8_t* weight_i8, const float* scale, size_t num_experts,
-      size_t expert, size_t output_channels, size_t input_channels,
-      float* dst) {
-    for (size_t out = 0; out < output_channels; ++out) {
-      const size_t row_idx = out * num_experts + expert;
-      const float row_scale = scale[row_idx];
-      const int8_t* src_row = weight_i8 + row_idx * input_channels;
-      float* dst_row = dst + out * input_channels;
-      for (size_t in = 0; in < input_channels; ++in) {
-        dst_row[in] = static_cast<float>(src_row[in]) * row_scale;
-      }
-    }
-  }
-
-  static void CopyAndDequantizeExpertWeightRowsInt4(
-      const int8_t* weight_i4_packed, const float* scale, size_t scale_elements,
-      size_t num_experts, size_t expert, size_t output_channels,
-      size_t input_channels, float* dst) {
-    const size_t num_rows = output_channels * num_experts;
-    const size_t groups_per_row = scale_elements / num_rows;
-    const size_t group_size =
-        (groups_per_row > 0 && groups_per_row <= input_channels)
-            ? (input_channels / groups_per_row)
-            : 1;
-
-    for (size_t out = 0; out < output_channels; ++out) {
-      const size_t row_idx = out * num_experts + expert;
-      const int8_t* src_row_packed =
-          weight_i4_packed + (row_idx * input_channels) / 2;
-      float* dst_row = dst + out * input_channels;
-      const float* row_scales = scale + row_idx * groups_per_row;
-
-      for (size_t in = 0; in < input_channels; ++in) {
-        const size_t byte_idx = in / 2;
-        const int8_t byte_val = src_row_packed[byte_idx];
-        const int8_t nibble = (in % 2 == 0)
-                                  ? static_cast<int8_t>(byte_val << 4) >> 4
-                                  : static_cast<int8_t>(byte_val >> 4);
-        const size_t group_idx =
-            (groups_per_row > 1 && group_size > 0)
-                ? std::min(in / group_size, groups_per_row - 1)
-                : 0;
-        const float scale_val = row_scales[group_idx];
-        dst_row[in] = static_cast<float>(nibble) * scale_val;
-      }
-    }
-  }
-
   void CopyGateUpExpertWeight(const void* gate_weight, const float* gate_scale,
                               size_t gate_scale_elements,
                               const void* ff1_weight, const float* ff1_scale,
@@ -715,11 +663,12 @@ class MoeExpertsDelegateKernel::Impl {
           dst + hidden_dim * model_dim);
     } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
       CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(gate_weight), gate_scale, num_experts,
-          expert, hidden_dim, model_dim, dst);
+          static_cast<const int8_t*>(gate_weight), gate_scale,
+          gate_scale_elements, num_experts, expert, hidden_dim, model_dim, dst);
       CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(ff1_weight), ff1_scale, num_experts,
-          expert, hidden_dim, model_dim, dst + hidden_dim * model_dim);
+          static_cast<const int8_t*>(ff1_weight), ff1_scale, ff1_scale_elements,
+          num_experts, expert, hidden_dim, model_dim,
+          dst + hidden_dim * model_dim);
     } else {
       CopyExpertWeightRows(static_cast<const float*>(gate_weight), num_experts,
                            expert, hidden_dim, model_dim, dst);
@@ -741,8 +690,9 @@ class MoeExpertsDelegateKernel::Impl {
           kernel_buffer_.data());
     } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
       CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(weight), scale, num_experts, expert,
-          output_channels, input_channels, kernel_buffer_.data());
+          static_cast<const int8_t*>(weight), scale, scale_elements,
+          num_experts, expert, output_channels, input_channels,
+          kernel_buffer_.data());
     } else {
       CopyExpertWeightRows(static_cast<const float*>(weight), num_experts,
                            expert, output_channels, input_channels,
