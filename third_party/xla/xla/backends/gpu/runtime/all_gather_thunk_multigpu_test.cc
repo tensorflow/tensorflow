@@ -43,9 +43,7 @@ namespace xla::gpu {
 namespace {
 
 static constexpr int kNumDevices = 2;
-static constexpr int64_t kLength = 4;
-static constexpr int64_t kByteLength = sizeof(float) * kLength;
-static constexpr int64_t kGatheredLength = kLength * kNumDevices;
+static constexpr int64_t kGatheredLength = kNumElements * kNumDevices;
 static constexpr int64_t kGatheredByteLength = sizeof(float) * kGatheredLength;
 
 static CollectiveConfig MakeAllGatherConfig() {
@@ -63,12 +61,13 @@ static CollectiveConfig MakeAllGatherConfig() {
 
 static AllGatherThunk MakeThunk(const BufferAllocation& alloc_src,
                                 const BufferAllocation& alloc_dst) {
-  ShapedSlice src_slice{BufferAllocation::Slice(&alloc_src, 0, kByteLength),
-                        ShapeUtil::MakeShape(F32, {kLength})};
+  ShapedSlice src_slice{
+      BufferAllocation::Slice(&alloc_src, 0, kFloatByteLength),
+      ShapeUtil::MakeShape(F32, {kNumElements})};
   ShapedSlice dst_slice{
       BufferAllocation::Slice(&alloc_dst, 0, kGatheredByteLength),
       ShapeUtil::MakeShape(F32, {kGatheredLength})};
-  CollectiveThunk::Buffer buffer{.element_count = kLength,
+  CollectiveThunk::Buffer buffer{.element_count = kNumElements,
                                  .source_buffer = src_slice,
                                  .destination_buffer = dst_slice,
                                  .source_memory_space = 0,
@@ -79,12 +78,12 @@ static AllGatherThunk MakeThunk(const BufferAllocation& alloc_src,
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
 
 static std::vector<int64_t> DeviceBufferSizes() {
-  return {kByteLength, kGatheredByteLength};
+  return {kFloatByteLength, kGatheredByteLength};
 }
 
 static std::vector<float> SourceValues(int source_rank, int phase) {
-  std::vector<float> values(kLength);
-  for (int i = 0; i < kLength; ++i) {
+  std::vector<float> values(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
     values[i] = static_cast<float>(phase * 100 + source_rank * 10 + i);
   }
   return values;
@@ -116,8 +115,8 @@ static absl::Status VerifyOutput(se::Stream& stream, se::DeviceAddressBase dst,
                    ReadDeviceBuffer(stream, dst, kGatheredLength));
   for (int source_rank = 0; source_rank < kNumDevices; ++source_rank) {
     std::vector<float> expected = SourceValues(source_rank, phase);
-    for (int i = 0; i < kLength; ++i) {
-      int output_index = source_rank * kLength + i;
+    for (int i = 0; i < kNumElements; ++i) {
+      int output_index = source_rank * kNumElements + i;
       if (output[output_index] != expected[i]) {
         return absl::InternalError(
             absl::StrFormat("output[%d] = %g, expected %g", output_index,
@@ -191,7 +190,7 @@ TEST(AllGatherThunkMultiGpuTest, ExecuteOnStream) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_src(/*index=*/0, kFloatByteLength, /*color=*/0);
   BufferAllocation alloc_dst(/*index=*/1, kGatheredByteLength, /*color=*/0);
   AllGatherThunk thunk = MakeThunk(alloc_src, alloc_dst);
   std::vector<DeviceTestSlot> slots(kNumDevices);
@@ -212,7 +211,7 @@ TEST(AllGatherThunkMultiGpuTest, RecordCommandBufferCreate) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_src(/*index=*/0, kFloatByteLength, /*color=*/0);
   BufferAllocation alloc_dst(/*index=*/1, kGatheredByteLength, /*color=*/0);
   AllGatherThunk thunk = MakeThunk(alloc_src, alloc_dst);
   std::vector<DeviceTestSlot> slots(kNumDevices);
@@ -233,7 +232,7 @@ TEST(AllGatherThunkMultiGpuTest, RecordCommandBufferUpdate) {
   }
 
   DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
-  BufferAllocation alloc_src(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation alloc_src(/*index=*/0, kFloatByteLength, /*color=*/0);
   BufferAllocation alloc_dst(/*index=*/1, kGatheredByteLength, /*color=*/0);
   AllGatherThunk thunk = MakeThunk(alloc_src, alloc_dst);
   std::vector<DeviceTestSlot> slots(kNumDevices);
