@@ -24,7 +24,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -208,64 +211,107 @@ class TensorScatterOp : public ScatterOpBase<Device> {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Indices shape must have rank at least one. Found:",
                     indices.shape().DebugString())));
-    OP_REQUIRES(c, updates.shape().dims() >= 1,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Updates shape must have rank at least one. Found:",
-                    updates.shape().DebugString())));
 
     TensorShape shape = input.shape();
 
-    OP_REQUIRES(c,
-                ValidEmptyOutputShape(shape.num_elements(),
-                                      indices.shape().num_elements(),
-                                      updates.shape().num_elements()),
-                absl::InvalidArgumentError(
-                    "Indices and updates specified for empty output shape"));
-
     const int64_t outer_dims = indices.shape().dims() - 1;
-
-    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Updates shape must have rank at least the number of "
-                    "outer dimensions of indices (",
-                    outer_dims,
-                    "). Found: updates shape=", updates.shape().DebugString(),
-                    ", indices shape=", indices.shape().DebugString())));
-
-    for (int i = 0; i < outer_dims; ++i) {
-      OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Outer dimensions of indices and update must match. "
-                      "Indices shape: ",
-                      indices.shape().DebugString(),
-                      ", updates shape:", updates.shape().DebugString())));
-    }
-
     const int64_t ix = indices.shape().dim_size(outer_dims);
-    OP_REQUIRES(
-        c, updates.shape().dims() - outer_dims == shape.dims() - ix,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Inner dimensions of output shape must match "
-            "inner dimensions of updates shape. Output: ",
-            shape.DebugString(), " updates: ", updates.shape().DebugString())));
-    for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
-      OP_REQUIRES(
-          c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
-          absl::InvalidArgumentError(absl::StrCat(
-              "The inner ", shape.dims() - ix,
-              " dimensions of output.shape=", shape.DebugString(),
-              " must match the inner ", updates.shape().dims() - outer_dims,
-              " dimensions of updates.shape=", updates.shape().DebugString())));
-    }
 
     AllocatorAttributes alloc_attr;
     MemoryType memory_type = DEVICE_MEMORY;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       alloc_attr.set_on_host(true);
       memory_type = HOST_MEMORY;
     } else {
       memory_type = DEVICE_MEMORY;
     }
+
+    Tensor reshaped_indices;
+    const Tensor* indices_ptr = &indices;
+    Tensor broadcasted_updates;
+    const Tensor* updates_ptr = &updates;
+    if (TensorShapeUtils::IsScalar(updates.shape())) {
+      OP_REQUIRES(c, ix >= 0 && ix <= shape.dims(),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Inner dimensions of output shape must match "
+                      "inner dimensions of updates shape. Output: ",
+                      shape.DebugString(),
+                      " updates: ", updates.shape().DebugString())));
+      TensorShape broadcasted_shape;
+      if (outer_dims == 0) {
+        OP_REQUIRES(c, reshaped_indices.CopyFrom(indices, TensorShape({1, ix})),
+                    absl::InternalError("Failed to reshape 1D indices"));
+        indices_ptr = &reshaped_indices;
+        OP_REQUIRES_OK(c, broadcasted_shape.AddDimWithStatus(1));
+      } else {
+        for (int i = 0; i < outer_dims; ++i) {
+          OP_REQUIRES_OK(c, broadcasted_shape.AddDimWithStatus(
+                                indices.shape().dim_size(i)));
+        }
+      }
+      for (int i = ix; i < shape.dims(); ++i) {
+        OP_REQUIRES_OK(c,
+                       broadcasted_shape.AddDimWithStatus(shape.dim_size(i)));
+      }
+      OP_REQUIRES(c,
+                  shape.num_elements() > 0 &&
+                      ValidEmptyOutputShape(shape.num_elements(),
+                                            indices_ptr->shape().num_elements(),
+                                            broadcasted_shape.num_elements()),
+                  absl::InvalidArgumentError(
+                      "Indices and updates specified for empty output shape"));
+      OP_REQUIRES_OK(c, c->allocate_temp(updates.dtype(), broadcasted_shape,
+                                         &broadcasted_updates, alloc_attr));
+      if (broadcasted_shape.num_elements() > 0) {
+        functor::FillFunctor<Device, T> fill;
+        fill(c->eigen_device<Device>(), broadcasted_updates.flat<T>(),
+             updates.scalar<T>());
+      }
+      updates_ptr = &broadcasted_updates;
+    } else {
+      OP_REQUIRES(c,
+                  ValidEmptyOutputShape(shape.num_elements(),
+                                        indices.shape().num_elements(),
+                                        updates.shape().num_elements()),
+                  absl::InvalidArgumentError(
+                      "Indices and updates specified for empty output shape"));
+      OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Updates shape must have rank at least the number of "
+                      "outer dimensions of indices (",
+                      outer_dims,
+                      "). Found: updates shape=", updates.shape().DebugString(),
+                      ", indices shape=", indices.shape().DebugString())));
+
+      for (int i = 0; i < outer_dims; ++i) {
+        OP_REQUIRES(c,
+                    indices.shape().dim_size(i) == updates.shape().dim_size(i),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Outer dimensions of indices and update must match. "
+                        "Indices shape: ",
+                        indices.shape().DebugString(),
+                        ", updates shape:", updates.shape().DebugString())));
+      }
+
+      OP_REQUIRES(c, updates.shape().dims() - outer_dims == shape.dims() - ix,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Inner dimensions of output shape must match "
+                      "inner dimensions of updates shape. Output: ",
+                      shape.DebugString(),
+                      " updates: ", updates.shape().DebugString())));
+      for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
+        OP_REQUIRES(
+            c,
+            updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
+            absl::InvalidArgumentError(absl::StrCat(
+                "The inner ", shape.dims() - ix,
+                " dimensions of output.shape=", shape.DebugString(),
+                " must match the inner ", updates.shape().dims() - outer_dims,
+                " dimensions of updates.shape=",
+                updates.shape().DebugString())));
+      }
+    }
+
     std::unique_ptr<Tensor> forwarded_input =
         c->forward_input(0, 0, input.dtype(), shape, memory_type, alloc_attr);
 
@@ -278,13 +324,14 @@ class TensorScatterOp : public ScatterOpBase<Device> {
       OP_REQUIRES_OK(c, tensorflow::functor::DoCopy(c->eigen_device<Device>(),
                                                     input, out));
       OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
-                            c, indices, updates, shape, out, false /*allocate*/,
-                            this->bad_indices_policy_));
+                            c, *indices_ptr, *updates_ptr, shape, out,
+                            false /*allocate*/, this->bad_indices_policy_));
     } else {
       // Output forwarded, so simply perform the scatter.
-      OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
-                            c, indices, updates, shape, forwarded_input.get(),
-                            false /*allocate*/, this->bad_indices_policy_));
+      OP_REQUIRES_OK(
+          c, functor::DoScatterNd<Device, T, Index, op>(
+                 c, *indices_ptr, *updates_ptr, shape, forwarded_input.get(),
+                 false /*allocate*/, this->bad_indices_policy_));
 
       c->set_output(0, *forwarded_input);
     }
