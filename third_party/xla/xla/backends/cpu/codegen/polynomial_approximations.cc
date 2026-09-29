@@ -300,112 +300,6 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   return vb.Mul(z_scaled, pow2);
 }
 
-llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
-                             int32_t vector_width) {
-  VectorIrBuilder vb(F32, vector_width, b, "log_f32");
-
-  const llvm::APFloat half = GetIeeeF32(0.5);
-  const llvm::APFloat one = GetIeeeF32(1.0);
-
-  // This implements the same polynomial approximation as implemented in Eigen3.
-  // Returns NaN for x < 0, -INF for x = 0
-  const llvm::APFloat cephes_SQRTHF = GetIeeeF32(0.707106781186547524);
-  const llvm::APFloat cephes_log_p0 = GetIeeeF32(7.0376836292E-2);
-  const llvm::APFloat cephes_log_p1 = GetIeeeF32(-1.1514610310E-1);
-  const llvm::APFloat cephes_log_p2 = GetIeeeF32(1.1676998740E-1);
-  const llvm::APFloat cephes_log_p3 = GetIeeeF32(-1.2420140846E-1);
-  const llvm::APFloat cephes_log_p4 = GetIeeeF32(+1.4249322787E-1);
-  const llvm::APFloat cephes_log_p5 = GetIeeeF32(-1.6668057665E-1);
-  const llvm::APFloat cephes_log_p6 = GetIeeeF32(+2.0000714765E-1);
-  const llvm::APFloat cephes_log_p7 = GetIeeeF32(-2.4999993993E-1);
-  const llvm::APFloat cephes_log_p8 = GetIeeeF32(+3.3333331174E-1);
-  const llvm::APFloat cephes_log_q1 = GetIeeeF32(-2.12194440e-4);
-  const llvm::APFloat cephes_log_q2 = GetIeeeF32(0.693359375);
-
-  // The smallest non denormalized float number.
-  const llvm::APFloat min_norm_pos = GetIeeeF32FromBitwiseRep(0x00800000);
-  const llvm::APFloat minus_inf = GetIeeeF32FromBitwiseRep(0xff800000);
-  const llvm::APFloat pos_inf = GetIeeeF32FromBitwiseRep(0x7f800000);
-  const llvm::APFloat inv_mant_mask = GetIeeeF32FromBitwiseRep(~0x7f800000);
-
-  // invalid_mask is set if x is negative or NaN (and therefore output
-  // must be NaN).
-  llvm::Value* invalid_mask = vb.FCmpULEMask(input, vb.GetZeroVector());
-  llvm::Value* is_zero_mask = vb.FCmpEQMask(input, vb.GetZeroVector());
-  llvm::Value* is_pos_inf_mask = vb.FCmpEQMask(input, pos_inf);
-
-  // Cut off denormalized stuff.
-  // Always allow fast max because we are checking for the nan above.
-  llvm::Value* tmp0 = vb.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
-
-  // VectorIrBuilder (intentionally) can't juggle more than one type at a
-  // time so drop down to IRBuilder for this bit.
-  llvm::Value* vector_constant_0x7f =
-      b->CreateVectorSplat(vector_width, b->getInt32(0x7f));
-  llvm::Value* vector_constant_23 =
-      b->CreateVectorSplat(vector_width, b->getInt32(23));
-  llvm::Type* i32_vector_type =
-      llvm::VectorType::get(b->getInt32Ty(), vector_width, false);
-
-  llvm::Value* emm0 = b->CreateLShr(b->CreateBitCast(tmp0, i32_vector_type),
-                                    vector_constant_23);
-
-  // Keep only the fractional part.
-  tmp0 = vb.FloatAnd(tmp0, inv_mant_mask);
-  tmp0 = vb.FloatOr(tmp0, half);
-
-  emm0 = b->CreateSub(emm0, vector_constant_0x7f);
-  llvm::Value* e = vb.Add(one, b->CreateSIToFP(emm0, vb.vector_type()));
-
-  // part2:
-  //   if( x < SQRTHF ) {
-  //     e -= 1;
-  //     x = x + x - 1.0;
-  //   } else { x = x - 1.0; }
-  llvm::Value* mask = vb.FCmpOLTMask(tmp0, cephes_SQRTHF);
-  llvm::Value* tmp1 = vb.FloatAnd(tmp0, mask);
-  tmp0 = vb.Sub(tmp0, one);
-  e = vb.Sub(e, vb.FloatAnd(mask, one));
-  tmp0 = vb.Add(tmp0, tmp1);
-
-  llvm::Value* x2 = vb.Mul(tmp0, tmp0);
-  llvm::Value* x3 = vb.Mul(x2, tmp0);
-
-  llvm::Value *y, *y1, *y2;
-  y = vb.MulAdd(tmp0, cephes_log_p0, cephes_log_p1);
-  y1 = vb.MulAdd(tmp0, cephes_log_p3, cephes_log_p4);
-  y2 = vb.MulAdd(tmp0, cephes_log_p6, cephes_log_p7);
-  y = vb.MulAdd(y, tmp0, cephes_log_p2);
-  y1 = vb.MulAdd(y1, tmp0, cephes_log_p5);
-  y2 = vb.MulAdd(y2, tmp0, cephes_log_p8);
-  y = vb.MulAdd(y, x3, y1);
-  y = vb.MulAdd(y, x3, y2);
-  y = vb.Mul(y, x3);
-
-  y1 = vb.Mul(cephes_log_q1, e);
-  llvm::Value* tmp2 = vb.Mul(half, x2);
-  y = vb.Add(y, y1);
-  tmp0 = vb.Sub(tmp0, tmp2);
-  y2 = vb.Mul(cephes_log_q2, e);
-  tmp0 = vb.Add(tmp0, y);
-  tmp0 = vb.Add(tmp0, y2);
-
-  // Contains +/-inf where +/-inf is the correct answer, otherwise 0.
-  llvm::Value* result_inf = vb.FloatOr(vb.FloatAnd(is_zero_mask, minus_inf),
-                                       vb.FloatAnd(is_pos_inf_mask, pos_inf));
-
-  // Contains a finite result or nan.  This is the correct answer only if both
-  // result_minus_inf and result_pos_inf are both 0.
-  //
-  // (This implementation works because 0xffffffff is a nan.)
-  llvm::Value* result_finite_or_nan = vb.FloatOr(tmp0, invalid_mask);
-
-  // Combine the above into a final result.
-  return vb.FloatOr(result_inf,
-                    vb.FloatAndNot(vb.FloatOr(is_zero_mask, is_pos_inf_mask),
-                                   result_finite_or_nan));
-}
-
 // Generates an IR for computing output value via upcasting to F32:
 //   output = cast<F16>(generator(cast<F32>(input)))
 template <Generator generator>
@@ -460,56 +354,10 @@ std::vector<llvm::VecDesc> ExpVectorization() {
   };
 }
 
-//===----------------------------------------------------------------------===//
-// Log
-//===----------------------------------------------------------------------===//
-
-static constexpr absl::string_view kLogV4F32Sym = "__xla_cpu_LogV4F32";
-static constexpr absl::string_view kLogV8F32Sym = "__xla_cpu_LogV8F32";
-static constexpr absl::string_view kLogV16F32Sym = "__xla_cpu_LogV16F32";
-
-static constexpr absl::string_view kLogV8F16Sym = "__xla_cpu_LogV8F16";
-static constexpr absl::string_view kLogV16F16Sym = "__xla_cpu_LogV16F16";
-
-std::vector<llvm::VecDesc> LogVectorization() {
-  return {
-      {"logf", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       GetVfabiPrefix(4), std::nullopt},
-      {"llvm.log.f32", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       GetVfabiPrefix(4), std::nullopt},
-
-      {"logf", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       GetVfabiPrefix(8), std::nullopt},
-      {"llvm.log.f32", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       GetVfabiPrefix(8), std::nullopt},
-
-      {"logf", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       GetVfabiPrefix(16), std::nullopt},
-      {"llvm.log.f32", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       GetVfabiPrefix(16), std::nullopt},
-
-      {"logf", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       GetVfabiPrefix(8), std::nullopt},
-      {"llvm.log.f16", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       GetVfabiPrefix(8), std::nullopt},
-
-      {"logf", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       GetVfabiPrefix(16), std::nullopt},
-      {"llvm.log.f16", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       GetVfabiPrefix(16), std::nullopt},
-  };
-}
-
 }  // namespace
 
 std::vector<llvm::VecDesc> PolynomialApproximationsVectorization() {
-  auto exp = ExpVectorization();
-  auto log = LogVectorization();
-
-  std::vector<llvm::VecDesc> vec_descs;
-  vec_descs.insert(vec_descs.end(), exp.begin(), exp.end());
-  vec_descs.insert(vec_descs.end(), log.begin(), log.end());
-  return vec_descs;
+  return ExpVectorization();
 }
 
 void RewriteToPolynomialApproximations(llvm::Module* module,
@@ -539,27 +387,6 @@ void RewriteToPolynomialApproximations(llvm::Module* module,
   rewrite_calls(kExpV8F16Sym, UpcastF16ToF32<GenerateVF32Exp>,
                 /*vector_width=*/8);
   rewrite_calls(kExpV16F16Sym, UpcastF16ToF32<GenerateVF32Exp>,
-                /*vector_width=*/16);
-
-  //===----------------------------------------------------------------===//
-  // Log
-  //===----------------------------------------------------------------===//
-
-  rewrite_calls("logf", GenerateVF32Log, /*vector_width=*/1);
-  rewrite_calls("llvm.log.f32", GenerateVF32Log, /*vector_width=*/1);
-  rewrite_calls("llvm.log.v2f32", GenerateVF32Log, /*vector_width=*/2);
-  rewrite_calls("llvm.log.v4f32", GenerateVF32Log, /*vector_width=*/4);
-  rewrite_calls("llvm.log.v8f32", GenerateVF32Log, /*vector_width=*/8);
-  rewrite_calls("llvm.log.v16f32", GenerateVF32Log, /*vector_width=*/16);
-  rewrite_calls(kLogV4F32Sym, GenerateVF32Log, /*vector_width=*/4);
-  rewrite_calls(kLogV8F32Sym, GenerateVF32Log, /*vector_width=*/8);
-  rewrite_calls(kLogV16F32Sym, GenerateVF32Log, /*vector_width=*/16);
-
-  rewrite_calls("llvm.log.f16", UpcastF16ToF32<GenerateVF32Log>,
-                /*vector_width=*/1);
-  rewrite_calls(kLogV8F16Sym, UpcastF16ToF32<GenerateVF32Log>,
-                /*vector_width=*/8);
-  rewrite_calls(kLogV16F16Sym, UpcastF16ToF32<GenerateVF32Log>,
                 /*vector_width=*/16);
 }
 
