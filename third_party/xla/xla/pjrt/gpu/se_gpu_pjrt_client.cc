@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
 #include "xla/pjrt/se/local_device_state.h"
@@ -1814,6 +1815,10 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
   if (verify_topology_fingerprint && !enable_mock_nccl && num_nodes > 1) {
     constexpr absl::string_view kTopologyFingerprintKey =
         "topology_fingerprint";
+    ABSL_ASSIGN_OR_RETURN(PjRtTopologyDescriptionProto topology_proto,
+                     se_gpu_topology->ToProto());
+    LOG(INFO) << "GPU topology for process " << process_id << ":\n"
+              << topology_proto;
     ABSL_ASSIGN_OR_RETURN(uint64_t topology_fingerprint,
                      se_gpu_topology->Fingerprint());
     const std::string fingerprint_str = absl::StrCat(topology_fingerprint);
