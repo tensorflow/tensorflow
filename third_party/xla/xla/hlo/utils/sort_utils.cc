@@ -128,13 +128,24 @@ std::pair<int64_t, int64_t> MatchNumpySortComparator(
   if (compare == nullptr) {
     return {-1, -1};
   }
+  if (compare->order() == ComparisonOrder::kWeak) {
+    const auto* param0 = DynCast<HloParameterInstruction>(compare->operand(0));
+    const auto* param1 = DynCast<HloParameterInstruction>(compare->operand(1));
+    if (param0 && param1) {
+      return {param0->parameter_number(), param1->parameter_number()};
+    }
+    return {-1, -1};
+  }
   return {MatchNumpySortParameter(compare->operand(0)),
           MatchNumpySortParameter(compare->operand(1))};
 }
 
 std::pair<int64_t, int64_t> MatchSimpleSortComparator(
     const HloCompareInstruction* compare) {
-  if (compare == nullptr) {
+  // WEAK order is handled by MatchNumpySortComparator. TOTAL order is kept
+  // here because integer comparisons always use TOTAL order and GPU CUB radix
+  // sort natively implements IEEE-754 totalOrder for kDefaultOrder on floats.
+  if (compare == nullptr || compare->order() == ComparisonOrder::kWeak) {
     return {-1, -1};
   }
   const auto* param0 = DynCast<HloParameterInstruction>(compare->operand(0));

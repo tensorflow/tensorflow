@@ -20,10 +20,12 @@ limitations under the License.*/
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
@@ -45,6 +47,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/rank_id.h"
@@ -58,6 +61,7 @@ limitations under the License.*/
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
@@ -66,6 +70,7 @@ limitations under the License.*/
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
@@ -288,6 +293,20 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
   return param_to_peers_ptrs;
 }
 
+// Recorded input -> symmetric scratch copy that precedes a kernel launch node.
+struct RecordedCopy {
+  const se::CommandBuffer::Command* command = nullptr;
+  void* dst = nullptr;
+  void* src = nullptr;
+};
+
+// Per command buffer state: maps the recorded kernel launch node (the command
+// returned from Record) to the copy command that precedes it, so both can be
+// updated in place.
+struct CollectiveKernelRecordState : public CommandState {
+  absl::flat_hash_map<const se::CommandBuffer::Command*, RecordedCopy>
+      launch_to_copy;
+};
 }  // namespace
 
 absl::Status CollectiveKernelThunk::IsSupported(
@@ -629,8 +648,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status CollectiveKernelThunk::ExecuteOnStream(
-    const ExecuteParams& params) {
+absl::StatusOr<CollectiveKernelThunk::LaunchPlan>
+CollectiveKernelThunk::PrepareLaunch(const ExecuteParams& params) {
   se::Stream* stream = params.stream;
   TF_RET_CHECK(stream != nullptr);
   ABSL_ASSIGN_OR_RETURN(
@@ -668,8 +687,10 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
                        has_multimem) +
       kernel_spec_.scratch_buffers.size();
 
+  LaunchPlan plan;
+  plan.kernel = state->kernel.get();
   ABSL_ASSIGN_OR_RETURN(
-      std::vector<se::KernelArg> kernel_args,
+      plan.kernel_args,
       BuildKernelArguments(kernel_spec_, buffers_, params, state->rank,
                            state->invocation_count, state->metadata, clique_key,
                            num_parameters));
@@ -687,21 +708,104 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
     // rank's input slice. scratch_allocations[0] is the signal buffer.
     TF_RET_CHECK(memory_state->scratch_allocations.size() >= 2)
         << "Expected at least 2 scratch allocations for D2D copy.";
-    se::DeviceAddressBase input_addr =
-        params.buffer_allocations->GetDeviceAddress(
-            buffers_[0].source_buffer.slice);
-    const int64_t copy_size = GetInputSizeBytes();
-    ABSL_RETURN_IF_ERROR(
-        stream->Memcpy(memory_state->scratch_allocations[1].address_ptr(),
-                       input_addr, copy_size));
-    VLOG(3) << "D2D copy: src=" << input_addr.opaque() << " dst="
-            << memory_state->scratch_allocations[1].address().opaque()
-            << " size=" << copy_size
-            << " invocation=" << state->invocation_count;
+    plan.copy_dst = memory_state->scratch_allocations[1].address_ptr();
+    plan.copy_src = params.buffer_allocations->GetDeviceAddress(
+        buffers_[0].source_buffer.slice);
+    plan.copy_size = GetInputSizeBytes();
   }
+  return plan;
+}
 
-  return ExecuteKernelOnStream(*state->kernel, kernel_args, launch_dimensions_,
-                               /*cluster_dim=*/std::nullopt, stream);
+absl::Status CollectiveKernelThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
+  ABSL_ASSIGN_OR_RETURN(LaunchPlan plan, PrepareLaunch(params));
+  if (plan.copy_dst != nullptr) {
+    ABSL_RETURN_IF_ERROR(
+        params.stream->Memcpy(plan.copy_dst, plan.copy_src, plan.copy_size));
+  }
+  return ExecuteKernelOnStream(*plan.kernel, plan.kernel_args,
+                               launch_dimensions_,
+                               /*cluster_dim=*/std::nullopt, params.stream);
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectiveKernelThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  // The kernel is recorded as an explicit graph kernel node. For kernels with a
+  // host-side sync count PrepareLaunch bumps the per-stream invocation_count,
+  // so every create/update carries the up-to-date barrier signal value in the
+  // kernel node parameters. Kernels with a device-side sync count get constant
+  // arguments and only need updates when buffer addresses change.
+  ABSL_ASSIGN_OR_RETURN(LaunchPlan plan, PrepareLaunch(execute_params));
+
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelArgsPackedArrayBase> packed_args,
+                   se::PackKernelArgs(absl::MakeConstSpan(plan.kernel_args),
+                                      plan.kernel->metadata()));
+  auto* state = record_params.state.GetOrCreate<CollectiveKernelRecordState>(
+      this, command_buffer);
+
+  // The input -> symmetric scratch copy is recorded as a (tiny) stream-captured
+  // child graph. An explicit memcpy node targeting symmetric (collective)
+  // memory crashes CUPTI during graph instantiation when profiling is enabled.
+  // Its parameters only depend on buffer addresses, so it is re-captured only
+  // when those change.
+  auto trace_copy =
+      [&]() -> absl::StatusOr<std::unique_ptr<se::CommandBuffer>> {
+    return se::TraceCommandBufferFactory::Create(
+        execute_params.stream->parent(),
+        execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
+          return stream->Memcpy(plan.copy_dst, plan.copy_src, plan.copy_size);
+        });
+  };
+
+  auto create = [&](const RecordCreate& action)
+      -> absl::StatusOr<const se::CommandBuffer::Command*> {
+    absl::Span<const se::CommandBuffer::Command* const> deps =
+        action.dependencies;
+    const se::CommandBuffer::Command* copy_cmd = nullptr;
+    if (plan.copy_dst != nullptr) {
+      ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested, trace_copy());
+      ABSL_ASSIGN_OR_RETURN(copy_cmd,
+                       command_buffer->CreateChildCommand(*nested, deps));
+      deps = absl::MakeConstSpan(&copy_cmd, 1);
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        const se::CommandBuffer::Command* launch_cmd,
+        command_buffer->CreateLaunch(
+            launch_dimensions_.thread_counts_per_block(),
+            launch_dimensions_.block_counts(), /*cluster_dims=*/std::nullopt,
+            *plan.kernel, *packed_args, deps, priority()));
+    if (copy_cmd != nullptr) {
+      state->launch_to_copy[launch_cmd] = RecordedCopy{
+          copy_cmd, plan.copy_dst->opaque(), plan.copy_src.opaque()};
+    }
+    return launch_cmd;
+  };
+  auto update = [&](const RecordUpdate& action)
+      -> absl::StatusOr<const se::CommandBuffer::Command*> {
+    if (plan.copy_dst != nullptr) {
+      auto it = state->launch_to_copy.find(action.command);
+      TF_RET_CHECK(it != state->launch_to_copy.end())
+          << "Missing recorded D2D copy command for collective kernel update";
+      RecordedCopy& copy = it->second;
+      if (copy.dst != plan.copy_dst->opaque() ||
+          copy.src != plan.copy_src.opaque()) {
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested,
+                         trace_copy());
+        ABSL_RETURN_IF_ERROR(
+            command_buffer->UpdateChildCommand(copy.command, *nested));
+        copy.dst = plan.copy_dst->opaque();
+        copy.src = plan.copy_src.opaque();
+      }
+    }
+    ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
+        action.command, launch_dimensions_.thread_counts_per_block(),
+        launch_dimensions_.block_counts(), /*cluster_dims=*/std::nullopt,
+        *plan.kernel, *packed_args));
+    return action.command;
+  };
+  return std::visit(absl::Overload(create, update), record_action);
 }
 
 Thunk::BufferUses CollectiveKernelThunk::buffer_uses() const {

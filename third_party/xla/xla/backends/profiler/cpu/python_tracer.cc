@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/python_tracer.h"
 
+#include <algorithm>
 #include <any>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -25,6 +27,7 @@ limitations under the License.
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
@@ -57,6 +60,8 @@ class PythonTracer : public tsl::profiler::ProfilerInterface {
  private:
   bool recording_ = false;
   const PythonHooksOptions options_;
+  // Start timestamp (in nanoseconds) of the current recording/consume window.
+  uint64_t start_timestamp_ns_ = 0;
   std::unique_ptr<PythonHookContext> context_;
 
   PythonTracer(const PythonTracer&) = delete;
@@ -71,6 +76,7 @@ absl::Status PythonTracer::Start() {  // TENSORFLOW_STATUS_OK
   }
   VLOG(1) << __FUNCTION__;
   recording_ = true;
+  start_timestamp_ns_ = tsl::profiler::GetCurrentTimeNanos();
   PythonHooks::GetSingleton()->Start(options_);
   return absl::OkStatus();
 }
@@ -98,6 +104,8 @@ absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
 absl::StatusOr<tsl::profiler::ConsumeResult> PythonTracer::Consume() {
   VLOG(1) << "PythonTracer::Consume called, recording=" << recording_;
   PythonTracerChunk chunk;
+  chunk.start_timestamp_ns =
+      std::exchange(start_timestamp_ns_, tsl::profiler::GetCurrentTimeNanos());
   if (recording_) {
     chunk.consumed_data = PythonHooks::GetSingleton()->Consume();
   } else if (context_) {
@@ -110,7 +118,7 @@ absl::StatusOr<tsl::profiler::ConsumeResult> PythonTracer::Consume() {
 
   size_t estimated_size = 0;
   size_t total_events = 0;
-  for (const auto& thread_data : chunk.consumed_data) {
+  for (const PerThreadConsumeData& thread_data : chunk.consumed_data) {
     estimated_size += sizeof(PerThreadConsumeData) +
                       thread_data.events.size() * sizeof(TraceEventInfo);
     total_events += thread_data.events.size();
@@ -141,10 +149,36 @@ absl::Status PythonTracer::Serialize(std::any data,
           space, tsl::profiler::kPythonTracerPlaneName);
   tsl::profiler::XPlaneBuilder plane(raw_plane);
 
-  for (const auto& thread_data : chunk->consumed_data) {
+  for (const PerThreadConsumeData& thread_data : chunk->consumed_data) {
+    // Skip threads with no recorded events.
+    if (thread_data.events.empty()) {
+      continue;
+    }
+
+    // Anchor the line to the chunk start timestamp, clamping down to the
+    // earliest event start timestamp if any event started before the chunk
+    // window (or if the chunk start timestamp was unset). This guarantees
+    // non-negative event offsets and prevents int64_t picosecond overflow.
+    uint64_t line_start_ns = chunk->start_timestamp_ns > 0
+                                 ? chunk->start_timestamp_ns
+                                 : thread_data.events.front().start_time_ns;
+    for (const TraceEventInfo& event : thread_data.events) {
+      line_start_ns = std::min(line_start_ns, event.start_time_ns);
+    }
+
     tsl::profiler::XLineBuilder line =
         plane.GetOrCreateLine(thread_data.thread_id);
-    for (const auto& event : thread_data.events) {
+    if (line.NumEvents() == 0 && line.TimestampNs() == 0) {
+      // Newly created lines have no events yet (since empty event chunks are
+      // skipped above), so we can set the initial baseline timestamp directly.
+      line.SetTimestampNs(line_start_ns);
+    } else if (line_start_ns < static_cast<uint64_t>(line.TimestampNs())) {
+      // If this is a subsequent chunk, with event timestamps earlier than the
+      // existing line start timestamp, we adjust the line start timestamp and
+      // event offsets.
+      line.SetTimestampNsAndAdjustEventOffsets(line_start_ns);
+    }
+    for (const TraceEventInfo& event : thread_data.events) {
       tsl::profiler::XEventBuilder xevent =
           line.AddEvent(*plane.GetOrCreateEventMetadata(event.name));
       xevent.SetTimestampNs(event.start_time_ns);
