@@ -119,6 +119,7 @@ xla_cc_test(
     deps = [
         ":cpu_fusion_emitters",
         "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:fusion_emitter",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
@@ -127,6 +128,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/runtime:work_dimensions",
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
         "//xla/service:logical_buffer",
@@ -134,6 +136,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",

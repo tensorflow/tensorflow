@@ -590,10 +590,10 @@ PjRtStreamExecutorClient::AllocateLinearizeDest(
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorRawClient::CreateLinkedEventPromise(
-    PjRtMemorySpace* memory_space, absl::string_view debug_info) {
-  PjRtDevice* device = memory_space->devices()[0];
+    LocalDeviceId local_device_id, int memory_kind_id,
+    absl::string_view debug_info) {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
       this, local_device, async_work_runner());
   PjRtDeviceEventRef event = result->event().CopyRef();
@@ -610,12 +610,12 @@ PjRtDeviceEventRef PjRtStreamExecutorRawClient::CreateErrorDeviceEvent(
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-PjRtStreamExecutorRawClient::CreateDeviceEvent(PjRtMemorySpace* memory_space,
+PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
+                                               int memory_kind_id,
                                                Future<> dependency) {
   auto definition_event = BufferSequencingEvent::Create(async_work_runner());
-  PjRtDevice* device = memory_space->devices()[0];
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   dependency.OnReady([definition_event = definition_event.CopyRef(),
                       local_device, this](absl::Status status) mutable {
     if (!status.ok()) {
@@ -682,11 +682,9 @@ PjRtStreamExecutorRawClient::ImportForeignMemory(
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawClient::CreateDeviceEventForStream(
-    PjRtMemorySpace* memory_space, std::intptr_t stream) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  auto* device = memory_space->devices().front();
+    LocalDeviceId local_device_id, std::intptr_t stream) {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
 
   auto definition_event =
       BufferSequencingEvent::Create(this->async_work_runner());
@@ -2113,7 +2111,7 @@ bool PjRtStreamExecutorRawClient::IsHostMemoryPinned(const void* ptr,
 }
 
 absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
-    PjRtMemorySpace* memory_space, PjRtDeviceEventRef event,
+    LocalDeviceId local_device_id, PjRtDeviceEventRef event,
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
@@ -2150,8 +2148,8 @@ PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
+    LocalDeviceId local_device_id, int memory_kind_id,
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {

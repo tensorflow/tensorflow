@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -505,6 +507,47 @@ class AllReduceLayoutAwareTest
     opts.add_xla_gpu_experimental_use_collective_kernels(
         DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
     return opts;
+  }
+};
+
+// Async all-reduce test with XLA's Triton all-reduce kernel enabled.
+class AllReduceCollectiveKernelTest : public AllReduceTestNoParams {
+ public:
+  AllReduceCollectiveKernelTest() : AllReduceTestNoParams(/*is_async=*/true) {}
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+    opts.clear_xla_gpu_experimental_use_collective_kernels();
+    opts.add_xla_gpu_experimental_use_collective_kernels(
+        DebugOptions::COLLECTIVE_KERNEL_ALL_REDUCE);
+    return opts;
+  }
+
+  // Verifies that every all-reduce in `optimized_module` uses XLA's one-shot
+  // all-reduce kernel.
+  void VerifyOneShotAllReduce(const HloModule* optimized_module) {
+    ASSERT_NE(optimized_module, nullptr);
+    bool found_all_reduce = false;
+    for (const HloComputation* comp : optimized_module->computations()) {
+      for (const HloInstruction* instr : comp->instructions()) {
+        if (instr->opcode() != HloOpcode::kAllReduce &&
+            instr->opcode() != HloOpcode::kAllReduceStart) {
+          continue;
+        }
+        found_all_reduce = true;
+        ASSERT_OK_AND_ASSIGN(gpu::GpuBackendConfig gpu_config,
+                             instr->backend_config<gpu::GpuBackendConfig>());
+        EXPECT_EQ(gpu_config.collective_backend_config().kernel_strategy(),
+                  gpu::CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT)
+            << "Expected AllReduce instruction " << instr->name()
+            << " to use KERNEL_STRATEGY_TRITON_ONE_SHOT, but got: "
+            << gpu::CollectiveBackendConfig::CollectiveKernelStrategy_Name(
+                   gpu_config.collective_backend_config().kernel_strategy());
+      }
+    }
+    EXPECT_TRUE(found_all_reduce)
+        << "Expected to find an AllReduce instruction in optimized HLO.";
   }
 };
 
@@ -1055,6 +1098,114 @@ TEST_F(AllReduceTestNoParams, TestGlobalDeviceIdMappingWithAsyncAllReduce) {
   for (int i = 0; i < kNumReplicas; ++i) {
     ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
         << "ExpectedOutput != Result at rank " << i;
+  }
+}
+
+// Runs 10 consequent all-reduces with FUSION command buffers enabled and
+// verifies that all of them use XLA's one-shot all-reduce kernel and are placed
+// into command buffers.
+TEST_F(AllReduceCollectiveKernelTest, TenConsequentAllReducesWithCudaGraphs) {
+  constexpr int64_t kNumReplicas = 2;
+  constexpr int kNumAllReduces = 10;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  // Adding the per-replica parameter before every all-reduce keeps its input
+  // non-replicated, so the all-reduce simplifier can't fold the chain.
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    p0 = f32[1024] parameter(0)
+    ar0 = f32[1024] all-reduce(p0), to_apply=add, replica_groups={{0,1}}
+    in1 = f32[1024] add(ar0, p0)
+    ar1 = f32[1024] all-reduce(in1), to_apply=add,
+        replica_groups={{0,1}}
+    in2 = f32[1024] add(ar1, p0)
+    ar2 = f32[1024] all-reduce(in2), to_apply=add,
+        replica_groups={{0,1}}
+    in3 = f32[1024] add(ar2, p0)
+    ar3 = f32[1024] all-reduce(in3), to_apply=add,
+        replica_groups={{0,1}}
+    in4 = f32[1024] add(ar3, p0)
+    ar4 = f32[1024] all-reduce(in4), to_apply=add,
+        replica_groups={{0,1}}
+    in5 = f32[1024] add(ar4, p0)
+    ar5 = f32[1024] all-reduce(in5), to_apply=add,
+        replica_groups={{0,1}}
+    in6 = f32[1024] add(ar5, p0)
+    ar6 = f32[1024] all-reduce(in6), to_apply=add,
+        replica_groups={{0,1}}
+    in7 = f32[1024] add(ar6, p0)
+    ar7 = f32[1024] all-reduce(in7), to_apply=add,
+        replica_groups={{0,1}}
+    in8 = f32[1024] add(ar7, p0)
+    ar8 = f32[1024] all-reduce(in8), to_apply=add,
+        replica_groups={{0,1}}
+    in9 = f32[1024] add(ar8, p0)
+    ROOT ar9 = f32[1024] all-reduce(in9), to_apply=add,
+        replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory dump_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  // The fixture enables COLLECTIVE_KERNEL_ALL_REDUCE, so the 10 all-reduces
+  // lower to XLA's Triton one-shot all-reduce kernel (CollectiveKernelThunk)
+  // instead of NCCL. Collective kernels are recorded into command buffers
+  // with the FUSION command buffer type, so COLLECTIVES isn't needed.
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
+  // Command buffers are formed at the thunk level, so dump the thunk sequence
+  // to check which collectives were placed into them.
+  debug_options.set_xla_dump_to(dump_dir.path());
+
+  Literal input_r0 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f));
+  Literal input_r1 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 2.0f));
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  // Every all-reduce must use KERNEL_STRATEGY_TRITON_ONE_SHOT (XLA one-shot
+  // kernel, not NCCL).
+  VerifyOneShotAllReduce(result.optimized_module);
+
+  // All one-shot all-reduces must be recorded into command buffers, and none
+  // may fall back to NCCL.
+  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts one_shot,
+                       CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
+  EXPECT_EQ(one_shot.in_command_buffer, kNumAllReduces);
+  EXPECT_EQ(one_shot.outside_command_buffer, 0);
+  ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts nccl,
+                       CountThunksInDump(dump_dir.path(), "kAllReduce"));
+  EXPECT_EQ(nccl.in_command_buffer + nccl.outside_command_buffer, 0);
+
+  // The first all-reduce sums 1 + 2 = 3 and each following one computes
+  // (a + 1) + (a + 2) = 2a + 3, so both replicas end up with
+  // 3 * (2^10 - 1) = 3069.
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  Literal expected =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 3069.0f));
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
   }
 }
 
