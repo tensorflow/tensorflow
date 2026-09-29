@@ -14,6 +14,8 @@
 # ==============================================================================
 """The implementation of `tf.data.Dataset.sample_from_datasets`."""
 
+import numpy as np
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
@@ -41,6 +43,24 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
     return (zip(*datasets_and_weights) if datasets_and_weights else
             ([datasets[0].take(0)], [1.]))
 
+  def _empty_datasets_with_zero_weight(datasets, weights):
+    # Weights only known at runtime can't drop datasets up front, and a
+    # dataset with zero weight is never selected, so it is never found empty
+    # and sampling doesn't end once the other datasets are exhausted. Make
+    # such datasets empty and give them the largest weight instead: selecting
+    # an empty dataset only skips it, so the others keep their probabilities.
+    positive = weights > 0
+    # `take(-1)` keeps every element and `take(0)` none.
+    datasets = [
+        dataset.take(-math_ops.cast(positive[i], dtypes.int64))
+        for i, dataset in enumerate(datasets)
+    ]
+    largest = math_ops.reduce_max(
+        array_ops.where_v2(positive, weights, array_ops.zeros_like(weights)))
+    fill = array_ops.where_v2(largest > 0, largest,
+                              array_ops.ones_like(largest))
+    return datasets, array_ops.where_v2(positive, weights, fill)
+
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
 
@@ -64,21 +84,24 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      if isinstance(weights, tensor.Tensor):
-        weights_value = tensor_util.constant_value(weights)
-      else:
-        datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
-        weights_value = None
-      weights = ops.convert_to_tensor(weights, name="weights")
-      if weights.dtype not in (dtypes.float32, dtypes.float64):
-        raise TypeError(f"Invalid `weights`. `weights` type must be either "
-                        f"`tf.float32` or `tf.float64` but is "
-                        f"{weights.dtype}.")
-
+      weights_value = (
+          tensor_util.constant_value(weights)
+          if isinstance(weights, tensor.Tensor) else weights)
       if weights_value is not None:
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_value)
-        weights = ops.convert_to_tensor(weights, name="weights")
+        if isinstance(weights_value, np.ndarray):
+          # A bfloat16 array converts to a tensor, but a tuple of its scalars
+          # does not.
+          weights = np.asarray(weights, dtype=weights_value.dtype)
+      weights = ops.convert_to_tensor(weights, name="weights")
+      if weights.dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                               dtypes.float64):
+        raise TypeError(f"Invalid `weights`. `weights` type must be "
+                        f"`tf.float16`, `tf.bfloat16`, `tf.float32` or "
+                        f"`tf.float64` but is {weights.dtype}.")
+      if weights_value is None and not stop_on_empty_dataset:
+        datasets, weights = _empty_datasets_with_zero_weight(datasets, weights)
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.

@@ -23,9 +23,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
 
 
@@ -177,6 +180,65 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
     sample_dataset = dataset_ops.Dataset.sample_from_datasets(
         datasets, weights=weights, stop_on_empty_dataset=False)
     self.assertDatasetProduces(sample_dataset, [])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              weights_type=["list", "tensor"],
+              dtype=[
+                  dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                  dtypes.float64
+              ])))
+  def testSampleFromDatasetsWeightDtypes(self, weights_type, dtype):
+    weights = _get_weights_of_type(
+        np.asarray([0., 1., 1.], dtype.as_numpy_dtype), weights_type)
+    datasets = [
+        dataset_ops.Dataset.from_tensors(-1).repeat(),
+        dataset_ops.Dataset.from_tensors(1),
+        dataset_ops.Dataset.from_tensors(2)
+    ]
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        datasets, weights=weights, stop_on_empty_dataset=False)
+    self.assertDatasetProduces(sample_dataset, [1, 2], assert_items_equal=True)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsSingleDatasetWithZeroWeight(self, weights_type):
+    weights = _get_weights_of_type(np.asarray([0.]), weights_type)
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [dataset_ops.Dataset.range(3)], weights=weights)
+    self.assertDatasetProduces(sample_dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsZeroWeightsInFunction(self):
+
+    def count_and_sum(weights):
+      datasets = [
+          dataset_ops.Dataset.from_tensors(np.int64(-1)).repeat(),
+          dataset_ops.Dataset.from_tensors(np.int64(1)),
+          dataset_ops.Dataset.from_tensors(np.int64(2))
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights, stop_on_empty_dataset=False)
+      return sample_dataset.reduce(
+          (np.int64(0), np.int64(0)), lambda s, x: (s[0] + 1, s[1] + x))
+
+    # A constant's value is known inside the function, while the value of an
+    # argument is only known at runtime.
+    constant_weights = def_function.function(
+        lambda: count_and_sum(constant_op.constant([0., 1., 1.])))
+    runtime_weights = def_function.function(
+        count_and_sum,
+        input_signature=[tensor_spec.TensorSpec([3], dtypes.float32)])
+    self.assertEqual(self.evaluate(constant_weights()), (2, 3))
+    self.assertEqual(
+        self.evaluate(runtime_weights(constant_op.constant([0., 1., 1.]))),
+        (2, 3))
+    self.assertEqual(
+        self.evaluate(runtime_weights(constant_op.constant([0., 0., 0.]))),
+        (0, 0))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
