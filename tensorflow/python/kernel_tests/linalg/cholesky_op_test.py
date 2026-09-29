@@ -167,6 +167,11 @@ class CholeskyOpTest(test.TestCase):
               (ValueError, errors_impl.InvalidArgumentError)):
             with test_util.use_gpu():
               self.evaluate(fn(val))
+          val_dyn = array_ops.placeholder_with_default(val, shape=None)
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(val_dyn))
 
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)

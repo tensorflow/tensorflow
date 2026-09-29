@@ -130,6 +130,26 @@ class MatrixSolveOpTest(test.TestCase):
               (ValueError, errors_impl.InvalidArgumentError)):
             with test_util.use_gpu():
               self.evaluate(fn(valid_matrix, bad_val))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val, valid_matrix))
+          bad_val_dyn = array_ops.placeholder_with_default(
+              bad_val, shape=None)
+          valid_matrix_dyn = array_ops.placeholder_with_default(
+              valid_matrix, shape=None)
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val_dyn, bad_val_dyn))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(valid_matrix_dyn, bad_val_dyn))
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(bad_val_dyn, valid_matrix_dyn))
 
   def testNotInvertible(self):
     # The input should be invertible.

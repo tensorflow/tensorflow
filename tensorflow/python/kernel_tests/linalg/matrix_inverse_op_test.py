@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
@@ -133,6 +134,11 @@ class InverseOpTest(test.TestCase):
               (ValueError, errors_impl.InvalidArgumentError)):
             with test_util.use_gpu():
               self.evaluate(fn(val))
+          val_dyn = array_ops.placeholder_with_default(val, shape=None)
+          with self.assertRaises(
+              (ValueError, errors_impl.InvalidArgumentError)):
+            with test_util.use_gpu():
+              self.evaluate(fn(val_dyn))
 
   def testNotInvertible(self):
     # The input should be invertible.
