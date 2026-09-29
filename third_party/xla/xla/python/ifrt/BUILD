@@ -785,7 +785,8 @@ cc_library(
     srcs = ["mock.cc"],
     hdrs = ["mock.h"],
     visibility = internal_visibility([
-        ":mock_users",
+        ":friends",
+        ":internal",
     ]),
     deps = [
         ":attribute_map",
