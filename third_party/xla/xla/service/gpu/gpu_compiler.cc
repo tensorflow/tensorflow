@@ -3533,7 +3533,8 @@ absl::Status GpuCompiler::AddConfigAssignerPass(
       [&]() -> absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>> {
     return ConfigAssignerPass::GetEnabledBackends(
         stream_exec, options.device_allocator, target_config, alias_info,
-        debug_options, mlir_context, shape_size_fn, this, PlatformId());
+        debug_options, mlir_context, shape_size_fn, this, PlatformId(),
+        thread_pool, &mlir_context_pool_);
   };
 
   ABSL_ASSIGN_OR_RETURN(

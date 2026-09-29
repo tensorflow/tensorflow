@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -45,6 +47,8 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 #include "triton/Version.h"
 
@@ -53,6 +57,19 @@ namespace xla::gpu {
 using ::xla::xtile::BlockLevelFusionConfig;
 
 namespace {
+
+// Returns the executor to evaluate tiling candidates on, or nullptr to evaluate
+// them inline on the calling thread.
+tsl::Executor* absl_nullable TilingSearchExecutor(
+    tsl::thread::ThreadPool* absl_nullable thread_pool) {
+  if (thread_pool == nullptr) {
+    return nullptr;
+  }
+  // The callers below block on the result, so running them on a thread of the
+  // pool they dispatch to would deadlock.
+  CHECK_EQ(thread_pool->CurrentThreadId(), -1);
+  return thread_pool->AsExecutor();
+}
 
 std::unique_ptr<BackendConfig> Pack(
     const BlockLevelFusionConfig& block_level_config) {
@@ -126,7 +143,8 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
   ABSL_ASSIGN_OR_RETURN(
       TopKTiledRunTimeDataOrError tiled_runtime_data,
       indexing_performance_model_
-          .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor, num_configs)
+          .TryFindTopKBestTilingsForFusionAsync(
+              *fusion_adaptor, num_configs, TilingSearchExecutor(thread_pool_))
           .Await());
 
   if (std::holds_alternative<FusionDecision>(tiled_runtime_data)) {
@@ -156,7 +174,8 @@ BlockLevelEmitterBackend::GetCostModelConfig(const HloInstruction& instr) {
 
   ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
                    indexing_performance_model_
-                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .TryFindBestTilingForFusionAsync(
+                           *fusion_adaptor, TilingSearchExecutor(thread_pool_))
                        .Await());
 
   if (const auto* fusion_decision =
