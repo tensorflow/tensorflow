@@ -108,12 +108,14 @@ class ScanOp : public OpKernel {
       if constexpr (std::is_same_v<Reducer,
                                    Eigen::internal::SumReducer<T>>) {
         functor::Scan<CPUDevice, Eigen::internal::SumReducer<float>, float>()(
-            d, float_input.shaped<float, 3>(reduced_shape),
+            d, static_cast<const Tensor&>(float_input)
+                      .shaped<float, 3>(reduced_shape),
             float_output.shaped<float, 3>(reduced_shape),
             Eigen::internal::SumReducer<float>(), reverse_, exclusive_);
       } else {
         functor::Scan<CPUDevice, Eigen::internal::ProdReducer<float>, float>()(
-            d, float_input.shaped<float, 3>(reduced_shape),
+            d, static_cast<const Tensor&>(float_input)
+                      .shaped<float, 3>(reduced_shape),
             float_output.shaped<float, 3>(reduced_shape),
             Eigen::internal::ProdReducer<float>(), reverse_, exclusive_);
       }
