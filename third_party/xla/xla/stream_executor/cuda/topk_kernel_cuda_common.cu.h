@@ -81,6 +81,20 @@ __device__ __forceinline__ auto ToOrdered(T x) {
     return x;
   }
 }
+
+template <typename T, typename OrderedT>
+__device__ __forceinline__ T FromOrdered(OrderedT val) {
+  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
+    uint32_t u = (val & 0x80000000u) ? (val ^ 0x80000000u) : ~val;
+    return absl::bit_cast<T>(u);
+  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+    uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
+                                 : static_cast<uint16_t>(~val);
+    return absl::bit_cast<T>(u);
+  } else {
+    return val;
+  }
+}
 }  // namespace details
 
 // Default implementation for KV holder. Useful for testing while adding support
@@ -88,15 +102,14 @@ __device__ __forceinline__ auto ToOrdered(T x) {
 // implementations below.
 template <typename T, typename V>
 struct Descending {
+  using OrderedKey = decltype(details::ToOrdered(T{}));
   struct KVT {
-    T key;
+    OrderedKey key;
     V idx;
   };
 
   __device__ __forceinline__ static bool cmp(const KVT& lhs, const KVT& rhs) {
-    auto l = details::ToOrdered(lhs.key);
-    auto r = details::ToOrdered(rhs.key);
-    return l == r ? lhs.idx < rhs.idx : l > r;
+    return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
   }
 };
 
@@ -189,7 +202,7 @@ struct TopK {
     // TODO(doak): Use bitonic sort.
 #pragma unroll
     for (int i = 0; i < K; i++) {
-      tmp[i] = {key[Idx(i)], VT(Idx(i))};
+      tmp[i] = {details::ToOrdered(key[Idx(i)]), VT(Idx(i))};
     }
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -205,7 +218,7 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv{key[Idx(idx)], VT(Idx(idx))};
+      KVT kv{details::ToOrdered(key[Idx(idx)]), VT(Idx(idx))};
       Push(tmp, kv);
     }
     Reduce(tmp, WarpSize);
@@ -239,7 +252,7 @@ struct TopK {
       return;
     }
     for (int i = 0; i < num_outputs_; ++i) {
-      keys[i] = tmp[i].key;
+      keys[i] = details::FromOrdered<KT>(tmp[i].key);
       idxs[i] = tmp[i].idx;
     }
   }
