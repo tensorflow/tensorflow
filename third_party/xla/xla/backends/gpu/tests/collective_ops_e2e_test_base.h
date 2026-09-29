@@ -123,6 +123,19 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
   const bool enable_symmetric_buffer_;
 };
 
+// Number of thunks of a given kind placed inside and outside of command
+// buffers (kCommandBuffer thunks).
+struct CommandBufferThunkCounts {
+  int in_command_buffer = 0;
+  int outside_command_buffer = 0;
+};
+
+// Reads the thunk sequence that XLA dumps to `dump_dir` (when compiled with
+// --xla_dump_to=`dump_dir`) and counts the thunks whose kind starts with
+// `thunk_kind_prefix` (e.g. "kCollectiveKernel" or "kAllGather").
+absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
+    absl::string_view dump_dir, absl::string_view thunk_kind_prefix);
+
 }  // namespace xla
 
 #endif  // XLA_BACKENDS_GPU_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
