@@ -448,6 +448,17 @@ class SplitOpTest(test.TestCase):
     value = constant_op.constant([1, 2, 3], dtype=dtypes.int32)
     result = array_ops.split(value, [-1], axis=0)
     self.assertAllEqual(result[0], [1, 2, 3])
+    empty = constant_op.constant([], dtype=dtypes.int32)
+    result = array_ops.split(empty, [-1], axis=0)
+    self.assertAllEqual(result[0], [])
+
+  @test_util.run_deprecated_v1
+  def testInt8SizeSplitsShapeFunction(self):
+    value = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
+    splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+    result = array_ops.split(value, splits, axis=0)
+    self.assertEqual(result[0].shape.as_list(), [1])
+    self.assertEqual(result[1].shape.as_list(), [2])
 
   @test_util.run_deprecated_v1
   def testShapeFunctionRejectsSizeSplitsOverflow(self):

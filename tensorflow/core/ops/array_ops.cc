@@ -708,6 +708,8 @@ REGISTER_OP("SplitV")
         if (size_splits->dtype() == DT_INT32) {
           data =
               AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
+        } else if (size_splits->dtype() == DT_INT8) {
+          data = AsInt64<int8_t>(size_splits, size_splits->shape().dim_size(0));
         } else {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
