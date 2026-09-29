@@ -329,7 +329,7 @@ std::optional<double> GetSymmetricMagnitudeBound(
     const ConstraintInterval& interval) {
   if ((interval.min == ConstraintInterval::kMin &&
        interval.max == ConstraintInterval::kMax) ||
-      interval.min > 0.0 || interval.max < 0.0) {
+      interval.min >= 0.0 || interval.max <= 0.0) {
     return std::nullopt;
   }
   double m = std::min(std::abs(interval.min), std::abs(interval.max));
