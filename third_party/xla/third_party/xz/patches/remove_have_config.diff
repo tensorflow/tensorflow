@@ -1,0 +1,14 @@
+diff -Nur a/src/common/sysdefs.h b/src/common/sysdefs.h
+--- a/src/common/sysdefs.h	2025-04-03 11:34:58.000000000 +0000
++++ b/src/common/sysdefs.h	2025-06-20 23:44:13.985352903 +0000
+@@ -19,9 +19,7 @@
+ // Includes //
+ //////////////
+ 
+-#ifdef HAVE_CONFIG_H
+-#	include <config.h>
+-#endif
++#include "lzma_config/config.h"
+ 
+ // Choose if MinGW-w64's stdio replacement functions should be used.
+ // The default has varied slightly in the past so it's clearest to always
