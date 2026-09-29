@@ -293,6 +293,17 @@ class UnaryOpTest(test.TestCase):
     nan_y_vec = self.evaluate(math_ops.erf(ops.convert_to_tensor(nan_x)))
     self.assertAllClose(np.vectorize(math.erf)(nan_x), nan_y_vec)
     self.assertAllEqual(np.isnan(nan_x), np.isnan(nan_y_vec))
+    batched_x = nan_x.reshape(-1, 4)
+    batched_y = self.evaluate(math_ops.erf(ops.convert_to_tensor(batched_x)))
+    self.assertEqual(batched_y.shape, batched_x.shape)
+    self.assertAllClose(np.vectorize(math.erf)(batched_x), batched_y)
+    self.assertAllEqual(np.isnan(batched_x), np.isnan(batched_y))
+    # Empty inputs preserve their shape without evaluating any erf lanes.
+    for shape in ((0,), (2, 0, 3)):
+      empty_x = np.empty(shape, dtype=np.float64)
+      empty_y = self.evaluate(math_ops.erf(ops.convert_to_tensor(empty_x)))
+      self.assertEqual(empty_y.shape, shape)
+      self.assertEqual(empty_y.size, 0)
     zero_x = np.array([0.0, -0.0] * 8, dtype=np.float64)
     zero_y = self.evaluate(
         math_ops.erf(ops.convert_to_tensor(zero_x))

@@ -906,13 +906,8 @@ struct erf_op<double> {
     constexpr double kClamp = 28.0;
     const Packet x =
         pmin(pmax(a, pset1<Packet>(-kClamp)), pset1<Packet>(kClamp));
-#if defined(EIGEN_GPUCC)
-    // GPU min/max may replace NaN with a clamp bound. CPU keeps the NaN first
-    // operand through both min/max operations without this extra select.
+    // Restore NaN lanes regardless of the packet min/max implementation.
     return pselect(pcmp_eq(a, a), perf(x), a);
-#else
-    return perf(x);
-#endif
   }
 };
 
