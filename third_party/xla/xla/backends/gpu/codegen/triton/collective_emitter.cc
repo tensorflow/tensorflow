@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -284,11 +285,14 @@ absl::Status ValidateBlockLevelFusionConfig(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
+// Unmanaged kernel arguments of collectives that use the AllReduce argument
+// layout: rank, signal value, signal buffers and one remote buffer per
+// parameter.
+absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
     const HloComputation* computation,
-    const HloAllReduceInstruction* all_reduce) {
+    const HloCollectiveInstruction* collective) {
   const int32_t num_devices =
-      all_reduce->device_list()->num_devices_per_group();
+      collective->device_list()->num_devices_per_group();
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
                               kNumCollectiveMetadataArgs);
@@ -421,6 +425,80 @@ mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
       b, counter, arith::ConstantOp::create(b, b.getI32IntegerAttr(1)));
 }
 
+// Returns the element offset of the active half of a double buffer that holds
+// `num_elements` elements of `element_type` per half. The lowest bit of
+// `signal_value` selects the half.
+mlir::Value EmitDoubleBufferOffset(mlir::ImplicitLocOpBuilder& b,
+                                   mlir::Value signal_value,
+                                   int64_t num_elements,
+                                   PrimitiveType element_type) {
+  const mlir::Type i64_type = b.getI64Type();
+  mlir::Value signal_value_i64 =
+      arith::ExtSIOp::create(b, i64_type, signal_value);
+  mlir::Value one =
+      arith::ConstantOp::create(b, i64_type, b.getI64IntegerAttr(1));
+  mlir::Value buffer_index = arith::AndIOp::create(b, signal_value_i64, one);
+  // The allocated double buffer size in bytes is aligned to
+  // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
+  // divide the buffer size by 2 and then divide by the element size to get
+  // the number of elements in the buffer. Its important to do this to make
+  // sure that start of the buffers are always aligned to 16 bytes.
+  const int64_t element_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
+      num_elements * element_size, kXlaAllocatedBufferAlignBytes);
+  const int64_t elements_per_buffer = buffer_size / element_size;
+  mlir::Value elements_per_buffer_op = arith::ConstantOp::create(
+      b, i64_type, b.getI64IntegerAttr(elements_per_buffer));
+  return arith::MulIOp::create(b, buffer_index, elements_per_buffer_op);
+}
+
+// Emits instructions to get the pointer to the remote buffer of the given
+// rank.
+// We have a !tt.ptr<i64> pointing to the base of the remote
+// buffers. We add the rank index to the base pointer and load to get to the
+// base pointer of the remote buffer of the given rank. Then we add the buffer
+// offset to get the pointer to the correct buffer inside (double buffering).
+// Note that the returned pointer is of the storage type not the logical type.
+mlir::Value EmitRemoteBufferPtr(mlir::ImplicitLocOpBuilder& b,
+                                mlir::Value remote_buffers, mlir::Value rank,
+                                mlir::Value buffer_offset,
+                                mlir::Type elem_storage_type) {
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  const auto ptr_to_elem_type =
+      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
+  mlir::Value remote_buf_ptr_addr =
+      ttir::AddPtrOp::create(b, ptr_to_i64_type, remote_buffers, rank);
+  mlir::Value remote_buf_i64 =
+      ttir::LoadOp::create(b,                             //
+                           remote_buf_ptr_addr,           //
+                           ttir::CacheModifier::NONE,     //
+                           ttir::EvictionPolicy::NORMAL,  //
+                           /*isVolatile=*/false);         //
+  mlir::Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
+      b, ptr_to_elem_type, remote_buf_i64,
+      llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
+  return ttir::AddPtrOp::create(b, ptr_to_elem_type, remote_buf_ptr_base,
+                                buffer_offset);
+}
+
+// Emits a barrier between this block and the matching blocks of the other
+// ranks. All threads in the block should have completed their writes before we
+// proceed with a block barrier.
+// Otherwise, remote ranks might start reading the data before it is ready.
+void EmitBlockBarrier(mlir::ImplicitLocOpBuilder& b, mlir::Value signal_buffers,
+                      mlir::Value rank, mlir::Value signal_value,
+                      int64_t world_size, mlir::Value signal_slot = nullptr,
+                      int64_t signal_stride = 0) {
+  mlir::triton::gpu::BarrierOp::create(b, mlir::triton::gpu::AddrSpace::Local);
+  mtx::BlockBarrierOp::create(
+      b, signal_buffers, rank, signal_value, signal_slot,
+      b.getI32IntegerAttr(static_cast<int32_t>(world_size)),
+      signal_stride > 0
+          ? b.getI32IntegerAttr(static_cast<int32_t>(signal_stride))
+          : mlir::IntegerAttr());
+}
+
 class AllReduceEmitter {
  public:
   static mlir::LogicalResult Emit(AllReduceEmitterContext ctx,
@@ -518,8 +596,6 @@ class AllReduceEmitter {
       remote_input_buffers_i64_ = ttir::BitcastOp::create(
           builder_, ptr_to_i64_type_, remote_input_buffers_);
     }
-    const mlir::Type i64_type = builder_.getI64Type();
-    // Check if last bit of signal_value is 0 or 1.
     mlir::Value signal_value = signal_value_;
     // For two-shot signal value is always incremented by 2.
     // So we need to right shift it by 1 to get the buffer index.
@@ -529,55 +605,18 @@ class AllReduceEmitter {
           arith::ConstantOp::create(builder_, signal_value.getType(),
                                     builder_.getI32IntegerAttr(1)));
     }
-    mlir::Value buffer_index = arith::AndIOp::create(
-        builder_, i64_type,
-        arith::ExtSIOp::create(builder_, i64_type, signal_value),  // i32->i64
-        arith::ConstantOp::create(builder_, i64_type,
-                                  builder_.getI64IntegerAttr(1)));
-    // The allocated double buffer size in bytes is aligned to
-    // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
-    // divide the buffer size by 2 and then divide by the element size to get
-    // the number of elements in the buffer. Its important to do this to make
-    // sure that start of the buffers are always aligned to 16 bytes.
-    const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
-        ctx_.num_elements *
-            ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type),
-        kXlaAllocatedBufferAlignBytes);
-    const int64_t elements_per_buffer =
-        buffer_size / ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type);
-    buffer_offset_ = arith::MulIOp::create(
-        builder_, i64_type, buffer_index,
-        arith::ConstantOp::create(
-            builder_, i64_type,
-            builder_.getI64IntegerAttr(elements_per_buffer)));
+    buffer_offset_ = EmitDoubleBufferOffset(
+        builder_, signal_value, ctx_.num_elements, ctx_.element_type);
     initialized_ = true;
     return absl::OkStatus();
   }
 
-  // Emits instructions to get the pointer to the remote buffer of the given
-  // rank.
-  // We have a !tt.ptr<i64> pointing to the base of the remote
-  // buffers. We add the rank index to the base pointer and load to get to the
-  // base pointer of the remote buffer of the given rank. Then we add the buffer
-  // offset to get the pointer to the correct buffer inside (double buffering).
-  // Note that the returned pointer is of the storage type not the logical type.
+  // Returns the pointer to the active remote buffer of the given rank. See
+  // EmitRemoteBufferPtr.
   mlir::Value GetRemoteBufferPtr(mlir::Value rank_idx) {
     CHECK(initialized_);
-    mlir::Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-        builder_, ptr_to_i64_type_, remote_input_buffers_i64_, rank_idx);
-    mlir::Value remote_buf_i64 =
-        ttir::LoadOp::create(builder_,                      //
-                             remote_buf_ptr_addr,           //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             /*isVolatile=*/false);         //
-    mlir::Value remote_buf_ptr_base =
-        ttir::IntToPtrOp::create(builder_, ptr_to_elem_type_, remote_buf_i64,
-                                 llvm::ArrayRef<mlir::NamedAttribute>{
-                                     xtile::GetDivisibilityAttr(builder_)});
-    mlir::Value remote_buf_ptr = ttir::AddPtrOp::create(
-        builder_, ptr_to_elem_type_, remote_buf_ptr_base, buffer_offset_);
-    return remote_buf_ptr;
+    return EmitRemoteBufferPtr(builder_, remote_input_buffers_i64_, rank_idx,
+                               buffer_offset_, elem_storage_type_);
   }
 
   // Loads a tile from the remote buffer of the given rank.
@@ -674,15 +713,8 @@ class AllReduceEmitter {
 
   mlir::LogicalResult EmitSync(mlir::Value signal_value) {
     CHECK(initialized_);
-    // All threads in the block should have completed their writes before we
-    // proceed with a block barrier.
-    // Otherwise, remote ranks might start reading the data before it is ready.
-    mlir::triton::gpu::BarrierOp::create(builder_,
-                                         mlir::triton::gpu::AddrSpace::Local);
-    mtx::BlockBarrierOp::create(builder_, signal_buffers_, device_rank_,
-                                signal_value, /*signal_slot=*/nullptr,
-                                builder_.getI32IntegerAttr(ctx_.world_size),
-                                /*signal_stride=*/nullptr);
+    EmitBlockBarrier(builder_, signal_buffers_, device_rank_, signal_value,
+                     ctx_.world_size);
     return mlir::success();
   }
 
@@ -1154,8 +1186,8 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
     case HloOpcode::kAllReduce:
-      return GetAllReduceUnmanagedKernelArguments(
-          computation, Cast<HloAllReduceInstruction>(root));
+      return GetRemoteBufferUnmanagedKernelArguments(
+          computation, Cast<HloCollectiveInstruction>(root));
     case HloOpcode::kAllGather: {
       // AllGather only needs the 3 metadata args (rank, signal_value,
       // signal_buffers). No per-parameter scratch buffer args because the
