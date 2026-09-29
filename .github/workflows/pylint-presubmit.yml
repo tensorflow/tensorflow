@@ -35,10 +35,8 @@ jobs:
       with:
         output: ' '
     - name: Report list of changed files
-      env:
-        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        echo "Changed files: $CHANGED_FILES"
+        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
     - name: Set up Python 3.9
       uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
       with:
@@ -48,17 +46,5 @@ jobs:
         python -m pip install --upgrade pip
         pip install pylint==2.13.9 "numpy<2.0.0" wheel
     - name: Run PyLint on changed files
-      env:
-        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        if [ -z "$CHANGED_FILES" ]; then
-          echo "No Python files changed; skipping PyLint."
-          exit 0
-        fi
-        py_files=$(printf '%s\n' "$CHANGED_FILES" | tr " " "\n" | grep -E '\.py$' || true)
-        if [ -z "$py_files" ]; then
-          echo "No Python files changed; skipping PyLint."
-          exit 0
-        fi
-        printf '%s\n' "$py_files" | xargs -r pylint \
-          --rcfile=tensorflow/tools/ci_build/pylintrc
+        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
