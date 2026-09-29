@@ -77,8 +77,13 @@ class RpcHelper {
     return host_buffer_store_;
   }
 
+  // Returned ResponseFuture is safe to ignore.
   template <typename T>
-  using ResponseFuture = tsl::Future<std::shared_ptr<T>>;
+  class ResponseFuture : public tsl::Future<std::shared_ptr<T>> {
+   public:
+    ResponseFuture(tsl::Future<std::shared_ptr<T>> future)
+        : tsl::Future<std::shared_ptr<T>>::Future(std::move(future)) {}
+  };
 
   class Batcher;
   enum BatchOperation { kDeleteArray, kDestructArray, kSentinelDoNotUse };
