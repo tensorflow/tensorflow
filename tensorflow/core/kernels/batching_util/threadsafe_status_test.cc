@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 
+#include <thread>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
@@ -45,6 +49,39 @@ TEST(ThreadSafeStatus, Update) {
 TEST(ThreadSafeStatus, Move) {
   ThreadSafeStatus status;
   TF_EXPECT_OK(std::move(status).status());
+}
+
+TEST(ThreadSafeStatus, ConcurrentReadAndWrite) {
+  ThreadSafeStatus status;
+  constexpr int kNumReaders = 8;
+  constexpr int kNumWriters = 4;
+  constexpr int kNumIters = 1000;
+
+  std::vector<std::thread> threads;
+  threads.reserve(kNumReaders + kNumWriters);
+
+  for (int i = 0; i < kNumReaders; ++i) {
+    threads.emplace_back([&status]() {
+      for (int j = 0; j < kNumIters; ++j) {
+        absl::Status s = status.status();
+        (void)s.ok();
+      }
+    });
+  }
+
+  for (int i = 0; i < kNumWriters; ++i) {
+    threads.emplace_back([&status]() {
+      for (int j = 0; j < kNumIters; ++j) {
+        status.Update(absl::InternalError("concurrent error"));
+      }
+    });
+  }
+
+  for (auto& t : threads) {
+    t.join();
+  }
+
+  EXPECT_FALSE(status.status().ok());
 }
 
 }  // namespace
