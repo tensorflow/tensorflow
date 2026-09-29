@@ -1156,6 +1156,8 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.repeat([[1, 2], [3, 4]], 2, axis=-3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.repeat(np_array_ops.array(5), 2, axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.repeat(np_array_ops.array(5), 2, axis=-2)
 
   def testAround(self):
 

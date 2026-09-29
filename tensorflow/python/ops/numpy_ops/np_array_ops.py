@@ -366,16 +366,19 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
 
   maybe_rank = a.shape.rank
   if maybe_rank is not None:
-    normalized_axes = []
-    for name, axis in (('axis1', axis1), ('axis2', axis2)):
-      normalized = axis + maybe_rank if axis < 0 else axis
-      if normalized < 0 or normalized >= maybe_rank:
-        raise ValueError(
-            f'Argument `{name}` (received {name}={axis}) is out of bounds '
-            f'for input {a} of rank {maybe_rank}.'
-        )
-      normalized_axes.append(normalized)
-    if normalized_axes[0] == normalized_axes[1]:
+    norm1 = axis1 + maybe_rank if axis1 < 0 else axis1
+    norm2 = axis2 + maybe_rank if axis2 < 0 else axis2
+    if norm1 < 0 or norm1 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis1` (received axis1={axis1}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm2 < 0 or norm2 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis2` (received axis2={axis2}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm1 == norm2:
       raise ValueError('axis1 and axis2 cannot be the same axis')
 
   if (
@@ -865,7 +868,7 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
     if normalized < 0 or normalized >= validation_rank:
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input {a} of rank {maybe_rank}.'
+          f'for input of rank {maybe_rank}.'
       )
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
@@ -1791,9 +1794,11 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
     if normalized < 0 or normalized >= rank:
       raise ValueError(
           f'Argument `axis` (received axis={axis}) is out of bounds '
-          f'for input {arr} of rank {rank}.'
+          f'for input of rank {rank}.'
       )
-  axis = axis + rank if axis < 0 else axis
+    axis = normalized
+  else:
+    axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
