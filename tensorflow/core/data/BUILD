@@ -492,11 +492,14 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringprintf",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@tsl//tsl/platform:context",
     ],
 )
 

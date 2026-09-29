@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -503,5 +504,37 @@ absl::Status CheckpointLoader::Load(
   return absl::OkStatus();
 }
 
+absl::Status CheckpointLoader::FreezeCleanup(
+    const absl::flat_hash_set<std::string>& device_variables,
+    const absl::flat_hash_set<std::string>& host_needed) {
+  absl::MutexLock lock(&materialized_variables_mu_);
+  if (host_resource_manager_ == nullptr) {
+    return absl::OkStatus();
+  }
+  std::vector<MaterializedVariable> kept;
+  absl::Status first_error;
+  for (const MaterializedVariable& materialized : materialized_variables_) {
+    bool is_device_var = device_variables.contains(materialized.runtime_name);
+    bool is_host_needed = host_needed.contains(materialized.runtime_name);
+    // Only delete if the variable has been loaded to TPU device AND is not
+    // needed on host.
+    if (!is_device_var || is_host_needed) {
+      kept.push_back(materialized);
+      continue;
+    }
+    absl::Status status = host_resource_manager_->Delete<tensorflow::Var>(
+        materialized.container, materialized.name);
+    if (!status.ok() && !absl::IsNotFound(status)) {
+      LOG(ERROR) << "Failed to delete variable from ResourceManager: "
+                 << materialized.runtime_name << ": " << status;
+      if (first_error.ok()) {
+        first_error = status;
+      }
+      kept.push_back(materialized);
+    }
+  }
+  materialized_variables_ = std::move(kept);
+  return first_error;
+}
 }  // namespace ifrt_serving
 }  // namespace tensorflow

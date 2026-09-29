@@ -420,7 +420,7 @@ inline bool UpdateOp(NodeViewDiff<GraphViewT>* diff, absl::string_view op) {
     diff->op.clear();
     diff->update_op = false;
   } else {
-    diff->op = string(op);
+    diff->op = std::string(op);
     diff->update_op = true;
   }
   return true;

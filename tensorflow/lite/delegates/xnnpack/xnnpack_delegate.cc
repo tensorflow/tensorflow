@@ -2107,6 +2107,11 @@ class Subgraph {
           node_index);
       return kTfLiteError;
     }
+    if (params->quant_spec != nullptr && params->quant_spec_size > 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "unsupported quant_spec in node #%d",
+                               node_index);
+      return kTfLiteError;
+    }
 
     return kTfLiteOk;
   }

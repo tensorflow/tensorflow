@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/all_reduce_key.h"
+#include "xla/hlo/transforms/collectives/all_reduce_key.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 

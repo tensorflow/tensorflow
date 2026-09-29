@@ -158,6 +158,9 @@ TEST_F(ConvertTensorTest, Simple) {
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2fnuz>(
       {tsl::float8_e5m2fnuz{1.0}, tsl::float8_e5m2fnuz{-1.0}},
       DT_FLOAT8_E5M2FNUZ, mlir::Float8E5M2FNUZType::get(&context)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e8m0fnu>(
+      {tsl::float8_e8m0fnu{1.0}, tsl::float8_e8m0fnu{2.0}}, DT_FLOAT8_E8M0FNU,
+      mlir::Float8E8M0FNUType::get(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::int4>(
       {static_cast<tsl::int4>(1), static_cast<tsl::int4>(-1)}, DT_INT4,

@@ -1061,7 +1061,7 @@ func.func @fold_negate_float() -> tensor<4xf32> {
 ////////
 // NotOp
 
-// CHECK-LABEL func @fold_not()
+// CHECK-LABEL: func @fold_not()
 func.func @fold_not() -> tensor<2x2xi1> {
   %0 = mhlo.constant dense<[[true, false], [true, false]]> : tensor<2x2xi1>
   // CHECK{LITERAL}: mhlo.constant dense<[[false, true], [false, true]]> : tensor<2x2xi1>
@@ -1069,7 +1069,7 @@ func.func @fold_not() -> tensor<2x2xi1> {
   func.return %1 : tensor<2x2xi1>
 }
 
-// CHECK-LABEL func @fold_not_i32()
+// CHECK-LABEL: func @fold_not_i32()
 func.func @fold_not_i32() -> tensor<2x2xi32> {
   %0 = mhlo.constant dense<[[42, -12], [1, 0]]> : tensor<2x2xi32>
   // CHECK{LITERAL}: mhlo.constant dense<[[-43, 11], [-2, -1]]> : tensor<2x2xi32>

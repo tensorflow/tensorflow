@@ -37,6 +37,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/ops:data_flow_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

@@ -8563,7 +8563,8 @@ TEST_F(HloEvaluatorTest, ConstructorEnablesCacheCallComputationEvals) {
 }
 
 TEST_F(HloEvaluatorTest, MemoizationSameComputationIdenticalArguments) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationSameArgs
 
@@ -8581,14 +8582,16 @@ TEST_F(HloEvaluatorTest, MemoizationSameComputationIdenticalArguments) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(30.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationDifferentArguments) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationDiffArgs
 
@@ -8607,14 +8610,16 @@ TEST_F(HloEvaluatorTest, MemoizationDifferentArguments) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(32.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 2);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationMultipleParameters) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationMultiParams
 
@@ -8635,18 +8640,20 @@ TEST_F(HloEvaluatorTest, MemoizationMultipleParameters) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   // call1 = 10 - 3 = 7
   // call2 = 10 - 3 = 7 (cache hit)
   // call3 = 3 - 10 = -7 (cache miss, order matters)
   // final = 7 + 7 + (-7) = 7
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(7.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 2);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 2);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationZeroParameters) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule MemoizationZeroParams
 
@@ -8661,14 +8668,16 @@ TEST_F(HloEvaluatorTest, MemoizationZeroParameters) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(84.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule NestedCalls
 
@@ -8700,7 +8709,8 @@ TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   // comp_b(5) = 15
   // comp_a(5) = 15 * 2 = 30
   // comp_c(5) = 15 * 3 = 45
@@ -8710,23 +8720,21 @@ TEST_F(HloEvaluatorTest, NestedCallSharedCache) {
   // comp_a, comp_c, and comp_b should each have 1 entry in the specialization
   // cache. comp_b with argument 5 is evaluated only once and shared between
   // comp_a and comp_c.
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 3);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 3);
 
   const HloComputation* comp_b = m_->GetComputationWithName("comp_b");
   ASSERT_NE(comp_b, nullptr);
-  int comp_b_entries = 0;
-  for (const auto& [key, val] : *evaluator_.specialization_cache()) {
-    if (key.computation == comp_b) {
-      ++comp_b_entries;
-      EXPECT_TRUE(
-          LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), val));
-    }
-  }
-  EXPECT_EQ(comp_b_entries, 1);
+  Literal arg_5 = LiteralUtil::CreateR0<float>(5.0f);
+  std::optional<Literal> cached_b =
+      evaluator.specialization_cache()->Find(comp_b, {&arg_5});
+  ASSERT_TRUE(cached_b.has_value());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), *cached_b));
 }
 
 TEST_F(HloEvaluatorTest, ClearSpecializationCache) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string = R"(
   HloModule ClearCacheModule
 
@@ -8742,24 +8750,27 @@ TEST_F(HloEvaluatorTest, ClearSpecializationCache) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 
-  evaluator_.ClearSpecializationCache();
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 0);
+  evaluator.ClearSpecializationCache();
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 0);
 
-  // Re-evaluating on the top-level evaluator should repopulate the cache
-  evaluator_.ResetVisitStates();
-  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  // Re-evaluating on the evaluator should repopulate the cache
+  evaluator.ResetVisitStates();
+  ASSERT_OK_AND_ASSIGN(Literal result2,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result2));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
 }
 
 TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
-  evaluator_.set_cache_call_computation_evals(true);
+  HloEvaluator evaluator(/*max_loop_iterations=*/-1,
+                         /*cache_call_computation_evals=*/true);
   const char* const hlo_string1 = R"(
   HloModule Module1
 
@@ -8775,10 +8786,14 @@ TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
   }
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string1));
-  ASSERT_OK_AND_ASSIGN(Literal result1, Evaluate());
+  ASSERT_OK_AND_ASSIGN(Literal result1,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(15.0f), result1));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
+
+  // Explicitly clearing the cache removes all entries.
+  evaluator.ClearSpecializationCache();
 
   const char* const hlo_string2 = R"(
   HloModule Module2
@@ -8796,13 +8811,16 @@ TEST_F(HloEvaluatorTest, MemoizationConsecutiveTopLevelEvaluations) {
   )";
   ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string2));
   // Reset visitor state before running visitor on the new module.
-  evaluator_.ResetVisitStates();
-  // Second top-level Evaluate() must automatically clear previous cache
-  // entries.
-  ASSERT_OK_AND_ASSIGN(Literal result2, Evaluate());
+  evaluator.ResetVisitStates();
+  ASSERT_OK_AND_ASSIGN(Literal result2,
+                       evaluator.Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(27.0f), result2));
-  EXPECT_EQ(evaluator_.specialization_cache()->size(), 1);
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 1);
+
+  // Explicitly clearing the cache removes all entries.
+  evaluator.ClearSpecializationCache();
+  EXPECT_EQ(evaluator.specialization_cache()->size(), 0);
 }
 
 TEST(EvalErrorTest, OK) {

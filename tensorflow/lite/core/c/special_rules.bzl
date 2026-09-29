@@ -16,15 +16,15 @@
 
 def c_api_visibility_allowlist():
     """Returns a list of packages that can depend on c_api."""
-    return []
+    return ["//litert/swift:__subpackages__"]
 
 def c_api_experimental_visibility_allowlist():
     """Returns a list of packages that can depend on third_party/tensorflow/lite/core/c/c_api_experimental.h."""
-    return []
+    return ["//litert/swift:__subpackages__"]
 
 def common_header_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/c/common.h."""
-    return []
+    return ["//litert/swift:__subpackages__"]
 
 def experimental_acceleration_api_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/experimental/acceleration/ subpackages.."""

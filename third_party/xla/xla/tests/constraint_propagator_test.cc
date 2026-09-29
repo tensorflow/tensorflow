@@ -1581,5 +1581,69 @@ ENTRY %fusion.30343 (parameter.0: f32[2,6], parameter.1: f32[2,6]) -> f32[2,6] {
   EXPECT_TRUE(p1_int.IsPositiveStrict());
 }
 
+TEST_F(ConstraintPropagatorTest, UnmaskedSoftmaxExpSubtract) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule UnmaskedSoftmaxExpSubtract
+
+ENTRY main {
+  logits = bf16[8,16] parameter(0)
+  row_max = bf16[8] parameter(1)
+  b_row_max = bf16[8,16] broadcast(row_max), dimensions={0}
+  sub = bf16[8,16] subtract(logits, b_row_max)
+  ROOT exp = bf16[8,16] exponential(sub)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  const auto* entry = module->entry_computation();
+  auto logits_int =
+      states[entry->parameter_instruction(0)].GetConstraintInterval();
+  auto row_max_int =
+      states[entry->parameter_instruction(1)].GetConstraintInterval();
+
+  EXPECT_FALSE(logits_int.IsUnconstrained());
+  EXPECT_DOUBLE_EQ(logits_int.min, -1.25);
+  EXPECT_DOUBLE_EQ(logits_int.max, 1.25);
+
+  EXPECT_FALSE(row_max_int.IsUnconstrained());
+  EXPECT_DOUBLE_EQ(row_max_int.min, -1.25);
+  EXPECT_DOUBLE_EQ(row_max_int.max, 1.25);
+}
+
+TEST_F(ConstraintPropagatorTest, TransitiveAddSubtractExp) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule TransitiveAddSubtractExp
+
+ENTRY main {
+  x = bf16[8,16] parameter(0)
+  y = bf16[8,16] parameter(1)
+  add = bf16[8,16] add(x, y)
+  z = bf16[8,16] parameter(2)
+  sub = bf16[8,16] subtract(add, z)
+  ROOT exp = bf16[8,16] exponential(sub)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(auto states, ConstraintPropagator::Run(*module));
+
+  const auto* entry = module->entry_computation();
+  auto x_int = states[entry->parameter_instruction(0)].GetConstraintInterval();
+  auto y_int = states[entry->parameter_instruction(1)].GetConstraintInterval();
+  auto z_int = states[entry->parameter_instruction(2)].GetConstraintInterval();
+
+  // Exp seeds sub to [-2.5, 2.5].
+  // Subtract splits symmetrically: add gets [-1.25, 1.25], z gets
+  // [-1.25, 1.25]. Add splits symmetrically: x and y get [-0.625, 0.625].
+  EXPECT_DOUBLE_EQ(z_int.min, -1.25);
+  EXPECT_DOUBLE_EQ(z_int.max, 1.25);
+
+  EXPECT_DOUBLE_EQ(x_int.min, -0.625);
+  EXPECT_DOUBLE_EQ(x_int.max, 0.625);
+
+  EXPECT_DOUBLE_EQ(y_int.min, -0.625);
+  EXPECT_DOUBLE_EQ(y_int.max, 0.625);
+}
+
 }  // namespace
 }  // namespace xla

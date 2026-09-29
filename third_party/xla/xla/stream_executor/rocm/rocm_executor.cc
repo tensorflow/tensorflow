@@ -1171,11 +1171,11 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
     // HIP reports the memory controller clock (UCLK), not the data-rate clock,
     // so the legacy `2 * bus * clock` formula undercounts on HBM3+/GDDR6.
-    // GetRocmMemoryBandwidth uses a per-gfx peak for known architectures and
-    // falls back to that formula for unmodeled arches.
-    desc.set_memory_bandwidth(
-        gpu::GetRocmMemoryBandwidth(RocmComputeCapability(gcn_arch_name),
-                                    prop.memoryBusWidth, prop.memoryClockRate));
+    // GetRocmMemoryBandwidth prefers the SMI firmware peak, then a per-gfx
+    // peak, then that formula.
+    desc.set_memory_bandwidth(gpu::GetRocmMemoryBandwidth(
+        pci_bus_id, RocmComputeCapability(gcn_arch_name), prop.memoryBusWidth,
+        prop.memoryClockRate));
 
     desc.set_l2_cache_size(prop.l2CacheSize);
   }

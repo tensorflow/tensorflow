@@ -1042,6 +1042,11 @@ class LookupTableExportOp : public LookupTableOpKernel {
     OP_REQUIRES_OK(ctx, GetTable(ctx, &table));
     core::ScopedUnref unref_me(table);
 
+    DataTypeVector expected_inputs = {expected_input_0_};
+    DataTypeVector expected_outputs = {table->key_dtype(),
+                                       table->value_dtype()};
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
+
     OP_REQUIRES_OK(ctx, table->ExportValues(ctx));
   }
 };

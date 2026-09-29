@@ -29,22 +29,55 @@ limitations under the License.
 <div id="loading-overlay">
   <div class="loading-message">Loading...</div>
 </div>
-<div id="graph-container">
+<div id="app-container">
+  <div id="main-view">
+    <div id="top-pane">
+      <div id="graph-container">
+        <div id="graph-module-title" class="graph-module-title">{{DUMP_NAME}}</div>
 {{GRAPH_CONTENT}}
-</div>
-<div id="splitter-graph"></div>
-<div id="histogram-container">
+      </div>
+      <div id="splitter-sidebar"></div>
+      <div id="tensor-inspector">
+        <div id="tensor-inspector-header">
+          <div class="tensor-inspector-header-top">
+            <div id="tensor-inspector-title">Tensor Mismatch Inspector</div>
+            <button id="close-tensor-inspector-btn" class="tensor-close-btn" title="Close 3D Inspector">✕</button>
+          </div>
+          <div id="tensor-instr-name" class="tensor-meta-item">No instruction selected</div>
+          <div id="tensor-shape-info" class="tensor-meta-item"></div>
+          <div id="tensor-mismatch-info" class="tensor-meta-item"></div>
+        </div>
+        <div id="tensor-slice-controls"></div>
+        <div id="tensor-canvas-container">
+          <canvas id="tensor-3d-canvas"></canvas>
+          <div id="tensor-3d-controls">
+            <button id="view-iso-btn" class="tensor-ctrl-btn" title="Isometric view">Iso</button>
+            <button id="view-front-btn" class="tensor-ctrl-btn" title="Front view">Front</button>
+            <button id="view-top-btn" class="tensor-ctrl-btn" title="Top view">Top</button>
+            <button id="view-side-btn" class="tensor-ctrl-btn" title="Side view">Side</button>
+            <button id="view-reset-btn" class="tensor-ctrl-btn" title="Reset view">Reset</button>
+          </div>
+        </div>
+        <div id="tensor-inspector-details"></div>
+      </div>
+    </div>
+    <div id="splitter-graph"></div>
+    <div id="histogram-container">
 {{STATS_BOX}}
-</div>
-<div id="splitter-histogram"></div>
-<div id="hlo-container">
+    </div>
+    <div id="splitter-histogram"></div>
+    <div id="hlo-container">
 <pre><code>{{HLO_CONTENT}}</code></pre>
+    </div>
+  </div>
 </div>
 <div id="stack-trace-dynamic-tooltip" class="stack-trace-tooltip"></div>
 <div id="general-dynamic-tooltip" class="tooltiptext"></div>
 
 <!-- Data Injections -->
 <script>
+var inf = Infinity;
+var nan = NaN;
 {{DATA_INJECTION_SCRIPT}}
 </script>
 

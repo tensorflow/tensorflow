@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/device_assignment.h"
@@ -514,18 +513,15 @@ TEST_F(Tf2HloTest, GpuCompile) {
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
 
-  xla::ifrt::MockClient mock_client;
-  ON_CALL(mock_client, GetDefaultDeviceAssignment)
-      .WillByDefault([]() -> absl::StatusOr<xla::DeviceAssignment> {
-        return xla::DeviceAssignment(1, 1);
-      });
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
 
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-      GetCompileMetadata(mlir_module.get(), mock_client));
+      GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
   std::vector<int> variable_arg_indices;

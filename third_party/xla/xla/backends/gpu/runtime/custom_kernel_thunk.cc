@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_metadata.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tensor_map.h"
@@ -75,34 +76,30 @@ std::string CustomKernelThunk::ToString(int indent) const {
 }
 
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
-  absl::MutexLock lock(mutex_);
-
-  if (!kernel_cache_.contains(params.executor)) {
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                     params.executor->LoadKernel(custom_kernel_.kernel_spec()));
-    se::KernelMetadata m = kernel->metadata();
-    m.set_shared_memory_bytes(custom_kernel_.shared_memory_bytes());
-    kernel->set_metadata(m);
-    kernel->set_use_pdl(use_pdl_);
-    kernel_cache_.emplace(params.executor, std::move(kernel));
-  }
-
-  return absl::OkStatus();
+  return kernel_cache_
+      .GetOrCreate(
+          params.executor,
+          [&params, this]() -> absl::StatusOr<std::unique_ptr<se::Kernel>> {
+            ABSL_ASSIGN_OR_RETURN(
+                std::unique_ptr<se::Kernel> kernel,
+                params.executor->LoadKernel(custom_kernel_.kernel_spec()));
+            se::KernelMetadata m = kernel->metadata();
+            m.set_shared_memory_bytes(custom_kernel_.shared_memory_bytes());
+            kernel->set_metadata(m);
+            kernel->set_use_pdl(use_pdl_);
+            return kernel;
+          })
+      .status();
 }
 
 absl::StatusOr<CustomKernelThunk::KernelWithArgs>
 CustomKernelThunk::GetKernelAndArgs(const BufferAllocations& buffer_allocations,
                                     se::StreamExecutor* executor) const {
-  se::Kernel* kernel;
-  {
-    absl::MutexLock lock(mutex_);
-    auto it = kernel_cache_.find(executor);
-    if (it == kernel_cache_.end() || it->second == nullptr) {
-      return absl::InternalError(
-          absl::StrCat("Custom kernel not loaded (Initialize() not called): ",
-                       custom_kernel_.name()));
-    }
-    kernel = it->second.get();
+  se::Kernel* kernel = kernel_cache_.Find(executor);
+  if (kernel == nullptr) {
+    return absl::InternalError(
+        absl::StrCat("Custom kernel not loaded (Initialize() not called): ",
+                     custom_kernel_.name()));
   }
 
   absl::InlinedVector<se::KernelArg, 4> kernel_args;

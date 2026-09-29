@@ -36,7 +36,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
         work_queue_(std::move(work_queue)),
         task_name_(std::move(task_name)) {}
 
-  ~CollectiveRemoteAccessDistributed() override {}
+  ~CollectiveRemoteAccessDistributed() override = default;
 
   void RecvFromPeer(const std::string& peer_device,
                     const std::string& peer_task, bool peer_is_local,

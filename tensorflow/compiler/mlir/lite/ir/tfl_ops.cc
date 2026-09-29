@@ -1972,6 +1972,121 @@ LogicalResult BatchMatMulOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BlockwiseQuantizeOp / BlockwiseDequantizeOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Returns the shape of the scale/zero-point grid implied by tiling `type` with
+// `block_shape`, or failure (after emitting a diagnostic on `op`) if the two
+// are not compatible.
+FailureOr<SmallVector<int64_t>> GetBlockGridShape(Operation* op,
+                                                  ShapedType type,
+                                                  ArrayAttr block_shape) {
+  if (!type.hasStaticShape()) {
+    return op->emitOpError("expects a statically shaped tensor, got ") << type;
+  }
+  ArrayRef<int64_t> shape = type.getShape();
+  if (block_shape.size() != shape.size()) {
+    return op->emitOpError("expects block_shape of rank ")
+           << shape.size() << ", got " << block_shape;
+  }
+
+  SmallVector<int64_t> grid_shape;
+  grid_shape.reserve(shape.size());
+  for (auto [dim, dim_size] : llvm::enumerate(shape)) {
+    auto block_attr = mlir::dyn_cast<IntegerAttr>(block_shape[dim]);
+    if (!block_attr) {
+      return op->emitOpError("expects an integer block_shape, got ")
+             << block_shape;
+    }
+    const int64_t block_size = block_attr.getInt();
+    if (block_size <= 0) {
+      return op->emitOpError("expects a positive block_shape, got ")
+             << block_shape;
+    }
+    if (dim_size % block_size != 0) {
+      return op->emitOpError("expects dimension ")
+             << dim << " (" << dim_size << ") to be divisible by block_shape["
+             << dim << "] (" << block_size << ")";
+    }
+    grid_shape.push_back(dim_size / block_size);
+  }
+  return grid_shape;
+}
+
+// Verifies that `value`, if present, is shaped like the block grid. A
+// dimension of size 1 is accepted anywhere as a broadcast.
+LogicalResult VerifyBlockGridOperand(Operation* op, Value value,
+                                     ArrayRef<int64_t> grid_shape,
+                                     StringRef name) {
+  if (!value || mlir::isa<NoneType>(value.getType())) return success();
+  auto type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!type) return success();
+
+  if (type.getRank() != static_cast<int64_t>(grid_shape.size())) {
+    return op->emitOpError("expects ")
+           << name << " of rank " << grid_shape.size() << ", got " << type;
+  }
+  for (auto [dim, dim_size] : llvm::enumerate(type.getShape())) {
+    if (dim_size != 1 && dim_size != grid_shape[dim]) {
+      return op->emitOpError("expects ")
+             << name << " dimension " << dim << " to be 1 or "
+             << grid_shape[dim] << ", got " << type;
+    }
+  }
+  return success();
+}
+
+}  // namespace
+
+LogicalResult BlockwiseQuantizeOp::verify() {
+  auto grid_shape = GetBlockGridShape(
+      *this, mlir::cast<ShapedType>(getInput().getType()), getBlockShape());
+  if (failed(grid_shape)) return failure();
+
+  if (failed(VerifyBlockGridOperand(*this, getScale(), *grid_shape, "scale")) ||
+      failed(VerifyBlockGridOperand(*this, getZeroPoint(), *grid_shape,
+                                    "zero_point"))) {
+    return failure();
+  }
+
+  if (getScaleType() !=
+      mlir::cast<ShapedType>(getScale().getType()).getElementType()) {
+    return emitOpError("expects the scale element type to match scale_type (")
+           << getScaleType() << ")";
+  }
+  return success();
+}
+
+LogicalResult BlockwiseDequantizeOp::verify() {
+  auto grid_shape = GetBlockGridShape(
+      *this, mlir::cast<ShapedType>(getInput().getType()), getBlockShape());
+  if (failed(grid_shape)) return failure();
+
+  if (failed(
+          VerifyBlockGridOperand(*this, getScales(), *grid_shape, "scales")) ||
+      failed(VerifyBlockGridOperand(*this, getZeroPoints(), *grid_shape,
+                                    "zero_points"))) {
+    return failure();
+  }
+
+  if (getSymmetric() && getZeroPoints() &&
+      !mlir::isa<NoneType>(getZeroPoints().getType())) {
+    auto zero_points = mlir::dyn_cast_or_null<DenseElementsAttr>(
+        getZeroPoints().getDefiningOp()
+            ? getZeroPoints().getDefiningOp()->getAttrOfType<ElementsAttr>(
+                  "value")
+            : nullptr);
+    if (zero_points && !zero_points.isSplat()) {
+      return emitOpError(
+          "expects a per-tensor zero_point when symmetric is set");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 

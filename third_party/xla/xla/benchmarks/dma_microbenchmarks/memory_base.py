@@ -19,23 +19,36 @@ import json
 import logging
 import pathlib
 import tempfile
+
+from absl import flags
 from absl.testing import absltest
 import jax
 import jax.experimental.pallas.tpu as pltpu
 import numpy as np
+
+from xla.benchmarks.core import benchmark
+from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
+
+
+_NUMBER_OF_MEASUREMENTS = flags.DEFINE_integer(
+    "number_of_measurements",
+    default=5,
+    help="Number of measurements to take. Default: 5",
+)
 
 
 class MemoryBenchmarks(absltest.TestCase):
   """Base test case providing profiling and bandwidth metric helpers."""
 
   _KERNEL_NAME = "memory_benchmark_kernel"
-  _NUMBER_OF_MEASUREMENTS = 1  # Default number of measurements.
 
   def setUp(self):
     super().setUp()
     if not any(device.platform == "tpu" for device in jax.devices()):
       self.skipTest("This test requires TPU hardware.")
-    self.number_of_measurements = self._NUMBER_OF_MEASUREMENTS
+    self.number_of_measurements = _NUMBER_OF_MEASUREMENTS.value
+    self.latencies_us = []
+    self.metrics = {}
 
   def _normalize_kernel_names(self, kernel_names):
     """Normalize kernel names into a list of strings."""
@@ -127,6 +140,13 @@ class MemoryBenchmarks(absltest.TestCase):
         std_bandwidth_gbps,
     )
 
+    self.latencies_us = list(latencies_us)
+    self.metrics = {
+        "dma_size_kib": dma_size_kib,
+        "num_dmas": num_dmas,
+        "bandwidth_gbps": float(avg_bandwidth_gbps),
+    }
+
   def _print_latency_statistics(self, latencies_us):
     """Print the latency statistics for a given test."""
     latencies_ns = np.array(latencies_us) * 1e3
@@ -136,3 +156,49 @@ class MemoryBenchmarks(absltest.TestCase):
     logging.info("Test: %s", self._testMethodName)
     logging.info("\tTPU generation: %s", tpu_info.chip_version)
     logging.info("\tLatency: %.2f +/- %.2f ns", avg_latency_ns, std_latency_ns)
+
+    self.latencies_us = list(latencies_us)
+
+
+class DmaBenchmarkConfig(benchmark.BenchmarkConfig):
+  """Config identifying a single DMA test method for the benchmark driver."""
+
+  def __init__(self, suite, test_class, test_name):
+    self.suite = suite
+    self.test_class = test_class
+    self.test_name = test_name
+    self.metrics = {}
+
+  def as_dict(self):
+    return {"suite": self.suite, "test": self.test_name, **self.metrics}
+
+  def get_benchmark(self):
+    return DmaBenchmark(self)
+
+
+class DmaBenchmark(benchmark.Benchmark):
+  """Runs a DMA test method and reports its latencies to the driver."""
+
+  def __init__(self, config):
+    self._config = config
+
+  def get_input_shapes_and_dtypes(self):
+    return []
+
+  def target_fn(self):
+    return lambda: None
+
+  def kernel_name(self):
+    return self._config.test_name
+
+  def run(self, **kwargs):
+    del kwargs
+    test = self._config.test_class(self._config.test_name)
+    try:
+      test.setUp()
+      getattr(test, self._config.test_name)()
+    except absltest.SkipTest as e:
+      logging.warning("Skipping %s: %s", self._config.test_name, e)
+      return [None]
+    self._config.metrics.update(test.metrics)
+    return [jax_profiler_utils.JaxProfilerResult(runtimes_us=test.latencies_us)]
