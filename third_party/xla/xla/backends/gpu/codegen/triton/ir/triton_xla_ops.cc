@@ -323,6 +323,19 @@ LogicalResult PtrToMemrefOp::verify() {
   return success();
 }
 
+LogicalResult BlockBarrierOp::verify() {
+  if (getSignalStride() < 0) {
+    return emitOpError("signal_stride must be non-negative");
+  }
+  if (getSignalStride() > 0 && !getSignalSlot()) {
+    return emitOpError("signal_stride requires signal_slot to be specified");
+  }
+  if (getSignalSlot() && getSignalStride() == 0) {
+    return emitOpError("signal_slot requires a positive signal_stride");
+  }
+  return success();
+}
+
 }  // namespace mlir::triton::xla
 
 #define GET_OP_CLASSES

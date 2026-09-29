@@ -1089,11 +1089,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
-  bool use_experimental_loop_fusion =
-      options::UseExperimentalLoopFusion(module->config());
-  bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
-  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter, target_machine_features);
+  pipeline.AddPass<FusionWrapper>(target_machine_features);
 
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
@@ -1139,8 +1135,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // Safeguard for late elemental instructions created during post-layout
   // simplification.
-  pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
-                                  use_tiled_emitter, target_machine_features);
+  pipeline.AddPass<FusionWrapper>(target_machine_features);
 
   // Outline ops in the entry computation into calls to subcomputations.
   if (!is_aot_compile) {
@@ -1814,6 +1809,13 @@ CpuCompiler::CompileCpuExecutable(
         llvm_module.get(), std::move(ir_compiler));
   }
 
+  TargetMachineFeatures target_machine_features(target_machine.get());
+
+  // ThunkEmitter needs elemental ops in fusions. Always run the idempotent
+  // wrapper: run_hlo_passes=false or --xla_disable_hlo_passes may skip it.
+  FusionWrapper fusion_wrapper(&target_machine_features);
+  ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(module.get()).status());
+
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx;
   absl::flat_hash_map<const HloComputation*, int64_t>
@@ -1861,8 +1863,6 @@ CpuCompiler::CompileCpuExecutable(
     }
     return cpu_executable;
   };
-
-  TargetMachineFeatures target_machine_features(target_machine.get());
 
   // TODO(ezhulenev): Once we fully migrate to Thunks current IrEmitter should
   // be renamed to NestedIrEmitter and be used only for emitting nested (aka
