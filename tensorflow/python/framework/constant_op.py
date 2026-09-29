@@ -375,16 +375,16 @@ def _dimension_tensor_conversion_function(d,
   _ = as_ref
   if d.value is None:
     raise ValueError(f"Cannot convert unknown Dimension {d} to a Tensor.")
-  int64_value = d.value if d.value >= 2**31 else 0
+  need_int64 = d.value >= 2**31
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
       raise TypeError(f"Cannot convert Dimension {d} to dtype {dtype}. "
                       "Allowed dtypes are tf.int32 and tf.int64.")
-    if dtype == dtypes.int32 and int64_value:
+    if dtype == dtypes.int32 and need_int64:
       raise ValueError(f"Cannot convert Dimension {d} to dtype int32; "
                        f"the value is too large. Consider using tf.int64.")
   else:
-    dtype = dtypes.int64 if int64_value else dtypes.int32
+    dtype = dtypes.int64 if need_int64 else dtypes.int32
   if name is None:
     name = "shape_as_tensor"
   return constant(d.value, dtype=dtype, name=name)
