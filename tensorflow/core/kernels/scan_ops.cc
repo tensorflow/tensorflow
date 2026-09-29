@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scan_ops.h"
 
+#include <type_traits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op.h"
 
 namespace tensorflow {
 
@@ -78,6 +81,45 @@ class ScanOp : public OpKernel {
     reduced_shape[1] = input.dim_size(axis);
     for (Tidx i = axis + 1; i < input.dims(); ++i) {
       reduced_shape[2] *= input.dim_size(i);
+    }
+
+    // bfloat16 and float16 keep only ~8 / ~10 mantissa bits, so accumulating a
+    // long sequence directly in the 16-bit type rounds the running total at
+    // every step and drifts far from the exact result. Upcast to float32 for
+    // the accumulation and cast the result back; this matches the GPU kernel,
+    // preserves the documented output dtype, and avoids committing the
+    // 16-bit rounding error on the CPU path. The upcast also applies to
+    // cumprod, which shares this implementation. See GitHub issue #115731.
+    if constexpr (std::is_same_v<Device, CPUDevice> &&
+                  (std::is_same_v<T, ::tensorflow::bfloat16> ||
+                   std::is_same_v<T, Eigen::half>)) {
+      Tensor float_input;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input.shape(),
+                                            &float_input));
+      functor::CastFunctor<CPUDevice, float, T> to_float;
+      to_float(d, float_input.template flat<float>(),
+               input.template flat<T>());
+
+      Tensor float_output;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_FLOAT, output_shape, &float_output));
+      // Use the float-typed reducer that mirrors the original 16-bit one.
+      if constexpr (std::is_same_v<Reducer,
+                                   Eigen::internal::SumReducer<T>>) {
+        functor::Scan<CPUDevice, Eigen::internal::SumReducer<float>, float>()(
+            d, float_input.shaped<float, 3>(reduced_shape),
+            float_output.shaped<float, 3>(reduced_shape),
+            Eigen::internal::SumReducer<float>(), reverse_, exclusive_);
+      } else {
+        functor::Scan<CPUDevice, Eigen::internal::ProdReducer<float>, float>()(
+            d, float_input.shaped<float, 3>(reduced_shape),
+            float_output.shaped<float, 3>(reduced_shape),
+            Eigen::internal::ProdReducer<float>(), reverse_, exclusive_);
+      }
+
+      functor::CastFunctor<CPUDevice, T, float> to_t;
+      to_t(d, output->template flat<T>(), float_output.template flat<float>());
+      return;
     }
 
     functor::Scan<Device, Reducer, T>()(d, input.shaped<T, 3>(reduced_shape),

@@ -15,6 +15,7 @@
 """Functional tests for scan ops."""
 
 import numpy as np
+from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -216,27 +217,48 @@ class CumsumTest(test.TestCase):
         for reverse in [True, False]:
           self._compareGradient([5, 10], axis, exclusive, reverse)
 
-  def testBfloat16AccumulatesInFloat32(self):
-    # bfloat16 keeps 8 mantissa bits, so summing a long sequence directly in
-    # bfloat16 rounds the running total at every step and drifts far from the
-    # exact result. The accumulation now happens in float32, matching the GPU
-    # kernel, while the output keeps the input dtype. See #115731.
+  @parameterized.parameters(
+      *[(op_name, dtype, axis, exclusive, reverse)
+        for op_name in ("cumsum", "cumprod")
+        for dtype in (dtypes.bfloat16, dtypes.float16)
+        for axis in (0, 1)
+        for exclusive in (False, True)
+        for reverse in (False, True)]
+  )
+  def testLowPrecisionAccumulatesInFloat32(self, op_name, dtype, axis,
+                                          exclusive, reverse):
+    # bfloat16 and float16 keep only ~8 / ~10 mantissa bits, so accumulating a
+    # long sequence directly in the 16-bit type rounds the running total at
+    # every step and drifts far from the exact result. The CPU kernel now
+    # accumulates in float32 (matching the GPU kernel) and casts the result
+    # back, so the output must equal the float32 accumulation reference for
+    # every axis / flag combination. See #115731.
+    op = getattr(math_ops, op_name)
     np.random.seed(0)
-    x = np.random.randn(10000).astype(np.float32)
-    x_bf16 = constant_op.constant(x, dtype=dtypes.bfloat16)
+    x = np.random.randn(100, 50).astype(np.float32)
+    x_low = constant_op.constant(x, dtype=dtype)
 
-    tf_out = math_ops.cumsum(x_bf16)
-    self.assertEqual(tf_out.dtype, dtypes.bfloat16)
+    tf_out = op(x_low, axis=axis, exclusive=exclusive, reverse=reverse)
+    self.assertEqual(tf_out.dtype, dtype)
+
+    # Reference: upcast the 16-bit input to float32, run the scan there, and
+    # cast the result back. This is exactly what the C++ kernel does.
     expected = math_ops.cast(
-        math_ops.cumsum(math_ops.cast(x_bf16, dtypes.float32)),
-        dtypes.bfloat16,
-    )
+        op(math_ops.cast(x_low, dtypes.float32),
+           axis=axis, exclusive=exclusive, reverse=reverse),
+        dtype)
     self.assertAllEqual(tf_out, expected)
 
-    # The float32 accumulation is much closer to the exact result: the
-    # relative L2 error drops from ~1.4e-1 to ~2e-3 on this input.
-    exact = np.cumsum(x.astype(np.float64))
-    got = self.evaluate(math_ops.cast(tf_out, dtypes.float32))
+  def testBfloat16AccuracyVsExact(self):
+    # Regression for #115731: on CPU the bfloat16 running total used to be
+    # accumulated in bfloat16 and drifted far from the exact result. It should
+    # now be close to a float64 reference.
+    np.random.seed(0)
+    x = np.random.randn(10000).astype(np.float64)
+    x_bf16 = constant_op.constant(x, dtype=dtypes.bfloat16)
+
+    got = self.evaluate(math_ops.cast(math_ops.cumsum(x_bf16), dtypes.float64))
+    exact = np.cumsum(x)
     relative_error = np.linalg.norm(got - exact) / np.linalg.norm(exact)
     self.assertLess(relative_error, 1e-2)
 

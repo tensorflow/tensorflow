@@ -4410,23 +4410,6 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   """
   with ops.name_scope(name, "Cumsum", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype == dtypes.bfloat16:
-      # bfloat16 keeps only 8 mantissa bits, so accumulating a long sequence
-      # directly in bfloat16 drifts far from the exact result: the running
-      # total is rounded to roughly two decimal digits at every step. The GPU
-      # kernel already accumulates in float32, which made CPU results about
-      # 23x less accurate than GPU results for the same input (see #115731).
-      # Accumulate in float32 as well and cast back, which keeps the
-      # documented contract that the output has the same type as `x`.
-      return cast(
-          gen_math_ops.cumsum(
-              cast(x, dtypes.float32),
-              axis,
-              exclusive=exclusive,
-              reverse=reverse,
-              name=name),
-          dtypes.bfloat16,
-      )
     return gen_math_ops.cumsum(
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
