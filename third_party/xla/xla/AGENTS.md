@@ -92,6 +92,7 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
     *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
         `HloHardwareIndependentTestBase` for compiler pass tests locally where
         possible.
+    *   When running GPU tests, pass `--config=cuda` to the test command.
     *   Ensure tests are deterministic and do not flake.
 
 6.  **BUILD targets**:
@@ -116,6 +117,30 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
 10. **MLIR Operation Creation**:
     *   **Always** use the static `OpTy::create(rewriter, ...)` method when creating MLIR operations.
     *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is deprecated.
+
+11. **License Headers**:
+    *   Any new source or build files created in this codebase must include the
+        OpenXLA Apache 2.0 copyright header at the top of the file.
+    *   Replace `<YEAR>` in the template below with the current 4-digit calendar
+        year (e.g., `2026`—do not leave `<YEAR>` literally or copy an outdated
+        year):
+        ```cpp
+        /* Copyright <YEAR> The OpenXLA Authors.
+
+        Licensed under the Apache License, Version 2.0 (the "License");
+        you may not use this file except in compliance with the License.
+        You may obtain a copy of the License at
+
+            http://www.apache.org/licenses/LICENSE-2.0
+
+        Unless required by applicable law or agreed to in writing, software
+        distributed under the License is distributed on an "AS IS" BASIS,
+        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        See the License for the specific language governing permissions and
+        limitations under the License.
+        ==============================================================================*/
+        ```
+        (Use `#` comment prefixes for Python and `BUILD` files.)
 
 ## Editing This File
 
