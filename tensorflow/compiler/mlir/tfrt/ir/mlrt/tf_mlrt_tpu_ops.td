@@ -28,6 +28,7 @@ def TensorflowMlrtTpu_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tensorflow::tf_mlrt_tpu";
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 class TensorflowMlrtTpu_Op<string mnemonic, list<Trait> traits = []> :

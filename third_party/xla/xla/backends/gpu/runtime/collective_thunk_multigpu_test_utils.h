@@ -48,6 +48,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
+inline constexpr int64_t kNumElements = 4;
+inline constexpr int64_t kFloatByteLength = sizeof(float) * kNumElements;
+
 struct CollectiveThunkMultiGpuTestState {
   int device_ordinal = 0;
   se::StreamExecutor* executor = nullptr;
