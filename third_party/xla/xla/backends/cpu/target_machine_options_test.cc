@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -160,14 +161,36 @@ TEST(TargetMachineOptionsTest, TestTargeteMachineOptionsFeaturesAreSorted) {
 
 TEST(TargetMachineOptionsTest, TargetMachineOptionsDefaultConstructor) {
   TargetMachineOptions options;
-  EXPECT_EQ(options.triple(), llvm::sys::getDefaultTargetTriple());
+  EXPECT_EQ(options.triple(),
+            llvm::Triple::normalize(llvm::sys::getDefaultTargetTriple()));
   EXPECT_EQ(options.cpu(), llvm::sys::getHostCPUName());
   EXPECT_EQ(options.GetTargetMachineFeatures(), "");
 }
 
+TEST(TargetMachineOptionsTest, NormalizesTriple) {
+  TargetMachineOptions options("aarch64-linux-gnu", "generic", "");
+  EXPECT_EQ(options.triple(), "aarch64-unknown-linux-gnu");
+}
+
+// An empty triple must stay empty rather than normalizing to "unknown", so that
+// LLVM's EngineBuilder::selectTarget falls back to the host process triple when
+// no target triple was specified.
+TEST(TargetMachineOptionsTest, EmptyTripleIsNotNormalized) {
+  TargetMachineOptions options("", "generic", "");
+  EXPECT_EQ(options.triple(), "");
+}
+
+TEST(TargetMachineOptionsTest, FromEmptyProtoPreservesEmptyTriple) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      TargetMachineOptions options,
+      TargetMachineOptions::FromProto(TargetMachineOptionsProto()));
+  EXPECT_EQ(options.triple(), "");
+}
+
 TEST(TargetMachineOptionsTest, NativeMatchesLLVMBehaviour) {
   TargetMachineOptions options = TargetMachineOptions::Native();
-  EXPECT_EQ(options.triple(), llvm::sys::getDefaultTargetTriple());
+  EXPECT_EQ(options.triple(),
+            llvm::Triple::normalize(llvm::sys::getDefaultTargetTriple()));
   EXPECT_EQ(options.cpu(), llvm::sys::getHostCPUName());
 
   llvm::StringMap<bool> expected_features = llvm::sys::getHostCPUFeatures();

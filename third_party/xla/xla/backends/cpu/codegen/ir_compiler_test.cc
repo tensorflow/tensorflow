@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/object_buffer_identifier.h"
@@ -282,6 +283,19 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
             kTargetTripleForHost);
   EXPECT_EQ(target_machine->getTargetFeatureString(),
             "+foo-feature,-bar-feature");
+}
+
+TEST(IrCompilerTest, InferTargetMachineWithEmptyTriple) {
+  ASSERT_OK_AND_ASSIGN(
+      TargetMachineOptions target_machine_options,
+      TargetMachineOptions::FromProto(TargetMachineOptionsProto()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<llvm::TargetMachine> target_machine,
+      IrCompiler::InferTargetMachine(llvm::TargetOptions(),
+                                     llvm::CodeGenOptLevel::Default,
+                                     target_machine_options));
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            llvm::sys::getProcessTriple());
 }
 
 TEST(IrCompilerTest, EmitIntrinsicCall) {

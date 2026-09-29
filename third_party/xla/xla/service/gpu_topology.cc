@@ -82,7 +82,7 @@ GetHostTargetMachineOptions(absl::string_view platform_version) {
   }
   if (platform_version == "oberon_b200" || platform_version == "oberon_b300") {
     return cpu::TargetMachineOptions{
-        "aarch64-linux-gnu", "neoverse-n1",
+        "aarch64-unknown-linux-gnu", "neoverse-n1",
         "+aes,+crc,+fp-armv8,+lse,+neon,+sha2,+sha3,+sm4,+sve-aes,+sve-sha3,+"
         "sve-sm4,-rand,-sve,-sve2"};
   }
