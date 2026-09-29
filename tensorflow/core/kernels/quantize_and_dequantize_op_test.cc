@@ -534,6 +534,35 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
 
+// Regression test for per-axis range with rank-1 input_min/input_max.
+TEST_F(QuantizeAndDequantizeTest,
+       Convert_2D_tensor_with_int8_range_given_axis_0) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("signed_input", true)
+          .Attr("num_bits", 8)
+          .Attr("range_given", true)
+          .Attr("axis", 0)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  // Input has two slices along axis 0, each with its own range.
+  AddInputFromArray<float>(TensorShape({2, 3}),
+                           {-1.0, 0.0, 1.0, -2.0, 0.0, 2.0});
+  AddInputFromArray<float>(TensorShape({2}), {-1.0, -2.0});  // Min
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 2.0});    // Max
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(
+      &expected, {-1.0, 0.0, 1.0, -2.0, 0.0, 2.0});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
 // Convert a 2D tensor with signed 8 bits, given range and round_mode half_up.
 TEST_F(QuantizeAndDequantizeTest,
        Convert_2D_tensor_with_int8_range_given_round_half_up) {

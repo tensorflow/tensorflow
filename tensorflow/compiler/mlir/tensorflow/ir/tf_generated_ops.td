@@ -11807,10 +11807,16 @@ The above round function rounds the value based on the given round_mode.
     Arg<TF_FloatTensor, [{Tensor to quantize and then dequantize.}]>:$input,
     Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the minimum input value that needs to
 be represented, otherwise it is determined from the min value of the `input`
-tensor.}]>:$input_min,
+tensor.
+
+If `axis` is specified, the shape of the minimum input tensor
+must be rank 1.}]>:$input_min,
     Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the maximum input value that needs to
 be represented, otherwise it is determined from the max value of the `input`
-tensor.}]>:$input_max,
+tensor.
+
+If `axis` is specified, the shape of the maximum input tensor
+must be rank 1.}]>:$input_max,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedOptionalAttr<I64Attr, "8">:$num_bits,
@@ -11839,8 +11845,18 @@ tensor, so its value can change during training.
 
   let arguments = (ins
     TF_FloatTensor:$input,
-    TF_FloatTensor:$input_min,
-    TF_FloatTensor:$input_max,
+    Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the minimum input value that needs to
+be represented, otherwise it is determined from the min value of the `input`
+tensor.
+
+If `axis` is specified, the shape of the minimum input tensor
+must be rank 1.}]>:$input_min,
+    Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the maximum input value that needs to
+be represented, otherwise it is determined from the max value of the `input`
+tensor.
+
+If `axis` is specified, the shape of the maximum input tensor
+must be rank 1.}]>:$input_max,
     TF_Int32Tensor:$num_bits,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$signed_input,
@@ -11868,10 +11884,16 @@ gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
     Arg<TF_FloatTensor, [{Tensor to quantize and then dequantize.}]>:$input,
     Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the minimum input value that needs to
 be represented, otherwise it is determined from the min value of the `input`
-tensor.}]>:$input_min,
+tensor.
+
+If `axis` is specified, the shape of the minimum input tensor
+must be rank 1.}]>:$input_min,
     Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the maximum input value that needs to
 be represented, otherwise it is determined from the max value of the `input`
-tensor.}]>:$input_max,
+tensor.
+
+If `axis` is specified, the shape of the maximum input tensor
+must be rank 1.}]>:$input_max,
 
     DefaultValuedOptionalAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedOptionalAttr<I64Attr, "8">:$num_bits,
