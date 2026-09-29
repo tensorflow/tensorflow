@@ -504,6 +504,63 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, PropagateAsyncHostToDeviceDelayedError) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+
+  Shape shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  ASSERT_OK_AND_ASSIGN(
+      auto* memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice({shape}, memory_space));
+  std::unique_ptr<PjRtBuffer> buffer = transfer_manager->RetrieveBuffer(0);
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kAddProgram, *client));
+
+  absl::Status input_error =
+      absl::UnavailableError("ReadHostBuffer connection timeout");
+  std::unique_ptr<tsl::Thread> error_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "set_buffer_error", [&]() {
+        // Allow Execute() to enter
+        // launch_on_device() and block in
+        // BufferSequencingEvent::WaitForEventOnStream()
+        // before poisoning the transfer.
+        absl::SleepFor(absl::Milliseconds(100));
+        transfer_manager->SetBufferError(0, input_error);
+      }));
+
+  std::optional<std::vector<Future<>>> returned_futures =
+      std::vector<Future<>>();
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute({{buffer.get(), buffer.get()}},
+                                           /*options=*/{}, returned_futures));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
+  ASSERT_EQ(returned_futures->size(), 1);
+  EXPECT_THAT((*returned_futures)[0].Await(),
+              StatusIs(input_error.code(), HasSubstr(input_error.message())));
+  for (const auto& b : result[0]) {
+    EXPECT_THAT(b->GetReadyFuture().Await(),
+                StatusIs(input_error.code(), HasSubstr(input_error.message())));
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, DonateWithControlDependency) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));

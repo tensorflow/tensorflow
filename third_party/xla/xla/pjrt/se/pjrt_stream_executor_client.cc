@@ -1502,12 +1502,12 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     for (size_t i = 0; i < extra_deps.size(); ++i) {
       const auto& event = extra_deps[i];
       if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        ev->WaitForEventOnStream(device_state->compute_stream());
         if (ev->IsPredeterminedError()) {
           if (predetermined_error.ok()) {
             predetermined_error = ev->GetDefinedStatus();
           }
         }
-        ev->WaitForEventOnStream(device_state->compute_stream());
       } else if (event) {
         xla::BlockUntilReady(event);
         if (auto error = event.GetErrorIfPresent()) {
