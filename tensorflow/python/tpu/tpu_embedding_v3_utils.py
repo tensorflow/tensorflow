@@ -25,7 +25,7 @@ from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.trackable import base as trackable_base
 
-SPARSECORE_LAYOUTS_CHECKPOINT_KEY = "sparse_core_table_layouts"
+SPARSECORE_LAYOUTS_CHECKPOINT_KEY = "_sparse_core_table_layouts"
 
 
 def unshuffle_from_sc_to_cpu(
