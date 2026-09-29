@@ -990,11 +990,6 @@ def transpose(a, axes=None):
         if normalized_mask & bit:
           raise ValueError('repeated axis in transpose')
         normalized_mask |= bit
-        seen_int_axes += 1
-    if seen_int_axes == maybe_rank and normalized_mask != (
-        1 << maybe_rank
-    ) - 1:
-      raise ValueError('repeated axis in transpose')
 
   if axes is not None:
     # Specify an integer dtype explicitly: asarray([]) would otherwise
