@@ -24,6 +24,7 @@ def TPU_Dialect : Dialect {
   let cppNamespace = "::mlir::tpu";
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 0;
   let extraClassDeclaration = [{
     static constexpr StringRef GetMainKey() { return "tpu.main"; }
     static constexpr StringRef GetCoreTypeKey() { return "tpu.core_type"; }
