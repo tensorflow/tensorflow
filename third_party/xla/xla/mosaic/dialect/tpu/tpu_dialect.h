@@ -107,7 +107,8 @@ FailureOr<SmallVector<int64_t>> getExpandedShape(
 
 // Evaluates the expanded strides for the given tiles and tile strides.
 FailureOr<SmallVector<int64_t>> getExpandedStrides(
-    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides);
+    ArrayRef<xla::Tile> tiles, ArrayRef<int64_t> tile_strides,
+    ArrayRef<int64_t> shape = {});
 
 // Returns the remainder of the given value when divided by the given divisor.
 // Returns nullopt if the remainder is not known.
