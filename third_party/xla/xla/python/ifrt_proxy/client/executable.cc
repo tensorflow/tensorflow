@@ -345,8 +345,7 @@ class LoadedExecutable::OutputSpecCache {
 
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices,
-    std::optional<DeviceListRef> devices,
+    uint64_t handle, std::string name, std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
@@ -356,9 +355,7 @@ LoadedExecutable::LoadedExecutable(
       rpc_helper_(std::move(rpc_helper)),
       handle_(handle),
       name_(std::move(name)),
-      num_devices_(num_devices),
       devices_(devices),
-      addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
       user_context_(xla::ifrt::UserContextScope::current()),
       output_spec_cache_(
@@ -550,8 +547,6 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "IFRT service executable does not support `Serialize` since the "
       "underlying serialization format is not stable");
 }
-
-int LoadedExecutable::num_devices() const { return num_devices_; }
 
 int64_t LoadedExecutable::SizeOfGeneratedCodeInBytes() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
@@ -880,11 +875,6 @@ LoadedExecutable::ExecuteBundle(absl::Span<BundleRef> args,
 }
 std::optional<DeviceListRef> LoadedExecutable::devices() const {
   return devices_;
-}
-
-absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
-    const {
-  return addressable_devices_;
 }
 
 tsl::Future<> LoadedExecutable::FetchExecuteResult(

@@ -31,6 +31,7 @@ def Ifrt_Dialect : Dialect {
   let cppNamespace = "::xla::ifrt";
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 0;
   let hasOperationAttrVerify = 1;
   let hasRegionArgAttrVerify = 1;
 }
