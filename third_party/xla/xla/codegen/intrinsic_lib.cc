@@ -125,6 +125,7 @@ class IntrinsicAdapter : public IntrinsicFunction {
 
 IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     : options_(options) {
+  bool has_ynn_intrinsics = false;
   if (options.device_type == intrinsics::DeviceType::kIntelCpu ||
       options.device_type == intrinsics::DeviceType::kAmdCpu ||
       options.device_type == intrinsics::DeviceType::kArmCpu) {
@@ -134,6 +135,20 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
           std::make_unique<CppGenIntrinsicLibrary>(ir_string, "eigen");
       ir_libraries_.push_back(std::move(eigen_lib));
     }
+    const std::string& ynn_ir_string = GetYnnpackIrString(options);
+    if (!ynn_ir_string.empty()) {
+      ir_libraries_.push_back(
+          std::make_unique<CppGenIntrinsicLibrary>(ynn_ir_string, "ynnpack"));
+      intrinsic_functions_.push_back(
+          std::make_unique<IntrinsicAdapter<intrinsics::YnnLog>>());
+      intrinsic_functions_.push_back(
+          std::make_unique<IntrinsicAdapter<intrinsics::YnnLog1p>>());
+      has_ynn_intrinsics = true;
+    }
+  }
+  if (!has_ynn_intrinsics) {
+    intrinsic_functions_.push_back(
+        std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
   }
 
   intrinsic_functions_.push_back(
@@ -142,8 +157,6 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
       std::make_unique<IntrinsicAdapter<intrinsics::Exp>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());
-  intrinsic_functions_.push_back(
-      std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Erf>>());
   intrinsic_functions_.push_back(

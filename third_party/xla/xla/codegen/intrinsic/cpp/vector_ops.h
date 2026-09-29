@@ -34,6 +34,7 @@ typedef _Float16 Vec16h __attribute__((vector_size(32)));
 #endif
 
 // Single precision (float32)
+typedef float Vec2f __attribute__((vector_size(8)));
 typedef float Vec4f __attribute__((vector_size(16)));
 typedef float Vec8f __attribute__((vector_size(32)));
 typedef float Vec16f __attribute__((vector_size(64)));
