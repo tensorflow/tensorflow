@@ -957,6 +957,132 @@ class ScatterNdTensorTest(test.TestCase):
       self.assertAllEqual(subbed,
                           constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarUpdate(self):
+    for dtype in (dtypes.int32, dtypes.float32):
+      indices = constant_op.constant([[4], [3], [1], [7]])
+      updates = constant_op.constant(9, dtype=dtype)
+      t = array_ops.ones([8], dtype=dtype)
+      assigned = array_ops.tensor_scatter_update(t, indices, updates)
+      added = array_ops.tensor_scatter_add(t, indices, updates)
+      subbed = array_ops.tensor_scatter_sub(t, indices, updates)
+      min_result = array_ops.tensor_scatter_min(t, indices, updates)
+      max_result = array_ops.tensor_scatter_max(t, indices, updates)
+
+      self.assertAllEqual(
+          assigned, constant_op.constant([1, 9, 1, 9, 9, 1, 1, 9], dtype=dtype)
+      )
+      self.assertAllEqual(
+          added, constant_op.constant([1, 10, 1, 10, 10, 1, 1, 10], dtype=dtype)
+      )
+      self.assertAllEqual(
+          subbed,
+          constant_op.constant([1, -8, 1, -8, -8, 1, 1, -8], dtype=dtype),
+      )
+      self.assertAllEqual(
+          min_result,
+          constant_op.constant([1, 1, 1, 1, 1, 1, 1, 1], dtype=dtype),
+      )
+      self.assertAllEqual(
+          max_result,
+          constant_op.constant([1, 9, 1, 9, 9, 1, 1, 9], dtype=dtype),
+      )
+
+      # Also test broadcasting a scalar update into 2D slices.
+      t_2d = array_ops.ones([3, 4], dtype=dtype)
+      indices_2d = constant_op.constant([[0], [2]])
+      updates_2d = constant_op.constant(7, dtype=dtype)
+      self.assertAllEqual(
+          array_ops.tensor_scatter_update(t_2d, indices_2d, updates_2d),
+          constant_op.constant(
+              [[7, 7, 7, 7], [1, 1, 1, 1], [7, 7, 7, 7]], dtype=dtype
+          ),
+      )
+      self.assertAllEqual(
+          array_ops.tensor_scatter_add(t_2d, indices_2d, updates_2d),
+          constant_op.constant(
+              [[8, 8, 8, 8], [1, 1, 1, 1], [8, 8, 8, 8]], dtype=dtype
+          ),
+      )
+      self.assertAllEqual(
+          array_ops.tensor_scatter_sub(t_2d, indices_2d, updates_2d),
+          constant_op.constant(
+              [[-6, -6, -6, -6], [1, 1, 1, 1], [-6, -6, -6, -6]], dtype=dtype
+          ),
+      )
+      self.assertAllEqual(
+          array_ops.tensor_scatter_min(t_2d, indices_2d, updates_2d),
+          constant_op.constant(
+              [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], dtype=dtype
+          ),
+      )
+      self.assertAllEqual(
+          array_ops.tensor_scatter_max(t_2d, indices_2d, updates_2d),
+          constant_op.constant(
+              [[7, 7, 7, 7], [1, 1, 1, 1], [7, 7, 7, 7]], dtype=dtype
+          ),
+      )
+
+      # Test 1D indices (outer_dims == 0) with a scalar update.
+      t_2d_zeros = array_ops.zeros([3, 4], dtype=dtype)
+      indices_1d = constant_op.constant([1, 2])
+      assigned_1d = array_ops.tensor_scatter_update(
+          t_2d_zeros, indices_1d, updates_2d
+      )
+      self.assertAllEqual(
+          assigned_1d,
+          constant_op.constant(
+              [[0, 0, 0, 0], [0, 0, 7, 0], [0, 0, 0, 0]], dtype=dtype
+          ),
+      )
+
+      # Test empty indices (shape [0, 1]) with a scalar update.
+      empty_indices = array_ops.zeros([0, 1], dtype=dtypes.int32)
+      for op in (
+          array_ops.tensor_scatter_update,
+          array_ops.tensor_scatter_add,
+          array_ops.tensor_scatter_sub,
+          array_ops.tensor_scatter_min,
+          array_ops.tensor_scatter_max,
+      ):
+        with self.subTest(dtype=dtype, op=op.__name__):
+          self.assertAllEqual(op(t, empty_indices, updates), t)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarUpdateInvalidIndexDepth(self):
+    t = array_ops.ones([4], dtype=dtypes.float32)
+    # indices.shape[-1] == 2 > t.shape.rank == 1
+    invalid_indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+    scalar_update = constant_op.constant(9.0, dtype=dtypes.float32)
+    for op in (
+        array_ops.tensor_scatter_update,
+        array_ops.tensor_scatter_add,
+        array_ops.tensor_scatter_sub,
+        array_ops.tensor_scatter_min,
+        array_ops.tensor_scatter_max,
+    ):
+      with self.subTest(op=op.__name__):
+        with self.assertRaisesRegex(
+            (errors.InvalidArgumentError, ValueError),
+            r"Inner dimensions of output shape must match|"
+            r"Must have updates\.shape",
+        ):
+          self.evaluate(op(t, invalid_indices, scalar_update))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarUpdateEmptyInput(self):
+    t = array_ops.zeros([0], dtype=dtypes.float32)
+    empty_indices = array_ops.zeros([0, 1], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Indices and updates specified for empty (input|output)",
+    ):
+      self.evaluate(
+          array_ops.tensor_scatter_update(
+              t, empty_indices, constant_op.constant(1.0)
+          )
+      )
+
   def testUpdateAddSubGradients(self):
     with self.cached_session():
       indices = constant_op.constant([[3], [1]])
@@ -984,6 +1110,39 @@ class ScatterNdTensorTest(test.TestCase):
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           lambda updates: array_ops.tensor_scatter_sub(x, indices, updates),
           [updates])
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+
+      scalar_update = constant_op.constant(9.0, dtype=dtypes.float32)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_update(x, indices, scalar_update),
+          [x],
+      )
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_add(x, indices, scalar_update),
+          [x],
+      )
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda x: array_ops.tensor_scatter_sub(x, indices, scalar_update),
+          [x],
+      )
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda u: array_ops.tensor_scatter_update(x, indices, u),
+          [scalar_update],
+      )
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda u: array_ops.tensor_scatter_add(x, indices, u),
+          [scalar_update],
+      )
+      self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          lambda u: array_ops.tensor_scatter_sub(x, indices, u),
+          [scalar_update],
+      )
       self.assertAllClose(theoretical, numerical, 5e-4, 5e-4)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1042,6 +1201,25 @@ class ScatterNdTensorTest(test.TestCase):
           [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 0.3333, 0.3333]]],
           dtype=dtypes.float32)
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      scalar_update = constant_op.constant(1.0, dtype=dtypes.float32)
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda u: array_ops.tensor_scatter_max(x, indices, u),
+          [scalar_update],
+      )
+      manual = constant_op.constant(
+          [[[0.0], [0.5], [0.5], [0.6667]]], dtype=dtypes.float32
+      )
+      self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+      theoretical, _ = gradient_checker_v2.compute_gradient(
+          lambda u: array_ops.tensor_scatter_min(x, indices, u),
+          [scalar_update],
+      )
+      manual = constant_op.constant(
+          [[[0.0], [0.5], [0.5], [0.6667]]], dtype=dtypes.float32
+      )
       self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
 
     with self.cached_session():

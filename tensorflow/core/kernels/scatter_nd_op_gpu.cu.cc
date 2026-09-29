@@ -99,7 +99,7 @@ __global__ void ScatterNdOpKernel(
     const Index* indices, const T* updates, T* out,
     const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix,
     const Eigen::array<int64_t, IXDIM> batch_strides, const int64_t num_indices,
-    const Index slice_size) {
+    const Index slice_size, const bool is_scalar_update) {
   auto update = LeftUpdate<T, op>();
 
   GPU_1D_KERNEL_LOOP(index, num_indices) {
@@ -113,9 +113,17 @@ __global__ void ScatterNdOpKernel(
       i += ix_d * batch_strides[dim] * slice_size;
     }
     if (!out_of_bounds) {
+      if (is_scalar_update) {
+        const T val = ldg(updates);
 #pragma unroll
-      for (int si = 0; si < slice_size; si++) {
-        update(out + i + si, ldg(updates + (index * slice_size + si)));
+        for (int si = 0; si < slice_size; si++) {
+          update(out + i + si, val);
+        }
+      } else {
+#pragma unroll
+        for (int si = 0; si < slice_size; si++) {
+          update(out + i + si, ldg(updates + (index * slice_size + si)));
+        }
       }
     }
   }
@@ -151,12 +159,13 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
     }
 
     GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
+    const bool is_scalar_update = Tupdates.size() == 1;
 
-    TF_CHECK_OK(GpuLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), Tindices.data(), Tupdates.data(),
-                                Toutput.data(), output_shape_prefix,
-                                batch_strides, batch_size, slice_size));
+    TF_CHECK_OK(GpuLaunchKernel(
+        ScatterNdOpKernel<T, Index, op, IXDIM>, config.block_count,
+        config.thread_per_block, 0, d.stream(), Tindices.data(),
+        Tupdates.data(), Toutput.data(), output_shape_prefix, batch_strides,
+        batch_size, slice_size, is_scalar_update));
 
     return -1;
   }
