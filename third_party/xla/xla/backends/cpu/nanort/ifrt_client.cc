@@ -1029,8 +1029,6 @@ class NanoExecutable final
 
   ifrt::UserContextRef user_context() const override { return user_context_; }
 
-  int num_devices() const override { return 1; }
-
   int64_t SizeOfGeneratedCodeInBytes() const override { return 0; }
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {

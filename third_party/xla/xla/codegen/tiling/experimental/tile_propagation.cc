@@ -1515,6 +1515,65 @@ absl::StatusOr<Tiles> PropagateTileToOutputForBitcastOp(
   return Tiles{std::move(output_tile)};
 }
 
+// Calculates the required input tile for a ReduceScatter operation.
+//
+// In a ReduceScatter, the input tensor is divided into "shards" along the
+// scatter dimension and distributed across R replicas. For example:
+//   * Replicas (R) = 2
+//   * Input shape  = [128, 256]
+//   * Output shape = [64,  256] (Each replica gets a 64-row shard)
+//
+// This method does two things to the tile along the scattered dimension:
+//
+// 1. Scales it up by R:
+//    Because the data will be scattered, a thread block needs to process R
+//    times as much input data. If the block is assigned an output tile of
+//    8 rows, it must actually compute 16 rows of the input. We multiply
+//    the offset, size, and upper bounds by R to reflect this.
+//
+// 2. Enforces single-destination routing:
+//    We add a divisibility constraint to ensure that our scaled-up input
+//    tile (e.g., 16 rows) fits perfectly inside a single replica's shard
+//    (64 rows). This guarantees that the tile never crosses the boundary
+//    between shards (e.g., crossing row 64), meaning this thread block
+//    only ever has to send its data to exactly *one* target GPU.
+absl::StatusOr<Tiles> PropagateTileToInputForReduceScatterOp(
+    const TilingSpace& tiling_space,
+    const HloReduceScatterInstruction& reduce_scatter,
+    const Tile& output_tile) {
+  // Crash OK. Must be checked while forming the fusion.
+  CHECK_EQ(reduce_scatter.operand_count(), 1)
+      << "Multi-operand ReduceScatter is not yet supported.";
+  const int64_t scatter_dim = reduce_scatter.scatter_dimension();
+  const int64_t shard_size = reduce_scatter.shape().dimensions(scatter_dim);
+  const int64_t num_replicas =
+      reduce_scatter.operand(0)->shape().dimensions(scatter_dim) / shard_size;
+
+  SmallVector<DimTile> dim_tiles(output_tile.dim_tiles());
+  DimTile& scatter_tile = dim_tiles[scatter_dim];
+  if (!IsConstantValue(scatter_tile.stride, 1)) {
+    return absl::UnimplementedError(
+        absl::StrCat("Non-unit stride on the scatter dimension of ",
+                     reduce_scatter.ToString()));
+  }
+  scatter_tile.offset = scatter_tile.offset * num_replicas;
+  scatter_tile.size = scatter_tile.size * num_replicas;
+  scatter_tile.upper_bound = scatter_tile.upper_bound * num_replicas;
+
+  if (!tiling_space.IsSymbolic()) {
+    std::optional<int64_t> size = TryGetConstantValue(scatter_tile.size);
+    if (!size.has_value() || shard_size % *size != 0 ||
+        !scatter_tile.offset.Canonicalize().IsMultipleOf(*size)) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Tiling propagation rejected for ", reduce_scatter.ToString(),
+          ": operand tile ", scatter_tile.size.ToString(), " at ",
+          scatter_tile.offset.ToString(),
+          " crosses shard boundary (shard_size=", shard_size, ")"));
+    }
+  }
+  return Tiles{output_tile.CloneWithNewDims(std::move(dim_tiles))};
+}
+
 }  // namespace
 
 std::string ToString(const Tiles& tiles) {
@@ -1588,6 +1647,10 @@ absl::StatusOr<Tiles> PropagateTileToInput(TilingSpace& tiling_space,
   }
   if (hlo.opcode() == HloOpcode::kAllGather) {
     return PropagateTileToInputForAllGatherOp(tiling_space, hlo, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduceScatter) {
+    return PropagateTileToInputForReduceScatterOp(
+        tiling_space, *Cast<HloReduceScatterInstruction>(&hlo), output_tile);
   }
   if (hlo.opcode() == HloOpcode::kBitcast) {
     return PropagateTileToInputForBitcastOp(hlo, output_tile);

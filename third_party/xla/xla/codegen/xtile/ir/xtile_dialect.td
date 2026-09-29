@@ -34,6 +34,7 @@ def XTileDialect : Dialect {
   ];
 
   let useDefaultAttributePrinterParser = 1;
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_DIALECT

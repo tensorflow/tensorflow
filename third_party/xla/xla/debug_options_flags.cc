@@ -303,6 +303,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_trace_annotation_level(0);
   opts.set_xla_gpu_enable_cupti_multi_subscriber(true);
 
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES_KERNEL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);

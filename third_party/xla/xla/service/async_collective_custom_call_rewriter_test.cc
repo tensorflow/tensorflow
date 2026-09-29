@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,6 +37,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::StatusIs;
 
 class AsyncCollectiveCustomCallRewriterTest
     : public HloHardwareIndependentTestBase {};
@@ -414,10 +417,10 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
         std::unique_ptr<HloModule> module,
         ParseAndReturnUnverifiedModule(unsupported_instruction_hlo));
     AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
-    EXPECT_THAT(rewriter.Run(module.get()),
-                ::testing::status::StatusIs(
-                    absl::StatusCode::kUnimplemented,
-                    ::testing::HasSubstr("contains a negate instruction")));
+    EXPECT_THAT(
+        rewriter.Run(module.get()),
+        StatusIs(absl::StatusCode::kUnimplemented,
+                 ::testing::HasSubstr("contains a negate instruction")));
   }
 
   // Both modes require the all-gather to have exactly one operand.
@@ -428,10 +431,9 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
         std::unique_ptr<HloModule> module,
         ParseAndReturnUnverifiedModule(variadic_all_gather_hlo));
     AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
-    EXPECT_THAT(
-        rewriter.Run(module.get()),
-        ::testing::status::StatusIs(absl::StatusCode::kUnimplemented,
-                                    ::testing::HasSubstr("has 2 operands")));
+    EXPECT_THAT(rewriter.Run(module.get()),
+                StatusIs(absl::StatusCode::kUnimplemented,
+                         ::testing::HasSubstr("has 2 operands")));
   }
 
   // Both modes require the compute-on computation to contain exactly one
@@ -443,9 +445,8 @@ TEST_F(AsyncCollectiveCustomCallRewriterTest,
                          ParseAndReturnUnverifiedModule(two_all_gathers_hlo));
     AsyncCollectiveCustomCallRewriter rewriter(use_legacy_collectives);
     EXPECT_THAT(rewriter.Run(module.get()),
-                ::testing::status::StatusIs(
-                    absl::StatusCode::kUnimplemented,
-                    ::testing::HasSubstr("contains at least two")));
+                StatusIs(absl::StatusCode::kUnimplemented,
+                         ::testing::HasSubstr("contains at least two")));
   }
 }
 
