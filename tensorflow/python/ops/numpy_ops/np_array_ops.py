@@ -1625,6 +1625,11 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
       if isinstance(ax0, (int, np.integer)) and isinstance(
           ax1, (int, np.integer)
       ):
+        # Convert to Python int before arithmetic: NumPy unsigned scalars
+        # (e.g. np.uint32) perform modular subtraction, so `ax0 - ax1`
+        # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
+        # duplicate check and the bounds check would misbehave.
+        ax0, ax1 = int(ax0), int(ax1)
         if ax0 == ax1 or builtins.abs(ax0 - ax1) == maybe_rank:
           raise ValueError('Axes must be different.')
         if (
