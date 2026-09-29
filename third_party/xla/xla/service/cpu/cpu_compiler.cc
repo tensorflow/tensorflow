@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
 #include "xla/backends/cpu/ynn_support.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -765,7 +766,26 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // ComparisonExpander, as this rewrite requires a simple less-than comparator.
   pipeline.AddPass<PermutationSortExpander>();
 
-  pipeline.AddPass<ComparisonExpander>();
+  pipeline.AddPass<ComparisonExpander>(
+      /*expand_via_upcast=*/
+      absl::Span<const std::pair<PrimitiveType, PrimitiveType>>{},
+      [](const HloInstruction* instr) {
+        if (instr->comparison_order() != ComparisonOrder::kWeak) {
+          return true;
+        }
+        const HloComputation* comp = instr->parent();
+        if (comp->root_instruction() != instr ||
+            comp->caller_instructions().empty()) {
+          return true;
+        }
+        return !absl::c_all_of(comp->caller_instructions(),
+                               [](const HloInstruction* caller) {
+                                 return caller->opcode() == HloOpcode::kSort &&
+                                        ThunkEmitter::MatchSortDirection(
+                                            Cast<HloSortInstruction>(caller))
+                                            .has_value();
+                               });
+      });
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
   pipeline.AddPass<EighExpander>();

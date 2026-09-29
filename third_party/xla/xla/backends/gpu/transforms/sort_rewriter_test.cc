@@ -779,6 +779,35 @@ ENTRY main {
       << module->ToString();
 }
 
+TEST_P(SortRewriterTest, SortWeakOrder) {
+  auto [dtype, direction] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(dtype);
+  std::string direction_str = direction ? "LT" : "GT";
+
+  std::string hlo_str = absl::Substitute(
+      R"(
+weak_order_comparator {
+  lhs = $0[] parameter(0)
+  rhs = $0[] parameter(1)
+  ROOT compare = pred[] compare(lhs, rhs), direction=$1, order=WEAK
+}
+ENTRY main {
+  p = $0[16,128] parameter(0)
+  ROOT sort = $0[16,128] sort(p), dimensions={1}, is_stable=true, to_apply=weak_order_comparator
+})",
+      type_name, direction_str);
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Op(), m::Parameter()),
+          1)))
+      << module->ToString();
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SortRewriterTest, SortRewriterTest,
     ::testing::Combine(::testing::Values(F16, BF16, F32, F64),
@@ -831,6 +860,42 @@ ENTRY main {
   ROOT sort = ($0[16,128], $1[16,128]) sort(p, i), dimensions={1}, is_stable=true, to_apply=numpy_order_comparator
 })",
                                     type_name, index_type_name));
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  bool changed = RunModuleAndPass(module.get());
+  bool should_use_cub = key_type != F64;
+  if (should_use_cub) {
+    EXPECT_TRUE(changed) << module->ToString();
+    EXPECT_THAT(module->entry_computation()->instructions(),
+                ::testing::Contains(GmockMatch(m::CustomCall(
+                    {kCubDeviceRadixSortUnassignedScratchSizeTarget}))));
+  } else {
+    EXPECT_FALSE(changed) << module->ToString();
+  }
+}
+
+TEST_P(SortRewriterArgsortTest, SortWeakOrderArgsort) {
+  auto [key_type, ascending, index_type] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(key_type);
+  std::string direction_str = ascending ? "LT" : "GT";
+  std::string index_type_name =
+      primitive_util::LowercasePrimitiveTypeName(index_type);
+
+  std::string hlo_str = absl::Substitute(
+      R"(
+weak_order_comparator {
+  lhs = $0[] parameter(0)
+  rhs = $0[] parameter(1)
+  lhs_idx = $1[] parameter(2)
+  rhs_idx = $1[] parameter(3)
+  ROOT compare = pred[] compare(lhs, rhs), direction=$2, order=WEAK
+}
+ENTRY main {
+  p = $0[16,128] parameter(0)
+  i = $1[16,128] iota(), iota_dimension=1
+  ROOT sort = ($0[16,128], $1[16,128]) sort(p, i), dimensions={1}, is_stable=true, to_apply=weak_order_comparator
+})",
+      type_name, index_type_name, direction_str);
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   bool changed = RunModuleAndPass(module.get());
