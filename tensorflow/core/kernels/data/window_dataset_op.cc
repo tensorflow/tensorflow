@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -86,12 +85,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
-            {{"window_size",
-              absl::StrFormat("%lld", static_cast<long long>(window_size))},
-             {"window_shift",
-              absl::StrFormat("%lld", static_cast<long long>(window_shift))},
-             {"window_stride", absl::StrFormat("%lld", static_cast<long long>(
-                                                           window_stride))}}) {
+            {{"window_size", absl::StrCat(window_size)},
+             {"window_shift", absl::StrCat(window_shift)},
+             {"window_stride", absl::StrCat(window_stride)}}) {
     input_->Ref();
   }
 

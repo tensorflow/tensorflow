@@ -653,6 +653,28 @@ TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
                                     ::testing::HasSubstr("overflow")));
 }
 
+// Regression test: addition overflow when (window_size - 1) * window_stride + 1
+// overflows int64 on the addition step with size=2 and stride=int64_max.
+WindowDatasetParams WindowDatasetParamsWithAddOverflowingSizeAndStride() {
+  const int64_t max_stride = std::numeric_limits<int64_t>::max();
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/2,
+                             /*shift=*/1,
+                             /*stride=*/max_stride,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, AddOverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithAddOverflowingSizeAndStride();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tensorflow::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                    ::testing::HasSubstr("overflow")));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
