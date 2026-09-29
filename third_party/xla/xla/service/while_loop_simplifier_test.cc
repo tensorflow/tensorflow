@@ -1347,7 +1347,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
   )";
 
   for (std::string dir : {"LT", "GT"}) {
-    for (int i = 1; i > -5; i--) {
+    for (int i = (dir == "LT" ? 1 : 0); i > -5; i--) {
       std::string hlo_string = absl::StrReplaceAll(
           hlo_template,
           {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
@@ -1364,6 +1364,15 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
                       ->operand(0)
                       ->literal()
                       .IsAll(dir == "GT"));
+    }
+
+    if (dir == "GT") {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template, {{"{{LOOP_CONSTANT}}", "1"}, {"{{DIRECTION}}", dir}});
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_FALSE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                       .Run(m.get())
+                       .value());
     }
 
     for (int i = 11; i < 15; i++) {

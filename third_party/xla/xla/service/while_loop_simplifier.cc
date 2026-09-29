@@ -92,19 +92,21 @@ static absl::StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
             std::optional<int64_t> constant_value =
                 LiteralUtil::LiteralAsScalarInt64(constant->literal());
             if (constant_value.has_value()) {
-              // x <= c && i >= c --> i > x
-              if (constant_value.value() <= init_value.value()) {
-                if (body_instr->comparison_direction() ==
-                    ComparisonDirection::kLt) {
-                  ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
-                      body_instr, MakeScalarLike(body_instr, false)));
-                  return true;
-                } else if (body_instr->comparison_direction() ==
-                           ComparisonDirection::kGt) {
-                  ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
-                      body_instr, MakeScalarLike(body_instr, true)));
-                  return true;
-                }
+              // x <= c && i >= c --> !(i < x)
+              // x < c && i >= c --> i > x
+              if (constant_value.value() <= init_value.value() &&
+                  body_instr->comparison_direction() ==
+                      ComparisonDirection::kLt) {
+                ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                    body_instr, MakeScalarLike(body_instr, false)));
+                return true;
+              }
+              if (constant_value.value() < init_value.value() &&
+                  body_instr->comparison_direction() ==
+                      ComparisonDirection::kGt) {
+                ABSL_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                    body_instr, MakeScalarLike(body_instr, true)));
+                return true;
               }
               // x >= c + k && i < c + k --> i < x
               if (constant_value.value() >=
