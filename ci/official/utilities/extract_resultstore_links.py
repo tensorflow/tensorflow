@@ -115,7 +115,7 @@ def parse_log(file_path: str,
         tests_failed = re.search(TESTS_FAILED_RE, backtrack_line)
       if build_failed or tests_failed:
         log_fragment = '\n'.join(
-            log_lines[max(k - 20, 0):min(end_line + 1, len(log_lines) - 1)])
+            log_lines[max(k - 20, 0):end_line + 1])
         lines['log_fragment'] = log_fragment
         lines['status'] = (InvokeStatus.build_failed if build_failed
                            else InvokeStatus.tests_failed)

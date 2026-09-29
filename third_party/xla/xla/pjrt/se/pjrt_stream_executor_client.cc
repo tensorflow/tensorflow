@@ -424,10 +424,6 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     return absl::InternalError(
         "se::DeviceAddressAllocator is null in PjRtStreamExecutorRawClient.");
   }
-  ABSL_ASSIGN_OR_RETURN(
-      auto buffer,
-      allocator_->Allocate(local_device->local_device_id().value(),
-                           on_device_bytes_count, true, layout_memory_space));
   tsl::AsyncValueRef<RawSEDeviceMemory> mem;
   if (has_custom_host_memory_allocator_ &&
       layout_memory_space == Layout::kHostMemorySpace) {
@@ -437,10 +433,22 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     };
     auto buffer =
         GetHostMemoryAllocator()->Allocate(on_device_bytes_count, alloc_opts);
+    if (on_device_bytes_count > 0 && buffer == nullptr) {
+      return ResourceExhausted(
+          "Failed to allocate a %d-byte buffer from the custom host memory "
+          "allocator. The allocator may be exhausted or fragmented, or the "
+          "underlying pinned allocation failed; check earlier allocator "
+          "warnings for the root cause.",
+          on_device_bytes_count);
+    }
     se::DeviceAddressBase address(buffer.get(), on_device_bytes_count);
     mem = RawSEDeviceMemory::CreateForeign(address,
                                            [buffer = std::move(buffer)]() {});
   } else {
+    ABSL_ASSIGN_OR_RETURN(
+        auto buffer,
+        allocator_->Allocate(local_device->local_device_id().value(),
+                             on_device_bytes_count, true, layout_memory_space));
     mem = RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator_);
   }
   if (client_ != nullptr && local_device->allocation_model() !=
@@ -582,6 +590,15 @@ PjRtStreamExecutorClient::AllocateLinearizeDest(
   alloc_opts.local_device_id = local_device->local_device_id();
   HostMemoryAllocator::OwnedPtr staging_buffer =
       GetHostMemoryAllocator()->Allocate(size, alloc_opts);
+  if (size > 0 && staging_buffer == nullptr) {
+    return ResourceExhausted(
+        "Failed to allocate a %d-byte pinned host staging buffer for a "
+        "host-to-device transfer. The pinned host pool may be exhausted or "
+        "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
+        "underlying pinned allocation failed; check earlier allocator "
+        "warnings for the root cause.",
+        size);
+  }
 
   absl::Span<uint8_t> span(staging_buffer.get(), size);
   return PjRtStagingBuffer::Create(

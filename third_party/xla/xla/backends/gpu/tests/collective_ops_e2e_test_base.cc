@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -204,6 +205,12 @@ absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
   ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_dir, "*thunk_sequence_after_thunk_passes*.txt"),
       &dump_files));
+  if (dump_files.empty()) {
+    // When thunk passes make no changes (e.g. no command buffers are formed),
+    // only the initial thunk_sequence.txt dump is written.
+    ABSL_RETURN_IF_ERROR(tsl::Env::Default()->GetMatchingPaths(
+        tsl::io::JoinPath(dump_dir, "*thunk_sequence.txt"), &dump_files));
+  }
   if (dump_files.size() != 1) {
     return absl::FailedPreconditionError(
         absl::StrCat("Expected exactly one thunk sequence dump in ", dump_dir,
@@ -213,19 +220,22 @@ absl::StatusOr<CommandBufferThunkCounts> CountThunksInDump(
   ABSL_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), dump_files[0], &dump));
 
-  // Each line of the dump describes one thunk as "<index>: <kind> ...".
-  // Thunks nested in a kCommandBuffer thunk are indented under it.
+  // Each thunk line in the dump has the form "<indent><index>: <kind> ...".
+  // Thunks nested inside a top-level kCommandBuffer thunk are indented under
+  // it; non-thunk lines (such as WhileThunk's "condition:" and "body:" headers)
+  // do not start with "<digits>: " and are ignored.
   CommandBufferThunkCounts counts;
   bool in_command_buffer = false;
   for (absl::string_view line : absl::StrSplit(dump, '\n')) {
-    absl::string_view thunk = absl::StripAsciiWhitespace(line);
-    if (thunk.empty()) {
+    absl::string_view thunk = absl::StripLeadingAsciiWhitespace(line);
+    size_t pos = thunk.find(": ");
+    if (pos == absl::string_view::npos || pos == 0 ||
+        !absl::c_all_of(thunk.substr(0, pos),
+                        [](char c) { return absl::ascii_isdigit(c); })) {
       continue;
     }
-    const bool is_top_level = thunk.data() == line.data();
-    if (size_t pos = thunk.find(": "); pos != absl::string_view::npos) {
-      thunk.remove_prefix(pos + 2);
-    }
+    const bool is_top_level = thunk.size() == line.size();
+    thunk.remove_prefix(pos + 2);
     if (is_top_level) {
       in_command_buffer = absl::StartsWith(thunk, "kCommandBuffer");
     }
