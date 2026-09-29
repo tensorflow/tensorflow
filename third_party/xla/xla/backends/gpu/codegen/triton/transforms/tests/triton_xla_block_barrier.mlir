@@ -45,7 +45,7 @@ tt.func @block_barrier_kernel(
   // CHECK-NEXT: }
   // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return
-  triton_xla.block_barrier %ptr, %rank, %signal_value, { world_size = 8 : i32 } :
+  triton_xla.block_barrier %ptr, %rank, %signal_value <world_size = 8> :
     (!tt.ptr<i64>, i32, i32) -> ()
   tt.return
 }
@@ -88,7 +88,7 @@ tt.func @block_barrier_asymmetric_kernel(
   // CHECK-NEXT: }
   // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return
-  triton_xla.block_barrier %ptr, %rank, %signal_value, %signal_slot, { world_size = 2 : i32, signal_stride = 4 : i32 } :
+  triton_xla.block_barrier %ptr, %rank, %signal_value, %signal_slot <world_size = 2, signal_stride = 4> :
     (!tt.ptr<i64>, i32, i32, i32) -> ()
   tt.return
 }

@@ -356,9 +356,10 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
     bool use_cost_model_to_evaluate_fusions) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(normalization_fusion);
 
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_runtime_data_or,
-      indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
+  ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or,
+                   indexing_performance_model
+                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
