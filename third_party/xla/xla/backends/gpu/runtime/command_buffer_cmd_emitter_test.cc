@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -38,13 +40,17 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
+namespace {
 
 using ::testing::AllOf;
 using ::testing::ElementsAre;
@@ -855,4 +861,101 @@ TEST_F(CommandBufferCmdEmitterTest, ConcurrentRegionsForwardDependencies) {
   EXPECT_THAT(nodes[name_to_ids["d"]].out_edges, IsEmpty());
 }
 
+class AsyncCommandBufferCmdEmitterTest : public CommandBufferCmdEmitterTest {
+ protected:
+  void Kernel(ThunkSequence& thunks, absl::string_view name, int64_t slot) {
+    thunks.Emplace<FakeKernelThunk>(
+        NextThunkInfo(name),
+        BufferAllocation::Slice(&allocation_, slot * 1024, 1024));
+  }
+
+  AsyncStartThunk* Start(ThunkSequence& thunks, ExecutionStreamId stream,
+                         ThunkSequence body) {
+    auto start = std::make_unique<AsyncStartThunk>(NextThunkInfo("start"),
+                                                   stream, std::move(body));
+    AsyncStartThunk* result = start.get();
+    thunks.push_back(std::move(start));
+    return result;
+  }
+
+  void Done(ThunkSequence& thunks, const AsyncStartThunk* start,
+            absl::string_view name) {
+    thunks.Emplace<AsyncDoneThunk>(NextThunkInfo(name),
+                                   start->async_execution());
+  }
+
+  // Check reachability rather than direct edges: graph construction can remove
+  // redundant edges without changing the execution order.
+  bool HappensBefore(CommandExecutor& commands, const std::string& before,
+                     const std::string& after) {
+    auto ids = NamesToNodeIds(commands);
+    if (ids.find(before) == ids.end() || ids.find(after) == ids.end()) {
+      return false;
+    }
+    auto graph = commands.execution_graph();
+    std::vector<bool> reachable(commands.size(), false);
+    reachable[ids.at(before)] = true;
+    for (int64_t i = ids.at(before); i < static_cast<int64_t>(commands.size());
+         ++i) {
+      if (!reachable[i]) {
+        continue;
+      }
+      for (const auto& edge : graph->nodes_defs()[i].out_edges) {
+        reachable[edge.id] = true;
+      }
+    }
+    return reachable[ids.at(after)];
+  }
+
+  const ConvertToCommandsOptions options_ = {
+      CommandExecutor::SynchronizationMode::kLHS};
+
+ private:
+  BufferAllocation allocation_{0, 16 * 1024, 0};
+};
+
+TEST_F(AsyncCommandBufferCmdEmitterTest, KeepsOrdinaryCommandsOrdered) {
+  ThunkSequence thunks;
+  Kernel(thunks, "first", 0);
+  ThunkSequence nested;
+  Kernel(nested, "second", 1);
+  thunks.Emplace<SequentialThunk>(NextThunkInfo("sequential"),
+                                  std::move(nested));
+  Kernel(thunks, "third", 2);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, options_));
+  ASSERT_EQ(commands.size(), 3);
+  EXPECT_TRUE(commands.execution_graph()->is_sequential());
+  EXPECT_TRUE(HappensBefore(commands, "first", "second"));
+  EXPECT_TRUE(HappensBefore(commands, "second", "third"));
+}
+
+TEST_F(AsyncCommandBufferCmdEmitterTest, PreservesFlattenedAsyncOrder) {
+  ThunkSequence thunks;
+  Kernel(thunks, "before", 0);
+  ThunkSequence body;
+  Kernel(body, "async_a", 1);
+  ThunkSequence nested;
+  Kernel(nested, "async_b", 2);
+  body.Emplace<SequentialThunk>(NextThunkInfo("sequential"), std::move(nested));
+  AsyncStartThunk* start =
+      Start(thunks, CommunicationStreamId(0), std::move(body));
+  Kernel(thunks, "main_a", 3);
+  Kernel(thunks, "main_b", 4);
+  Done(thunks, start, "done");
+  Kernel(thunks, "after", 5);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor commands,
+                       ConvertToCommands(thunks, options_));
+  EXPECT_EQ(commands.size(), 6);
+  EXPECT_TRUE(commands.execution_graph()->is_sequential());
+  EXPECT_TRUE(HappensBefore(commands, "before", "async_a"));
+  EXPECT_TRUE(HappensBefore(commands, "async_a", "async_b"));
+  EXPECT_TRUE(HappensBefore(commands, "async_b", "main_a"));
+  EXPECT_TRUE(HappensBefore(commands, "main_a", "main_b"));
+  EXPECT_TRUE(HappensBefore(commands, "main_b", "after"));
+}
+
+}  // namespace
 }  // namespace xla::gpu

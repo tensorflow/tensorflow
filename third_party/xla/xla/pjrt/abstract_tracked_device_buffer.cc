@@ -172,8 +172,8 @@ absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
     PjRtMemorySpace* memory_space, std::intptr_t stream) {
   auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
   for (const auto& event : definition_events()) {
-    ABSL_RETURN_IF_ERROR(
-        client->raw_client()->WaitOnStream(memory_space, event, stream));
+    ABSL_RETURN_IF_ERROR(client->raw_client()->WaitOnStream(
+        memory_space->devices()[0]->local_device_id(), event, stream));
   }
   return absl::OkStatus();
 }
