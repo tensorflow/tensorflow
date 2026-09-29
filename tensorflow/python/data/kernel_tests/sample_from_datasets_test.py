@@ -241,6 +241,54 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         (0, 0))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsRuntimeZeroWeightsStopOnEmpty(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
+    def count(weights):
+      datasets = [
+          dataset_ops.Dataset.from_tensor_slices([1, 2, 3]),
+          dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights, stop_on_empty_dataset=True)
+      return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+
+    self.assertEqual(self.evaluate(count(constant_op.constant([0., 0.]))), 0)
+    self.assertEqual(self.evaluate(count(constant_op.constant([0., 1.]))), 3)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(stop_on_empty_dataset=[True,
+                                                                      False])))
+  def testSampleFromDatasetsSingleDatasetRuntimeZeroWeight(
+      self, stop_on_empty_dataset):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([1], dtypes.float32)])
+    def count(weights):
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          [dataset_ops.Dataset.range(3)],
+          weights=weights,
+          stop_on_empty_dataset=stop_on_empty_dataset)
+      return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+
+    self.assertEqual(self.evaluate(count(constant_op.constant([0.]))), 0)
+    self.assertEqual(self.evaluate(count(constant_op.constant([1.]))), 3)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsBfloat16ScalarWeights(self):
+    bfloat16 = dtypes.bfloat16.as_numpy_dtype
+    sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+        [
+            dataset_ops.Dataset.from_tensors(1),
+            dataset_ops.Dataset.from_tensors(2),
+            dataset_ops.Dataset.from_tensors(3)
+        ],
+        weights=[bfloat16(0.), bfloat16(1.), bfloat16(1.)])
+    self.assertDatasetProduces(sample_dataset, [2, 3], assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
     ds1 = dataset_ops.Dataset.from_tensors([1.0]).repeat()
     ds2 = dataset_ops.Dataset.from_tensors([2.0]).repeat()
