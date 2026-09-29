@@ -715,7 +715,6 @@ class SlidingWindowDatasetParams : public DatasetParams {
     attr_vector->clear();
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
-    attr_vector->emplace_back("metadata", "");
     attr_vector->emplace_back("drop_remainder", drop_remainder_);
     return absl::OkStatus();
   }
