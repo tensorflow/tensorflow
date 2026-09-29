@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/types.h"
 
 #define WAVEFRONT_SIZE 32
 
@@ -68,33 +69,63 @@ __device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
 // ordering, properly handling special values such as NaNs and signed zeroes
 // during integer sorting.
 namespace details {
+
 template <typename T>
-__device__ __forceinline__ auto ToOrdered(T x) {
-  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
+struct OrderedTraits {
+  using Type = T;
+  static __device__ __forceinline__ Type ToOrdered(T x) { return x; }
+  static __device__ __forceinline__ T FromOrdered(Type val) { return val; }
+};
+
+template <>
+struct OrderedTraits<float> {
+  using Type = uint32_t;
+
+  static __device__ __forceinline__ Type ToOrdered(float x) {
     uint32_t val = absl::bit_cast<uint32_t>(x);
     return (val & 0x80000000u) ? ~val : (val | 0x80000000u);
-  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+  }
+
+  static __device__ __forceinline__ float FromOrdered(Type val) {
+    uint32_t u = (val & 0x80000000u) ? (val ^ 0x80000000u) : ~val;
+    return absl::bit_cast<float>(u);
+  }
+};
+
+template <>
+struct OrderedTraits<xla::bfloat16> {
+  using Type = uint16_t;
+
+  static __device__ __forceinline__ Type ToOrdered(xla::bfloat16 x) {
     uint16_t val = absl::bit_cast<uint16_t>(x);
     return (val & 0x8000u) ? static_cast<uint16_t>(~val)
                            : static_cast<uint16_t>(val | 0x8000u);
-  } else {
-    return x;
   }
-}
 
-template <typename T, typename OrderedT>
-__device__ __forceinline__ T FromOrdered(OrderedT val) {
-  if constexpr (sizeof(T) == 4 && !std::is_integral_v<T>) {
-    uint32_t u = (val & 0x80000000u) ? (val ^ 0x80000000u) : ~val;
-    return absl::bit_cast<T>(u);
-  } else if constexpr (sizeof(T) == 2 && !std::is_integral_v<T>) {
+  static __device__ __forceinline__ xla::bfloat16 FromOrdered(Type val) {
     uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
                                  : static_cast<uint16_t>(~val);
-    return absl::bit_cast<T>(u);
-  } else {
-    return val;
+    return absl::bit_cast<xla::bfloat16>(u);
   }
-}
+};
+
+template <>
+struct OrderedTraits<xla::half> {
+  using Type = uint16_t;
+
+  static __device__ __forceinline__ Type ToOrdered(xla::half x) {
+    uint16_t val = absl::bit_cast<uint16_t>(x);
+    return (val & 0x8000u) ? static_cast<uint16_t>(~val)
+                           : static_cast<uint16_t>(val | 0x8000u);
+  }
+
+  static __device__ __forceinline__ xla::half FromOrdered(Type val) {
+    uint16_t u = (val & 0x8000u) ? static_cast<uint16_t>(val ^ 0x8000u)
+                                 : static_cast<uint16_t>(~val);
+    return absl::bit_cast<xla::half>(u);
+  }
+};
+
 }  // namespace details
 
 // Default implementation for KV holder. Useful for testing while adding support
@@ -102,7 +133,7 @@ __device__ __forceinline__ T FromOrdered(OrderedT val) {
 // implementations below.
 template <typename T, typename V>
 struct Descending {
-  using OrderedKey = decltype(details::ToOrdered(T{}));
+  using OrderedKey = typename details::OrderedTraits<T>::Type;
   struct KVT {
     OrderedKey key;
     V idx;
@@ -202,7 +233,7 @@ struct TopK {
     // TODO(doak): Use bitonic sort.
 #pragma unroll
     for (int i = 0; i < K; i++) {
-      tmp[i] = {details::ToOrdered(key[Idx(i)]), VT(Idx(i))};
+      tmp[i] = {details::OrderedTraits<KT>::ToOrdered(key[Idx(i)]), VT(Idx(i))};
     }
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -218,7 +249,8 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv{details::ToOrdered(key[Idx(idx)]), VT(Idx(idx))};
+      KVT kv{details::OrderedTraits<KT>::ToOrdered(key[Idx(idx)]),
+             VT(Idx(idx))};
       Push(tmp, kv);
     }
     Reduce(tmp, WarpSize);
@@ -252,7 +284,7 @@ struct TopK {
       return;
     }
     for (int i = 0; i < num_outputs_; ++i) {
-      keys[i] = details::FromOrdered<KT>(tmp[i].key);
+      keys[i] = details::OrderedTraits<KT>::FromOrdered(tmp[i].key);
       idxs[i] = tmp[i].idx;
     }
   }
