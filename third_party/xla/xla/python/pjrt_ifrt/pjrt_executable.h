@@ -367,11 +367,6 @@ class PjRtLoadedExecutable final
     return devices_;
   }
 
-  absl::Span<Device* const> addressable_devices() const override {
-    DCHECK(this);
-    return addressable_devices_;
-  }
-
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override {
     ABSL_ASSIGN_OR_RETURN(auto result, pjrt_loaded_executable_->GetCostAnalysis());
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));

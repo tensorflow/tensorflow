@@ -1087,10 +1087,6 @@ class NanoExecutable final
     return absl::UnimplementedError("GetCostAnalysis is not implemented.");
   }
 
-  absl::Span<ifrt::Device* const> addressable_devices() const override {
-    return client_->addressable_devices();
-  }
-
   std::optional<ifrt::DeviceListRef> devices() const override {
     return devices_;
   }

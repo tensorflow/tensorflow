@@ -361,6 +361,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
+  opts.set_xla_gpu_experimental_emit_collective_reduce(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
@@ -2401,6 +2402,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_emit_collective_reduce",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_emit_collective_reduce),
+      debug_options->xla_gpu_experimental_emit_collective_reduce(),
+      "Enables emitting a CollectiveReduceThunk for kCollectiveReduce HLO "
+      "instructions. Kept off by default to preserve the forward "
+      "compatibility window until the runtime support for the thunk has "
+      "rolled out."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_nccl_symmetric_buffers_for_collectives",
       setter_for_xla_enable_nccl_symmetric_buffers_for_collectives,
