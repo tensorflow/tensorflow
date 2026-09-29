@@ -339,8 +339,10 @@ class CuptiActivityBufferManager {
 
   explicit CuptiActivityBufferManager(
       size_t buffer_size_in_bytes, CUpti_SubscriberHandle subscriber = nullptr,
-      bool use_v2_records = false)
-      : buffer_pool_(buffer_size_in_bytes),
+      bool use_v2_records = false,
+      size_t preallocation_count =
+          tsl::profiler::BufferPoolWrapper::kDefaultPreallocationCount)
+      : buffer_pool_(buffer_size_in_bytes, preallocation_count),
         subscriber_(subscriber),
         use_v2_records_(use_v2_records) {}
 
@@ -368,7 +370,7 @@ class CuptiActivityBufferManager {
   }
 
  private:
-  tsl::profiler::BufferPool buffer_pool_;
+  tsl::profiler::BufferPoolWrapper buffer_pool_;
   // Fixed for the tracing session represented by this manager.
   CUpti_SubscriberHandle subscriber_;
   bool use_v2_records_;

@@ -1946,6 +1946,17 @@ void CuptiTracer::RequestActivityBuffer(uint8_t** buffer, size_t* size) {
     return;
   }
   *size = activity_buffers_->GetBufferSizeInBytes();
+
+  if (!zeroed_out_buffer_attribute_set_.load(std::memory_order_relaxed)) {
+    CUptiResult res = using_v2_subscriber_api_
+                          ? cupti_interface_->ActivitySetZeroedOutBufferV2()
+                          : cupti_interface_->ActivitySetZeroedOutBuffer();
+    zeroed_out_buffer_attribute_set_.store(true, std::memory_order_relaxed);
+    if (res != CUPTI_SUCCESS) {
+      VLOG(1) << "Could not set CUPTI zeroed out activity buffer attribute: "
+              << res;
+    }
+  }
 }
 
 static size_t CountCuptiActivityEvent(uint8_t* buffer, size_t size,
@@ -2014,7 +2025,7 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
            "occurrences, the current count is "
         << COUNTER << ".";
     num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
-    // buffer will be return to the pool
+    // buffer will be returned to the pool (or dropped if pool is full)
     return absl::OkStatus();
   }
   num_activity_events_in_cached_buffer_ += event_count_in_buffer;
@@ -2129,11 +2140,23 @@ void CuptiTracer::PrepareCallbackStart() {
 }
 
 void CuptiTracer::PrepareActivityStart() {
+  size_t buffer_size = kBufferSizeInBytes;
+  size_t preallocation_count =
+      tsl::profiler::BufferPoolWrapper::kDefaultPreallocationCount;
+  if (option_.has_value()) {
+    if (option_->activity_buffer_size > 0) {
+      buffer_size = option_->activity_buffer_size;
+    }
+    if (option_->activity_buffer_preallocation_count > 0) {
+      preallocation_count = option_->activity_buffer_preallocation_count;
+    }
+  }
   activity_buffers_ = std::make_unique<CuptiActivityBufferManager>(
-      kBufferSizeInBytes, subscriber_, using_v2_subscriber_api_);
+      buffer_size, subscriber_, using_v2_subscriber_api_, preallocation_count);
   cupti_dropped_activity_event_count_ = 0;
   num_activity_events_in_cached_buffer_ = 0;
   num_activity_events_in_dropped_buffer_ = 0;
+  zeroed_out_buffer_attribute_set_ = false;
 }
 
 bool CuptiTracer::TooManyCallbackEvents() const {

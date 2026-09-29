@@ -229,6 +229,23 @@ CUptiResult CuptiErrorManager::ActivityUsePerThreadBuffer() {
   return error;
 }
 
+CUptiResult CuptiErrorManager::ActivitySetZeroedOutBufferV2() {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivitySetZeroedOutBufferV2();
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
+  ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivitySetZeroedOutBuffer() {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivitySetZeroedOutBuffer();
+  // Don't disable cupti just because the gpu driver or cuda don't support
+  // zeroed out activity buffer.
+  return error;
+}
+
 CUptiResult CuptiErrorManager::SetActivityFlushPeriod(uint32_t period_ms) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->SetActivityFlushPeriod(period_ms);

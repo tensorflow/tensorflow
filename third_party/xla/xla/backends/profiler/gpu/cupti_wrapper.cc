@@ -96,6 +96,8 @@ bool SetAllowMultipleSubscribersIfSupported(Params* params) {
 // still decide runtime availability.
 constexpr CUpti_ActivityAttribute kCuptiActivityAttrPerThreadActivityBuffer =
     static_cast<CUpti_ActivityAttribute>(9);
+constexpr CUpti_ActivityAttribute kCuptiActivityAttrZeroedOutActivityBuffer =
+    static_cast<CUpti_ActivityAttribute>(5);
 constexpr CUpti_ActivityAttribute kCuptiActivityAttrThreadIdType =
     static_cast<CUpti_ActivityAttribute>(21);
 constexpr int kCuptiErrorMultipleSubscribersNotSupported = 39;
@@ -243,6 +245,25 @@ CUptiResult CuptiWrapper::ActivityUsePerThreadBuffer() {
 #else
   // cuptiActivitySetAttribute returns CUPTI_ERROR_INVALID_PARAMETER if invoked
   // with an invalid first parameter.
+  return CUPTI_ERROR_INVALID_PARAMETER;
+#endif
+}
+
+CUptiResult CuptiWrapper::ActivitySetZeroedOutBufferV2() {
+  uint8_t zeroed_out = 1;
+  size_t size = sizeof(zeroed_out);
+  return ActivitySetAttributeV2(
+      /*subscriber=*/nullptr, kCuptiActivityAttrZeroedOutActivityBuffer, &size,
+      &zeroed_out);
+}
+
+CUptiResult CuptiWrapper::ActivitySetZeroedOutBuffer() {
+#if CUDA_VERSION >= 12000
+  uint8_t zeroed_out = 1;
+  size_t value_size = sizeof(zeroed_out);
+  return cuptiActivitySetAttribute(kCuptiActivityAttrZeroedOutActivityBuffer,
+                                   &value_size, &zeroed_out);
+#else
   return CUPTI_ERROR_INVALID_PARAMETER;
 #endif
 }

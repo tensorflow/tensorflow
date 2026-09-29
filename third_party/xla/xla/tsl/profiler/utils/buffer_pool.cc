@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 
 #include <cstdint>
+#include <cstring>
 #include <ios>
 
 #include "absl/synchronization/mutex.h"
@@ -31,7 +32,10 @@ BufferPool::BufferPool(size_t buffer_size_in_bytes)
 
 BufferPool::~BufferPool() { DestroyAllBuffers(); }
 
-uint8_t* BufferPool::GetOrCreateBuffer() {
+uint8_t* BufferPool::GetOrCreateBuffer(bool* is_allocated) {
+  if (is_allocated != nullptr) {
+    *is_allocated = false;
+  }
   // Get a relinquished buffer if it exists.
   {
     absl::MutexLock lock(buffers_mutex_);
@@ -55,6 +59,9 @@ uint8_t* BufferPool::GetOrCreateBuffer() {
   if (buffer == nullptr) {
     LOG(WARNING) << "Buffer not allocated.";
     return nullptr;
+  }
+  if (is_allocated != nullptr) {
+    *is_allocated = true;
   }
   VLOG(3) << "Allocated Buffer, buffer=" << std::hex
           << safe_reinterpret_cast<std::uintptr_t>(buffer) << std::dec
@@ -82,6 +89,76 @@ void BufferPool::DestroyAllBuffers() {
 
 size_t BufferPool::GetBufferSizeInBytes() const {
   return buffer_size_in_bytes_;
+}
+
+size_t BufferPool::GetFreeBuffersCount() const {
+  absl::MutexLock lock(buffers_mutex_);
+  return buffers_.size();
+}
+
+bool BufferPool::ReclaimBufferIfLessThan(uint8_t* buffer, size_t max_buffers) {
+  absl::MutexLock lock(buffers_mutex_);
+  if (buffers_.size() >= max_buffers) {
+    return false;
+  }
+  buffers_.push_back(buffer);
+  VLOG(3) << "Reclaimed Buffer, buffer=" << std::hex
+          << safe_reinterpret_cast<std::uintptr_t>(buffer) << std::dec;
+  return true;
+}
+
+BufferPoolWrapper::BufferPoolWrapper(size_t buffer_size_in_bytes,
+                                     size_t preallocation_count)
+    : buffer_pool_(buffer_size_in_bytes),
+      preallocation_count_(preallocation_count) {
+  std::vector<uint8_t*> preallocated;
+  preallocated.reserve(preallocation_count_);
+  for (size_t i = 0; i < preallocation_count_; ++i) {
+    uint8_t* buffer = buffer_pool_.GetOrCreateBuffer();
+    if (buffer != nullptr) {
+      std::memset(buffer, 0, buffer_size_in_bytes);
+      preallocated.push_back(buffer);
+    }
+  }
+  for (uint8_t* buffer : preallocated) {
+    buffer_pool_.ReclaimBuffer(buffer);
+  }
+}
+
+uint8_t* BufferPoolWrapper::GetOrCreateBuffer() {
+  bool is_allocated = false;
+  uint8_t* buffer = buffer_pool_.GetOrCreateBuffer(&is_allocated);
+  if (is_allocated && buffer != nullptr) {
+    std::memset(buffer, 0, buffer_pool_.GetBufferSizeInBytes());
+  }
+  return buffer;
+}
+
+void BufferPoolWrapper::ReclaimBuffer(uint8_t* buffer) {
+  if (buffer == nullptr) return;
+  // If the internal queue already has >= preallocation_count buffers, drop
+  // (free) the buffer.
+  if (buffer_pool_.GetFreeBuffersCount() >= preallocation_count_) {
+    port::AlignedFree(buffer);
+    return;
+  }
+  // Otherwise, zerofy and put back into the internal free list.
+  std::memset(buffer, 0, buffer_pool_.GetBufferSizeInBytes());
+  if (!buffer_pool_.ReclaimBufferIfLessThan(buffer, preallocation_count_)) {
+    port::AlignedFree(buffer);
+  }
+}
+
+void BufferPoolWrapper::DestroyAllBuffers() {
+  buffer_pool_.DestroyAllBuffers();
+}
+
+size_t BufferPoolWrapper::GetBufferSizeInBytes() const {
+  return buffer_pool_.GetBufferSizeInBytes();
+}
+
+size_t BufferPoolWrapper::GetPreallocationCount() const {
+  return preallocation_count_;
 }
 
 }  // namespace profiler
