@@ -13729,6 +13729,28 @@ TEST_F(AlgebraicSimplifierTest, NoOpSliceToDynamicOfPadToStatic) {
               GmockMatch(m::Parameter(0)));
 }
 
+TEST_F(AlgebraicSimplifierTest, NoOpSliceToDynamicOfPadToStaticWithClamp) {
+  // The dynamic padder clamps the materialized size to [0, bound]; the
+  // round-trip elimination must look through the clamp.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[<=512] parameter(0)
+      c = (f32[512], s32[]) custom-call(p0), custom_call_target="PadToStatic"
+      gte0 = f32[512] get-tuple-element(c), index=0
+      gte1 = s32[] get-tuple-element(c), index=1
+      zero = s32[] constant(0)
+      bound = s32[] constant(512)
+      clamped = s32[] clamp(zero, gte1, bound)
+      ROOT c2 = f32[<=512] custom-call(gte0, clamped), custom_call_target="SliceToDynamic"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 TEST_F(AlgebraicSimplifierTest, DiffShapeSliceToDynamicOfPadToStatic) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
