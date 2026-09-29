@@ -90,10 +90,12 @@ class CommonPjRtClient : public PjRtClient {
   virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
 
-  virtual void DelinearizeAsync(
-      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
-      PjRtMemorySpace* memory_space, const Shape& shape,
-      MutableLiteralBase* literal, tsl::Promise<void> promise);
+  // Delinearizes `input_data`, which has the on-device layout of `shape`, into
+  // `literal`.
+  virtual absl::Status Delinearize(absl::Span<const uint8_t> input_data,
+                                   const Shape& shape,
+                                   MutableLiteralBase* literal,
+                                   PjRtMemorySpace* memory_space);
 
   // TODO(parkers): Properly support error buffers on GPU and CPU.
   virtual bool include_raw_buffer_in_ready_event() const { return false; }
@@ -589,10 +591,6 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError(
         "GetDeviceAddressAlignment is not implemented.");
   }
-
-  absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
-                                     const Shape& shape,
-                                     MutableLiteralBase* literal);
 
   // Does the provided shape require runtime shape metadata when being
   // linearized into the provided memory space?

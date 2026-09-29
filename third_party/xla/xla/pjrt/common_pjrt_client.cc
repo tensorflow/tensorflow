@@ -182,29 +182,31 @@ CommonPjRtClient::AllocateForDelinearizationAsync(
       "AllocateForDelinearizationAsync is not supported"));
 }
 
-void CommonPjRtClient::DelinearizeAsync(
+static void DelinearizeWhenReady(
+    CommonPjRtClient* client,
     tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
     PjRtMemorySpace* memory_space, const Shape& shape,
     MutableLiteralBase* literal, tsl::Promise<void> promise) {
   tsl::Context context(tsl::ContextKind::kThread);
-  staging_buffer.AndThen([this, staging_buffer, shape, literal,
+  staging_buffer.AndThen([client, staging_buffer, memory_space, shape, literal,
                           context = std::move(context),
                           promise = std::move(promise)]() mutable {
     if (auto* error = staging_buffer.GetErrorIfPresent()) {
       promise.Set(*error);
       return;
     }
-    auto run_delinearize = [this, staging_buffer, shape, literal,
-                            context = std::move(context),
+    auto run_delinearize = [client, staging_buffer, memory_space, shape,
+                            literal, context = std::move(context),
                             promise = std::move(promise)]() mutable {
       tsl::WithContext wc(context);
       absl::Span<const uint8_t> input_data = staging_buffer->const_data();
-      absl::Status status = DelinearizeHostBuffer(input_data, shape, literal);
+      absl::Status status =
+          client->Delinearize(input_data, shape, literal, memory_space);
       staging_buffer.reset();
       promise.Set(status);
     };
-    if (async_work_runner() != nullptr) {
-      async_work_runner()->Execute(std::move(run_delinearize));
+    if (client->async_work_runner() != nullptr) {
+      client->async_work_runner()->Execute(std::move(run_delinearize));
     } else {
       run_delinearize();
     }
@@ -758,9 +760,10 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
   return event.value();
 }
 
-absl::Status CommonPjRtClient::DelinearizeHostBuffer(
-    absl::Span<const uint8_t> input_data, const Shape& shape,
-    MutableLiteralBase* literal) {
+absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
+                                           const Shape& shape,
+                                           MutableLiteralBase* literal,
+                                           PjRtMemorySpace* memory_space) {
   xla::Layout literal_layout;
   bool need_transpose = false;
   if (shape.IsArray()) {
@@ -3919,9 +3922,9 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                     return common_client->AllocateForDelinearizationAsync(
                         size, memory_space);
                   });
-              common_client->DelinearizeAsync(std::move(staging_buffer),
-                                              memory_space, shape, literal,
-                                              std::move(promise));
+              DelinearizeWhenReady(common_client, std::move(staging_buffer),
+                                   memory_space, shape, literal,
+                                   std::move(promise));
             };
 
         if (literal != nullptr) {
