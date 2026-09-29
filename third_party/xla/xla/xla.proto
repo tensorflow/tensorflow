@@ -1032,6 +1032,13 @@ message DebugOptions {
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
 
+  // If true, XLA:GPU emits a CollectiveReduceThunk for kCollectiveReduce HLO
+  // instructions. This is guarded behind a flag to preserve the 2-week
+  // forward compatibility window between the compiler and the runtime.
+  // Need to remove this and enable by default once the 2-week
+  // window has passed.
+  optional bool xla_gpu_emit_collective_reduce = 550;
+
   // If true, the GPU latency hiding scheduler selectively overlaps async
   // device-to-device memcpys with compute-bound kernels.
   optional bool xla_gpu_experimental_enable_selective_memcpy_overlap = 524;
@@ -1875,7 +1882,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 550
+  // Next id: 551
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
