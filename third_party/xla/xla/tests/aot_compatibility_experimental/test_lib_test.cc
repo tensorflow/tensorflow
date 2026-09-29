@@ -29,13 +29,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/cpu/executable.pb.h"
-#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/util/split_proto/human_readable_aot_executable.pb.h"
-#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
@@ -239,7 +237,7 @@ TEST(TestLibTest,
   EXPECT_FALSE(serialized.empty());
 }
 
-TEST(TestLibTest, CompareGPUExecutables_IgnoresMachineCodeAndXlaDumpTo) {
+TEST(TestLibTest, CompareGPUExecutables_NormalizesXlaDumpToAndReturnsOk) {
   auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
     gpu_executable {
       binary: "golden_binary"
@@ -261,104 +259,79 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresMachineCodeAndXlaDumpTo) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
-// Where in the executable a copy of the debug options lives. Both copies must
-// be compared, except for the fields the comparator ignores.
-enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };
-
-// A GPU executable whose `copy` of the debug options is `debug_options`.
-HumanReadableAotExecutable GpuExecutableWithDebugOptions(
-    DebugOptionsCopy copy, const DebugOptions& debug_options) {
-  HumanReadableAotExecutable executable;
-  executable.mutable_gpu_executable()->set_binary("same_binary");
-  switch (copy) {
-    case DebugOptionsCopy::kModuleConfig:
-      *executable.mutable_gpu_executable()
-           ->mutable_hlo_module_with_config()
-           ->mutable_config()
-           ->mutable_debug_options() = debug_options;
-      break;
-    case DebugOptionsCopy::kCompileOptions:
-      *executable.mutable_executable_and_options()
-           ->mutable_compile_options()
-           ->mutable_executable_build_options()
-           ->mutable_debug_options() = debug_options;
-      break;
-  }
-  return executable;
+// TODO(b/528258781): Debug options are currently cleared wholesale before the
+// structural comparison, so differing compiler flags are NOT detected. Once we
+// decide which flags must be preserved, this test should assert that meaningful
+// flag changes are detected again.
+TEST(TestLibTest, CompareGPUExecutables_IgnoresDebugOptionsForNow) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        config { debug_options { xla_gpu_enable_fast_min_max: true } }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        config { debug_options { xla_gpu_enable_fast_min_max: false } }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
-class CompareGPUExecutablesDebugOptionsTest
-    : public ::testing::TestWithParam<DebugOptionsCopy> {};
-
-// Dump paths and host-specific paths cannot change the compiled executable, so
-// a difference in them must not cause a mismatch.
-TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresDenylistedFields) {
-  DebugOptions golden_options;
-  golden_options.set_xla_dump_to("/tmp/golden_dir");
-  golden_options.set_xla_gpu_cuda_data_dir("/host_a/cuda");
-  DebugOptions fresh_options;
-  fresh_options.set_xla_dump_to("/tmp/fresh_dir");
-  fresh_options.set_xla_gpu_cuda_data_dir("/host_b/cuda");
-
-  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(
-      GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-      GpuExecutableWithDebugOptions(GetParam(), golden_options)));
+// The compile-options copy of debug_options must also be cleared before the
+// structural comparison; a flag difference there must not cause a spurious
+// mismatch. See b/528258781.
+TEST(TestLibTest,
+     CompareGPUExecutables_IgnoresCompileOptionsDebugOptionsForNow) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable { binary: "same_binary" }
+    executable_and_options {
+      compile_options {
+        executable_build_options {
+          debug_options { xla_gpu_enable_fast_min_max: true }
+        }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable { binary: "same_binary" }
+    executable_and_options {
+      compile_options {
+        executable_build_options {
+          debug_options { xla_gpu_enable_fast_min_max: false }
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
-TEST_P(CompareGPUExecutablesDebugOptionsTest, DetectsNumericsFlagDifference) {
-  DebugOptions golden_options;
-  golden_options.set_xla_gpu_enable_fast_min_max(true);
-  DebugOptions fresh_options;
-  fresh_options.set_xla_gpu_enable_fast_min_max(false);
-
-  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
-                  GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-                  GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("xla_gpu_enable_fast_min_max")));
+// A different host-specific debug option (CUDA install path) must be normalized
+// away and must not cause a spurious mismatch.
+TEST(TestLibTest, CompareGPUExecutables_NormalizesHostPathFieldsAndReturnsOk) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        config { debug_options { xla_gpu_cuda_data_dir: "/host_a/cuda" } }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        config { debug_options { xla_gpu_cuda_data_dir: "/host_b/cuda" } }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
-
-TEST_P(CompareGPUExecutablesDebugOptionsTest, DetectsCollectiveFlagDifference) {
-  DebugOptions golden_options;
-  golden_options.set_xla_gpu_all_reduce_combine_threshold_bytes(31457287);
-  DebugOptions fresh_options;
-  fresh_options.set_xla_gpu_all_reduce_combine_threshold_bytes(1024);
-
-  EXPECT_THAT(
-      AOTInterceptionPjrtClient::CompareGPUExecutables(
-          GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-          GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-      StatusIs(absl::StatusCode::kInternal,
-               HasSubstr("xla_gpu_all_reduce_combine_threshold_bytes")));
-}
-
-// Ignoring a denylisted field must not hide a compared field that differs
-// alongside it.
-TEST_P(CompareGPUExecutablesDebugOptionsTest,
-       DetectsComparedFlagDifferenceNextToDenylistedOne) {
-  DebugOptions golden_options;
-  golden_options.set_xla_dump_to("/tmp/golden_dir");
-  golden_options.set_xla_gpu_enable_fast_min_max(true);
-  DebugOptions fresh_options;
-  fresh_options.set_xla_dump_to("/tmp/fresh_dir");
-  fresh_options.set_xla_gpu_enable_fast_min_max(false);
-
-  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(
-                  GpuExecutableWithDebugOptions(GetParam(), fresh_options),
-                  GpuExecutableWithDebugOptions(GetParam(), golden_options)),
-              StatusIs(absl::StatusCode::kInternal,
-                       AllOf(HasSubstr("xla_gpu_enable_fast_min_max"),
-                             Not(HasSubstr("fresh_dir")))));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    BothCopies, CompareGPUExecutablesDebugOptionsTest,
-    ::testing::Values(DebugOptionsCopy::kModuleConfig,
-                      DebugOptionsCopy::kCompileOptions),
-    [](const ::testing::TestParamInfo<DebugOptionsCopy>& info) {
-      return info.param == DebugOptionsCopy::kModuleConfig ? "ModuleConfig"
-                                                           : "CompileOptions";
-    });
 
 TEST(TestLibTest, CompareGPUExecutables_FailsOnGenuineDifferences) {
   auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(

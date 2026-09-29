@@ -32,7 +32,7 @@ void FuzzTest(std::string data) {
 
   const bool leading_digits =
       tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
-  const char lead_char_consume_digits = *(sp.data());
+  const char lead_char_consume_digits = sp[0];
   if (leading_digits) {
     if (lead_char_consume_digits >= '0') {
       assert(lead_char_consume_digits > '9');
