@@ -431,10 +431,6 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
 
   llvm::ModulePassManager pm;
 
-  if (options_.dfsan_enabled) {
-    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
-  }
-
   llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
   if (opt_level == llvm::OptimizationLevel::O0) {
     pm.addPass(pb.buildO0DefaultPipeline(opt_level));
@@ -474,8 +470,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
-  // Must stay last: middle-end passes behave differently on instructions that
-  // already carry `contract`.
+  // Must run after all optimization passes: middle-end passes behave
+  // differently on instructions that already carry `contract`.
   //
   // TODO(b/560320144): `AllowFPOpFusion = Fast` is deliberately still set in
   // service/cpu/cpu_aot_loader.cc:53, tools/hlo_opt/cpu_opt.cc:217,
@@ -484,7 +480,26 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   // has landed.
   llvm_ir::SetAllowContractOnFpArithmetic(module);
 
+  // Sanitizer instrumentation must be the last IR transformation.
+  if (options_.dfsan_enabled) {
+    // The transformations immediately above are not visible to the analysis
+    // manager; clear its cache.
+    mam.clear();
+
+    RunSanitizerPasses(module, mam);
+  }
+
   return llvm::Error::success();
+}
+
+void IrCompiler::RunSanitizerPasses(llvm::Module& module,
+                                    llvm::ModuleAnalysisManager& mam) const {
+  llvm::ModulePassManager pm;
+
+  if (options_.dfsan_enabled) {
+    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+  }
+  pm.run(module, mam);
 }
 
 std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(

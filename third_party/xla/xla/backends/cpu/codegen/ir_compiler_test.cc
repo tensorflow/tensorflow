@@ -489,6 +489,50 @@ TEST(ObjectBufferIdentifierTest, EncodeAndExtract) {
   EXPECT_EQ(ExtractModuleIdentifier(""), "");
 }
 
+// Compiles the given LLVM IR using IrCompiler and returns the modified module.
+static absl::StatusOr<std::unique_ptr<llvm::Module>> CompileIr(
+    llvm::LLVMContext& context, absl::string_view ir, absl::string_view name,
+    IrCompiler::Options options = IrCompiler::Options()) {
+  ABSL_ASSIGN_OR_RETURN(auto ir_module, ParseModule(context, ir, name));
+  IrCompiler::CompilationHooks hooks;
+  std::unique_ptr<IrCompiler> ir_compiler =
+      IrCompiler::Create(llvm::TargetOptions(), options, hooks);
+  ABSL_ASSIGN_OR_RETURN(auto target_machine, ir_compiler->build_target_machine());
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  if (llvm::Error err = (*ir_compiler)(*ir_module).takeError()) {
+    return Internal("IrCompiler failed: %s", llvm::toString(std::move(err)));
+  }
+  return ir_module;
+}
+
+TEST(IrCompilerTest, DataFlowSanitizerInstrumentsPolynomialApproximations) {
+  constexpr absl::string_view kExpIr = R"(
+  declare float @llvm.exp.f32(float)
+
+  define float @test_exp(float %x) {
+    %res = call float @llvm.exp.f32(float %x)
+    ret float %res
+  }
+  )";
+
+  llvm::LLVMContext context;
+  IrCompiler::Options options{
+      /*opt_level=*/llvm::CodeGenOptLevel::None,
+      /*optimize_for_size=*/false,
+      TargetMachineOptions(kTargetTripleForHost, kTargetCpuForHost, ""),
+  };
+  options.dfsan_enabled = true;
+
+  ASSERT_OK_AND_ASSIGN(auto ir_module,
+                       CompileIr(context, kExpIr, "test_exp_module", options));
+
+  auto ir = llvm_ir::DumpToString(ir_module.get());
+  EXPECT_THAT(ir, HasSubstr("@test_exp.dfsan"));
+  EXPECT_THAT(ir, HasSubstr("fmul contract"));
+  EXPECT_THAT(ir, HasSubstr("store i8 %1, ptr @__dfsan_retval_tls"));
+}
+
 }  // namespace
 
 }  // namespace xla::cpu
