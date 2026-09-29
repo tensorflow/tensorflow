@@ -1517,10 +1517,10 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
 
     // Populate executable metadata.
     compile_resp->set_name(AsProtoStringData(executable->name()));
-    compile_resp->set_num_devices(executable->num_devices());
     if (std::optional<xla::ifrt::DeviceListRef> device_list =
             executable->devices();
         device_list.has_value()) {
+      compile_resp->set_num_devices((*device_list)->size());
       for (const auto* device :
            (*device_list)->AddressableDeviceList()->devices()) {
         compile_resp->add_addressable_device_ids(device->Id().value());

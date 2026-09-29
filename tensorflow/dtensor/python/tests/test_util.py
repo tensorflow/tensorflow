@@ -54,9 +54,7 @@ v2_compat.enable_v2_behavior()
 
 DEFAULT_TOL = 1e-5
 
-# Limit each virtual GPU to 512MB so 8 virtual devices plus CUDA/cuSolver
-# runtime overhead fit within smaller GPU memory partitions.
-_DEFAULT_GPU_MEMORY_LIMIT = 512
+_DEFAULT_GPU_MEMORY_LIMIT = 1024  # 1G
 
 
 def get_use_xla_spmd(device_type):

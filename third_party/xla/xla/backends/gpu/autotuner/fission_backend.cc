@@ -306,7 +306,8 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
     ABSL_ASSIGN_OR_RETURN(
         TiledRunTimeDataOrError tiled_data_or_decision,
-        indexing_cost_model.TryFindBestTilingForFusion(*fusion_adaptor));
+        indexing_cost_model.TryFindBestTilingForFusionAsync(*fusion_adaptor)
+            .Await());
 
     if (const auto* tiled_data =
             std::get_if<TiledRunTimeData>(&tiled_data_or_decision)) {

@@ -5434,6 +5434,64 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "device_slot",
+    hdrs = ["device_slot.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
+    ],
+)
+
+cc_library(
+    name = "vector_storage",
+    srcs = ["vector_storage.cc"],
+    hdrs = ["vector_storage.h"],
+    visibility = ["//visibility:private"],
+    deps = [":device_slot"],
+)
+
+xla_cc_test(
+    name = "vector_storage_test",
+    srcs = ["vector_storage_test.cc"],
+    deps = [
+        ":device_slot",
+        ":vector_storage",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cow_storage",
+    srcs = ["cow_storage.cc"],
+    hdrs = ["cow_storage.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":device_slot",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "cow_storage_test",
+    srcs = ["cow_storage_test.cc"],
+    deps = [
+        ":cow_storage",
+        ":device_slot",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "custom_kernel_thunk",
     srcs = ["custom_kernel_thunk.cc"],
     hdrs = ["custom_kernel_thunk.h"],
