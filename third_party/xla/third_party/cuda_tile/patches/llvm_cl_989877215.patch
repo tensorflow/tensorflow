@@ -1,0 +1,11 @@
+diff --git a/include/cuda_tile/Dialect/CudaTile/IR/Dialect.td b/include/cuda_tile/Dialect/CudaTile/IR/Dialect.td
+--- a/include/cuda_tile/Dialect/CudaTile/IR/Dialect.td
++++ b/include/cuda_tile/Dialect/CudaTile/IR/Dialect.td
+@@ -42,6 +42,7 @@
+   let useDefaultTypePrinterParser = 1;
+   let useDefaultAttributePrinterParser = 1;
+ 
++  let useStrictPropertiesInAssemblyFormat = 0;
+   let extraClassDeclaration = [{
+     template <typename... OpTys>
+     void addExternalOperations() {

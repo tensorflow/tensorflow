@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -36,11 +40,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
@@ -69,12 +75,15 @@ class EagerContextTest : public ::testing::Test {
   EagerContext* context() { return context_.get(); }
 
   void InitContext(const SessionOptions& opts,
-                   ContextDevicePlacementPolicy policy, bool async = false) {
+                   ContextDevicePlacementPolicy policy, bool async = false,
+                   tsl::core::RefCountPtr<Rendezvous> rendezvous = nullptr) {
     ASSERT_EQ(context_, nullptr);
-    InitDeviceManager();
+    if (!device_manager_) {
+      InitDeviceManager();
+    }
     context_ = core::RefCountPtr<EagerContext>(new EagerContext(
         opts, policy, async, device_manager_.get(),
-        /*device_mgr_owned=*/false, /*rendezvous=*/nullptr,
+        /*device_mgr_owned=*/false, std::move(rendezvous),
         /*cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
         /*run_eager_op_as_function=*/true));
   }
@@ -412,6 +421,71 @@ TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
 
   TestGlobalRendezvous(context(), true);
+}
+
+TEST_F(EagerContextTest, IsTensorFlowExecutorThreadTest) {
+  {
+    std::unique_ptr<Thread> t(tsl::Env::Default()->StartThread(
+        ThreadOptions(), "tf_test",
+        []() { EXPECT_TRUE(internal::IsTensorFlowExecutorThread()); }));
+  }
+  {
+    std::unique_ptr<Thread> t(tsl::Env::Default()->StartThread(
+        ThreadOptions(), "other_name",
+        []() { EXPECT_FALSE(internal::IsTensorFlowExecutorThread()); }));
+  }
+}
+
+class NotificationRendezvous : public Rendezvous {
+ public:
+  explicit NotificationRendezvous(absl::Notification* n, int64_t* thread_id)
+      : n_(n), destructor_thread_id_(thread_id) {}
+  ~NotificationRendezvous() override {
+    if (destructor_thread_id_) {
+      *destructor_thread_id_ = tsl::Env::Default()->GetCurrentThreadId();
+    }
+    n_->Notify();
+  }
+
+  absl::Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
+                    const bool is_dead) override {
+    return absl::OkStatus();
+  }
+  void RecvAsync(const ParsedKey& key, const Args& args,
+                 DoneCallback done) override {}
+  void StartAbort(const absl::Status& status) override {}
+
+ private:
+  absl::Notification* n_;
+  int64_t* destructor_thread_id_ = nullptr;
+};
+
+TEST_F(EagerContextTest, ReleaseOnTfThread) {
+  absl::Notification n;
+  int64_t rendezvous_destructor_thread_id = 0;
+  int64_t tf_thread_id = 0;
+  auto rendezvous = core::RefCountPtr<Rendezvous>(
+      new NotificationRendezvous(&n, &rendezvous_destructor_thread_id));
+  InitDeviceManager();
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, false,
+              std::move(rendezvous));
+
+  {
+    std::unique_ptr<Thread> t(
+        tsl::Env::Default()->StartThread(ThreadOptions(), "tf_test", [&]() {
+          tf_thread_id = tsl::Env::Default()->GetCurrentThreadId();
+          // Drop the last reference to context_. Because the thread is named
+          // "tf_test", EagerContext::Release() will detach a thread to execute
+          // Unref().
+          context_.release()->Release();
+        }));
+  }
+
+  // Wait deterministically for the detached thread to finish the deletion
+  // by waiting for the EagerContext's rendezvous member to be destroyed.
+  n.WaitForNotification();
+
+  EXPECT_NE(rendezvous_destructor_thread_id, tf_thread_id);
 }
 
 }  // namespace
