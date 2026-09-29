@@ -71,7 +71,7 @@ class SummaryV1AudioOpTest(test.TestCase):
     logdir = self.get_temp_dir()
     with context.eager_mode():
       writer = summary_ops_v2.create_file_writer_v2(logdir)
-      with writer.as_default():
+      try:
         gen_summary_ops.write_audio_summary(
             writer=writer._resource,
             step=0,
@@ -79,6 +79,8 @@ class SummaryV1AudioOpTest(test.TestCase):
             tensor=tensor,
             sample_rate=16000.0,
             max_outputs=3)
+      finally:
+        writer.close()
 
   def testWriteAudioSummaryRejectsScalarTensor(self):
     scalar_tensor = np.float32(1.0)
