@@ -278,10 +278,12 @@ TEST_F(LinSpaceOpTest, Monotonic_Bfloat16_Int64Index) {
 
   const auto flat = GetOutput(0)->flat<bfloat16>();
   ASSERT_EQ(num, GetOutput(0)->NumElements());
+  for (int64_t i = 1; i < num; ++i) {
+    ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
+        << "flat(" << i << ") was less than flat(" << i - 1 << ")";
+  }
   const double step = 1.0 / static_cast<double>(num - 1);
   for (int64_t i = 1; i < num - 1; ++i) {
-    ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
-        << "flat(" << i << ") decreased below flat(" << i - 1 << ")";
     ASSERT_EQ(static_cast<float>(
                   static_cast<bfloat16>(step * static_cast<double>(i))),
               static_cast<float>(flat(i)))
@@ -304,6 +306,20 @@ TEST_F(LinSpaceOpTest, Single_Half) {
   Tensor expected(allocator(), DT_HALF, TensorShape({1}));
   test::FillValues<Eigen::half>(&expected, {Eigen::half(9.0f)});
   test::ExpectTensorEqual<Eigen::half>(expected, *GetOutput(0));
+}
+
+TEST_F(LinSpaceOpTest, Single_Bfloat16) {
+  MakeOp(DT_BFLOAT16, DT_INT32);
+
+  // num == 1 must return [start] without dividing by num - 1 == 0.
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(9.0f)});
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(100.0f)});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_BFLOAT16, TensorShape({1}));
+  test::FillValues<bfloat16>(&expected, {bfloat16(9.0f)});
+  test::ExpectTensorEqual<bfloat16>(expected, *GetOutput(0));
 }
 
 }  // namespace
