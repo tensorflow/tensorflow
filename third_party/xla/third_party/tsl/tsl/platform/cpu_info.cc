@@ -29,7 +29,7 @@ limitations under the License.
 #if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
 #endif
-#if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#if defined(PLATFORM_IS_ARM64) && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__) 
 #include <asm/hwcap.h> /* Get HWCAP bits from asm/hwcap.h */
 #include <sys/auxv.h>
 #ifndef HWCAP_CPUID
@@ -390,7 +390,7 @@ void InitCPUIDInfo() {
 
 #endif  // PLATFORM_IS_X86
 
-#if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#if defined(PLATFORM_IS_ARM64)  && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
 
 class CPUIDInfo;
 void InitCPUIDInfo();
@@ -547,7 +547,7 @@ void InitCPUIDFeatureInfo() {
 bool TestCPUFeature(CPUFeature feature) {
 #ifdef PLATFORM_IS_X86
   return CPUIDInfo::TestFeature(feature);
-#elif defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#elif defined(PLATFORM_IS_ARM64)  && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   return CPUIDInfo::TestAarch64Feature(feature);
 #else
   return false;
@@ -555,7 +555,7 @@ bool TestCPUFeature(CPUFeature feature) {
 }
 
 bool TestAarch64CPU(Aarch64CPU cpu) {
-#if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#if defined(PLATFORM_IS_ARM64)  && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   return CPUIDInfo::TestAarch64CPU(cpu);
 #else
   return false;
@@ -575,7 +575,7 @@ int CPUFamily() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
   return cpuid->family();
-#elif defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#elif defined(PLATFORM_IS_ARM64) && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   InitCPUIDInfo();
   return cpuid->implementer();
 #else
@@ -587,7 +587,7 @@ int CPUModelNum() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
   return cpuid->model_num();
-#elif defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
+#elif defined(PLATFORM_IS_ARM64) && !defined(_M_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   InitCPUIDInfo();
   return cpuid->cpunum();
 #else
