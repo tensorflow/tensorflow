@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,24 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
-#include "xla/backends/profiler/gpu/cuda_version_variants.h"
+#ifndef XLA_BACKENDS_PROFILER_SIMPLE_MULTIPASS_TRACER_H_
+#define XLA_BACKENDS_PROFILER_SIMPLE_MULTIPASS_TRACER_H_
+
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {
 namespace profiler {
-namespace cuda_versions {
 
-const CbidCategoryMap& GetExtraCallbackIdCategories12080() {
-  return EmptyCallbackIdCategories();
-}
-
-absl::string_view GetExtraActivityOverheadKindString12080(
-    CUpti_ActivityOverheadKind kind) {
-  return "";
-}
-
-}  // namespace cuda_versions
+// Registers the SimpleMultiPassTracer factory with the TSL profiler registry.
+// SimpleMultiPassTracer coordinates multi-pass profiling for workloads on
+// GPU/TPU.
+void RegisterSimpleMultiPassTracer();
 
 }  // namespace profiler
 }  // namespace xla
+
+#endif  // XLA_BACKENDS_PROFILER_SIMPLE_MULTIPASS_TRACER_H_
