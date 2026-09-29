@@ -56,8 +56,7 @@ namespace proxy {
 
 MpmdLoadedExecutable::MpmdLoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices,
-    std::optional<DeviceListRef> devices,
+    uint64_t handle, std::string name, std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<
         absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
@@ -70,9 +69,9 @@ MpmdLoadedExecutable::MpmdLoadedExecutable(
       handle_(handle),
       mpmd_addressable_devices_(std::move(mpmd_addressable_devices)) {
   loaded_executable_ = std::make_unique<ifrt::proxy::LoadedExecutable>(
-      client, rpc_helper, handle, std::move(name), num_devices,
-      std::move(devices), std::move(addressable_devices),
-      std::move(fingerprint), std::move(loaded_host_callbacks),
+      client, rpc_helper, handle, std::move(name), std::move(devices),
+      std::move(addressable_devices), std::move(fingerprint),
+      std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(

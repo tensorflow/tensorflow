@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 
+#include <array>
+
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
