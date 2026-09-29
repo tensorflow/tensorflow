@@ -133,14 +133,25 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     ir_libraries_.push_back(std::move(eigen_lib));
   }
 
+  if (UseYnnpackIntrinsics(options)) {
+    ir_libraries_.push_back(std::make_unique<CppGenIntrinsicLibrary>(
+        GetYnnpackIrString(options), "ynnpack"));
+    intrinsic_functions_.push_back(
+        std::make_unique<IntrinsicAdapter<intrinsics::YnnLog>>());
+    intrinsic_functions_.push_back(
+        std::make_unique<IntrinsicAdapter<intrinsics::YnnLog1p>>());
+  } else {
+    // For GPU, Windows, or non-FMA CPU fallback:
+    intrinsic_functions_.push_back(
+        std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
+  }
+
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Exp>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());
-  intrinsic_functions_.push_back(
-      std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Erf>>());
   intrinsic_functions_.push_back(

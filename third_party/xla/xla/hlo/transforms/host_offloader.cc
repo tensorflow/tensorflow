@@ -830,10 +830,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // Buffer comes from one parameter. Stop the process.
           return absl::OkStatus();
         }
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Entry computation parameter \"%s\" (shape index "
-                            "%s) is not in host memory space.",
-                            instruction->name(), shape_index.ToString()));
+        return InvalidArgument(
+            "Entry computation parameter \"%s\" (shape index "
+            "%s) is not in host memory space.",
+            instruction->name(), shape_index.ToString());
       }
 
       // If this is a parameter of a while_body, we also need to find the
@@ -872,10 +872,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
             nested_queue.pop();
             if (!host_offload_utils::IsValidDuringPureMemoryOffload(
                     nested_instruction_and_shape.instruction)) {
-              return absl::InvalidArgumentError(absl::StrFormat(
+              return InvalidArgument(
                   "Tensor which is moved to host is used by an invalid "
                   "instruction (\"%s\") during while condition body.",
-                  nested_instruction_and_shape.instruction->name()));
+                  nested_instruction_and_shape.instruction->name());
             }
             SetMemorySpace(
                 ShapeUtil::GetMutableSubshape(
@@ -1046,10 +1046,10 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
     }
   }
   if (!found_broadcast) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("DynamicUpdateSlice \"%s\"'s first operand is not the "
-                        "result of a broadcast.",
-                        dynamic_update_slice->name()));
+    return InvalidArgument(
+        "DynamicUpdateSlice \"%s\"'s first operand is not the "
+        "result of a broadcast.",
+        dynamic_update_slice->name());
   }
   return absl::OkStatus();
 }
@@ -1138,9 +1138,8 @@ absl::Status ValidateAsyncComputationStructure(HloComputation* computation) {
       continue;
     }
 
-    return absl::InternalError(
-        absl::StrCat("Unexpected instruction found in async computation: ",
-                     instr->ToString()));
+    return InternalStrCat("Unexpected instruction found in async computation: ",
+                          instr->ToString());
   }
 
   return absl::OkStatus();
