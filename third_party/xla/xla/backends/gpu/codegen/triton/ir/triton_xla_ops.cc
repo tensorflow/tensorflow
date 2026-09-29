@@ -324,14 +324,21 @@ LogicalResult PtrToMemrefOp::verify() {
 }
 
 LogicalResult BlockBarrierOp::verify() {
-  if (getSignalStride() < 0) {
-    return emitOpError("signal_stride must be non-negative");
+  if (getBarrierMode() == BarrierMode::kSymmetric) {
+    if (getSignalSlot() || getSignalStride() != 0) {
+      return emitOpError(
+          "symmetric barrier_mode requires signal_slot to be omitted and "
+          "signal_stride to be 0");
+    }
+    return success();
   }
-  if (getSignalStride() > 0 && !getSignalSlot()) {
-    return emitOpError("signal_stride requires signal_slot to be specified");
+  if (getSignalStride() <= 0) {
+    return emitOpError(
+        "asymmetric barrier_mode requires a positive signal_stride");
   }
-  if (getSignalSlot() && getSignalStride() == 0) {
-    return emitOpError("signal_slot requires a positive signal_stride");
+  if (!getSignalSlot()) {
+    return emitOpError(
+        "asymmetric barrier_mode requires signal_slot to be specified");
   }
   return success();
 }

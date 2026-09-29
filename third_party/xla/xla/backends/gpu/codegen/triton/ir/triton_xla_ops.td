@@ -337,9 +337,9 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     of `i32` flags with shape `[num_blocks][world_size]`, flattened as
     `block_idx * world_size + slot_idx`.
 
-    This barrier supports two synchronization modes:
+    This barrier supports three synchronization modes via `$barrier_mode`:
 
-    ### 1. Symmetric Mode (`$signal_stride == 0`, `$signal_slot` omitted)
+    ### 1. `symmetric` (default; `$signal_stride == 0`, `$signal_slot` omitted)
     Used when block `block_idx` on every GPU produces and consumes data for the
     same `block_idx`:
     - **Signal (Write)**: Block `block_idx` on GPU `r` atomically writes
@@ -349,7 +349,7 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
       own buffer `$signal_buffers[r]` until all `world_size` slots at
       `block_idx * world_size + [0..world_size)` reach `>= $signal_value`.
 
-    ### 2. Asymmetric Mode (`$signal_stride > 0`, `$signal_slot` provided).
+    ### 2. `consumer_symmetric` (`$signal_stride > 0`, `$signal_slot` provided)
     Used when `world_size` blocks on the same GPU (spaced by `$signal_stride` in
     block ID) each produce `$signal_slot` (`0 <= $signal_slot < world_size`)
     of a tile that will be consumed by a single target block on every peer GPU:
@@ -365,6 +365,19 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
       own buffer `$signal_buffers[r]` until all `world_size` producer
       slots at `block_idx * world_size + [0..world_size)` reach
       `>= $signal_value`.
+
+    ### 3. `producer_symmetric` (`$signal_stride > 0`, `$signal_slot` provided)
+    Used when block `block_idx` on every GPU produces data at its own
+    `block_idx`, and consumer block `block_idx` on GPU `r` waits for data
+    produced by `target_block` across all peer GPUs:
+    - Let `base_block = block_idx - $signal_slot * $signal_stride` and
+      `target_block = base_block + r * $signal_stride`.
+    - **Signal (Write)**: Block `block_idx` on GPU `r` atomically writes
+      `$signal_value` to index `block_idx * world_size + r` in every peer GPU's
+      signal buffer (`$signal_buffers[0..world_size)`).
+    - **Wait (Read)**: Block `block_idx` on GPU `r` spin-waits on its own
+      buffer `$signal_buffers[r]` until all `world_size` slots at
+      `target_block * world_size + [0..world_size)` reach `>= $signal_value`.
 
     *NOTE* Block orchestration order is not guaranteed across GPUs,
     so there is a chance of a deadlock should the number of blocks be greater
@@ -404,7 +417,10 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     // same as this value.
     I32Attr:$world_size,
     // Optional block-ID stride between consumer blocks for asymmetric barriers.
-    DefaultValuedOptionalAttr<I32Attr, "0">:$signal_stride
+    DefaultValuedOptionalAttr<I32Attr, "0">:$signal_stride,
+    // Synchronization mode for the barrier.
+    DefaultValuedAttr<TTXLA_BarrierModeAttr,
+                      "::mlir::triton::xla::BarrierMode::kSymmetric">:$barrier_mode
   );
 
   // This is a barrier op and produces no results.
