@@ -15,8 +15,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #ifdef __linux__
 #include <malloc.h>
 #endif
