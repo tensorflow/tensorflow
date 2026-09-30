@@ -116,6 +116,31 @@ class EigTest(test.TestCase):
         linalg_ops.eigvals(tensor)
 
 
+  def testAcceptsNonTensorInput(self):
+    # The dtype check reads `tensor.dtype` off the argument, so anything not
+    # already a tensor used to fail with AttributeError. linalg.eigh and the
+    # rest of linalg_ops take these, because they pass the argument straight
+    # to the generated op.
+    matrix = [[1., 2.], [3., 4.]]
+    expected = np.sort(
+        np.linalg.eigvals(np.array(matrix, dtype=np.float32))
+    ).astype(np.complex64)
+
+    for arg in (matrix,
+                tuple(tuple(row) for row in matrix),
+                np.array(matrix, dtype=np.float32)):
+      e, _ = linalg_ops.eig(arg)
+      self.assertAllClose(np.sort(self.evaluate(e)), expected, atol=1e-5)
+      e = linalg_ops.eigvals(arg)
+      self.assertAllClose(np.sort(self.evaluate(e)), expected, atol=1e-5)
+
+    # A list that converts to an unsupported dtype still reports that.
+    with self.assertRaisesRegex(ValueError, "must have dtype"):
+      linalg_ops.eig([[1, 2], [3, 4]])
+    with self.assertRaisesRegex(ValueError, "must have dtype"):
+      linalg_ops.eigvals([[1, 2], [3, 4]])
+
+
 def SortEigenValues(e):
   perm = np.argsort(e.real + e.imag, -1)
   return np.take(e, perm, -1)

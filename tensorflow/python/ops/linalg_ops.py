@@ -446,6 +446,11 @@ def eig(tensor, name=None):
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
+  # Convert first: the dtype check below reads `tensor.dtype`, which a list
+  # or any other unconverted value does not have. linalg.eigh and the rest of
+  # this module accept those, since they hand the argument straight to the
+  # generated op, which converts it.
+  tensor = ops.convert_to_tensor(tensor)
   if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
@@ -478,6 +483,11 @@ def eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
+  # Convert first: the dtype check below reads `tensor.dtype`, which a list
+  # or any other unconverted value does not have. linalg.eigh and the rest of
+  # this module accept those, since they hand the argument straight to the
+  # generated op, which converts it.
+  tensor = ops.convert_to_tensor(tensor)
   if tensor.dtype == dtypes.float32 or tensor.dtype == dtypes.complex64:
     out_dtype = dtypes.complex64
   elif tensor.dtype == dtypes.float64 or tensor.dtype == dtypes.complex128:
