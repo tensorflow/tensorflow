@@ -52,9 +52,8 @@ struct scalar_arg_op<std::complex<double>> {
 
 template <typename Scalar, typename Exponent>
 struct safe_scalar_binary_pow_op {
-  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
-  static_assert(std::is_integral<Exponent>::value &&
-                    std::is_signed<Exponent>::value,
+  static_assert(std::is_integral_v<Scalar>, "Integer type expected");
+  static_assert(std::is_integral_v<Exponent> && std::is_signed_v<Exponent>,
                 "Signed integer type expected");
 
   bool* const error;
@@ -81,7 +80,7 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
 
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
 
   bool* const error;
 
@@ -377,8 +376,7 @@ struct google_floor_div {
 };
 
 template <typename T>
-struct google_floor_div<
-    T, typename std::enable_if<std::is_unsigned<T>::value>::type> {
+struct google_floor_div<T, std::enable_if_t<std::is_unsigned_v<T>>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     return x / y;
@@ -1255,7 +1253,7 @@ struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
 // completes; this functor must still produce a defined result on the device.
 template <typename T>
 struct safe_pow_ignore_error_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     if (TF_PREDICT_FALSE(y < 0)) {
@@ -1372,7 +1370,7 @@ struct left_shift_op {
     } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
       y_clamped = sizeof(T) * CHAR_BIT - 1;
     }
-    using U = typename std::make_unsigned<T>::type;
+    using U = std::make_unsigned_t<T>;
     return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
   }
 };
