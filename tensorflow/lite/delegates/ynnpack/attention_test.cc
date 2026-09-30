@@ -271,10 +271,10 @@ std::string PrintAttentionImplName(
 }
 
 TEST(AttentionGqaTest, OdmlSdpaTransposedGqaDecodeAndPrefill) {
-  for (int t : {1, 4, 12}) {
+  for (int t : {1, 4, 12, 20}) {
     for (int n_kv : {1, 2}) {
       const int b = 1;
-      const int s = 16;
+      const int s = 24;
       const int h = 16;
       const int n_q = 4;
       const int s_active = 11;
