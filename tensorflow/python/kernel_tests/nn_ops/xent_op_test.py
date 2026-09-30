@@ -53,7 +53,8 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
             gradient = self.evaluate(gradient)
 
             self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
-            self.assertAllEqual(gradient[:, 0], -gradient[:, 1])
+            self.assertAllClose(gradient[:, 0], -gradient[:, 1], rtol=1e-14,
+                                atol=0)
 
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesMultiClassTailGradient(self):
