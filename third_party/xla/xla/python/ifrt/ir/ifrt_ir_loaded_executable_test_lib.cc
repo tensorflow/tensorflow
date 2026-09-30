@@ -1909,7 +1909,7 @@ module @auto_layout {
       on devices [0, 1, 2, 3] : (!array) -> !array
     return %out_0, %out_0, %out_1, %arg1 : !array, !array, !array, !array
   }
-  module @transpose attributes {sym_visibility = "private"} {
+  module @transpose <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32> {mhlo.layout_mode = "auto"})
         -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
       %0 = stablehlo.transpose %arg0, dims = [1, 0]
@@ -1917,7 +1917,7 @@ module @auto_layout {
       return %0 : tensor<2x2xi32>
     }
   }
-  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+  module @transpose_w_custom_layout <sym_visibility = "private"> {
     func.func public @main(%arg0: tensor<2x2xi32>
         {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
         -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
@@ -1980,7 +1980,7 @@ module @custom_layout_copy_arrays {
     %out_1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array) -> !array
     return %out_0, %out_1 : !array, !array
   }
-  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+  module @transpose_w_custom_layout <sym_visibility = "private"> {
     func.func public @main(%arg0: tensor<2x2xi32>
         {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
         -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {
@@ -2057,7 +2057,7 @@ module @custom_output_layout_copy_arrays {
     %out_1, %ctrl_1 = ifrt.CopyArrays(%out_0) : (!array) -> !array
     return %out_0, %out_1 : !array, !array
   }
-  module @transpose_w_custom_layout attributes {sym_visibility = "private"} {
+  module @transpose_w_custom_layout <sym_visibility = "private"> {
     func.func public @main(%arg0: tensor<2x2xi32>
         {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"})
         -> (tensor<2x2xi32> {mhlo.layout_mode = "auto"}) {

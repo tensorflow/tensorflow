@@ -26,8 +26,7 @@ module @call_hlo {
     return %0 : !array
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -51,8 +50,7 @@ module @calls_share_a_module {
     return %1 : !array
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -78,8 +76,7 @@ module @calls_with_ctrl_dep_share_a_module {
     return %1 : !array
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -108,8 +105,7 @@ module @call_with_diff_sharding_share_a_module {
     return %1 : !array_unspecified
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> (tensor<2x2xi32>) {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -139,8 +135,7 @@ module @call_with_diff_devices_share_a_module {
     return %0, %1 : !array0, !array1
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> (tensor<2x2xi32>) {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
@@ -170,8 +165,7 @@ module @shared_func_is_cloned {
     return %1 : tensor<2x2xi32>
   }
 
-  // CHECK: module @[[MODULE1]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE1]] <sym_visibility = "private">
   // CHECK: func.func @main
   // CHECK: func.func private @add_one_internal
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -179,8 +173,7 @@ module @shared_func_is_cloned {
     return %0 : tensor<2x2xi32>
   }
 
-  // CHECK: module @[[MODULE2]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE2]] <sym_visibility = "private">
   // CHECK: func.func @main
   // CHECK: func.func private @add_one_internal
   func.func private @add_two(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -203,8 +196,7 @@ module @callee_with_symbol {
     return %0 : !array
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: func.func @main
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
@@ -311,8 +303,7 @@ module @modules_with_sdy_mesh_are_shared {
     return %0, %1 : !array0, !array1
   }
 
-  // CHECK: module @[[MODULE]]
-  // CHECK: attributes {sym_visibility = "private"}
+  // CHECK: module @[[MODULE]] <sym_visibility = "private">
   // CHECK: sdy.mesh @mesh = <["x"=2]>
   // CHECK: func.func @main
   func.func private @add_one(
