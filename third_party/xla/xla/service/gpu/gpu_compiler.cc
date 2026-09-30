@@ -1427,7 +1427,8 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                              HloCostAnalysis::ShapeSizeFunction shape_size_fn,
                              const GpuAliasInfo* alias_info,
                              mlir::MLIRContext* mlir_context,
-                             CompilationStats* compilation_stats) {
+                             CompilationStats* compilation_stats,
+                             MlirContextPool* mlir_context_pool) {
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
 
@@ -1437,7 +1438,8 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
 
   ABSL_RETURN_IF_ERROR(FusionPipeline(hlo_module->config().debug_options(),
                                  shape_size_fn, alias_info, thread_pool,
-                                 gpu_device_info, mlir_context)
+                                 gpu_device_info, mlir_context,
+                                 mlir_context_pool)
                       .Run(hlo_module, {HloInstruction::kMainExecutionThread})
                       .status());
 
@@ -1966,7 +1968,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   ABSL_RETURN_IF_ERROR(RunFusionPasses(
       hlo_module, gpu_topology.gpu_target_config(), thread_pool.get_mutable(),
-      ShapeSizeBytesFunction(), alias_info, mlir_context, compilation_stats));
+      ShapeSizeBytesFunction(), alias_info, mlir_context, compilation_stats,
+      &mlir_context_pool_));
   ABSL_RETURN_IF_ERROR(RunPostFusionPasses(
       hlo_module, device_description, alias_info, pointer_size_, options,
       gpu_topology, mlir_context, compilation_stats));
