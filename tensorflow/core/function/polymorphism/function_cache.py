@@ -74,6 +74,8 @@ class FunctionCache:
 
     del self._primary[(context, function_type)]
     self._dispatch_dict[context].delete(function_type)
+    if not self._dispatch_dict[context].targets:
+      del self._dispatch_dict[context]
 
     return True
 
