@@ -514,6 +514,8 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(a, axis1=0, axis2=5)
     # NumPy raises for 0-d/1-d inputs too.
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.diagonal(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.diagonal(np.array([1, 2, 3]))
     with self.assertRaisesRegex(ValueError, 'same axis'):
       np_array_ops.diagonal(a, axis1=0, axis2=0)

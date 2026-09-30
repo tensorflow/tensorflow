@@ -839,6 +839,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'same axis'):
       np_math_ops.trace(a, axis1=1, axis2=-1)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.trace(np.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(np.array([1, 2, 3]))
 
   def testIsInf(self):
