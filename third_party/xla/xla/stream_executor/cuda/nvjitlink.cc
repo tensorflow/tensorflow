@@ -169,6 +169,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
   }
   cli_args.emplace_back("-Xptxas=--warn-on-spills");
   cli_args.emplace_back(absl::StrCat("-split-compile=", inputs.size()));
+  cli_args.emplace_back("-no-cache");
 
   if (options.disable_gpuasm_optimizations) {
     cli_args.emplace_back("-Xptxas=-O0");
@@ -284,7 +285,7 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
   absl::string_view ptx_contents = ".version 99.99";
   // The call to `nvJitLinkCreate` below requires an arch to be specified in
   // order to succeed.
-  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
+  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a", "-no-cache"};
   nvJitLinkHandle link_handle = nullptr;
   nvJitLinkResult create_result =
       nvJitLinkCreate(&link_handle, /*num_args=*/cli_args_ptrs.size(),
