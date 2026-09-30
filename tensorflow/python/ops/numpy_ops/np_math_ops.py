@@ -1751,7 +1751,11 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
 
   if offset == 0:
     a_shape = a.shape
-    if a_shape.rank is not None:
+    if (
+        a_shape.rank is not None
+        and isinstance(axis1, (int, np.integer))
+        and isinstance(axis2, (int, np.integer))
+    ):
       rank = len(a_shape)
       if (axis1 == -2 or axis1 == rank - 2) and (
           axis2 == -1 or axis2 == rank - 1

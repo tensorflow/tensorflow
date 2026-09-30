@@ -365,7 +365,11 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
-  if maybe_rank is not None:
+  if (
+      maybe_rank is not None
+      and isinstance(axis1, (int, np.integer))
+      and isinstance(axis2, (int, np.integer))
+  ):
     norm1 = axis1 + maybe_rank if axis1 < 0 else axis1
     norm2 = axis2 + maybe_rank if axis2 < 0 else axis2
     if norm1 < 0 or norm1 >= maybe_rank:
@@ -384,9 +388,44 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
     # original user-supplied values and the fast path below consumes
     # normalized, non-negative axes.
     axis1, axis2 = norm1, norm2
+  else:
+    # `axis1`/`axis2` are runtime values (e.g. scalar `tf.Tensor`s) or the
+    # rank is only known at runtime: Python-level comparisons on Tensors
+    # are not allowed in graph mode, so assert the same bounds (plus the
+    # duplicate-axis rule) at runtime and normalize under the assert's
+    # control dependency. Note: under `jit_compile=True`, tf2xla lowers
+    # `Assert` to a no-op (see tf2xla/kernels/assert_op.cc), so these
+    # errors do not surface inside a fully XLA-compiled function.
+    axis1_t = ops.convert_to_tensor(axis1)
+    axis2_t = ops.convert_to_tensor(axis2)
+    if maybe_rank is not None:
+      rank_t = math_ops.cast(ops.convert_to_tensor(maybe_rank), axis1_t.dtype)
+    else:
+      rank_t = math_ops.cast(array_ops.rank(a), axis1_t.dtype)
+    assert_op = control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(
+                math_ops.logical_and(
+                    math_ops.logical_and(axis1_t >= -rank_t, axis1_t < rank_t),
+                    math_ops.logical_and(axis2_t >= -rank_t, axis2_t < rank_t),
+                ),
+                math_ops.not_equal(axis1_t, axis2_t),
+            )
+        ),
+        [
+            'axis1', axis1_t, 'and axis2', axis2_t,
+            'must be different and within bounds for array of dimension',
+            rank_t,
+        ],
+    )
+    with ops.control_dependencies([assert_op]):
+      axis1 = array_ops.where_v2(axis1_t < 0, axis1_t + rank_t, axis1_t)
+      axis2 = array_ops.where_v2(axis2_t < 0, axis2_t + rank_t, axis2_t)
 
   if (
       maybe_rank is not None
+      and isinstance(axis1, (int, np.integer))
+      and isinstance(axis2, (int, np.integer))
       and offset == 0
       and axis1 == maybe_rank - 2
       and axis2 == maybe_rank - 1
@@ -888,7 +927,11 @@ def real(val):
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
   maybe_rank = a.shape.rank
-  if axis is not None and maybe_rank is not None:
+  if (
+      axis is not None
+      and maybe_rank is not None
+      and isinstance(axis, (int, np.integer))
+  ):
     # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
     # 1-D of size 1), so validate against max(rank, 1).
     validation_rank = 1 if maybe_rank < 1 else maybe_rank
@@ -902,7 +945,11 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
-  if known_shape:
+  # Skip the static recovery when `axis` is a runtime value (e.g. a scalar
+  # `tf.Tensor`): indexing the shape list with a Tensor is not allowed in
+  # graph mode; `array_ops.repeat` below still runs with the tensor axis.
+  static_axis = axis is None or isinstance(axis, (int, np.integer))
+  if known_shape and static_axis:
     if not original_shape:
       original_shape = (repeats,)
     else:
@@ -921,7 +968,7 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
 
   repeats = asarray(repeats)
   result = array_ops.repeat(a, repeats, axis)
-  if known_shape:
+  if known_shape and static_axis:
     result.set_shape(original_shape)
 
   return result
@@ -1882,7 +1929,7 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   rank = arr.shape.rank
   if rank is None:
     rank = array_ops.rank(arr)
-  if isinstance(rank, int):
+  if isinstance(rank, int) and isinstance(axis, (int, np.integer)):
     normalized = axis + rank if axis < 0 else axis
     if normalized < 0 or normalized >= rank:
       raise ValueError(
