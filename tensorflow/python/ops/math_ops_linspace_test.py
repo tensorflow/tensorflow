@@ -81,8 +81,9 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])
   def testLinSpaceKernelHalfAndBfloat16(self, dtype, num_dtype):
     # tf.linspace is composed from other ops, so call the LinSpace kernel
-    # directly. Each element must be the float64 value rounded once to dtype;
-    # num=70000 is past float16's largest finite value (65504).
+    # directly. Each element must be the float64 value narrowed to dtype the
+    # way the kernel's cast does it (through float32); num=70000 is past
+    # float16's largest finite value (65504).
     np_dtype = dtype.as_numpy_dtype
     for start, stop, num in [(0.0, 1.0, 600), (-3.0, 5.0, 20), (9.0, 100.0, 1),
                              (0.0, 1.0, 70000)]:
@@ -90,7 +91,8 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           gen_math_ops.lin_space(
               np.array(start, np_dtype), np.array(stop, np_dtype),
               np.array(num, num_dtype)))
-      expected = np.linspace(start, stop, num, dtype=np.float64).astype(np_dtype)
+      expected = np.linspace(
+          start, stop, num, dtype=np.float64).astype(np.float32).astype(np_dtype)
       self.assertEqual(np_dtype, actual.dtype)
       self.assertAllEqual(expected.astype(np.float32),
                           actual.astype(np.float32))
