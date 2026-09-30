@@ -624,8 +624,10 @@ def AssertFiniteForIntegerDtype(values, dtype):
   # imaginary planes are checked independently; real floating-point and
   # bfloat16 arrays use a single pair of min/max reductions.
   if values.dtype.kind == "c":
-    if (np.isfinite(np.min(values.real)) and np.isfinite(np.max(values.real))
-        and np.isfinite(np.min(values.imag)) and np.isfinite(np.max(values.imag))):
+    if (np.isfinite(np.min(values.real))
+        and np.isfinite(np.max(values.real))
+        and np.isfinite(np.min(values.imag))
+        and np.isfinite(np.max(values.imag))):
       return
   else:
     if np.isfinite(np.min(values)) and np.isfinite(np.max(values)):
