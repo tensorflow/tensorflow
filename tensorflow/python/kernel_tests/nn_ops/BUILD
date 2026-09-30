@@ -916,6 +916,7 @@ cuda_py_strict_test(
         ":xent_op_test_base",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
