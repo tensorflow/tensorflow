@@ -320,3 +320,36 @@ module {
     return
   }
 }
+
+// -----
+// restored variable assigned to a block argument (resource passed from caller)
+
+// CHECK-LABEL: func.func @StatefulPartitionedCall_2
+// CHECK-NEXT:    %[[HANDLE:.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "w"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK-NEXT:    "tf.StatefulPartitionedCall"(%arg0, %[[HANDLE]]) <{config = "", config_proto = "", executor_type = "", f = @__inference__traced_restore_580}> : (tensor<!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> ()
+// CHECK-NEXT:    return
+
+// CHECK-LABEL: func.func private @__inference__traced_restore_580(
+// CHECK-SAME:    %arg0: tensor<!tf_type.string>,
+// CHECK-SAME:    %arg1: tensor<!tf_type.resource<tensor<3x1xf32>>>)
+// CHECK-DAG:    %[[NAMES:.*]] = "tf.Const"() <{value = dense<"w"> : tensor<1x!tf_type.string>}>
+// CHECK-DAG:    %[[SLICES:.*]] = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}>
+// CHECK:       %[[LOCAL_HANDLE:.*]] = "tf.VarHandleOp"() <{container = "", shared_name = "w"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+// CHECK:       "tf.IfrtRestoreVariableOp"(%arg0, %[[NAMES]], %[[SLICES]], %[[LOCAL_HANDLE]])
+// CHECK-SAME:       {restored_dtypes = [f32], returned_tensor_names = [], truncate_in_cast = array<i1: false>}
+
+module {
+  func.func @StatefulPartitionedCall_2(%arg0: tensor<!tf_type.string>) {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "w"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
+    "tf.StatefulPartitionedCall"(%arg0, %0) <{config = "", config_proto = "", executor_type = "", f = @__inference__traced_restore_580}> : (tensor<!tf_type.string>, tensor<!tf_type.resource<tensor<3x1xf32>>>) -> ()
+    return
+  }
+
+  func.func private @__inference__traced_restore_580(%arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_type.resource<tensor<3x1xf32>>>) {
+    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %cst_1 = "tf.Const"() <{value = dense<"w"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
+    %0 = "tf.RestoreV2"(%arg0, %cst_1, %cst_0): (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
+    "tf.AssignVariableOp"(%arg1, %0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
+    return
+  }
+}
