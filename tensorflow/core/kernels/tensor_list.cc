@@ -124,6 +124,10 @@ bool TensorList::Decode(const VariantTensorData& data) {
 
   TensorShapeProto element_shape_proto;
   if (!element_shape_proto.ParseFromString(iter)) return false;
+  // The PartialTensorShape constructor calls AddDim(), which fatally CHECKs on a
+  // malformed rank or dimension size. The proto is untrusted, so validate it
+  // first and return false instead of aborting the process.
+  if (!PartialTensorShape::IsValid(element_shape_proto)) return false;
 
   const PartialTensorShape decoded_element_shape(element_shape_proto);
 
@@ -137,8 +141,10 @@ bool TensorList::Decode(const VariantTensorData& data) {
   // overrun the output buffer.
   for (const Tensor& t : decoded_tensors) {
     if (t.dtype() == DT_INVALID) continue;  // Unset element placeholder.
-    if (decoded_element_dtype != DT_INVALID &&
-        t.dtype() != decoded_element_dtype) {
+    // Any element reaching here is a concrete tensor, so it must match the
+    // list's dtype. If decoded_element_dtype is DT_INVALID a concrete element is
+    // itself inconsistent, so reject it rather than letting it through.
+    if (t.dtype() != decoded_element_dtype) {
       return false;
     }
     if (!decoded_element_shape.IsCompatibleWith(t.shape())) {
