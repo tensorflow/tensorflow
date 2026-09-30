@@ -98,7 +98,7 @@ template <typename T>
 struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
                                                      const T& exponent) const {
-    if (TF_PREDICT_FALSE(exponent == T(0))) {
+    if (TF_PREDICT_FALSE(Eigen::numext::is_exactly_zero(exponent))) {
       return T(1);
     }
     return scalar_pow_op<T, T>::operator()(base, exponent);
