@@ -5438,8 +5438,10 @@ cc_library(
     hdrs = ["device_slot.h"],
     visibility = ["//visibility:private"],
     deps = [
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5487,6 +5489,40 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "per_device_state",
+    srcs = ["per_device_state.cc"],
+    hdrs = ["per_device_state.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":cow_storage",
+        ":device_slot",
+        ":vector_storage",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "per_device_state_test",
+    srcs = ["per_device_state_test.cc"],
+    deps = [
+        ":per_device_state",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
