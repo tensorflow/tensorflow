@@ -514,7 +514,10 @@ Build(
     type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    target_patterns=(
+        *_XLA_DEFAULT_TARGET_PATTERNS,
+        "-@tsl//tsl/platform:stacktrace_handler_test",
+    ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": True,

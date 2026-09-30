@@ -244,6 +244,9 @@ TEST(ChunkDestination, StringChunkDestWithGaps) {
 
 TEST(SlabAllocator, BasicSubAllocations) {
   auto alloc1_or = AllocateNetworkPinnedMemory(4096 * 4);
+  if (absl::IsNotFound(alloc1_or.status())) {
+    GTEST_SKIP() << "SO_ZEROCOPY not supported: " << alloc1_or.status();
+  }
   auto alloc2_or = AllocateAlignedMemory(4096 * 4);
   ASSERT_TRUE(alloc1_or.ok()) << alloc1_or.status();
   ASSERT_TRUE(alloc2_or.ok()) << alloc2_or.status();

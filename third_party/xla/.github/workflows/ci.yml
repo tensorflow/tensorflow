@@ -151,69 +151,76 @@ jobs:
             python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  Tests_v2:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            pool: "linux-x86-n4-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 CPU",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-x86-n4-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU T4",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-arm64-c4a-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
+            name: "XLA Linux ARM64 CPU",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-x86-n4-16",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            name: "JAX Linux x86 CPU Bzlmod",
+            repo: "jax-ml/jax",
+          },
+        ]
+    name: "${{ matrix.job_info.name }} (v2)"
+    runs-on:
+      group: ml-actions-platform
+      labels: ${{ matrix.job_info.pool }}
+    container: ${{ matrix.job_info.container }} # zizmor: ignore[unpinned-images]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: "Checking out openxla/xla"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: "openxla/xla"
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checking out ${{ matrix.job_info.repo }}
+        if: ${{ matrix.job_info.repo != 'openxla/xla' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ matrix.job_info.repo }}
+          path: ${{ matrix.job_info.repo }}
+          persist-credentials: false
+      - name: "Set Bazel version for JAX"
+        if: ${{ matrix.job_info.repo == 'jax-ml/jax' }}
+        shell: bash
+        run: |
+          BAZEL_VERSION=$(tr -d '\r\n' < "$GITHUB_WORKSPACE/jax-ml/jax/.bazelversion")
+          echo "USE_BAZEL_VERSION=${BAZEL_VERSION}" >> "$GITHUB_ENV"
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: "Run build.py"
+        working-directory: ${{ matrix.job_info.repo }}
+        timeout-minutes: 60
+        env:
+          PYTHONPATH: ${{ github.workspace }}/openxla/xla
+          XLA_CI_BAZEL_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          XLA_CI_BAZEL_DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          XLA_CI_DISABLE_BAZEL_DIFF: ${{ contains(github.event.pull_request.labels.*.name, 'ci:disable-bazel-diff') }}
+        run: |
+          python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
