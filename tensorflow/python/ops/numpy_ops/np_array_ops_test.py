@@ -1506,7 +1506,8 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.split(x_2d, 2, axis=-3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.split(x_2d, 2, axis=2)
-    # Test list sections (routes to _boundaries_to_sizes)
+    # Test list sections (caught by the new early static rank bounds
+    # check in split, before _boundaries_to_sizes is reached)
     with self.assertRaisesRegex(ValueError, 'out of bound'):
       np_array_ops.split(x_2d, [1], axis=-3)
 
