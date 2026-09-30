@@ -473,6 +473,10 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   // Must run after all optimization passes: middle-end passes behave
   // differently on instructions that already carry `contract`.
   llvm_ir::SetAllowContractOnFpArithmetic(module);
+  // Must run after `contract` is set and before sanitizer instrumentation, so
+  // that instrumentation cannot split contractable fmul/fadd pairs into
+  // separate basic blocks.
+  llvm_ir::SinkContractableFMulToFAddFSub(module);
 
   // Sanitizer instrumentation must be the last IR transformation.
   if (options_.dfsan_enabled) {
