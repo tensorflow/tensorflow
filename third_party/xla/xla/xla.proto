@@ -107,6 +107,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_INVALID = 0;
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
+    COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
   }
 
   enum LibNvJitLinkMode {
@@ -1129,7 +1130,7 @@ message DebugOptions {
 
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
-  // Accepted values: "all-reduce", "all-gather".
+  // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
   // For legacy support, the deprecated
   // --xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds
   // all-reduce to this filter.

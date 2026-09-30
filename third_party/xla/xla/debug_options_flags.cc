@@ -3331,7 +3331,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           debug_options->xla_gpu_experimental_use_collective_kernels()),
       "Experimental: comma-separated filter of collective ops that should use "
       "custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL. "
-      "Accepted values: ALL_REDUCE, ALL_GATHER (case-insensitive; the "
+      "Accepted values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER "
+      "(case-insensitive; the "
       "COLLECTIVE_KERNEL_ prefix may be omitted). Supports +/- "
       "incremental modifiers (e.g. +ALL_REDUCE,-ALL_GATHER). The deprecated "
       "--xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds "
