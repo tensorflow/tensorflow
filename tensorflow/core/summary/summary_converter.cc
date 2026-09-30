@@ -322,7 +322,7 @@ absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
     auto values =
         tensor.shaped<float, 3>({batch_size, length_frames, num_channels});
     auto channels_by_frames = typename TTypes<float>::ConstMatrix(
-        &values(i, 0, 0),
+        values.data() + i * (length_frames * num_channels),
         Eigen::DSizes<Eigen::DenseIndex, 2>(length_frames, num_channels));
     size_t sample_rate_truncated = lrintf(sample_rate);
     if (sample_rate_truncated == 0) {
