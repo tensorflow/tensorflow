@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/conv_grad_input_ops.h"
 
+#include <limits>
 #include <utility>
 
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
@@ -291,6 +292,11 @@ void LaunchConv2DBackpropInputOpGpuImpl(
             : TensorShape({filter.dim_size(3), filter.dim_size(0),
                            filter.dim_size(1), filter.dim_size(2)});
 
+    if (filter.NumElements() > std::numeric_limits<int32>::max()) {
+      return errors::InvalidArgument(
+          "Filter tensor num elements (", filter.NumElements(),
+          ") exceeds 32-bit limit for GPU transformation");
+    }
     TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
                                           &transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
