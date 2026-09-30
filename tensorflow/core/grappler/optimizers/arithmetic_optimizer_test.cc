@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 
 #include <complex>
+#include <cstdint>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
@@ -3276,6 +3278,37 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("out", "Pow", {"x", "y"}, {}, &want);
   AddNode("out_bcast1", "Pow", {"z", "ones"}, {}, &want);
   AddNode("out_bcast2", "Pow", {"z", "zeros"}, {}, &want);
+
+  CompareGraphs(want, got);
+}
+
+TEST_F(ArithmeticOptimizerTest, ConvertPowDoesNotRewriteIntegerNegativeOne) {
+  // Integer Pow rejects negative exponents, so Pow(x, -1) must not become
+  // Reciprocal(x), which would silently compute 1 / x instead.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x32 = ops::Const(s.WithOpName("x32"), {-1, 1}, {2});
+  auto y32 = ops::Const(s.WithOpName("y32"), -1);
+  auto x64 = ops::Const<int64_t>(s.WithOpName("x64"), {-1, 1}, {2});
+  auto y64 = ops::Const<int64_t>(s.WithOpName("y64"), {-1, -1}, {2});
+  Output out32 = ops::Pow(s.WithOpName("out32"), x32, y32);
+  Output out64 = ops::Pow(s.WithOpName("out64"), x64, y64);
+
+  GrapplerItem item;
+  item.fetch = {"out32", "out64"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef got;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyConvertPow(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &got);
+
+  GraphDef want;
+  AddNode("x32", "Const", {}, {}, &want);
+  AddNode("y32", "Const", {}, {}, &want);
+  AddNode("x64", "Const", {}, {}, &want);
+  AddNode("y64", "Const", {}, {}, &want);
+  AddNode("out32", "Pow", {"x32", "y32"}, {}, &want);
+  AddNode("out64", "Pow", {"x64", "y64"}, {}, &want);
 
   CompareGraphs(want, got);
 }

@@ -898,6 +898,26 @@ class BinaryOpTest(test.TestCase):
           y = -3
           self.evaluate(math_ops.pow(x, y))
 
+      # A scalar -1 exponent must not be rewritten to Reciprocal by Grappler.
+      with test_util.force_cpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          x = np.array([-1, 1]).astype(dtype)
+          y = np.array(-1).astype(dtype)
+          self.evaluate(math_ops.pow(x, y))
+
+      # A uniform vector -1 exponent must not be rewritten either.
+      with test_util.force_cpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed",
+        ):
+          x = np.array([-1, 1]).astype(dtype)
+          y = np.array([-1, -1]).astype(dtype)
+          self.evaluate(math_ops.pow(x, y))
+
   def testPowNegativeExponentGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("Requires GPU")
