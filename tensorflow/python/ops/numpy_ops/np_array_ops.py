@@ -365,11 +365,31 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if maybe_rank is not None:
+    norm1 = axis1 + maybe_rank if axis1 < 0 else axis1
+    norm2 = axis2 + maybe_rank if axis2 < 0 else axis2
+    if norm1 < 0 or norm1 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis1` (received axis1={axis1}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm2 < 0 or norm2 >= maybe_rank:
+      raise ValueError(
+          f'Argument `axis2` (received axis2={axis2}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    if norm1 == norm2:
+      raise ValueError('axis1 and axis2 cannot be the same axis')
+    # Reassign after validation so the error messages above keep the
+    # original user-supplied values and the fast path below consumes
+    # normalized, non-negative axes.
+    axis1, axis2 = norm1, norm2
+
   if (
       maybe_rank is not None
       and offset == 0
-      and (axis1 == maybe_rank - 2 or axis1 == -2)
-      and (axis2 == maybe_rank - 1 or axis2 == -1)
+      and axis1 == maybe_rank - 2
+      and axis2 == maybe_rank - 1
   ):
     return array_ops.matrix_diag_part(a)
 
@@ -867,6 +887,18 @@ def real(val):
 @np_utils.np_doc('repeat')
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a)
+  maybe_rank = a.shape.rank
+  if axis is not None and maybe_rank is not None:
+    # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
+    # 1-D of size 1), so validate against max(rank, 1).
+    validation_rank = 1 if maybe_rank < 1 else maybe_rank
+    normalized = axis + validation_rank if axis < 0 else axis
+    if normalized < 0 or normalized >= validation_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+    axis = normalized
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
@@ -1786,7 +1818,34 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   rank = arr.shape.rank
   if rank is None:
     rank = array_ops.rank(arr)
-  axis = axis + rank if axis < 0 else axis
+  if isinstance(rank, int):
+    normalized = axis + rank if axis < 0 else axis
+    if normalized < 0 or normalized >= rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {rank}.'
+      )
+    axis = normalized
+  else:
+    # Dynamic case: `rank` is only known at runtime, e.g. a `Tensor` rank
+    # inside a `tf.function` traced with an unspecified input signature.
+    # Static Python-level bounds checking can't run here, and normalizing
+    # `axis + rank` unconditionally would silently mask an out-of-bounds
+    # negative axis (e.g. axis=-5 on a rank-3 tensor) into an in-bounds
+    # one. So assert the same bounds at runtime before normalizing,
+    # keeping eager and graph mode consistent. Note: under
+    # `jit_compile=True`, tf2xla lowers `Assert` to a no-op (see
+    # tf2xla/kernels/assert_op.cc), so this check does not raise inside
+    # a fully dynamic-rank XLA-compiled function.
+    axis_t = ops.convert_to_tensor(axis)
+    rank_t = math_ops.cast(ops.convert_to_tensor(rank), axis_t.dtype)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+        ),
+        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    )
+    axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
