@@ -95,6 +95,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/profiler/lib:nvtx_utils",
     ],
 )
 

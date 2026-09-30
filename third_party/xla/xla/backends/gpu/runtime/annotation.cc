@@ -72,6 +72,14 @@ StringHandle RegisterString(const std::string& str) {
   return {};
 }
 
+template <typename F>
+StringHandle RegisterLazyString(F&& f) {
+  if (auto domain = tsl::profiler::DefaultProfilerDomain(); domain) {
+    return tsl::profiler::RegisterString(domain, std::forward<F>(f)());
+  }
+  return {};
+}
+
 StringHandle RegisterOptionalString(const std::string& str) {
   return str.empty() ? nullptr : RegisterString(str);
 }
@@ -426,8 +434,10 @@ ModuleAnnotation::ModuleAnnotation(const HloModule& mod)
       common_src_locations_(nullptr),
       module_id_(mod.unique_id()),
       common_stack_frames_(0) {
-  std::tie(common_src_locations_, common_stack_frames_) =
-      GetLongestSourceLocationPrefix(mod);
+  if (tsl::profiler::DefaultProfilerDomain() != nullptr) {
+    std::tie(common_src_locations_, common_stack_frames_) =
+        GetLongestSourceLocationPrefix(mod);
+  }
 }
 
 #if GOOGLE_CUDA
@@ -595,11 +605,16 @@ InstructionAnnotation::InstructionAnnotation(
     : nvtx_name_str_(MakeInstructionTitle(
           module_annotation.longest_op_name_prefix(), inst)),
       nvtx_name_(RegisterString(nvtx_name_str_)) {
+  // Register these string lazily since they are expensive to produce and
+  // won't be used if there's no registered profiler.
   payload_ = Basic{
-      RegisterString(InstructionAsString(inst)),
-      RegisterString(
-          FormatSourceLocations(inst, module_annotation.common_stack_frames())),
-      RegisterString("\n" + CalledInstructionsAsString(inst)),
+      RegisterLazyString([&] { return InstructionAsString(inst); }),
+      RegisterLazyString([&] {
+        return FormatSourceLocations(inst,
+                                     module_annotation.common_stack_frames());
+      }),
+      RegisterLazyString(
+          [&] { return "\n" + CalledInstructionsAsString(inst); }),
   };
   if (annotation_level < TraceAnnotationLevel::kDetailed) {
     xprof_name_str_ = nvtx_name_str_;
