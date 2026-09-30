@@ -263,6 +263,11 @@ class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
     for params in self._itGen(smaller_shape, larger_shape):
       self._gpuVsCpuCase(*params, dtype=np.float32)
 
+  def testCompareGpuVsCpuMultipleChannelIterations(self):
+    self._gpuVsCpuCase(
+        [2, 2, 2, 36], [2, 3, 3, 36],
+        align_corners=False, half_pixel_centers=True, dtype=np.float32)
+
   def testCompareGpuVsCpuFloat64(self):
     in_shape = [1, 5, 7, 1]
     out_shape = [1, 9, 11, 1]
