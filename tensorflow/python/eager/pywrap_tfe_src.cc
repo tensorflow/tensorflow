@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -1251,6 +1252,19 @@ DataType PyTensor_DataType(PyObject* tensor) {
     Safe_PyObjectPtr dtype_field(PyObject_GetAttr(tensor, dtype_attr));
     if (!dtype_field) {
       return DT_INVALID;
+    }
+
+    if (PyUnicode_Check(dtype_field.get())) {
+      Py_ssize_t dtype_size;
+      const char* dtype_name =
+          PyUnicode_AsUTF8AndSize(dtype_field.get(), &dtype_size);
+      if (dtype_name == nullptr) {
+        return DT_INVALID;
+      }
+      DataType dtype;
+      if (DataTypeFromString(absl::string_view(dtype_name, dtype_size), &dtype)) {
+        return dtype;
+      }
     }
 
     Safe_PyObjectPtr enum_field(
