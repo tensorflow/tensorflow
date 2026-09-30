@@ -633,19 +633,22 @@ int64_t TilingSpace::num_parallel_dimensions() const {
 void TilingSpace::InitSimplificationIndexing() {
   CHECK(!is_symbolic_) << "Tile sizes must be assigned before initializing "
                           "cached indexing map variables.";
+  CHECK(dim_vars_indexing_.empty())
+      << "InitSimplificationIndexing must be called once";
+  CHECK(range_vars_indexing_.empty());
+  CHECK(rt_vars_indexing_.empty());
 
-  dim_vars_indexing_.clear();
   dim_vars_indexing_.reserve(dimensions_.size());
-  for (const auto& dim_info : dimensions_) {
-    CHECK_GT(dim_info.tile_size.value(), 0);
-    int64_t upper_bound =
-        llvm::divideCeil(dim_info.dimension_size, dim_info.tile_size.value());
+  range_vars_indexing_.reserve(dimensions_.size());
+  for (const DimensionInfo& dim_info : dimensions_) {
+    int64_t tile_size = dim_info.tile_size.value();
+    CHECK_GT(tile_size, 0);
+    int64_t upper_bound = llvm::divideCeil(dim_info.dimension_size, tile_size);
     dim_vars_indexing_.push_back(IndexingMap::Variable{0, upper_bound - 1});
+    // Even though ts_X must already be replaced with constants right now, we
+    // initialize their bounds to [tile_size, tile_size] for completeness.
+    range_vars_indexing_.push_back(IndexingMap::Variable{tile_size, tile_size});
   }
-
-  range_vars_indexing_.assign(dimensions_.size(), IndexingMap::Variable{0, 0});
-
-  rt_vars_indexing_.clear();
   rt_vars_indexing_.reserve(rt_vars_.size());
   for (const auto& rt_var : rt_vars_) {
     rt_vars_indexing_.push_back(IndexingMap::Variable{rt_var.bounds});
@@ -662,10 +665,14 @@ llvm::SmallVector<SymbolicExpr> TilingSpace::SimplifyExpressions(
     }
     return simplified_expressions;
   }
-  // TODO(b/565301234): add constraints from tiling space?
-  SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), expressions);
-
+  CHECK_EQ(dimensions_.size(), dim_vars_indexing_.size());
+  CHECK_EQ(dimensions_.size(), range_vars_indexing_.size());
+  CHECK_EQ(rt_vars_indexing_.size(), rt_vars_.size());
+  // TODO(b/565301234): add constraints from tiling space? They don't seem to
+  // be used in the current implementation.
+  SymbolicMap map =
+      SymbolicMap::Get(mlir_context(), dimensions_.size(),
+                       dimensions_.size() + rt_vars_.size(), expressions);
   IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
                            rt_vars_indexing_);
   indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);

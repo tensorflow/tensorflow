@@ -3648,6 +3648,7 @@ name=None))
         samples starts off as the user intends, but may change as input datasets
         become empty. This can be difficult to detect since the dataset starts
         off looking correct. Default to `False` for backward compatibility.
+        Set it to `True` when `weights` is a dataset that can contain zeros.
       rerandomize_each_iteration: An optional `bool`. The boolean argument
       controls whether the sequence of random numbers used to determine which
       dataset to sample from will be rerandomized each epoch. That is, it
