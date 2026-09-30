@@ -260,5 +260,6 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/tools:verifier",
     ],
 )
