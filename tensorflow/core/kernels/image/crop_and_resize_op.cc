@@ -81,12 +81,10 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
 }
 
 static inline absl::Status CheckBoxesAreFinite(const Tensor& boxes) {
-  const auto boxes_flat = boxes.flat<float>();
-  for (int64_t i = 0; i < boxes_flat.size(); ++i) {
-    if (!std::isfinite(boxes_flat(i))) {
-      return absl::InvalidArgumentError(
-          "boxes contains at least one element that is not finite");
-    }
+  const bool all_finite = boxes.flat<float>().isfinite().all()();
+  if (!all_finite) {
+    return absl::InvalidArgumentError(
+        "boxes contains at least one element that is not finite");
   }
   return absl::OkStatus();
 }
@@ -527,7 +525,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
         for (int y = 0; y < crop_height; ++y) {
           const float in_y = (crop_height > 1)
                                  ? y1 * (image_height - 1) + y * height_scale
-                                 : 0.5 * (y1 + y2) * (image_height - 1);
+                                 : 0.5f * (y1 + y2) * (image_height - 1);
           if (!(in_y >= 0 && in_y <= image_height - 1)) {
             continue;
           }
@@ -538,7 +536,7 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
           for (int x = 0; x < crop_width; ++x) {
             const float in_x = (crop_width > 1)
                                    ? x1 * (image_width - 1) + x * width_scale
-                                   : 0.5 * (x1 + x2) * (image_width - 1);
+                                   : 0.5f * (x1 + x2) * (image_width - 1);
             if (!(in_x >= 0 && in_x <= image_width - 1)) {
               continue;
             }
@@ -751,7 +749,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
       for (int y = 0; y < crop_height; ++y) {
         const float in_y = (crop_height > 1)
                                ? y1 * (image_height - 1) + y * height_scale
-                               : 0.5 * (y1 + y2) * (image_height - 1);
+                               : 0.5f * (y1 + y2) * (image_height - 1);
         if (!(in_y >= 0 && in_y <= image_height - 1)) {
           continue;
         }
@@ -762,7 +760,7 @@ struct CropAndResizeBackpropBoxes<CPUDevice, T> {
         for (int x = 0; x < crop_width; ++x) {
           const float in_x = (crop_width > 1)
                                  ? x1 * (image_width - 1) + x * width_scale
-                                 : 0.5 * (x1 + x2) * (image_width - 1);
+                                 : 0.5f * (x1 + x2) * (image_width - 1);
           if (!(in_x >= 0 && in_x <= image_width - 1)) {
             continue;
           }
