@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/MapVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -401,6 +402,44 @@ TEST_F(IndexingMapTest,
   EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
 }
 
+TEST_F(IndexingMapTest, MapVectorConstructorUnsatisfiableConstraints) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  // Add unsatisfiable constraint.
+  constraints.insert(
+      {CreateSymbolicConstant(-1, &mlir_context_), Interval{0, 1}});
+  IndexingMap indexing_map(ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                           /*dimensions=*/{IndexingMap::Variable{0, 0}},
+                           /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, MapVectorConstructorOneOfConstraintsIsUnsatisfiable) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  constraints.insert(
+      {CreateSymbolicConstant(-1, &mlir_context_), Interval{0, 1}});
+  constraints.insert({CreateDimExpr(0, &mlir_context_), Interval{0, 5}});
+  IndexingMap indexing_map(ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
+                           /*dimensions=*/{IndexingMap::Variable{0, 10}},
+                           /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_TRUE(indexing_map.GetSymbolicConstraints().empty());
+}
+
+TEST_F(IndexingMapTest, MapVectorConstructorConstraintAffectsSimplification) {
+  llvm::MapVector<SymbolicExpr, Interval> constraints;
+  constraints.insert({CreateDimExpr(0, &mlir_context_), Interval{0, 7}});
+  IndexingMap indexing_map(
+      ParseSymbolicMap("(d0) -> (d0 mod 16)", &mlir_context_),
+      /*dimensions=*/{IndexingMap::Variable{0, 31}},
+      /*range_vars=*/{}, /*rt_vars=*/{}, constraints);
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0) -> (d0),
+                              domain:
+                              d0 in [0, 7]
+                            )"));
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesDim) {
   // This constraint cannot be removed, because it contains a dimension.
   auto indexing_map = Parse(R"(
@@ -616,17 +655,26 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
     (d0) -> (d0),
     domain:
     d0 in [0, 99],
-    d0 mod 8 + 5 in [50, 54]
+    d0 mod 8 + 5 in [6, 10]
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  // TODO: b/459357586 - This should be infeasible, since d0 mod 8 should be in
-  // [0, 7].
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [0, 99],
-                          d0 mod 8 in [45, 49]
+                          d0 mod 8 in [1, 5]
                         )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintIntervalSimplification_SumInfeasible) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 99],
+    d0 mod 8 + 5 in [50, 54]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
 }
 
 TEST_F(IndexingMapTest, Simplifier_Mod1) {
