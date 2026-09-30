@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -228,9 +229,19 @@ class ReduceOpsAutoClusteringTest(test_util.TensorFlowTestCase):
   def setUp(self):
     super(ReduceOpsAutoClusteringTest, self).setUp()
     self.previous_jit = config.get_optimizer_jit()
-    # Register the cleanup first so the global jit setting is restored even
-    # if set_optimizer_jit below or the test body raises.
+    # Register the cleanups first so the global state is restored even if
+    # the setters below or the test body raise.
     self.addCleanup(config.set_optimizer_jit, self.previous_jit)
+    # Auto-clustering is not active on CPU by default: TensorFlowTestCase
+    # only turns on CPU global JIT when is_xla_enabled() is true, which
+    # requires a dependency this test does not have. Enable it explicitly so
+    # the cluster below is actually compiled, and lower the minimum cluster
+    # size to 1 because the cluster holds a single reduce_sum node.
+    previous_cpu_global_jit = pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
+    self.addCleanup(pywrap_tf_session.TF_SetTfXlaCpuGlobalJit,
+                    previous_cpu_global_jit)
+    pywrap_tf_session.TF_SetXlaMinClusterSize(1)
+    self.addCleanup(pywrap_tf_session.TF_SetXlaMinClusterSize, 4)
     config.set_optimizer_jit('autoclustering')
 
   def testReduceSumWithDuplicateAxesAutoClustering(self):
@@ -253,7 +264,10 @@ class ReduceOpsAutoClusteringTest(test_util.TensorFlowTestCase):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
-        f(constant_op.constant(x))
+        # TensorFlowTestCase runs in graph mode, so calling f only traces a
+        # PartitionedCall node; the cluster is compiled and the legalization
+        # error raised when the result is evaluated.
+        self.evaluate(f(constant_op.constant(x)))
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
