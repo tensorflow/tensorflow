@@ -650,7 +650,7 @@ TEST_F(WindowDatasetOpTest, OverflowingTargetBufferSize) {
   EXPECT_THAT(
       Initialize(dataset_params),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                    ::testing::HasSubstr("overflow")));
+                             ::testing::HasSubstr("overflow")));
 }
 
 // Regression test: addition overflow when (window_size - 1) * window_stride + 1
@@ -672,7 +672,39 @@ TEST_F(WindowDatasetOpTest, AddOverflowingTargetBufferSize) {
   EXPECT_THAT(
       Initialize(dataset_params),
       tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                    ::testing::HasSubstr("overflow")));
+                             ::testing::HasSubstr("overflow")));
+}
+
+TEST_F(WindowDatasetOpTest, SizeOneWithExtremeStrideDoesNotOverflow) {
+  auto dataset_params = WindowDatasetParams(
+      RangeDatasetParams(0, 3, 1),
+      /*size=*/1,
+      /*shift=*/1,
+      /*stride=*/std::numeric_limits<int64_t>::max(),
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_VARIANT},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
+  TF_EXPECT_OK(Initialize(dataset_params));
+}
+
+WindowDatasetParams WindowDatasetParamsWithSignedInt64Overflow() {
+  return WindowDatasetParams(RangeDatasetParams(0, 3, 1),
+                             /*size=*/3,
+                             /*shift=*/1,
+                             /*stride=*/static_cast<int64_t>(1) << 62,
+                             /*drop_remainder=*/true,
+                             /*output_dtypes=*/{DT_VARIANT},
+                             /*output_shapes=*/{PartialTensorShape({})},
+                             /*node_name=*/kNodeName);
+}
+
+TEST_F(WindowDatasetOpTest, SignedInt64OverflowingTargetBufferSize) {
+  auto dataset_params = WindowDatasetParamsWithSignedInt64Overflow();
+  EXPECT_THAT(
+      Initialize(dataset_params),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             ::testing::HasSubstr("overflow")));
 }
 
 class SlidingWindowDatasetParams : public DatasetParams {
@@ -720,7 +752,7 @@ class SlidingWindowDatasetParams : public DatasetParams {
   }
 
   std::string dataset_type() const override {
-    return "SlidingWindowDataset";
+    return "SlidingWindow";
   }
 
  private:
