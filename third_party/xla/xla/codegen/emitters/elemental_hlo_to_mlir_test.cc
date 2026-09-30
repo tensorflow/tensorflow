@@ -256,8 +256,7 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
     // CHECK:      %[[J0:.*]] = xla.apply_indexing #xla.indexing_map<"(d0) -> (d0 * 4), domain: d0 in [0, 2]">(%[[Y]])
     // CHECK:      %[[J1:.*]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 3),
-    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6],
-    // CHECK-SAME:              d0 + d1 in [3, 10]">(%[[Z]], %[[I]])
+    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6]">(%[[Z]], %[[I]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
     // CHECK-SAME:        [%[[X]], %[[J0]], %[[J1]]]
     // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC]],
@@ -510,7 +509,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7], (d0 + 1) mod 2 in [0, 0]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -552,7 +551,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla.apply_indexing
-    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7], (d0 + 1) mod 2 in [0, 0]">(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 + 1) / 2 - 1), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla.apply_indexing
     // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
@@ -1023,12 +1022,10 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 1),
-    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2],
-    // CHECK-SAME:     d0 + d1 in [1, 8]">(%[[W]], %[[X]])
+    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> (d0 + d1 - 2),
-    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4],
-    // CHECK-SAME:     d0 + d1 in [2, 13]">(%[[H]], %[[Y]])
+    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1075,12 +1072,10 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
-    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2],
-    // CHECK-SAME:     (d0 + d1) mod 2 in [0, 0]">(%[[W]], %[[X]])
+    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla.apply_indexing
     // CHECK-SAME:     #xla.indexing_map<"(d0, d1) -> ((d0 + d1) / 2),
-    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4],
-    // CHECK-SAME:     (d0 + d1) mod 2 in [0, 0]">(%[[H]], %[[Y]])
+    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32

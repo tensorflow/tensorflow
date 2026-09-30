@@ -86,30 +86,6 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
 
 // -----
 
-#map_with_constraints = #xla.indexing_map<"(d0, d1)[s0] -> (d0, d1 + s0),"
-  "domain: d0 in [1, 2], d1 in [5, 8], s0 in [0, 32],"
-  "d0 mod 2 in [0, 1], d0 + s0 in [1, 10]">
-func.func @apply_indexing_with_constraints(%d0: index, %d1: index, %s0: index) -> (index, index) {
-  %0:2 = xla.apply_indexing #map_with_constraints (%d0, %d1)[%s0]
-  func.return %0#0, %0#1 : index, index
-}
-// CHECK: #[[$MAP_CONSTRAINTS:.*]] = #xla.indexing_map<"
-// CHECK-SAME:              (d0, d1)[s0] -> (d0, d1 + s0)
-// CHECK-SAME:              domain:
-// CHECK-SAME:              d0 in [1, 2]
-// CHECK-SAME:              d1 in [5, 8]
-// CHECK-SAME:              s0 in [0, 32]
-// CHECK-SAME:              d0 + s0 in [1, 10]
-// CHECK-SAME:              d0 mod 2 in [0, 1]
-// CHECK-SAME:             >
-
-// CHECK-LABEL: @apply_indexing_with_constraints
-// CHECK: (%[[d0:.*]]: index, %[[d1:.*]]: index, %[[s0:.*]]: index)
-// CHECK: xla.apply_indexing #[[$MAP_CONSTRAINTS]]
-// CHECK-SAME:  (%[[d0]], %[[d1]])[%[[s0]]]
-
-// -----
-
 #map0 = #xla.indexing_map<"(d0, d1) -> (d0, d1),"
   "domain: d0 in [0, 2], d1 in [1, 3]">
 func.func @apply_indexing_no_symbols(%d0: index, %d1: index) -> (index, index) {

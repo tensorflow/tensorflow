@@ -665,8 +665,32 @@ SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
   for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
     SmallVector<Value, 1> result;
     IndexingMap sub_map = map.GetSubMap(i);
+    sub_map.ClearConstraints();
     b.createOrFold<ApplyIndexingOp>(result, dims, symbols, std::move(sub_map));
     results.append(result);
+  }
+  if (map.GetConstraintsCount() == 0) {
+    return results;
+  }
+  // Add constraints to the apply indexing ops.
+  // TODO(b/542571968): A more principled, but potentially a much more expensive
+  // way to fix this is to allow the constraints in the indexing maps for
+  // apply_indexing ops. That will require to update a lot of tests, but it is
+  // worth trying.
+  SmallVector<Interval> result_ranges = map.ComputeResultRanges();
+  for (const auto& [result, range] : llvm::zip(results, result_ranges)) {
+    // Bare dim/symbol results fold to a pre-existing operand. Its defining op
+    // may not be guarded by `map`'s constraints, so never annotate it.
+    if (llvm::is_contained(dims, result) ||
+        llvm::is_contained(symbols, result)) {
+      continue;
+    }
+    auto apply_op = result.getDefiningOp<ApplyIndexingOp>();
+    if (!apply_op || range.IsUnconstrained()) {
+      continue;
+    }
+    apply_op->setAttr("xla.range",
+                      b.getIndexArrayAttr({range.lower, range.upper}));
   }
   return results;
 }

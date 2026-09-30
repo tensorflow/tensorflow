@@ -24,7 +24,7 @@ ENTRY main {
 }
 
 // CHECK-DAG: #[[$UB_MAP:.+]] = #xla.indexing_map<"(pid) -> (min(pid * -3 + 8, 3)), domain: pid in [0, 2]">
-// CHECK-DAG: #[[$TILE_ID_MAP:.+]] = #xla.indexing_map<"(pid, tid) -> (pid * 3 + tid), domain: pid in [0, 2], tid in [0, 2], pid * 3 + tid in [0, 7]">
+// CHECK-DAG: #[[$TILE_ID_MAP:.+]] = #xla.indexing_map<"(pid, tid) -> (pid * 3 + tid), domain: pid in [0, 2], tid in [0, 2]">
 
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:    %[[LHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,
@@ -37,7 +37,7 @@ ENTRY main {
 
 // CHECK: %[[UB:.*]] = xla.apply_indexing #[[$UB_MAP]](%[[PID]])
 // CHECK: scf.for %[[TID:.*]] = %[[C0]] to %[[UB]] step %[[C1]] {
-// CHECK:   %[[GLOB_TID:.*]] = xla.apply_indexing #[[$TILE_ID_MAP]](%[[PID]], %[[TID]])
+// CHECK:   %[[GLOB_TID:.*]] = xla.apply_indexing #[[$TILE_ID_MAP]](%[[PID]], %[[TID]]) {xla.range = [0 : index, 7 : index]}
 // CHECK:   %[[LHS_TILE:.*]] = xtile.extract %[[LHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
 // CHECK:   %[[RHS_TILE:.*]] = xtile.extract %[[RHS]][%[[GLOB_TID]], %[[C0]]] [1, 4] [1, 1] : memref<8x4xf32> -> tensor<1x4xf32>
 // CHECK:   %[[MIN:.*]] = arith.minimumf %[[LHS_TILE]], %[[RHS_TILE]] : tensor<1x4xf32>

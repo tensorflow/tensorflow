@@ -22,9 +22,9 @@ fusion {
 }
 
 // CHECK:      #indexing_map = #xla.indexing_map<"(pid) -> (min(pid * -1046 + 12544, 1046)), domain: pid in [0, 11]">
-// CHECK:      #indexing_map1 = #xla.indexing_map<"(pid, tid) -> (((pid * 1046 + tid) / 7) mod 56), domain: pid in [0, 11], tid in [0, 1045], pid * 1046 + tid in [0, 12543]">
-// CHECK:      #indexing_map2 = #xla.indexing_map<"(pid, tid) -> (((pid * 1046 + tid) mod 7) * 8), domain: pid in [0, 11], tid in [0, 1045], pid * 1046 + tid in [0, 12543]">
-// CHECK:      #indexing_map3 = #xla.indexing_map<"(pid, tid) -> (((pid * 1046 + tid) / 392) * 8), domain: pid in [0, 11], tid in [0, 1045], pid * 1046 + tid in [0, 12543]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(pid, tid) -> (((pid * 1046 + tid) / 7) mod 56), domain: pid in [0, 11], tid in [0, 1045]">
+// CHECK:      #indexing_map2 = #xla.indexing_map<"(pid, tid) -> (((pid * 1046 + tid) mod 7) * 8), domain: pid in [0, 11], tid in [0, 1045]">
+// CHECK:      #indexing_map3 = #xla.indexing_map<"(pid, tid) -> ((((pid * 1046 + tid) / 392) mod 32) * 8), domain: pid in [0, 11], tid in [0, 1045]">
 
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<1x56x56x256xf32>,
