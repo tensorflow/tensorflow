@@ -35,43 +35,38 @@ from tensorflow.python.platform import test
 class XentOpTest(xent_op_test_base.XentOpTestBase):
 
   @test_util.run_in_graph_and_eager_modes
-  def testDoublePreservesSmallGradient(self):
-    tail_probability = 5.551115123125776e-17
-    for batch_size in (0, 1, 4096):
-      for target_class in (0, 1):
-        for broadcast_labels in (False, True):
-          with self.subTest(batch_size=batch_size, target_class=target_class,
-                            broadcast_labels=broadcast_labels):
-            logits = np.zeros((batch_size, 2), dtype=np.float64)
-            logits[:, target_class] = 37.42994775023705
-            labels = np.zeros(
-                (1 if broadcast_labels else batch_size, 2), dtype=np.float64)
-            labels[:, target_class] = 1.0
-            expected = np.full_like(logits, tail_probability)
-            expected[:, target_class] = -tail_probability
+  def testSmallGradientAcrossDtypes(self):
+    for dtype in (np.float32, np.float64):
+      tail_probability = np.exp(-dtype(37.42994775023705))
+      dominant_gradient = -tail_probability if dtype == np.float64 else 0.0
+      rtol = 1e-14 if dtype == np.float64 else 1e-6
+      for batch_size in (0, 1, 4096):
+        for target_class in (0, 1):
+          for broadcast_labels in (False, True):
+            with self.subTest(dtype=dtype, batch_size=batch_size,
+                              target_class=target_class,
+                              broadcast_labels=broadcast_labels):
+              logits = np.zeros((batch_size, 2), dtype=dtype)
+              logits[:, target_class] = 37.42994775023705
+              labels = np.zeros(
+                  (1 if broadcast_labels else batch_size, 2), dtype=dtype)
+              labels[:, target_class] = 1.0
+              expected = np.full_like(logits, tail_probability)
+              expected[:, target_class] = dominant_gradient
 
-            _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
-                features=logits, labels=labels)
-            gradient = self.evaluate(gradient)
+              _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+                  features=logits, labels=labels)
+              gradient = self.evaluate(gradient)
 
-            self.assertAllClose(expected, gradient, rtol=1e-14, atol=1e-15)
-            self.assertTrue(np.all(gradient[:, target_class] < 0.0))
-            self.assertTrue(np.all(gradient[:, 1 - target_class] > 0.0))
-            self.assertAllClose(gradient[:, 0], -gradient[:, 1], rtol=1e-14,
-                                atol=1e-15)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testFloatKeepsRoundedDominantGradient(self):
-    for target_class in (0, 1):
-      logits = np.zeros((1, 2), dtype=np.float32)
-      logits[0, target_class] = 37.42994775023705
-      labels = np.zeros_like(logits)
-      labels[0, target_class] = 1.0
-      _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
-          features=logits, labels=labels)
-      gradient = self.evaluate(gradient)
-      self.assertEqual(gradient[0, target_class], 0.0)
-      self.assertGreater(gradient[0, 1 - target_class], 0.0)
+              self.assertAllClose(expected, gradient, rtol=rtol, atol=0.0)
+              self.assertTrue(np.all(gradient[:, 1 - target_class] > 0.0))
+              if dtype == np.float64:
+                self.assertTrue(np.all(gradient[:, target_class] < 0.0))
+                self.assertAllClose(gradient[:, 0], -gradient[:, 1], rtol=1e-14,
+                                    atol=1e-15)
+              else:
+                self.assertAllEqual(gradient[:, target_class],
+                                    np.zeros(batch_size, dtype=dtype))
 
   @test_util.run_in_graph_and_eager_modes
   def testRejectsZeroClasses(self):
@@ -99,7 +94,8 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
                 errors_impl.InvalidArgumentError,
                 "Must have at least one class, but got 0 classes"):
               sess.run(result, feed_dict={
-                  features: np.zeros((batch_size, 0), dtype=dtype.as_numpy_dtype)
+                  features: np.zeros((batch_size, 0),
+                                     dtype=dtype.as_numpy_dtype)
               })
 
   @test_util.run_in_graph_and_eager_modes
