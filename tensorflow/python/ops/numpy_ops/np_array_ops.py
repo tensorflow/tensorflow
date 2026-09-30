@@ -987,8 +987,37 @@ def flatten(a, order='C'):
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axes, (tuple, list)):
+    # Match np.transpose behavior: raise a ValueError at trace time for
+    # invalid `axes` instead of letting the underlying op produce an
+    # opaque error deeper in the stack. Duplicate detection uses a single
+    # integer bitmask (no intermediate list/set allocations), and only
+    # runs when the static rank and Python-int entries are known.
+    if len(axes) != maybe_rank:
+      raise ValueError(
+          f"axes don't match array. Expected {maybe_rank} axes, got "
+          f'{len(axes)}.'
+      )
+    normalized_mask = 0
+    for ax in axes:
+      if isinstance(ax, (int, np.integer)):
+        normalized = ax + maybe_rank if ax < 0 else ax
+        if normalized < 0 or normalized >= maybe_rank:
+          raise ValueError(
+              f"Argument 'axes' (received axes={ax}) is out of bounds for "
+              f'array of rank {maybe_rank}.'
+          )
+        bit = 1 << normalized
+        if normalized_mask & bit:
+          raise ValueError('repeated axis in transpose')
+        normalized_mask |= bit
+
   if axes is not None:
-    axes = asarray(axes)
+    # Specify an integer dtype explicitly: asarray([]) would otherwise
+    # infer float64, which the Transpose op's `Tperm` attr rejects.
+    axes = asarray(axes, dtype=np.int32)
   return array_ops.transpose(a=a, perm=axes)
 
 
