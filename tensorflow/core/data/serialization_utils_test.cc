@@ -188,17 +188,41 @@ TEST(SerializationUtilsTest, VariantTensorDataReaderOOB) {
 TEST(SerializationUtilsTest, VariantTensorDataReaderEmptyMetadata) {
   // Metadata that splits into no keys (empty or delimiter-only) must not cause
   // the reader to index the first key out of bounds while building its maps.
-  for (const std::string& metadata : {std::string(""), std::string("@@")}) {
+  for (const std::string& metadata :
+       {std::string(""), std::string("@@"), std::string("@@@@")}) {
     VariantTensorData data;
     data.metadata_ = metadata;
     data.tensors_.push_back(Tensor(DT_INT64, {1}));
     std::vector<const VariantTensorData*> reader_data;
     reader_data.push_back(&data);
     VariantTensorDataReader reader(reader_data);
+    EXPECT_FALSE(reader.Contains("Iterator", "key1"));
     int64_t val_int64;
     EXPECT_EQ(reader.ReadScalar("Iterator", "key1", &val_int64).code(),
               error::NOT_FOUND);
+    Tensor val_tensor;
+    EXPECT_EQ(reader.ReadTensor("Iterator", "key1", &val_tensor).code(),
+              error::NOT_FOUND);
   }
+}
+
+TEST(SerializationUtilsTest, VariantTensorDataReaderSkipsOnlyMalformedEntries) {
+  // A malformed entry must be skipped without affecting valid entries that are
+  // deserialized alongside it.
+  VariantTensorData malformed;
+  malformed.metadata_ = "@@";
+  malformed.tensors_.push_back(Tensor(DT_INT64, {1}));
+  VariantTensorData valid;
+  valid.metadata_ = "Iterator@@key1";
+  Tensor value(DT_INT64, {});
+  value.scalar<int64_t>()() = 42;
+  valid.tensors_.push_back(value);
+  std::vector<const VariantTensorData*> reader_data = {&malformed, &valid};
+  VariantTensorDataReader reader(reader_data);
+  EXPECT_TRUE(reader.Contains("Iterator", "key1"));
+  int64_t val_int64;
+  TF_ASSERT_OK(reader.ReadScalar("Iterator", "key1", &val_int64));
+  EXPECT_EQ(val_int64, 42);
 }
 
 class ParameterizedIteratorStateVariantTest
