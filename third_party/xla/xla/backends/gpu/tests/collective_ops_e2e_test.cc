@@ -194,6 +194,13 @@ class AsyncCollectiveOps
   }
 
  protected:
+  void SetUp() override {
+    CollectiveOpsWithFlagsBase::SetUp();
+    if (!IsHopperAndHigher() && enable_symmetric_buffer_) {
+      GTEST_SKIP() << "Test requires Hopper or higher";
+    }
+  }
+
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
@@ -3845,6 +3852,13 @@ class SymmetricBufferCollectiveOpsTest : public CollectiveOpsTestE2E {
   SymmetricBufferCollectiveOpsTest()
       : CollectiveOpsTestE2E(/*memory_size=*/128 * kMB,
                              /*collectives_memory_size=*/64 * kMB) {}
+
+  void SetUp() override {
+    CollectiveOpsTestE2E::SetUp();
+    if (!IsHopperAndHigher()) {
+      GTEST_SKIP() << "Test requires Hopper or higher";
+    }
+  }
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = CollectiveOpsTestE2E::GetDebugOptionsForTest();
