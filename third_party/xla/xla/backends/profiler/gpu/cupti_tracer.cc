@@ -834,18 +834,8 @@ void SetGenericEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
           << " name=" << cbdata->functionName;
 }
 
-// Supporting CUPTI paired with CUDA, and hence the value of
-// CUPTI_DRIVER_TRACE_CBID_SIZE in cupti_driver_cbid.h are as follows
-// corresponding to different CUDA version: CUDA version -->
-// CUPTI_DRIVER_TRACE_CBID_SIZE
-//   11.0 --> 579
-//   12.0 --> 701
-//   12.8 --> 782
-//   12.9 --> 784
-//   13.0 -->
-// CUDA versions that are impacting code logic here are
-// (11.0), 12.0, 12.8 with their corresponding
-// CUPTI_DRIVER_TRACE_CBID_SIZE value (579), 701, 782 respectively.
+// CUDA 11.0 callbacks are handled by the switch below. Later callbacks are
+// categorized by the CUDA 12.0 and 12.3 version helpers.
 
 // As this is the call back function, no need to check the CUDA
 // runtime/driver version. CBIDs are naturally valid here.
@@ -858,7 +848,7 @@ void SetCallbackEventUponApiExit(
   static absl::NoDestructor<
       std::vector<cuda_versions::CbidCategoryMap const*>> const
       kExtraCbidCategories(
-          {&cuda_versions::GetExtraCallbackIdCategories12080(),
+          {&cuda_versions::GetExtraCallbackIdCategories12030(),
            &cuda_versions::GetExtraCallbackIdCategories12000()});
 
   // Find the category of the CBID, checking newer CUDA version earlier than
@@ -1446,7 +1436,7 @@ CuptiTracer::CreateDefaultCallbackIds() {
   // Adding default Callback cbids according to the CUDA version, considering
   // both compilation and runtime/driver version.
   for (const auto& id_categories :
-       {cuda_versions::GetExtraCallbackIdCategories12080(),
+       {cuda_versions::GetExtraCallbackIdCategories12030(),
         cuda_versions::GetExtraCallbackIdCategories12000()}) {
     for (const auto& [cbid, category] : id_categories) {
       if (category != cuda_versions::CbidCategory::kNone) {
