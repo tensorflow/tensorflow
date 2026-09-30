@@ -339,9 +339,8 @@ class WriteAudioSummaryOp : public OpKernel {
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
     OP_REQUIRES(ctx, t->dims() == 2 || t->dims() == 3,
-                absl::InvalidArgumentError(
-                    absl::StrCat("tensor must have 2 or 3 dims, got ",
-                                 t->shape().DebugString())));
+                errors::InvalidArgument("tensor must have 2 or 3 dims, got ",
+                                        t->shape().DebugString()));
 
     OP_REQUIRES_OK(ctx,
                    s->WriteAudio(step, *t, tag, max_outputs_, sample_rate));

@@ -66,7 +66,7 @@ class SummaryV1AudioOpTest(test.TestCase):
         # Check the rest of the proto
         self._CheckProto(audio_summ, sample_rate, channels, num_frames)
 
-  def _WriteAudioSummary(self, tensor):
+  def _WriteAudioSummary(self, tensor: np.ndarray) -> None:
     """Helper to call write_audio_summary with standard test parameters."""
     logdir = self.get_temp_dir()
     with context.eager_mode():
@@ -83,7 +83,7 @@ class SummaryV1AudioOpTest(test.TestCase):
         writer.close()
 
   def testWriteAudioSummaryRejectsScalarTensor(self):
-    scalar_tensor = np.float32(1.0)
+    scalar_tensor = np.array(1.0, dtype=np.float32)
     with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
       self._WriteAudioSummary(scalar_tensor)
 
