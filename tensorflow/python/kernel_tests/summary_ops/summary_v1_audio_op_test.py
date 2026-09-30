@@ -102,6 +102,11 @@ class SummaryV1AudioOpTest(test.TestCase):
     # no exception should be raised
     self._WriteAudioSummary(three_d_tensor)
 
+  def testWriteAudioSummaryAcceptsEmptyTensor(self):
+    empty_tensor = np.zeros((1, 0), dtype=np.float32)
+    # no exception should be raised
+    self._WriteAudioSummary(empty_tensor)
+
   def testWriteAudioSummaryRejects4DTensor(self):
     four_d_tensor = np.zeros((1, 10, 2, 2), dtype=np.float32)
     with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
