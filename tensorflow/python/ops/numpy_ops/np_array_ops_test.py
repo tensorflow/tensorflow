@@ -1406,7 +1406,7 @@ class ArrayMethodsTest(test.TestCase):
     x = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
                              dtypes.float32)
     ind = constant_op.constant([[0], [2]], dtype=dtypes.int64)
-    for axis in (2, -3):
+    for axis in (2, -3, -5):
 
       @def_function.function(
           input_signature=[

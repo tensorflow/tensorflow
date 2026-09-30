@@ -1839,13 +1839,20 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
     # a fully dynamic-rank XLA-compiled function.
     axis_t = ops.convert_to_tensor(axis)
     rank_t = math_ops.cast(ops.convert_to_tensor(rank), axis_t.dtype)
-    control_flow_assert.Assert(
+    assert_op = control_flow_assert.Assert(
         math_ops.reduce_all(
             math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
         ),
         ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
     )
-    axis = axis + rank if axis < 0 else axis
+    # Normalize under the assert's control dependency so the OOB axis can
+    # never flow downstream. Tensor-based select (instead of a Python
+    # branch) also keeps this correct when `axis` itself is a scalar
+    # Tensor. Note: under `jit_compile=True`, tf2xla still lowers `Assert`
+    # to a no-op (see tf2xla/kernels/assert_op.cc), so the error does not
+    # surface inside a fully dynamic-rank XLA-compiled function.
+    with ops.control_dependencies([assert_op]):
+      axis = array_ops.where_v2(axis_t < 0, axis_t + rank_t, axis_t)
 
   # Broadcast shapes to match, ensure that the axis of interest is not
   # broadcast.
