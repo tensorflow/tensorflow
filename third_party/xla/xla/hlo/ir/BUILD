@@ -171,6 +171,7 @@ xla_cc_test(
         ":hlo",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",

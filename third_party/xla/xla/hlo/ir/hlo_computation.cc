@@ -778,7 +778,10 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       }
       auto operand = caller->mutable_operand(parameter_number);
       caller->RemoveOperandAt(parameter_number);
-      caller->DetachFrom(operand);
+      // Another parameter of the caller may still read the operand.
+      if (!absl::c_linear_search(caller->operands(), operand)) {
+        caller->DetachFrom(operand);
+      }
       // Cleanup operand shape embedded into the async-start shape.
       if (caller->opcode() == HloOpcode::kAsyncStart) {
         std::vector<Shape>* operand_shapes = caller->mutable_shape()

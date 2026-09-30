@@ -914,6 +914,38 @@ TEST_F(HloInstructionTest, DetachFromOperandsWithDuplicateOperands) {
   EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
 }
 
+// Each aliasing entry keeps naming the same operand: the entry on the second
+// x moves to the x that stays, and the entry on y follows y down a slot.
+TEST_F(HloInstructionTest, DeduplicateFusionOperandsRemapsAliasing) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+f {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  p2 = f32[8] parameter(2)
+  a = f32[8] add(p0, p1)
+  b = f32[8] add(p1, p2)
+  ROOT t = (f32[8], f32[8]) tuple(a, b)
+}
+
+ENTRY e {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  ROOT fusion = (f32[8], f32[8]) fusion(x, x, y), kind=kLoop, output_to_operand_aliasing={{0}: (1, {}), {1}: (2, {})}, calls=f
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  ASSERT_OK(fusion->DeduplicateFusionOperands());
+  ASSERT_EQ(fusion->operand_count(), 2);
+  const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      expected = {{{0}, {0, {}}}, {{1}, {1, {}}}};
+  EXPECT_EQ(fusion->output_to_operand_aliasing(), expected);
+}
+
 TEST_F(HloInstructionTest, AsyncChainTraversalAndShapesWithIntermediaries) {
   constexpr absl::string_view kHlo = R"(
 HloModule test
