@@ -472,13 +472,11 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
 
   // Must run after all optimization passes: middle-end passes behave
   // differently on instructions that already carry `contract`.
-  //
-  // TODO(b/560320144): `AllowFPOpFusion = Fast` is deliberately still set in
-  // service/cpu/cpu_aot_loader.cc:53, tools/hlo_opt/cpu_opt.cc:217,
-  // backends/cpu/testlib/kernel_runner.cc:132 and
-  // service/cpu/ir_emitter_test.cc:258. Drop those once the upstream change
-  // has landed.
   llvm_ir::SetAllowContractOnFpArithmetic(module);
+  // Must run after `contract` is set and before sanitizer instrumentation, so
+  // that instrumentation cannot split contractable fmul/fadd pairs into
+  // separate basic blocks.
+  llvm_ir::SinkContractableFMulToFAddFSub(module);
 
   // Sanitizer instrumentation must be the last IR transformation.
   if (options_.dfsan_enabled) {

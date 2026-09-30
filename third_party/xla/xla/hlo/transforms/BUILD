@@ -726,6 +726,7 @@ cc_library(
     hdrs = ["hlo_module_stitcher.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/cleanup",
