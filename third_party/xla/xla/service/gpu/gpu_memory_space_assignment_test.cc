@@ -441,7 +441,7 @@ TEST_F(GpuMemorySpaceAssignmentTest,
     HloModule m
 
     ENTRY main {
-      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", frontend_attributes={results_memory_spaces="{0:1}"}
+      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", frontend_attributes={results_memory_spaces="{0:7}"}
     }
   )";
 
@@ -474,14 +474,14 @@ TEST_F(GpuMemorySpaceAssignmentTest,
 }
 
 TEST(ParseIndexMemorySpacePairsTest, SinglePair) {
-  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1}"));
+  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:7}"));
   ASSERT_EQ(pairs.size(), 1);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
 }
 
 TEST(ParseIndexMemorySpacePairsTest, MultiplePairs) {
-  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:1,2:2}"));
+  ASSERT_OK_AND_ASSIGN(auto pairs, ParseIndexMemorySpacePairs("{0:7,2:2}"));
   ASSERT_EQ(pairs.size(), 2);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
@@ -496,7 +496,7 @@ TEST(ParseIndexMemorySpacePairsTest, EmptyBraces) {
 
 TEST(ParseIndexMemorySpacePairsTest, WhitespaceHandling) {
   ASSERT_OK_AND_ASSIGN(auto pairs,
-                       ParseIndexMemorySpacePairs("{ 0 : 1 , 2 : 0 }"));
+                       ParseIndexMemorySpacePairs("{ 0 : 7 , 2 : 0 }"));
   ASSERT_EQ(pairs.size(), 2);
   EXPECT_EQ(pairs[0].first, 0);
   EXPECT_EQ(pairs[0].second, MemorySpaceColor::kCollective);
@@ -505,7 +505,7 @@ TEST(ParseIndexMemorySpacePairsTest, WhitespaceHandling) {
 }
 
 TEST(ParseIndexMemorySpacePairsTest, MissingBraces) {
-  EXPECT_FALSE(ParseIndexMemorySpacePairs("0:1").ok());
+  EXPECT_FALSE(ParseIndexMemorySpacePairs("0:7").ok());
 }
 
 TEST(ParseIndexMemorySpacePairsTest, InvalidPairFormat) {
@@ -542,7 +542,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallOperandMemorySpace) {
       p1 = f32[1024]{0} parameter(1)
       ROOT custom-call = f32[1024]{0} custom-call(p0, p1),
         custom_call_target="my_custom_call",
-        frontend_attributes={operands_memory_spaces="{0:1}"}
+        frontend_attributes={operands_memory_spaces="{0:7}"}
     }
   )";
 
@@ -557,8 +557,9 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallOperandMemorySpace) {
   DependencyHloOrdering ordering(module.get());
   EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
-  // Operand 0 (p0) should be colored with memory space 1.
-  EXPECT_EQ(FindColorByName(*alias_analysis, "p0"), 1);
+  // Operand 0 (p0) should be colored with memory space kCollective.
+  EXPECT_EQ(FindColorByName(*alias_analysis, "p0"),
+            (int)MemorySpaceColor::kCollective);
   // Operand 1 (p1) should remain in default memory space.
   EXPECT_EQ(FindColorByName(*alias_analysis, "p1"),
             (int)MemorySpaceColor::kDefault);
@@ -572,7 +573,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallResultMemorySpace) {
       p0 = f32[1024]{0} parameter(0)
       ROOT custom-call = f32[1024]{0} custom-call(p0),
         custom_call_target="my_custom_call",
-        frontend_attributes={results_memory_spaces="{0:1}"}
+        frontend_attributes={results_memory_spaces="{0:7}"}
     }
   )";
 
@@ -587,8 +588,9 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallResultMemorySpace) {
   DependencyHloOrdering ordering(module.get());
   EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
-  // The custom call result should be colored with memory space 1.
-  EXPECT_EQ(FindColorByName(*alias_analysis, "custom-call"), 1);
+  // The custom call result should be colored with memory space kCollective.
+  EXPECT_EQ(FindColorByName(*alias_analysis, "custom-call"),
+            (int)MemorySpaceColor::kCollective);
 }
 
 TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
@@ -599,7 +601,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
       p0 = f32[1024]{0} parameter(0)
       custom-call = (f32[1024]{0}, f32[512]{0}) custom-call(p0),
         custom_call_target="my_custom_call",
-        frontend_attributes={results_memory_spaces="{0:1,1:1}"}
+        frontend_attributes={results_memory_spaces="{0:7,1:7}"}
       ROOT gte = f32[1024]{0} get-tuple-element(custom-call), index=0
     }
   )";
@@ -621,8 +623,8 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
       if (value->instruction()->name() != "custom-call") continue;
       const ShapeIndex& idx = value->defining_index();
       if (idx.size() == 1 && (idx[0] == 0 || idx[0] == 1)) {
-        EXPECT_EQ(value->color(), 1)
-            << "Tuple element " << idx[0] << " should have color 1";
+        EXPECT_EQ(value->color(), (int)MemorySpaceColor::kCollective)
+            << "Tuple element " << idx[0] << " should have color kCollective";
       }
     }
   }
@@ -642,8 +644,8 @@ TEST_P(GpuMosaicCollectiveMemorySpaceAssignmentTest,
     HloModule m
     ENTRY main {
       ROOT %custom-call.9 = (f16[8])",
-      IsMosaicWithCollectiveMetadata() ? "{0:S(1)}" : "", R"(, f16[8])",
-      IsMosaicWithCollectiveMetadata() ? "{0:S(1)}" : "",
+      IsMosaicWithCollectiveMetadata() ? "{0:S(7)}" : "", R"(, f16[8])",
+      IsMosaicWithCollectiveMetadata() ? "{0:S(7)}" : "",
       R"() custom-call(), custom_call_target="mosaic_gpu_v2"
     }
   )");

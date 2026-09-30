@@ -335,6 +335,21 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
+tf_cuda_only_cc_test(
+    name = "conv_2d_gpu_test",
+    size = "small",
+    srcs = [
+        "conv_2d_gpu.h",
+        "conv_2d_gpu_test.cu.cc",
+    ],
+    features = if_cuda(["-layering_check"]),
+    deps = [
+        ":conv_2d",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
@@ -2801,7 +2816,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tensor_array_ops",
     prefix = "tensor_array_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core/util:overflow"],
 )
 
 DYNAMIC_DEPS = [
@@ -3822,6 +3837,15 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "integer_pow_gpu",
+    prefix = "integer_pow_gpu",
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_kernel_library(
     name = "cross_op",
     prefix = "cross_op",
     deps = MATH_DEPS,
@@ -3842,6 +3866,7 @@ tf_kernel_library(
     ),
     prefix = "cwise_op",
     deps = MATH_DEPS + [
+        ":integer_pow_gpu",
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
         "@com_google_absl//absl/base:prefetch",
         "@com_google_absl//absl/status",

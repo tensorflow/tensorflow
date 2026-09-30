@@ -79,6 +79,7 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
     case Thunk::kAllGather:
       return DebugOptions::ALLGATHER;
     case Thunk::kAllReduce:
+    case Thunk::kCollectiveKernel:
       return DebugOptions::ALLREDUCE;
     case Thunk::kAllToAll:
       return DebugOptions::ALLTOALL;
@@ -86,6 +87,8 @@ std::optional<DebugOptions::CollectiveOpType> GetCollectiveOpType(
       return DebugOptions::COLLECTIVEBROADCAST;
     case Thunk::kCollectivePermute:
       return DebugOptions::COLLECTIVEPERMUTE;
+    case Thunk::kCollectiveReduce:
+      return DebugOptions::ALLREDUCE;
     case Thunk::kRaggedAllToAll:
       return DebugOptions::RAGGEDALLTOALL;
     case Thunk::kReduceScatter:
@@ -201,6 +204,8 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kPartitionId:
     case Thunk::kReplicaId:
       return DebugOptions::FUSION;
+    case Thunk::kCollectiveKernel:
+      return DebugOptions::COLLECTIVES_KERNEL;
     case Thunk::kWhile:
       return DebugOptions::WHILE;
     case Thunk::kConditional:
@@ -212,6 +217,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAll:
     case Thunk::kCollectiveBroadcast:
     case Thunk::kCollectivePermute:
+    case Thunk::kCollectiveReduce:
     case Thunk::kGroup:
     case Thunk::kRaggedAllToAll:
     case Thunk::kReduceScatter:

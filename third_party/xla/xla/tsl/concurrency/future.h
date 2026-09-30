@@ -1719,7 +1719,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<const Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();
@@ -1743,7 +1743,7 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures) {
   VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
 
   if (futures.empty()) {
-    return Future<std::vector<T>>({});
+    return Future<std::vector<T>>(std::vector<T>{});
   }
 
   auto [promise, future] = MakePromise<std::vector<T>>();

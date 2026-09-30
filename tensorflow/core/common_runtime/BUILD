@@ -3115,11 +3115,11 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "direct_session_test",
-    size = "medium",
+    size = "large",
     srcs = ["direct_session_test.cc"],
     args = [] + if_cuda(["--heap_check="]),  # The GPU tracer leaks memory
     features = ["-layering_check"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

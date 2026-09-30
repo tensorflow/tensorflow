@@ -29,7 +29,7 @@ fusion {
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[ARG0:[^:]+]]: memref<1x56x56x256xf32>,
 // CHECK-SAME:     %[[ARG1:[^:]+]]: memref<1x256x56x56xbf16>,
-// CHECK-SAME:     %[[PID:[^:]+]]: index)
+// CHECK-SAME:     %[[PID:[^:]+]]: index {xla.range = [0 : index, 11 : index]})
 
 // CHECK:        %[[C0:.*]] = arith.constant 0 : index
 // CHECK:        %[[C1:.*]] = arith.constant 1 : index
@@ -65,15 +65,17 @@ fusion {
 // NEW-VECTOR:         scf.for
 // NEW-VECTOR:           %[[READ:.*]] = vector.transfer_read %{{.*}}[%{{.*}}], %[[PAD]] {in_bounds = [true, true, true, true]} : memref<1x56x56x256xf32>, vector<1x1x8x8xf32>
 // NEW-VECTOR:           %[[TRUNC:.*]] = arith.truncf %[[READ]] : vector<1x1x8x8xf32> to vector<1x1x8x8xbf16>
-// NEW-VECTOR:           %[[TRANS:.*]] = vector.transpose %[[TRUNC]], [0, 3, 1, 2] : vector<1x1x8x8xbf16> to vector<1x8x1x8xbf16>
-// NEW-VECTOR:           vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}] {in_bounds = [true, true, true, true]} : vector<1x8x1x8xbf16>, memref<1x256x56x56xbf16>
+// NEW-VECTOR:           %[[CAST:.*]] = arith.bitcast %[[TRUNC]] : vector<1x1x8x8xbf16> to vector<1x1x8x8xi16>
+// NEW-VECTOR:           %[[TRANS:.*]] = vector.transpose %[[CAST]], [0, 3, 1, 2] : vector<1x1x8x8xi16> to vector<1x8x1x8xi16>
+// NEW-VECTOR:           vector.transfer_write %[[TRANS]], %{{.*}}[%{{.*}}] {in_bounds = [true, true, true, true]} : vector<1x8x1x8xi16>, memref<1x256x56x56xi16>
 
 // NEW-VECTOR-LLVM-LABEL: llvm.func internal @wrapped_fusion_impl
 // NEW-VECTOR-LLVM-NOT:     llvm.alloca
 // NEW-VECTOR-LLVM-COUNT-8: llvm.load %{{.*}} <alignment = 4> : !llvm.ptr -> vector<8xf32>
 // NEW-VECTOR-LLVM-COUNT-8: llvm.call @xla.fptrunc.v8f32.to.v8bf16
-// NEW-VECTOR-LLVM:         llvm.shufflevector
-// NEW-VECTOR-LLVM-COUNT-8: llvm.store %{{.*}}, %{{.*}} <alignment = 2> : vector<8xbf16>, !llvm.ptr
+// NEW-VECTOR-LLVM-COUNT-8: llvm.bitcast %{{.*}} : vector<8xbf16> to vector<8xi16>
+// NEW-VECTOR-LLVM:         llvm.shufflevector %{{.*}}, %{{.*}} [{{.*}}] : vector<8xi16>
+// NEW-VECTOR-LLVM-COUNT-8: llvm.store %{{.*}}, %{{.*}} <alignment = 2> : vector<8xi16>, !llvm.ptr
 
 ENTRY %main {
   %input = f32[1,56,56,256]{3,2,1,0} parameter(0)

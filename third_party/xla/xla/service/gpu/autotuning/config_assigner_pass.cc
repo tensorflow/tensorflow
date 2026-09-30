@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
@@ -393,7 +394,8 @@ ConfigAssignerPass::GetEnabledBackends(
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn, Compiler* compiler,
-    se::PlatformId platform_id) {
+    se::PlatformId platform_id, tsl::thread::ThreadPool* thread_pool,
+    MlirContextPool* mlir_context_pool) {
   std::vector<autotuner::Backend> autotune_backends;
   for (const auto& backend :
        debug_options.xla_gpu_experimental_autotune_backends()) {
@@ -436,7 +438,8 @@ ConfigAssignerPass::GetEnabledBackends(
                    registry.FindObject<GetCodegenBackends>(platform_id));
   std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
       stream_exec, device_allocator, &debug_options, compiler, target_config,
-      alias_info, mlir_context, shape_size_fn, autotune_backends);
+      alias_info, mlir_context, shape_size_fn, autotune_backends, thread_pool,
+      mlir_context_pool);
 
   return backends;
 }

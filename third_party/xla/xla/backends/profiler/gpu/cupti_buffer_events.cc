@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
@@ -114,23 +115,6 @@ constexpr int kCuptiActivityMarkerVersion = 2;
 using CuptiActivityMarkerTy = CUpti_ActivityMarker;
 constexpr int kCuptiActivityMarkerVersion = 1;
 #endif  // CUDA_VERSION >= 11070
-
-// Maps an OverheadKind enum to a const string.
-const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
-      return "COMPILER";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
-      return "BUFFER_FLUSH";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
-      return "INSTRUMENTATION";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
-      return "RESOURCE";
-    default:
-      break;
-  }
-  return "<UNKNOWN>";
-}
 
 const char *getActivityUnifiedMemoryKindString(
     CUpti_ActivityUnifiedMemoryCounterKind kind) {
@@ -421,7 +405,7 @@ void AddCuptiOverheadActivityEvent(CuptiEventCollectorDelegate &collector,
                                    const CUpti_ActivityOverhead *overhead) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Overhead;
-  event.name = getActivityOverheadKindString(overhead->overheadKind);
+  event.name = GetActivityOverheadKindString(overhead->overheadKind);
   event.source = CuptiTracerEventSource::Activity;
   event.start_time_ns = overhead->start;
   event.end_time_ns = overhead->end;
@@ -837,6 +821,26 @@ absl::string_view GetMemoryKindName(int8_t memory_kind) {
     case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
     default:
       return "unknown";
+  }
+}
+
+std::string GetActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
+  switch (kind) {
+    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
+      return "COMPILER";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
+      return "BUFFER_FLUSH";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
+      return "INSTRUMENTATION";
+    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
+      return "RESOURCE";
+    default:
+      if (absl::string_view extra_str =
+              cuda_versions::GetExtraActivityOverheadKindString12080(kind);
+          !extra_str.empty()) {
+        return std::string(extra_str);
+      }
+      return absl::StrCat("Overhead::UNKNOWN:", static_cast<int>(kind));
   }
 }
 

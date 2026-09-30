@@ -201,6 +201,33 @@ TEST_F(YnnReduceTest, ConvertReduce) {
   )");
 }
 
+TEST_F(YnnReduceTest, CopyDegenerateLayout) {
+  const char* hlo_text = R"(
+  HloModule copy_degenerate_layout
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[128,64,1]{1,0,2} parameter(0)
+    copied = f32[128,64,1]{2,1,0} copy(input)
+    init = f32[] constant(0)
+    ROOT result = f32[128] reduce(copied, init), dimensions={1,2}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: copy
+    CHECK: reduce
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
 struct DotTestConfig {
   absl::string_view lhs_dtype;
   absl::string_view rhs_dtype;

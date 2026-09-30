@@ -107,6 +107,41 @@ the XLA runner could load and execute the program. That means that there should
 be no pointers to `HloInstruction` or to other parts of the compiler or the
 `StreamExecutor`.
 
+##### GPU Compatibility Window {#gpu-compatibility-window}
+
+XLA:GPU guarantees the following compatibility windows between the compiler
+that produces a serialized program and the runtime that executes it:
+
+*   **6 months backward compatibility**: a runtime must be able to execute
+    programs compiled by a version of XLA up to 6 months older.
+*   **2 weeks forward compatibility**: a program compiled by a newer version of
+    XLA must run on a runtime that is up to 2 weeks older.
+
+**Backward compatibility** means the runtime must keep executing everything
+older compilers may have emitted, so existing thunks must not be removed from
+the runtime. To retire a thunk, first stop emitting it from the compiler, and
+only remove its runtime support 6 months later.
+
+**Forward compatibility** means the compiler must not emit anything the runtime
+cannot yet deserialize or execute. Changes that affect the serialized thunk
+sequence, such as adding a new thunk kind or a field the runtime must
+understand, must therefore land in two stages:
+
+1.  **Runtime first.** Add the thunk, its proto definitions, and
+    deserialization support, without emitting it from the compiler.
+2.  **Compiler after 2 weeks.** Once the runtime change has been submitted for
+    at least 2 weeks, enable emission in the compiler (e.g. thunk emitter, HLO
+    passes that produce the new op).
+
+There are two ways to do this:
+
+*   Split the change into two PRs and send the compiler PR once the runtime
+    change is 2 weeks old.
+*   Land both in a single PR, but guard the compiler side behind a
+    [feature flag](#code-standards) that is off by default, and flip it in a
+    follow-up after 2 weeks. This also lets you test the full path end to end
+    in the meantime.
+
 ### Code standards
 
 *   *Coding style*: We follow [Google's code style guide](https://google.github.io/styleguide/).
@@ -138,6 +173,12 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
     with a flag first (e.g., via `DebugOptions`). This allows for easy rollback
     of the flag flip if problems arise, and affected users can temporarily
     set the flag themselves before a rollback is performed.
+
+*   *Preprocessor Conditionals (`#ifdef`)*: Avoid using `#if` / `#ifdef` for
+    backend-, hardware-, or version-specific logic whenever possible. Prefer
+    runtime checks via `StreamExecutor`'s `DeviceDescription` or separate build
+    targets. See [The Hitchhiker's Guide to Fewer `#ifdef`s in XLA](./avoiding_ifdefs.md)
+    for details and examples.
 
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place

@@ -90,10 +90,12 @@ class CommonPjRtClient : public PjRtClient {
   virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
 
-  virtual void DelinearizeAsync(
-      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
-      PjRtMemorySpace* memory_space, const Shape& shape,
-      MutableLiteralBase* literal, tsl::Promise<void> promise);
+  // Delinearizes `input_data`, which has the on-device layout of `shape`, into
+  // `literal`.
+  virtual absl::Status Delinearize(absl::Span<const uint8_t> input_data,
+                                   const Shape& shape,
+                                   MutableLiteralBase* literal,
+                                   PjRtMemorySpace* memory_space);
 
   // TODO(parkers): Properly support error buffers on GPU and CPU.
   virtual bool include_raw_buffer_in_ready_event() const { return false; }
@@ -259,7 +261,9 @@ class CommonPjRtClient : public PjRtClient {
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
-    return raw_client()->CreateLinkedEventPromise(memory_space, debug_info);
+    return raw_client()->CreateLinkedEventPromise(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        debug_info);
   }
 
   // Track a user-provided future with attached debug_info (if
@@ -301,7 +305,9 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) {
-    return raw_client()->CreateDeviceEvent(memory_space, std::move(dependency));
+    return raw_client()->CreateDeviceEvent(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        std::move(dependency));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
@@ -314,7 +320,8 @@ class CommonPjRtClient : public PjRtClient {
   tsl::AsyncValueRef<bool> CreateAllocationEventForTransfers(
       PjRtMemorySpace* memory_space,
       const std::optional<std::string>& debug_info) {
-    if (raw_client()->ShouldCreateAsyncAllocationEvent(memory_space)) {
+    if (raw_client()->ShouldCreateAsyncAllocationEvent(
+            memory_space->kind_id())) {
       tsl::AsyncValueRef<bool> result =
           tsl::MakeConstructedAsyncValueRef<bool>();
       if (event_tracker()) {
@@ -584,10 +591,6 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError(
         "GetDeviceAddressAlignment is not implemented.");
   }
-
-  absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
-                                     const Shape& shape,
-                                     MutableLiteralBase* literal);
 
   // Does the provided shape require runtime shape metadata when being
   // linearized into the provided memory space?
@@ -1097,9 +1100,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
                           PjRtDeviceEventPromiseRef usage_event_promise,
                           Future<std::string> serialized_descriptor,
                           PjRtBuffer::RemoteSendCallback on_done) override {
-    raw_client()->ScheduleRemoteSend(memory_space, raw_buffer,
-                                     definition_events, usage_event_promise,
-                                     serialized_descriptor, std::move(on_done));
+    raw_client()->ScheduleRemoteSend(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        raw_buffer, definition_events, usage_event_promise,
+        serialized_descriptor, std::move(on_done));
   }
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
@@ -1260,9 +1264,7 @@ class CommonPjRtDevice : public PjRtDevice {
   absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
+      absl::string_view description) const override;
 
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;

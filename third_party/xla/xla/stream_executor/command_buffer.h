@@ -169,11 +169,27 @@ class CommandBuffer {
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
       StreamPriority priority = StreamPriority::Default) = 0;
 
+  // Creates a kernel launch command from an externally-managed native function.
+  // Nolint because it matches existing CreateLaunch virtual method signature
+  // precedent for default arguments.
+  // NOLINTNEXTLINE
+  virtual absl::StatusOr<const Command*> CreateLaunch(
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args,
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) = 0;
+
   // Updates a kernel launch command.
   virtual absl::Status UpdateLaunch(
       const Command* command, const ThreadDim& threads, const BlockDim& blocks,
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
       const KernelArgs& args) = 0;
+
+  virtual absl::Status UpdateLaunch(
+      const Command* command, const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.

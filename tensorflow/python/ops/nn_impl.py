@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import ctc_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
@@ -682,6 +683,131 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
+def _check_dilated_depthwise_shapes(input, filter, rate, padding, data_format):
+  """Raises a descriptive error if a dilated depthwise conv has no window.
+
+  `with_space_to_batch` evaluates the dilated convolution densely over
+  space-to-batch blocks. When the input (plus any explicit padding) is smaller
+  than the dilated filter, no valid window exists: `tf.function` then fails
+  with an opaque negative-dimension error while eager silently returns a tensor
+  of the wrong shape. Validating the shapes up front gives both execution modes
+  the same descriptive error.
+
+  Shapes that are not statically known are left for the op to report at run
+  time. "SAME" padding always admits an output and is not checked.
+
+  Args:
+    input: The `input` argument of `depthwise_conv2d`.
+    filter: The `filter` argument of `depthwise_conv2d`.
+    rate: The dilation rate, a list of two positive ints.
+    padding: The `padding` argument of `depthwise_conv2d`.
+    data_format: The `data_format` argument of `depthwise_conv2d`.
+
+  Raises:
+    ValueError: If a dilated filter does not fit in the padded input.
+  """
+  if all(r == 1 for r in rate):
+    return
+
+  channels_first = (data_format or "").startswith("NC")
+  if isinstance(padding, str):
+    if padding == "SAME":
+      # `with_space_to_batch` pads enough for an output to always exist.
+      return
+    spatial_pads = [(0, 0), (0, 0)]
+  else:
+    # Drop the batch and channel dimensions, keep the two spatial ones.
+    spatial_pads = [list(p) for p in padding]
+    spatial_pads = spatial_pads[2:] if channels_first else spatial_pads[1:-1]
+
+  if input.shape.rank != 4 or filter.shape.rank != 4:
+    return
+  in_shape = input.shape.as_list()
+  f_shape = filter.shape.as_list()
+  if None in in_shape or None in f_shape:
+    return
+
+  in_spatial = in_shape[2:4] if channels_first else in_shape[1:3]
+  # The filter layout is `[height, width, in_channels, channel_multiplier]`
+  # regardless of `data_format`.
+  f_spatial = f_shape[0:2]
+
+  for i, dim_name in enumerate(("height", "width")):
+    available = in_spatial[i] + spatial_pads[i][0] + spatial_pads[i][1]
+    dilated = (f_spatial[i] - 1) * rate[i] + 1
+    if available < dilated:
+      raise ValueError(
+          f"Input {dim_name} ({in_spatial[i]}) plus padding "
+          f"({spatial_pads[i][0] + spatial_pads[i][1]}) is too small for "
+          f"dilation rate {rate[i]} with filter size {f_spatial[i]}: the "
+          f"dilated filter spans {dilated} values but only {available} are "
+          "available, so the convolution has no valid window."
+      )
+
+
+def _assert_dilated_depthwise_fits(input, filter, rate, padding, data_format):
+  """Guards a dilated depthwise conv whose spatial shapes are dynamic.
+
+  `_check_dilated_depthwise_shapes` cannot see shapes that are unknown at
+  tracing time (a `tf.function` accepting a `TensorSpec` with `None`
+  dimensions). Without a run-time check, an input too small for the dilated
+  filter makes the underlying op silently return a wrongly shaped result
+  instead of failing, which is the `tf.function` half of #113320.
+
+  Args:
+    input: The `input` argument of `depthwise_conv2d`.
+    filter: The `filter` argument of `depthwise_conv2d`.
+    rate: The dilation rate, a list of two positive ints.
+    padding: The `padding` argument of `depthwise_conv2d`.
+    data_format: The `data_format` argument of `depthwise_conv2d`.
+
+  Returns:
+    `input`, with a control dependency on the shape assertion.
+  """
+  # A rank other than 4 is invalid for the op itself; leave it to the op to
+  # report, rather than slicing `array_ops.shape` below on a rank we cannot
+  # interpret.
+  if (input.shape.rank is not None and input.shape.rank != 4) or (
+      filter.shape.rank is not None and filter.shape.rank != 4
+  ):
+    return input
+
+  channels_first = (data_format or "").startswith("NC")
+  if isinstance(padding, str):
+    pads = [0, 0]
+  else:
+    # Drop the batch and channel dimensions, keep the two spatial ones.
+    spatial_pads = [list(p) for p in padding]
+    spatial_pads = spatial_pads[2:] if channels_first else spatial_pads[1:-1]
+    pads = [
+        spatial_pads[0][0] + spatial_pads[0][1],
+        spatial_pads[1][0] + spatial_pads[1][1],
+    ]
+
+  in_shape = array_ops.shape(input)
+  f_shape = array_ops.shape(filter)
+  in_spatial = in_shape[2:4] if channels_first else in_shape[1:3]
+  # The filter layout is `[height, width, in_channels, channel_multiplier]`
+  # regardless of `data_format`.
+  f_spatial = f_shape[0:2]
+
+  pads_tensor = ops.convert_to_tensor(pads, dtype=in_spatial.dtype)
+  available = in_spatial + pads_tensor
+  dilated = (f_spatial - 1) * ops.convert_to_tensor(
+      rate, dtype=f_spatial.dtype
+  ) + 1
+  check = check_ops.assert_greater_equal(
+      available,
+      dilated,
+      message=(
+          "Dilated depthwise convolution: the input (plus padding) is "
+          "smaller than the dilated filter, so there is no valid window."
+      ),
+  )
+  with ops.control_dependencies([check]):
+    return array_ops.identity(input)
+
+
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 @dispatch.add_dispatch_support
@@ -787,6 +913,21 @@ def depthwise_conv2d(input,
           f"`strides` {strides}"
       )
 
+    _check_dilated_depthwise_shapes(input, filter, rate, padding, data_format)
+
+    # The check above only sees static shapes. When tracing a `tf.function`
+    # whose spatial dimensions are unknown, fall back to a run-time assertion
+    # so that an oversized dilated filter fails instead of silently producing a
+    # wrongly shaped result. "SAME" padding always admits an output.
+    if any(_ > 1 for _ in rate) and not (
+        isinstance(padding, str) and padding == "SAME"
+    ):
+      in_shape = input.shape.as_list() if input.shape.rank == 4 else None
+      if in_shape is None or None in in_shape:
+        input = _assert_dilated_depthwise_fits(
+            input, filter, rate, padding, data_format
+        )
+
     # Use depthwise_conv2d_native if executing on TPU.
     if device_context.enclosing_tpu_context() is not None:
       if data_format == "NCHW":
@@ -850,7 +991,8 @@ def depthwise_conv2d_v2(input,
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
   If any value in `dilations` is greater than 1, we perform atrous depthwise
   convolution, in which case all values in the `strides` tensor must be equal
-  to 1.
+  to 1; a `ValueError` is raised otherwise. A dilated depthwise convolution is
+  evaluated with space-to-batch, which cannot express a stride.
 
   Usage Example:
 

@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/collective_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
@@ -306,6 +307,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::DispatchAsyncDone(
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveReduce:
       return EmitAsyncDone(instr, instr->operand(0));
 
     // Complete a fusion or call wrapped in generic async start/done.
@@ -1249,6 +1251,7 @@ class NativeCustomCallEmitterContextImpl
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNativeCustomCallThunks(
     const HloCustomCallInstruction* instr, NativeCustomCallHandlerRef handler) {
+  auto released_lock_keeper = llvm_options_lock_->TemporarilyReleaseLock();
   NativeCustomCallEmitterContextImpl ctx(this, instr);
   return handler(*instr, ctx);
 }
@@ -2094,6 +2097,23 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
           Thunk::kCollectiveBroadcast,
           Cast<HloCollectiveBroadcastInstruction>(collective), std::nullopt);
 
+    case HloOpcode::kCollectiveReduce: {
+      if (!ir_emitter_context_->debug_options()
+               .xla_gpu_experimental_emit_collective_reduce()) {
+        return Internal(
+            "Unsupported collective instruction: %s. Set "
+            "--xla_gpu_experimental_emit_collective_reduce to enable "
+            "CollectiveReduce support on GPU.",
+            collective->ToString());
+      }
+      auto* collective_reduce =
+          Cast<HloCollectiveReduceInstruction>(collective);
+      return EmitCollective<CollectiveReduceThunk,
+                            HloCollectiveReduceInstruction>(
+          Thunk::kCollectiveReduce, collective_reduce,
+          collective_reduce->use_global_device_ids());
+    }
+
     default:
       return Internal("Unsupported collective instruction: %s",
                       collective->ToString());
@@ -2124,11 +2144,13 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
           << "; partition count: " << partition_count
           << "; operand count: " << operand_count;
 
-  // A collective-broadcast may select its root rank at runtime, in which case
-  // the last operand is a root-rank vector rather than data to broadcast.
+  // A collective-broadcast or collective-reduce may select its root rank at run
+  // time, in which case the last operand is an S32 root-rank vector rather than
+  // data being broadcast/reduced.
   const bool has_dynamic_root = [](const HloInstType* inst) {
     if constexpr (std::is_same_v<HloInstType,
-                                 HloCollectiveBroadcastInstruction>) {
+                                 HloCollectiveBroadcastInstruction> ||
+                  std::is_same_v<HloInstType, HloCollectiveReduceInstruction>) {
       return inst->has_dynamic_root();
     }
     return false;
@@ -2214,6 +2236,14 @@ Future<ThunkSequence> ThunkEmitter::EmitCollective(
                                       CollectiveBroadcastThunk>) {
     // CollectiveBroadcastThunk needs the dynamic-root flag so it can treat
     // the trailing root-rank buffer specially at run time.
+    thunks = ThunkSequence::Of<CollectiveThunkType>(
+        info, inst, /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+        has_dynamic_root);
+  } else if constexpr (std::is_same_v<CollectiveThunkType,
+                                      CollectiveReduceThunk>) {
+    // CollectiveReduceThunk needs the dynamic-root flag so it can treat the
+    // trailing root-rank buffer specially at run time.
     thunks = ThunkSequence::Of<CollectiveThunkType>(
         info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
@@ -2516,7 +2546,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSend(
   return ThunkSequence::Of<HostSendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      src->shape(), slice.slice, *instr->channel_id(), send_recv_events_,
+      slice, *instr->channel_id(), send_recv_events_,
       ConvertFrontendAttributes(instr->frontend_attributes()),
       DeviceConstraint(instr));
 }
@@ -2550,10 +2580,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostSendDone(
         "Unknown channel id in host transfer send done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 
@@ -2565,10 +2598,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHostRecvDone(
         "Unknown channel id in host transfer recv done instruction");
   }
 
+  const HloInstruction* src = host_transfer->operand(0);
+  ABSL_ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(src, {}));
+
   return ThunkSequence::Of<HostRecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           done, ir_emitter_context_->GetNextThunkId()),
-      *host_transfer->channel_id(), send_recv_events_,
+      slice, *host_transfer->channel_id(), send_recv_events_,
       DeviceConstraint(host_transfer));
 }
 
@@ -2746,6 +2782,7 @@ Future<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectiveReduce:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:

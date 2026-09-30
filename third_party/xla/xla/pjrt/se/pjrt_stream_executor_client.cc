@@ -424,10 +424,6 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     return absl::InternalError(
         "se::DeviceAddressAllocator is null in PjRtStreamExecutorRawClient.");
   }
-  ABSL_ASSIGN_OR_RETURN(
-      auto buffer,
-      allocator_->Allocate(local_device->local_device_id().value(),
-                           on_device_bytes_count, true, layout_memory_space));
   tsl::AsyncValueRef<RawSEDeviceMemory> mem;
   if (has_custom_host_memory_allocator_ &&
       layout_memory_space == Layout::kHostMemorySpace) {
@@ -437,10 +433,22 @@ absl::StatusOr<PjRtRawBufferRef> PjRtStreamExecutorRawClient::AllocateRawBuffer(
     };
     auto buffer =
         GetHostMemoryAllocator()->Allocate(on_device_bytes_count, alloc_opts);
+    if (on_device_bytes_count > 0 && buffer == nullptr) {
+      return ResourceExhausted(
+          "Failed to allocate a %d-byte buffer from the custom host memory "
+          "allocator. The allocator may be exhausted or fragmented, or the "
+          "underlying pinned allocation failed; check earlier allocator "
+          "warnings for the root cause.",
+          on_device_bytes_count);
+    }
     se::DeviceAddressBase address(buffer.get(), on_device_bytes_count);
     mem = RawSEDeviceMemory::CreateForeign(address,
                                            [buffer = std::move(buffer)]() {});
   } else {
+    ABSL_ASSIGN_OR_RETURN(
+        auto buffer,
+        allocator_->Allocate(local_device->local_device_id().value(),
+                             on_device_bytes_count, true, layout_memory_space));
     mem = RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator_);
   }
   if (client_ != nullptr && local_device->allocation_model() !=
@@ -582,6 +590,15 @@ PjRtStreamExecutorClient::AllocateLinearizeDest(
   alloc_opts.local_device_id = local_device->local_device_id();
   HostMemoryAllocator::OwnedPtr staging_buffer =
       GetHostMemoryAllocator()->Allocate(size, alloc_opts);
+  if (size > 0 && staging_buffer == nullptr) {
+    return ResourceExhausted(
+        "Failed to allocate a %d-byte pinned host staging buffer for a "
+        "host-to-device transfer. The pinned host pool may be exhausted or "
+        "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
+        "underlying pinned allocation failed; check earlier allocator "
+        "warnings for the root cause.",
+        size);
+  }
 
   absl::Span<uint8_t> span(staging_buffer.get(), size);
   return PjRtStagingBuffer::Create(
@@ -590,10 +607,10 @@ PjRtStreamExecutorClient::AllocateLinearizeDest(
 
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorRawClient::CreateLinkedEventPromise(
-    PjRtMemorySpace* memory_space, absl::string_view debug_info) {
-  PjRtDevice* device = memory_space->devices()[0];
+    LocalDeviceId local_device_id, int memory_kind_id,
+    absl::string_view debug_info) {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
       this, local_device, async_work_runner());
   PjRtDeviceEventRef event = result->event().CopyRef();
@@ -610,12 +627,12 @@ PjRtDeviceEventRef PjRtStreamExecutorRawClient::CreateErrorDeviceEvent(
 }
 
 absl::StatusOr<PjRtDeviceEventRef>
-PjRtStreamExecutorRawClient::CreateDeviceEvent(PjRtMemorySpace* memory_space,
+PjRtStreamExecutorRawClient::CreateDeviceEvent(LocalDeviceId local_device_id,
+                                               int memory_kind_id,
                                                Future<> dependency) {
   auto definition_event = BufferSequencingEvent::Create(async_work_runner());
-  PjRtDevice* device = memory_space->devices()[0];
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
   dependency.OnReady([definition_event = definition_event.CopyRef(),
                       local_device, this](absl::Status status) mutable {
     if (!status.ok()) {
@@ -682,11 +699,9 @@ PjRtStreamExecutorRawClient::ImportForeignMemory(
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtStreamExecutorRawClient::CreateDeviceEventForStream(
-    PjRtMemorySpace* memory_space, std::intptr_t stream) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  auto* device = memory_space->devices().front();
+    LocalDeviceId local_device_id, std::intptr_t stream) {
   ABSL_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                   GetLocalDeviceState(device->local_device_id()));
+                   GetLocalDeviceState(local_device_id));
 
   auto definition_event =
       BufferSequencingEvent::Create(this->async_work_runner());
@@ -1487,12 +1502,12 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     for (size_t i = 0; i < extra_deps.size(); ++i) {
       const auto& event = extra_deps[i];
       if (auto ev = event.down_cast<BufferSequencingEvent>()) {
+        ev->WaitForEventOnStream(device_state->compute_stream());
         if (ev->IsPredeterminedError()) {
           if (predetermined_error.ok()) {
             predetermined_error = ev->GetDefinedStatus();
           }
         }
-        ev->WaitForEventOnStream(device_state->compute_stream());
       } else if (event) {
         xla::BlockUntilReady(event);
         if (auto error = event.GetErrorIfPresent()) {
@@ -1761,6 +1776,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
+    case Layout::kCollectiveMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;
     default:
@@ -2112,7 +2128,7 @@ bool PjRtStreamExecutorRawClient::IsHostMemoryPinned(const void* ptr,
 }
 
 absl::Status PjRtStreamExecutorRawClient::WaitOnStream(
-    PjRtMemorySpace* memory_space, PjRtDeviceEventRef event,
+    LocalDeviceId local_device_id, PjRtDeviceEventRef event,
     std::intptr_t stream) {
   return event.down_cast<BufferSequencingEvent>()->WaitForEventOnExternalStream(
       stream);
@@ -2149,8 +2165,8 @@ PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
+    LocalDeviceId local_device_id, int memory_kind_id,
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {

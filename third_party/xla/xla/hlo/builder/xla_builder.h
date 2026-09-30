@@ -709,7 +709,10 @@ class XlaBuilder {
   XlaOp DotGeneral(
       XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
       const PrecisionConfig* precision_config = nullptr,
-      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+      absl::Span<const XlaOp> ext_operands = {},
+      const SparsityConfig* sparsity_config = nullptr,
+      const BlockScalingConfig* block_scaling_config = nullptr);
 
   XlaOp RaggedAllToAll(
       XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
@@ -1110,6 +1113,12 @@ class XlaBuilder {
   XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
   virtual absl::StatusOr<XlaOp> RevInternal(
       const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions);
+
+  XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                const ShuffleMode& mode);
+  virtual absl::StatusOr<XlaOp> ShuffleInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64_t> dimensions,
+      const ShuffleMode& mode);
 
   XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
              int64_t dimension = -1, bool is_stable = false);
@@ -1522,17 +1531,16 @@ class XlaBuilder {
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64_t> broadcast_dimensions,
                        ComparisonDirection direction, ComparisonOrder order);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
-                       absl::Span<const int64_t> broadcast_dimensions,
-                       ComparisonDirection direction,
-                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config,
                    std::optional<PrimitiveType> preferred_element_type);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config,
-                          std::optional<PrimitiveType> preferred_element_type);
+                          std::optional<PrimitiveType> preferred_element_type,
+                          absl::Span<const XlaOp> ext_operands,
+                          const SparsityConfig* sparsity_config,
+                          const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -1544,7 +1552,10 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
       const DotDimensionNumbers& dimension_number,
-      const PrecisionConfig* precision_config);
+      const PrecisionConfig* precision_config,
+      absl::Span<const XlaOp> ext_operands,
+      const SparsityConfig* sparsity_config,
+      const BlockScalingConfig* block_scaling_config);
   friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
                               XlaOp send_sizes, XlaOp output,
                               XlaOp output_offsets, XlaOp recv_sizes,
@@ -1991,6 +2002,8 @@ class XlaBuilder {
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+  friend XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+                       const ShuffleMode& mode);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
@@ -2582,9 +2595,6 @@ XlaOp Compare(XlaOp lhs, XlaOp rhs,
               ComparisonDirection direction, ComparisonOrder order);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64_t> broadcast_dimensions,
-              ComparisonDirection direction, Comparison::Type compare_type);
-XlaOp Compare(XlaOp lhs, XlaOp rhs,
-              absl::Span<const int64_t> broadcast_dimensions,
               ComparisonDirection direction);
 XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
 
@@ -2597,7 +2607,10 @@ XlaOp Dot(XlaOp lhs, XlaOp rhs,
 XlaOp DotGeneral(
     XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
-    std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+    std::optional<PrimitiveType> preferred_element_type = std::nullopt,
+    absl::Span<const XlaOp> ext_operands = {},
+    const SparsityConfig* sparsity_config = nullptr,
+    const BlockScalingConfig* block_scaling_config = nullptr);
 
 // Enqueues a ragged all to all instruction onto the computation.
 XlaOp RaggedAllToAll(
@@ -3412,6 +3425,15 @@ XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
 // elements in the given dimensions is reversed (i.e., the element at index i
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
+
+// Enqueues a shuffle instruction onto the computation. The elements are
+// shuffled along the given dimensions following the pattern selected by `mode`,
+// which also carries the attributes of that mode:
+// - rotate: the elements are (left) rotated by `shifts` along the given
+//   dimensions (i.e. the element at index i in the output is taken from index
+//   (i + shifts[j]) % dimension_size[j] of the operand).
+XlaOp Shuffle(XlaOp operand, absl::Span<const int64_t> dimensions,
+              const ShuffleMode& mode);
 
 // Enqueues a sort instruction onto the computation, using 'comparator' for
 // comparisons. 'comparator' needs to define a strict weak order. 'is_stable'

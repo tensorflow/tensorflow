@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_STRIDED_SLICE_H_
 
-#include <functional>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -108,27 +111,74 @@ inline void StridedSlice(const DynamicStridedSliceParams& op_params,
   for (int i = dims - 2; i >= 0; --i) {
     input_strides[i] = input_strides[i + 1] * input_shape.Dims(i + 1);
   }
-  for (int axis = 0; axis < dims; ++axis) {
-    starts[axis] = StartForAxis(op_params, input_shape, axis);
-    stops[axis] = EndForAxis(op_params, input_shape, axis, starts[axis]);
-  }
-
   auto loop_condition = [](int64_t index, int64_t stop, int stride) {
     return stride > 0 ? index < stop : index > stop;
   };
-  std::function<void(int, int64_t)> write_slice = [&](int axis,
-                                                      int64_t input_index) {
-    if (axis == dims) {
-      writer->Write(input_index);
+  for (int axis = 0; axis < dims; ++axis) {
+    starts[axis] = StartForAxis(op_params, input_shape, axis);
+    stops[axis] = EndForAxis(op_params, input_shape, axis, starts[axis]);
+    if (!loop_condition(starts[axis], stops[axis], op_params.strides[axis])) {
+      return;
+    }
+  }
+
+  int inner_contig_axis = dims;
+  while (
+      inner_contig_axis > 1 && op_params.strides[inner_contig_axis - 1] == 1 &&
+      starts[inner_contig_axis - 1] == 0 &&
+      stops[inner_contig_axis - 1] == input_shape.Dims(inner_contig_axis - 1)) {
+    --inner_contig_axis;
+  }
+  const int last_loop_axis = inner_contig_axis - 1;
+  const bool last_loop_stride_is_1 = op_params.strides[last_loop_axis] == 1;
+  const int64_t last_loop_contig_len =
+      last_loop_stride_is_1 ? (static_cast<int64_t>(stops[last_loop_axis]) -
+                               static_cast<int64_t>(starts[last_loop_axis])) *
+                                  input_strides[last_loop_axis]
+                            : 0;
+
+  auto write_contiguous = [&](int64_t pos, int64_t count) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+      if (count > 1) {
+        constexpr int64_t kMaxChunk =
+            std::numeric_limits<int>::max() / static_cast<int64_t>(sizeof(T));
+        while (count > 0) {
+          const int chunk =
+              static_cast<int>(std::min<int64_t>(count, kMaxChunk));
+          writer->WriteN(pos, chunk);
+          pos += chunk;
+          count -= chunk;
+        }
+        return;
+      }
+    }
+    for (int64_t i = 0; i < count; ++i) {
+      writer->Write(pos + i);
+    }
+  };
+
+  auto write_slice = [&](auto& self, int axis, int64_t input_index) -> void {
+    if (axis == last_loop_axis) {
+      if (last_loop_stride_is_1) {
+        write_contiguous(input_index + starts[axis] * input_strides[axis],
+                         last_loop_contig_len);
+      } else {
+        for (int64_t offset = starts[axis];
+             loop_condition(offset, stops[axis], op_params.strides[axis]);
+             offset += op_params.strides[axis]) {
+          write_contiguous(input_index + offset * input_strides[axis],
+                           input_strides[axis]);
+        }
+      }
       return;
     }
     for (int64_t offset = starts[axis];
          loop_condition(offset, stops[axis], op_params.strides[axis]);
          offset += op_params.strides[axis]) {
-      write_slice(axis + 1, input_index + offset * input_strides[axis]);
+      self(self, axis + 1, input_index + offset * input_strides[axis]);
     }
   };
-  write_slice(/*axis=*/0, /*input_index=*/0);
+  write_slice(write_slice, /*axis=*/0, /*input_index=*/0);
 }
 
 template <typename T>

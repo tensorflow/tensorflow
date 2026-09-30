@@ -180,6 +180,37 @@ TEST(Quantization, TestMultiAxisQuantizationCloneAndFree) {
   TfLiteQuantizationFree(&quantization);
 }
 
+TEST(Quantization, TestBlockwiseQuantizationV2CloneAndFree) {
+  auto* params = reinterpret_cast<TfLiteBlockwiseQuantizationV2*>(
+      malloc(sizeof(TfLiteBlockwiseQuantizationV2)));
+  params->scale = 1;
+  params->zero_point = 2;
+  params->blocksize = 0;
+  params->quantized_dimension = 0;
+  params->block_shape = BuildTfLiteArray<int>({1, 1, 32}).release();
+  TfLiteQuantization quantization = {
+      /*type=*/kTfLiteBlockwiseQuantizationV2,
+      /*params=*/params,
+  };
+
+  TfLiteQuantization clone = TfLiteQuantizationClone(quantization);
+
+  EXPECT_THAT(clone.type, Eq(kTfLiteBlockwiseQuantizationV2));
+  ASSERT_THAT(clone.params, Not(AnyOf(nullptr, quantization.params)));
+  auto* clone_params =
+      reinterpret_cast<TfLiteBlockwiseQuantizationV2*>(clone.params);
+  EXPECT_THAT(clone_params->scale, Eq(params->scale));
+  EXPECT_THAT(clone_params->zero_point, Eq(params->zero_point));
+  EXPECT_THAT(clone_params->blocksize, Eq(params->blocksize));
+  EXPECT_THAT(clone_params->quantized_dimension,
+              Eq(params->quantized_dimension));
+  EXPECT_THAT(clone_params->block_shape, TfLiteArrayIs(params->block_shape));
+  EXPECT_NE(clone_params->block_shape, params->block_shape);
+
+  TfLiteQuantizationFree(&clone);
+  TfLiteQuantizationFree(&quantization);
+}
+
 TEST(Sparsity, TestSparsityFree) {
   TfLiteTensor t = {};
   // Set these values, otherwise TfLiteTensorFree has uninitialized values.

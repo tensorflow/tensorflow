@@ -40,11 +40,14 @@ License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -459,6 +462,37 @@ ENTRY entry {
                                &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
+}
+
+TEST_P(FusionBlockLevelRewriterTest, RewritesFusionWithParallelTilingSearch) {
+  const absl::string_view hlo_text = R"(
+fusion_computation {
+  param_0 = f32[128,128] parameter(0)
+  ROOT exp = f32[128,128] exponential(param_0)
+}
+
+ENTRY entry {
+  param_0 = f32[128,128] parameter(0)
+  ROOT fusion = f32[128,128] fusion(param_0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
+  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
+  // cost model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(
+      [] {
+        return std::make_unique<mlir::MLIRContext>(
+            mlir::MLIRContext::Threading::DISABLED);
+      },
+      /*preallocate=*/4);
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_, &thread_pool, &mlir_context_pool)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(FusionBlockLevelRewriterTestBase,

@@ -1029,8 +1029,6 @@ class NanoExecutable final
 
   ifrt::UserContextRef user_context() const override { return user_context_; }
 
-  int num_devices() const override { return 1; }
-
   int64_t SizeOfGeneratedCodeInBytes() const override { return 0; }
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
@@ -1085,10 +1083,6 @@ class NanoExecutable final
 
   absl::StatusOr<ifrt::AttributeMap> GetCostAnalysis() const override {
     return absl::UnimplementedError("GetCostAnalysis is not implemented.");
-  }
-
-  absl::Span<ifrt::Device* const> addressable_devices() const override {
-    return client_->addressable_devices();
   }
 
   std::optional<ifrt::DeviceListRef> devices() const override {

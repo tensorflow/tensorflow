@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/xla.pb.h"
 
@@ -39,11 +40,11 @@ inline constexpr absl::string_view kResultsMemorySpacesAttr =
 enum class MemorySpaceColor {
   // Corresponds to stream_executor::MemoryTypes::kDefault or kUnified.
   // This memory can be allocated with any device allocation API.
-  kDefault = 0,
+  kDefault = Layout::kDefaultMemorySpace,
 
   // Corresponds to stream_executor::MemoryTypes::kCollective. This memory
   // should be compatible with symmetric memory requirements.
-  kCollective = 1,
+  kCollective = Layout::kCollectiveMemorySpace,
 
   // Temp buffers can be allocated within separate memory space (if
   // xla_gpu_temp_buffer_use_separate_color is set). This improves cuda-graphs
