@@ -23,7 +23,7 @@ ENTRY main {
           "num_stages":"1"}}}
 }
 
-// CHECK: #[[$TILE_ID_MAP:.+]] = #xla.indexing_map<"(pid, tid) -> (pid * 2 + tid), domain: pid in [0, 3], tid in [0, 1]">
+// CHECK: #[[$TILE_ID_MAP:.+]] = #xla.indexing_map<"(pid, tid) -> (pid * 2 + tid), domain: pid in [0, 3], tid in [0, 1], pid * 2 + tid in [0, 7]">
 
 // CHECK-LABEL: xtile.entry_func @triton_fn(
 // CHECK-SAME:    %[[LHS:[a-zA-Z0-9]*]]: memref<8x4xf32>,

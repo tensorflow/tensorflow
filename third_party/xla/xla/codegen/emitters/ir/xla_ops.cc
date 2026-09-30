@@ -276,6 +276,9 @@ void ApplyIndexingOp::print(OpAsmPrinter& p) {
 
 LogicalResult ApplyIndexingOp::verify() {
   auto symbolic_map = getIndexingMapAttr().getIndexingMap().GetSymbolicMap();
+  if (symbolic_map.IsEmpty()) {
+    return emitOpError("IndexingMap is empty");
+  }
   unsigned num_variables =
       symbolic_map.GetNumDims() + symbolic_map.GetNumSymbols();
   if (getOperands().size() != num_variables) {
@@ -283,9 +286,6 @@ LogicalResult ApplyIndexingOp::verify() {
         "operand count ", getOperands().size(),
         " does not match the sum of dimensions ", symbolic_map.GetNumDims(),
         " and symbols ", symbolic_map.GetNumSymbols(), " in the symbolic map"));
-  }
-  if (!getIndexingMap().GetSymbolicConstraints().empty()) {
-    return emitOpError("apply indexing op cannot have any constraints");
   }
   return success();
 }

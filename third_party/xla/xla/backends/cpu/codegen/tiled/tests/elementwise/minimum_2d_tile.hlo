@@ -20,8 +20,8 @@ fusion {
   ROOT minimum = f32[128,256] minimum(p0, p1)
 }
 // CHECK:      #indexing_map = #xla.indexing_map<"(pid) -> (min(pid * -86 + 1024, 86)), domain: pid in [0, 11]">
-// CHECK:      #indexing_map1 = #xla.indexing_map<"(pid, tid) -> (((pid * 86 + tid) / 64) * 8), domain: pid in [0, 11], tid in [0, 85]">
-// CHECK:      #indexing_map2 = #xla.indexing_map<"(pid, tid) -> (((pid * 86 + tid) mod 64) * 4), domain: pid in [0, 11], tid in [0, 85]">
+// CHECK:      #indexing_map1 = #xla.indexing_map<"(pid, tid) -> (((pid * 86 + tid) / 64) * 8), domain: pid in [0, 11], tid in [0, 85], pid * 86 + tid in [0, 1023]">
+// CHECK:      #indexing_map2 = #xla.indexing_map<"(pid, tid) -> (((pid * 86 + tid) mod 64) * 4), domain: pid in [0, 11], tid in [0, 85], pid * 86 + tid in [0, 1023]">
 
 // CHECK:        xtile.entry_func @wrapped_fusion(
 // CHECK-SAME:     %[[LHS:[^:]+]]: memref<128x256xf32>,
@@ -34,7 +34,7 @@ fusion {
 // CHECK:  %[[C1:.*]] = arith.constant 1 : index
 // CHECK:  %[[LIMIT:.*]] = xla.apply_indexing #indexing_map(%[[PID]])
 // CHECK:  scf.for %[[TID:.*]] = %[[C0]] to %[[LIMIT]] step %[[C1]] {
-// CHECK:    %[[IDX_0:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[TID]]) {xla.range = [0 : index, 120 : index]}
+// CHECK:    %[[IDX_0:.*]] = xla.apply_indexing #indexing_map1(%[[PID]], %[[TID]])
 // CHECK:    %[[IDX_1:.*]] = xla.apply_indexing #indexing_map2(%[[PID]], %[[TID]])
 // CHECK:    %[[T_0:.*]] = xtile.extract %[[LHS]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
 // CHECK:    %[[T_1:.*]] = xtile.extract %[[RHS]][%[[IDX_0]], %[[IDX_1]]] [8, 4] [1, 1]
