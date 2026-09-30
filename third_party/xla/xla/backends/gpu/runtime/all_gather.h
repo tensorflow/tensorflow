@@ -46,10 +46,10 @@ inline constexpr auto kSupportedAllGatherTypes =
     std::array{F16, BF16, F32, F64, S8, S16, S32, S64};
 
 // Maximum number of GPU thread-blocks launched per all-gather kernel.
-// This constant is shared between the kernel launcher (all_gather.cc) and the
-// unmanaged-argument shaper (collective_emitter.cc) so that the signal buffer
-// is always sized to match the actual grid.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 32;
+// This number is set by picking the max number of blocks for all reduce and
+// scaling it because the outputs are bigger for all-gather.
+// The number is somewhat arbitrary and should be revisited.
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
 
 // Optimal threshold for one-shot all-gather in bytes for the collective kernel.
 // Base on the experimental results.
@@ -97,14 +97,13 @@ LaunchDimensions AllGatherLaunchDimensions(
     const se::DeviceDescription& device_info);
 
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel.  The kernel argument layout is:
-//   [0] input/scratch buffer pointer table (kScratchBuffer, index 1)
+// Triton all-gather kernel.  The kernel argument layout matches all-reduce:
+//   [0] local input buffer (kInputBuffer, index 0)
 //   [1] output buffer (kOutputBuffer, index 0)
 //   [2] runtime rank  (kRuntimeRank)
 //   [3] invocation count (kInvocationCount)
 //   [4] signal flags (kScratchBuffer, index 0)
-// The runtime performs a D2D copy from the input buffer to the local rank's
-// scratch buffer before kernel launch (copy_input_to_scratch=true).
+//   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 

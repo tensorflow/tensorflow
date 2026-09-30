@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -220,6 +222,43 @@ TEST_F(BuildAllGatherInfoTest, FailsForLargeInputs) {
                 /*num_elements=*/2 * 1024 * 1024, /*replica_groups=*/{0, 1}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("only supported for small inputs")));
+}
+
+TEST_F(BuildAllGatherInfoTest,
+       CreateAllGatherKernelSpecMatchesAllReduceArgumentLayout) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[512] parameter(0)
+    ROOT all-gather = f32[1024] all-gather(param_0),
+        dimensions={0}, replica_groups={{0,1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const HloInstruction* instr = HloHardwareIndependentTestBase::FindInstruction(
+      module.get(), HloOpcode::kAllGather);
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveKernelSpec spec,
+      CreateAllGatherKernelSpec(instr, LaunchDimensions(4, 128)));
+  EXPECT_FALSE(spec.codegen_config.copy_input_to_scratch);
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,
+            KernelArgType::kInputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].type,
+            KernelArgType::kOutputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
+            KernelArgType::kRuntimeRank);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
+            KernelArgType::kInvocationCount);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 1);
 }
 
 }  // namespace

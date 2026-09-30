@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -936,51 +934,14 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                   std::move(replica_id_offsets), std::move(replica_id_bounds));
 }
 
-absl::StatusOr<int64_t> GetConstantIntValue(mlir::Value value) {
-  if (std::optional<int64_t> int_value = mlir::getConstantIntValue(value);
-      int_value.has_value()) {
-    return int_value.value();
-  }
-  return absl::InternalError(absl::StrFormat(
-      "Expected constant integer value for replica ID bound, but got: %v",
-      value));
-}
-
 absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
                                                  const TileInfo& tile_info,
                                                  Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
-  mlir::Value source_buffer = arg;
-  if (!tile_info.replica_id_offsets().empty()) {
-    const auto& replica_id_offsets = tile_info.replica_id_offsets();
-    const auto& replica_id_bounds = tile_info.replica_id_bounds();
-    CHECK_EQ(replica_id_offsets.size(), replica_id_bounds.size());
-    const int num_replica_dims = replica_id_offsets.size();
-    for (int i = 0; i < num_replica_dims - 1; ++i) {
-      mlir::Value replica_id = replica_id_offsets[i];
-      ABSL_ASSIGN_OR_RETURN(int64_t next_bound,
-                       GetConstantIntValue(replica_id_bounds[i + 1]));
-      mlir::Type next_buffer_type =
-          mlir::MemRefType::get({next_bound}, b.getI64Type());
-      source_buffer = b.create<xtile::SelectBufferOp>(
-          next_buffer_type, source_buffer, replica_id);
-    }
-    // Final selection to obtain the spatial buffer
-    mlir::Value replica_id = replica_id_offsets.back();
-    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type,
-                     GetPrimitiveType(tile_info.storage_type()));
-    xla::Shape spatial_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
-        element_type, tile_info.storage_shape(),
-        tile_info.minor_to_major_layout());
-    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
-                     GetMemRefType(spatial_shape, tile_info.storage_type()));
-    source_buffer = b.create<xtile::SelectBufferOp>(spatial_memref_type,
-                                                    source_buffer, replica_id);
-  }
   return xla::xtile::ExtractTileOp::create(
-      b, tensor_type, source_buffer, tile_info.offsets(),
-      tile_info.padded_tile_sizes(), tile_info.tile_strides());
+      b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
+      tile_info.tile_strides());
 }
 
 absl::StatusOr<TensorValue> EmitScope(
@@ -1162,7 +1123,7 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
     const std::optional<GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& tile_requirements_visitor) {
+    const DefaultTileRequirementsVisitor& /*tile_requirements_visitor*/) {
   SmallVector<Type> fn_arg_types;
 
   auto hlo_computation = fusion.fused_instructions_computation();
@@ -1170,20 +1131,9 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     ABSL_ASSIGN_OR_RETURN(Type ir_type,
                      GetMlirType(b, p->shape().element_type(), gpu_cc));
-    ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> replica_id_bounds,
-                     tile_requirements_visitor.RequiredReplicaIdBounds(*p));
-    if (!replica_id_bounds.empty()) {
-      // Nested pointer schema for replica dimensions.
-      // R x S x <type> where R is the number of replica dimensions and S is
-      // the shape on the local device. In total we have R pointers to
-      // S-dimensional tensors.
-      fn_arg_types.push_back(
-          mlir::MemRefType::get({replica_id_bounds.front()}, b.getI64Type()));
-    } else {
-      ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
-                       GetMemRefType(p->shape(), ir_type));
-      fn_arg_types.push_back(memref_type);
-    }
+    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+                     GetMemRefType(p->shape(), ir_type));
+    fn_arg_types.push_back(memref_type);
   }
 
   // Add result types.

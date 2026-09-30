@@ -231,19 +231,20 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
 
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
-          /* .copy_input_to_scratch= */ true,
+          /* .copy_input_to_scratch= */ false,
           /* .input_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .output_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .argument_descriptors= */
-          {{KernelArgType::kScratchBuffer,
-            /*index=*/1},  // scratch buffer as input
+          {{KernelArgType::kInputBuffer, /*index=*/0},
            {KernelArgType::kOutputBuffer, /*index=*/0},
            {KernelArgType::kRuntimeRank},
            {KernelArgType::kInvocationCount},
            {KernelArgType::kScratchBuffer,
-            /*index=*/0}},  // signal buffers only
+            /*index=*/0},  // signal buffers
+           {KernelArgType::kScratchBuffer,
+            /*index=*/1}},  // remote scratch buffers
           /* .sync_count_increment= */ 1u},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false, sym_mem_type,

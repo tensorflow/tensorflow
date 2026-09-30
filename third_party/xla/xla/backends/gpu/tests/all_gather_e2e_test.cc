@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,11 +31,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -508,6 +512,158 @@ TEST_F(AllGatherTest, TwentyAllGathersInWhileLoopWithCudaGraphs) {
         << "Mismatch at replica " << i << " on second execution";
   }
 }
+
+// 2D shape: f32[16, 32] -> f32[16, 64] (gather along dim 1).
+TEST_F(AllGatherTest, TwoDimensionalGatherDim1) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[16,32] parameter(0)
+    ROOT all-gather = f32[16,64] all-gather(param_0), dimensions={1},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  Literal input_r0 = LiteralUtil::CreateFull<float>({16, 32}, 10.0f);
+  Literal input_r1 = LiteralUtil::CreateFull<float>({16, 32}, 20.0f);
+
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+
+  Literal expected = LiteralUtil::CreateFull<float>({16, 64}, 0.0f);
+  for (int64_t row = 0; row < 16; ++row) {
+    for (int64_t col = 0; col < 64; ++col) {
+      expected.Set<float>({row, col}, (col < 32) ? 10.0f : 20.0f);
+    }
+  }
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+// Repeated invocations on the same executable to verify double-buffering
+// across alternating slots (signal_value & 1).
+TEST_F(AllGatherTest, RepeatedInvocationsDoubleBuffering) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[128] parameter(0)
+    ROOT all-gather = f32[256] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  Literal input1_r0 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(128, 1.0f));
+  Literal input1_r1 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f));
+  std::vector<std::vector<Literal*>> args1 = {{&input1_r0}, {&input1_r1}};
+
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result1,
+                       ExecuteReplicated(std::move(module), args1));
+  VerifyOneShotAllGather(result1.optimized_module);
+
+  for (int iter = 2; iter <= 4; ++iter) {
+    float v0 = static_cast<float>(iter * 10 + 1);
+    float v1 = static_cast<float>(iter * 10 + 2);
+    Literal in_r0 = LiteralUtil::CreateR1<float>(std::vector<float>(128, v0));
+    Literal in_r1 = LiteralUtil::CreateR1<float>(std::vector<float>(128, v1));
+    std::vector<std::vector<Literal*>> iter_args = {{&in_r0}, {&in_r1}};
+
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> iter_results,
+        ExecuteReplicated(result1.executable.get(), iter_args));
+    ASSERT_EQ(iter_results.size(), kNumReplicas);
+
+    std::vector<float> expected_data(256);
+    for (int i = 0; i < 128; ++i) {
+      expected_data[i] = v0;
+      expected_data[i + 128] = v1;
+    }
+    Literal expected = LiteralUtil::CreateR1<float>(expected_data);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, iter_results[i]))
+          << "Mismatch at replica " << i << " on iteration " << iter;
+    }
+  }
+}
+
+class AllGatherTypesTest : public AllGatherTest,
+                           public ::testing::WithParamInterface<PrimitiveType> {
+};
+
+// Same shape as Large2GpuF32, for every element type supported by the
+// one-shot kernel.
+TEST_P(AllGatherTypesTest, Large2Gpu) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = %1$s[4096] parameter(0)
+    ROOT all-gather = %1$s[8192] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  const PrimitiveType type = GetParam();
+  const std::string module_str = absl::StrFormat(
+      kModuleStr, primitive_util::LowercasePrimitiveTypeName(type));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+
+  // Rank r contributes the r-th half of the expected output.
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       MakeFakeLiteral(ShapeUtil::MakeShape(type, {8192})));
+  Literal input_r0 = expected.Slice({0}, {4096});
+  Literal input_r1 = expected.Slice({4096}, {8192});
+
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllGatherTypes, AllGatherTypesTest,
+    ::testing::ValuesIn(gpu::kSupportedAllGatherTypes),
+    [](const ::testing::TestParamInfo<PrimitiveType>& info) {
+      return std::string(
+          primitive_util::LowercasePrimitiveTypeName(info.param));
+    });
 
 }  // namespace
 }  // namespace xla

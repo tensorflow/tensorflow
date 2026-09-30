@@ -4339,6 +4339,7 @@ xla_cc_test(
     srcs = ["all_gather_build_info_test.cc"],
     deps = [
         ":all_gather",
+        ":collective_params",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/target_config",
@@ -4346,6 +4347,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:gpu_topology",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/lib/gtl:int_type",
