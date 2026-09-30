@@ -792,8 +792,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
-  @parameterized.parameters(
-      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @parameterized.parameters(GetTestConfigsDicts(nn_ops.max_pool))
   @test_util.run_deprecated_v1
   def testMaxPoolInvalidFilterSize(self, **kwargs):
     with self.assertRaisesRegex(

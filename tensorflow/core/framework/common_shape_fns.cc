@@ -71,15 +71,18 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
             c->Multiply(window_size, dilation_rate, &window_size));
         TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
       }
-      if (c->ValueKnown(input_size) && c->ValueKnown(window_size) &&
-          c->Value(input_size) < c->Value(window_size)) {
-        // Match GetWindowedOutputSizeVerbose. Larger windows still produce an
-        // invalid (negative) output size and must not be silently accepted.
-        const int64_t gap = c->Value(window_size) - c->Value(input_size);
-        // Compare gap < 2 * stride without overflowing.
-        if (gap - stride < stride) {
-          *output_size = c->MakeDim(0);
-          break;
+      if (c->ValueKnown(input_size) && c->ValueKnown(window_size)) {
+        const int64_t input_val = c->Value(input_size);
+        const int64_t window_val = c->Value(window_size);
+        if (input_val < window_val) {
+          // Match GetWindowedOutputSizeVerbose. Larger windows still produce an
+          // invalid (negative) output size and must not be silently accepted.
+          const int64_t gap = window_val - input_val;
+          // Compare gap < 2 * stride without overflowing.
+          if (gap - stride < stride) {
+            *output_size = c->MakeDim(0);
+            break;
+          }
         }
       }
       TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
