@@ -2654,6 +2654,10 @@ class OpScopeTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerRootScope(self):
     """Spaces and illegal chars should raise ValueError in root scope."""
+    # Trailing underscores are strictly valid in BOTH eager and graph mode
+    # root scopes.
+    with ops.name_scope_v2("valid_trailing_underscore_"):
+      pass
     invalid_msg = "is not a valid (root )?scope name"
     if context.executing_eagerly():
       # Leading underscores are valid in eager root scope names.
