@@ -5837,13 +5837,6 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
     if not isinstance(name, str):
       raise ValueError("name for name_scope must be a string.")
 
-    if (name and context.executing_eagerly()
-        and not _VALID_SCOPE_NAME_REGEX.match(name)):
-      raise ValueError(
-          f"'{name}' is not a valid scope name. A scope name has to "
-          f"match the following pattern: "
-          f"{_VALID_SCOPE_NAME_REGEX.pattern}")
-
     self._name = name
     self._exit_fns = []
 
@@ -5865,10 +5858,18 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
-      if not old_name and name and not _VALID_OP_NAME_REGEX.match(name):
-        raise ValueError(
-            f"'{name}' is not a valid root scope name. A root scope name has "
-            f"to match the following pattern: {_VALID_OP_NAME_REGEX.pattern}")
+      if name:
+        if not old_name:
+          if not _VALID_OP_NAME_REGEX.match(name):
+            raise ValueError(
+                f"'{name}' is not a valid root scope name. A root scope name "
+                f"has to match the following pattern: "
+                f"{_VALID_OP_NAME_REGEX.pattern}")
+        elif not _VALID_SCOPE_NAME_REGEX.match(name):
+          raise ValueError(
+              f"'{name}' is not a valid scope name. A scope name has to "
+              f"match the following pattern: "
+              f"{_VALID_SCOPE_NAME_REGEX.pattern}")
 
       if not name:
         scope_name = ""
