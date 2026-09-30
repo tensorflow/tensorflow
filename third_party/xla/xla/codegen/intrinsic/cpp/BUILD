@@ -144,29 +144,18 @@ cc_library(
 )
 
 cc_ir_header(
-    name = "eigen_unary_16_ll",
-    src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=16",
-        "-mprefer-vector-width=128",
-        "-mllvm",
-        "-inline-threshold=500",
-    ],
-    deps = [
-        ":cpp_context_provider",
-        ":eigen_unary_lib",
-        ":vector_ops",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_ir_header(
     name = "eigen_unary_32_ll",
     src = "eigen_unary.cc",
-    copts = [
-        "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
-        "-mprefer-vector-width=256",
-    ],
+    copts = if_oss(
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=64",
+            "-mprefer-vector-width=512",
+        ],
+        [
+            "-DEIGEN_GENERIC_VECTOR_SIZE_BYTES=32",
+            "-mprefer-vector-width=256",
+        ],
+    ),
     deps = [
         ":cpp_context_provider",
         ":eigen_unary_lib",
@@ -197,23 +186,6 @@ cc_ir_header(
 )
 
 xla_cc_test(
-    name = "cpp_gen_intrinsics_test",
-    srcs = ["cpp_gen_intrinsics_test.cc"],
-    deps = [
-        ":_cpp_gen_intrinsics",
-        ":eigen_unary_16_ll",
-        "//xla/codegen/intrinsic:simple_jit_runner",
-        "//xla/codegen/intrinsic:test_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@tsl//tsl/platform:denormal",
-    ],
-)
-
-xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
     copts = [
@@ -221,7 +193,6 @@ xla_cc_test(
     ],
     deps = [
         ":_cpp_gen_intrinsics",
-        ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
         ":eigen_unary_lib",
@@ -252,7 +223,6 @@ cc_library(
     srcs = ["cpp_gen_intrinsics.cc"],
     hdrs = ["cpp_gen_intrinsics.h"],
     deps = [
-        ":eigen_unary_16_ll",
         ":eigen_unary_32_ll",
         ":eigen_unary_64_ll",
         "//xla/codegen/intrinsic",
@@ -279,6 +249,7 @@ cc_library(
         "//xla/codegen/intrinsic:type",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:ir_headers",
     ],

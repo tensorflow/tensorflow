@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -51,7 +50,6 @@ limitations under the License.
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
-#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -382,6 +380,26 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
 
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (target_triple.isX86()) {
+    // As a heuristic, we check for SSE4a to determine if we are on AMD.
+    // This feature was added in 2007 and is set on all AMD CPUs since then, and
+    // no intel cpus. This is a bit of a hack though, as there is no strict link
+    // between increased precision and SSE4a; Intel could decide to add it in
+    // the future but they are very unlikely to do so as they haven't in the
+    // past 18 years.
+    if (target_machine->getTargetFeatureString().contains("+sse4a")) {
+      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
+    } else {
+      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
+    }
+  } else if (target_triple.isAArch64() || target_triple.isARM()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
+  } else if (target_triple.isSystemZ()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kSystemZCpu;
+  } else {
+    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
+  }
   int prefer_vector_width = 0;
   for (const auto& func : module) {
     if (func.hasFnAttribute("prefer-vector-width")) {
@@ -395,35 +413,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
-  // The explicit feature string lacks features implied by the target CPU.
-  std::string features = absl::StrJoin(
-      target_machine->getMCSubtargetInfo().getEnabledProcessorFeatures(), ",",
-      [](std::string* out, const llvm::SubtargetFeatureKV* feature) {
-        absl::StrAppend(out, "+", feature->key());
-      });
-
-  xla::codegen::intrinsics::DeviceType device_type;
-  if (target_triple.isX86()) {
-    // As a heuristic, we check for SSE4a to determine if we are on AMD.
-    // This feature was added in 2007 and is set on all AMD CPUs since then, and
-    // no intel cpus. This is a bit of a hack though, as there is no strict link
-    // between increased precision and SSE4a; Intel could decide to add it in
-    // the future but they are very unlikely to do so as they haven't in the
-    // past 18 years.
-    if (absl::StrContains(features, "+sse4a")) {
-      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
-    } else {
-      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
-    }
-  } else if (target_triple.isAArch64() || target_triple.isARM()) {
-    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
-  } else if (target_triple.isSystemZ()) {
-    device_type = xla::codegen::intrinsics::DeviceType::kSystemZCpu;
-  } else {
-    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
-  }
   codegen::IntrinsicFunctionLib intrinsic_lib(
-      {std::move(features), device_type,
+      {target_machine->getTargetFeatureString().str(), device_type,
        /*disable_platform_dependent_math=*/
        options_.disable_platform_dependent_math, prefer_vector_width});
   target_library_info_impl->addVectorizableFunctions(

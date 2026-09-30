@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_16_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
 #include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
@@ -171,80 +170,12 @@ TEST(EigenUnaryTest, FastTanhfIsVectorized64) {
   EXPECT_THAT(ir, ContainsRegex("xla.unused.tanh.v8f64"));
 }
 
-TEST(EigenUnaryTest, FastTanhfIsVectorized16) {
-  llvm::LLVMContext context;
-  std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
-
-  std::string ir;
-  llvm::raw_string_ostream stream(ir);
-  module->print(stream, nullptr);
-
-  std::string v4f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v4f32");
-  std::string v2f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v2f64");
-  std::string v16f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v16f32");
-  std::string v8f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v8f64");
-
-  EXPECT_THAT(v4f32_ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(v2f64_ir, ContainsRegex("fmul <2 x double>"));
-  EXPECT_THAT(v4f32_ir, ContainsRegex("<4 x float>.*f0x326F951E"));
-  EXPECT_THAT(v16f32_ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(v8f64_ir, ContainsRegex("fmul <2 x double>"));
-  EXPECT_THAT(ir, Not(ContainsRegex("llvm.x86")));
-  EXPECT_THAT(ir, Not(ContainsRegex("llvm.aarch64")));
-}
-
-TEST(EigenUnaryTest, AtanIsVectorized16) {
-  llvm::LLVMContext context;
-  std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
-
-  std::string v4f32_ir = GetFunctionIr(*module, "xla.atan.v4f32");
-  std::string v2f64_ir = GetFunctionIr(*module, "xla.atan.v2f64");
-  std::string v8f32_ir = GetFunctionIr(*module, "xla.atan.v8f32");
-
-  EXPECT_THAT(v4f32_ir, ContainsRegex("(fmuladd\\.v4f32|fmul <4 x float>)"));
-  EXPECT_THAT(v4f32_ir, Not(ContainsRegex("llvm.atan")));
-  EXPECT_THAT(v2f64_ir, ContainsRegex("(fmuladd\\.v2f64|fmul <2 x double>)"));
-  EXPECT_THAT(v2f64_ir, Not(ContainsRegex("@atan")));
-  EXPECT_THAT(v8f32_ir, ContainsRegex("(fmuladd\\.v4f32|fmul <4 x float>)"));
-  EXPECT_THAT(v8f32_ir, Not(ContainsRegex("llvm.atan")));
-}
-
 TEST(EigenUnaryTest, GetCppGenIrStringSelectsCorrectVectorWidth) {
-  intrinsics::IntrinsicOptions options;
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary16LlIr);
+  intrinsics::IntrinsicOptions options_default;
+  EXPECT_EQ(GetCppGenIrString(options_default), llvm_ir::kEigenUnary32LlIr);
 
-  options.features = "+neon,+fp-armv8";
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary16LlIr);
-
-  options.features = "+sse4.2";
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary16LlIr);
-
-  options.features = "+avx,+avx2";
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary32LlIr);
-
-  options.features = "+avx,+avx512f";
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary64LlIr);
-
-  options.prefer_vector_width = 256;
-  EXPECT_EQ(GetCppGenIrString(options), llvm_ir::kEigenUnary32LlIr);
-}
-
-TEST(EigenUnaryTest, v2f64AtanIsCorrect) {
-  Vec2d x = {0.5, -3.0};
-  Vec2d y = atan_v2f64(x);
-  for (int i = 0; i < 2; ++i) {
-    EXPECT_THAT(y[i], NearUlps(std::atan(x[i]), kAtanF64Ulps));
-  }
-}
-
-TEST(EigenUnaryTest, v2f64TanhIsCorrect) {
-  Vec2d x = {0.5, -3.0};
-  Vec2d y = tanh_v2f64(x);
-  for (int i = 0; i < 2; ++i) {
-    EXPECT_THAT(y[i], NearUlps(std::tanh(x[i]), kTanhUlps));
-  }
+  options_default.features = "+avx512f";
+  EXPECT_EQ(GetCppGenIrString(options_default), llvm_ir::kEigenUnary64LlIr);
 }
 
 TEST(EigenUnaryTest, FastAtanfIsCorrect) {

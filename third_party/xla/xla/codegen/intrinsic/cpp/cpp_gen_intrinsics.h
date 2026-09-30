@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Attributes.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -49,10 +48,7 @@ bool AreEigenIntrinsicsAvailable();
 // Helper for Intrinsic<T> classes that use CppGen backend for some types.
 // Looks up a function by name in the module (assuming it was linked from
 // a CppGen library) and configures its linkage and attributes for inlining.
-// The result has signature `type`; a library function compiled with an
-// indirect host ABI (sret return, pointer arguments) is wrapped to match.
-llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name,
-                                  llvm::FunctionType* type);
+llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name);
 
 class CppGenIntrinsicLibrary {
  public:

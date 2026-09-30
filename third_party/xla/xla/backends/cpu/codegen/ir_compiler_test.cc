@@ -53,10 +53,8 @@ limitations under the License.
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -300,75 +298,6 @@ TEST(IrCompilerTest, InferTargetMachineWithEmptyTriple) {
             llvm::sys::getProcessTriple());
 }
 
-TEST(IrCompilerTest, IntrinsicsUseCpuImpliedFeatures) {
-  if (!tsl::port::IsX86CPU()) {
-    GTEST_SKIP() << "Test only supported on x86.";
-  }
-  constexpr absl::string_view kAtanCall = R"(
-  declare <8 x float> @xla.atan.v8f32(<8 x float>)
-  define <8 x float> @atan_call(<8 x float> %x) {
-    %r = call <8 x float> @xla.atan.v8f32(<8 x float> %x)
-    ret <8 x float> %r
-  }
-  )";
-
-  auto context = std::make_unique<llvm::LLVMContext>();
-  // AVX is implied by the CPU only, not by the explicit feature string.
-  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
-      llvm::TargetOptions(),
-      IrCompiler::Options{
-          /*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
-          /*optimize_for_size=*/false,
-          TargetMachineOptions("x86_64-unknown-linux-gnu", "haswell", "")},
-      IrCompiler::CompilationHooks());
-
-  ASSERT_OK_AND_ASSIGN(auto ir_module,
-                       ParseModule(*context, kAtanCall, "test_module"));
-  ASSERT_OK_AND_ASSIGN(auto target_machine,
-                       ir_compiler->build_target_machine());
-  ir_module->setDataLayout(target_machine->createDataLayout());
-  ir_module->setTargetTriple(target_machine->getTargetTriple());
-  cantFail((*ir_compiler)(*ir_module));
-
-  std::string ir = llvm_ir::DumpToString(ir_module.get());
-  EXPECT_THAT(ir, ::testing::ContainsRegex("fmul [a-z ]*<8 x float>")) << ir;
-  EXPECT_THAT(ir, Not(HasSubstr("<4 x float>"))) << ir;
-}
-
-TEST(IrCompilerTest, IntrinsicsRecognizeAmdCpuFromImpliedSse4a) {
-  if (!tsl::port::IsX86CPU()) {
-    GTEST_SKIP() << "Test only supported on x86.";
-  }
-  constexpr absl::string_view kAtanCall = R"(
-  declare <8 x float> @xla.atan.v8f32(<8 x float>)
-  define <8 x float> @atan_call(<8 x float> %x) {
-    %r = call <8 x float> @xla.atan.v8f32(<8 x float> %x)
-    ret <8 x float> %r
-  }
-  )";
-
-  auto context = std::make_unique<llvm::LLVMContext>();
-  // znver1 implies sse4a and avx2 without explicit feature flags.
-  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
-      llvm::TargetOptions(),
-      IrCompiler::Options{
-          /*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
-          /*optimize_for_size=*/false,
-          TargetMachineOptions("x86_64-unknown-linux-gnu", "znver1", "")},
-      IrCompiler::CompilationHooks());
-
-  ASSERT_OK_AND_ASSIGN(auto ir_module,
-                       ParseModule(*context, kAtanCall, "test_module"));
-  ASSERT_OK_AND_ASSIGN(auto target_machine,
-                       ir_compiler->build_target_machine());
-  ir_module->setDataLayout(target_machine->createDataLayout());
-  ir_module->setTargetTriple(target_machine->getTargetTriple());
-  cantFail((*ir_compiler)(*ir_module));
-
-  std::string ir = llvm_ir::DumpToString(ir_module.get());
-  EXPECT_THAT(ir, ::testing::ContainsRegex("fmul [a-z ]*<8 x float>")) << ir;
-  EXPECT_THAT(ir, Not(HasSubstr("<4 x float>"))) << ir;
-}
 TEST(IrCompilerTest, EmitIntrinsicCall) {
   constexpr absl::string_view kModuleName = "test_module";
   constexpr absl::string_view kMemcpyCall = R"(
