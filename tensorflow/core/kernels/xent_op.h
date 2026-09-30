@@ -113,8 +113,9 @@ struct XentEigenImpl {
         // The packed second half may not be aligned when batch_size is odd.
         T* tail_data = scratch_storage.data() + batch_size;
         typename TTypes<T>::UnalignedVec tail(tail_data, batch_size);
-        tail.device(d) = (backprop < backprop.constant(T(0)))
-                             .select(backprop.exp(), backprop.constant(T(0)))
+        backprop.device(d) = backprop.exp();
+        tail.device(d) = (backprop < backprop.constant(T(1)))
+                             .select(backprop, backprop.constant(T(0)))
                              .sum(along_class);
 
         // Normalize once per row before broadcasting across classes.
@@ -122,19 +123,15 @@ struct XentEigenImpl {
 
         const auto labels_broadcast = labels.broadcast(labels_bcast);
         const auto denominator = scratch.broadcast(one_by_class);
-        // Ordered comparisons keep NaN rows on the original gradient path.
-        const auto cancellation_rows = (scratch < scratch.constant(T(1))) ||
-                                       (scratch == scratch.constant(T(1)));
+        const auto cancellation_rows = scratch == scratch.constant(T(1));
         const auto rounded_dominant =
             cancellation_rows.broadcast(one_by_class) &&
-            ((backprop.constant(T(0)) < backprop) ||
-             (backprop == backprop.constant(T(0))));
+            (backprop == backprop.constant(T(1)));
         const auto tail_ratio_bcast =
             tail.reshape(batch_by_one).broadcast(one_by_class);
-        const auto corrected =
-            backprop.constant(T(1)) - labels_broadcast - tail_ratio_bcast;
-        backprop.device(d) = rounded_dominant.select(
-            corrected, backprop.exp() / denominator - labels_broadcast);
+        backprop.device(d) =
+            backprop / denominator - labels_broadcast -
+            rounded_dominant.template cast<T>() * tail_ratio_bcast;
         return;
       }
     }

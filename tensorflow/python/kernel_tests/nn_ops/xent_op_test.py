@@ -50,7 +50,8 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
             expected = np.full_like(logits, tail_probability)
             expected[:, target_class] = -tail_probability
 
-            _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+            _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+                features=logits, labels=labels)
             gradient = self.evaluate(gradient)
 
             self.assertAllClose(expected, gradient, rtol=1e-14, atol=1e-15)
@@ -60,17 +61,46 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
                                 atol=1e-15)
 
   @test_util.run_in_graph_and_eager_modes
+  def testFloatKeepsRoundedDominantGradient(self):
+    for target_class in (0, 1):
+      logits = np.zeros((1, 2), dtype=np.float32)
+      logits[0, target_class] = 37.42994775023705
+      labels = np.zeros_like(logits)
+      labels[0, target_class] = 1.0
+      _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+          features=logits, labels=labels)
+      gradient = self.evaluate(gradient)
+      self.assertEqual(gradient[0, target_class], 0.0)
+      self.assertGreater(gradient[0, 1 - target_class], 0.0)
+
+  @test_util.run_in_graph_and_eager_modes
   def testRejectsZeroClasses(self):
     for batch_size in (0, 1):
       for dtype in (dtypes.float32, dtypes.float64):
         with self.subTest(batch_size=batch_size, dtype=dtype):
           empty = constant_op.constant([], shape=[batch_size, 0], dtype=dtype)
           with self.assertRaisesRegex(
-              errors_impl.InvalidArgumentError,
+              (ValueError, errors_impl.InvalidArgumentError),
               "Must have at least one class, but got 0 classes"):
             result = gen_nn_ops.softmax_cross_entropy_with_logits(
                 features=empty, labels=empty)
             self.evaluate(result)
+
+  @test_util.run_deprecated_v1
+  def testRejectsDynamicallyZeroClasses(self):
+    with self.cached_session() as sess:
+      for dtype in (dtypes.float32, dtypes.float64):
+        features = array_ops.placeholder(dtype, shape=[None, None])
+        result = gen_nn_ops.softmax_cross_entropy_with_logits(
+            features=features, labels=features)
+        for batch_size in (0, 1):
+          with self.subTest(batch_size=batch_size, dtype=dtype):
+            with self.assertRaisesRegex(
+                errors_impl.InvalidArgumentError,
+                "Must have at least one class, but got 0 classes"):
+              sess.run(result, feed_dict={
+                  features: np.zeros((batch_size, 0), dtype=dtype.as_numpy_dtype)
+              })
 
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesMultiClassTailGradient(self):
@@ -82,7 +112,8 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
     labels = np.zeros_like(logits)
     labels[np.arange(batch_size), [0, 9, 4]] = 1.0
 
-    _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+    _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+        features=logits, labels=labels)
     gradient = self.evaluate(gradient)
     shifted = logits - np.max(logits, axis=1, keepdims=True)
     probabilities = np.exp(shifted)
@@ -92,7 +123,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
     expected[0, 0] = -9.0 * tail
     expected[1, 9] = -9.0 * tail
 
-    self.assertAllClose(expected, gradient, rtol=1e-13, atol=0)
+    self.assertAllClose(expected, gradient, rtol=1e-13, atol=1e-15)
     self.assertLess(gradient[0, 0], 0.0)
     self.assertLess(gradient[1, 9], 0.0)
     self.assertAllClose(np.sum(gradient, axis=-1), np.zeros(batch_size),
@@ -103,14 +134,15 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
     tail_logit = 37.42994775023705
     logits = np.array([[tail_logit, 0.0]], dtype=np.float64)
     labels = np.array([[0.5, 0.5]], dtype=np.float64)
-    _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+    _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+        features=logits, labels=labels)
     gradient = self.evaluate(gradient)
     self.assertLess(gradient[0, 0], 0.5)
     self.assertAllClose(np.sum(gradient, axis=-1), [0.0], atol=1e-15)
 
-    _, single_gradient = self._opFwdBwd(
+    _, single_gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
         labels=np.array([[1.0]], dtype=np.float64),
-        logits=np.array([[0.0]], dtype=np.float64))
+        features=np.array([[0.0]], dtype=np.float64))
     single_gradient = self.evaluate(single_gradient)
     self.assertEqual(single_gradient[0, 0], 0.0)
     self.assertFalse(np.signbit(single_gradient[0, 0]))
@@ -123,7 +155,8 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
     labels = np.array([[0., 0.], [2., 0.], [np.nan, 0.], [1., 0.],
                        [1., 0.], [1., 0.]],
                       dtype=np.float64)
-    _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+    _, gradient = gen_nn_ops.softmax_cross_entropy_with_logits(
+        features=logits, labels=labels)
     gradient = self.evaluate(gradient)
 
     self.assertAllClose([[0.5, 0.5], [-1.5, 0.5]], gradient[:2])

@@ -4606,7 +4606,10 @@ tf_kernel_library(
     name = "xent_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
-    deps = NN_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = NN_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
