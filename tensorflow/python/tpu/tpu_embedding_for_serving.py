@@ -206,13 +206,12 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     # underscore is stripped from the variable name because it is not allowed in
     # a root scope name; the checkpoint key is the attribute name, so
     # compatibility is unaffected.
+    layouts_key = tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY
     setattr(
         self,
-        tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
+        layouts_key,
         self._add_variable_with_custom_getter(
-            name=tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY.lstrip(
-                "_"
-            ),
+            name=layouts_key.lstrip("_"),
             initializer=empty_string,
             dtype=dtypes.string,
             getter=getter,
