@@ -71,6 +71,30 @@ cc_library(
 )
 
 cc_library(
+    name = "dtype_core_info",
+    hdrs = ["dtype_core_info.h"],
+    deps = ["@com_google_absl//absl/types:span"],
+)
+
+cc_library(
+    name = "core_info",
+    srcs = ["core_info.cc"],
+    hdrs = ["core_info.h"],
+    deps = [
+        ":dtype_core_info",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/cuda:cuda_core_info_table",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/stream_executor/rocm:rocm_core_info_table",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "context_map",
     hdrs = ["context_map.h"],
     deps = [

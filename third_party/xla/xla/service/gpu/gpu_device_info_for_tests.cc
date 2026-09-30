@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/stream_executor/cuda/cuda_core_info_table.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/core_info.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/xla_data.pb.h"
@@ -76,13 +76,11 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::A100SXMDeviceInfo(
   b.set_runtime_version(stream_executor::SemanticVersion{12, 8, 0});
   b.set_driver_version(stream_executor::SemanticVersion{12, 8, 0});
 
-  b.set_fpus_per_core(
-      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::DeviceInterconnectInfo interconnect_info;
   interconnect_info.active_links = 12;
   b.set_device_interconnect_info(std::move(interconnect_info));
-  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
-                                              b.clock_rate_ghz(), b);
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
@@ -109,13 +107,11 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
   b.set_runtime_version(stream_executor::SemanticVersion{12, 8, 0});
   b.set_driver_version(stream_executor::SemanticVersion{12, 8, 0});
 
-  b.set_fpus_per_core(
-      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::DeviceInterconnectInfo interconnect_info;
   interconnect_info.active_links = 18;
   b.set_device_interconnect_info(std::move(interconnect_info));
-  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
-                                              b.clock_rate_ghz(), b);
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
@@ -143,20 +139,19 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::B200SXMDeviceInfo(
   b.set_runtime_version(stream_executor::SemanticVersion{13, 2, 0});
   b.set_driver_version(stream_executor::SemanticVersion{13, 2, 0});
 
-  b.set_fpus_per_core(
-      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::DeviceInterconnectInfo interconnect_info;
   interconnect_info.active_links = 18;
   b.set_device_interconnect_info(std::move(interconnect_info));
-  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
-                                              b.clock_rate_ghz(), b);
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
+  const stream_executor::GpuComputeCapability cc(
+      stream_executor::RocmComputeCapability("gfx90a"));
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
-      stream_executor::RocmComputeCapability("gfx90a")));
+  b.set_gpu_compute_capability(cc);
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(64);
   b.set_shared_memory_per_block(64 * 1024);
@@ -164,7 +159,6 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_shared_memory_per_core(64 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(104);
-  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(65536);
   b.set_block_dim_limit_z(65536);
@@ -176,13 +170,17 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_registers_per_block_limit(131072);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI300DeviceInfo() {
+  const stream_executor::GpuComputeCapability cc(
+      stream_executor::RocmComputeCapability("gfx942"));
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
-      stream_executor::RocmComputeCapability("gfx942")));
+  b.set_gpu_compute_capability(cc);
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(64);
   b.set_shared_memory_per_block(64 * 1024);
@@ -190,7 +188,6 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI300DeviceInfo() {
   b.set_shared_memory_per_core(64 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(304);
-  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(65536);
   b.set_block_dim_limit_z(65536);
@@ -202,13 +199,17 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI300DeviceInfo() {
   b.set_registers_per_block_limit(131072);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
+  const stream_executor::GpuComputeCapability cc(
+      stream_executor::RocmComputeCapability("gfx950"));
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
-      stream_executor::RocmComputeCapability("gfx950")));
+  b.set_gpu_compute_capability(cc);
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(64);
   b.set_shared_memory_per_block(160 * 1024);
@@ -216,7 +217,6 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
   b.set_shared_memory_per_core(160 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(256);
-  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(65536);
   b.set_block_dim_limit_z(65536);
@@ -229,13 +229,17 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
   b.set_registers_per_block_limit(131072);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
+  const stream_executor::GpuComputeCapability cc(
+      stream_executor::RocmComputeCapability("gfx1100"));
   stream_executor::DeviceDescription b;
-  b.set_gpu_compute_capability(stream_executor::GpuComputeCapability(
-      stream_executor::RocmComputeCapability("gfx1100")));
+  b.set_gpu_compute_capability(cc);
   b.set_threads_per_block_limit(1024);
   b.set_threads_per_warp(32);
   b.set_shared_memory_per_block(64 * 1024);
@@ -243,7 +247,6 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   b.set_shared_memory_per_core(64 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(96);
-  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(2'147'483'647);
   b.set_block_dim_limit_z(2'147'483'647);
@@ -253,6 +256,11 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   b.set_device_memory_size(24'000'000'000);
   b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
   b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+
+  // RDNA3 is not in the ROCm table, so picks up 128 through the fallback.
+  // Routing it through the lookup anyway keeps every device here on one path.
+  b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
+  stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
   return b;
 }
 
