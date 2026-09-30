@@ -73,11 +73,11 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       }
       if (c->ValueKnown(input_size) && c->ValueKnown(window_size) &&
           c->Value(input_size) < c->Value(window_size)) {
-        // Match GetWindowedOutputSizeVerbose, including truncation of a
-        // negative numerator toward zero. Larger windows still produce an
+        // Match GetWindowedOutputSizeVerbose. Larger windows still produce an
         // invalid (negative) output size and must not be silently accepted.
         const int64_t gap = c->Value(window_size) - c->Value(input_size);
-        if (stride > 0 && (stride - gap) / stride == 0) {
+        // Compare gap < 2 * stride without overflowing.
+        if (gap - stride < stride) {
           *output_size = c->MakeDim(0);
           break;
         }

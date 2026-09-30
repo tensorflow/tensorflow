@@ -792,14 +792,17 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
-  def testMaxPoolInvalidFilterSize(self):
-    use_gpu = test.is_gpu_available()
-    with self.cached_session(use_gpu=use_gpu):
-      t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
-      pooled = nn_ops.max_pool(
-          t, ksize=[1, 1, 2, 1], strides=1, padding="VALID")
-      self.assertEqual(self.evaluate(pooled).shape, (1, 1, 0, 1))
+  def testMaxPoolInvalidFilterSize(self, **kwargs):
+    self._VerifyOneType(
+        input_sizes=[1, 1, 1, 1],
+        ksize=[1, 1, 2, 1],
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        expected=[],
+        **kwargs)
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolWithArgmaxKsizeOverflow(self):
