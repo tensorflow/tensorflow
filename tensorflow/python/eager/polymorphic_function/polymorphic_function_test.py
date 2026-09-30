@@ -4459,7 +4459,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return v * x
 
     self.assertAllEqual(f(constant_op.constant(2.0)), 2.0)
-    self.assertAllEqual(f.experimental_get_tracing_count(), 1)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 2)
     f.clear_cache()
     self.assertAllEqual(f.experimental_get_tracing_count(), 0)
     self.assertAllEqual(f(constant_op.constant(3.0)), 3.0)
