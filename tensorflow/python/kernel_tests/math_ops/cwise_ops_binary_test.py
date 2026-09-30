@@ -857,7 +857,7 @@ class BinaryOpTest(test.TestCase):
           self.assertLess(error, 2e-4)
 
   def testComplexPowWithZeroExponent(self):
-    for dtype in np.complex64, np.complex128:
+    for dtype in (np.complex64, np.complex128):
       bases = np.array(
           [
               complex(0.0, 0.0),
@@ -872,58 +872,49 @@ class BinaryOpTest(test.TestCase):
           dtype=dtype,
       )
       exponents = np.zeros_like(bases)
-      with test_util.force_cpu():
-        result = self.evaluate(math_ops.pow(bases, exponents))
+      result = self.evaluate(math_ops.pow(bases, exponents))
       self.assertAllEqual(result, np.ones_like(bases))
 
-      with test_util.force_cpu():
-        broadcast_result = self.evaluate(
-            math_ops.pow(bases, np.array(0, dtype=dtype))
-        )
+      broadcast_result = self.evaluate(
+          math_ops.pow(bases, np.array(0, dtype=dtype))
+      )
       self.assertAllEqual(broadcast_result, np.ones_like(bases))
 
       empty = np.array([], dtype=dtype)
-      with test_util.force_cpu():
-        empty_result = self.evaluate(math_ops.pow(empty, empty))
+      empty_result = self.evaluate(math_ops.pow(empty, empty))
       self.assertAllEqual(empty_result, empty)
 
       signed_zero_exponents = np.array(
           [complex(0.0, 0.0), complex(-0.0, 0.0),
            complex(0.0, -0.0), complex(-0.0, -0.0)], dtype=dtype)
-      with test_util.force_cpu():
-        signed_zero_result = self.evaluate(
-            math_ops.pow(np.zeros_like(signed_zero_exponents),
-                         signed_zero_exponents))
+      signed_zero_result = self.evaluate(
+          math_ops.pow(np.zeros_like(signed_zero_exponents),
+                       signed_zero_exponents))
       self.assertAllEqual(signed_zero_result,
                           np.ones_like(signed_zero_exponents))
 
-      with test_util.force_cpu():
-        imaginary_exponent_result = self.evaluate(
-            math_ops.pow(np.array(2 + 0j, dtype=dtype),
-                         np.array(0 + 1j, dtype=dtype)))
+      imaginary_exponent_result = self.evaluate(
+          math_ops.pow(np.array(2 + 0j, dtype=dtype),
+                       np.array(0 + 1j, dtype=dtype)))
       self.assertAllClose(imaginary_exponent_result,
                           np.exp(1j * np.log(2.0)))
       self.assertNotEqual(imaginary_exponent_result, 1 + 0j)
 
       mixed_bases = np.array([0j, 2 + 0j, 1 + 1j], dtype=dtype)
       mixed_exponents = np.array([0j, 2 + 0j, 0j], dtype=dtype)
-      with test_util.force_cpu():
-        mixed_result = self.evaluate(math_ops.pow(mixed_bases,
-                                                  mixed_exponents))
+      mixed_result = self.evaluate(math_ops.pow(mixed_bases, mixed_exponents))
       self.assertAllClose(mixed_result,
                           np.array([1 + 0j, 4 + 0j, 1 + 0j], dtype=dtype))
 
-      with test_util.force_cpu():
-        scalar_result = self.evaluate(
-            math_ops.pow(constant_op.constant(0j, dtype=dtype),
-                         constant_op.constant(0j, dtype=dtype)))
+      scalar_result = self.evaluate(
+          math_ops.pow(constant_op.constant(0j, dtype=dtype),
+                       constant_op.constant(0j, dtype=dtype)))
       self.assertEqual(scalar_result, 1 + 0j)
 
       batched_bases = bases.reshape(2, 4)
       batched_exponents = np.zeros((1, 4), dtype=dtype)
-      with test_util.force_cpu():
-        batched_result = self.evaluate(
-            math_ops.pow(batched_bases, batched_exponents))
+      batched_result = self.evaluate(
+          math_ops.pow(batched_bases, batched_exponents))
       self.assertAllEqual(batched_result, np.ones_like(batched_bases))
 
   def testAtan2SpecialValues(self):

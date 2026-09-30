@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace Eigen {
 namespace internal {
@@ -80,7 +81,9 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
 };
 
 // Eigen evaluates complex powers as exp(exponent * log(base)), which yields
-// NaN for 0^0. Handle a zero exponent before taking the logarithm.
+// NaN for 0^0. TensorFlow follows the zero-exponent identity z^0 == 1,
+// including non-finite bases. Handle zero exponents before the logarithm as a
+// TensorFlow-local workaround, without depending on an upstream Eigen change.
 template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
 struct tf_scalar_pow_op;
 
