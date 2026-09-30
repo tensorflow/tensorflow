@@ -2104,15 +2104,15 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # Unsigned NumPy integers must not wrap around in the duplicate
     # check (unsigned scalar subtraction is modular).
     with self.assertRaisesRegex(ValueError, 'must be different'):
-      tnp.rot90(tnp.ones(3), axes=(np.uint32(0), np.uint32(0)))
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(0)))
     with self.assertRaisesRegex(ValueError, 'must be different'):
-      tnp.rot90(tnp.ones(3), axes=(np.uint32(0), np.uint32(1)))
+      tnp.rot90(tnp.ones(3), axes=(onp.uint32(0), onp.uint32(1)))
     # In-bounds negative axes remain valid.
     self.assertAllClose(tnp.rot90(a, axes=(-2, -1)), onp.rot90(
         onp.ones((2, 3)), axes=(-2, -1)), check_dtypes=False)
     # Valid unsigned integer axes still work.
     self.assertAllClose(
-        tnp.rot90(tnp.ones((2, 3)), axes=(np.uint32(0), np.uint32(1))),
+        tnp.rot90(tnp.ones((2, 3)), axes=(onp.uint32(0), onp.uint32(1))),
         onp.rot90(onp.ones((2, 3)), axes=(0, 1)), check_dtypes=False)
 
   # TODO(mattjj): test infix operator overrides
