@@ -50,7 +50,17 @@ class HloPayloadDeduplicator {
   // to the caller (moves the internal payloads list), avoiding copies.
   std::deque<std::string> TakePayloads();
 
+  // Returns the payload at the given ID.
+  const std::string& GetPayload(int64_t id) const;
+
+  // Returns the number of payloads.
+  int64_t size() const;
+
  private:
+  // Shifts the generated payload IDs. This is useful when appending to a
+  // pre-existing proto that already has some payloads.
+  // Example: If offset_ is 5, the first deduplicated payload gets ID 5, the
+  // second ID 6, etc.
   int64_t offset_;
   std::deque<std::string> payloads_;
   absl::flat_hash_map<absl::string_view, int64_t> string_map_;
