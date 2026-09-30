@@ -1084,6 +1084,21 @@ class RoundingTest(test.TestCase):
         dtype=np.float32)
 
     with test_util.force_cpu():
+      # --- Boundary checks ---
+      # Empty tensor (N=0): floor must return an empty tensor of the same shape.
+      with ops.device('/device:CPU:0'):
+        empty_out = self.evaluate(
+            math_ops.floor(np.array([], dtype=np.float32)))
+      self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
+
+      # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
+      with ops.device('/device:CPU:0'):
+        scalar_out = self.evaluate(
+            math_ops.floor(
+                constant_op.constant(-1.40129846e-45,
+                                     dtype=dtypes_lib.float32)))
+      self.assertEqual(-1.0, scalar_out)
+
       # --- Scalar / short-array test (skipped on Windows) ---
       # Use an explicit CPU device to ensure the CPU kernel is exercised even
       # when the test suite is run under a GPU or XLA-GPU session config where
@@ -1121,13 +1136,15 @@ class RoundingTest(test.TestCase):
         self.assertAllEqual(
             np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
-  def testFloorSubnormalsAcrossDtypes(self):
+  def testFloorAcrossNonFloat32Dtypes(self):
     """Verify floor correctness for float16, double, and bfloat16 on CPU.
 
     These types go through Eigen's scalar_floor_op (no FTZ/DAZ fix yet).
-    This test confirms that the dtype routing in cwise_op_floor.cc does not
-    accidentally break normal-value correctness or -0.0 sign preservation
-    for any of the non-float32 types registered by the CPU kernel.
+    The test name reflects that it checks normal-value correctness and -0.0
+    sign preservation; non-float32 subnormal correction is a follow-up.
+    This confirms the dtype routing in cwise_op_floor.cc does not accidentally
+    break correctness for any of the non-float32 types registered by the CPU
+    kernel.
     """
     dtype_cases = [
         np.float16,

@@ -957,7 +957,7 @@ struct functor_traits<igamma_op<Scalar>> {
 // zero-cost register rename that never passes the value through the FP
 // pipeline, so FTZ/DAZ flushing cannot affect the result.
 struct scalar_cpu_floor_float_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+  EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
     // bit_cast reads raw bits via memcpy, never through an FP register.
     // Only evaluated when r == 0.0f; short-circuits for normal inputs.
@@ -968,7 +968,7 @@ struct scalar_cpu_floor_float_op {
   }
 
   template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+  EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     const Packet r = pfloor(x);
     // Reinterpret both r and x as integer packets (zero-cost bit cast,
     // e.g. _mm_castps_si128 on SSE).  Safe under FTZ/DAZ: preinterpret is a
@@ -989,9 +989,11 @@ struct scalar_cpu_floor_float_op {
 template <>
 struct functor_traits<scalar_cpu_floor_float_op> {
   enum {
+    // Base pfloor cost plus three extra packet ops: two pcmp_eq (for r_bits
+    // and x_bits against neg_zero_bits) and one pandnot to combine them.
     Cost = functor_traits<scalar_floor_op<float>>::Cost +
            3 * NumTraits<float>::AddCost,
-    // packetOp uses pfloor (HasRound) and pcmp_eq (HasCmp).
+    // packetOp uses pfloor (HasRound) and pcmp_eq/pandnot (HasCmp).
     PacketAccess =
         packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
   };
