@@ -378,6 +378,33 @@ class AsTensorTest(test.TestCase):
       self.assertEqual(dtypes_lib.int64, x.dtype)
       self.assertAllEqual(2, self.evaluate(x))
 
+      # Boundary 2**31 - 1: fits in signed 32-bit integer, remains int32.
+      x = ops.convert_to_tensor(
+          tensor_shape.TensorShape([2**31 - 1, 2, 3])[0])
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual(2**31 - 1, self.evaluate(x))
+
+      x = ops.convert_to_tensor(
+          tensor_shape.TensorShape([2**31 - 1, 2, 3])[0],
+          dtype=dtypes_lib.int32)
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual(2**31 - 1, self.evaluate(x))
+
+      # Boundary 2**31: auto-widens to int64.
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3])[0])
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual(2**31, self.evaluate(x))
+
+      x = ops.convert_to_tensor(
+          tensor_shape.TensorShape([2**31, 2, 3])[0], dtype=dtypes_lib.int64)
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual(2**31, self.evaluate(x))
+
+      # Requesting explicit int32 for a value >= 2**31 must raise.
+      with self.assertRaisesRegex(ValueError, "the value is too large.*int64"):
+        ops.convert_to_tensor(
+            tensor_shape.TensorShape([2**31, 2, 3])[0], dtype=dtypes_lib.int32)
+
     shape = tensor_shape.TensorShape(None)
     if shape._v2_behavior:
       with self.assertRaisesRegex(ValueError, "None values not supported"):
