@@ -1382,6 +1382,45 @@ class ArrayMethodsTest(test.TestCase):
     ind = rng.integers(0, 6, (4, 3)).astype(np.int32)
     self.assertAllClose(np.take_along_axis(x, ind, axis=1), f(x, ind))
 
+    # A valid negative axis still normalizes correctly when the rank is
+    # only known at runtime.
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def g(x, ind):
+      return np_array_ops.take_along_axis(x, ind, axis=-1)
+
+    self.assertAllClose(np.take_along_axis(x, ind, axis=-1), g(x, ind))
+
+  def testTakeAlongAxisUnknownRankInvalidAxis(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
+    # With the rank known only at runtime, an out-of-bounds axis (positive
+    # or negative) must still raise: the runtime assert runs before
+    # negative-axis normalization, otherwise `axis + rank` would silently
+    # mask e.g. axis=-5 on a rank-3 input into an in-bounds axis.
+    x = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                             dtypes.float32)
+    ind = constant_op.constant([[0], [2]], dtype=dtypes.int64)
+    for axis in (2, -3):
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(None, dtypes.float32),
+              tensor_spec.TensorSpec(None, dtypes.int64),
+          ]
+      )
+      def f(x, ind, axis=axis):
+        return np_array_ops.take_along_axis(x, ind, axis=axis)
+
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'out of bounds'):
+        f(x, ind)
+
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
                         np_array_ops.where([True], [1.0, 1.0],

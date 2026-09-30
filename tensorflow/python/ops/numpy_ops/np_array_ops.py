@@ -1827,6 +1827,24 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
       )
     axis = normalized
   else:
+    # Dynamic case: `rank` is only known at runtime, e.g. a `Tensor` rank
+    # inside a `tf.function` traced with an unspecified input signature.
+    # Static Python-level bounds checking can't run here, and normalizing
+    # `axis + rank` unconditionally would silently mask an out-of-bounds
+    # negative axis (e.g. axis=-5 on a rank-3 tensor) into an in-bounds
+    # one. So assert the same bounds at runtime before normalizing,
+    # keeping eager and graph mode consistent. Note: under
+    # `jit_compile=True`, tf2xla lowers `Assert` to a no-op (see
+    # tf2xla/kernels/assert_op.cc), so this check does not raise inside
+    # a fully dynamic-rank XLA-compiled function.
+    axis_t = ops.convert_to_tensor(axis)
+    rank_t = math_ops.cast(ops.convert_to_tensor(rank), axis_t.dtype)
+    control_flow_assert.Assert(
+        math_ops.reduce_all(
+            math_ops.logical_and(axis_t >= -rank_t, axis_t < rank_t)
+        ),
+        ['axis', axis_t, 'is out of bounds for array of dimension', rank_t],
+    )
     axis = axis + rank if axis < 0 else axis
 
   # Broadcast shapes to match, ensure that the axis of interest is not
