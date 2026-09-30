@@ -170,7 +170,7 @@ TEST_F(SqliteTest, UnsafeColumn) {
   stmt = db_->PrepareOrDie("SELECT b FROM T ORDER BY a");
   TF_ASSERT_OK(stmt.Step(&is_done_));
   absl::string_view p = stmt.ColumnStringUnsafe(0);
-  EXPECT_EQ('h', *p.data());
+  EXPECT_EQ('h', p[0]);
   TF_ASSERT_OK(stmt.Step(&is_done_));
   // This will actually happen, but it's not safe to test this behavior.
   // EXPECT_EQ('t', *p.data());
