@@ -3670,6 +3670,7 @@ cuda_py_strict_test(
     ],
     deps = [
         ":math_ops",
+        ":math_ops_gen",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",

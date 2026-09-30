@@ -22,6 +22,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -72,6 +73,36 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     ).output_shapes
     expected_shape = (64, None, 10)
     self.assertEqual(output_shape, expected_shape)
+
+  @parameterized.parameters([
+      (dtype, num_dtype)
+      for dtype in [dtypes.float16, dtypes.bfloat16]
+      for num_dtype in [np.int32, np.int64]
+  ])
+  def testLinSpaceKernelHalfAndBfloat16(self, dtype, num_dtype):
+    # tf.linspace is composed from other ops, so call the LinSpace kernel
+    # directly. Each element must be the float64 value rounded once to dtype;
+    # num=70000 is past float16's largest finite value (65504).
+    np_dtype = dtype.as_numpy_dtype
+    for start, stop, num in [(0.0, 1.0, 600), (-3.0, 5.0, 20), (9.0, 100.0, 1),
+                             (0.0, 1.0, 70000)]:
+      actual = self.evaluate(
+          gen_math_ops.lin_space(
+              np.array(start, np_dtype), np.array(stop, np_dtype),
+              np.array(num, num_dtype)))
+      expected = np.linspace(start, stop, num, dtype=np.float64).astype(np_dtype)
+      self.assertEqual(np_dtype, actual.dtype)
+      self.assertAllEqual(expected.astype(np.float32),
+                          actual.astype(np.float32))
+
+  @parameterized.parameters([dtypes.float16, dtypes.bfloat16])
+  def testLinspaceHalfAndBfloat16(self, dtype):
+    # API coverage for tf.linspace; it does not reach the LinSpace kernel.
+    np_dtype = dtype.as_numpy_dtype
+    actual = self.evaluate(
+        math_ops.linspace(np.array(1.0, np_dtype), np.array(10.0, np_dtype), 4))
+    self.assertEqual(np_dtype, actual.dtype)
+    self.assertAllEqual([1.0, 4.0, 7.0, 10.0], actual.astype(np.float32))
 
 
 if __name__ == "__main__":
