@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <cstdint>
 #include <limits>
 
 #include "absl/status/status.h"
@@ -83,26 +84,14 @@ class GatherOp : public OpKernel {
                     absl::InvalidArgumentError("axis must be int32 or int64."));
       }
     }
-    // special case to avoid checkfail when axis =
-    // std::numeric_limits<int64_t>::max().
-    OP_REQUIRES(
-        c, axis < std::numeric_limits<int64_t>::max(),
-        absl::InvalidArgumentError(
-            "axis must be less than std::numeric_limits<int64_t>::max()"));
-    // -axis overflows when axis == std::numeric_limits<int64_t>::min().
-    OP_REQUIRES(
-        c, axis > std::numeric_limits<int64_t>::min(),
-        absl::InvalidArgumentError(
-            "axis must be greater than std::numeric_limits<int64_t>::min()"));
-
-    int64_t min_params_dim = axis < 0 ? -axis : axis + 1;
-    OP_REQUIRES(c, params.dims() >= min_params_dim,
+    const int rank = params.dims();
+    OP_REQUIRES(c, axis >= -rank && axis < rank,
                 absl::InvalidArgumentError(
-                    absl::StrCat("Shape must be at least rank ", min_params_dim,
-                                 " but is rank ", params.dims())));
+                    absl::StrCat("Expected axis in the range [", -rank, ", ",
+                                 rank, "), but got ", axis)));
 
     if (axis < 0) {
-      axis = params.dims() + axis;
+      axis = rank + axis;
     }
 
     // Modify only a local copy of batch_dims_.
