@@ -278,5 +278,120 @@ TEST_F(EmitterHelpersTest, CreateTensorOfPointersAndMaskWithTensorBasePtr) {
   EXPECT_FALSE(mask_tile);
   EXPECT_EQ(ptr_tile.getType(), tile_type);
 }
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskReducedDimInBoundsHasNoMask) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset_0 =
+      mlir::arith::ConstantIndexOp::create(builder, 3).getResult();
+  mlir::Value offset_1 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+  mlir::Value offset_2 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{4, 1, 512},
+      /*layout=*/{2, 1, 0}, /*offsets=*/{offset_0, offset_1, offset_2},
+      /*sizes=*/{1, 1, 512}, /*strides=*/{1, 1, 1},
+      /*reduced_dims=*/{0, 1}, /*tile_shape=*/{512});
+
+  ASSERT_TRUE(tile);
+  EXPECT_FALSE(mask_tile);
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskReducedDimOutOfBoundsHasMask) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  // Offset 5 is out of bounds of dimension 0 which has size 4. Dimension 0 is
+  // reduced, so the mask is not derived from a range but from the offset.
+  mlir::Value offset_0 =
+      mlir::arith::ConstantIndexOp::create(builder, 5).getResult();
+  mlir::Value offset_1 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+  mlir::Value offset_2 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{4, 1, 512},
+      /*layout=*/{2, 1, 0}, /*offsets=*/{offset_0, offset_1, offset_2},
+      /*sizes=*/{1, 1, 512}, /*strides=*/{1, 1, 1},
+      /*reduced_dims=*/{0, 1}, /*tile_shape=*/{512});
+
+  ASSERT_TRUE(tile);
+  ASSERT_TRUE(mask_tile);
+  const auto mask_tile_type =
+      mlir::cast<mlir::RankedTensorType>(mask_tile.getType());
+  EXPECT_THAT(mask_tile_type.getShape(), ElementsAre(512));
+  EXPECT_TRUE(mask_tile_type.getElementType().isInteger(1));
+  // The mask is a splat of a scalar predicate.
+  EXPECT_TRUE(mask_tile.getDefiningOp<mlir::triton::SplatOp>());
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskReducedDimNegativeOffsetHasMask) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset_0 =
+      mlir::arith::ConstantIndexOp::create(builder, -1).getResult();
+  mlir::Value offset_1 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{4, 512}, /*layout=*/{1, 0},
+      /*offsets=*/{offset_0, offset_1}, /*sizes=*/{1, 512},
+      /*strides=*/{1, 1}, /*reduced_dims=*/{0}, /*tile_shape=*/{512});
+
+  ASSERT_TRUE(tile);
+  ASSERT_TRUE(mask_tile);
+  const auto mask_tile_type =
+      mlir::cast<mlir::RankedTensorType>(mask_tile.getType());
+  EXPECT_THAT(mask_tile_type.getShape(), ElementsAre(512));
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskCombinesReducedAndRetainedDimMasks) {
+  auto [entry_block, mlir_module] = CreateModuleAndEntryBlock(
+      {mlir::LLVM::LLVMPointerType::get(&context_, 1)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  mlir::Value offset_0 =
+      mlir::arith::ConstantIndexOp::create(builder, 5).getResult();
+  mlir::Value offset_1 =
+      mlir::arith::ConstantIndexOp::create(builder, 0).getResult();
+
+  // Both the reduced dimension 0 (offset 5 >= 4) and the retained dimension 1
+  // (tile size 128 > 100) require a mask.
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{4, 100}, /*layout=*/{1, 0},
+      /*offsets=*/{offset_0, offset_1}, /*sizes=*/{1, 128},
+      /*strides=*/{1, 1}, /*reduced_dims=*/{0}, /*tile_shape=*/{128});
+
+  ASSERT_TRUE(tile);
+  ASSERT_TRUE(mask_tile);
+  const auto mask_tile_type =
+      mlir::cast<mlir::RankedTensorType>(mask_tile.getType());
+  EXPECT_THAT(mask_tile_type.getShape(), ElementsAre(128));
+  auto and_op = mask_tile.getDefiningOp<mlir::arith::AndIOp>();
+  ASSERT_TRUE(and_op);
+  // One operand is the splatted mask of the reduced dimension.
+  EXPECT_TRUE(and_op.getLhs().getDefiningOp<mlir::triton::SplatOp>() ||
+              and_op.getRhs().getDefiningOp<mlir::triton::SplatOp>());
+}
 }  // namespace
 }  // namespace xla::gpu

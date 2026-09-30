@@ -1187,8 +1187,7 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
   for (auto [dim_index, sizes] : llvm::enumerate(
            llvm::zip(pad_input_shape, tile_sizes, tile_offsets,
                      tiled_pad.hlo()->padding_config().dimensions()))) {
-    auto [pad_input_dim_size, pad_output_dim_size, tile_offset, dim_config] =
-        sizes;
+    auto [pad_input_dim_size, tile_size, tile_offset, dim_config] = sizes;
     if (dim_config.edge_padding_low() != 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Low padding is not supported but got edge_padding_low: ",
@@ -1200,12 +1199,13 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
           dim_config.interior_padding()));
     }
 
-    if (pad_input_dim_size == pad_output_dim_size) {
+    if (dim_config.edge_padding_high() == 0) {
+      // Skip unpadded dimensions.
       continue;
     }
 
     // LHS for the compare is an iota broadcasted to the output shape.
-    TensorValue range = Iota(b, pad_output_dim_size);
+    TensorValue range = Iota(b, tile_size);
     TensorValue bcast = xtile::BroadcastInDims(
         b, range, tile_sizes, {static_cast<int64_t>(dim_index)});
 
