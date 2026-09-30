@@ -132,7 +132,13 @@ class Module(autotrackable.AutoTrackable):
 
   @property
   def name_scope(self):
-    """Returns a `tf.name_scope` instance for this class."""
+    """Returns an absolute `tf.name_scope` instance for this module.
+
+    The returned scope is anchored to the scope active when this module was
+    instantiated and does not inherit ambient parent scopes opened later.
+    To create a relative scope using the module's name that nests inside
+    current ambient scopes, use `with tf.name_scope(self.name):`.
+    """
     if tf2.enabled():
       return self._name_scope
     else:
