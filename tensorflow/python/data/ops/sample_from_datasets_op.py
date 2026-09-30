@@ -53,25 +53,29 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         dataset.take(-math_ops.cast(positive[i], dtypes.int64))
         for i, dataset in enumerate(datasets)
     ]
-    total = math_ops.reduce_sum(
-        array_ops.where_v2(positive, weights, array_ops.zeros_like(weights)))
+    # Return float64 logits, so that the ones for empty datasets neither
+    # underflow nor overflow. The multinomial kernel computes in float64
+    # anyway, so positive weights are sampled exactly as before.
+    logits = math_ops.cast(math_ops.log(weights), dtypes.float64)
+    weights = math_ops.cast(weights, dtypes.float64)
+    total = math_ops.reduce_sum(array_ops.where_v2(positive, weights, 0.))
     if stop_on_empty_dataset:
       # Selecting an empty dataset would end sampling, so keep them
       # unselectable.
-      fill = array_ops.zeros_like(total)
+      fill = np.float64(-np.inf)
     else:
       # An unselectable dataset is never found empty, so sampling wouldn't
       # end once the others are exhausted. Give the empty datasets a tenth of
       # the draws instead: selecting one only skips it, so the others keep
       # their relative probabilities.
       num_empty = math_ops.reduce_sum(
-          math_ops.cast(math_ops.logical_not(positive), weights.dtype))
-      # With no empty dataset `fill` is unused, but don't divide by zero.
-      fill = total / (9 * math_ops.maximum(num_empty,
-                                           array_ops.ones_like(num_empty)))
+          math_ops.cast(math_ops.logical_not(positive), dtypes.float64))
+      fill = math_ops.log(
+          array_ops.where_v2(total > 0, total, 1.) /
+          (9. * math_ops.maximum(num_empty, 1.)))
     # With no positive weight every dataset is empty, so let any be selected.
-    fill = array_ops.where_v2(total > 0, fill, array_ops.ones_like(fill))
-    return datasets, array_ops.where_v2(positive, weights, fill)
+    fill = array_ops.where_v2(total > 0, fill, 0.)
+    return datasets, array_ops.where_v2(positive, logits, fill)
 
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
@@ -112,13 +116,15 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
         raise TypeError(f"Invalid `weights`. `weights` type must be "
                         f"`tf.float16`, `tf.bfloat16`, `tf.float32` or "
                         f"`tf.float64` but is {weights.dtype}.")
-      if weights_value is None:
-        datasets, weights = _empty_datasets_with_zero_weight(
-            datasets, weights, stop_on_empty_dataset)
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.
-      logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
+      if weights_value is None:
+        datasets, logits = _empty_datasets_with_zero_weight(
+            datasets, weights, stop_on_empty_dataset)
+      else:
+        logits = math_ops.log(weights, name="logits")
+      logits = array_ops.expand_dims(logits, 0)
 
     # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When
     # it is a `Dataset`, it is possible that evaluating it has a side effect

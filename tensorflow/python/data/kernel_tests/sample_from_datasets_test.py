@@ -21,7 +21,6 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
-from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -317,25 +316,29 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         (2, 3))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasetsRuntimeWeightsWithCheckNumerics(self):
+  def testSampleFromDatasetsRuntimeZeroWeightsWithExtremeWeights(self):
 
-    @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
     def count(weights):
+      datasets = [
+          dataset_ops.Dataset.range(3),
+          dataset_ops.Dataset.range(3),
+          dataset_ops.Dataset.range(3).repeat()
+      ]
       sample_dataset = dataset_ops.Dataset.sample_from_datasets(
-          [dataset_ops.Dataset.range(3),
-           dataset_ops.Dataset.range(3)],
-          weights=weights)
+          datasets, weights=weights, stop_on_empty_dataset=False)
       return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
 
-    # With all weights positive, nothing computed for empty datasets may be
-    # infinite or NaN.
-    check_numerics_callback.enable_check_numerics()
-    try:
-      self.assertEqual(self.evaluate(count(constant_op.constant([1., 1.]))),
-                       6)
-    finally:
-      check_numerics_callback.disable_check_numerics()
+    # The weight of the emptied dataset must not underflow to zero for tiny
+    # weights, nor overflow for large float16 ones, or it's never selected
+    # and sampling doesn't end. Subnormal weights would be flushed to zero,
+    # so the tiny ones are just above the smallest normal float32.
+    for dtype, weights in ((dtypes.float32, [2e-38, 2e-38, 0.]),
+                           (dtypes.float16, [6e4, 6e4, 0.])):
+      runtime_count = def_function.function(
+          count, input_signature=[tensor_spec.TensorSpec([3], dtype)])
+      self.assertEqual(
+          self.evaluate(runtime_count(constant_op.constant(weights, dtype))),
+          6)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
