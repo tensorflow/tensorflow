@@ -92,34 +92,6 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
                                boxes.dim_size(1), ")")));
 }
 
-static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
-                                              int num_boxes,
-                                              const Tensor& scores) {
-  // The shape of 'scores' is [batch_size, num_boxes, num_classes]
-  OP_REQUIRES(context, scores.dims() == 3,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "scores must be 3-D", scores.shape().DebugString())));
-  OP_REQUIRES(context, scores.dim_size(1) == num_boxes,
-              absl::InvalidArgumentError("scores has incompatible shape"));
-}
-
-static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
-                                                    const Tensor& boxes,
-                                                    int* num_boxes,
-                                                    const int num_classes) {
-  // The shape of 'boxes' is [batch_size, num_boxes, q, 4]
-  OP_REQUIRES(context, boxes.dims() == 4,
-              absl::InvalidArgumentError(absl::StrCat(
-                  "boxes must be 4-D", boxes.shape().DebugString())));
-
-  bool box_check = boxes.dim_size(2) == 1 || boxes.dim_size(2) == num_classes;
-  OP_REQUIRES(context, box_check,
-              absl::InvalidArgumentError(
-                  "third dimension of boxes must be either 1 or num classes"));
-  *num_boxes = boxes.dim_size(1);
-  OP_REQUIRES(context, boxes.dim_size(3) == 4,
-              absl::InvalidArgumentError("boxes must have 4 columns"));
-}
 // Return intersection-over-union overlap between boxes i and j
 template <typename T>
 static inline float IOU(typename TTypes<T, 2>::ConstTensor boxes, int i,
@@ -422,7 +394,7 @@ void SelectResultPerBatch(std::vector<float>& nmsed_boxes,
                           bool pad_per_class, int max_size_per_batch,
                           bool clip_boxes, int per_batch_size) {
   auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
-    return rc_i.score > rc_j.score;
+    return rc_j.score < rc_i.score;
   };
   std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
 
@@ -498,7 +470,10 @@ void BatchedNonMaxSuppressionOp(
   std::vector<std::vector<ResultCandidate>> result_candidate_vec(
       num_batches,
       std::vector<ResultCandidate>(result_candidate_vec_size,
-                                   {-1, -1.0, -1, {0.0, 0.0, 0.0, 0.0}}));
+                                   {-1,
+                                    -std::numeric_limits<float>::infinity(),
+                                    -1,
+                                    {0.0, 0.0, 0.0, 0.0}}));
 
   // [num_batches, per_batch_size * 4]
   std::vector<std::vector<float>> nmsed_boxes(num_batches);
@@ -1004,6 +979,16 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
             absl::StrCat("scores must be 3-D [batch, num_boxes, num_classes], "
                          "got shape ",
                          scores.shape().DebugString())));
+    const int num_boxes = boxes.dim_size(1);
+    const int num_classes = scores.dim_size(2);
+    OP_REQUIRES(
+        context, boxes.dim_size(2) == 1 || boxes.dim_size(2) == num_classes,
+        absl::InvalidArgumentError(
+            "third dimension of boxes must be either 1 or num classes"));
+    OP_REQUIRES(context, boxes.dim_size(3) == 4,
+                absl::InvalidArgumentError("boxes must have 4 columns"));
+    OP_REQUIRES(context, scores.dim_size(1) == num_boxes,
+                absl::InvalidArgumentError("scores has incompatible shape"));
     OP_REQUIRES(context, (boxes.dim_size(0) == scores.dim_size(0)),
                 absl::InvalidArgumentError(
                     "boxes and scores must have same batch size"));
@@ -1051,14 +1036,6 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
 
     OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
                 absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
-    int num_boxes = 0;
-    const int num_classes = scores.dim_size(2);
-    ParseAndCheckCombinedNMSBoxSizes(context, boxes, &num_boxes, num_classes);
-    CheckCombinedNMSScoreSizes(context, num_boxes, scores);
-
-    if (!context->status().ok()) {
-      return;
-    }
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes,
                                max_size_per_class, max_total_size_per_batch,
                                score_threshold_val, iou_threshold_val,
