@@ -781,15 +781,17 @@ TEST(CommonShapeFnsTest, Conv2DEmptyOutputTest) {
                     .Finalize(&op.node_def));
   };
 
-  // A filter that overhangs the input by at most the stride gives an empty
-  // output, as in the kernels.
+  // A filter that overhangs the input by less than twice the stride gives an
+  // empty output, as in the kernels.
   set_op(/*strides=*/{1, 1, 1, 1}, /*padding=*/"VALID");
   INFER_OK(op, "[1,4,5,3];[5,5,3,2]", "[d0_0,0,1,d1_3]");
   INFER_ERROR("Negative dimension size", op, "[1,4,5,3];[6,5,3,2]");
 
   set_op(/*strides=*/{1, 2, 3, 1}, /*padding=*/"VALID");
-  INFER_OK(op, "[1,4,4,3];[6,7,3,2]", "[d0_0,0,0,d1_3]");
-  INFER_ERROR("Negative dimension size", op, "[1,4,4,3];[7,7,3,2]");
+  INFER_OK(op, "[1,4,4,3];[5,5,3,2]", "[d0_0,0,0,d1_3]");
+  INFER_OK(op, "[1,4,4,3];[7,9,3,2]", "[d0_0,0,0,d1_3]");
+  INFER_ERROR("Negative dimension size", op, "[1,4,4,3];[8,9,3,2]");
+  INFER_ERROR("Negative dimension size", op, "[1,4,4,3];[7,10,3,2]");
 
   // Dilation applies before the filter is compared with the input.
   set_op(/*strides=*/{1, 1, 1, 1}, /*padding=*/"VALID",

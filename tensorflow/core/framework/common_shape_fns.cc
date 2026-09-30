@@ -72,12 +72,14 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
             c->Multiply(window_size, dilation_rate, &window_size));
         TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
       }
-      // A window that overhangs the input by at most `stride` gives an empty
-      // output, but the Subtract() below rejects the negative difference.
+      // The kernels compute `(input - window + stride) / stride` with C++
+      // division, which gives an empty output for a window that overhangs
+      // the input by less than twice `stride`, but the Subtract() below
+      // rejects the negative difference.
       if (allow_empty_output && c->ValueKnown(input_size) &&
           c->ValueKnown(window_size) &&
-          c->Value(window_size) > c->Value(input_size) &&
-          c->Value(window_size) - c->Value(input_size) <= stride) {
+          c->Value(input_size) < c->Value(window_size) &&
+          c->Value(window_size) - c->Value(input_size) < 2 * stride) {
         *output_size = c->MakeDim(0);
         break;
       }

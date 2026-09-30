@@ -3114,14 +3114,15 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
 
   @test_util.run_deprecated_v1
-  def testFilterLargerThanInputByAtMostStride(self):
+  def testFilterLargerThanInputShape(self):
     # The kernels give an empty output when the filter overhangs the input by
-    # at most the stride, so shape inference accepts it too.
+    # less than twice the stride, so shape inference accepts it too.
     input_t = array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3])
     for filter_shape, strides, padding, expected in (
         ([20, 21, 3, 2], [1, 1, 1, 1], "VALID", [32, 1, 0, 2]),
         ([21, 20, 3, 2], [1, 1, 1, 1], "VALID", [32, 0, 1, 2]),
         ([22, 23, 3, 2], [1, 2, 3, 1], "VALID", [32, 0, 0, 2]),
+        ([23, 25, 3, 2], [1, 2, 3, 1], "VALID", [32, 0, 0, 2]),
         (
             [24, 25, 3, 2],
             [1, 1, 1, 1],
@@ -3133,9 +3134,13 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
       out = nn_ops.conv2d(input_t, filter_t, strides=strides, padding=padding)
       self.assertEqual(out.shape.as_list(), expected)
 
-    with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-      filter_t = array_ops.placeholder(dtypes.float32, shape=[22, 20, 3, 2])
-      nn_ops.conv2d(input_t, filter_t, strides=[1, 1, 1, 1], padding="VALID")
+    for filter_shape, strides in (
+        ([22, 20, 3, 2], [1, 1, 1, 1]),
+        ([24, 20, 3, 2], [1, 2, 1, 1]),
+    ):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        filter_t = array_ops.placeholder(dtypes.float32, shape=filter_shape)
+        nn_ops.conv2d(input_t, filter_t, strides=strides, padding="VALID")
 
   @test_util.run_deprecated_v1
   def testFilterLargerThanInputGradient(self):

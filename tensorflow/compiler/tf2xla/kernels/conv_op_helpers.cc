@@ -384,6 +384,16 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
       out_backprop_shape, attrs.dilations, attrs.strides, attrs.padding,
       attrs.data_format, &dims, attrs.explicit_paddings));
 
+  // With an empty `out_backprop` and a stride above 1, the convolution below
+  // doesn't produce `input_shape`. The input gradient is zero then.
+  TensorShape out_backprop_tensor_shape;
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(out_backprop_shape, &out_backprop_tensor_shape));
+  if (out_backprop_tensor_shape.num_elements() == 0) {
+    return xla::Broadcast(xla::Zero(builder, out_backprop_shape.element_type()),
+                          input_shape.dimensions());
+  }
+
   // The input gradients are computed by a convolution of the output
   // gradients and the filter, with some appropriate padding. See the
   // comment at the top of conv_grad_shape_utils.h for details.

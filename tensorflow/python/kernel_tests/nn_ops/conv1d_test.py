@@ -54,11 +54,11 @@ class Conv1DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFilterWiderThanInput(self):
-    # A filter wider than the input by at most the stride gives an empty
-    # output in graph mode too, not a shape inference error.
-    x = array_ops.ones([1, 4, 3])
+    # A filter wider than the input by less than twice the stride gives an
+    # empty output in graph mode too, not a shape inference error.
     filters = array_ops.ones([5, 3, 2])
-    for stride in [1, 2]:
+    for width, stride in ((4, 1), (4, 2), (2, 2)):
+      x = array_ops.ones([1, width, 3])
       c = nn_ops.conv1d(x, filters, stride, padding="VALID")
       self.assertAllEqual(self.evaluate(c).shape, [1, 0, 2])
 

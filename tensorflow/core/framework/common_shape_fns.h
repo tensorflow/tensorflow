@@ -38,7 +38,8 @@ absl::Status GetWindowedOutputSizeFromDims(InferenceContext* c,
 // for GetWindowedOutputSize(). The 'padding_before' and 'padding_after'
 // parameters are only used if padding_type == EXPLICIT. If
 // 'allow_empty_output' is true, a window that overhangs the padded input by
-// at most 'stride' gives an output size of 0 instead of an error.
+// less than twice 'stride' gives an output size of 0, as in the kernels,
+// instead of an error.
 absl::Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
     DimensionOrConstant filter_size, int64_t dilation_rate, int64_t stride,
@@ -132,8 +133,8 @@ absl::Status Conv2DShapeWithExplicitPadding(
     shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D. Like Conv2DShapeWithExplicitPadding, but also
-// accepts a filter that overhangs the input by at most the stride, for which
-// the kernels return an empty output.
+// accepts a filter that overhangs the input by less than twice the stride,
+// for which the kernels return an empty output.
 absl::Status Conv2DShapeWithExplicitPaddingAllowEmptyOutput(
     shape_inference::InferenceContext* c);
 

@@ -217,14 +217,6 @@ void LaunchConv2DBackpropFilterOpImpl(
       &padding_right));
   DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
-  // If `out_backprop` is empty, filter_backprop should be set to all zeros.
-  // Otherwise, cudnn fails with an empty input.
-  if (out_backprop.NumElements() == 0) {
-    functor::SetZeroFunctor<GPUDevice, T> set_zero;
-    set_zero(ctx->eigen_device<GPUDevice>(), filter_backprop->flat<T>());
-    return;
-  }
-
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 

@@ -189,8 +189,10 @@ class Conv2DBackpropFilterOp : public OpKernel {
     if (filter_shape.num_elements() == 0) {
       return;
     }
-    // If input is empty, set gradients to zero.
-    if (input.shape().num_elements() == 0) {
+    // If input or out_backprop is empty, set gradients to zero. Otherwise,
+    // cudnn fails with an empty input.
+    if (input.shape().num_elements() == 0 ||
+        out_backprop.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
       f(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;
@@ -313,8 +315,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     // be set to all zeros.
     if (out_backprop.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> set_zero;
-      set_zero(context->eigen_device<Device>(),
-               filter_backprop->template flat<T>());
+      set_zero(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;
     }
 

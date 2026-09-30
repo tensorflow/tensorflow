@@ -405,6 +405,20 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
         expected=expected_output)
 
   @parameterized.named_parameters(*DATA_FORMATS)
+  def testConv2DFilterLargerThanInputStride2(self, data_format):
+    # The forward output, and so out_backprop, is empty.
+    self._VerifyValues(
+        input_sizes=[1, 4, 4, 1],
+        filter_sizes=[5, 5, 1, 1],
+        out_backprop_sizes=[1, 0, 0, 1],
+        strides=[2, 2],
+        padding="VALID",
+        data_format_src="NHWC",
+        data_format_dst=data_format,
+        expected=np.zeros([1, 4, 4, 1]),
+    )
+
+  @parameterized.named_parameters(*DATA_FORMATS)
   def testConv2D1x2FilterStride3Width5(self, data_format):
     expected_output = [1, 2, 0, 2, 4]
     self._VerifyValues(
