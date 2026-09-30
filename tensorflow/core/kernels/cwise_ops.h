@@ -81,7 +81,7 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
 };
 
 // Eigen evaluates complex powers as exp(exponent * log(base)), which yields
-// NaN for 0^0. TensorFlow follows the zero-exponent identity z^0 == 1,
+// NaN for 0^0. IEEE 754 requires z^0 == 1, which TensorFlow follows,
 // including non-finite bases. Handle zero exponents before the logarithm as a
 // TensorFlow-local workaround, without depending on an upstream Eigen change.
 template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
