@@ -5633,6 +5633,7 @@ cc_library(
         ":call_inliner",
         ":gather_scatter_utils",
         ":hlo_creation_utils",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
