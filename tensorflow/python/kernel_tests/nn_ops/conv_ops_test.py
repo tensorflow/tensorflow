@@ -3247,6 +3247,24 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
                 strides=[1, 2, 2, 2, 1],
                 padding="SAME")).shape, [1, 8, 8, 8, 3])
 
+    # Two values are a Conv2D-only form, so Conv3D must reject them as well
+    # as any other count. Only the oneDNN CPU kernel emits this message: with
+    # oneDNN off, or on GPU, a different Conv3D kernel rejects these first.
+    if test_util.IsMklEnabled():
+      with ops.device("/cpu:0"):
+        for input_sizes in ([8, 8], [8, 8, 8]):
+          with self.assertRaisesRegex(
+              errors_impl.InvalidArgumentError,
+              "requires input_sizes to contain 5 values"):
+            self.evaluate(
+                gen_nn_ops.conv3d_backprop_input_v2(
+                    input_sizes=constant_op.constant(
+                        input_sizes, dtype=dtypes.int32),
+                    filter=filters_3d,
+                    out_backprop=out_backprop_3d,
+                    strides=[1, 2, 2, 2, 1],
+                    padding="SAME"))
+
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
