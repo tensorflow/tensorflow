@@ -887,6 +887,45 @@ class BinaryOpTest(test.TestCase):
         empty_result = self.evaluate(math_ops.pow(empty, empty))
       self.assertAllEqual(empty_result, empty)
 
+      signed_zero_exponents = np.array(
+          [complex(0.0, 0.0), complex(-0.0, 0.0),
+           complex(0.0, -0.0), complex(-0.0, -0.0)], dtype=dtype)
+      with test_util.force_cpu():
+        signed_zero_result = self.evaluate(
+            math_ops.pow(np.zeros_like(signed_zero_exponents),
+                         signed_zero_exponents))
+      self.assertAllEqual(signed_zero_result,
+                          np.ones_like(signed_zero_exponents))
+
+      with test_util.force_cpu():
+        imaginary_exponent_result = self.evaluate(
+            math_ops.pow(np.array(2 + 0j, dtype=dtype),
+                         np.array(0 + 1j, dtype=dtype)))
+      self.assertAllClose(imaginary_exponent_result,
+                          np.exp(1j * np.log(2.0)))
+      self.assertNotEqual(imaginary_exponent_result, 1 + 0j)
+
+      mixed_bases = np.array([0j, 2 + 0j, 1 + 1j], dtype=dtype)
+      mixed_exponents = np.array([0j, 2 + 0j, 0j], dtype=dtype)
+      with test_util.force_cpu():
+        mixed_result = self.evaluate(math_ops.pow(mixed_bases,
+                                                  mixed_exponents))
+      self.assertAllClose(mixed_result,
+                          np.array([1 + 0j, 4 + 0j, 1 + 0j], dtype=dtype))
+
+      with test_util.force_cpu():
+        scalar_result = self.evaluate(
+            math_ops.pow(constant_op.constant(0j, dtype=dtype),
+                         constant_op.constant(0j, dtype=dtype)))
+      self.assertEqual(scalar_result, 1 + 0j)
+
+      batched_bases = bases.reshape(2, 4)
+      batched_exponents = np.zeros((1, 4), dtype=dtype)
+      with test_util.force_cpu():
+        batched_result = self.evaluate(
+            math_ops.pow(batched_bases, batched_exponents))
+      self.assertAllEqual(batched_result, np.ones_like(batched_bases))
+
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
                    (1.0, 0.0), (-1.0, 0.0), (1.0, -0.0), (-1.0, -0.0),

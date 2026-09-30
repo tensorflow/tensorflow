@@ -79,6 +79,8 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+// Eigen evaluates complex powers as exp(exponent * log(base)), which yields
+// NaN for 0^0. Handle a zero exponent before taking the logarithm.
 template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
 struct tf_scalar_pow_op;
 
@@ -96,7 +98,7 @@ struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
     if (TF_PREDICT_FALSE(exponent == T(0))) {
       return T(1);
     }
-    return scalar_pow_op<T, T>()(base, exponent);
+    return scalar_pow_op<T, T>::operator()(base, exponent);
   }
 };
 
