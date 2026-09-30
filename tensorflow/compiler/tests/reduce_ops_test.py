@@ -228,18 +228,20 @@ class ReduceOpsAutoClusteringTest(test_util.TensorFlowTestCase):
   def setUp(self):
     super(ReduceOpsAutoClusteringTest, self).setUp()
     self.previous_jit = config.get_optimizer_jit()
+    # Register the cleanup first so the global jit setting is restored even
+    # if set_optimizer_jit below or the test body raises.
+    self.addCleanup(config.set_optimizer_jit, self.previous_jit)
     config.set_optimizer_jit('autoclustering')
-
-  def tearDown(self):
-    config.set_optimizer_jit(self.previous_jit)
-    super(ReduceOpsAutoClusteringTest, self).tearDown()
 
   def testReduceSumWithDuplicateAxesAutoClustering(self):
     # Auto-clustering must reject duplicate axes just like eager execution
-    # and jit_compile=True do. The input is the one from GitHub issue
-    # 119360: with all-ones dimensions the unfixed lowering silently
-    # accepted the duplicates instead of raising.
-    x = np.full((1, 1, 1, 1, 1, 1), 3.5, dtype=np.float32)
+    # and jit_compile=True do. The input shape from GitHub issue 119360
+    # cannot be used here: Grappler's constant folding rewrites reductions
+    # over single-element inputs into a Reshape before auto-clustering ever
+    # compiles the cluster, which would silently bypass the lowering under
+    # test. A multi-element input keeps the Sum in the cluster so the
+    # duplicate axes reach the TF->HLO legalization.
+    x = np.arange(6, dtype=np.float32).reshape((1, 1, 1, 1, 2, 3))
     axis = constant_op.constant([-2, -1, -2, -1, -2, -1], dtype=dtypes.int32)
 
     with ops.device('/CPU:0'):
