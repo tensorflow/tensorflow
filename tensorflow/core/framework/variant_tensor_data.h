@@ -117,7 +117,7 @@ class VariantTensorData {
     if (metadata_.size() != sizeof(bool)) return false;
     *value = false;
     for (size_t i = 0; i < sizeof(bool); ++i)
-      *value = *value || (metadata_.data()[i] != 0);
+      *value = *value || (metadata_[i] != 0);
     return true;
   }
 
