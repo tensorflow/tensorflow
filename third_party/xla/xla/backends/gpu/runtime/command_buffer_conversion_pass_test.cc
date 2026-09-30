@@ -175,8 +175,8 @@ DynamicSliceConfig CreateDsfConfig(std::optional<int64_t> loop_index,
   if (loop_index.has_value()) {
     config.set_loop_index(*loop_index);
   }
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(byte_stride);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(byte_stride);
   return config;
 }
 

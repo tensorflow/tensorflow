@@ -1721,7 +1721,8 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   // rely on these annotations when running fusion dispatch pipeline to optimize
   // DS/DUS fusions that can be replaced by a more efficient copy operation.
   HloPassPipeline pipeline("dynamic-slice", compilation_stats);
-  pipeline.AddPass<DynamicSliceAnnotator>();
+  pipeline.AddPass<DynamicSliceAnnotator>(
+      opts.xla_gpu_experimental_enable_dynamic_slice_table_offsets());
 
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
     DynamicSliceFusionRewriterV2::Options opts;
