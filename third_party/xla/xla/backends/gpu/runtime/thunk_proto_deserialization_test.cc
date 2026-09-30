@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -108,8 +107,8 @@ TEST(ThunkProtoDeserializationTest, SequentialThunkChain) {
   thunk_sequence.push_back(std::move(inner_thunk));
   SequentialThunk outer_thunk(thunk_info, std::move(thunk_sequence));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, outer_thunk.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, outer_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> new_thunk,
       DeserializeThunkProto(proto, /*buffer_allocations=*/{},
                             /*hlo_module=*/nullptr, kTestPlatformName,
@@ -153,13 +152,13 @@ TEST(ThunkProtoDeserializationTest, CopyThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* copy_thunk = dynamic_cast<CopyThunk*>(thunk.get());
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -202,13 +201,13 @@ TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* copy_thunk = dynamic_cast<DeviceToHostCopyThunk*>(thunk.get());
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -251,13 +250,13 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* copy_thunk = dynamic_cast<HostToDeviceCopyThunk*>(thunk.get());
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -300,13 +299,13 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* copy_thunk = dynamic_cast<DeviceToDeviceCopyThunk*>(thunk.get());
   ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -387,13 +386,13 @@ TEST(ThunkProtoDeserializationTest, DynamicSliceFusionThunk) {
       BufferAllocation(/*index=*/0, /*size=*/kBufferSize, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/kBufferSize, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
 
   EXPECT_EQ(thunk->kind(), Kind::kDynamicSliceFusion);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_TRUE(round_trip_proto.has_dynamic_slice_fusion_thunk());
   EXPECT_EQ(round_trip_proto.dynamic_slice_fusion_thunk()
                 .embedded_thunks()
@@ -515,13 +514,13 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
       BufferAllocation(/*index=*/4, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> athunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* thunk = dynamic_cast<WhileThunk*>(athunk.get());
   ASSERT_NE(thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -665,13 +664,13 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
       BufferAllocation(/*index=*/4, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/5, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> athunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* thunk = dynamic_cast<ConditionalThunk*>(athunk.get());
   ASSERT_NE(thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -696,12 +695,12 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -800,12 +799,12 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
       BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -890,12 +889,12 @@ TEST(ThunkProtoDeserializationTest, CustomCallThunk) {
       0, ShapeUtil::MakeShape(U32, {42}), "parameter"));
   hlo_module.AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, &hlo_module,
                             kTestPlatformName, se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -964,11 +963,11 @@ TEST(ThunkProtoDeserializationTest, CublasLtGroupedMatmulThunk) {
       BufferAllocation(/*index=*/6, /*size=*/8, /*color=*/0),
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -1030,13 +1029,13 @@ TEST(ThunkProtoDeserializationTest, HostSendRecvThunksRoundTrip) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations,
                             /*hlo_module=*/nullptr, kTestPlatformName,
                             se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
   const auto* sequential_thunk = dynamic_cast<SequentialThunk*>(thunk.get());
   ASSERT_NE(sequential_thunk, nullptr);
@@ -1108,13 +1107,13 @@ TEST(ThunkProtoDeserializationTest, HostExecuteThunksRoundTrip) {
         }
       )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, /*buffer_allocations=*/{},
                             /*hlo_module=*/nullptr, kTestPlatformName,
                             se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
   // Check that start and done thunks share the same async event id.
   const auto* sequential_thunk = dynamic_cast<SequentialThunk*>(thunk.get());
@@ -1178,12 +1177,12 @@ TEST(ThunkProtoDeserializationTest, CustomKernelThunkRoundTrip) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -1228,7 +1227,7 @@ TEST(ThunkProtoDeserializationTest, CustomKernelThunkSymbolResolvingWorks) {
     return absl::NotFoundError("Symbol not found");
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(
           proto, buffer_allocations, /*hlo_module=*/nullptr, kTestPlatformName,
@@ -1281,13 +1280,13 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunkRoundTrip) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations,
                             /*hlo_module=*/nullptr, kTestPlatformName,
                             se::GpuComputeCapability()));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
   const auto* h2d_thunk = dynamic_cast<HostToDeviceCopyThunk*>(thunk.get());
   ASSERT_NE(h2d_thunk, nullptr);
@@ -1306,14 +1305,14 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
 
   AsyncDoneThunk done_thunk(Thunk::ThunkInfo(), start_thunk.async_execution());
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk.ToProto());
 
   // Deserialize both thunks together so the AsyncExecutionMap connects them.
   ThunkSequenceProto thunk_protos;
   *thunk_protos.add_thunks() = start_proto;
   *thunk_protos.add_thunks() = done_proto;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ThunkSequence sequence,
       DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
                                     /*hlo_module=*/nullptr, kTestPlatformName,
@@ -1332,10 +1331,10 @@ TEST(ThunkProtoDeserializationTest, AsyncStartAndDoneThunk) {
             deserialized_done->async_execution().get());
 
   // Verify the round-trip by re-serializing and comparing protos.
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
-                          deserialized_start->ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_done,
-                          deserialized_done->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
+                       deserialized_start->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_done,
+                       deserialized_done->ToProto());
 
   EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
   EXPECT_THAT(round_trip_done, EqualsProto(done_proto));
@@ -1485,13 +1484,13 @@ TEST(ThunkProtoDeserializationTest, RecvThunk) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
                             kTestPlatformName, se::GpuComputeCapability()));
   auto* recv_thunk = dynamic_cast<RecvThunk*>(thunk.get());
   ASSERT_NE(recv_thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, recv_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, recv_thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

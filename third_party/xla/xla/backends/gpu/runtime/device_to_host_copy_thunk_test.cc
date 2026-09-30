@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -49,7 +48,7 @@ TEST(DeviceToHostCopyThunkTest, ToProto) {
 
   DeviceToHostCopyThunk thunk(thunk_info, {src_slice, shape},
                               {dst_slice, shape}, 256);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
                   profile_annotation: "profile_annotation"
@@ -129,7 +128,7 @@ TEST(DeviceToHostCopyThunkTest, FromProto) {
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
   Shape shape = ShapeUtil::MakeShape(S32, {64});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DeviceToHostCopyThunk> thunk,
       DeviceToHostCopyThunk::FromProto(
           thunk_info, proto.device_to_host_copy_thunk(), buffer_allocations));

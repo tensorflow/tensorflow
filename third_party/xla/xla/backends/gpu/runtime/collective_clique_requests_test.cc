@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/runtime/device_id.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -48,9 +48,9 @@ TEST(CollectiveCliqueRequestsTest, OrderedRequests) {
   std::vector<std::vector<GlobalDeviceId>> rg2 = {{d0, d1, d2, d3}};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0));
-  TF_ASSERT_OK(requests.RequestClique(k1, rg1));
-  TF_ASSERT_OK(requests.RequestClique(k2, rg2));
+  ASSERT_OK(requests.RequestClique(k0, rg0));
+  ASSERT_OK(requests.RequestClique(k1, rg1));
+  ASSERT_OK(requests.RequestClique(k2, rg2));
 
   // Check that we acquire larger cliques first, and then cliques with smaller
   // id first, as acquiring cliques according to natural clique key order might
@@ -74,8 +74,8 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   GpuDeviceCommunicator::Requirements dev_comm1{16};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm0}));
-  TF_ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm1}));
+  ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm0}));
+  ASSERT_OK(requests.RequestClique(k0, rg0, {dev_comm1}));
 
   auto ordered_requests = requests.OrderedRequestedCliques();
   ASSERT_EQ(ordered_requests.size(), 1);
@@ -98,7 +98,7 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
   std::vector<std::vector<GlobalDeviceId>> dg0b = {{d0, d1}, {d2, d3}};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, dg0a));
+  ASSERT_OK(requests.RequestClique(k0, dg0a));
 
   ASSERT_THAT(
       requests.RequestClique(k0, dg0b),

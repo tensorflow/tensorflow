@@ -71,7 +71,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
