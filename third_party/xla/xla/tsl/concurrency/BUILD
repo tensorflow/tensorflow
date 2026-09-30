@@ -50,6 +50,7 @@ cc_library(
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
