@@ -1103,12 +1103,15 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     class VariableWithStringDtype:
       _should_act_as_resource_variable = True
 
-      def __init__(self, variable):
+      def __init__(self, variable, dtype_name=None):
         self.variable = variable
+        self.dtype_name = dtype_name
 
       @property
       def dtype(self):
-        return self.variable.dtype.name
+        if self.dtype_name is None:
+          return self.variable.dtype.name
+        return self.dtype_name
 
       @property
       def handle(self):
@@ -1141,6 +1144,11 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(self.evaluate(gradient), np.zeros([2, 3]))
     self.assertAllEqual(self.evaluate(zero_gradients[1][1]), 6.)
     self.assertAllEqual(self.evaluate(zero_gradients[1][2]), 6.)
+    for invalid_dtype in ('', 'invalid_dtype', 'float32\x00invalid'):
+      invalid_sources = [y, VariableWithStringDtype(x, invalid_dtype), x, y]
+      with self.assertRaisesRegex(TypeError, 'Invalid TensorFlow dtype'):
+        tape.gradient(
+            target, invalid_sources, unconnected_gradients='zero')
 
   @test_util.run_in_graph_and_eager_modes
   def testUnconnectedGradientsNestedDefunZeros(self):

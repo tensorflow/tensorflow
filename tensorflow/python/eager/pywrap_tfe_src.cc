@@ -1265,6 +1265,9 @@ DataType PyTensor_DataType(PyObject* tensor) {
       if (DataTypeFromString(absl::string_view(dtype_name, dtype_size), &dtype)) {
         return dtype;
       }
+      PyErr_Format(PyExc_TypeError, "Invalid TensorFlow dtype: %R",
+                   dtype_field.get());
+      return DT_INVALID;
     }
 
     Safe_PyObjectPtr enum_field(
@@ -3052,6 +3055,16 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
         }
       } else if (seen_results.find(result[i]) != seen_results.end()) {
         Py_INCREF(result[i]);
+      }
+      if (result[i] == nullptr) {
+        // Release gradients not yet transferred to py_result.
+        for (int j = i + 1; j < result.size(); ++j) {
+          if (result[j] != nullptr && seen_results.insert(result[j]).second) {
+            Py_DECREF(result[j]);
+          }
+        }
+        Py_DECREF(py_result);
+        return nullptr;
       }
       seen_results.insert(result[i]);
       PyList_SET_ITEM(py_result, i, reinterpret_cast<PyObject*>(result[i]));
