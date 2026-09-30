@@ -560,5 +560,41 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
                   "the number of values implied by dense_values_shape (2)"));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeMismatchSingleVariantError) {
+  // A single variant carries 3 values, but dense_values_shape implies only 2.
+  // The single-value path must still enforce the output shape contract.
+  auto encoded_variant_grad =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>({encoded_variant_grad},
+                                                     {0, 3}, {2});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (3) to match "
+                  "the number of values implied by dense_values_shape (2)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest,
+       DenseValuesShapeEmptyWithValuesError) {
+  // dense_values_shape implies 0 values, but the encoded variants carry
+  // 3 + 2 = 5. The mismatch must fail rather than silently dropping values.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {0});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (5) to match "
+                  "the number of values implied by dense_values_shape (0)"));
+}
+
 }  // namespace
 }  // namespace tensorflow
