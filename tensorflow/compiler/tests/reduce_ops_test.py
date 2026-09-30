@@ -206,10 +206,9 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                         index_dtype)
 
   def testReduceSumWithDuplicateAxes(self, index_dtype):
-    # Regression test for GitHub issue 119360. The eager kernel and the
-    # tf2xla bridge reject duplicate reduction axes; the MLIR bridge used to
-    # silently deduplicate them, so auto-clustering accepted input that the
-    # other two execution paths rejected.
+    # Regression test for GitHub issue 119360 (session and jit_compile
+    # path); see testReduceSumWithDuplicateAxesAutoClustering below for the
+    # auto-clustering path.
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
@@ -221,18 +220,12 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
 
   def testReduceSumWithDuplicateAxesAutoClustering(self, index_dtype):
-    # Auto-clustering on TPU goes through a different compilation path that
-    # does not hit the MLIR lowering under test here, so the InvalidArgument
-    # raised by GenericConvertReductionOp is never surfaced to this test.
-    if self.device == 'TPU':
-      self.skipTest('Test only covers the CPU/GPU auto-clustering path.')
     # Auto-clustering must reject duplicate axes just like eager execution
     # and jit_compile=True do. The input is the one from GitHub issue
     # 119360: with all-ones dimensions the unfixed lowering silently
     # accepted the duplicates instead of raising.
-    del index_dtype  # Unused; the axes are compile-time constants.
     x = np.full((1, 1, 1, 1, 1, 1), 3.5, dtype=np.float32)
-    axis = [-2, -1, -2, -1, -2, -1]
+    axis = constant_op.constant([-2, -1, -2, -1, -2, -1], dtype=index_dtype)
 
     previous_jit = config.get_optimizer_jit()
     config.set_optimizer_jit('autoclustering')

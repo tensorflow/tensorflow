@@ -4153,6 +4153,12 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       int64_t rank = input_shape.size();
       if ((index < -rank || index >= rank)) return failure();
       index = (index + rank) % rank;
+      if (reduced_dimensions_bitmap[index]) {
+        return op.emitOpError()
+               << "Invalid reduction arguments: Axes contains duplicate "
+                  "dimension: "
+               << index;
+      }
       reduced_dimensions_bitmap[index] = true;
       xla_dimensions.push_back(index);
     }
