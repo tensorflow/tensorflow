@@ -82,7 +82,8 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
       return nullptr;
   }
 
-  if (static_cast<uint32_t>(limit - p) < (*non_shared + *value_length)) {
+  if (static_cast<uint64_t>(limit - p) <
+      (static_cast<uint64_t>(*non_shared) + *value_length)) {
     return nullptr;
   }
   return p;
