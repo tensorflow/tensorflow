@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -217,7 +220,7 @@ TEST_F(GatherOpTest, Error_AxisInt64Max) {
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
-      "axis must be less than std::numeric_limits<int64_t>::max()"))
+      "Expected axis in the range [-2, 2), but got 9223372036854775807"))
       << s;
 }
 
@@ -233,7 +236,37 @@ TEST_F(GatherOpTest, Error_AxisInt64Min) {
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
-      "axis must be greater than std::numeric_limits<int64_t>::min()"))
+      "Expected axis in the range [-2, 2), but got -9223372036854775808"))
+      << s;
+}
+
+TEST_F(GatherOpTest, Error_AxisInt32Max) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int32_t>(TensorShape({4}), {0, 4, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({}),
+                             {std::numeric_limits<int32_t>::max()});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Expected axis in the range [-2, 2), but got 2147483647"))
+      << s;
+}
+
+TEST_F(GatherOpTest, Error_AxisInt32Min) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int32_t>(TensorShape({4}), {0, 4, 1, 2});
+  AddInputFromArray<int32_t>(TensorShape({}),
+                             {std::numeric_limits<int32_t>::min()});
+  absl::Status s = RunOpKernel();
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Expected axis in the range [-2, 2), but got -2147483648"))
       << s;
 }
 
