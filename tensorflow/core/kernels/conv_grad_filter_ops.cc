@@ -311,9 +311,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
       return;
     }
 
-    // If shapes are valid but `out_backprop` is empty, filter_backprop should
-    // be set to all zeros.
-    if (out_backprop.NumElements() == 0) {
+    // If shapes are valid but `input` or `out_backprop` is empty,
+    // filter_backprop should be set to all zeros.
+    if (input.NumElements() == 0 || out_backprop.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> set_zero;
       set_zero(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;

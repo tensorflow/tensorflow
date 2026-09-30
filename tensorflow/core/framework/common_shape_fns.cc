@@ -79,7 +79,7 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       if (allow_empty_output && c->ValueKnown(input_size) &&
           c->ValueKnown(window_size) &&
           c->Value(input_size) < c->Value(window_size) &&
-          c->Value(window_size) - c->Value(input_size) < 2 * stride) {
+          (c->Value(window_size) - c->Value(input_size)) / 2 < stride) {
         *output_size = c->MakeDim(0);
         break;
       }

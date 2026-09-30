@@ -500,8 +500,10 @@ absl::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
       attrs.padding, attrs.data_format, &dims, attrs.explicit_paddings));
 
   // An empty `out_backprop` would be a convolution window with a zero-sized
-  // dimension below, which XLA rejects. The filter gradient is zero then.
-  if (output_tensor_shape.num_elements() == 0) {
+  // dimension below, which XLA rejects. The filter gradient is zero then, as
+  // it is for empty activations.
+  if (input_tensor_shape.num_elements() == 0 ||
+      output_tensor_shape.num_elements() == 0) {
     return xla::Broadcast(xla::Zero(builder, activations_shape.element_type()),
                           filter_shape.dimensions());
   }
