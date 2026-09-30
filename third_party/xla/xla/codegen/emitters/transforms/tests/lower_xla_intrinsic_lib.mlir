@@ -328,6 +328,26 @@ func.func @log1p_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
 // CHECK: %[[CALL:.*]] = call @xla.log1p.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
 // CHECK: return %[[CALL]]
 
+// AVX512-LABEL: @log1p_f32_vector_16
+// AVX512-NOT: vector.extract_strided_slice
+// AVX512: %[[CALL:.*]] = call @xla.log1p.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// AVX512: return %[[CALL]]
+
+// -----
+
+func.func @log_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
+  %ret = math.log %arg0 : vector<16xf32>
+  return %ret : vector<16xf32>
+}
+// CHECK-LABEL: @log_f32_vector_16
+// CHECK: math.log %arg0 : vector<16xf32>
+// CHECK: return
+
+// AVX512-LABEL: @log_f32_vector_16
+// AVX512-NOT: vector.extract_strided_slice
+// AVX512: %[[CALL:.*]] = call @xla.log.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
+// AVX512: return %[[CALL]]
+
 // -----
 
 func.func @erf_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
@@ -364,6 +384,22 @@ func.func @rsqrt_f32_vector_16(%arg0: vector<16xf32>) -> vector<16xf32> {
 // AVX512-LABEL: @rsqrt_f32_vector_16
 // AVX512: %[[CALL:.*]] = call @xla.rsqrt.v16f32(%arg0) : (vector<16xf32>) -> vector<16xf32>
 // AVX512: return %[[CALL]]
+
+// -----
+
+func.func @log_bf16_vector(%arg0: vector<4xbf16>) -> vector<4xbf16> {
+  %ret = math.log %arg0 : vector<4xbf16>
+  return %ret : vector<4xbf16>
+}
+// CHECK-LABEL: @log_bf16_vector
+// CHECK: math.log %arg0 : vector<4xbf16>
+// CHECK: return
+
+// AVX512-LABEL: @log_bf16_vector
+// AVX512: %[[EXT:.*]] = arith.extf %arg0 : vector<4xbf16> to vector<4xf32>
+// AVX512: %[[LOG:.*]] = call @xla.log.v4f32(%[[EXT]]) : (vector<4xf32>) -> vector<4xf32>
+// AVX512: %[[TRUNC:.*]] = call @xla.fptrunc.v4f32.to.v4bf16(%[[LOG]]) : (vector<4xf32>) -> vector<4xbf16>
+// AVX512: return %[[TRUNC]] : vector<4xbf16>
 
 
 

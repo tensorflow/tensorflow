@@ -33,6 +33,7 @@ typedef _Float16 Vec8h __attribute__((vector_size(16)));
 typedef _Float16 Vec16h __attribute__((vector_size(32)));
 
 // Single precision (float32)
+typedef float Vec2f __attribute__((vector_size(8)));
 typedef float Vec4f __attribute__((vector_size(16)));
 typedef float Vec8f __attribute__((vector_size(32)));
 typedef float Vec16f __attribute__((vector_size(64)));
@@ -43,6 +44,7 @@ typedef double Vec4d __attribute__((vector_size(32)));
 typedef double Vec8d __attribute__((vector_size(64)));
 
 // Corresponding integer types
+typedef uint32_t Vec2i __attribute__((vector_size(8)));
 typedef uint32_t Vec4i __attribute__((vector_size(16)));
 typedef uint32_t Vec8i __attribute__((vector_size(32)));
 typedef uint64_t Vec2q __attribute__((vector_size(16)));
@@ -54,6 +56,10 @@ namespace internal {
 template <typename ScalarInt, size_t Width>
 struct MakeIntVec;
 
+template <>
+struct MakeIntVec<uint32_t, 2> {
+  using type = Vec2i;
+};
 template <>
 struct MakeIntVec<uint32_t, 4> {
   using type = Vec4i;

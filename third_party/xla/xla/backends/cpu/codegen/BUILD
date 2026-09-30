@@ -185,6 +185,7 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
@@ -206,6 +207,7 @@ xla_cc_test(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

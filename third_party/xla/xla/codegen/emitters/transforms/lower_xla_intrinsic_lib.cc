@@ -336,13 +336,20 @@ class LowerXlaIntrinsicLibPass
     mlir::RewritePatternSet patterns(context);
     absl::string_view cpu_features = cpu_features_.getValue();
     patterns.add<LowerIntrinsicPattern<ci::Exp, mm::ExpOp>,
-                 LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>,
                  LowerIntrinsicPattern<ci::Rsqrt, mm::RsqrtOp>,
                  LowerIntrinsicPattern<ci::Tanh, mm::TanhOp>,
                  LowerIntrinsicPattern<ci::EigenAtan, mm::AtanOp>,
                  LowerIntrinsicPattern<ci::FpTrunc, ma::TruncFOp>,
                  LowerIntrinsicPattern<ci::Erf, mm::ErfOp>>(context,
                                                             cpu_features);
+    if (ci::UseYnnpackIntrinsics(cpu_features)) {
+      patterns.add<LowerIntrinsicPattern<ci::YnnLog, mm::LogOp>,
+                   LowerIntrinsicPattern<ci::YnnLog1p, mm::Log1pOp>>(
+          context, cpu_features);
+    } else {
+      patterns.add<LowerIntrinsicPattern<ci::Log1p, mm::Log1pOp>>(context,
+                                                                  cpu_features);
+    }
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();

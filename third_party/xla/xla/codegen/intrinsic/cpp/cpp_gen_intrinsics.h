@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Attributes.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -45,10 +46,31 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
 // If the compiler does not support vector extensions, this will return false.
 bool AreEigenIntrinsicsAvailable();
 
+// Returns the LLVM IR bitcode string for YNNPACK unary math functions matching
+// the given options.
+const std::string& GetYnnpackIrString(
+    const intrinsics::IntrinsicOptions& options);
+
+// Returns true if the YNNPACK intrinsics were compiled and are available.
+bool AreYnnpackIntrinsicsAvailable();
+
+// Returns true if YNNPACK intrinsics should be used for the target options.
+bool UseYnnpackIntrinsics(const intrinsics::IntrinsicOptions& options);
+
+// Returns true if YNNPACK intrinsics should be used for the given CPU features.
+bool UseYnnpackIntrinsics(absl::string_view cpu_features);
+
+namespace intrinsics {
+using ::xla::codegen::UseYnnpackIntrinsics;
+}  // namespace intrinsics
+
 // Helper for Intrinsic<T> classes that use CppGen backend for some types.
 // Looks up a function by name in the module (assuming it was linked from
 // a CppGen library) and configures its linkage and attributes for inlining.
-llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name);
+// The result has signature `type`; a library function compiled with an
+// indirect host ABI (sret return, pointer arguments) is wrapped to match.
+llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name,
+                                  llvm::FunctionType* type);
 
 class CppGenIntrinsicLibrary {
  public:
