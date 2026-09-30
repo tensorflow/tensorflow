@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -68,16 +69,17 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
   // will trigger the "replica groups must be provided" error path.
   absl::StatusOr<AllGatherInfo> BuildInfo(
       CollectiveKernelEnabled collective_kernel_enabled,
-      PrimitiveType element_type, int64_t num_elements,
+      PrimitiveType element_type, std::vector<int64_t> input_dims,
       std::vector<int32_t> replica_groups, int num_hosts = 1,
       int active_links = 18) {
     const int num_replicas =
         replica_groups.empty() ? 1 : static_cast<int>(replica_groups.size());
     const std::string element_type_str =
         primitive_util::LowercasePrimitiveTypeName(element_type);
-    const std::string input_shape_str = absl::StrFormat("%d", num_elements);
-    const std::string output_shape_str =
-        absl::StrFormat("%d", num_elements * num_replicas);
+    std::vector<int64_t> output_dims = input_dims;
+    output_dims[0] *= num_replicas;
+    const std::string input_shape_str = absl::StrJoin(input_dims, ",");
+    const std::string output_shape_str = absl::StrJoin(output_dims, ",");
     const std::string replica_groups_str =
         replica_groups.empty()
             ? ""
@@ -127,6 +129,16 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
                               Cast<HloAllGatherInstruction>(hlo_instr),
                               /*device_assignment=*/nullptr);
   }
+
+  absl::StatusOr<AllGatherInfo> BuildInfo(
+      CollectiveKernelEnabled collective_kernel_enabled,
+      PrimitiveType element_type, int64_t num_elements,
+      std::vector<int32_t> replica_groups, int num_hosts = 1,
+      int active_links = 18) {
+    return BuildInfo(collective_kernel_enabled, element_type,
+                     std::vector<int64_t>{num_elements},
+                     std::move(replica_groups), num_hosts, active_links);
+  }
 };
 
 TEST_F(BuildAllGatherInfoTest, SucceedsForSupportedF32) {
@@ -170,22 +182,50 @@ TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoDevices) {
                HasSubstr("only supported for power of 2")));
 }
 
-TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedUnsignedType) {
-  // U32 is not supported by the Triton all-gather kernel.
+TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedType) {
+  // F8E4M3FN is not supported by the Triton all-gather kernel.
   EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(true), U32, /*num_elements=*/512,
-                /*replica_groups=*/{0, 1}),
+      BuildInfo(CollectiveKernelEnabled(true), F8E4M3FN,
+                /*num_elements=*/512, /*replica_groups=*/{0, 1}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("is not supported for the all-gather kernel")));
 }
 
-TEST_F(BuildAllGatherInfoTest, FailsForUnalignedElements) {
-  // 7 is not divisible by kNumElementsPerThread (which is >= 2).
+TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoGatherDimSize) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), F32, /*num_elements=*/7,
                         /*replica_groups=*/{0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("not aligned to the memory transaction "
-                                 "alignment requirement")));
+                       HasSubstr("per-rank size along the gather dimension to "
+                                 "be a power of 2")));
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), S32,
+                        /*input_dims=*/{3, 4}, /*replica_groups=*/{0, 1}),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("per-rank size along the gather dimension to "
+                                 "be a power of 2")));
+}
+
+TEST_F(BuildAllGatherInfoTest,
+       SucceedsForSubTransactionAndUnalignedNonGatherDim) {
+  // s32[2] = 8 bytes (< 16-byte transaction).
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), S32, /*num_elements=*/2,
+                        /*replica_groups=*/{0, 1}),
+              IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                                 Field(&AllGatherInfo::num_elements, 2),
+                                 Field(&AllGatherInfo::element_type, S32))));
+  // s32[2, 7] = 56 bytes (gather dim = 2, non-gather dim = 7).
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), S32, /*input_dims=*/{2, 7},
+                /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 14),
+                         Field(&AllGatherInfo::element_type, S32))));
+  // s32[2, 529] = 4,232 bytes (gather dim = 2, non-gather dim = 529).
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), S32, /*input_dims=*/{2, 529},
+                /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 1058),
+                         Field(&AllGatherInfo::element_type, S32))));
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsIfReplicaGroupsEmpty) {

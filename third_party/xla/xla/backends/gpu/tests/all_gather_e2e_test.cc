@@ -556,6 +556,161 @@ TEST_F(AllGatherTest, TwoDimensionalGatherDim1) {
   }
 }
 
+// 2D shape where the gather dimension per rank is 1 (not divisible by
+// world_size = 2), so tile_sizes = [1, 64] and staging split_dim falls back to
+// dim 1.
+TEST_F(AllGatherTest, TwoDimensionalGatherDimNotDivisibleByWorldSize) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[1,64] parameter(0)
+    ROOT all-gather = f32[2,64] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  Literal input_r0 = LiteralUtil::CreateFull<float>({1, 64}, 10.0f);
+  Literal input_r1 = LiteralUtil::CreateFull<float>({1, 64}, 20.0f);
+
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+
+  Literal expected = LiteralUtil::CreateFull<float>({2, 64}, 0.0f);
+  for (int64_t col = 0; col < 64; ++col) {
+    expected.Set<float>({0, col}, 10.0f);
+    expected.Set<float>({1, col}, 20.0f);
+  }
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+// 1D sub-128-bit transfer (8 bytes per rank): s32[2] -> s32[4].
+TEST_F(AllGatherTest, SubTransactionSize1DS32) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = s32[2] parameter(0)
+    ROOT all-gather = s32[4] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  Literal input_r0 = LiteralUtil::CreateR1<int32_t>({10, 11});
+  Literal input_r1 = LiteralUtil::CreateR1<int32_t>({20, 21});
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  Literal expected = LiteralUtil::CreateR1<int32_t>({10, 11, 20, 21});
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+// 2D shape with unaligned non-gather dim (56 bytes per rank): s32[2, 7] ->
+// s32[4, 7].
+TEST_F(AllGatherTest, UnalignedNonGatherDim2DS32_2x7) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = s32[2,7] parameter(0)
+    ROOT all-gather = s32[4,7] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       MakeFakeLiteral(ShapeUtil::MakeShape(S32, {4, 7})));
+  Literal input_r0 = expected.Slice({0, 0}, {2, 7});
+  Literal input_r1 = expected.Slice({2, 0}, {4, 7});
+
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
+// 2D shape with larger odd non-gather dim (4,232 bytes per rank): s32[2, 529]
+// -> s32[4, 529].
+TEST_F(AllGatherTest, UnalignedNonGatherDim2DS32_2x529) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = s32[2,529] parameter(0)
+    ROOT all-gather = s32[4,529] all-gather(param_0), dimensions={0},
+      replica_groups={{0,1}}
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       MakeFakeLiteral(ShapeUtil::MakeShape(S32, {4, 529})));
+  Literal input_r0 = expected.Slice({0, 0}, {2, 529});
+  Literal input_r1 = expected.Slice({2, 0}, {4, 529});
+
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+
+  VerifyOneShotAllGather(result.optimized_module);
+
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+        << "Mismatch at replica " << i;
+  }
+}
+
 // Repeated invocations on the same executable to verify double-buffering
 // across alternating slots (signal_value & 1).
 TEST_F(AllGatherTest, RepeatedInvocationsDoubleBuffering) {
