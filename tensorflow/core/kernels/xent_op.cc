@@ -84,13 +84,14 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     // loss is 1-D (one per example), and size is batch_size.
 
     // The second half holds float64 tail sums without a separate allocation.
-    const int scratch_cols = std::is_same_v<T, double> ? 2 : 1;
+    const int scratch_multiplier = std::is_same_v<T, double> ? 2 : 1;
     Tensor scratch;
     OP_REQUIRES_OK(
         context,
         context->allocate_temp(
             DataTypeToEnum<T>::value,
-            TensorShape({scratch_cols * shape_in.dim_size(0), 1}), &scratch));
+            TensorShape({scratch_multiplier * shape_in.dim_size(0), 1}),
+            &scratch));
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
