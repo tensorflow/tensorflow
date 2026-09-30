@@ -644,6 +644,39 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             expected, np.isnan(pooled_v2).reshape(-1), msg=message)
 
+  @test_util.disable_xla("XLA:CPU fast min/max does not propagate NaN")
+  def testMaxPoolNanChannelIsolation(self):
+    # A NaN in one channel must not reach the other channels, including those
+    # in the same packet once the depth reaches the packet size.
+    if test_util.IsMklEnabled():
+      self.skipTest("oneDNN rewrites MaxPool to its own kernel, so the Eigen "
+                    "kernel under test does not run.")
+    for depth in (2, 17):
+      # Every channel has the window [1, 3, 2, 0.5], but channel 0 has a NaN
+      # in place of the 1.
+      value = np.repeat(
+          np.array([[[[1.0], [3.0]], [[2.0], [0.5]]]], dtype=np.float32),
+          repeats=depth,
+          axis=-1)
+      value[0, 0, 0, 0] = np.nan
+      with GetDeviceScope(self, use_gpu=False):
+        tensor_in = constant_op.constant(value)
+        pooled = self.evaluate(
+            nn_ops.max_pool(
+                tensor_in,
+                ksize=[1, 2, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
+        pooled_v2 = self.evaluate(
+            gen_nn_ops.max_pool_v2(
+                tensor_in,
+                ksize=[1, 2, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
+      for result in (pooled.reshape(-1), pooled_v2.reshape(-1)):
+        self.assertTrue(np.isnan(result[0]), msg="depth=%d" % depth)
+        self.assertAllEqual(result[1:], [3.0] * (depth - 1))
+
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
   @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
