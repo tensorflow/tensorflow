@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <vector>
@@ -707,6 +708,10 @@ REGISTER_OP("SplitV")
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         ShapeHandle size_splits_shape;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &size_splits_shape));
+        if (size_splits->dims() != 1) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "size_splits must be 1-D, got rank ", size_splits->dims()));
+        }
         std::vector<int64_t> data;
         if (size_splits->dtype() == DT_INT32) {
           data =
