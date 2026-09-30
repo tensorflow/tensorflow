@@ -1327,11 +1327,11 @@ def split(ary, indices_or_sections, axis=0):
   if isinstance(axis, (int, np.integer)):
     rank = ary.shape.rank
     if rank is not None:
-      norm = int(axis) + rank if int(axis) < 0 else int(axis)
-      if norm < 0 or norm >= rank:
+      axis_int = int(axis)
+      if axis_int < -rank or axis_int >= rank:
         raise ValueError(
             f'Argument `axis` (received axis={axis}) is out of bounds '
-            f'for input {ary} of rank {rank}.'
+            f'for input of rank {rank}.'
         )
   if not isinstance(indices_or_sections, int):
     indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
