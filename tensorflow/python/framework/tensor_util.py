@@ -589,14 +589,15 @@ def AssertFiniteForIntegerDtype(values, dtype):
   input containers behave consistently.
 
   Args:
-    values: the value being converted. Only floating point `np.ndarray` /
-      `np.generic` inputs are inspected; everything else is left alone.
+    values: the value being converted. Only floating-point, complex, and
+      bfloat16 `np.ndarray` / `np.generic` inputs are inspected; everything
+      else is left alone.
     dtype: the requested `DType`, its enum value, or None. Only integer dtypes
       are inspected.
 
   Raises:
-    TypeError: if `dtype` is an integer dtype and `values` is a floating point
-      array that contains NaN or Inf.
+    TypeError: if `dtype` is an integer dtype and `values` is a floating point,
+      complex, or bfloat16 array that contains NaN or Inf.
   """
   # Ordered so that the cheapest tests come first: `convert_to_eager_tensor`
   # runs on every tensor conversion, and the common Python-list / scalar paths
@@ -605,22 +606,30 @@ def AssertFiniteForIntegerDtype(values, dtype):
     return
   if not isinstance(values, (np.ndarray, np.generic)):
     return
-  # Reject floating point and complex inputs (kind "f" or "c"); integer and
-  # other kinds are never inspected. Complex values can carry NaN or Inf in
-  # either the real or the imaginary plane.
-  if values.dtype.kind not in ("f", "c"):
+  # Reject floating point, complex, and bfloat16 inputs (kinds "f", "c", "V");
+  # integer and other kinds are never inspected. Complex values can carry NaN
+  # or Inf in either the real or the imaginary plane; bfloat16 is stored by
+  # numpy as raw bytes (kind "V") but is a floating-point type and is checked
+  # the same way.
+  if values.dtype.kind not in ("f", "c", "V"):
     return
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_integer:
     return
   if values.size == 0:
     return
-  # A single traversal rejects NaN and Inf in any element, including the real
-  # or imaginary plane of complex inputs. This is one pass over `values`
-  # rather than the two full passes that separate `np.min`/`np.max` reductions
-  # would require on the eager hot path.
-  if np.all(np.isfinite(values)):
-    return
+  # Reject NaN/Inf with O(1)-memory extrema reductions instead of building a
+  # full boolean mask (np.isfinite(values) allocates an array the size of
+  # `values`). Complex values are not totally ordered, so the real and
+  # imaginary planes are checked independently; real floating-point and
+  # bfloat16 arrays use a single pair of min/max reductions.
+  if values.dtype.kind == "c":
+    if (np.isfinite(np.min(values.real)) and np.isfinite(np.max(values.real))
+        and np.isfinite(np.min(values.imag)) and np.isfinite(np.max(values.imag))):
+      return
+  else:
+    if np.isfinite(np.min(values)) and np.isfinite(np.max(values)):
+      return
   raise TypeError(
       f"Cannot convert {np.array2string(np.asarray(values), threshold=8)} to "
       f"a tensor of dtype {dtype.name}: NaN and Inf cannot be represented as "

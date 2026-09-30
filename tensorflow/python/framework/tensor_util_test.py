@@ -44,33 +44,46 @@ from tensorflow.python.platform import test
 class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ("Int32", dtypes.int32),
-      ("Int64", dtypes.int64),
-      ("Uint8", dtypes.uint8),
+      ("Int32Float16", dtypes.int32, np.float16),
+      ("Int32Float32", dtypes.int32, np.float32),
+      ("Int32Complex64", dtypes.int32, np.complex64),
+      ("Int32Bfloat16", dtypes.int32, dtypes.bfloat16.as_numpy_dtype),
+      ("Int64Float16", dtypes.int64, np.float16),
+      ("Int64Float32", dtypes.int64, np.float32),
+      ("Int64Complex64", dtypes.int64, np.complex64),
+      ("Int64Bfloat16", dtypes.int64, dtypes.bfloat16.as_numpy_dtype),
+      ("Uint8Float16", dtypes.uint8, np.float16),
+      ("Uint8Float32", dtypes.uint8, np.float32),
+      ("Uint8Complex64", dtypes.uint8, np.complex64),
+      ("Uint8Bfloat16", dtypes.uint8, dtypes.bfloat16.as_numpy_dtype),
   )
-  def testNonFiniteToIntegerDtypeRaises(self, dtype):
+  def testNonFiniteToIntegerDtypeRaises(self, dtype, values_dtype):
     # NumPy arrays holding NaN or Inf must be rejected instead of being
     # silently mapped to the smallest representable integer, so that
-    # `make_tensor_proto` agrees with the Python-list conversion path.
-    for value in (np.array([np.nan]), np.array([np.inf]),
-                  np.array([-np.inf]), np.array([1.0, np.nan])):
+    # `make_tensor_proto` agrees with the Python-list conversion path. This is
+    # exercised across real, complex, and bfloat16 input dtypes.
+    for value in (np.array([np.nan], dtype=values_dtype),
+                  np.array([np.inf], dtype=values_dtype),
+                  np.array([-np.inf], dtype=values_dtype),
+                  np.array([1.0, np.nan], dtype=values_dtype)):
       with self.assertRaises(TypeError):
         tensor_util.make_tensor_proto(value, dtype=dtype)
 
     # Finite floats are still truncated as before.
-    proto = tensor_util.make_tensor_proto(np.array([1.9]), dtype=dtype)
+    proto = tensor_util.make_tensor_proto(np.array([1.9], dtype=values_dtype),
+                                         dtype=dtype)
     self.assertAllEqual([1], tensor_util.MakeNdarray(proto))
 
     # Empty inputs and NumPy scalars take their respective shortcuts.
     self.assertAllEqual(
         [],
         tensor_util.MakeNdarray(
-            tensor_util.make_tensor_proto(np.array([], dtype=np.float32),
+            tensor_util.make_tensor_proto(np.array([], dtype=values_dtype),
                                           dtype=dtype)))
     self.assertAllEqual(
         1,
         tensor_util.MakeNdarray(
-            tensor_util.make_tensor_proto(np.array(1.9, dtype=np.float32),
+            tensor_util.make_tensor_proto(np.array(1.9, dtype=values_dtype),
                                           dtype=dtype)))
 
     # Floating point dtypes still accept NaN and Inf.
