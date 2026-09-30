@@ -374,13 +374,22 @@ class MklConvCustomBackpropInputOp
                       this->type_string(),
                       ": input_sizes input must be 1-dim, not ",
                       src_tensor.dims())));
-      OP_REQUIRES(context,
-                  src_tensor.dim_size(0) == diff_dst_tensor.dims() ||
-                      src_tensor.dim_size(0) == 2,
-                  absl::InvalidArgumentError(absl::StrCat(
-                      this->type_string(), " requires input_sizes to contain ",
-                      diff_dst_tensor.dims(), " values or 2 values, but got: ",
-                      src_tensor.dim_size(0))));
+      const int dst_dims = diff_dst_tensor.dims();
+      const bool dst_is_4d = (dst_dims == 4);
+      OP_REQUIRES(
+          context,
+          src_tensor.dim_size(0) == dst_dims ||
+              (dst_is_4d && src_tensor.dim_size(0) == 2),
+          absl::InvalidArgumentError(
+              dst_is_4d
+                  ? absl::StrCat(this->type_string(),
+                                 " requires input_sizes to contain 4 values or "
+                                 "2 values, but got: ",
+                                 src_tensor.dim_size(0))
+                  : absl::StrCat(this->type_string(),
+                                 " requires input_sizes to contain 5 values, "
+                                 "but got: ",
+                                 src_tensor.dim_size(0))));
 
       // Allow operator-specific generation of shapes.
       // E.g., ConvBackpropFilter gets filter as filter_sizes. It is a
@@ -388,7 +397,7 @@ class MklConvCustomBackpropInputOp
       // a correct way to get filter shape. These operator-specific calls
       // allow this class to handle this case.
       TensorShape src_tf_shape;
-      if (src_tensor.dim_size(0) == 2) {
+      if (dst_is_4d && src_tensor.dim_size(0) == 2) {
         OP_REQUIRES_OK(context, Conv2DBackpropComputeInputShape(
                                     src_tensor, filter_tensor.shape(),
                                     diff_dst_tensor.shape(), this->data_format_,
