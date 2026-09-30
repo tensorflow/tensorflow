@@ -2653,18 +2653,17 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNameScopeV2InvalidCharsEagerRootScope(self):
-    """Spaces and illegal chars should raise ValueError in root scope.
-
-    Note: a leading underscore is valid in a *nested* scope but is rejected at
-    the root level in both graph and eager modes (because root scopes must
-    conform to _VALID_OP_NAME_REGEX, which requires the first character to be
-    alphanumeric or '.').
-    """
+    """Spaces and illegal chars should raise ValueError in root scope."""
     invalid_msg = "is not a valid (root )?scope name"
-    # Leading underscore is invalid at root level in both modes.
-    with self.assertRaisesRegex(ValueError, invalid_msg):
-      with ops.name_scope_v2("_invalid_at_root"):
+    if context.executing_eagerly():
+      # Leading underscores are valid in eager root scope names.
+      with ops.name_scope_v2("_valid_leading_underscore"):
         pass
+    else:
+      # Graph mode root scopes strictly forbid leading underscores.
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("_valid_leading_underscore"):
+          pass
     # Spaces and special chars must always raise.
     with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("scope with spaces"):
