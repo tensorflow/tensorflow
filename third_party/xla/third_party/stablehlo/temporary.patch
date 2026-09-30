@@ -36,6 +36,28 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 +#     deprecation = "Use //stablehlo/tests:test_utils instead.",
 +# )
 +# copybara:uncomment_end
+diff --ruN a/stablehlo/WORKSPACE.bazel b/stablehlo/WORKSPACE.bazel
+--- stablehlo/WORKSPACE.bazel
++++ stablehlo/WORKSPACE.bazel
+@@ -119,6 +119,18 @@
+     ],
+ )
+ 
++# Required by the LLVM Bazel overlay (`@llvm-project//third-party:lzma`).
++http_archive(
++    name = "llvm_xz",
++    build_file = "//third_party:xz.BUILD",
++    sha256 = "3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0",
++    strip_prefix = "xz-5.8.3",
++    urls = [
++        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz",
++        "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.gz",
++    ],
++)
++
+ # These need to come in this specific order or else Bazel will complain about
+ # missing/circular dependencies.
+ load("//third_party/llvm:workspace.bzl", llvm = "repo")
 diff --ruN a/stablehlo/build_tools/lit_test_suite.bzl b/stablehlo/build_tools/lit_test_suite.bzl
 --- stablehlo/build_tools/lit_test_suite.bzl
 +++ stablehlo/build_tools/lit_test_suite.bzl
@@ -1085,18 +1107,12 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.h b/stablehlo/stablehlo/di
 diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
 --- stablehlo/stablehlo/dialect/VhloDialect.td
 +++ stablehlo/stablehlo/dialect/VhloDialect.td
-@@ -59,6 +59,7 @@
+@@ -59,10 +59,12 @@
        1.18.0: Add `result_tilings` attribute to `custom_call` op.
        1.19.0: Add CollectiveReduceOp.
        1.20.0: Add has_dynamic_root to collective_broadcast op. Allow mixed fp8 operands in `convolution` and `dynamic_conv` ops.
 +      1.21.0: Add F8E4M3FN_F8E4M3FN_F32_X3 and F8E4M3FN_F8E4M3FN_F32_X4 dot algorithms.
    }];
- 
-   let useDefaultAttributePrinterParser = 0;
-diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
---- stablehlo/stablehlo/dialect/VhloDialect.td
-+++ stablehlo/stablehlo/dialect/VhloDialect.td
-@@ -63,6 +63,7 @@
  
    let useDefaultAttributePrinterParser = 0;
    let useDefaultTypePrinterParser = 0;
