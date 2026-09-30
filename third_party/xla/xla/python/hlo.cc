@@ -754,6 +754,15 @@ NB_MODULE(_hlo, m) {
       }
       return operands;
     }
+    std::vector<std::shared_ptr<InstructionWrapper>> control_predecessors()
+        const {
+      std::vector<std::shared_ptr<InstructionWrapper>> predecessors;
+      for (const HloInstruction* predecessor : inst_->control_predecessors()) {
+        predecessors.push_back(
+            std::make_shared<InstructionWrapper>(predecessor, module_));
+      }
+      return predecessors;
+    }
 
     const HloInstruction* inst() const { return inst_; }
     std::shared_ptr<InstructionWrapper> async_wrapped_root() const {
@@ -824,6 +833,7 @@ NB_MODULE(_hlo, m) {
       .def_prop_ro("shape", &InstructionWrapper::shape)
       .def("users", &InstructionWrapper::users)
       .def("operands", &InstructionWrapper::operands)
+      .def("control_predecessors", &InstructionWrapper::control_predecessors)
       .def("async_wrapped_root", &InstructionWrapper::async_wrapped_root)
       .def("get_frontend_attribute",
            &InstructionWrapper::get_frontend_attribute, nb::arg("key"))

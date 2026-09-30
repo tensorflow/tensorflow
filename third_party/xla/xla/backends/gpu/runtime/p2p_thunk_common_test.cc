@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -50,7 +49,7 @@ TEST(P2PThunkCommonTest, SerializeDeserializePopulatedP2PConfig) {
     }
   )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(P2PConfig deserialized, P2PConfigFromProto(proto));
+  ASSERT_OK_AND_ASSIGN(P2PConfig deserialized, P2PConfigFromProto(proto));
   P2PConfigProto round_trip_proto = P2PConfigToProto(deserialized);
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }

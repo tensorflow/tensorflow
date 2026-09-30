@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_PROFILER_GPU_CUDA_VERSION_VARIANTS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 
 namespace xla {
@@ -57,6 +59,10 @@ const CbidCategoryMap& GetExtraCallbackIdCategories12080();
 
 // Resource CBIDs impacted only before/after 12.0.
 absl::Span<const CUpti_CallbackIdResource> GetCudaGraphTracingResourceCbids();
+
+// Overhead kinds introduced after CUDA 12.0 (available in CUDA 12.8+).
+absl::string_view GetExtraActivityOverheadKindString12080(
+    CUpti_ActivityOverheadKind kind);
 
 }  // namespace cuda_versions
 }  // namespace profiler

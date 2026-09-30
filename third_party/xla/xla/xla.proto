@@ -94,6 +94,7 @@ message DebugOptions {
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
     HOST_EXECUTE = 12;
+    COLLECTIVES_KERNEL = 13;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
@@ -106,6 +107,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_INVALID = 0;
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
+    COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
   }
 
   enum LibNvJitLinkMode {
@@ -1032,6 +1034,13 @@ message DebugOptions {
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
 
+  // If true, XLA:GPU emits a CollectiveReduceThunk for kCollectiveReduce HLO
+  // instructions. This is guarded behind a flag to preserve the 2-week
+  // forward compatibility window between the compiler and the runtime.
+  // Need to remove this and enable by default once the 2-week
+  // window has passed.
+  optional bool xla_gpu_experimental_emit_collective_reduce = 550;
+
   // If true, the GPU latency hiding scheduler selectively overlaps async
   // device-to-device memcpys with compute-bound kernels.
   optional bool xla_gpu_experimental_enable_selective_memcpy_overlap = 524;
@@ -1121,7 +1130,7 @@ message DebugOptions {
 
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
-  // Accepted values: "all-reduce", "all-gather".
+  // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
   // For legacy support, the deprecated
   // --xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds
   // all-reduce to this filter.
@@ -1133,6 +1142,10 @@ message DebugOptions {
   optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
 
   optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
+
+  // If true, disables CUDA Virtual Memory Management (VMM) APIs for device
+  // memory allocation and collective fusion.
+  optional bool xla_gpu_experimental_vmm_disabled = 551;
 
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
@@ -1875,7 +1888,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 550
+  // Next id: 552
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

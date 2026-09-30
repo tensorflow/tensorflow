@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -126,9 +125,9 @@ class GeneralizeTopk : public HloModulePass {
 };
 
 void ToSortAndSlice(HloModule* module) {
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
+  ASSERT_OK_AND_ASSIGN(bool changed, GeneralizeTopk().Run(module));
   ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
+  ASSERT_OK_AND_ASSIGN(changed, TopkDecomposer().Run(module));
   ASSERT_TRUE(changed);
 }
 
@@ -140,9 +139,9 @@ TEST_P(TopkTest, ProducesCorrectResult) {
   }
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
-                          TopkHlo(n, k, batch_size, dtype));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                       TopkHlo(n, k, batch_size, dtype));
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(topk_module.get()));

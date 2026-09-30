@@ -56,7 +56,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
-        "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:codegen_utils",
         "//xla/tests:hlo_pjrt_test_base",
@@ -102,22 +101,6 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-xla_cc_test(
-    name = "cpu_external_constants_test",
-    srcs = ["cpu_external_constants_test.cc"],
-    deps = [
-        ":cpu_pjrt_codegen_test",
-        "//xla:array2d",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/cpu:cpu_options",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:test",
     ],
 )
 
@@ -396,8 +379,6 @@ xla_test(
     backends = ["cpu"],
     deps = [
         "//xla:literal",
-        "//xla/service/cpu:fusion_wrapper",
-        "//xla/service/cpu:target_machine_features_stub",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

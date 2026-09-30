@@ -350,7 +350,7 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
   let assemblyFormat = [{
     `(` $inputs `)` `inits` `(` $inits `)`
     `dimension` `=` $dimension
-    attr-dict
+    prop-dict attr-dict
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
   }];
@@ -391,7 +391,7 @@ def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
     let results = (outs RankedTensorOf<[AnyFloat]>:$result);
 
     let assemblyFormat = [{
-      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
+      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? prop-dict attr-dict
       `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
     }];
 

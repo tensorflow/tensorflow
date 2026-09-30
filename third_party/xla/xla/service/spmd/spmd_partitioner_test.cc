@@ -18412,8 +18412,8 @@ ENTRY entry {
     sharding={devices=[2,2,2,2]<=[16] last_tile_dims={unreduced}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/16));
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
@@ -18433,8 +18433,8 @@ ENTRY entry {
     sharding={devices=[2,1,2,2]<=[2,2,2]T(0,2,1) last_tile_dims={unreduced}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::RaggedDot());
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
@@ -18537,6 +18537,26 @@ ENTRY entry {
     ASSERT_OK_AND_ASSIGN(
         auto module,
         PartitionComputation(hlo_string, /*num_devices=*/16, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
+TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndManual) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dims={manual}}
+  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
+  ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[1,1,2,2]<=[4] last_tile_dims={manual,unreduced}}
+})";
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/4, options));
     EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
     EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
   }
@@ -19245,6 +19265,26 @@ ENTRY entry {
                                   "{mesh['x'=2] [], unreduced={'x'}}}")));
 }
 
+TEST_F(SpmdPartitioningV3Test, SubgroupUnreducedAndManualV3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={mesh['x'=2,'y'=2] [{},{'y'}], manual={'x'}}
+  b = f32[1024,256]{1,0} parameter(1), sharding={mesh['x'=2,'y'=2] [{'y'},{}], manual={'x'}}
+  ROOT dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={mesh['x'=2,'y'=2] [{},{}], unreduced={'y'}, manual={'x'}}
+})";
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/4, options));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
+    EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+  }
+}
+
 TEST_F(SpmdPartitioningV3Test, PatternMatchMergeNamedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -19588,6 +19628,130 @@ ENTRY entry {
     if (inst->opcode() == HloOpcode::kScatter) has_scatter = true;
   }
   EXPECT_TRUE(has_scatter);
+}
+
+// A row spliced in front of a tensor along a dimension partitioned two ways.
+// Replicating the concatenate dimension to do this is an all-to-all on a 2x2
+// mesh; with the enzyme comms opt the row is written in at its offset instead
+// and only the shard boundary moves, between neighbours.
+TEST_P(SpmdPartitioningTest, ConcatenateAlongPartitionedDimWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %row = f32[4,1,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+  %x = f32[4,7,8] parameter(1), sharding={devices=[1,2,2]<=[4]}
+  ROOT %concat = f32[4,8,8] concatenate(%row, %x), dimensions={1},
+    sharding={devices=[1,2,2]<=[4]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_GT(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+  EXPECT_THAT(entry->root_instruction(), op::Shape("f32[4,4,4]"));
+}
+
+// The same with the row at the end, the other form the algebraic simplifier
+// produces from a dynamic-update-slice into a pad.
+TEST_P(SpmdPartitioningTest,
+       ConcatenateAlongPartitionedDimTrailingOperandWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %x = f32[4,7,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+  %row = f32[4,1,8] parameter(1), sharding={devices=[1,2,2]<=[4]}
+  ROOT %concat = f32[4,8,8] concatenate(%x, %row), dimensions={1},
+    sharding={devices=[1,2,2]<=[4]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_GT(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+  EXPECT_THAT(entry->root_instruction(), op::Shape("f32[4,4,4]"));
+}
+
+// Operands laid out differently from the result are left to the default
+// handling.
+TEST_P(SpmdPartitioningTest,
+       ConcatenateAlongPartitionedDimMismatchedOperandShardingWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %row = f32[4,1,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+  %x = f32[4,7,8] parameter(1), sharding={devices=[2,1,2]<=[4]}
+  ROOT %concat = f32[4,8,8] concatenate(%row, %x), dimensions={1},
+    sharding={devices=[1,2,2]<=[4]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("f32[4,4,4]"));
+}
+
+// The device order GB-25 actually uses: the tile assignment is transposed.
+TEST_P(SpmdPartitioningTest,
+       ConcatenateAlongPartitionedDimTransposedDevicesWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %row = f64[4,1,8] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+  %x = f64[4,7,8] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+  ROOT %concat = f64[4,8,8] concatenate(%row, %x), dimensions={1},
+    sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_GT(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+  EXPECT_THAT(entry->root_instruction(), op::Shape("f64[4,4,4]"));
+}
+
+// More than one operand written in around the largest.
+TEST_P(SpmdPartitioningTest,
+       ConcatenateAlongPartitionedDimThreeOperandsWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lo = f32[4,1,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+  %x = f32[4,6,8] parameter(1), sharding={devices=[1,2,2]<=[4]}
+  %hi = f32[4,1,8] parameter(2), sharding={devices=[1,2,2]<=[4]}
+  ROOT %concat = f32[4,8,8] concatenate(%lo, %x, %hi), dimensions={1},
+    sharding={devices=[1,2,2]<=[4]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const HloComputation* entry = module->entry_computation();
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 0);
+  EXPECT_THAT(entry->root_instruction(), op::Shape("f32[4,4,4]"));
 }
 
 }  // namespace

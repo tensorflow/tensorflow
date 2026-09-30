@@ -206,9 +206,9 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK-SAME: %[[NUM_UNROLL_FACTORS]], %[[UNROLL_FACTORS]],
   // CHECK-SAME: %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
   // CHECK: llvm.return %[[RES]]
-  %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
+  %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" <
       tileSizes = [1, 2, 3], unrollFactors = [4],
-      enableFtz = false, index64Bit = false, cpuCodegen = false }
+      enableFtz = false, index64Bit = false, cpuCodegen = false>
   func.return %0 : !tf_framework.jit_callable
 }
 

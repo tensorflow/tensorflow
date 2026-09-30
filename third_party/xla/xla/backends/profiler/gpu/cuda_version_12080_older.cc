@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
 
 namespace xla {
@@ -21,6 +23,11 @@ namespace cuda_versions {
 
 const CbidCategoryMap& GetExtraCallbackIdCategories12080() {
   return EmptyCallbackIdCategories();
+}
+
+absl::string_view GetExtraActivityOverheadKindString12080(
+    CUpti_ActivityOverheadKind kind) {
+  return "";
 }
 
 }  // namespace cuda_versions

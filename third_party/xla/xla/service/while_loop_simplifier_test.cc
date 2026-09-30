@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,6 +46,9 @@ namespace {
 
 using ::testing::_;
 namespace op = xla::testing::opcode_matchers;
+using op::Constant;
+using op::Tuple;
+using op::While;
 
 // Returns the first kWhile instruction within m's entry computation.
 HloInstruction* FindFirstWhile(HloModule* m) {
@@ -1343,7 +1347,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
   )";
 
   for (std::string dir : {"LT", "GT"}) {
-    for (int i = 1; i > -5; i--) {
+    for (int i = (dir == "LT" ? 1 : 0); i > -5; i--) {
       std::string hlo_string = absl::StrReplaceAll(
           hlo_template,
           {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
@@ -1360,6 +1364,15 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
                       ->operand(0)
                       ->literal()
                       .IsAll(dir == "GT"));
+    }
+
+    if (dir == "GT") {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template, {{"{{LOOP_CONSTANT}}", "1"}, {"{{DIRECTION}}", dir}});
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_FALSE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                       .Run(m.get())
+                       .value());
     }
 
     for (int i = 11; i < 15; i++) {
@@ -2340,6 +2353,71 @@ TEST_F(WhileLoopSimplifierTest, SimplifierWithDisabledWhileLoopDceAttr) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+// An async-update or async-done carries no called computation of its own; its
+// side effect is the wrapped instruction's, reached through the chain. The
+// loop below feeds x to the async-start and y to the async-update only, and
+// SIDE_EFFECT selects whether the wrapped custom call has a side effect.
+constexpr absl::string_view kAsyncChainHlo = R"hlo(
+  HloModule AsyncChain
+
+  async_comp {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT cc = f32[] custom-call(a, b), custom_call_target="Foo", custom_call_has_side_effect=SIDE_EFFECT
+  }
+  cond {
+    p = (s32[], f32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    ten = s32[] constant(10)
+    ROOT lt = pred[] compare(i, ten), direction=LT
+  }
+  body {
+    p = (s32[], f32[], f32[]) parameter(0)
+    i = s32[] get-tuple-element(p), index=0
+    x = f32[] get-tuple-element(p), index=1
+    y = f32[] get-tuple-element(p), index=2
+    one = s32[] constant(1)
+    i.next = s32[] add(i, one)
+    start = ((f32[]), f32[], s32[]) async-start(x), calls=async_comp
+    update = ((f32[], f32[]), f32[], s32[]) async-update(start, y)
+    done = f32[] async-done(update)
+    ROOT t = (s32[], f32[], f32[]) tuple(i.next, x, y)
+  }
+  ENTRY main {
+    zero = s32[] constant(0)
+    one = f32[] constant(1)
+    two = f32[] constant(2)
+    init = (s32[], f32[], f32[]) tuple(zero, one, two)
+    loop = (s32[], f32[], f32[]) while(init), condition=cond, body=body
+    ROOT r = s32[] get-tuple-element(loop), index=0
+  }
+  )hlo";
+
+// A side effect behind the async chain keeps x and y alive, as it would
+// behind the start itself.
+TEST_F(WhileLoopSimplifierTest, AsyncChainWithSideEffectKeepsItsInputsAlive) {
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                                   kAsyncChainHlo, {{"SIDE_EFFECT", "true"}})));
+  HloInstruction* loop = FindFirstWhile(m.get());
+
+  ASSERT_OK_AND_ASSIGN(bool changed, TryRemoveDeadWhileParams(loop));
+
+  EXPECT_FALSE(changed);
+}
+
+// Without the side effect both x and y are dead.
+TEST_F(WhileLoopSimplifierTest, AsyncChainWithoutSideEffectIsDead) {
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+                           kAsyncChainHlo, {{"SIDE_EFFECT", "false"}})));
+  HloInstruction* loop = FindFirstWhile(m.get());
+
+  ASSERT_OK_AND_ASSIGN(bool changed, TryRemoveDeadWhileParams(loop));
+
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindFirstWhile(m.get()), While(Tuple(Constant())));
 }
 
 }  // namespace

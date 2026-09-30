@@ -48,8 +48,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -787,7 +785,7 @@ class ConvFusionRewriterIntegrationTest
     absl::StatusOr<std::unique_ptr<HloModule>> module_or_status =
         GetOptimizedModule(hlo_string, config);
     if (!module_or_status.ok()) {
-      TF_EXPECT_OK(module_or_status.status());
+      EXPECT_OK(module_or_status.status());
       return "";
     }
     std::unique_ptr<HloModule> module = std::move(module_or_status.value());

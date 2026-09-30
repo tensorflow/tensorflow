@@ -126,6 +126,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFoldStablehloConstantTransformsPass();
 
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateFuseA4W2DRQFullyConnectedPass();
+
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 
 // Creates an instance of the TFLite PropagateQParams pass which propagates

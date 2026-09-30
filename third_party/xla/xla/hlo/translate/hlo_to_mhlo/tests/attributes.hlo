@@ -142,3 +142,27 @@ ENTRY %main.4 (Arg_0.1: f64[2,2,2], Arg_1.2: f64[2,2,2]) -> f64[2,2,2] {
   %Arg_1.2 = f64[2,2,2] parameter(1)
   ROOT %dot.3 = f64[2,2,2] dot(f64[2,2,2] %Arg_0.1, f64[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f64_f64_f64, metadata={source_file="within split at third_party/tensorflow/compiler/xla/hlo/translate/mhlo_to_hlo/tests/attributes.mlir:243 offset " source_line=7}
 }
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_fp8x3, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_fp8x3
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f8E4M3FN, rhs_precision_type = f8E4M3FN, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 3, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_fp8x3
+}
+
+// -----
+
+HloModule dot_algorithm_bf16_bf16_fp8x4, entry_computation_layout={(bf16[2,2,2]{2,1,0}, bf16[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
+
+// CHECK-LABEL: module @dot_algorithm_bf16_bf16_fp8x4
+// CHECK: algorithm = #mhlo.dot_algorithm<lhs_precision_type = f8E4M3FN, rhs_precision_type = f8E4M3FN, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 4, allow_imprecise_accumulation = false>
+ENTRY %main.4 (Arg_0.1: bf16[2,2,2], Arg_1.2: bf16[2,2,2]) -> f32[2,2,2] {
+  %Arg_0.1 = bf16[2,2,2] parameter(0)
+  %Arg_1.2 = bf16[2,2,2] parameter(1)
+  ROOT %dot.3 = f32[2,2,2] dot(bf16[2,2,2] %Arg_0.1, bf16[2,2,2] %Arg_1.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_fp8x4
+}

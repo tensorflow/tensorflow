@@ -26,8 +26,8 @@ func.func @lower_dot_scaled_add_to_triton(
   // CHECK: %[[RES:.*]] = tt.dot_scaled %[[LHS]] scale %[[LHS_SCALE]], %[[RHS]] scale %[[RHS_SCALE]], %[[ACC]] lhs = e5m2 rhs = e5m2 {fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
   // CHECK-NOT: arith.addf
   %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale
-    {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
-     fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2} : tensor<128x128xf8E5M2>,
+    <dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
+     fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2> : tensor<128x128xf8E5M2>,
     tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
   %1 = arith.addf %acc, %0 : tensor<128x256xf32>
   // CHECK: return %[[RES]] : tensor<128x256xf32>
@@ -44,8 +44,8 @@ func.func @lower_packed_dot_scaled_add_to_triton(
   // CHECK: %[[RES:.*]] = tt.dot_scaled %[[LHS]] scale %[[LHS_SCALE]], %[[RHS]] scale %[[RHS_SCALE]], %[[ACC]] lhs = e2m1 rhs = e2m1 {fastMath = true} : tensor<128x32xi8>, tensor<128x2xi8> * tensor<32x128xi8>, tensor<128x2xi8> -> tensor<128x128xf32>
   // CHECK-NOT: arith.addf
   %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale
-    {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
-     fastMath = true, lhs_elem_type = f4E2M1FN, rhs_elem_type = f4E2M1FN} : tensor<128x32xi8>,
+    <dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
+     fastMath = true, lhs_elem_type = f4E2M1FN, rhs_elem_type = f4E2M1FN> : tensor<128x32xi8>,
     tensor<128x2xi8> * tensor<32x128xi8>, tensor<128x2xi8> -> tensor<128x128xf32>
   %1 = arith.addf %acc, %0 : tensor<128x128xf32>
   // CHECK: return %[[RES]] : tensor<128x128xf32>
@@ -67,8 +67,8 @@ func.func @lower_dot_scaled_in_loop_non_canonical(
     // CHECK: %[[DOT:.*]] = tt.dot_scaled %{{.*}} scale %{{.*}}, %{{.*}} scale %{{.*}}, %[[ACC_2D]]
     // CHECK: scf.yield %[[DOT]] : tensor<128x256xf32>
     %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale
-      {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
-       fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2} : tensor<1x128x128xf8E5M2>, tensor<1x128x4xi8> * tensor<1x128x256xf8E5M2>, tensor<1x256x4xi8> -> tensor<1x128x256xf32>
+      <dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+       fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2> : tensor<1x128x128xf8E5M2>, tensor<1x128x4xi8> * tensor<1x128x256xf8E5M2>, tensor<1x256x4xi8> -> tensor<1x128x256xf32>
     %1 = arith.addf %accum, %0 : tensor<1x128x256xf32>
     scf.yield %1 : tensor<1x128x256xf32>
   }
@@ -92,7 +92,7 @@ func.func @scan_lowering(%input0: tensor<16x16x16xf32>, %init0: tensor<16x16x1xf
   // CHECK-DAG: %[[RES1:.*]] = arith.addf %[[BCAST_INIT0]], %[[SCAN]] : tensor<16x16x16xf32>
   // CHECK: return %[[RES1]] : tensor<16x16x16xf32>
 
-  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 {scan_dim_size = 16 : i64} : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 <scan_dim_size = 16> : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
   ^bb0(%arg0: f32, %arg1: f32):
     %add = arith.addf %arg0, %arg1 : f32
     xtile.yield %add : f32
@@ -131,7 +131,7 @@ func.func @scan_lowering_carry(%input0: tensor<16x16x16xf32>, %init0: tensor<16x
   // CHECK-NOT: tt.reshape
   // CHECK: return %[[RES0]], %[[RES1]]
 
-  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 {scan_dim_size = 16 : i64} : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 2 <scan_dim_size = 16> : (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) -> (tensor<16x16x16xf32>), (tensor<16x16x1xf32>) {
   ^bb0(%arg0: f32, %arg1: f32):
     %add = arith.addf %arg0, %arg1 : f32
     xtile.yield %add : f32
@@ -167,7 +167,7 @@ func.func @scan_lowering_1d_carry(%input0: tensor<16xf32>, %init0: tensor<1xf32>
   // CHECK-NOT: tt.gather
   // CHECK-NOT: tt.reshape
   // CHECK: return %[[RES0]], %[[RES1]]
-  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 {scan_dim_size = 16 : i64} : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 <scan_dim_size = 16> : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
   ^bb0(%arg0: f32, %arg1: f32):
     %add = arith.addf %arg0, %arg1 : f32
     xtile.yield %add : f32
@@ -198,7 +198,7 @@ func.func @reverse_scan_lowering_carry(%input0: tensor<16xf32>, %init0: tensor<1
   // CHECK-NOT: tt.gather
   // CHECK-NOT: tt.reshape
   // CHECK: return %[[RES0]], %[[RES1]]
-  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 {scan_dim_size = 16 : i64, is_reverse = true} : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
+  %0, %1 = xtile.scan(%input0) inits(%init0) dimension = 0 <scan_dim_size = 16, is_reverse = true> : (tensor<16xf32>), (tensor<1xf32>) -> (tensor<16xf32>), (tensor<1xf32>) {
   ^bb0(%arg0: f32, %arg1: f32):
     %add = arith.addf %arg0, %arg1 : f32
     xtile.yield %add : f32
@@ -215,8 +215,8 @@ func.func @lower_dot_scaled_without_add_falls_back_to_xtile(
   -> tensor<128x256xf32> {
   // CHECK: %[[RES:.*]] = xtile.dot_scaled %[[LHS]] scale %[[LHS_SCALE]], %[[RHS]] scale %[[RHS_SCALE]] {{.*}}fastMath = true{{.*}} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
   %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale
-    {dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
-     fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2} : tensor<128x128xf8E5M2>,
+    <dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [], rhs_batching_dimensions = [], lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>,
+     fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2> : tensor<128x128xf8E5M2>,
     tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
   // CHECK: return %[[RES]] : tensor<128x256xf32>
   return %0 : tensor<128x256xf32>

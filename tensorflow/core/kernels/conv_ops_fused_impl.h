@@ -38,6 +38,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -558,8 +559,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
               : TensorShape({filter.dim_size(3), filter.dim_size(0),
                              filter.dim_size(1), filter.dim_size(2)});
 
+      if (filter.NumElements() > std::numeric_limits<int32>::max()) {
+        return errors::InvalidArgument(
+            "Filter tensor num elements (", filter.NumElements(),
+            ") exceeds 32-bit limit for GPU transformation");
+      }
       TF_RETURN_IF_ERROR(context->allocate_temp(
           DataTypeToEnum<T>::value, dst_shape, &transformed_filter));
+
       functor::TransformFilter<GPUDevice, T, int, 4>()(
           context->eigen_device<GPUDevice>(), dst_format,
           To32Bit(filter.tensor<T, 4>()),
@@ -729,7 +736,7 @@ class FusedConv2DOp : public OpKernel {
     using FCT = FusedComputationType;
 
     std::vector<FusedComputationPattern> patterns;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
@@ -748,8 +755,8 @@ class FusedConv2DOp : public OpKernel {
     // identity activation function, it in theory should allow to fuse
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
-    if (std::is_same<Device, GPUDevice>::value) {
-      if (std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
+      if (std::is_same_v<T, int8_t> || std::is_same_v<T, qint8>) {
         patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
                     {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
       } else {

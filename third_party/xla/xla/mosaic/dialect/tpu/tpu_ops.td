@@ -1392,7 +1392,10 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefLayoutAttrInterface source_layout,
+        ::mlir::ArrayRef<int64_t> squeezed,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
@@ -1419,7 +1422,9 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
+        ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
