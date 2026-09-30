@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -375,7 +376,11 @@ class CSRSparseMatrix {
     if (validated) {
       absl::Status values_status = ValidateComponentValues(
           dense_shape, batch_pointers, row_pointers, col_indices);
-      if (!values_status.ok()) return false;
+      if (!values_status.ok()) {
+        VLOG(2) << "CSRSparseMatrix::Decode component validation failed: "
+                << values_status;
+        return false;
+      }
     }
 
     // Save to this object.

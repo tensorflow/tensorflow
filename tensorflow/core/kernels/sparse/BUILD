@@ -40,6 +40,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",

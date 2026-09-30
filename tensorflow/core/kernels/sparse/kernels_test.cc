@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/kernels.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -220,6 +222,78 @@ TEST(CSRSparseMatrix, DecodeValidationOutOfBoundsColIndices) {
   data.tensors_[3].flat<int32_t>()(0) = 100;
   CSRSparseMatrix tampered;
   EXPECT_FALSE(tampered.Decode(data));
+}
+
+// Encodes a valid batched (rank-3) 2 x 2 x 3 CSR matrix with 3 non-zeros:
+// batch 0 has one non-zero in each row, batch 1 has one non-zero in row 0.
+VariantTensorData EncodeValidBatchedMatrix() {
+  const auto dense_shape =
+      test::AsTensor<int64_t>({2, 2, 3}, TensorShape({3}));
+  const auto batch_pointers =
+      test::AsTensor<int32_t>({0, 2, 3}, TensorShape({3}));
+  const auto row_pointers =
+      test::AsTensor<int32_t>({0, 1, 2, 0, 1, 1}, TensorShape({6}));
+  const auto col_indices = test::AsTensor<int32_t>({0, 2, 1}, TensorShape({3}));
+  const auto values =
+      test::AsTensor<float>({1.0f, 2.0f, 3.0f}, TensorShape({3}));
+  CSRSparseMatrix matrix;
+  TF_CHECK_OK(CSRSparseMatrix::CreateCSRSparseMatrix(
+      DT_FLOAT, dense_shape, batch_pointers, row_pointers, col_indices, values,
+      &matrix));
+  VariantTensorData data;
+  matrix.Encode(&data);
+  return data;
+}
+
+TEST(CSRSparseMatrix, DecodeAcceptsValidBatchedMatrix) {
+  CSRSparseMatrix decoded;
+  EXPECT_TRUE(decoded.Decode(EncodeValidBatchedMatrix()));
+}
+
+TEST(CSRSparseMatrix, DecodeAcceptsEmptyMatrix) {
+  const auto dense_shape = test::AsTensor<int64_t>({2, 3}, TensorShape({2}));
+  const auto batch_pointers = test::AsTensor<int32_t>({0, 0}, TensorShape({2}));
+  const auto row_pointers =
+      test::AsTensor<int32_t>({0, 0, 0}, TensorShape({3}));
+  const Tensor col_indices(DT_INT32, TensorShape({0}));
+  const Tensor values(DT_FLOAT, TensorShape({0}));
+  CSRSparseMatrix matrix;
+  TF_ASSERT_OK(CSRSparseMatrix::CreateCSRSparseMatrix(
+      DT_FLOAT, dense_shape, batch_pointers, row_pointers, col_indices, values,
+      &matrix));
+  VariantTensorData data;
+  matrix.Encode(&data);
+  CSRSparseMatrix decoded;
+  EXPECT_TRUE(decoded.Decode(data));
+}
+
+TEST(CSRSparseMatrix, DecodeRejectsInvalidComponentValues) {
+  struct Case {
+    const char* name;
+    int tensor_index;  // 1: batch_pointers, 2: row_pointers, 3: col_indices.
+    std::vector<int32_t> contents;
+  };
+  const std::vector<Case> cases = {
+      {"negative column index", 3, {0, -1, 1}},
+      {"batch_pointers[0] != 0", 1, {1, 2, 3}},
+      {"non-monotonic batch_pointers", 1, {0, 4, 3}},
+      {"batch_pointers[batch_size] != nnz", 1, {0, 2, 2}},
+      {"row_pointers do not start at 0", 2, {1, 1, 2, 0, 1, 1}},
+      {"decreasing row_pointers", 2, {0, 2, 1, 0, 1, 1}},
+      {"last row_pointer != batch nnz", 2, {0, 1, 1, 0, 1, 1}},
+  };
+  for (const Case& c : cases) {
+    SCOPED_TRACE(c.name);
+    VariantTensorData data = EncodeValidBatchedMatrix();
+    Tensor tampered_tensor(
+        DT_INT32, TensorShape({static_cast<int64_t>(c.contents.size())}));
+    std::copy(c.contents.begin(), c.contents.end(),
+              tampered_tensor.flat<int32_t>().data());
+    ASSERT_EQ(tampered_tensor.shape(), data.tensors_[c.tensor_index].shape());
+    data.tensors_[c.tensor_index] = tampered_tensor;
+    CSRSparseMatrix tampered;
+    EXPECT_FALSE(tampered.Decode(data));
+  }
 }
 
 }  // namespace
