@@ -6,4 +6,8 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["ruy.patch"])
+# The LICENSE from this package is used during pip package generation.
+exports_files([
+    "LICENSE",
+    "ruy.patch",
+])
