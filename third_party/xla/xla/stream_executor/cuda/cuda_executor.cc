@@ -975,13 +975,17 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
 
 absl::Status CudaExecutor::Init() {
   ABSL_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
+  const bool vmm_disabled =
+      xla::GetDebugOptionsFromFlags().xla_gpu_experimental_vmm_disabled();
 
-  ABSL_ASSIGN_OR_RETURN(bool is_vmm_supported, IsVmmSupported(device_));
-  if (!is_vmm_supported) {
-    return absl::InternalError(absl::StrFormat(
-        "Device %d does not support CUDA Virtual Memory Management (VMM). "
-        "VMM is required for device memory allocation in XLA.",
-        device_ordinal()));
+  if (!vmm_disabled) {
+    ABSL_ASSIGN_OR_RETURN(bool is_vmm_supported, IsVmmSupported(device_));
+    if (!is_vmm_supported) {
+      return absl::InternalError(absl::StrFormat(
+          "Device %d does not support CUDA Virtual Memory Management (VMM). "
+          "VMM is required for device memory allocation in XLA.",
+          device_ordinal()));
+    }
   }
 
   ABSL_ASSIGN_OR_RETURN(is_multicast_supported_, IsMulticastSupported(device_));
@@ -1005,18 +1009,22 @@ absl::Status CudaExecutor::Init() {
     peer_access_cache_[i] = CanEnablePeerAccess(device_, i);
   }
 
-  ABSL_ASSIGN_OR_RETURN(device_allocator_options_,
-                   QueryDeviceAllocatorOptions(device_));
-  device_allocator_options_.enable_peer_access = absl::c_any_of(
-      peer_access_cache_, [](const auto& p) { return p.second; });
+  if (vmm_disabled) {
+    device_allocator_options_.use_vmm = false;
+  } else {
+    ABSL_ASSIGN_OR_RETURN(device_allocator_options_,
+                     QueryDeviceAllocatorOptions(device_));
+    device_allocator_options_.enable_peer_access = absl::c_any_of(
+        peer_access_cache_, [](const auto& p) { return p.second; });
 
-  // Disable fabric handle if there are no active P2P NVLinks — using
-  // FABRIC+POSIX_FD without a cluster causes allocation failures.
-  if (device_allocator_options_.enable_fabric_handle &&
-      !GetDeviceDescription().device_interconnect_info().is_in_cluster()) {
-    XLA_VLOG_DEVICE(2, device_ordinal())
-        << "Disable fabric handle on non-cluster machine.";
-    device_allocator_options_.enable_fabric_handle = false;
+    // Disable fabric handle if there are no active P2P NVLinks — using
+    // FABRIC+POSIX_FD without a cluster causes allocation failures.
+    if (device_allocator_options_.enable_fabric_handle &&
+        !GetDeviceDescription().device_interconnect_info().is_in_cluster()) {
+      XLA_VLOG_DEVICE(2, device_ordinal())
+          << "Disable fabric handle on non-cluster machine.";
+      device_allocator_options_.enable_fabric_handle = false;
+    }
   }
 
   device_allocator_ =

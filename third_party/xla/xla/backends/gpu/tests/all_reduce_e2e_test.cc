@@ -1383,5 +1383,88 @@ TEST_F(AllReduceCollectiveKernelTest,
   }
 }
 
+TEST_F(AllReduceCollectiveKernelTest,
+       TritonOneShotAllReduceFallsBackToNcclWhenVmmDisabled) {
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kHloText = R"(
+    HloModule module, replica_count=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      param = f32[1024] parameter(0)
+      ROOT result = f32[1024] all-reduce(param), to_apply=add, replica_groups={{0,1}}
+    }
+  )";
+
+  Literal input_r0 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f));
+  Literal input_r1 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 2.0f));
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  Literal expected =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 3.0f));
+
+  for (bool enable_command_buffer : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(
+        tsl::testing::TemporaryDirectory dump_dir,
+        tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kHloText, kNumReplicas));
+    DebugOptions& debug_options =
+        module->mutable_config().mutable_debug_options();
+    debug_options.set_xla_gpu_experimental_vmm_disabled(true);
+    debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
+    debug_options.set_xla_dump_to(dump_dir.path());
+    if (!enable_command_buffer) {
+      debug_options.clear_xla_gpu_enable_command_buffer();
+    } else {
+      debug_options.set_xla_gpu_graph_min_graph_size(1);
+    }
+
+    ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                         ExecuteReplicated(std::move(module), args));
+
+    // Verify that the HLO instruction was annotated as a Triton one-shot
+    // collective kernel (`KERNEL_STRATEGY_TRITON_ONE_SHOT`), while skipping
+    // collective fusion so that it lowers to NCCL (`kAllReduceStart`).
+    VerifyOneShotAllReduce(result.optimized_module);
+
+    ASSERT_OK_AND_ASSIGN(
+        CommandBufferThunkCounts one_shot,
+        CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
+    EXPECT_EQ(one_shot.in_command_buffer + one_shot.outside_command_buffer, 0);
+
+    ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts nccl,
+                         CountThunksInDump(dump_dir.path(), "kAllReduce"));
+    EXPECT_EQ(nccl.in_command_buffer + nccl.outside_command_buffer, 1);
+
+    ASSERT_EQ(result.results.size(), kNumReplicas);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+          << "Mismatch at replica " << i
+          << " (enable_command_buffer=" << enable_command_buffer << ")";
+    }
+
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> second_results,
+                         ExecuteReplicated(result.executable.get(), args));
+    ASSERT_EQ(second_results.size(), kNumReplicas);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, second_results[i]))
+          << "Mismatch at replica " << i << " on second execution"
+          << " (enable_command_buffer=" << enable_command_buffer << ")";
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla

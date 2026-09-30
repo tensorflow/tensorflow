@@ -361,6 +361,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
+  opts.set_xla_gpu_experimental_vmm_disabled(false);
   opts.set_xla_gpu_experimental_emit_collective_reduce(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
@@ -3733,6 +3734,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_scaled_dot_with_triton),
       debug_options->xla_gpu_experimental_scaled_dot_with_triton(),
       "If true, use the Triton emitter for scaled dot."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_vmm_disabled",
+      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_vmm_disabled),
+      debug_options->xla_gpu_experimental_vmm_disabled(),
+      "If true, disables CUDA Virtual Memory Management (VMM) APIs for device "
+      "memory allocation and collective fusion."));
 
   flag_list->push_back(tsl::Flag(
       "xla_cpu_collective_call_warn_stuck_timeout_seconds",

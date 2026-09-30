@@ -1544,7 +1544,9 @@ void AddCollectiveCombinerPasses(
     // so that SolLatencyEstimator and the thunk emitter can consume it.
     pipeline.AddPass<CollectiveKernelStrategyAnnotator>(
         gpu_topology, /*is_multimem_enabled=*/false);
-    pipeline.AddPass<CollectiveFusion>(gpu_topology);
+    if (!opts.xla_gpu_experimental_vmm_disabled()) {
+      pipeline.AddPass<CollectiveFusion>(gpu_topology);
+    }
   }
 }
 

@@ -1143,6 +1143,10 @@ message DebugOptions {
 
   optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
 
+  // If true, disables CUDA Virtual Memory Management (VMM) APIs for device
+  // memory allocation and collective fusion.
+  optional bool xla_gpu_experimental_vmm_disabled = 551;
+
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
   optional bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
@@ -1884,7 +1888,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 551
+  // Next id: 552
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
