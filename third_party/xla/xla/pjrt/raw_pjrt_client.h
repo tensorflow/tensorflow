@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
@@ -238,6 +239,10 @@ class PjRtRawClient {
   // Returns the host memory allocator for the client or null if not supported.
   virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
     return nullptr;
+  }
+
+  virtual int GetNumaNode(LocalDeviceId local_device_id) const {
+    return tsl::port::kNUMANoAffinity;
   }
 
   // Returns the required byte alignment for host memory when performing DMA.

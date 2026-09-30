@@ -70,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -198,6 +199,7 @@ cc_library(
         ":host_callback",
         ":host_memory_spaces",
         ":infer_dispatch_info",
+        ":linearize_throttler",
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_device_description",
@@ -1195,6 +1197,33 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "linearize_throttler",
+    srcs = ["linearize_throttler.cc"],
+    hdrs = ["linearize_throttler.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":async_work_runner",
+        ":host_memory_allocator",
+        ":raw_buffer",
+        ":staging_buffer",
+        "//xla/runtime:device_id",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:chunked_queue",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:context",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

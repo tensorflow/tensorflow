@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
@@ -177,6 +178,13 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   HostMemoryAllocator* GetHostMemoryAllocator() const {
     return host_memory_allocator_.get();
+  }
+
+  int GetNumaNode(LocalDeviceId local_device_id) const override {
+    if (LocalDeviceState* state = device_state(local_device_id)) {
+      return state->executor()->numa_node();
+    }
+    return tsl::port::kNUMANoAffinity;
   }
 
   bool should_stage_host_to_device_transfers() const {

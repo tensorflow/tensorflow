@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
+#include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -4289,7 +4290,8 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     std::optional<PjRtPluginAttributes> plugin_attributes,
     std::unique_ptr<PjRtHostMemoryForDeviceManager>
-        host_memory_for_device_manager)
+        host_memory_for_device_manager,
+    std::optional<LinearizeThrottler::Options> throttler_options)
     : CommonPjRtClient(std::move(host_memory_for_device_manager)),
       platform_id_(platform_id),
       platform_name_(std::move(platform_name)),
@@ -4298,7 +4300,12 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
       process_index_(process_index),
       plugin_attributes_(std::move(plugin_attributes)),
       kv_store_(std::move(kv_store)),
-      raw_client_(std::move(raw_client)) {
+      raw_client_(std::move(raw_client)),
+      linearize_throttler_(throttler_options.has_value()
+                               ? std::make_unique<LinearizeThrottler>(
+                                     GetHostMemoryAllocator(),
+                                     async_work_runner(), *throttler_options)
+                               : nullptr) {
   CHECK(topology_) << " topology is required.";
   auto set_bool_attr_from_plugin_attrs = [&](absl::string_view key, bool& out) {
     if (!plugin_attributes_) {
