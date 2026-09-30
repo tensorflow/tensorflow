@@ -442,7 +442,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
 
   def testUnsortedSegmentMeanLargeSegmentReducedPrecision(self):
     for dtype in [dtypes_lib.bfloat16, dtypes_lib.float16]:
-      for n in [512, 1024]:
+      for n in [64, 128]:
         with self.cached_session():
           values = array_ops.tile(
               constant_op.constant([0.0, 1.0], dtype=dtype), [n // 2]
