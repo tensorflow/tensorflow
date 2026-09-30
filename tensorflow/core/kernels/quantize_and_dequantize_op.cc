@@ -107,7 +107,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                     absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_min_tensor when the"
                         " axis is specified, received ",
-                        input_min_tensor.shape().DebugString()));
+                        input_min_tensor.shape().DebugString())));
         OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
                     absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_max_tensor when the"
