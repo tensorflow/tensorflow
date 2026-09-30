@@ -476,6 +476,7 @@ cc_library(
         ":cuda_compute_capability",
         ":cuda_diagnostics",
         ":cuda_platform_id",
+        ":cuda_status",
         ":cudnn_api_wrappers",
         ":cudnn_frontend_helpers",
         ":cudnn_sdpa_score_mod",
