@@ -796,6 +796,20 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
       GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
   def testMaxPoolInvalidFilterSize(self, **kwargs):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "Negative dimension size|Computed output size would be negative"):
+      self._VerifyOneType(
+          input_sizes=[1, 1, 1, 1],
+          ksize=[1, 1, 3, 1],
+          strides=[1, 1, 1, 1],
+          padding="VALID",
+          expected=[],
+          **kwargs)
+
+  @parameterized.parameters(GetTestConfigsDicts(gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolEmptyOutput(self, **kwargs):
     self._VerifyOneType(
         input_sizes=[1, 1, 1, 1],
         ksize=[1, 1, 2, 1],
