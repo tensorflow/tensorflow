@@ -924,6 +924,11 @@ absl::Status RunOptimizationPasses(
   }
   pipeline.AddPass<ScanExpander>();
 
+  // AssociativeScanRewriter generates call instructions for scan bodies and the
+  // emitter cannot compute indexing maps for the Call opcode. Inline the calls
+  // so the emitter can compute indexing maps.
+  pipeline.AddPass<CallInliner>();
+
   DynamicPadderOptions dynamic_padder_options;
 
   switch (debug_options.xla_gpu_shape_checks()) {
