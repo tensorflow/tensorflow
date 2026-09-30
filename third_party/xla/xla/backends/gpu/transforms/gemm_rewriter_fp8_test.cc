@@ -91,11 +91,6 @@ class ParameterizedFp8GemmRewriteTest
       GTEST_SKIP() << "FP8 is not supported on this GPU architecture.";
     }
 
-    if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 0, 0}) {
-      GTEST_SKIP()
-          << "F8 gemm rewrite is only supported in ROCm 6.0 and above.";
-    }
-
     if (IsRocm() &&
         !Capability().rocm_compute_capability()->has_fp8_support()) {
       GTEST_SKIP()
@@ -330,15 +325,9 @@ TEST_F(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
 )";
-  if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 2, 0}) {
-    checks.append(
-        R"(; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]]),
+  checks.append(
+      R"(; CHECK-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]]),
 )");
-  } else {
-    checks.append(
-        R"(; CHECK-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]]),
-)");
-  }
   checks.append(
       R"(; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
@@ -1158,15 +1147,9 @@ TEST_F(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = bf16[] parameter(3)
 ; CHECK-NEXT:    [[XS1:%[^ ]+]] = f32[] convert([[P3]])
 )";
-    if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 2, 0}) {
-      checks +=
-          R"(; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[XS]], [[XS1]]),
-)";
-    } else {
-      checks += R"(; CHECK-NEXT:    [[B:%[^ ]+]] = bf16[16]{0} parameter(4)
+    checks += R"(; CHECK-NEXT:    [[B:%[^ ]+]] = bf16[16]{0} parameter(4)
 ; CHECK-NEXT:    [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[XS]], [[XS1]], [[B]]),
 )";
-    }
     checks += R"(; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1182,15 +1165,9 @@ TEST_F(ParameterizedFp8GemmRewriteTest,
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 )";
-    if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 2, 0}) {
-      checks +=
-          R"(; CHECK-GCN-DAG:         "epilogue":"DEFAULT"
+    checks +=
+        R"(; CHECK-DAG:         "epilogue":"BIAS_GELU"
 )";
-    } else {
-      checks +=
-          R"(; CHECK-DAG:         "epilogue":"BIAS_GELU"
-)";
-    }
     checks += R"(; CHECK:           }
       )";
 
@@ -1257,15 +1234,9 @@ TEST_F(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = bf16[] parameter(3)
 ; CHECK-NEXT:    [[XS1:%[^ ]+]] = f32[] convert([[P3]])
 )";
-    if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 2, 0}) {
-      checks +=
-          R"(; CHECK-GCN-NEXT:    [[OUT:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[XS]], [[XS1]]),
+    checks +=
+        R"(; CHECK-NEXT:    [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[XS]], [[XS1]]),
 )";
-    } else {
-      checks +=
-          R"(; CHECK-NEXT:    [[OUT:%[^ ]+]] = (bf16[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1_TRANSPOSE]], [[XS]], [[XS1]]),
-)";
-    }
     checks += R"(; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
@@ -1281,13 +1252,8 @@ TEST_F(ParameterizedFp8GemmRewriteTest,
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 )";
-    if (IsRocm() && GetToolkitVersion() < se::SemanticVersion{6, 2, 0}) {
-      checks += R"(; CHECK-GCN-DAG:         "epilogue":"DEFAULT"
+    checks += R"(; CHECK-DAG:         "epilogue":"GELU"
 )";
-    } else {
-      checks += R"(; CHECK-DAG:         "epilogue":"GELU"
-)";
-    }
     checks += R"(; CHECK:           }
       )";
     RunAndFilecheckHloRewrite(
