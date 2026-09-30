@@ -704,6 +704,31 @@ void SetAllowContractOnFpArithmetic(llvm::Module& module) {
   }
 }
 
+void SinkContractableFMulToFAddFSub(llvm::Module& module) {
+  for (llvm::Function& function : module) {
+    for (llvm::Instruction& instruction : llvm::instructions(function)) {
+      const unsigned opcode = instruction.getOpcode();
+      if ((opcode != llvm::Instruction::FAdd &&
+           opcode != llvm::Instruction::FSub) ||
+          !instruction.hasAllowContract()) {
+        continue;
+      }
+      for (llvm::Value* operand : instruction.operands()) {
+        auto* fmul = llvm::dyn_cast<llvm::BinaryOperator>(operand);
+        // `fmul` is an operand of `instruction` and has exactly one use, so it
+        // dominates and (being in the same block) precedes `instruction`.
+        // Moving it forward therefore never disturbs the iteration above.
+        if (fmul != nullptr && fmul->getOpcode() == llvm::Instruction::FMul &&
+            fmul->hasAllowContract() && fmul->hasOneUse() &&
+            fmul->getParent() == instruction.getParent() &&
+            fmul->getNextNode() != &instruction) {
+          fmul->moveBefore(instruction.getIterator());
+        }
+      }
+    }
+  }
+}
+
 std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b) {
