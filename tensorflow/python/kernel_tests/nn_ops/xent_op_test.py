@@ -36,7 +36,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesSmallGradient(self):
     tail_probability = 5.551115123125776e-17
-    for batch_size in (1, 4096):
+    for batch_size in (0, 1, 4096):
       for target_class in (0, 1):
         for broadcast_labels in (False, True):
           with self.subTest(batch_size=batch_size, target_class=target_class,
@@ -101,9 +101,11 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesGeneralLabelGradients(self):
-    logits = np.array([[0., 0.], [0., 0.], [0., 0.], [np.inf, 0.]],
+    logits = np.array([[0., 0.], [0., 0.], [0., 0.], [np.inf, 0.],
+                       [np.nan, 0.], [-np.inf, -np.inf]],
                       dtype=np.float64)
-    labels = np.array([[0., 0.], [2., 0.], [np.nan, 0.], [1., 0.]],
+    labels = np.array([[0., 0.], [2., 0.], [np.nan, 0.], [1., 0.],
+                       [1., 0.], [1., 0.]],
                       dtype=np.float64)
     _, gradient = self._opFwdBwd(labels=labels, logits=logits)
     gradient = self.evaluate(gradient)
@@ -111,7 +113,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
     self.assertAllClose([[0.5, 0.5], [-1.5, 0.5]], gradient[:2])
     self.assertTrue(np.isnan(gradient[2, 0]))
     self.assertAllClose(0.5, gradient[2, 1])
-    self.assertTrue(np.all(np.isnan(gradient[3])))
+    self.assertTrue(np.all(np.isnan(gradient[3:])))
 
   @test_util.run_deprecated_v1
   def testRankTooLarge(self):
