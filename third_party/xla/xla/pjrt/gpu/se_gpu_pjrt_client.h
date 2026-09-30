@@ -118,7 +118,7 @@ class StreamExecutorGpuRawClient : public PjRtStreamExecutorRawClient {
     return kv_store_;
   }
 
-  void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
                           PjRtRawBufferRef raw_buffer,
                           PjRtDeviceEventRefVector definition_events,
                           PjRtDeviceEventPromiseRef usage_event_promise,

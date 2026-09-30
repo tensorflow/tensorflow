@@ -22,7 +22,7 @@
 func.func @push_squeeze_dims_up_through_elementwise(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   // CHECK: arith.negf {{.*}} : tensor<4x8xf32>
   %0 = arith.negf %arg0 : tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %1 : tensor<4x8xf32>
 }
 
@@ -32,7 +32,7 @@ func.func @push_squeeze_dims_up_through_elementwise(%arg0: tensor<4x1x8xf32>) ->
 func.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   // CHECK: tt.elementwise_inline_asm {{.*}} : tensor<4x8xf32> -> tensor<4x8xf32>, tensor<4x8xf32>
   %0:2 = tt.elementwise_inline_asm "" {constraints = "", packed_element = 1 : i32, pure = true} %arg0 : tensor<4x1x8xf32> -> tensor<4x1x8xf32>, tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0#0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %1 = triton_xla.squeeze_dims %0#0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %1 : tensor<4x8xf32>
 }
 
@@ -42,7 +42,7 @@ func.func @push_squeeze_dims_up_through_multiple_results(%arg0: tensor<4x1x8xf32
 func.func @push_squeeze_dims_up_through_broadcast(%arg0: tensor<1x4x1x8xf32>) -> tensor<4x16x8xf32> {
   // CHECK: tt.broadcast {{.*}} : tensor<4x1x8xf32> -> tensor<4x16x8xf32>
   %0 = tt.broadcast %arg0 : tensor<1x4x1x8xf32> -> tensor<1x4x16x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 0 : i32} : tensor<1x4x16x8xf32> -> tensor<4x16x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 0> : tensor<1x4x16x8xf32> -> tensor<4x16x8xf32>
   return %1 : tensor<4x16x8xf32>
 }
 
@@ -52,7 +52,7 @@ func.func @push_squeeze_dims_up_through_broadcast(%arg0: tensor<1x4x1x8xf32>) ->
 func.func @push_squeeze_dims_up_through_trans(%arg0: tensor<4x1x8xf32>) -> tensor<8x4xf32> {
   // CHECK: tt.trans {{.*}} {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
   %0 = tt.trans %arg0 {order = array<i32: 2, 0, 1>} : tensor<4x1x8xf32> -> tensor<8x4x1xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 2 : i32} : tensor<8x4x1xf32> -> tensor<8x4xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 2> : tensor<8x4x1xf32> -> tensor<8x4xf32>
   return %1 : tensor<8x4xf32>
 }
 
@@ -62,7 +62,7 @@ func.func @push_squeeze_dims_up_through_trans(%arg0: tensor<4x1x8xf32>) -> tenso
 func.func @push_squeeze_dims_up_through_join(%arg0: tensor<1x4xf32>, %arg1: tensor<1x4xf32>) -> tensor<4x2xf32> {
   // CHECK-DAG: tt.join {{.*}} : tensor<4xf32> -> tensor<4x2xf32>
   %0 = tt.join %arg0, %arg1 : tensor<1x4xf32> -> tensor<1x4x2xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 0 : i32} : tensor<1x4x2xf32> -> tensor<4x2xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 0> : tensor<1x4x2xf32> -> tensor<4x2xf32>
   return %1 : tensor<4x2xf32>
 }
 
@@ -77,7 +77,7 @@ func.func @push_squeeze_dims_up_through_reduce(%arg0: tensor<8x4x1xf32>) -> tens
     tt.reduce.return %1 : f32
   // CHECK: }) : (tensor<8x4xf32>) -> tensor<8xf32>
   }) : (tensor<8x4x1xf32>) -> tensor<8x1xf32>
-  %2 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<8x1xf32> -> tensor<8xf32>
+  %2 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<8x1xf32> -> tensor<8xf32>
   return %2 : tensor<8xf32>
 }
 
@@ -88,7 +88,7 @@ func.func @fold_squeeze_of_expand_cancelling(%arg0: tensor<4x8xf32>) -> tensor<4
   // CHECK-NOT: tt.expand_dims
   // CHECK-NOT: triton_xla.squeeze_dims
   %0 = tt.expand_dims %arg0 {axis = 1 : i32} : tensor<4x8xf32> -> tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %1 : tensor<4x8xf32>
 }
 
@@ -96,10 +96,10 @@ func.func @fold_squeeze_of_expand_cancelling(%arg0: tensor<4x8xf32>) -> tensor<4
 
 // CHECK-LABEL: func @fold_squeeze_of_expand_swapping
 func.func @fold_squeeze_of_expand_swapping(%arg0: tensor<4x1x8xf32>) -> tensor<1x4x8xf32> {
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: tt.expand_dims {{.*}} {axis = 0 : i32} : tensor<4x8xf32> -> tensor<1x4x8xf32>
   %0 = tt.expand_dims %arg0 {axis = 0 : i32} : tensor<4x1x8xf32> -> tensor<1x4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 2 : i32} : tensor<1x4x1x8xf32> -> tensor<1x4x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 2> : tensor<1x4x1x8xf32> -> tensor<1x4x8xf32>
   return %1 : tensor<1x4x8xf32>
 }
 
@@ -107,8 +107,8 @@ func.func @fold_squeeze_of_expand_swapping(%arg0: tensor<4x1x8xf32>) -> tensor<1
 
 // CHECK-LABEL: func @squeeze_reshape
 func.func @squeeze_reshape(%arg0: tensor<4x1x1xf32>) -> tensor<4xf32> {
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x1xf32> -> tensor<4x1xf32>
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1xf32> -> tensor<4xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 1> : tensor<4x1x1xf32> -> tensor<4x1xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 1> : tensor<4x1xf32> -> tensor<4xf32>
   %0 = tt.reshape %arg0 : tensor<4x1x1xf32> -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -152,7 +152,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
 // CHECK-LABEL: func @reshape_with_encoding
 // CHECK-SAME:    tensor<1x32xf32, #[[ARG_ENC:.+]]>) -> tensor<32xf32, #[[RES_ENC:.+]]>
 func.func @reshape_with_encoding(%arg0: tensor<1x32xf32, #arg_enc>) -> tensor<32xf32, #res_enc> {
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 0 : i32} :
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 0> :
   // CHECK-SAME: tensor<1x32xf32, #[[ARG_ENC]]> -> tensor<32xf32, #[[RES_ENC]]>
   %0 = tt.reshape %arg0 : tensor<1x32xf32, #arg_enc> -> tensor<32xf32, #res_enc>
   return %0 : tensor<32xf32, #res_enc>
@@ -171,7 +171,7 @@ func.func @fold_squeeze_dims_of_extract(
   %tile = xtile.extract %input[%offset, %offset, %offset][4, 1, 8][1, 1, 1]
     : memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>> -> tensor<4x1x8xf32>
   // CHECK-NOT: triton_xla.squeeze_dims
-  %squeezed = triton_xla.squeeze_dims %tile {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %squeezed = triton_xla.squeeze_dims %tile <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: return %[[EXTRACT]]
   return %squeezed : tensor<4x8xf32>
 }
@@ -187,7 +187,7 @@ func.func @squeeze_insert(
   %arg1: tensor<4x1x8xf32>,
   %offset: index) {
   // CHECK: %[[REDUCED:.*]] = triton_xla.squeeze_dims %[[TILE]]
-  // CHECK-SAME: {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  // CHECK-SAME: <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   // CHECK: xtile.insert %[[REDUCED]] into %[[BUFFER]]
   // CHECK-SAME: tensor<4x8xf32> -> memref<4x16x8xf32, #xtile.layout<[2, 1, 0]>>
   xtile.insert %arg1 into %arg0[%offset, %offset, %offset][4, 1, 8][1, 1, 1]
@@ -213,10 +213,10 @@ func.func @squeeze_insert_unit_tensor(
 
 // CHECK-LABEL: func @reorder_squeeze_dims
 func.func @reorder_squeeze_dims(%arg0: tensor<4x1x8x1xf32>) -> tensor<4x8xf32> {
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 1 : i32} : tensor<4x1x8x1xf32> -> tensor<4x8x1xf32>
-  // CHECK: triton_xla.squeeze_dims {{.*}} {axis = 2 : i32} : tensor<4x8x1xf32> -> tensor<4x8xf32>
-  %0 = triton_xla.squeeze_dims %arg0 {axis = 3 : i32} : tensor<4x1x8x1xf32> -> tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 1> : tensor<4x1x8x1xf32> -> tensor<4x8x1xf32>
+  // CHECK: triton_xla.squeeze_dims {{.*}} <axis = 2> : tensor<4x8x1xf32> -> tensor<4x8xf32>
+  %0 = triton_xla.squeeze_dims %arg0 <axis = 3> : tensor<4x1x8x1xf32> -> tensor<4x1x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %1 : tensor<4x8xf32>
 }
 
@@ -227,7 +227,7 @@ func.func @diamond(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   // CHECK-NOT: arith.negf {{.*}} : tensor<4x1x8xf32>
   %0 = arith.negf %arg0 : tensor<4x1x8xf32>
   %1 = arith.addf %0, %0 : tensor<4x1x8xf32>
-  %2 = triton_xla.squeeze_dims %1 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %2 = triton_xla.squeeze_dims %1 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %2 : tensor<4x8xf32>
 }
 
@@ -246,7 +246,7 @@ func.func @insert_expand_dims(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
   }) : (tensor<4x1xf32>) -> tensor<4xf32>
   %3 = tt.expand_dims %1 {axis = 1 : i32} : tensor<4xf32> -> tensor<4x1xf32>
   %4 = arith.addf %0, %3 : tensor<4x1xf32>
-  %5 = triton_xla.squeeze_dims %4 {axis = 1 : i32} : tensor<4x1xf32> -> tensor<4xf32>
+  %5 = triton_xla.squeeze_dims %4 <axis = 1> : tensor<4x1xf32> -> tensor<4xf32>
   return %5 : tensor<4xf32>
 }
 
@@ -267,7 +267,7 @@ func.func @push_squeeze_dims_up_through_if(
     scf.yield %arg0, %arg1 : tensor<16xf32>, tensor<4x1xf32>
   }
   // CHECK-NOT: triton_xla.squeeze_dims
-  %squeeze = triton_xla.squeeze_dims %if#1 {axis = 1 : i32}
+  %squeeze = triton_xla.squeeze_dims %if#1 <axis = 1>
       : tensor<4x1xf32> -> tensor<4xf32>
   // CHECK: return
   return %if#0, %squeeze : tensor<16xf32>, tensor<4xf32>
@@ -278,7 +278,7 @@ func.func @push_squeeze_dims_up_through_if(
 // FINALIZE-LABEL: func @squeeze_dims_to_reshape
 func.func @squeeze_dims_to_reshape(%arg0: tensor<4x1x8xf32>) -> tensor<4x8xf32> {
   // FINALIZE: tt.reshape {{.*}} : tensor<4x1x8xf32> -> tensor<4x8xf32>
-  %0 = triton_xla.squeeze_dims %arg0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %0 = triton_xla.squeeze_dims %arg0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %0 : tensor<4x8xf32>
 }
 
@@ -289,6 +289,6 @@ func.func @push_squeeze_dims_up_through_mask(
     %arg0: tensor<4x1x8xf32>, %arg1: f32) -> tensor<4x8xf32> {
   // CHECK: xtile.mask %{{.*}} bounds [4, 6], %arg1 : tensor<4x8xf32>
   %0 = xtile.mask %arg0 bounds [4, 1, 6], %arg1 : tensor<4x1x8xf32>
-  %1 = triton_xla.squeeze_dims %0 {axis = 1 : i32} : tensor<4x1x8xf32> -> tensor<4x8xf32>
+  %1 = triton_xla.squeeze_dims %0 <axis = 1> : tensor<4x1x8xf32> -> tensor<4x8xf32>
   return %1 : tensor<4x8xf32>
 }

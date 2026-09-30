@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -811,7 +812,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
-
 
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the

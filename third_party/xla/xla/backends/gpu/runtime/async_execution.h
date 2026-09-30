@@ -89,6 +89,10 @@ class AsyncExecution {
   // when it goes out of scope.
   class ExecutionGuard {
    public:
+    ExecutionGuard(const ExecutionGuard&) = delete;
+    ExecutionGuard& operator=(const ExecutionGuard&) = delete;
+    ExecutionGuard(ExecutionGuard&& other) noexcept;
+    ExecutionGuard& operator=(ExecutionGuard&&) = delete;
     ~ExecutionGuard();
 
    private:

@@ -184,6 +184,15 @@ absl::StatusOr<HloInstruction*> MakeDotHlo(
     std::optional<PrimitiveType> preferred_element_type,
     const OpMetadata* metadata = nullptr);
 
+absl::StatusOr<HloInstruction*> MakeDotHlo(
+    absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type,
+    const SparsityConfig& sparsity_config = {},
+    const BlockScalingConfig& block_scaling_config = {},
+    const OpMetadata* metadata = nullptr);
+
 // Creates a RaggedDot HLO instruction and adds it to the computation containing
 // `lhs`, `rhs`, and `group_sizes` (all must be in the same computation). An
 // optional preferred_element_type can be specified to override the element

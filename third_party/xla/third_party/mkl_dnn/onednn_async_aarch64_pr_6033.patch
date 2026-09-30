@@ -1,0 +1,206 @@
+From 5a76c778c08f1fa730686e347500eecf9c05e6d5 Mon Sep 17 00:00:00 2001
+From: Gassan <gassan.salama@arm.com>
+Date: Mon, 14 Sep 2026 11:22:28 +0000
+Subject: [PATCH] cpu: aarch64: tune SVE128 f32 BRGEMM matmul
+
+Prefer N16 blocking and cap K panels at 256 for eligible SVE128 FP32 matmuls. A full K256-by-N16 B panel contains 16 KiB of FP32 data. Batch up to 16 K panels per call to amortize kernel entry and keep C accumulators live across panels. Search larger M blocks when batch and N provide enough parallel work, reusing B across more rows.
+
+Alternate two B registers to load one column ahead in the existing indexed loop; retain the existing loop-selection policy.
+---
+ src/cpu/aarch64/brgemm/jit_brgemm_kernel.cpp  | 33 ++++++----
+ .../aarch64/matmul/brgemm_matmul_utils.cpp    | 66 +++++++++++--------
+ 2 files changed, 57 insertions(+), 42 deletions(-)
+
+diff --git a/src/cpu/aarch64/brgemm/jit_brgemm_kernel.cpp b/src/cpu/aarch64/brgemm/jit_brgemm_kernel.cpp
+index 8a251273e7d..ed799e48e96 100644
+--- a/src/cpu/aarch64/brgemm/jit_brgemm_kernel.cpp
++++ b/src/cpu/aarch64/brgemm/jit_brgemm_kernel.cpp
+@@ -243,7 +243,8 @@ struct jit_brgemm_kernel_t : public jit_generator_t {
+ 
+     ZReg load(int ld = 0) const {
+         if (n_bcast_1_load) {
+-            return ZReg(brg.bd_block);
++            // Two B registers between A and C enable one-ahead loads.
++            return ZReg(brg.bd_block + ld % 2);
+         } else {
+             // Starts off from lowest accm register, and continues descending
+             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
+@@ -1640,6 +1641,7 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
+     auto A_stride_bytes = static_cast<int32_t>(brg.typesize_A * brg.LDA);
+ 
+     if (n_bcast_1_load) {
++        const bool load_b_early = ld_block2 > 1;
+         // Use a tmp to store the pointer to the first element of A in the tile
+         // We can't use reg_aux_A directly because we increment this by a quadword when needed
+         XReg reg_A_ptr = X_TMP_4;
+@@ -1660,6 +1662,20 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
+                 // Bump by quadword
+                 add(reg_A_ptr, reg_A_ptr, 16);
+             }
++            auto load_b = [&](const int ld) {
++                const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
++                const int b_offset = B_offset(ld, rd);
++                if (!use_mul_vl(b_offset - b_base_offset, 4, cpu_sveLen)) {
++                    add_vl_or_imm(reg_tmp_, x_addr, b_offset - b_base_offset,
++                            X_TMP_0);
++                    b_base_offset = b_offset;
++                    x_addr = reg_tmp_;
++                }
++                const auto b_mul_vl = compute_off_mul_vl(
++                        b_offset - b_base_offset, 4, cpu_sveLen);
++                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_mul_vl, MUL_VL));
++            };
++            if (load_b_early) load_b(0);
+             if (quadword_index == 0) {
+                 // If loading a quadword would take us past the end of rd_loop, we need to use a mask
+                 bool quadword_is_too_much = (rd + 4 * brg.rd_step) > rd_loop;
+@@ -1675,19 +1691,10 @@ void jit_brgemm_kernel_t::gemm_microkernel(int bd_block2, bool is_bdb_tail,
+                 }
+             }
+             for (int ld = 0; ld < ld_block2; ld++) {
+-                const auto mask = is_ld_tail ? ld_tail_mask : P_ALL_ONE;
+-                const int b_offset = B_offset(ld, rd);
+-                if (!use_mul_vl(b_offset - b_base_offset, 4, cpu_sveLen)) {
+-                    add_vl_or_imm(reg_tmp_, x_addr, b_offset - b_base_offset,
+-                            X_TMP_0);
+-                    b_base_offset = b_offset;
+-                    x_addr = reg_tmp_;
+-                }
+-                auto b_mul_vl = compute_off_mul_vl(
+-                        b_offset - b_base_offset, 4, cpu_sveLen);
+-                ld1w(load(ld).s, mask / T_z, ptr(x_addr, b_mul_vl, MUL_VL));
++                const int next_ld = ld + load_b_early;
++                if (next_ld < ld_block2) load_b(next_ld);
+                 for (int bd = bd_b; bd < bd_e; bd++) {
+-                    dot_product(accm(ld_block2, bd, ld), load(), bcst(bd),
++                    dot_product(accm(ld_block2, bd, ld), load(ld), bcst(bd),
+                             quadword_index);
+                 }
+             }
+diff --git a/src/cpu/aarch64/matmul/brgemm_matmul_utils.cpp b/src/cpu/aarch64/matmul/brgemm_matmul_utils.cpp
+index 6c48b613538..d8ec2119337 100644
+--- a/src/cpu/aarch64/matmul/brgemm_matmul_utils.cpp
++++ b/src/cpu/aarch64/matmul/brgemm_matmul_utils.cpp
+@@ -79,21 +79,20 @@ int get_default_n_block(
+         case BA16a16b2a:
+         case BA16a16b4a: return 16;
+         default: {
+-            if (bgmmc.N == 16 || bgmmc.N == 32 || bgmmc.N == 64) return bgmmc.N;
+-            if (!mayiuse(sve_512)) {
+-                if (bgmmc.N <= 16)
+-                    return 16;
+-                else {
+-                    // It is observed that for M,K>512, N block of 64 works better provided that thread distribution is not hindered.
+-                    if (bgmmc.N / 64 >= bgmmc.nthr && bgmmc.K > 512
+-                            && bgmmc.M > 512)
+-                        return 64;
+-                    else
+-                        return 32;
+-                }
+-
+-            } else
++            if (one_of(bgmmc.N, 16, 32, 64)) return bgmmc.N;
++            // Prefer N16 for SVE128 FP32 before the generic N64 rule below.
++            // A full K256-by-N16 FP32 panel contains 16 KiB.
++            if (bgmmc.isa == sve_128
++                    && everyone_is(f32, bgmmc.src_dt, bgmmc.wei_dt)
++                    && bgmmc.M >= 128 && bgmmc.N > 64 && bgmmc.K > 128)
++                return 16;
++            if (mayiuse(sve_512)) return 64;
++            if (bgmmc.N <= 16) return 16;
++            // For remaining large M/K shapes, use N64 only when N provides
++            // at least one block per thread.
++            if (bgmmc.N / 64 >= bgmmc.nthr && bgmmc.K > 512 && bgmmc.M > 512)
+                 return 64;
++            return 32;
+         }
+     }
+ }
+@@ -701,8 +700,8 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
+     return best_imbalance;
+ }
+ 
+-// This is a direct copy of compute_blocking_heuristic_sve_256
+-// with basic parameters halved; TODO: develop a good sve_128 heuristic
++// Derived from compute_blocking_heuristic_sve_256 with baseline parameters
++// halved; SVE128 FP32 overrides are applied below.
+ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
+         const brgemm_matmul_conf_utils_t &bm_conf_utils,
+         const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+@@ -710,22 +709,34 @@ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
+ 
+     const int nthr = bgmmc.nthr;
+ 
+-    const int max_m_blk = nstl::min(128, matmul.M);
+-    int min_m = (matmul.batch > 1) ? 16 : 64;
+-    int min_m_blk = nstl::min(min_m, matmul.M); // max_m_blk
+-
++    const bool is_f32 = bm_conf_utils.is_f32();
+     int n_blk = bgmmc.N_blk;
+     const int n_chunks = div_up(matmul.N, n_blk);
+     const int max_n_chunks = bgmmc.use_buffer_a ? 4 : 1;
+     const int n_chunks_start = nstl::min(max_n_chunks, n_chunks);
++    const size_t max_parallel = matmul.batch * n_chunks;
++
++    // Search larger M blocks when batch and N already provide enough
++    // parallel work, reusing each B panel across more rows.
++    const bool use_large_m_block = is_f32 && matmul.K > 128 && matmul.K <= 512
++            && n_chunks > 1 && max_parallel >= static_cast<size_t>(nthr);
++    const int max_m_blk = nstl::min(use_large_m_block ? 1024 : 128, matmul.M);
++    const int min_m = matmul.batch > 1 ? 16 : 64;
++    int min_m_blk = nstl::min(min_m, matmul.M);
+ 
+     int default_k_blk = (matmul.M >= 256) ? 512 : 64;
+     int k_blk = nstl::min(matmul.K, default_k_blk);
++    int batch_size = 1;
++    // Limit K panels to 256 elements. Batch up to 16 panels per call to
++    // amortize kernel entry and keep C accumulators live across panels.
++    if (is_f32 && matmul.M >= 128) {
++        k_blk = nstl::min(matmul.K, 256);
++        batch_size = nstl::min(16, div_up(matmul.K, k_blk));
++    }
+     int start_nthr_k = 1;
+ 
+     // for cases with low parallel work, reduce 'min_m_blk' to
+     // increase potential parallelization balance.
+-    const size_t max_parallel = matmul.batch * n_chunks;
+     const bool low_parallel_work = static_cast<size_t>(nthr) > max_parallel;
+     if (low_parallel_work) {
+ 
+@@ -765,7 +776,7 @@ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
+ 
+         matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
+         cur_params.update_params(
+-                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
++                1, m_blk, n_chunk_size, n_blk, batch_size, k_blk, nthr_k);
+ 
+         float cur_imbalance = cur_params.get_imbalance();
+         if (cur_imbalance < best_imbalance) {
+@@ -807,9 +818,8 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
+         // choose a larger 'M_blk'.
+         //
+         // N_blk:
+-        // - ideally 64 (from 'get_default_n_block()').
+-        // - can be reduced to 32 to improve performance for some shapes, as
+-        //  well as increasing parallelization search space.
++        // - selected by the weights layout or 'get_default_n_block()'.
++        // - smaller blocks can improve cache locality and parallelization.
+         //
+         // N_Chunks:
+         // - No different as long as thread/work balance is the same.
+@@ -818,13 +828,11 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
+         // reuse.
+         //
+         // K_blk:
+-        // - block size variation '512 <= K_blk < 1024' has negligible
+-        // performance difference. However, Some cases benefit from higher
+-        // block size.
++        // - SVE128 f32 caps K_blk at 256 for M >= 128.
+         // - can parallelize if not enough work; notice: requires reduction!
+         //
+         // Batch_Size:
+-        // - unused.
++        // - number of K panels per kernel call, up to 16 for SVE128 f32.
+         case sme:
+         case sve_512:
+             best_imbalance = compute_blocking_heuristic_sve_512(

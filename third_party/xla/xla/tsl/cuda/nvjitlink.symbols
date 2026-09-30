@@ -1,0 +1,16 @@
+nvJitLinkAddData
+nvJitLinkAddFile
+nvJitLinkComplete
+nvJitLinkCreate
+nvJitLinkDestroy
+nvJitLinkGetErrorLog
+nvJitLinkGetErrorLogSize
+nvJitLinkGetInfoLog
+nvJitLinkGetInfoLogSize
+nvJitLinkGetLinkedCubin
+nvJitLinkGetLinkedCubinSize
+nvJitLinkGetLinkedLTOIR
+nvJitLinkGetLinkedLTOIRSize
+nvJitLinkGetLinkedPtx
+nvJitLinkGetLinkedPtxSize
+nvJitLinkVersion

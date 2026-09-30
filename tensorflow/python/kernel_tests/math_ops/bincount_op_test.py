@@ -756,6 +756,30 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
               size=size,
               weights=[]))
 
+  def test_sparse_bincount_rank0_fails(self):
+    # Regression test for the rank-0 guard in SparseBincountOp::Compute
+    # ("dense_shape must have at least 1 dimension"). Without it the kernel
+    # reads dense_shape(0) on an empty dense_shape. Shape inference may reject
+    # the input first, so both messages are accepted.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Input must be less than rank 2|"
+        "dense_shape must have at least 1 dimension",
+    ):
+      self.evaluate(
+          gen_math_ops.sparse_bincount(
+              indices=constant_op.constant(
+                  [], shape=[1, 0], dtype=dtypes.int64
+              ),
+              values=[0],
+              dense_shape=constant_op.constant(
+                  [], shape=[0], dtype=dtypes.int64
+              ),
+              size=10,
+              weights=[],
+          )
+      )
+
 
 class RaggedBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):

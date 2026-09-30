@@ -538,10 +538,8 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
     for (auto [index, dim] : llvm::enumerate(dims)) {
       int64_t global_dim_id =
           tiling_space->GetDimensionInfo(root.instruction(), index).id.value();
-      dim_tiles.push_back(GetDefaultDimTile(
-          TiledDimId(global_dim_id),
-          CreateSymbolExpr(global_dim_id, tiling_space->num_dimensions(), ctx),
-          dim));
+      dim_tiles.push_back(
+          tiling_space->GetDefaultRootDimTile(TiledDimId(global_dim_id), dim));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {
@@ -556,9 +554,24 @@ absl::StatusOr<std::unique_ptr<TilingSpace>> TilingSpace::Create(
   return tiling_space;
 }
 
-std::unique_ptr<TilingSpace> TilingSpace::Clone() const {
+std::unique_ptr<TilingSpace> TilingSpace::Clone(
+    mlir::MLIRContext* target_context) const {
+  const bool rebind =
+      target_context != nullptr && target_context != mlir_context_;
+  if (rebind) {
+    // Only the default root tiles of a symbolic space can be rebuilt in another
+    // context. Constraints hold expressions of this space's context, so they
+    // must be trivial.
+    CHECK(is_symbolic_) << "Cloning into another MLIRContext is only "
+                           "supported for a symbolic TilingSpace.";
+    CHECK(divisibility_constraints_.empty() && constraint_.IsAlwaysSatisfied())
+        << "Cloning a TilingSpace with constraints into another MLIRContext is "
+           "not supported.";
+    RegisterSymbolicExprStorage(target_context);
+  }
+
   auto cloned = std::make_unique<TilingSpace>();
-  cloned->mlir_context_ = mlir_context_;
+  cloned->mlir_context_ = rebind ? target_context : mlir_context_;
   cloned->is_symbolic_ = is_symbolic_;
   cloned->constraint_ = constraint_;
   cloned->divisibility_constraints_ = divisibility_constraints_;
@@ -580,7 +593,21 @@ std::unique_ptr<TilingSpace> TilingSpace::Clone() const {
 
   cloned->tiled_roots_.reserve(tiled_roots_.size());
   for (const auto& root_tile : tiled_roots_) {
-    cloned->tiled_roots_.push_back(root_tile.CloneWithNewTilingSpace(*cloned));
+    if (!rebind) {
+      cloned->tiled_roots_.push_back(
+          root_tile.CloneWithNewTilingSpace(*cloned));
+      continue;
+    }
+    // A symbolic root tile is the default one built by Create, whose size is
+    // the symbol of its dimension.
+    llvm::SmallVector<DimTile> dim_tiles;
+    dim_tiles.reserve(root_tile.dim_tiles().size());
+    for (const DimTile& dim_tile : root_tile.dim_tiles()) {
+      dim_tiles.push_back(cloned->GetDefaultRootDimTile(
+          TiledDimId(dim_tile.size.GetValue() - num_dimensions()),
+          dim_tile.upper_bound.GetValue()));
+    }
+    cloned->tiled_roots_.push_back(Tile{*cloned, std::move(dim_tiles)});
   }
 
   cloned->dim_vars_indexing_ = dim_vars_indexing_;
@@ -588,6 +615,13 @@ std::unique_ptr<TilingSpace> TilingSpace::Clone() const {
   cloned->rt_vars_indexing_ = rt_vars_indexing_;
 
   return cloned;
+}
+
+DimTile TilingSpace::GetDefaultRootDimTile(TiledDimId id,
+                                           int64_t dim_size) const {
+  return GetDefaultDimTile(
+      id, CreateSymbolExpr(id.value(), num_dimensions(), mlir_context_),
+      dim_size);
 }
 
 int64_t TilingSpace::num_parallel_dimensions() const {
@@ -618,18 +652,24 @@ void TilingSpace::InitSimplificationIndexing() {
   }
 }
 
-SymbolicExpr TilingSpace::SimplifyExpression(const SymbolicExpr& expr) const {
+llvm::SmallVector<SymbolicExpr> TilingSpace::SimplifyExpressions(
+    const llvm::SmallVector<SymbolicExpr>& expressions) const {
   if (is_symbolic_) {
-    return expr.Canonicalize();
+    llvm::SmallVector<SymbolicExpr> simplified_expressions;
+    simplified_expressions.reserve(expressions.size());
+    for (const auto& expr : expressions) {
+      simplified_expressions.push_back(expr.Canonicalize());
+    }
+    return simplified_expressions;
   }
-
+  // TODO(b/565301234): add constraints from tiling space?
   SymbolicMap map = SymbolicMap::Get(mlir_context(), dimensions_.size(),
-                                     rt_vars_.size(), {expr});
+                                     rt_vars_.size(), expressions);
 
   IndexingMap indexing_map(map, dim_vars_indexing_, range_vars_indexing_,
                            rt_vars_indexing_);
   indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
-  return indexing_map.GetSymbolicMap().GetResults()[0];
+  return std::move(indexing_map).GetSymbolicMap().GetResults();
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>

@@ -150,10 +150,10 @@ struct Index : Array<int, IndexCount, 0> {
 };
 
 // A helper function that converts a tensor index into a flat array index.
-template <int IndexCount>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int TensorIndexToFlat(
+template <typename FlatIndex = int, int IndexCount>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE FlatIndex TensorIndexToFlat(
     const Index<IndexCount>& index, const Dimension<IndexCount>& dims) {
-  int flat_index = index[0];
+  FlatIndex flat_index = index[0];
   for (int i = 1; i < IndexCount; i++) {
     flat_index = flat_index * dims[i] + index[i];
   }
@@ -320,8 +320,8 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
       input_tile_index[2] * TileSizeJ,
   };
 
-  int input_origin_flat_index =
-      TensorIndexToFlat(input_tile_origin, input_dims);
+  int64_t input_origin_flat_index =
+      TensorIndexToFlat<int64_t>(input_tile_origin, input_dims);
 
   bool full_tile = true;
   int tile_width = TileSizeJ;
@@ -350,8 +350,10 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
     // dimension of the input array.
     int ti = x / TileSizeJ;
     int tj = x % TileSizeJ;
-    int input_index = input_origin_flat_index + ti * input_dims[2] + tj;
-    int input_increment = ReadRowPerPass * input_dims[2];
+    int64_t input_index =
+        input_origin_flat_index + static_cast<int64_t>(ti) * input_dims[2] + tj;
+    int64_t input_increment =
+        static_cast<int64_t>(ReadRowPerPass) * input_dims[2];
 
     if (full_tile) {
 #pragma unroll
@@ -385,8 +387,8 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
       output_tile_index[2] * TileSizeI,
   };
 
-  int output_origin_flat_index =
-      TensorIndexToFlat(output_tile_origin, output_dims);
+  int64_t output_origin_flat_index =
+      TensorIndexToFlat<int64_t>(output_tile_origin, output_dims);
 
   constexpr int out_effective_thread_num = NumThreads / TileSizeI * TileSizeI;
 
@@ -396,8 +398,10 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
     // dimension of the output array.
     int ti = x / TileSizeI;
     int tj = x % TileSizeI;
-    int output_index = output_origin_flat_index + ti * output_dims[2] + tj;
-    int output_increment = WriteRowPerPass * output_dims[2];
+    int64_t output_index = output_origin_flat_index +
+                           static_cast<int64_t>(ti) * output_dims[2] + tj;
+    int64_t output_increment =
+        static_cast<int64_t>(WriteRowPerPass) * output_dims[2];
 
     if (full_tile) {
 #pragma unroll
