@@ -920,42 +920,49 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
-// Functor for tf.math.floor on float32 on CPU.
-//
 // TensorFlow runs CPU kernels with FTZ/DAZ enabled, so floor() of a negative
-// float32 subnormal is computed as floor(-0.0f) = -0.0f instead of -1.0f.
-// This is a TensorFlow-specific workaround; Eigen's floor is correct under
-// IEEE semantics.  Only float32 is corrected here; double, bfloat16, and
-// Eigen::half require a separate effort (tracked as a follow-up).
+// subnormal is computed as floor(-0.0) = -0.0 instead of -1.0.  The two
+// functors below (float32 and double) fix this.  bfloat16 and Eigen::half are
+// deferred to a follow-up.
 //
-// Scalar path: x < 0.0f is insufficient when FTZ/DAZ (Flush-To-Zero /
-// Denormals-Are-Zero) is active, because negative subnormals are flushed to
-// -0.0f in FP registers and -0.0f < 0.0f is false under IEEE-754.  Instead
-// we read the raw bit pattern of x via bit_cast (a memcpy-based type pun that
-// never goes through an FP register) and test whether the sign bit is set and
-// the value is not negative zero (0x80000000).  bit_cast is placed inside the
-// conditional so it is only evaluated when r == 0.0f, short-circuiting the
-// memcpy for the common (non-zero result) fast path.  Negative NaNs also
-// satisfy bit_cast(x) > 0x80000000u, but are safely excluded because
-// numext::floor(NaN) returns NaN for which r == 0.0f is always false.
+// Scalar path: bit_cast reads the raw bit pattern via memcpy, bypassing FP
+// registers.  Only evaluated when r == 0.0 (short-circuit), so normal inputs
+// pay no extra cost.  Negative NaNs satisfy the bit test but are excluded
+// because floor(NaN) is NaN, for which r == 0.0 is always false.
 //
-// Packet path: SIMD vectorization is kept enabled.  The correction adds two
-// integer-domain comparisons per packet (pandnot + two pcmp_eq) that are
-// immune to FTZ/DAZ flushing.  These run unconditionally on every packet;
-// the cost is two extra SIMD integer ops on top of pfloor, which is
-// acceptable given that the alternative (PacketAccess = false) would degrade
-// all float32 floor throughput by 4-8x.
+// Shared packetOp logic for the FTZ/DAZ subnormal floor correction.
 //
-//   1. r_bits == 0x80000000: r is exactly -0.0f (both a subnormal input and
-//      a genuine -0.0f input produce r = -0.0f, so we need the second guard).
+// For a floating-point type T with corresponding unsigned integer type UInt
+// (float32 -> uint32, double -> uint64), negative subnormals are flushed to
+// -0.0 under FTZ/DAZ before pfloor sees them, so pfloor returns -0.0 instead
+// of -1.0.  The correction identifies such lanes entirely in the integer
+// domain using zero-cost bit-reinterpretation (preinterpret, e.g.
+// _mm_castps_si128 on SSE), which is immune to FTZ/DAZ flushing:
 //
-//   2. x_bits != 0x80000000: x was not genuine -0.0f.  If r is -0.0f and x
-//      also had its sign bit set, then x != -0.0f is sufficient to conclude
-//      x was a negative subnormal.  pandnot(guard1, guard2) combines them.
+//   fix = pandnot(r_bits == sign_bit, x_bits == sign_bit)
 //
-// preinterpret<IPacket>(x) uses _mm_castps_si128 (or equivalent) — a
-// zero-cost register rename that never passes the value through the FP
-// pipeline, so FTZ/DAZ flushing cannot affect the result.
+// This is true iff r is -0.0 AND x was not a genuine -0.0 (i.e. x was a
+// negative subnormal that got flushed).  Those lanes are replaced with -1.0.
+// Genuine -0.0 inputs produce fix=false and are returned unchanged.
+//
+// The sign-bit constant equals INT_MIN for both 32-bit and 64-bit integers
+// because two's complement places the sign bit at the MSB in all cases.
+template <typename Packet, typename IntMin>
+EIGEN_STRONG_INLINE Packet
+cpu_floor_packet_correction(const Packet& x, const Packet& r,
+                            IntMin signed_int_min) {
+  using IPacket = typename unpacket_traits<Packet>::integer_packet;
+  const IPacket r_bits = preinterpret<IPacket>(r);
+  const IPacket x_bits = preinterpret<IPacket>(x);
+  // sign_bit_mask: all-ones in the sign bit, zeros elsewhere (== -0.0 bits).
+  const IPacket sign_bit_mask = pset1<IPacket>(signed_int_min);
+  // r == -0.0 AND x != -0.0 (i.e. x was a negative subnormal).
+  const IPacket fix = pandnot(pcmp_eq(r_bits, sign_bit_mask),
+                              pcmp_eq(x_bits, sign_bit_mask));
+  return pselect(preinterpret<Packet>(fix), pset1<Packet>(-1.0), r);
+}
+
+// Functor for tf.math.floor on float32 on CPU.
 struct scalar_cpu_floor_float_op {
   EIGEN_STRONG_INLINE float operator()(const float& x) const {
     const float r = numext::floor(x);
@@ -970,19 +977,8 @@ struct scalar_cpu_floor_float_op {
   template <typename Packet>
   EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     const Packet r = pfloor(x);
-    // Reinterpret both r and x as integer packets (zero-cost bit cast,
-    // e.g. _mm_castps_si128 on SSE).  Safe under FTZ/DAZ: preinterpret is a
-    // register rename — it never passes the value through the FP pipeline.
-    using IPacket = typename unpacket_traits<Packet>::integer_packet;
-    const IPacket r_bits = preinterpret<IPacket>(r);
-    const IPacket x_bits = preinterpret<IPacket>(x);
-    // INT32_MIN == 0x80000000 == bit pattern of -0.0f.
-    const IPacket neg_zero_bits =
-        pset1<IPacket>(std::numeric_limits<int32_t>::min());
-    // r == -0.0f implies x had its sign bit set; exclude genuine -0.0f input.
-    const IPacket fix = pandnot(pcmp_eq(r_bits, neg_zero_bits),
-                                pcmp_eq(x_bits, neg_zero_bits));
-    return pselect(preinterpret<Packet>(fix), pset1<Packet>(-1.0f), r);
+    return cpu_floor_packet_correction(x, r,
+                                       std::numeric_limits<int32_t>::min());
   }
 };
 
@@ -990,12 +986,48 @@ template <>
 struct functor_traits<scalar_cpu_floor_float_op> {
   enum {
     // Base pfloor cost plus three extra packet ops: two pcmp_eq (for r_bits
-    // and x_bits against neg_zero_bits) and one pandnot to combine them.
+    // and x_bits against the sign-bit mask) and one pandnot to combine them.
     Cost = functor_traits<scalar_floor_op<float>>::Cost +
            3 * NumTraits<float>::AddCost,
     // packetOp uses pfloor (HasRound) and pcmp_eq/pandnot (HasCmp).
     PacketAccess =
-        packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
+        packet_traits<float>::HasRound && packet_traits<float>::HasCmp,
+  };
+};
+
+// Functor for tf.math.floor on double on CPU.
+//
+// Applies the same FTZ/DAZ subnormal correction as scalar_cpu_floor_float_op
+// but for double precision.  The integer packet type for double is a 64-bit
+// signed integer packet (e.g. Packet2l on SSE, Packet4l on AVX); the sign-bit
+// constant is INT64_MIN == 0x8000000000000000.
+struct scalar_cpu_floor_double_op {
+  EIGEN_STRONG_INLINE double operator()(const double& x) const {
+    const double r = numext::floor(x);
+    // Same logic as float: bit_cast reads raw bits, only evaluated when r==0.
+    // Negative NaNs satisfy the bit test but floor(NaN)==NaN != 0.0.
+    return (r == 0.0 && numext::bit_cast<uint64_t>(x) > 0x8000000000000000ull)
+               ? -1.0
+               : r;
+  }
+
+  template <typename Packet>
+  EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    const Packet r = pfloor(x);
+    return cpu_floor_packet_correction(x, r,
+                                       std::numeric_limits<int64_t>::min());
+  }
+};
+
+template <>
+struct functor_traits<scalar_cpu_floor_double_op> {
+  enum {
+    // Base pfloor cost plus three extra packet ops (two pcmp_eq, one pandnot).
+    Cost = functor_traits<scalar_floor_op<double>>::Cost +
+           3 * NumTraits<double>::AddCost,
+    // packetOp uses pfloor (HasRound) and pcmp_eq/pandnot (HasCmp).
+    PacketAccess =
+        packet_traits<double>::HasRound && packet_traits<double>::HasCmp,
   };
 };
 
@@ -1201,18 +1233,19 @@ template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
 
 // floor_cpu is the CPU-only specialization of floor that applies the FTZ/DAZ
-// workaround for negative float32 subnormals.  It is a separate type (not a
+// workaround for negative subnormals.  It is a separate type (not a
 // specialization of floor<T>) to avoid an ODR violation: GPU translation units
 // see only floor<T> using Eigen's scalar_floor_op<T>, while CPU translation
 // units use floor_cpu<T>.
 //
-// Only float32 is overridden here.  double, bfloat16, and Eigen::half pass
-// through to floor<T> (Eigen's scalar_floor_op) and retain full SIMD
-// vectorization; the subnormal fix for those types is tracked as a follow-up.
+// float32 and double are overridden with dedicated functors that apply the
+// integer-domain subnormal correction.  bfloat16 and Eigen::half pass through
+// to floor<T> (Eigen's scalar_floor_op) and retain full SIMD vectorization;
+// their subnormal fix is tracked as a follow-up.
 //
-// GPU packet types (e.g. float4) have no integer_packet, so
-// scalar_cpu_floor_float_op must never be instantiated in GPU compilation
-// units.  GPU kernels also do not run under CPU FTZ/DAZ settings.
+// GPU packet types (e.g. float4) have no integer_packet, so these functors
+// must never be instantiated in GPU compilation units.  GPU kernels also do
+// not run under CPU FTZ/DAZ settings.
 #if !defined(EIGEN_GPUCC)
 template <typename T>
 struct floor_cpu : floor<T> {};
@@ -1220,6 +1253,10 @@ struct floor_cpu : floor<T> {};
 template <>
 struct floor_cpu<float>
     : base<float, Eigen::internal::scalar_cpu_floor_float_op> {};
+
+template <>
+struct floor_cpu<double>
+    : base<double, Eigen::internal::scalar_cpu_floor_double_op> {};
 #endif  // !defined(EIGEN_GPUCC)
 
 template <typename T>

@@ -1084,6 +1084,14 @@ class RoundingTest(test.TestCase):
         dtype=np.float32)
 
     with test_util.force_cpu():
+      # This test verifies the CPU kernel FTZ/DAZ workaround.  Under XLA or
+      # GPU execution, ops.device('/device:CPU:0') may be overridden and the
+      # GPU kernel (where FTZ/DAZ is not active) returns -0.0 for subnormals.
+      if test_util.is_gpu_available() or test_util.is_xla_enabled():
+        self.skipTest(
+            'Skipping: verifies CPU FTZ/DAZ workaround; not applicable under '
+            'GPU or XLA execution where device placement cannot be enforced.')
+
       # --- Boundary checks ---
       # Empty tensor (N=0): floor must return an empty tensor of the same shape.
       with ops.device('/device:CPU:0'):
@@ -1137,31 +1145,47 @@ class RoundingTest(test.TestCase):
             np.signbit(exp[non_nan_mask]), np.signbit(out[non_nan_mask]))
 
   def testFloorAcrossNonFloat32Dtypes(self):
-    """Verify floor correctness for float16, double, and bfloat16 on CPU.
+    """Verify floor correctness for non-float32 types on CPU.
 
-    These types go through Eigen's scalar_floor_op (no FTZ/DAZ fix yet).
-    The test name reflects that it checks normal-value correctness and -0.0
-    sign preservation; non-float32 subnormal correction is a follow-up.
+    double now has its own FTZ/DAZ subnormal correction; its negative
+    subnormals must floor to -1.0.  float16 and bfloat16 still pass through
+    Eigen's scalar_floor_op (subnormal fix is a follow-up); they are checked
+    for normal-value correctness and -0.0 sign preservation only.
     This confirms the dtype routing in cwise_op_floor.cc does not accidentally
-    break correctness for any of the non-float32 types registered by the CPU
-    kernel.
+    break correctness for any non-float32 type registered by the CPU kernel.
     """
-    dtype_cases = [
-        np.float16,
-        np.float64,
-        dtypes_lib.bfloat16.as_numpy_dtype,
-    ]
     with test_util.force_cpu():
-      for dtype in dtype_cases:
+      # --- double: subnormal correction is now active ---
+      with self.subTest(dtype=np.float64):
+        neg_sub64 = np.array(
+            [-5e-324, -1e-310, -2.2250738585072009e-308],  # double subnormals
+            dtype=np.float64)
+        with ops.device('/device:CPU:0'):
+          out64 = self.evaluate(math_ops.floor(neg_sub64))
+        self.assertAllEqual(np.full_like(neg_sub64, -1.0), out64)
+
+        # -0.0 must be preserved.
+        neg_zero64 = np.array([-0.0], dtype=np.float64)
+        with ops.device('/device:CPU:0'):
+          out_nz64 = self.evaluate(math_ops.floor(neg_zero64))
+        self.assertAllEqual(np.signbit(neg_zero64), np.signbit(out_nz64))
+
+        # Normal values.
+        normal64 = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=np.float64)
+        exp64 = np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        with ops.device('/device:CPU:0'):
+          out_n64 = self.evaluate(math_ops.floor(normal64))
+        self.assertAllEqual(exp64, out_n64)
+
+      # --- float16 and bfloat16: passthrough, no subnormal fix yet ---
+      for dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
         with self.subTest(dtype=dtype):
-          # Normal values must always be correct.
           normal_vals = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
           expected_normal = np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=dtype)
           with ops.device('/device:CPU:0'):
             out = self.evaluate(math_ops.floor(normal_vals))
           self.assertAllEqual(expected_normal, out)
 
-          # -0.0 must be preserved as -0.0.
           neg_zero = np.array([-0.0], dtype=dtype)
           with ops.device('/device:CPU:0'):
             out_neg_zero = self.evaluate(math_ops.floor(neg_zero))
