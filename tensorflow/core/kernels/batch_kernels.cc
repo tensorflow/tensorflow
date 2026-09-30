@@ -1134,6 +1134,11 @@ class UnbatchGradResource : public ResourceBase {
       return absl::InvalidArgumentError(absl::StrCat(
           "Expected `id` to be scalar. Received ", batch_key_t.DebugString()));
     }
+    if (!TensorShapeUtils::IsVectorOrHigher(grad_t.shape())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected `grad` to have rank at least 1. Received ",
+          grad_t.shape().DebugString()));
+    }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     // Mark our tensor as available.

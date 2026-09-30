@@ -654,6 +654,63 @@ class BatchOpsTest(test.TestCase):
                   1,
               ], dtype=dtypes.int64)))
 
+  def testUnbatchGradScalarGradient(self):
+    grad = constant_op.constant(1, dtype=dtypes.int32)
+    if not context.executing_eagerly():
+      grad = array_ops.placeholder_with_default(grad, shape=None)
+    for input_shape in ([0], [0, 0], [2, 0], [1]):
+      with self.subTest(input_shape=input_shape):
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "`grad` to have rank at least 1"
+        ):
+          self.evaluate(
+              gen_batch_ops.unbatch_grad(
+                  original_input=constant_op.constant(
+                      1, shape=input_shape, dtype=dtypes.int32
+                  ),
+                  batch_index=constant_op.constant(
+                      [[0, 0, 1]], dtype=dtypes.int64
+                  ),
+                  grad=grad,
+                  id=constant_op.constant(0, dtype=dtypes.int64),
+                  shared_name="unbatch_grad_scalar_gradient",
+              )
+          )
+
+  def testUnbatchGradEmptyOriginalInput(self):
+    for batch_id, grad_shape in enumerate(
+        ([0], [2], [2, 0], [2, 3], [2, 3, 4])
+    ):
+      with self.subTest(grad_shape=grad_shape):
+        result = self.evaluate(
+            gen_batch_ops.unbatch_grad(
+                original_input=constant_op.constant([], shape=[0, 0]),
+                batch_index=constant_op.constant(
+                    [], shape=[0, 3], dtype=dtypes.int64
+                ),
+                grad=constant_op.constant(1.0, shape=grad_shape),
+                id=constant_op.constant(batch_id, dtype=dtypes.int64),
+                shared_name="unbatch_grad_empty_original_input",
+            )
+        )
+        self.assertAllEqual(result.shape, [0] + grad_shape[1:])
+
+  def testUnbatchGradValidAfterScalarGradient(self):
+    def unbatch_grad(grad):
+      return gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          grad=constant_op.constant(grad),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+          shared_name="unbatch_grad_after_scalar_gradient",
+      )
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "`grad` to have rank at least 1"
+    ):
+      self.evaluate(unbatch_grad(1.0))
+    self.assertAllEqual(self.evaluate(unbatch_grad([2.0])), [2.0])
+
   def testUnbatchGradInvalidBatchId(self):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(
