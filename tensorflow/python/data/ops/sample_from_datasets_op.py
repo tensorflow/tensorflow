@@ -66,7 +66,9 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       # their relative probabilities.
       num_empty = math_ops.reduce_sum(
           math_ops.cast(math_ops.logical_not(positive), weights.dtype))
-      fill = total / (9 * num_empty)
+      # With no empty dataset `fill` is unused, but don't divide by zero.
+      fill = total / (9 * math_ops.maximum(num_empty,
+                                           array_ops.ones_like(num_empty)))
     # With no positive weight every dataset is empty, so let any be selected.
     fill = array_ops.where_v2(total > 0, fill, array_ops.ones_like(fill))
     return datasets, array_ops.where_v2(positive, weights, fill)
@@ -94,16 +96,17 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
 
       # Use the given `weights` as the probability of choosing the respective
       # input.
-      weights_value = (
-          tensor_util.constant_value(weights)
-          if isinstance(weights, tensor.Tensor) else weights)
+      # A list of bfloat16 scalars can't be converted to a tensor, but an
+      # array of them can. A list with tensors in it is converted as is.
+      if not isinstance(weights, tensor.Tensor) and not any(
+          isinstance(weight, tensor.Tensor) for weight in weights):
+        weights = np.asarray(weights)
+      weights = ops.convert_to_tensor(weights, name="weights")
+      weights_value = tensor_util.constant_value(weights)
       if weights_value is not None:
         datasets, weights = _skip_datasets_with_zero_weight(
             datasets, weights_value)
-        # A tuple of bfloat16 scalars can't be converted to a tensor, but an
-        # array of them can.
-        weights = np.asarray(weights)
-      weights = ops.convert_to_tensor(weights, name="weights")
+        weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
       if weights.dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
                                dtypes.float64):
         raise TypeError(f"Invalid `weights`. `weights` type must be "

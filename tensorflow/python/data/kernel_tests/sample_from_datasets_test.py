@@ -21,6 +21,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -287,6 +288,54 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
         ],
         weights=[bfloat16(0.), bfloat16(1.), bfloat16(1.)])
     self.assertDatasetProduces(sample_dataset, [2, 3], assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsListOfTensorWeights(self):
+
+    def count_and_sum(weights):
+      datasets = [
+          dataset_ops.Dataset.from_tensors(np.int64(-1)).repeat(),
+          dataset_ops.Dataset.from_tensors(np.int64(1)),
+          dataset_ops.Dataset.from_tensors(np.int64(2))
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights)
+      return sample_dataset.reduce(
+          (np.int64(0), np.int64(0)), lambda s, x: (s[0] + 1, s[1] + x))
+
+    # Constants have known values, while function arguments are only known
+    # at runtime.
+    constant_weights = def_function.function(lambda: count_and_sum(
+        [constant_op.constant(w) for w in (0., 1., 1.)]))
+    runtime_weights = def_function.function(
+        lambda a, b, c: count_and_sum([a, b, c]),
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 3)
+    self.assertEqual(self.evaluate(constant_weights()), (2, 3))
+    self.assertEqual(
+        self.evaluate(
+            runtime_weights(*[constant_op.constant(w) for w in (0., 1., 1.)])),
+        (2, 3))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsRuntimeWeightsWithCheckNumerics(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
+    def count(weights):
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          [dataset_ops.Dataset.range(3),
+           dataset_ops.Dataset.range(3)],
+          weights=weights)
+      return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+
+    # With all weights positive, nothing computed for empty datasets may be
+    # infinite or NaN.
+    check_numerics_callback.enable_check_numerics()
+    try:
+      self.assertEqual(self.evaluate(count(constant_op.constant([1., 1.]))),
+                       6)
+    finally:
+      check_numerics_callback.disable_check_numerics()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
