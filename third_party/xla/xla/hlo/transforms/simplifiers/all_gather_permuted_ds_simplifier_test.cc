@@ -53,12 +53,10 @@ class AllGatherPermutedDsSimplifierTest
     config.set_use_spmd_partitioning(num_partitions > 1);
     ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                      ParseAndReturnVerifiedModule(hlo_module, config));
-    absl::StatusOr<bool> changed =
-        AllGatherDynamicSlicePermutedOffsetSimplifier().Run(module.get(), {});
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    EXPECT_EQ(*changed, expect_change);
+    ABSL_ASSIGN_OR_RETURN(
+        bool changed,
+        AllGatherDynamicSlicePermutedOffsetSimplifier().Run(module.get(), {}));
+    EXPECT_EQ(changed, expect_change);
     return module;
   }
 };
