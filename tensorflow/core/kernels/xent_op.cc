@@ -17,9 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/xent_op.h"
-
 #include <type_traits>
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+
+#include "tensorflow/core/kernels/xent_op.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -28,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -63,6 +64,10 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
         absl::InvalidArgumentError("logits and labels must be either "
                                    "2-dimensional, or broadcasted to be "
                                    "2-dimensional"));
+    OP_REQUIRES(context, shape_in.dim_size(1) > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Must have at least one class, but got ",
+                                 shape_in.dim_size(1), " classes.")));
 
     if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(context, !OpDeterminismRequired(),

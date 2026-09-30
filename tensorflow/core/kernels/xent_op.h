@@ -19,8 +19,9 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "tensorflow/core/framework/tensor_types.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 namespace functor {
@@ -117,18 +118,17 @@ struct XentEigenImpl {
                              .sum(along_class);
 
         // Normalize once per row before broadcasting across classes.
-        const auto zero_vec = tail.constant(T(0));
-        tail.device(d) =
-            (!(zero_vec < tail))
-                .select(zero_vec, tail / scratch.reshape(batch_only));
+        tail.device(d) = tail / scratch.reshape(batch_only);
 
         const auto labels_broadcast = labels.broadcast(labels_bcast);
         const auto denominator = scratch.broadcast(one_by_class);
         // Ordered comparisons keep NaN rows on the original gradient path.
-        const auto cancellation_rows = scratch <= scratch.constant(T(1));
+        const auto cancellation_rows = (scratch < scratch.constant(T(1))) ||
+                                       (scratch == scratch.constant(T(1)));
         const auto rounded_dominant =
             cancellation_rows.broadcast(one_by_class) &&
-            (backprop >= backprop.constant(T(0)));
+            ((backprop.constant(T(0)) < backprop) ||
+             (backprop == backprop.constant(T(0))));
         const auto tail_ratio_bcast =
             tail.reshape(batch_by_one).broadcast(one_by_class);
         const auto corrected =

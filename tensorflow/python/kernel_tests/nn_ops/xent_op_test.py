@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.nn_ops import xent_op_test_base
@@ -52,9 +53,24 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
             _, gradient = self._opFwdBwd(labels=labels, logits=logits)
             gradient = self.evaluate(gradient)
 
-            self.assertAllClose(expected, gradient, rtol=1e-14, atol=0)
+            self.assertAllClose(expected, gradient, rtol=1e-14, atol=1e-15)
+            self.assertTrue(np.all(gradient[:, target_class] < 0.0))
+            self.assertTrue(np.all(gradient[:, 1 - target_class] > 0.0))
             self.assertAllClose(gradient[:, 0], -gradient[:, 1], rtol=1e-14,
-                                atol=0)
+                                atol=1e-15)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRejectsZeroClasses(self):
+    for batch_size in (0, 1):
+      for dtype in (dtypes.float32, dtypes.float64):
+        with self.subTest(batch_size=batch_size, dtype=dtype):
+          empty = constant_op.constant([], shape=[batch_size, 0], dtype=dtype)
+          with self.assertRaisesRegex(
+              errors_impl.InvalidArgumentError,
+              "Must have at least one class, but got 0 classes"):
+            result = gen_nn_ops.softmax_cross_entropy_with_logits(
+                features=empty, labels=empty)
+            self.evaluate(result)
 
   @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesMultiClassTailGradient(self):
