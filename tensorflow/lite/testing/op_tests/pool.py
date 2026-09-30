@@ -125,18 +125,18 @@ def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
 
 @register_make_test_function()
 def make_l2_pool_tests(options):
-  make_pool_tests(make_l2_pool)(options, expected_tf_failures=80)
+  make_pool_tests(make_l2_pool)(options, expected_tf_failures=76)
 
 
 @register_make_test_function()
 def make_avg_pool_tests(options):
   make_pool_tests(
       tf.nn.avg_pool2d, allow_fully_quantize=True)(
-          options, expected_tf_failures=160)
+          options, expected_tf_failures=152)
 
 
 @register_make_test_function()
 def make_max_pool_tests(options):
   make_pool_tests(
       tf.nn.max_pool2d, allow_fully_quantize=True)(
-          options, expected_tf_failures=160)
+          options, expected_tf_failures=152)

@@ -72,4 +72,4 @@ def make_identify_dilated_conv1d_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=16)
+      expected_tf_failures=6)
