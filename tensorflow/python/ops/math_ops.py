@@ -4697,9 +4697,15 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   with ops.name_scope(name, "UnsortedSegmentMean"):
     data = ops.convert_to_tensor(data)
     segment_ids = ops.convert_to_tensor(segment_ids)
-    N = _unsorted_segment_N(data, segment_ids, num_segments)
-    summed = gen_math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
-    return summed / N
+
+    use_fp32 = data.dtype in (dtypes.bfloat16, dtypes.float16)
+    accum_data = cast(data, dtypes.float32) if use_fp32 else data
+
+    N = _unsorted_segment_N(accum_data, segment_ids, num_segments)
+    summed = gen_math_ops.unsorted_segment_sum(accum_data, segment_ids, num_segments)
+    mean = summed / N
+    
+    return cast(mean, data.dtype) if use_fp32 else mean
 
 
 @tf_export(
