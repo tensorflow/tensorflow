@@ -1036,6 +1036,19 @@ def _reshape_method_wrapper(a, *newshape, **kwargs):
 @np_utils.np_doc('expand_dims')
 def expand_dims(a, axis):
   a = asarray(a)
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and isinstance(axis, (int, np.integer)):
+    # Match np.expand_dims behavior: raise a ValueError at trace time for
+    # an out-of-bounds axis instead of letting the underlying op produce an
+    # opaque error deeper in the stack.
+    normalized = axis + maybe_rank + 1 if axis < 0 else axis
+    if normalized < 0 or normalized > maybe_rank:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for input of rank {maybe_rank}.'
+      )
+
   return array_ops.expand_dims(a, axis=axis)
 
 
