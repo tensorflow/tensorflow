@@ -68,6 +68,7 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
       "\"_atypes.Float8e4m3b11fnuz\", \"_atypes.Float8e4m3fn\", "
       "\"_atypes.Float8e4m3fnuz\", \"_atypes.Float8e5m2\", "
       "\"_atypes.Float8e5m2fnuz\", "
+      "\"_atypes.Float8e8m0fnu\", "
       "\"_atypes.Half\", \"_atypes.Int16\", \"_atypes.Int2\", "
       "\"_atypes.Int32\", \"_atypes.Int4\", "
       "\"_atypes.Int64\", "

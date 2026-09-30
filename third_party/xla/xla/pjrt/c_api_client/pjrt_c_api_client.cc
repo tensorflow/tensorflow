@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/custom_options.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -1400,6 +1401,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
       PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+  args.allow_cancel_notifier = true;
 
   ShapesInfo shapes_info = MakeShapesInfo(shapes);
   args.num_shapes = shapes.size();
@@ -3288,7 +3290,8 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
     SendRecvCallbackData& callback_data,
     std::vector<int64_t>& non_donatable_input_indices_storage,
     std::vector<int>& task_ids_storage,
-    std::vector<int64_t>& incarnation_ids_storage) const {
+    std::vector<int64_t>& incarnation_ids_storage,
+    std::vector<PJRT_NamedValue>& c_custom_options) const {
   bool using_host_callbacks =
       !options.send_callbacks.empty() || !options.recv_callbacks.empty();
   PJRT_LoadedExecutable_Execute_Args args;
@@ -3325,6 +3328,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->num_tasks = options.incarnations.size();
   args.options->task_ids = task_ids_storage.data();
   args.options->incarnation_ids = incarnation_ids_storage.data();
+
+  if (options.custom_options != nullptr) {
+    ABSL_ASSIGN_OR_RETURN(c_custom_options, pjrt::ConvertToPjRtNamedValueList(
+                                           options.custom_options->map()));
+    args.options->custom_options = c_custom_options.data();
+    args.options->num_custom_options = c_custom_options.size();
+  }
 
   // If the executable has no addressable devices, `num_args` cannot be
   // determined but it is unused. 0 serves as a placeholder.
@@ -3431,6 +3441,7 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<int64_t> non_donatable_input_indices_storage;
   std::vector<int> task_ids_storage;
   std::vector<int64_t> incarnation_ids_storage;
+  std::vector<PJRT_NamedValue> c_custom_options;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
@@ -3456,11 +3467,11 @@ PjRtCApiLoadedExecutable::Execute(
   auto callback_data = std::make_shared<SendRecvCallbackData>();
   ABSL_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
-      GetCommonExecuteArgs(argument_handles, options, c_options,
-                           c_argument_lists_storage, c_arguments,
-                           device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage,
-                           task_ids_storage, incarnation_ids_storage));
+      GetCommonExecuteArgs(
+          argument_handles, options, c_options, c_argument_lists_storage,
+          c_arguments, device_complete_events, *callback_data,
+          non_donatable_input_indices_storage, task_ids_storage,
+          incarnation_ids_storage, c_custom_options));
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
@@ -3526,6 +3537,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<int64_t> non_donatable_input_indices_storage;
   std::vector<int> task_ids_storage;
   std::vector<int64_t> incarnation_ids_storage;
+  std::vector<PJRT_NamedValue> c_custom_options;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -3537,11 +3549,11 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
   ABSL_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
-      GetCommonExecuteArgs(argument_handles_vec, options, c_options,
-                           c_argument_lists_storage, c_arguments,
-                           device_complete_events, *callback_data,
-                           non_donatable_input_indices_storage,
-                           task_ids_storage, incarnation_ids_storage));
+      GetCommonExecuteArgs(
+          argument_handles_vec, options, c_options, c_argument_lists_storage,
+          c_arguments, device_complete_events, *callback_data,
+          non_donatable_input_indices_storage, task_ids_storage,
+          incarnation_ids_storage, c_custom_options));
 
   // Allocates memory for output. `c_output_lists_storage` and `c_output_lists`
   // need to stay alive during the call of `PJRT_LoadedExecutable_Execute`.
@@ -4315,8 +4327,7 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
       tpu_topology_extension_(pjrt::FindExtension<PJRT_TpuTopology_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_TpuTopology)),
       c_topology_(c_topology),
-      platform_version_(absl::StrCat(
-          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_topology, c_api))),
+      platform_version_(::pjrt::GetPlatformVersion(c_topology, c_api)),
       platform_name_(::pjrt::PlatformName(c_api, c_topology)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {

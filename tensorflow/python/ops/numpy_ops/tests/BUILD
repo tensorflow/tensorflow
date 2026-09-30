@@ -222,7 +222,6 @@ py_test(
     shard_count = 20,
     strict_deps = True,
     tags = [
-        "exclusive-if-local",
         "gpu",
         "no_pip",
         "requires-gpu-nvidia",
@@ -248,12 +247,13 @@ py_test(
 
 py_test(
     name = "np_indexing_test",
+    timeout = "long",
     srcs = ["np_indexing_test.py"],
     args = [
         "--num_generated_cases=90",
         "--enable_x64",  # Needed to enable dtype check
     ],
-    shard_count = 10,
+    shard_count = 30,
     strict_deps = True,
     # TODO(b/164245103): Re-enable GPU once tf.tensor_strided_slice_update's segfault is fixed.
     tags = [

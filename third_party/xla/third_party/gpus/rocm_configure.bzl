@@ -49,7 +49,7 @@ _ROCM_DISTRO_LINKS = "ROCM_DISTRO_LINKS"
 _TMPDIR = "TMPDIR"
 
 # Default hermetic ROCm redistributable version
-_DEFAULT_ROCM_DISTRO_VERSION = "rocm_7.13.0_gfx94X"
+_DEFAULT_ROCM_DISTRO_VERSION = "rocm_latest_multiarch"
 
 _TF_ROCM_RBE_DOCKER_IMAGE = "TF_ROCM_RBE_DOCKER_IMAGE"
 _TF_ROCM_RBE_POOL = "TF_ROCM_RBE_POOL"
@@ -384,6 +384,8 @@ def _setup_rocm_distro_dir(repository_ctx):
         rocm_distro_hash = repository_ctx.os.environ.get(_ROCM_DISTRO_HASH)
         if not rocm_distro_hash:
             fail("{} environment variable is required".format(_ROCM_DISTRO_HASH))
+        elif rocm_distro_hash == "no_hash":
+            rocm_distro_hash = ""
         rocm_distro_links = repository_ctx.os.environ.get(_ROCM_DISTRO_LINKS, "")
         rocm_distro = create_rocm_distro(rocm_distro_url, rocm_distro_hash, rocm_distro_links)
         return _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro)

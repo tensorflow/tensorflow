@@ -24,19 +24,19 @@ xla_test(
     name = "collective_ops_aot_test",
     srcs = ["collective_ops_aot_test.cc"],
     backends = _GPU_TARGETS,
-    data = glob(["executables/collective_ops_aot_test_2gpu/**/*.pbtxt"]),
+    data = glob(["executables/collective_ops_aot_test_2gpu_*/**/*.pbtxt"]),
     disabled_backends = [
         # TODO(b/491194726): Serialized executable compute capability 6.0 does not match sm_10.3a.
         "gb300",
     ],
     tags = [
-        "manual",
         "multi_gpu",
         "no_oss",
     ],
     deps = [
         "//xla:literal",
         "//xla/service:hlo_module_config",
+        "//xla/tests:aot_interception_pjrt_client",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tests/aot_compatibility_experimental:test_lib",

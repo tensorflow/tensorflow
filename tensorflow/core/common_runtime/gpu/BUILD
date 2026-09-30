@@ -327,7 +327,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_bfc_allocator_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "gpu_bfc_allocator_test.cc",
     ],

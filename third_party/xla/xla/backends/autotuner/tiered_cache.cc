@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/autotune_cache.pb.h"
@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -116,12 +115,48 @@ autotuner::AutotuneEntry TieredCache::BuildEntry(const HloInstruction& instr,
   return entry;
 }
 
-std::optional<autotuner::AutotuneEntry> TieredCache::MatchEntry(
+TieredCache::MissReason TieredCache::MostInformativeMissReason(MissReason a,
+                                                               MissReason b) {
+  // A version mismatch means the entry is cached but unusable, which is more
+  // informative than a read error, which in turn is more informative than not
+  // finding anything at all.
+  if (a == MissReason::kVersionMismatch || b == MissReason::kVersionMismatch) {
+    return MissReason::kVersionMismatch;
+  }
+  if (a == MissReason::kReadError || b == MissReason::kReadError) {
+    return MissReason::kReadError;
+  }
+  return MissReason::kNotFound;
+}
+
+AutotunerCacheInterface::Config TieredCache::ToConfig(
+    const autotuner::AutotuneEntry& entry) {
+  const autotuner::Config& optimal_config = entry.value().optimal_config();
+  return Config{optimal_config.backend(), optimal_config.backend_config()};
+}
+
+void TieredCache::RecordHit(const Hit& hit, bool in_memory_hit) {
+  absl::MutexLock lock(stats_mutex_);
+  stats_.hits++;
+  if (hit.is_strict) {
+    stats_.strict_hits++;
+  }
+  if (in_memory_hit) {
+    stats_.in_memory_hits++;
+  }
+}
+
+void TieredCache::RecordMiss(MissReason reason) {
+  absl::MutexLock lock(stats_mutex_);
+  stats_.RecordMiss(reason);
+}
+
+TieredCache::MatchResult TieredCache::MatchEntry(
     const std::vector<autotuner::AutotuneEntry>& entries) const {
   for (const autotuner::AutotuneEntry& entry : entries) {
     const autotuner::AutotuneEnvironmentKey& env = entry.key().environment();
     if (env.codegen_version() == context_.codegen_version()) {
-      return entry;
+      return Hit{entry, /*is_strict=*/true};
     }
     if (matching_mode_ == KeyMatchingMode::kStrict) {
       continue;
@@ -133,10 +168,14 @@ std::optional<autotuner::AutotuneEntry> TieredCache::MatchEntry(
         context_.per_backend_versions().find(backend);
     if (it != context_.per_backend_versions().end() &&
         it->second == entry.value().optimal_backend_version()) {
-      return entry;
+      return Hit{entry, /*is_strict=*/false};
     }
   }
-  return std::nullopt;
+
+  if (entries.empty()) {
+    return MissReason::kNotFound;
+  }
+  return MissReason::kVersionMismatch;
 }
 
 absl::Status TieredCache::MaybeWriteToStore(
@@ -163,59 +202,45 @@ absl::Status TieredCache::MaybeWriteToStore(
   return absl::OkStatus();
 }
 
+TieredCache::MatchResult TieredCache::LookupInStore(
+    AutotuneCacheStore& store,
+    const autotuner::AutotuneTargetKey& target_key) const {
+  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> entries =
+      store.Read(target_key);
+  if (!entries.ok()) {
+    return MissReason::kReadError;
+  }
+  return MatchEntry(*entries);
+}
+
 std::optional<AutotunerCacheInterface::Config> TieredCache::Lookup(
     const HloInstruction* instr) {
   CHECK(instr != nullptr) << "Instruction cannot be null.";
   autotuner::AutotuneTargetKey target_key = BuildTargetKey(*instr);
 
-  // 1. Look up in primary.
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> primary_entries =
-      primary_->Read(target_key);
-  if (primary_entries.ok()) {
-    std::optional<autotuner::AutotuneEntry> matched =
-        MatchEntry(*primary_entries);
-    if (matched.has_value()) {
-      {
-        absl::MutexLock lock(stats_mutex_);
-        stats_.hits++;
-      }
-      const autotuner::Config& opt_config = matched->value().optimal_config();
-      return Config{opt_config.backend(), opt_config.backend_config()};
+  // 1. Look up in the primary (in-memory) tier.
+  MatchResult primary_match = LookupInStore(*primary_, target_key);
+  if (const Hit* hit = std::get_if<Hit>(&primary_match); hit != nullptr) {
+    RecordHit(*hit, /*in_memory_hit=*/true);
+    return ToConfig(hit->entry);
+  }
+  MissReason miss_reason = std::get<MissReason>(primary_match);
+
+  // 2. Fall back to the secondary (persistent) tier, if there is one to read.
+  if (secondary_ != nullptr && secondary_->GetMode() != CacheMode::kWriteOnly) {
+    MatchResult secondary_match = LookupInStore(*secondary_, target_key);
+    if (const Hit* hit = std::get_if<Hit>(&secondary_match); hit != nullptr) {
+      // Promote the matched entry to the primary tier. Promotion is
+      // best-effort; a failure only costs us a future secondary lookup.
+      MaybeWriteToStore(*primary_, hit->entry).IgnoreError();
+      RecordHit(*hit, /*in_memory_hit=*/false);
+      return ToConfig(hit->entry);
     }
-  } else {
-    LOG(WARNING) << "Failed to read from primary cache: "
-                 << primary_entries.status();
+    miss_reason = MostInformativeMissReason(
+        miss_reason, std::get<MissReason>(secondary_match));
   }
 
-  if (secondary_ == nullptr || !primary_entries.ok() ||
-      secondary_->GetMode() == CacheMode::kWriteOnly) {
-    absl::MutexLock lock(stats_mutex_);
-    stats_.misses++;
-    return std::nullopt;
-  }
-
-  // 2. Look up in secondary.
-  absl::StatusOr<std::vector<autotuner::AutotuneEntry>> secondary_entries =
-      secondary_->Read(target_key);
-  if (secondary_entries.ok()) {
-    std::optional<autotuner::AutotuneEntry> matched =
-        MatchEntry(*secondary_entries);
-    if (matched.has_value()) {
-      // Promote the matched entry to the primary tier.
-      if (!MaybeWriteToStore(*primary_, *matched).ok()) {
-        LOG(WARNING) << "Failed to promote secondary cache hit to primary.";
-      }
-      {
-        absl::MutexLock lock(stats_mutex_);
-        stats_.hits++;
-      }
-      const autotuner::Config& opt_config = matched->value().optimal_config();
-      return Config{opt_config.backend(), opt_config.backend_config()};
-    }
-  }
-
-  absl::MutexLock lock(stats_mutex_);
-  stats_.misses++;
+  RecordMiss(miss_reason);
   return std::nullopt;
 }
 

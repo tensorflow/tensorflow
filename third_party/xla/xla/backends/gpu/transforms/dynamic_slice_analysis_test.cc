@@ -1034,5 +1034,202 @@ TEST_F(DynamicSliceAnalysisTest, ClassifiesLoopCarriedVariables) {
                    .has_value());
 }
 
+TEST_F(DynamicSliceAnalysisTest, ConstantOffsetsClampedPerDimension) {
+  constexpr absl::string_view kHlo = R"(
+    ENTRY main {
+      p0 = s32[3,1,33] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      ROOT dus = s32[3,1,33] dynamic-update-slice(p0, p1, c1, c1, c31)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  auto* dus = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeDynamicSlice(dus));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_EQ(desc->loop_index, std::nullopt);
+  // dim 0: min(1, 3 - 1) = 1 (stride 33 * 4 = 132)
+  // dim 1: min(1, 1 - 1) = 0 (stride 33 * 4 = 132)
+  // dim 2: min(31, 33 - 8) = 25 (stride 4)
+  // Total byte offset = 1 * 132 + 0 * 132 + 25 * 4 = 232.
+  EXPECT_EQ(desc->byte_offset, 232);
+  EXPECT_EQ(desc->byte_stride, 0);
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       LoopDependentWithOutOfBoundsConstantOffsetClamped) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,1,33] get-tuple-element(p0), index=1
+      upd = s32[1,1,8] broadcast(s32[] constant(7)), dimensions={}
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      dus = s32[4,1,33] dynamic-update-slice(buf, upd, ivar, c1, c31)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,1,33]) tuple(next_ivar, dus)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,1,33] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,1,33]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,1,33]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  // At iter 0: dim 0 = 0, dim 1 = min(1, 0) = 0, dim 2 = min(31, 25) = 25 ->
+  // 100
+  EXPECT_EQ(desc->byte_offset, 100);
+  EXPECT_EQ(desc->byte_stride, 132);
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       RejectsLoopOutOfBoundsWhen1DClampMismatchesPerDimensionClamp) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      c1 = s32[] constant(1)
+      slice = s32[1,1,8] dynamic-slice(input, ivar, c1, c1),
+          dynamic_slice_sizes={1,1,8}
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8,8], s32[1,1,8])
+          tuple(next_ivar, input, slice)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8], s32[1,1,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8], s32[1,1,8]) tuple(c0, p0, p1)
+      ROOT while = (s32[], s32[4,8,8], s32[1,1,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "slice"));
+  EXPECT_FALSE(desc.has_value());
+}
+
+TEST_F(DynamicSliceAnalysisTest,
+       ClampedOffsetsLinearWhenDynamicInnerDimensionAlwaysClampsToMax) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,1,33] get-tuple-element(p0), index=1
+      upd = s32[1,1,8] broadcast(s32[] constant(7)), dimensions={}
+      c1 = s32[] constant(1)
+      c31 = s32[] constant(31)
+      dyn_oob = s32[] add(ivar, c31)
+      dus = s32[4,1,33] dynamic-update-slice(buf, upd, ivar, c1, dyn_oob)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,1,33]) tuple(next_ivar, dus)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,1,33]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c4 = s32[] constant(4)
+      ROOT cmp = pred[] compare(ivar, c4), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,1,33] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,1,33]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,1,33]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"4"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto desc, AnalyzeByName(module.get(), "dus"));
+  ASSERT_TRUE(desc.has_value());
+  EXPECT_THAT(desc->loop_index, ::testing::Optional(0));
+  // dyn_oob = ivar + 31 clamps to 25 on all 4 iterations, so the clamped byte
+  // offsets are 100 + iter * 132.
+  EXPECT_EQ(desc->byte_offset, 100);
+  EXPECT_EQ(desc->byte_stride, 132);
+}
+
+TEST_F(DynamicSliceAnalysisTest, OverlappingTwoDusAfterClamping) {
+  constexpr absl::string_view kHlo = R"(
+    body {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      buf = s32[4,8] get-tuple-element(p0), index=1
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      c2 = s32[] constant(2)
+      idx0 = s32[] multiply(ivar, c2)
+      idx1 = s32[] add(idx0, c1)
+      val = s32[1,8] constant({{1,2,3,4,5,6,7,8}})
+      dus0 = s32[4,8] dynamic-update-slice(buf, val, idx0, c0)
+      dus1 = s32[4,8] dynamic-update-slice(dus0, val, idx1, c0)
+      next_ivar = s32[] add(ivar, c1)
+      ROOT result = (s32[], s32[4,8]) tuple(next_ivar, dus1)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c3 = s32[] constant(3)
+      ROOT cmp = pred[] compare(ivar, c3), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"3"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  auto* dus0 =
+      module->GetComputationWithName("body")->GetInstructionWithName("dus0");
+  ASSERT_OK_AND_ASSIGN(auto chain, FindDynamicSliceChain(dus0));
+  EXPECT_EQ(chain.updates.size(), 2);
+  // On iter 2, idx0 = 4 and idx1 = 5 both clamp to row 3 of s32[4,8], so the
+  // two DUS updates overlap after clamping.
+  auto result = IsNonOverlapping(chain);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(*result);
+}
+
 }  // namespace
 }  // namespace xla::gpu

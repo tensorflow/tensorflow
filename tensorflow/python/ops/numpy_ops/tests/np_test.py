@@ -27,7 +27,6 @@ import numpy as onp
 import six
 
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops.numpy_ops.tests.config import config
 from tensorflow.python.ops.numpy_ops.tests.config import FLAGS
 import tensorflow.python.ops.numpy_ops.tests.extensions as nje
@@ -39,7 +38,14 @@ from tensorflow.python.util.numpy_compat import np_where
 config.parse_flags_with_absl()
 
 
-nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
+nonempty_nonscalar_array_shapes = [
+    (4,),
+    (3, 4),
+    (3, 1),
+    (1, 4),
+    (2, 1, 4),
+    (2, 3, 4),
+]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
 empty_array_shapes = [(0,), (0, 4), (3, 0),]
 
@@ -2601,9 +2607,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   def testReductionOfOutOfBoundsAxis(self):  # Issue 888
     x = tnp.ones((3, 4))
-    self.assertRaises(
-        errors_impl.InvalidArgumentError, lambda: tnp.sum(x, axis=2)
-    )
+    self.assertRaises(ValueError, lambda: tnp.sum(x, axis=2))
 
   @jtu.disable
   def testIssue956(self):
@@ -2957,6 +2961,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def foo(x):
       return tnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
+
+  def testStackInvalidAxis(self):
+    # NumPy raises AxisError for out-of-bounds stack axes. `axis` is an
+    # insertion position, so rank itself is in bounds.
+    a = onp.ones((2, 3))
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=3)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=-4)
+    with self.assertRaisesRegex(ValueError, "out of bounds"):
+      tnp.stack([a, a], axis=4)
+    # In-bounds boundaries still work.
+    self.assertEqual(tnp.stack([a, a], axis=2).shape, (2, 3, 2))
 
   @jtu.disable
   def testReluGradientConstants(self):

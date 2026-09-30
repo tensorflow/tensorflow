@@ -267,6 +267,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -582,8 +583,10 @@ cc_library(
     visibility = internal_visibility([
         ":friends",
         ":internal",
+        ":users",
     ]),
     deps = [
+        ":attribute_map",
         ":basic_device_list",
         ":ifrt",
         ":mock",
@@ -665,6 +668,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
+        "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
@@ -781,9 +785,7 @@ cc_library(
     srcs = ["mock.cc"],
     hdrs = ["mock.h"],
     visibility = internal_visibility([
-        ":friends",
-        ":internal",
-        ":users",
+        ":mock_users",
     ]),
     deps = [
         ":attribute_map",

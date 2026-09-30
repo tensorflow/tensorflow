@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/xla_compile_result.pb.h"
 
 namespace xla {
 

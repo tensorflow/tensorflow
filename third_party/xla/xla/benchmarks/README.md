@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- Python >= 3.12 (required by JAX >= 0.11)
+These benchmarks are intended to run on a TPU v6e or 7x Cloud VM running Python
+\>= 3.12 (required by JAX \>= 0.11).
 
 ## Quickstart
 
@@ -19,6 +20,9 @@ python3 xla/benchmarks/pallas_microbenchmarks/dense_matmul.py  --dim=1,2048,2048
 
 # Run dense matmul benchmark suite and write results to a CSV file
 python3 xla/benchmarks/run_benchmarks.py --benchmarks=dense_matmul --csv_path=<path_to_dir>
+
+# Run DMA benchmark suite and write results to a CSV file
+python3 xla/benchmarks/run_benchmarks.py --benchmarks=dma --csv_path=<path_to_dir>
 
 # Run full benchmark suite and write results to multiple CSV files
 python3 xla/benchmarks/run_benchmarks.py --csv_path=<path_to_dir>

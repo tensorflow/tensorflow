@@ -142,3 +142,16 @@ module {
     return %result : tensor<1x1xf32>
   }
 }
+
+// -----
+// Variables used by AssignVariableOp are recorded in module attribute.
+//
+// CHECK-LABEL: module attributes {tf_ifrt.modified_variable_names = ["__assigned_var"]}
+module {
+  func.func @serving_default(%arg0: tensor<1x3xf32>) {
+    %0 = "tf.VarHandleOp"() <{container = "", shared_name = "assigned_var"}> : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+    "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<1x3xf32>) -> ()
+    return
+  }
+}
+

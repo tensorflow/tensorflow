@@ -53,6 +53,12 @@ absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
       .LoadKernel<internal::CopyKernel>(executor);
 }
 
+absl::StatusOr<internal::DynShmemKernel::KernelType> LoadDynShmemTestKernel(
+    StreamExecutor* executor) {
+  return GpuKernelRegistry::GetGlobalRegistry()
+      .LoadKernel<internal::DynShmemKernel>(executor);
+}
+
 absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id) {
   return GpuKernelRegistry::GetGlobalRegistry()

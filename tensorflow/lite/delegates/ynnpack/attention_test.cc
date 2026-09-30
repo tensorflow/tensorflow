@@ -175,6 +175,8 @@ TEST_P(AttentionTest, CorrectnessTransposed) {
   model.PopulateTensor(model.mask(), mask_data);
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
+  fprintf(stderr, "model.output()=%d model_ref.output()=%d\n", model.output(),
+          model_ref.output());
   auto out_delegate = model.ExtractVector<float>(model.output());
   auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
   ASSERT_EQ(out_delegate.size(), out_ref.size());
@@ -243,6 +245,8 @@ TEST_P(AttentionTest, LargeShapeBounds) {
   model_ref.PopulateTensor(model_ref.mask(), mask_data);
   ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
 
+  fprintf(stderr, "model.output()=%d model_ref.output()=%d\n", model.output(),
+          model_ref.output());
   auto out_delegate = model.ExtractVector<float>(model.output());
   auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
   ASSERT_EQ(out_delegate.size(), out_ref.size());
@@ -263,6 +267,74 @@ std::string PrintAttentionImplName(
       return "kOdmlRuntimeBmm";
     case AttentionImpl::kOdmlSdpa:
       return "kOdmlSdpa";
+  }
+}
+
+TEST(AttentionGqaTest, OdmlSdpaTransposedGqaDecodeAndPrefill) {
+  for (int t : {1, 4, 12}) {
+    for (int n_kv : {1, 2}) {
+      const int b = 1;
+      const int s = 16;
+      const int h = 16;
+      const int n_q = 4;
+      const int s_active = 11;
+      const float scale = 1.0f / std::sqrt(static_cast<float>(h));
+
+      TfLiteYNNPackDelegateOptions options =
+          TfLiteYNNPackDelegateOptionsDefault();
+      options.num_threads = 1;
+      options.static_shape = true;
+
+      std::vector<float> q_data(b * n_q * t * h);
+      std::vector<float> k_data(b * n_kv * s * h);
+      std::vector<float> v_data(b * n_kv * h * s);
+      std::vector<float> mask_data(b * 1 * t * s);
+
+      for (size_t i = 0; i < q_data.size(); ++i) {
+        q_data[i] = 0.1f * std::sin(static_cast<float>(i + 1));
+      }
+      for (size_t i = 0; i < k_data.size(); ++i) {
+        k_data[i] = 0.2f * std::cos(static_cast<float>(i + 2));
+      }
+      for (size_t i = 0; i < v_data.size(); ++i) {
+        v_data[i] = 0.3f * std::sin(static_cast<float>(i + 3));
+      }
+      for (int i = 0; i < b * t; ++i) {
+        for (int j = 0; j < s; ++j) {
+          mask_data[i * s + j] = (j < s_active) ? 0.0f : -1e9f;
+        }
+      }
+
+      AttentionModel model_ref(b, t, s, h, n_q, scale, /*transpose_io=*/false,
+                               /*use_delegate=*/false, options,
+                               AttentionImpl::kOdmlRuntimeBmm, n_kv);
+      model_ref.PopulateTensor(model_ref.query(), q_data);
+      model_ref.PopulateTensor(model_ref.key(), k_data);
+      model_ref.PopulateTensor(model_ref.value(), v_data);
+      model_ref.PopulateTensor(model_ref.runtime_bmm_params(), {s_active});
+      model_ref.PopulateTensor(model_ref.mask(), mask_data);
+      ASSERT_EQ(model_ref.Invoke(), kTfLiteOk);
+
+      AttentionModel model(b, t, s, h, n_q, scale, /*transpose_io=*/false,
+                           /*use_delegate=*/true, options,
+                           AttentionImpl::kOdmlSdpa, n_kv);
+      model.PopulateTensor(model.query(), q_data);
+      model.PopulateTensor(model.key(), k_data);
+      model.PopulateTensor(model.value(), v_data);
+      model.PopulateTensor(model.runtime_bmm_params(), {s_active});
+      model.PopulateTensor(model.mask(), mask_data);
+      ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+      auto out_delegate = model.ExtractVector<float>(model.output());
+      auto out_ref = model_ref.ExtractVector<float>(model_ref.output());
+      ASSERT_EQ(out_delegate.size(), out_ref.size());
+
+      for (size_t i = 0; i < out_delegate.size(); ++i) {
+        EXPECT_FALSE(std::isnan(out_delegate[i]));
+        EXPECT_FALSE(std::isnan(out_ref[i]));
+        EXPECT_NEAR(out_delegate[i], out_ref[i], 1e-3f);
+      }
+    }
   }
 }
 

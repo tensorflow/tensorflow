@@ -763,22 +763,24 @@ lit_test_suite_for_gpus(
             "dot_bf16.hlo",
             "element_wise_row_vectorization.hlo",
             "scatter_bf16.hlo",
-            "single_instruction.hlo",
             "reduce_unnested.hlo",
             "reduction_vectorization_sm_all.hlo",
-            "vectorization.hlo",
             "pdl.hlo",
         ],
-        "mi350": [
+        "mi300": [
+            "memory_bandwidth_fusion.hlo",
             "dot_bf16.hlo",
             "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
-        "gfx1250": [
-            # TODO: re-enable once gfx1250 memory_bandwidth is finalized.
+        "mi350": [
+            "dot_bf16.hlo",
+            "pdl.hlo",
+        ],
+        "mi450": [
+            # TODO: re-enable once mi450 memory_bandwidth is finalized.
             "memory_bandwidth_fusion.hlo",
-            "single_instruction.hlo",
             "vectorization.hlo",
             "pdl.hlo",
         ],
@@ -787,10 +789,11 @@ lit_test_suite_for_gpus(
         "a100_pcie_80",
         "a6000",
         "b200",
-        "gfx1250",
         "h100_sxm",
         "mi200",
+        "mi300",
         "mi350",
+        "mi450",
     ],
     tags = ["no-oneapi"],
     tools = [
@@ -872,23 +875,18 @@ xla_test(
     name = "dynamic_shared_memory_test",
     srcs = ["dynamic_shared_memory_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = ["no-oneapi"],
     deps = [
-        "//xla:xla_proto_cc",
-        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
+        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1290,6 +1288,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    # TODO: Remove this workaround after the RCCL team fixes the WarpSpeed issue.
+    env = {"RCCL_WARP_SPEED_AUTO": "0"},
     deps = [
         ":collective_ops_e2e_test_base",
         "//xla:array",
@@ -1418,8 +1418,8 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "gb200": ["broken"],  # TODO(b/505963304): re-enable when fixed.
-        "gb300": ["broken"],  # TODO(b/505963304): re-enable when fixed.
+        "gb200": ["broken"],  # TODO(b/505963049): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505963049): re-enable when fixed.
     },
     backends = ["gpu"],
     deps = [

@@ -1108,6 +1108,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:types",
         "@xla//xla:literal",
+        "@xla//xla:shape_util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
@@ -2646,7 +2647,6 @@ tf_kernel_library(
     name = "lower_upper_bound_ops",
     srcs = ["lower_upper_bound_ops.cc"],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2655,11 +2655,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status",
         "@xla//xla:comparison_util",
         "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 

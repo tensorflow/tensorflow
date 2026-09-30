@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -204,6 +207,20 @@ TEST(FingerprintingTest, TestSingleprint) {
                         fingerprint_pb.saved_object_graph_hash(),
                         fingerprint_pb.checkpoint_hash()),
             const_singleprint);
+}
+
+TEST(FingerprintingTest, CreateFingerprintDefPbEmptyMetaGraphsReturnsError) {
+  const std::string model_dir =
+      io::JoinPath(::testing::TempDir(), "empty_metagraphs_model");
+  TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(model_dir));
+  const std::string pb_file = io::JoinPath(model_dir, "saved_model.pb");
+  SavedModel saved_model;
+  TF_ASSERT_OK(WriteBinaryProto(Env::Default(), pb_file, saved_model));
+
+  EXPECT_THAT(
+      CreateFingerprintDef(model_dir).status(),
+      tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "SavedModel (.pb) contains no MetaGraphs."));
 }
 
 }  // namespace

@@ -1,3 +1,5 @@
+# proto-file: third_party/tensorflow/compiler/xla/util/split_proto/human_readable_aot_executable.proto
+# proto-message: xla.HumanReadableAotExecutable
 executable_and_options {
   compile_options {
     executable_build_options {

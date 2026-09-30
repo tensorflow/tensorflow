@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/shuffle.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -3073,6 +3075,57 @@ TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
               HasSubstr("Expected array argument"));
 }
 
+TEST_F(ShapeInferenceTest, ShuffleRotate) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, 1},
+                                                shuffle::Rotate({2, 5})),
+              absl_testing::IsOkAndHolds(input_shape));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleInvalidDimension) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, 2},
+                                                shuffle::Rotate({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, -1},
+                                                shuffle::Rotate({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("out-of-bounds")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, 0},
+                                                shuffle::Rotate({2, 5})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("duplicated")));
+
+  ASSERT_THAT(ShapeInference::InferShuffleShape(input_shape, {0, 1},
+                                                shuffle::Rotate({2})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("dimensions and shifts must "
+                                               "have the same size")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleWithoutMode) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(
+      ShapeInference::InferShuffleShape(input_shape, {0, 1}, ShuffleMode()),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must specify a mode")));
+}
+
+TEST_F(ShapeInferenceTest, ShuffleWithoutDimensions) {
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {10, 25});
+
+  ASSERT_THAT(
+      ShapeInference::InferShuffleShape(input_shape, {}, shuffle::Rotate({})),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("must shuffle at least one dimension")));
+}
+
 TEST_F(ShapeInferenceTest, Call) {
   const absl::StatusOr<Shape> inferred_shape0 =
       ShapeInference::InferCallShape({}, ShapeUtil::MakeProgramShape({}, f32_));
@@ -3452,7 +3505,45 @@ TEST_F(ShapeInferenceTest, ConvWithSparsityFail) {
       /*preferred_element_type=*/std::nullopt);
   EXPECT_FALSE(status_or.ok());
   EXPECT_THAT(status_or.status().message(),
-              HasSubstr("Only 1:N sparsity is currently supported."));
+              HasSubstr("num_non_zero and block_size must be positive"));
+}
+
+TEST_F(ShapeInferenceTest, ConvAndDotWithMtoNSparsity) {
+  const Shape lhs = ShapeUtil::MakeShape(F32, {256, 256});
+  const Shape rhs = ShapeUtil::MakeShape(F32, {128, 256});
+  SparsityConfig sp;
+  auto* rhs_sp = sp.mutable_rhs();
+  rhs_sp->set_num_non_zero(2);
+  rhs_sp->set_block_size(4);
+  rhs_sp->set_dimension(0);
+  rhs_sp->set_stride(1);
+
+  ConvolutionDimensionNumbers cdnums;
+  cdnums.set_input_batch_dimension(0);
+  cdnums.set_input_feature_dimension(1);
+  cdnums.set_kernel_input_feature_dimension(0);
+  cdnums.set_kernel_output_feature_dimension(1);
+  cdnums.set_output_batch_dimension(0);
+  cdnums.set_output_feature_dimension(1);
+  ASSERT_OK_AND_ASSIGN(Shape conv_shape,
+                       ShapeInference::InferConvolveShape(
+                           lhs, rhs, 1, 1, Window(), cdnums, sp, std::nullopt));
+  EXPECT_TRUE(ShapeUtil::Equal(conv_shape, lhs));
+
+  DotDimensionNumbers ddnums;
+  ddnums.add_lhs_contracting_dimensions(1);
+  ddnums.add_rhs_contracting_dimensions(0);
+  ASSERT_OK_AND_ASSIGN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs, rhs, ddnums, std::nullopt, sp));
+  EXPECT_TRUE(ShapeUtil::Equal(dot_shape, lhs));
+
+  const Shape bad_rhs = ShapeUtil::MakeShape(F32, {127, 256});
+  auto bad_status =
+      ShapeInference::InferDotOpShape(lhs, bad_rhs, ddnums, std::nullopt, sp);
+  EXPECT_FALSE(bad_status.ok());
+  EXPECT_THAT(bad_status.status().message(),
+              HasSubstr("must be divisible by num_non_zero"));
 }
 
 TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {

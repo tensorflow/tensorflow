@@ -606,17 +606,12 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "rocm_tracer_test",
     size = "small",
     srcs = ["rocm_tracer_test.cc"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google([
-        # Optional: only run internally if ROCm config is enabled
-        "manual",
-    ]),
+    backends = ["gpu"],
+    tags = ["rocm-only"],
     deps = [
         ":rocm_collector",
         ":rocm_tracer",

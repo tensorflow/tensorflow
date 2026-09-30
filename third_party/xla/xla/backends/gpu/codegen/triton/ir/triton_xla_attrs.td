@@ -82,7 +82,9 @@ def TTXLA_ComparatorEnum : I32Enum<"Comparator",
     ]> {
   let cppNamespace = "::mlir::triton::xla";
 }
-def TTXLA_ComparatorAttr : EnumAttr<XlaTritonDialect, TTXLA_ComparatorEnum, "">;
+def TTXLA_ComparatorAttr : EnumAttr<XlaTritonDialect, TTXLA_ComparatorEnum, ""> {
+  let assemblyFormat = "$value";
+}
 
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_ATTRS_TD_

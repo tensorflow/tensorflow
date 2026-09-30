@@ -141,10 +141,10 @@ func.func private @wrap_entry(
 // CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]] invariant
 // CHECK-DAG:    %[[WORK_ID_2:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_2_PTR]]
 // CHECK-DAG:    call @wrap_entry_wrapped(%[[TENSOR_0]],
-// CHECK-DAG                              %[[TENSOR_1]],
-// CHECK-DAG                              %[[WORK_ID_0]],
-// CHECK-DAG                              %[[WORK_ID_1]],
-// CHECK-DAG                              %[[WORK_ID_2]])
+// CHECK-DAG:                             %[[TENSOR_1]],
+// CHECK-DAG:                             %[[WORK_ID_0]],
+// CHECK-DAG:                             %[[WORK_ID_1]],
+// CHECK-DAG:                             %[[WORK_ID_2]])
 // CHECK-DAG:    return %[[RETURN_PTR]]
 // CHECK:      }
 // CHECK:      func.func private @wrap_entry_wrapped(
@@ -161,7 +161,7 @@ func.func @test_8x8_vector_transpose_lowering(%arg0: vector<8x8xf32>) -> vector<
   return %0 : vector<8x8xf32>
 }
 
-// CHECK @test_8x8_vector_transpose_lowering(%[[ARG_0:.+]]: vector<8x8xf32>) -> vector<8x8xf32> {
+// CHECK: @test_8x8_vector_transpose_lowering(%[[ARG_0:.+]]: vector<8x8xf32>) -> vector<8x8xf32> {
 // CHECK:      %[[POISON_RESULT:.+]] = ub.poison : vector<8x8xf32>
 // CHECK:      %[[R0:.+]] = vector.extract %[[ARG_0]][0]
 // CHECK:      %[[R1:.+]] = vector.extract %[[ARG_0]][1
@@ -209,16 +209,74 @@ func.func @test_8x8_vector_transpose_lowering(%arg0: vector<8x8xf32>) -> vector<
 // CHECK:      %[[RES_7:.+]] = vector.insert %[[W7]], %[[RES_6]] [7]
 
 // CHECK-NEXT: return %[[RES_7]] : vector<8x8xf32>
-// CHECK:      }
 
 // -----
 
-func.func @test_other_vector_transpose_shape_falls_back_to_vector(%arg0: vector<8x16xf32>) -> vector<16x8xf32> {
-  %0 = vector.transpose %arg0, [1, 0] : vector<8x16xf32> to vector<16x8xf32>
-  return %0 : vector<16x8xf32>
+func.func @test_other_vector_transpose_shape_falls_back_to_vector(
+    %arg0: vector<4x8xf32>) -> vector<8x4xf32> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<4x8xf32> to vector<8x4xf32>
+  return %0 : vector<8x4xf32>
 }
 
-// CHECK @test_other_vector_transpose_shape_falls_back_to_vector(%[[ARG_0:.+]]: vector<8x16xf32>) -> vector<16x8xf32> {
-// CHECK:      %[[RES:.+]] = vector.transpose %[[ARG_0]], [1, 0] : vector<8x16xf32> to vector<16x8xf32>
-// CHECK-NEXT: return %[[RES]] : vector<16x8xf32>
-// CHECK:      }
+// CHECK: @test_other_vector_transpose_shape_falls_back_to_vector(%[[ARG_0:.+]]: vector<4x8xf32>) -> vector<8x4xf32> {
+// CHECK:      %[[RES:.+]] = vector.transpose %[[ARG_0]], [1, 0]
+// CHECK-SAME:   : vector<4x8xf32> to vector<8x4xf32>
+// CHECK-NEXT: return %[[RES]] : vector<8x4xf32>
+
+// -----
+
+func.func @test_8x8_vector_transpose_bf16(%arg0: vector<8x8xbf16>) -> vector<8x8xbf16> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<8x8xbf16> to vector<8x8xbf16>
+  return %0 : vector<8x8xbf16>
+}
+
+// CHECK-LABEL: func.func @test_8x8_vector_transpose_bf16(
+// CHECK-SAME:    %[[ARG0:.*]]: vector<8x8xbf16>) -> vector<8x8xbf16> {
+// CHECK:      %[[CAST_IN:.*]] = vector.bitcast %[[ARG0]] : vector<8x8xbf16> to vector<8x8xi16>
+// CHECK:      %[[R0:.*]] = vector.extract %[[CAST_IN]][0] : vector<8xi16> from vector<8x8xi16>
+// CHECK:      %[[R1:.*]] = vector.extract %[[CAST_IN]][1] : vector<8xi16> from vector<8x8xi16>
+// CHECK:      vector.shuffle %[[R0]], %[[R1]] [0, 8, 2, 10, 4, 12, 6, 14] : vector<8xi16>, vector<8xi16>
+// CHECK:      %[[CAST_OUT:.*]] = vector.bitcast %{{.*}} : vector<8x8xi16> to vector<8x8xbf16>
+// CHECK:      return %[[CAST_OUT]] : vector<8x8xbf16>
+
+// -----
+
+func.func @test_16x8_vector_transpose_bf16(%arg0: vector<16x8xbf16>) -> vector<8x16xbf16> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<16x8xbf16> to vector<8x16xbf16>
+  return %0 : vector<8x16xbf16>
+}
+
+// CHECK-LABEL: func.func @test_16x8_vector_transpose_bf16(
+// CHECK-SAME:    %[[ARG0:.*]]: vector<16x8xbf16>) -> vector<8x16xbf16> {
+// CHECK:      %[[CAST_IN:.*]] = vector.bitcast %[[ARG0]]
+// CHECK-SAME:    : vector<16x8xbf16> to vector<16x8xi16>
+// CHECK:      %[[R0:.*]] = vector.extract %[[CAST_IN]][0]
+// CHECK-SAME:    : vector<8xi16> from vector<16x8xi16>
+// CHECK:      %[[R8:.*]] = vector.extract %[[CAST_IN]][8]
+// CHECK-SAME:    : vector<8xi16> from vector<16x8xi16>
+// CHECK:      vector.shuffle %{{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<8xi16>, vector<8xi16>
+// CHECK:      %[[CAST_OUT:.*]] = vector.bitcast
+// CHECK-SAME:    : vector<8x16xi16> to vector<8x16xbf16>
+// CHECK:      return %[[CAST_OUT]] : vector<8x16xbf16>
+
+// -----
+
+func.func @test_8x16_vector_transpose_bf16(%arg0: vector<8x16xbf16>) -> vector<16x8xbf16> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<8x16xbf16> to vector<16x8xbf16>
+  return %0 : vector<16x8xbf16>
+}
+
+// CHECK-LABEL: func.func @test_8x16_vector_transpose_bf16(
+// CHECK-SAME:    %[[ARG0:.*]]: vector<8x16xbf16>) -> vector<16x8xbf16> {
+// CHECK:      %[[CAST_IN:.*]] = vector.bitcast %[[ARG0]]
+// CHECK-SAME:    : vector<8x16xbf16> to vector<8x16xi16>
+// CHECK:      vector.extract_strided_slice %[[CAST_IN]] offsets = [0, 0], sizes = [8, 8], strides = [1, 1] : vector<8x16xi16> to vector<8x8xi16>
+// CHECK:      vector.extract_strided_slice %[[CAST_IN]] offsets = [0, 8], sizes = [8, 8], strides = [1, 1] : vector<8x16xi16> to vector<8x8xi16>
+// CHECK:      vector.insert_strided_slice %{{.*}} offsets = [0, 0], strides = [1, 1]
+// CHECK-SAME:    : vector<8x8xi16> into vector<16x8xi16>
+// CHECK:      vector.insert_strided_slice %{{.*}} offsets = [8, 0], strides = [1, 1]
+// CHECK-SAME:    : vector<8x8xi16> into vector<16x8xi16>
+// CHECK:      %[[CAST_OUT:.*]] = vector.bitcast
+// CHECK-SAME:   : vector<16x8xi16> to vector<16x8xbf16>
+// CHECK:      return %[[CAST_OUT]] : vector<16x8xbf16>
+

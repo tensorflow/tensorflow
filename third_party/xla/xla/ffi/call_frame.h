@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/attributes_storage.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -150,28 +150,14 @@ class CallFrame {
  private:
   friend class CallFrameBuilder;
 
-  // Declare implementation detail structs to grant access to private members.
-  struct AttributeStorage;
-  struct AttributeType;
-  struct ConvertAttribute;
-  struct FixUpAttribute;
-
   // Declare implementation detail structs for call frame storage.
   struct Arguments;
-  struct Array;
-  struct Attributes;
   struct Buffer;
-  struct Dictionary;
-  struct NamedAttribute;
   struct Results;
-  struct Scalar;
-  struct String;
-
-  using Attribute = std::variant<Scalar, Array, String, Dictionary>;
 
   CallFrame(std::unique_ptr<Arguments> arguments,
             std::unique_ptr<Results> results,
-            std::shared_ptr<Attributes> attributes);
+            std::shared_ptr<const AttributesStorage> attributes);
 
   static Buffer ConvertBuffer(const CallFrameBuilder::Buffer& buffer);
 
@@ -201,22 +187,12 @@ class CallFrame {
   // pointers into storage objects.
   static std::unique_ptr<Results> FixUpRets(std::unique_ptr<Results> rets);
 
-  //===----- Call frame attributes ----------------------------------------===//
-
-  // Creates call frame attributes from the call frame builder attributes.
-  static std::unique_ptr<Attributes> CreateAttrs(const AttributesMap& attrs);
-
-  // Fixes up call frame attributes by initializing XLA FFI structs with valid
-  // pointers into storage objects.
-  static std::unique_ptr<Attributes> FixUpAttrs(
-      std::unique_ptr<Attributes> attrs);
-
   std::unique_ptr<Arguments> arguments_;
   std::unique_ptr<Results> results_;
 
   // Attributes are defined at compile time and can be shared between multiple
   // instances of a call frame (see `Update` above).
-  std::shared_ptr<Attributes> attributes_;
+  std::shared_ptr<const AttributesStorage> attributes_;
 };
 
 }  // namespace xla::ffi

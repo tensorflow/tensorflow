@@ -81,7 +81,7 @@ filegroup(
 cc_library(
     name = "api",
     hdrs = [":api_headers"],
-    visibility = ["//visibility:private"],
+    visibility = ["//xla/ffi:__pkg__"],
     deps = [
         ":c_api",
     ],

@@ -290,9 +290,10 @@ ENTRY e {
 // CHECK-LABEL: @xtile_dialect_fn
 // CHECK:         %[[EXTRACT0:.*]] = xtile.extract %arg0[%{{.*}}] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
+// CHECK:         %[[INIT:.*]] = stablehlo.reshape %[[EXTRACT1]] : (tensor<f32>) -> tensor<1xf32>
+// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[INIT]])
 // CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<f32>) {
+// CHECK-SAME:        : (tensor<1024xf32>), (tensor<1xf32>) -> (tensor<1024xf32>), (tensor<1xf32>) {
 // CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
 // CHECK:           %[[ADD:.*]] = stablehlo.add %[[INPUT]], %[[CARRY]] : tensor<f32>
 // CHECK:           stablehlo.return %[[ADD]], %[[ADD]] : tensor<f32>, tensor<f32>
@@ -630,6 +631,54 @@ ENTRY e {
     CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
     CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
     CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]])
+    CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest, HloReverseScanWithLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1),
+    dimensions={0}, is_reverse=true, num_carries=1, is_associative=true,
+    to_apply=add_computation, backend_config={sizes:[128]}
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY e {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1024] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(true);
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[REVERSE_IDX:.*]] = arith.subi %{{.*}}, %[[IV]] : index
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]]) dimension = 0 {is_reverse = true
     CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
     CHECK: scf.yield %[[NEW_CARRY]]
   )"));

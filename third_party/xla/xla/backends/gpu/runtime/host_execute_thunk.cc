@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -37,7 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
-#include "xla/backends/gpu/runtime/host_async_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -66,9 +68,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/profiler/lib/traceme.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
 class ThreadPoolResource : public se::StreamExecutor::Resource {
@@ -140,9 +140,18 @@ class HostExecuteCallFrame {
                              const BufferAllocations* buffer_allocations,
                              absl::Span<ShapedSlice> args);
 
+  absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
+  RecordCopyArguments(se::Stream* stream, se::CommandBuffer* command_buffer,
+                      const BufferAllocations* buffer_allocations,
+                      absl::Span<ShapedSlice> args);
+
   static absl::Status PublishResult(
       std::shared_ptr<HostExecuteCallFrame> self,
       const BufferAllocations* buffer_allocations);
+
+  absl::Status RecordPublishResult(se::CommandBuffer* command_buffer,
+                                   const se::CommandBuffer::Command* dep,
+                                   const BufferAllocations* buffer_allocations);
 
  private:
   static absl::Status ValidateArgsAndResults(
@@ -302,6 +311,27 @@ absl::Status HostExecuteCallFrame::CopyArguments(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
+HostExecuteCallFrame::RecordCopyArguments(
+    se::Stream* stream, se::CommandBuffer* command_buffer,
+    const BufferAllocations* buffer_allocations, absl::Span<ShapedSlice> args) {
+  int i = 0;
+  std::vector<const se::CommandBuffer::Command*> res;
+  for (const auto& [slice, shape] : args) {
+    auto buffer_allocation = buffer_allocations->GetDeviceAddress(slice);
+    if (!IsBufferOnDevice(stream, buffer_allocation.opaque())) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        res.emplace_back(),
+        command_buffer->CreateMemcpyD2H(
+            allocated_buffers_[i]->untyped_data(), buffer_allocation,
+            allocated_buffers_[i]->size_bytes(), {}));
+    i++;
+  }
+  return res;
+}
+
 HostExecuteCallFrame::HostExecuteCallFrame(
     se::Stream* host_to_device_stream,
     const BufferAllocations* buffer_allocations,
@@ -343,6 +373,27 @@ absl::Status HostExecuteCallFrame::PublishResult(
   return absl::OkStatus();
 }
 
+absl::Status HostExecuteCallFrame::RecordPublishResult(
+    se::CommandBuffer* command_buffer, const se::CommandBuffer::Command* dep,
+    const BufferAllocations* buffer_allocations) {
+  size_t result_leaf_index = 0;
+  for (const auto& [index, buffer] : result_.leaves()) {
+    auto result_buffer = buffer_allocations->GetDeviceAddress(
+        result_slices_[result_leaf_index++].slice);
+    if (!IsBufferOnDevice(host_to_device_stream_, result_buffer.opaque())) {
+      // No need to copy result since the result is expected to be in host
+      // memory and should match the buffer used for execution.
+      CHECK(result_buffer.opaque() == buffer.opaque_base());
+      continue;
+    }
+
+    ABSL_ASSIGN_OR_RETURN(auto _, command_buffer->CreateMemcpyH2D(
+                                 &result_buffer, buffer.opaque_base(),
+                                 buffer.size_in_bytes(), {dep}));
+  }
+
+  return absl::OkStatus();
+}
 }  // namespace
 
 // HostExecuteAsyncEvents
@@ -424,7 +475,7 @@ HostExecuteStartThunk::HostExecuteStartThunk(
     Thunk::ThunkInfo thunk_info, const HloModule& hlo_module,
     absl::InlinedVector<ShapedSlice, 4> args,
     absl::InlinedVector<ShapedSlice, 4> results)
-    : HostAsyncThunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
+    : Command(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
       async_events_(std::make_shared<HostExecuteAsyncEvents>()) {
@@ -441,7 +492,7 @@ HostExecuteStartThunk::HostExecuteStartThunk(
     absl::InlinedVector<ShapedSlice, 4> args,
     absl::InlinedVector<ShapedSlice, 4> results,
     std::shared_ptr<HostExecuteAsyncEvents> async_events)
-    : HostAsyncThunk(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
+    : Command(Thunk::Kind::kHostExecuteStart, std::move(thunk_info)),
       args_(std::move(args)),
       results_(std::move(results)),
       executable_proto_(host_offloading_executable_proto) {
@@ -627,6 +678,73 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
+absl::StatusOr<const se::CommandBuffer::Command*> HostExecuteStartThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  auto it = execute_params.execution_scoped_state->find(thunk_info().thunk_id);
+  if (it == execute_params.execution_scoped_state->end()) {
+    return absl::InternalError("Unable to get HostExecutableCallFrame");
+  }
+
+  CHECK(tsl::any_cast<std::shared_ptr<HostExecuteCallFrame>>(&it->second));
+  std::shared_ptr<HostExecuteCallFrame> call_frame =
+      *tsl::any_cast<std::shared_ptr<HostExecuteCallFrame>>(&it->second);
+
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::CommandBuffer> nested,
+                   execute_params.stream->parent()->CreateCommandBuffer(
+                       se::CommandBuffer::Mode::kNested));
+
+  auto execute = [&, call_frame,
+                  device_ordinal =
+                      execute_params.stream->parent()->device_ordinal(),
+                  execution_id =
+                      static_cast<int32_t>(execute_params.execution_id)]() {
+    tsl::profiler::TraceMe trace(
+        "HostExecuteStartThunk::Record::execute (host_callback)");
+    HostOffloadingExecutable::ExecuteOptions execute_options{
+        // TODO(basioli): add context when/if needed.
+        /*device_index =*/device_ordinal,
+        /*launch_id =*/execution_id,
+        /*context =*/nullptr};
+
+    tsl::AsyncValueRef<HostOffloadingExecutable::ExecuteEvent> execute_event =
+        executable_->Execute(call_frame->parameters(), call_frame->result(),
+                             execute_options);
+    {
+      tsl::profiler::TraceMe block_until_ready_trace(
+          "HostExecuteStartThunk::ExecuteOnStream::execute BlockUntilReady");
+
+      tsl::BlockUntilReady(execute_event);
+    }
+    if (execute_event.IsError()) {
+      CHECK_OK(execute_event.GetError());
+    }
+  };
+
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<const stream_executor::CommandBuffer::Command*> copy_deps,
+      call_frame->RecordCopyArguments(execute_params.stream, nested.get(),
+                                      execute_params.buffer_allocations,
+                                      absl::MakeSpan(args_)));
+
+  ABSL_ASSIGN_OR_RETURN(const stream_executor::CommandBuffer::Command* host_cmd,
+                   nested->CreateHost(std::move(execute), copy_deps));
+  ABSL_RETURN_IF_ERROR(call_frame->RecordPublishResult(
+      nested.get(), host_cmd, execute_params.buffer_allocations));
+
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateChildCommand(*nested, create->dependencies);
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    // No parameters to update; return existing node unchanged.
+    ABSL_RETURN_IF_ERROR(
+        command_buffer->UpdateChildCommand(update->command, *nested));
+    return update->command;
+  }
+  return Internal("Invalid record action");
+}
+
 std::optional<AsyncEventsUniqueId>
 HostExecuteStartThunk::GetAsyncEventsUniqueId() const {
   CHECK(async_events_)
@@ -641,7 +759,7 @@ HostExecuteDoneThunk::HostExecuteDoneThunk(
     Thunk::ThunkInfo thunk_info,
     std::shared_ptr<HostExecuteAsyncEvents> async_events,
     absl::InlinedVector<ShapedSlice, 4> results)
-    : HostAsyncThunk(Thunk::Kind::kHostExecuteDone, std::move(thunk_info)),
+    : Command(Thunk::Kind::kHostExecuteDone, std::move(thunk_info)),
       async_events_(std::move(async_events)),
       results_(std::move(results)) {
   CHECK(async_events_) << "async_events must not be null";
@@ -717,6 +835,19 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
+absl::StatusOr<const se::CommandBuffer::Command*> HostExecuteDoneThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateEmptyCmd(create->dependencies);
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    return update->command;
+  }
+  return Internal("Invalid record action");
+}
+
 std::optional<AsyncEventsUniqueId>
 HostExecuteDoneThunk::GetAsyncEventsUniqueId() const {
   CHECK(async_events_)
@@ -725,5 +856,4 @@ HostExecuteDoneThunk::GetAsyncEventsUniqueId() const {
   return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
