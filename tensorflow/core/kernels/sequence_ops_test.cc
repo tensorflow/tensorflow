@@ -16,8 +16,10 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -128,6 +129,36 @@ TEST_F(RangeOpTest, Range_Size_Overflow) {
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
             RunOpKernel().message());
+}
+
+TEST_F(RangeOpTest, Monotonic_Bfloat16) {
+  MakeOp(DT_BFLOAT16);
+
+  // 600 elements go past 256, where bfloat16 stops holding every integer, so
+  // casting i to bfloat16 before multiplying rounded it. delta is smaller than
+  // the bfloat16 spacing near the top of the range, so neighbouring outputs
+  // may be equal; each one must still be start + i * delta rounded once.
+  const bfloat16 start(0.0f);
+  const bfloat16 delta(0.3f);
+  AddInputFromArray<bfloat16>(TensorShape({}), {start});
+  AddInputFromArray<bfloat16>(TensorShape({}), {bfloat16(180.0f)});
+  AddInputFromArray<bfloat16>(TensorShape({}), {delta});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto flat = GetOutput(0)->flat<bfloat16>();
+  constexpr int64_t num = 600;
+  ASSERT_EQ(num, GetOutput(0)->NumElements());
+  for (int64_t i = 1; i < num; ++i) {
+    ASSERT_GE(static_cast<float>(flat(i)), static_cast<float>(flat(i - 1)))
+        << "flat(" << i << ") was less than flat(" << i - 1 << ")";
+  }
+  for (int64_t i = 0; i < num; ++i) {
+    ASSERT_EQ(static_cast<float>(static_cast<bfloat16>(
+                  static_cast<double>(start) +
+                  static_cast<double>(i) * static_cast<double>(delta))),
+              static_cast<float>(flat(i)))
+        << "flat(" << i << ") is not start + " << i << " * delta";
+  }
 }
 
 TEST_F(LinSpaceOpTest, Simple_D32) {

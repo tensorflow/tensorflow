@@ -20,13 +20,14 @@ limitations under the License.
 #include <cmath>
 #include <type_traits>
 
+#include "tensorflow/core/framework/bfloat16.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/bfloat16.h"
 
 namespace tensorflow {
 
@@ -40,8 +41,19 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
-    for (int64_t i = 0; i < size; ++i) {
-      output(i) = start + static_cast<T>(i) * delta;
+    if constexpr (std::is_integral<T>::value) {
+      for (int64_t i = 0; i < size; ++i) {
+        output(i) = start + static_cast<T>(i) * delta;
+      }
+    } else {
+      using ComputeT = typename std::conditional<sizeof(T) >= sizeof(float), T,
+                                                 double>::type;
+      const ComputeT start_c = static_cast<ComputeT>(start);
+      const ComputeT delta_c = static_cast<ComputeT>(delta);
+      for (int64_t i = 0; i < size; ++i) {
+        output(i) =
+            static_cast<T>(start_c + static_cast<ComputeT>(i) * delta_c);
+      }
     }
   }
 };
@@ -207,15 +219,16 @@ class LinSpaceOp : public OpKernel {
     auto flat = out->flat<T>();
     flat(0) = start;
     if (num > 1) {
-      // Interpolate in double, narrow once on store. In T, (stop - start) and
-      // the index casts both overflow to +Inf for half/bfloat16, which zeroes
-      // step and turns every interior element into NaN (0 * +Inf). The single
-      // narrowing cast is also what keeps this portable across MSVC/GCC/Clang.
-      const double start_d = static_cast<double>(start);
-      const double stop_d = static_cast<double>(stop);
-      const double step = (stop_d - start_d) / static_cast<double>(num - 1);
+      // Interpolate in a higher precision type to avoid overflow for
+      // half/bfloat16, while preserving native performance and numerical
+      // semantics for float/double.
+      using ComputeT = typename std::conditional<sizeof(T) >= sizeof(float), T,
+                                                 double>::type;
+      const ComputeT start_c = static_cast<ComputeT>(start);
+      const ComputeT stop_c = static_cast<ComputeT>(stop);
+      const ComputeT step = (stop_c - start_c) / static_cast<ComputeT>(num - 1);
       for (Tnum i = 1; i < num - 1; ++i) {
-        flat(i) = static_cast<T>(start_d + step * static_cast<double>(i));
+        flat(i) = static_cast<T>(start_c + step * static_cast<ComputeT>(i));
       }
       // Ensure final value == stop; float arithmetic won't guarantee this.
       flat(num - 1) = stop;
