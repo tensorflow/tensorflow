@@ -10032,6 +10032,14 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryFoldTransposeIntoScatter(
   }
 
   absl::Span<const int64_t> permutation = transpose->dimensions();
+  // Folding makes the scatter write through the transposed operand. Bail if
+  // that makes the written windows less contiguous than they are now:
+  // strided window writes do not coalesce and can cost far more than the
+  // transpose this rewrite saves.
+  if (ScatterSimplifier::WriteRunLength(scatter, permutation) <
+      ScatterSimplifier::WriteRunLength(scatter)) {
+    return false;
+  }
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation);
 
   // Step 1 : Transpose base operand

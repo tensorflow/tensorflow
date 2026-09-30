@@ -18412,8 +18412,8 @@ ENTRY entry {
     sharding={devices=[2,2,2,2]<=[16] last_tile_dims={unreduced}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/16));
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Dot());
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
@@ -18433,8 +18433,8 @@ ENTRY entry {
     sharding={devices=[2,1,2,2]<=[2,2,2]T(0,2,1) last_tile_dims={unreduced}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::RaggedDot());
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }

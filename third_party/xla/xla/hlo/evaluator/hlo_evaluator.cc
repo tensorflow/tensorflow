@@ -212,7 +212,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
     DCHECK(absl::endian::native == absl::endian::big);
     error_detail = absl::byteswap(error_detail);
   }
-  (*error_payload.data()) = error_detail;
+  (error_payload[0]) = error_detail;
   error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }

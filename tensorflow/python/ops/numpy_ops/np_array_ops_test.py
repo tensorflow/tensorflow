@@ -1258,6 +1258,33 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [1, 2, 0])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
+    a = np.arange(6).reshape(2, 3)
+    # Valid negative and mixed axes still work.
+    self.match(np_array_ops.transpose(a, [0, -1]), np.transpose(a, [0, -1]))
+    self.match(np_array_ops.transpose(a, [-2, -1]), np.transpose(a, [-2, -1]))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a, [0, 1, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, -3])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [1, 1])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [0, -2])
+    # Test scalar rank.
+    a_scalar = np.array(5)
+    self.match(np_array_ops.transpose(a_scalar, []), np.transpose(a_scalar, []))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_scalar, [0])
+    # Test vector rank.
+    a_vector = np.array([1, 2, 3])
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_vector, [0, 1])
+    # Duplicate detection must not be bypassed by mixed int/Tensor axes.
+    a3 = np.arange(24).reshape(2, 3, 4)
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a3, [0, 0, constant_op.constant(2)])
 
   def match_shape(self, actual, expected, msg=None):
     if msg:

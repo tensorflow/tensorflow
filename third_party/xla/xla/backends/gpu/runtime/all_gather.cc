@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/bit.h"
-#include "llvm/Support/Alignment.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -50,15 +49,13 @@ namespace xla::gpu {
 
 absl::Status IsAllGatherKernelSupported(int64_t num_elements,
                                         PrimitiveType element_type) {
-  // Only types in kSupportedAllGatherTypes are allowed. Triton tt.load/tt.store
-  // support signless integers and floating-point types; unsigned integers,
-  // complex types, tokens, tuples, and exotic types (e.g. 4-bit, 8-bit floats)
-  // are not supported.
+  // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
+  // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
   if (!absl::c_linear_search(kSupportedAllGatherTypes, element_type)) {
     return absl::UnimplementedError(absl::StrFormat(
         "Element type %s is not supported for the all-gather kernel. "
-        "Supported types are signed integers and standard floating-point "
-        "types; use NCCL/RCCL for other types.",
+        "Supported types are predicates, 8/16/32/64-bit integers, and "
+        "standard floating-point types; use NCCL/RCCL for other types.",
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
@@ -69,25 +66,13 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
         "Custom all-gather strategy is only supported for small inputs.");
   }
 
-  // The total transfer size in bits must be aligned to
-  // kBitsPerMemoryTransaction (128 bits = 16 bytes) so each thread can
-  // load/store a complete transaction.
-  const uint64_t element_bits = primitive_util::BitWidth(element_type);
-  if (!llvm::isAligned(llvm::Align(kBitsPerMemoryTransaction),
-                       static_cast<uint64_t>(num_elements) * element_bits)) {
-    return absl::UnimplementedError(absl::StrFormat(
-        "Number of elements (%d) of type %s (%d bits each) is not aligned to "
-        "the memory transaction alignment requirement (%d bits).",
-        num_elements, primitive_util::LowercasePrimitiveTypeName(element_type),
-        element_bits, kBitsPerMemoryTransaction));
-  }
   return absl::OkStatus();
 }
 
 absl::Status IsAllGatherKernelSupported(
     bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
     int32_t num_operands, int64_t num_devices, int64_t num_elements,
-    PrimitiveType element_type, bool is_local,
+    int64_t per_rank_gather_dim_size, PrimitiveType element_type, bool is_local,
     const std::vector<ReplicaGroup>& replica_groups) {
   if (!is_collective_kernel_enabled) {
     return absl::UnimplementedError("Collective kernel is not enabled.");
@@ -132,6 +117,12 @@ absl::Status IsAllGatherKernelSupported(
         "devices. Got %d.",
         num_devices));
   }
+  if (!llvm::has_single_bit(static_cast<uint64_t>(per_rank_gather_dim_size))) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "All-gather kernel requires the per-rank size along the gather "
+        "dimension to be a power of 2. Got %d.",
+        per_rank_gather_dim_size));
+  }
   return IsAllGatherKernelSupported(num_elements, element_type);
 }
 
@@ -153,6 +144,9 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
       all_gather->device_list()->num_devices_per_group();
   const int64_t num_elements =
       ShapeUtil::ElementsIn(all_gather->operand(0)->shape());
+  const int64_t per_rank_gather_dim_size =
+      all_gather->operand(0)->shape().dimensions(
+          all_gather->all_gather_dimension());
   const PrimitiveType element_type =
       all_gather->operand(0)->shape().element_type();
   const int32_t num_operands = all_gather->operand_count();
@@ -166,7 +160,8 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
       IsAllReplicasLocal(gpu_topology, *all_gather, device_assignment));
   ABSL_RETURN_IF_ERROR(IsAllGatherKernelSupported(
       is_collective_kernel_enabled, device_info, num_operands, num_devices,
-      num_elements, element_type, is_local, all_gather->replica_groups()));
+      num_elements, per_rank_gather_dim_size, element_type, is_local,
+      all_gather->replica_groups()));
   return AllGatherInfo{
       /*.num_devices =*/num_devices,
       /*.num_elements =*/num_elements,
@@ -231,19 +226,20 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
 
   CollectiveKernelSpec kernel_spec = {
       /* .codegen_config= */ {
-          /* .copy_input_to_scratch= */ true,
+          /* .copy_input_to_scratch= */ false,
           /* .input_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .output_buffer_specs= */
           {{/*requires_multimem=*/false, SymmetricMemoryType::kNone}},
           /* .argument_descriptors= */
-          {{KernelArgType::kScratchBuffer,
-            /*index=*/1},  // scratch buffer as input
+          {{KernelArgType::kInputBuffer, /*index=*/0},
            {KernelArgType::kOutputBuffer, /*index=*/0},
            {KernelArgType::kRuntimeRank},
            {KernelArgType::kInvocationCount},
            {KernelArgType::kScratchBuffer,
-            /*index=*/0}},  // signal buffers only
+            /*index=*/0},  // signal buffers
+           {KernelArgType::kScratchBuffer,
+            /*index=*/1}},  // remote scratch buffers
           /* .sync_count_increment= */ 1u},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false, sym_mem_type,

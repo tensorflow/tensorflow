@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/types.h"
@@ -613,16 +612,16 @@ TEST_P(AllReduceTypesTest, SupportedTypes2GPUs) {
       kModuleStr, primitive_util::LowercasePrimitiveTypeName(element_type),
       absl::StrJoin(shape, ","), HloOpcodeString(opcode));
   SCOPED_TRACE(::testing::Message() << "module_str: " << module_str);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(module_str, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs(element_type, opcode, *module, kNumReplicas,
                               /*num_iterations=*/1)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs()))
+                        /*arguments=*/test_io.InputLiteralPtrs()));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -656,13 +655,13 @@ TEST_P(AllReduceLayoutAwareTest, AllReduceLayoutAwareTest) {
       kModuleStr, primitive_util::LowercasePrimitiveTypeName(element_type),
       absl::StrJoin(shape, ","), layout_str, HloOpcodeString(opcode));
   SCOPED_TRACE(::testing::Message() << "module_str: " << module_str);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(module_str, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs(element_type, opcode, *module, kNumReplicas,
                               /*num_iterations=*/1)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
                         /*arguments=*/test_io.InputLiteralPtrs()));
@@ -697,19 +696,19 @@ TEST_P(AllReduceTest, F32_8GPUs_AllReplicasOneGroup) {
   }
 
   const std::vector<int64_t> shape = GetParam().GetShape(PrimitiveType::F32);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(
                        absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
                        kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs<PrimitiveType::F32>(
           HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs()))
+                        /*arguments=*/test_io.InputLiteralPtrs()));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -766,15 +765,15 @@ TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
     return;
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs<PrimitiveType::F32>(
           HloOpcode::kAdd, *module, kNumReplicas, kNumIterations)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
                         /*arguments=*/test_io.InputLiteralPtrs()));
@@ -811,19 +810,19 @@ TEST_P(AllReduceTest, F32TwoD4GPUs) {
   const std::vector<int64_t> shape =
       GetParam().GetShape(PrimitiveType::F32, /*rank=*/2);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(
                        absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
                        kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs<PrimitiveType::F32>(
           HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs()))
+                        /*arguments=*/test_io.InputLiteralPtrs()));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -855,19 +854,19 @@ TEST_P(AllReduceTest, F32_3D_2GPUs) {
   }
   const std::vector<int64_t> shape =
       GetParam().GetShape(PrimitiveType::F32, /*rank=*/3);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(
                        absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
                        kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs<PrimitiveType::F32>(
           HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/test_io.InputLiteralPtrs()))
+                        /*arguments=*/test_io.InputLiteralPtrs()));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -959,9 +958,9 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   Literal upstream_grad_lit1 = LiteralUtil::CreateFromArray(upstream_grad1);
   Literal upstream_grad_lit2 = LiteralUtil::CreateFromArray(upstream_grad2);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto f16_module, ParseAndReturnVerifiedModule(
-                                               kF16ModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto f16_module, ParseAndReturnVerifiedModule(
+                                            kF16ModuleStr, kNumReplicas));
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult f16_result,
       ExecuteReplicated(
           std::move(f16_module),
@@ -971,9 +970,9 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   // Verify FP16 all-reduce type in optimized module
   VerifyAllReduceType(f16_result.optimized_module, F16);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto f8_module, ParseAndReturnVerifiedModule(kF8ModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       ExecutionResult f8_result,
       ExecuteReplicated(
           std::move(f8_module),
@@ -1000,8 +999,8 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   // Numerical precision check: FP8 should produce measurably different
   // results than FP16. FP8 e4m3 has ~6% relative error (2^-4), FP16 has ~0.1%
   // (2^-10).
-  TF_ASSERT_OK_AND_ASSIGN(Literal f16_f32, f16_r0[1].Convert(F32));
-  TF_ASSERT_OK_AND_ASSIGN(Literal f8_f32, f8_r0[1].Convert(F32));
+  ASSERT_OK_AND_ASSIGN(Literal f16_f32, f16_r0[1].Convert(F32));
+  ASSERT_OK_AND_ASSIGN(Literal f8_f32, f8_r0[1].Convert(F32));
   absl::Span<const float> f16_data = f16_f32.data<float>();
   absl::Span<const float> f8_data = f8_f32.data<float>();
   float max_abs_diff = 0.0f;
@@ -1043,7 +1042,7 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnUnsupportedGPUs) {
     return;
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kF8ModuleStr, kNumReplicas));
 
   Array<Eigen::half> input1({64, 128}), input2({64, 128});
@@ -1380,6 +1379,89 @@ TEST_F(AllReduceCollectiveKernelTest,
   for (int i = 0; i < kNumReplicas; ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, second_results[i]))
         << "Mismatch at replica " << i << " on second execution";
+  }
+}
+
+TEST_F(AllReduceCollectiveKernelTest,
+       TritonOneShotAllReduceFallsBackToNcclWhenVmmDisabled) {
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  constexpr absl::string_view kHloText = R"(
+    HloModule module, replica_count=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      param = f32[1024] parameter(0)
+      ROOT result = f32[1024] all-reduce(param), to_apply=add, replica_groups={{0,1}}
+    }
+  )";
+
+  Literal input_r0 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f));
+  Literal input_r1 =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 2.0f));
+  std::vector<std::vector<Literal*>> args = {{&input_r0}, {&input_r1}};
+  Literal expected =
+      LiteralUtil::CreateR1<float>(std::vector<float>(1024, 3.0f));
+
+  for (bool enable_command_buffer : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(
+        tsl::testing::TemporaryDirectory dump_dir,
+        tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kHloText, kNumReplicas));
+    DebugOptions& debug_options =
+        module->mutable_config().mutable_debug_options();
+    debug_options.set_xla_gpu_experimental_vmm_disabled(true);
+    debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
+    debug_options.set_xla_dump_to(dump_dir.path());
+    if (!enable_command_buffer) {
+      debug_options.clear_xla_gpu_enable_command_buffer();
+    } else {
+      debug_options.set_xla_gpu_graph_min_graph_size(1);
+    }
+
+    ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                         ExecuteReplicated(std::move(module), args));
+
+    // Verify that the HLO instruction was annotated as a Triton one-shot
+    // collective kernel (`KERNEL_STRATEGY_TRITON_ONE_SHOT`), while skipping
+    // collective fusion so that it lowers to NCCL (`kAllReduceStart`).
+    VerifyOneShotAllReduce(result.optimized_module);
+
+    ASSERT_OK_AND_ASSIGN(
+        CommandBufferThunkCounts one_shot,
+        CountThunksInDump(dump_dir.path(), "kCollectiveKernel"));
+    EXPECT_EQ(one_shot.in_command_buffer + one_shot.outside_command_buffer, 0);
+
+    ASSERT_OK_AND_ASSIGN(CommandBufferThunkCounts nccl,
+                         CountThunksInDump(dump_dir.path(), "kAllReduce"));
+    EXPECT_EQ(nccl.in_command_buffer + nccl.outside_command_buffer, 1);
+
+    ASSERT_EQ(result.results.size(), kNumReplicas);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, result.results[i]))
+          << "Mismatch at replica " << i
+          << " (enable_command_buffer=" << enable_command_buffer << ")";
+    }
+
+    ASSERT_OK_AND_ASSIGN(std::vector<Literal> second_results,
+                         ExecuteReplicated(result.executable.get(), args));
+    ASSERT_EQ(second_results.size(), kNumReplicas);
+    for (int i = 0; i < kNumReplicas; ++i) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, second_results[i]))
+          << "Mismatch at replica " << i << " on second execution"
+          << " (enable_command_buffer=" << enable_command_buffer << ")";
+    }
   }
 }
 

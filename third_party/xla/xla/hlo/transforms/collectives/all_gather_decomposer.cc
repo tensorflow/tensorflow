@@ -74,12 +74,14 @@ HloInstruction* AllGatherDecomposer::TranslateAllGatherToAllReducePerOperand(
 
   auto dus = comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       zero->shape(), zero, operand, start_indices));
-  auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
-      dus->shape(), {dus},
-      MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
-      ag.device_list(),
-      /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
-      ag.use_global_device_ids()));
+  auto ar = comp->AddInstruction(
+      HloInstruction::CreateAllReduce(
+          dus->shape(), {dus},
+          MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
+          ag.device_list(),
+          /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
+          ag.use_global_device_ids()),
+      &ag.metadata(), &ag.frontend_attributes());
   return ar;
 }
 
@@ -99,14 +101,23 @@ absl::Status AllGatherDecomposer::DecomposeAllGather(
       tuple_inputs.push_back(ar);
     }
     auto tup = comp->AddInstruction(HloInstruction::CreateTuple(tuple_inputs));
-    ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
+    ABSL_RETURN_IF_ERROR(
+        comp->ReplaceInstruction(ag, tup, /*preserve_sharding=*/false,
+                                 /*relay_control_dependency=*/true,
+                                 /*remove_unused_operands=*/true,
+                                 /*preserve_frontend_attributes=*/false)
+            .status());
   } else {
     auto* ar = TranslateAllGatherToAllReducePerOperand(
         group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp,
         ag->all_gather_dimension());
-    ABSL_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
+    ABSL_RETURN_IF_ERROR(
+        comp->ReplaceInstruction(ag, ar, /*preserve_sharding=*/false,
+                                 /*relay_control_dependency=*/true,
+                                 /*remove_unused_operands=*/true,
+                                 /*preserve_frontend_attributes=*/false)
+            .status());
   }
-  ABSL_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
   return absl::OkStatus();
 }
 

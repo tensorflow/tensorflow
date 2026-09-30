@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -125,8 +124,8 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(kHloText, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(kHloText, config));
   absl::StatusOr<bool> filecheck_result;
   if (IsRocm() && Capability().rocm_compute_capability()->gfx9_mi200()) {
     filecheck_result = RunFileCheck(optimized_module->ToString(), R"(
@@ -139,7 +138,7 @@ ENTRY e {
     ; CHECK: __cublas$lt$matmul
     )");
   }
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
 }
 
@@ -193,8 +192,8 @@ ENTRY AddDotsFunc {
     return config;
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text, get_config()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, get_config()));
 
   absl::StatusOr<bool> filecheck_result =
       RunFileCheck(optimized_module->ToString(),
@@ -203,8 +202,8 @@ ENTRY AddDotsFunc {
     )");
   ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, get_config()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, get_config()));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
@@ -1774,17 +1773,17 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                          RunFileCheck(module->ToString(), R"(
+  ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                       RunFileCheck(module->ToString(), R"(
 ; CHECK:           [[GEMM_TUPLE:%[^ ]+]] = {{.*}} custom-call
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK-DAG:         "epilogue":"DEFAULT"
@@ -2202,11 +2201,11 @@ ENTRY test {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_THAT(
@@ -3473,11 +3472,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // input fp16 and output fp32 combination is supported by legacy cublas and
@@ -3502,11 +3501,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // u8 is not supported by legacy cublas and cublasLt, expect
@@ -3533,11 +3532,11 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriterOptions options;
   GemmRewriter pass(Capability(), GetToolkitVersion(), options);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // input fp16 and output fp32 combination is supported by legacy cublas and

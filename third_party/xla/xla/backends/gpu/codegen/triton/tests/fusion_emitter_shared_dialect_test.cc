@@ -578,12 +578,9 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   EXPECT_OK(CreateXTileIrAndFileCheck(*module->GetComputationWithName("ag_dot"),
                                       block_level_parameters, R"(
-    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<2xi64>
-    CHECK: %[[SELECT1:.*]] = xtile.select_buffer %arg0[%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<2xi64>
-    CHECK: %[[SELECT2:.*]] = xtile.select_buffer %[[SELECT1]][%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<128x128xf32>
-    CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<128x128xf32>, %arg1: memref<128x128xf32>, %arg2: memref<512x128xf32>, %arg3: index
+    CHECK-NOT: xtile.select_buffer
+    CHECK: %[[LHS_TILE:.*]] = xtile.extract %arg0
     CHECK: %[[AG1:.*]] = "stablehlo.all_gather"(%[[LHS_TILE]])
     CHECK: %[[AG2:.*]] = "stablehlo.all_gather"(%[[AG1]])
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
