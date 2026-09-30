@@ -714,6 +714,8 @@ REGISTER_OP("SplitV")
         // known.
         int64_t split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
+        ShapeHandle size_splits_shape;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &size_splits_shape));
         std::vector<int64_t> data;
         if (size_splits->dtype() == DT_INT32) {
           data =

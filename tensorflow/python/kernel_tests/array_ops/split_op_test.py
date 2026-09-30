@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -451,6 +452,9 @@ class SplitOpTest(test.TestCase):
     empty = constant_op.constant([], dtype=dtypes.int32)
     result = array_ops.split(empty, [-1], axis=0)
     self.assertAllEqual(result[0], [])
+    value_2d = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32)
+    result = array_ops.split(value_2d, [-1], axis=1)
+    self.assertAllEqual(result[0], [[1, 2], [3, 4]])
 
   @test_util.run_deprecated_v1
   def testInt8SizeSplitsShapeFunction(self):
@@ -467,6 +471,28 @@ class SplitOpTest(test.TestCase):
     result = self.evaluate(array_ops.split(value, splits, axis=0))
     self.assertAllEqual(result[0], [1.0])
     self.assertAllEqual(result[1], [2.0, 3.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInt8SizeSplitsInt32Value(self):
+    # On GPU, int32 values use a separate kernel registration.
+    with self.cached_session(use_gpu=True):
+      value = constant_op.constant([1, 2, 3], dtype=dtypes.int32)
+      splits = constant_op.constant([1, 2], dtype=dtypes.int8)
+      result = self.evaluate(array_ops.split(value, splits, axis=0))
+    self.assertAllEqual(result[0], [1])
+    self.assertAllEqual(result[1], [2, 3])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarSizeSplitsRaises(self):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(
+          gen_array_ops.split_v(
+              value=[1, 2],
+              size_splits=constant_op.constant(2, dtype=dtypes.int64),
+              axis=0,
+              num_split=1,
+          )
+      )
 
   @test_util.run_deprecated_v1
   def testShapeFunctionRejectsSizeSplitsOverflow(self):
