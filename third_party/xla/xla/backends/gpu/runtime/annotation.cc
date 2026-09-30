@@ -548,12 +548,10 @@ static std::string MakeInstructionTitle(absl::string_view prefix,
   return title;
 }
 
-static std::string MakeInstructionDetails(const HloInstruction& inst) {
-  // Collect instruction metadata as a key-value suffix that can be parsed by
-  // XProf.
-  InstructionAnnotationMetadata metadata =
-      GetInstructionAnnotationMetadata(inst);
-
+// Formats instruction metadata as a key-value suffix that can be parsed by
+// XProf.
+static std::string MakeInstructionDetails(
+    const InstructionAnnotationMetadata& metadata) {
   std::string details;
   auto append = [&](absl::string_view key, std::string value) {
     if (!value.empty()) {
@@ -583,17 +581,12 @@ static std::string MakeInstructionDetails(const HloInstruction& inst) {
   return details;
 }
 
-static std::string MakeInstructionName(absl::string_view prefix,
-                                       const HloInstruction& inst,
-                                       TraceAnnotationLevel annotation_level) {
-  std::string name = MakeInstructionTitle(prefix, inst);
-  if (annotation_level < TraceAnnotationLevel::kDetailed) {
-    return name;
+static std::string MakeInstructionName(
+    absl::string_view title, const InstructionAnnotationMetadata& metadata) {
+  if (!title.empty() && title.back() == '#') {
+    title.remove_suffix(1);
   }
-
-  name.pop_back();
-  absl::StrAppend(&name, MakeInstructionDetails(inst), "#");
-  return name;
+  return absl::StrCat(title, MakeInstructionDetails(metadata), "#");
 }
 
 InstructionAnnotation::InstructionAnnotation(
@@ -601,8 +594,6 @@ InstructionAnnotation::InstructionAnnotation(
     TraceAnnotationLevel annotation_level)
     : nvtx_name_str_(MakeInstructionTitle(
           module_annotation.longest_op_name_prefix(), inst)),
-      xprof_name_str_(MakeInstructionName(
-          module_annotation.longest_op_name_prefix(), inst, annotation_level)),
       nvtx_name_(RegisterString(nvtx_name_str_)) {
   payload_ = Basic{
       RegisterString(InstructionAsString(inst)),
@@ -611,11 +602,13 @@ InstructionAnnotation::InstructionAnnotation(
       RegisterString("\n" + CalledInstructionsAsString(inst)),
   };
   if (annotation_level < TraceAnnotationLevel::kDetailed) {
+    xprof_name_str_ = nvtx_name_str_;
     return;
   }
 
   InstructionAnnotationMetadata metadata =
       GetInstructionAnnotationMetadata(inst);
+  xprof_name_str_ = MakeInstructionName(nvtx_name_str_, metadata);
 
   payload_ = Detailed{
       std::move(std::get<Basic>(payload_)),
@@ -783,6 +776,7 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
 
   // Loop through `mod` and populate `instructions` with the information we
   // want to attach to individual instruction ranges.
+  instructions.reserve(mod.instruction_count());
   for (const HloComputation* computation : mod.computations()) {
     for (const HloInstruction* inst : computation->instructions()) {
       // e.g. inst.name is "fusion.6", inst.opcode is "kFusion" and called
