@@ -1631,6 +1631,41 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.rot90', v1=[])
 @np_utils.np_doc('rot90')
 def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
+  m = asarray(m)
+
+  maybe_rank = m.shape.rank
+  if isinstance(axes, (tuple, list, range, np.ndarray)):
+    # Validate the sequence length even when the static rank is unknown:
+    # otherwise invalid lengths only surface as unpacking errors further
+    # down.
+    if len(axes) != 2:
+      raise ValueError('len(axes) must be 2.')
+    if maybe_rank is not None:
+      # Direct scalar checks on the green path (no intermediate list, no
+      # generator expressions). NumPy checks for duplicate axes before
+      # out-of-range axes; `abs(ax0 - ax1) == maybe_rank` catches
+      # mixed-sign duplicates such as (0, -3) on a rank-3 array.
+      ax0, ax1 = axes[0], axes[1]
+      if isinstance(ax0, (int, np.integer)) and isinstance(
+          ax1, (int, np.integer)
+      ):
+        # Convert to Python int before arithmetic: NumPy unsigned scalars
+        # (e.g. np.uint32) perform modular subtraction, so `ax0 - ax1`
+        # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
+        # duplicate check and the bounds check would misbehave.
+        ax0, ax1 = int(ax0), int(ax1)
+        if ax0 == ax1 or abs(ax0 - ax1) == maybe_rank:
+          raise ValueError('Axes must be different.')
+        if (
+            ax0 < -maybe_rank
+            or ax0 >= maybe_rank
+            or ax1 < -maybe_rank
+            or ax1 >= maybe_rank
+        ):
+          raise ValueError(
+              f'Axes={tuple(axes)} out of range for array of ndim={maybe_rank}.'
+          )
+
   m_rank = array_ops.rank(m)
   ax1, ax2 = np_utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
 
