@@ -25,7 +25,7 @@ namespace functor {
 typedef Eigen::Index Index;
 
 // TODO(b/154339590): Needs to be vectorized.
-template <typename Device, typename Reducer, typename T>
+template <typename Device, typename Reducer, typename T, typename AccumT = T>
 struct Scan {
   void operator()(const Device& d, typename TTypes<T, 3>::ConstTensor in,
                   typename TTypes<T, 3>::Tensor out, const Reducer& reducer,
@@ -38,8 +38,11 @@ struct Scan {
     dims[2] = false;
     MaybeWith32BitIndexing<Device>(
         [&](auto in32, auto out32) {
-          out32.device(d) =
-              in32.reverse(dims).scan(1, reducer, exclusive).reverse(dims);
+          out32.device(d) = in32.template cast<AccumT>()
+                                    .reverse(dims)
+                                    .scan(1, reducer, exclusive)
+                                    .reverse(dims)
+                                    .template cast<T>();
         },
         in, out);
   }
