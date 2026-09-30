@@ -4448,6 +4448,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(double(constant_op.constant(1)), 2)
     self.assertAllEqual(double.experimental_get_tracing_count(), 1)
 
+  def test_clear_cache_with_variable(self):
+    v = None
+
+    @polymorphic_function.function
+    def f(x):
+      nonlocal v
+      if v is None:
+        v = variables.Variable(1.0)
+      return v * x
+
+    self.assertAllEqual(f(constant_op.constant(2.0)), 2.0)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 1)
+    f.clear_cache()
+    self.assertAllEqual(f.experimental_get_tracing_count(), 0)
+    self.assertAllEqual(f(constant_op.constant(3.0)), 3.0)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 1)
+
   def test_tensor_shape_casted_to_specific(self):
     @polymorphic_function.function(
         input_signature=[tensor_lib.TensorSpec([1])]

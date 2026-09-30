@@ -801,7 +801,7 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     """
     return len(self._function_cache)
 
-  def clear_cache(self):
+  def clear_cache(self) -> None:
     """Removes all cached concrete functions for this tf.function."""
     with self._lock:
       self._function_cache.clear()
