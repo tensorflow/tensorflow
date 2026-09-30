@@ -75,15 +75,18 @@ class HeapSimulator {
  public:
   // Chunk represents a contiguous piece of memory.  Each BufferValue will be
   // associated with a chunk in the assignment result.
-  struct Chunk {
+  struct alignas(16) Chunk {
     static Chunk FromOffsetEnd(int64_t offset, int64_t end);
     static Chunk FromOffsetSize(int64_t offset, int64_t size);
     Chunk() : Chunk(-1, 0) {}
 
     std::string ToString() const;
 
-    int64_t offset;
+    // The field order is {size, offset} so that when reinterpreted as
+    // hwy::uint128_t{lo, hi}, offset occupies the high 64 bits and VQSort
+    // sorts by offset ascending.
     int64_t size;
+    int64_t offset;
 
     int64_t chunk_end() const { return offset + size; }
 
@@ -94,7 +97,7 @@ class HeapSimulator {
     }
 
    private:
-    Chunk(int64_t offset, int64_t size) : offset(offset), size(size) {}
+    Chunk(int64_t offset, int64_t size) : size(size), offset(offset) {}
 
     friend std::ostream& operator<<(std::ostream& stream, const Chunk& chunk);
   };
