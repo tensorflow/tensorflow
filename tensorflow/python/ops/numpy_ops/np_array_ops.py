@@ -1654,7 +1654,7 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
         # would wrap around (e.g. 0 - 1 -> 4294967295) and both the
         # duplicate check and the bounds check would misbehave.
         ax0, ax1 = int(ax0), int(ax1)
-        if ax0 == ax1 or builtins.abs(ax0 - ax1) == maybe_rank:
+        if ax0 == ax1 or abs(ax0 - ax1) == maybe_rank:
           raise ValueError('Axes must be different.')
         if (
             ax0 < -maybe_rank
