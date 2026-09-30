@@ -85,39 +85,51 @@ class ScanOp : public OpKernel {
     // bfloat16 and float16 keep only ~8 / ~10 mantissa bits, so accumulating a
     // long sequence directly in the 16-bit type rounds the running total at
     // every step and drifts far from the exact result. Upcast to float32 for
-    // the accumulation and cast the result back. The cast is pipelined inside
-    // Eigen's lazy expression graph (see functor::Scan's AccumT template), so
-    // no intermediate tensors are materialized. This matches the GPU kernel's
-    // precision and covers the Sum, Prod, and LogSumExp reducers shared by
-    // Cumsum, Cumprod, and CumulativeLogsumexp. See GitHub issue #115731.
+    // the accumulation and cast the result back; this matches the GPU kernel,
+    // preserves the documented output dtype, and avoids committing the
+    // 16-bit rounding error on the CPU path. This branch is deliberately
+    // limited to the Sum and Prod reducers used by Cumsum and Cumprod; other
+    // reducers that share this kernel (e.g. the LogSumExpReducer used by
+    // CumulativeLogsumexp) must keep their original in-dtype path. See GitHub
+    // issue #115731.
     if constexpr (std::is_same_v<Device, CPUDevice> &&
                   (std::is_same_v<Reducer,
                                    Eigen::internal::SumReducer<T>> ||
                    std::is_same_v<Reducer,
-                                   Eigen::internal::ProdReducer<T>> ||
-                   std::is_same_v<Reducer, functor::LogSumExpReducer<T>>) &&
+                                   Eigen::internal::ProdReducer<T>>) &&
                   (std::is_same_v<T, ::tensorflow::bfloat16> ||
                    std::is_same_v<T, Eigen::half>)) {
+      Tensor float_input;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input.shape(),
+                                            &float_input));
+      // Upcast the 16-bit input to float32 for the accumulation. This is the
+      // same cast the CPU CastFunctor performs; we inline it to avoid pulling
+      // in an extra kernel header.
+      float_input.template flat<float>().device(d) =
+          input.template flat<T>().template cast<float>();
+
+      Tensor float_output;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_FLOAT, output_shape, &float_output));
+      // Use the float-typed reducer that mirrors the original 16-bit one.
       if constexpr (std::is_same_v<Reducer,
                                    Eigen::internal::SumReducer<T>>) {
-        functor::Scan<CPUDevice, Eigen::internal::SumReducer<float>, T,
-                      float>()(d, input.shaped<T, 3>(reduced_shape),
-                               output->shaped<T, 3>(reduced_shape),
-                               Eigen::internal::SumReducer<float>(), reverse_,
-                               exclusive_);
-      } else if constexpr (std::is_same_v<Reducer,
-                                          Eigen::internal::ProdReducer<T>>) {
-        functor::Scan<CPUDevice, Eigen::internal::ProdReducer<float>, T,
-                      float>()(d, input.shaped<T, 3>(reduced_shape),
-                               output->shaped<T, 3>(reduced_shape),
-                               Eigen::internal::ProdReducer<float>(), reverse_,
-                               exclusive_);
+        functor::Scan<CPUDevice, Eigen::internal::SumReducer<float>, float>()(
+            d, static_cast<const Tensor&>(float_input)
+                      .shaped<float, 3>(reduced_shape),
+            float_output.shaped<float, 3>(reduced_shape),
+            Eigen::internal::SumReducer<float>(), reverse_, exclusive_);
       } else {
-        functor::Scan<CPUDevice, functor::LogSumExpReducer<float>, T, float>()(
-            d, input.shaped<T, 3>(reduced_shape),
-            output->shaped<T, 3>(reduced_shape),
-            functor::LogSumExpReducer<float>(), reverse_, exclusive_);
+        functor::Scan<CPUDevice, Eigen::internal::ProdReducer<float>, float>()(
+            d, static_cast<const Tensor&>(float_input)
+                      .shaped<float, 3>(reduced_shape),
+            float_output.shaped<float, 3>(reduced_shape),
+            Eigen::internal::ProdReducer<float>(), reverse_, exclusive_);
       }
+
+      // Cast the float32 result back to the original 16-bit dtype.
+      output->template flat<T>().device(d) =
+          float_output.template flat<float>().template cast<T>();
       return;
     }
 
