@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
 namespace xla {
@@ -58,18 +59,25 @@ TEST(CudaVersionVariantsTest, GetExtraCallbackIdCategories12000) {
   }
 }
 
-TEST(CudaVersionVariantsTest, GetExtraCallbackIdCategories12080) {
-  int safe_cuda_version = GetSafeCudaVersion();
-  const CbidCategoryMap& map = GetExtraCallbackIdCategories12080();
-  if (CUDA_VERSION >= 12080 && safe_cuda_version >= 12080) {
-    EXPECT_THAT(map, testing::Not(testing::IsEmpty()))
-        << ", CUDA_VERSION: " << CUDA_VERSION
-        << ", safe_cuda_version: " << safe_cuda_version;
-
-  } else {
-    EXPECT_THAT(map, testing::IsEmpty())
-        << ", CUDA_VERSION: " << CUDA_VERSION
-        << ", safe_cuda_version: " << safe_cuda_version;
+TEST(CudaVersionVariantsTest, GetExtraCallbackIdCategories12030) {
+  const int cuda_versions[] = {0, 12020, 12030, 12070, 12080, 13000};
+  for (int cuda_version : cuda_versions) {
+    SCOPED_TRACE(cuda_version);
+    const CbidCategoryMap& map =
+        GetExtraCallbackIdCategories12030(cuda_version);
+    if (CUDA_VERSION >= 12030 && cuda_version >= 12030) {
+#if CUDA_VERSION >= 12030
+      EXPECT_THAT(map,
+                  testing::UnorderedElementsAre(
+                      testing::Pair(CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode,
+                                    CbidCategory::kGraphNode),
+                      testing::Pair(CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2,
+                                    CbidCategory::kGraphNode)))
+          << "CUDA_VERSION: " << CUDA_VERSION;
+#endif
+    } else {
+      EXPECT_THAT(map, testing::IsEmpty()) << "CUDA_VERSION: " << CUDA_VERSION;
+    }
   }
 }
 

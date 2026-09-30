@@ -221,7 +221,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
     preserve their input order regardless of the sorting order. Masked-out keys
     and values are placed at the end of the output vectors. Integer keys are
     treated as unsigned. An output mask indicates which outputs correspond to
-    the valid inputs. 
+    the valid inputs.
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -1383,6 +1383,47 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+}
+
+def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure]> {
+  let summary = "Slices a shared VMEM memref to a subcore-local VMEM memref.";
+  let description = [{
+    Extracts a subcore-local VMEM slice from a shared VMEM memref by dividing
+    the minor dimension across `num_subcores`.
+
+    To align with SparseCore physical VMEM striping, each subcore's minor
+    dimension slice (`result_shape[-1] = input_shape[-1] / num_subcores`) must
+    span exactly one physical VMEM stripe (`stripe_words`, e.g. 8 words / 32
+    bytes on TPU v7x).
+      - With >1D tiling (which requires a `(packing, 1)` sub-tile when
+        `packing > 1`), each minor index spans a full word, so
+        `result_shape[-1] == stripe_words`.
+      - With 1D tiling, each word holds `packing` elements along the minor
+        dimension, so `result_shape[-1] == stripe_words * packing`
+        (`stripe_bytes / element_bytes`).
+
+    Examples of valid shapes/layouts on a target with 16 subcores, 4B words, and
+    8-word stripes (e.g. TPU v7x):
+      - `8x128xbf16, #tpu.tiled<(8,128)(2,1),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x256xbf16, #tpu.tiled<(16),[16,1]>` (`result_shape[-1] = 16`)
+      - `8x128xi32, #tpu.tiled<(8,128),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x128xi32, #tpu.tiled<(8),[16,1]>` (`result_shape[-1] = 8`)
+  }];
+  let arguments = (ins
+    AnyMemRef:$mem_ref
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $mem_ref attr-dict `:` type($mem_ref) `->` type($result)
+  }];
+  let extraClassDeclaration = [{
+    static ::mlir::FailureOr<::mlir::tpu::TiledLayoutAttr> inferResultLayout(
+        ::mlir::MemRefType source_type, ::mlir::ArrayRef<int64_t> target_shape,
+        int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+        int64_t spmem_word_size_bytes,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+  }];
+  let hasVerifier = 1;
 }
 
 def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {

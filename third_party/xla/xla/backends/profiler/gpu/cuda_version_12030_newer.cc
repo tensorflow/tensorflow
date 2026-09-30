@@ -13,30 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "absl/base/no_destructor.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
 
 namespace xla {
 namespace profiler {
 namespace cuda_versions {
 
-absl::string_view GetExtraActivityOverheadKindString12080(
-    CUpti_ActivityOverheadKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_OVERHEAD_RUNTIME_TRIGGERED_MODULE_LOADING:
-      return "RUNTIME_TRIGGERED_MODULE_LOADING";
-    case CUPTI_ACTIVITY_OVERHEAD_LAZY_FUNCTION_LOADING:
-      return "LAZY_FUNCTION_LOADING";
-    case CUPTI_ACTIVITY_OVERHEAD_COMMAND_BUFFER_FULL:
-      return "COMMAND_BUFFER_FULL";
-    case CUPTI_ACTIVITY_OVERHEAD_ACTIVITY_BUFFER_REQUEST:
-      return "ACTIVITY_BUFFER_REQUEST";
-    case CUPTI_ACTIVITY_OVERHEAD_UVM_ACTIVITY_INIT:
-      return "UVM_ACTIVITY_INIT";
-    default:
-      return "";
+// Polymorphic graph node callbacks are available with CUDA 12.3.
+const CbidCategoryMap& GetExtraCallbackIdCategories12030(int cuda_version) {
+  if (cuda_version < 12030) {
+    return EmptyCallbackIdCategories();
   }
+  static const absl::NoDestructor<CbidCategoryMap> kCbidCategoryMap({
+      {CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode /* 712 */,
+       CbidCategory::kGraphNode},
+      {CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2 /* 723 */,
+       CbidCategory::kGraphNode},
+  });
+  return *kCbidCategoryMap;
 }
 
 }  // namespace cuda_versions

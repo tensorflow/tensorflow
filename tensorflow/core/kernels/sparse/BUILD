@@ -22,6 +22,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
+    "if_not_windows",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
@@ -72,6 +73,7 @@ tf_kernel_library(
         "transpose_op.h",
         "zeros_op.h",
     ],
+    gpu_copts = if_not_windows(["-Wno-pass-failed"]),
     gpu_deps = [
         "//tensorflow/core/kernels:gpu_device_array",
     ],

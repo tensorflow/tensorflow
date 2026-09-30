@@ -487,6 +487,181 @@ void MemRefSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<MemRefSliceFoldConstantDynamicDim>(context);
 }
 
+LogicalResult SharedMemRefSliceOp::verify() {
+  CoreType core_type = GetCoreTypeOfParentOp(**this);
+  if (core_type != CoreType::kScVectorSubcore) {
+    return emitOpError("Unsupported core type: ") << core_type;
+  }
+
+  auto source_type = getMemRef().getType();
+  auto target_type = getType();
+  auto source_memory_space = source_type.getMemorySpace();
+  auto target_memory_space = target_type.getMemorySpace();
+
+  auto expected_source_memory_space =
+      tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmemShared);
+  if (source_memory_space != expected_source_memory_space) {
+    return emitOpError("Source memref must have memory space ")
+           << expected_source_memory_space;
+  }
+  auto expected_target_memory_space = tpu::MemorySpaceAttr::get(
+      getContext(), tpu::MemorySpace::kVmem, CoreType::kScVectorSubcore);
+  if (target_memory_space != expected_target_memory_space &&
+      target_memory_space !=
+          tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmem)) {
+    return emitOpError("Target memref must have memory space ")
+           << expected_target_memory_space;
+  }
+  if (source_type.getElementType() != target_type.getElementType()) {
+    return emitOpError("Source and target element types must match.");
+  }
+
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  ArrayRef<int64_t> target_shape = target_type.getShape();
+  if (source_shape.size() != target_shape.size()) {
+    return emitOpError("Target shape rank must match source shape rank.");
+  }
+  if (source_shape.empty()) {
+    return emitOpError("Source and target memrefs must be at least rank 1.");
+  }
+  if (source_shape.drop_back() != target_shape.drop_back()) {
+    return emitOpError(
+        "Target shape must match source shape for all dimensions except the "
+        "last.");
+  }
+  if (source_shape.back() == 0 || target_shape.back() == 0) {
+    return emitOpError(
+        "Source and target minormost dimension must be greater than 0.");
+  }
+  if (ShapedType::isDynamic(source_shape.back()) ||
+      ShapedType::isDynamic(target_shape.back())) {
+    return emitOpError(
+        "Source and target minormost dimension cannot be dynamic.");
+  }
+  if (source_shape.back() % target_shape.back() != 0) {
+    return emitOpError(
+        "Source shape's minormost dimension must be divisible by target "
+        "shape's minormost dimension.");
+  }
+  return success();
+}
+
+FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
+    MemRefType source_type, ArrayRef<int64_t> target_shape,
+    int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+    int64_t spmem_word_size_bytes,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  if (!source_type.hasStaticShape() ||
+      !ShapedType::isStaticShape(target_shape)) {
+    return emit_error() << "SharedMemRefSliceOp requires static shapes.";
+  }
+  if (spmem_stripe_granularity_bytes % spmem_word_size_bytes != 0) {
+    return emit_error() << "Shared VMEM stripe granularity ("
+                        << spmem_stripe_granularity_bytes
+                        << " bytes) must be a multiple of the VMEM word size ("
+                        << spmem_word_size_bytes << " bytes).";
+  }
+  auto layout_attr = dyn_cast<TiledLayoutAttr>(source_type.getLayout());
+  if (!layout_attr) {
+    return emit_error()
+           << "SharedMemRefSliceOp requires a tiled source layout.";
+  }
+  ArrayRef<xla::Tile> tiles = layout_attr.getTiles();
+  if (tiles.empty()) {
+    return emit_error()
+           << "shared_memref_slice input tiling layout tiles cannot be empty";
+  }
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  CHECK(!layout_attr.getTileStrides().empty());
+  if (layout_attr.getTileStrides().back() != 1) {
+    return emit_error()
+           << "The last dimension of the MemRef must be contiguous for "
+              "SharedMemRefSliceOp.";
+  }
+
+  int64_t bitwidth = source_type.getElementTypeBitWidth();
+  int64_t word_bitwidth = spmem_word_size_bytes * 8;
+  if (word_bitwidth % bitwidth != 0) {
+    return emit_error() << "Element bitwidth (" << bitwidth
+                        << ") must divide the VMEM word bitwidth ("
+                        << word_bitwidth << ").";
+  }
+  int64_t packing = word_bitwidth / bitwidth;
+  int64_t stripe_elems = spmem_stripe_granularity_bytes * 8 / bitwidth;
+  int64_t stripe_words = spmem_stripe_granularity_bytes / spmem_word_size_bytes;
+
+  // Case 1: 1D DMA-granule tiling (e.g. `#tpu.tiled<(8), [16, 1]>`), where the
+  // single 1D tile already equals `stripe_width` (`target_shape.back()`), so
+  // the tile dimensions stay unchanged and the leading tile strides are scaled
+  // down by `num_sc_tiles`.
+  bool is_1d_stripe_tiling =
+      tiles.size() == 1 &&
+      tiles[0].dimensions() == ArrayRef<int64_t>{stripe_elems};
+  // Case 2: Full-width tiling where `tiles[0]` spans `source_shape.back()`
+  // (either a single unpacked tile or a 2D packed layout with sub-tile
+  // `(packing, 1)`), so `tiles[0]`'s trailing dimension is rewritten to
+  // `target_shape.back()` (`stripe_width`) and tile strides remain unchanged.
+  bool is_packed_tiling =
+      tiles.size() == 2 && tiles[0].dimensions().size() >= 2 &&
+      tiles[1].dimensions() == ArrayRef<int64_t>{packing, 1};
+  bool is_unpacked_tiling = tiles.size() == 1 &&
+                            tiles[0].dimensions().size() >= 2 &&
+                            bitwidth == word_bitwidth;
+  bool is_full_width_tiling =
+      (is_unpacked_tiling || is_packed_tiling) &&
+      tiles[0].dimensions().back() == source_shape.back();
+
+  int64_t stripe_width;
+  if (is_packed_tiling && is_full_width_tiling) {
+    stripe_width = stripe_words;
+  } else if ((is_unpacked_tiling && is_full_width_tiling) ||
+             is_1d_stripe_tiling) {
+    stripe_width = stripe_elems;
+  } else {
+    return emit_error() << "Expected a 1D stripe tile (" << stripe_elems
+                        << ") or a full-width 2D tile with trailing dimension "
+                        << source_shape.back()
+                        << ". 1D TC tilings are not yet supported.";
+  }
+  int64_t expected_source_last_dim = num_sc_tiles * stripe_width;
+
+  if (source_shape.back() != expected_source_last_dim) {
+    return emit_error() << "Source trailing dimension (" << source_shape.back()
+                        << ") must equal " << expected_source_last_dim;
+  }
+  if (target_shape.back() != stripe_width) {
+    return emit_error() << "Target trailing dimension (" << target_shape.back()
+                        << ") must equal " << stripe_width;
+  }
+
+  SmallVector<xla::Tile> new_tiles(tiles.begin(), tiles.end());
+  SmallVector<int64_t> new_tile_strides(layout_attr.getTileStrides());
+  if (is_1d_stripe_tiling) {
+    for (int64_t i = 0; i < new_tile_strides.size() - 1; ++i) {
+      if (ShapedType::isDynamic(new_tile_strides[i])) {
+        continue;
+      }
+      if (new_tile_strides[i] % num_sc_tiles != 0) {
+        return emit_error()
+               << "Tile strides must be divisible by the ratio of source and "
+                  "target trailing dimensions.";
+      }
+      new_tile_strides[i] /= num_sc_tiles;
+    }
+  } else {
+    CHECK(is_full_width_tiling);
+    // The minormost dimension of the memref shape and the first tile are both
+    // scaled down by num_sc_tiles, so the tile strides are unchanged.
+    SmallVector<int64_t> first_tile_dims =
+        llvm::to_vector(tiles[0].dimensions());
+    first_tile_dims.back() = target_shape.back();
+    new_tiles[0] = xla::Tile(first_tile_dims);
+  }
+
+  return TiledLayoutAttr::get(source_type.getContext(), new_tiles,
+                              new_tile_strides);
+}
+
 LogicalResult MemRefSqueezeOp::verify() {
   MemRefType input_type = getInput().getType();
   MemRefType result_type = getType();
