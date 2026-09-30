@@ -453,8 +453,9 @@ class SplitOpTest(test.TestCase):
     result = array_ops.split(empty, [-1], axis=0)
     self.assertAllEqual(result[0], [])
     value_2d = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.int32)
-    result = array_ops.split(value_2d, [-1], axis=1)
-    self.assertAllEqual(result[0], [[1, 2], [3, 4]])
+    for axis in (0, 1):
+      result = array_ops.split(value_2d, [-1], axis=axis)
+      self.assertAllEqual(result[0], [[1, 2], [3, 4]])
 
   @test_util.run_deprecated_v1
   def testInt8SizeSplitsShapeFunction(self):
@@ -465,6 +466,7 @@ class SplitOpTest(test.TestCase):
     self.assertEqual(result[1].shape.as_list(), [2])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA only takes int32 and int64 size_splits.")
   def testInt8SizeSplitsExecution(self):
     value = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
     splits = constant_op.constant([1, 2], dtype=dtypes.int8)
@@ -473,6 +475,7 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(result[1], [2.0, 3.0])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA only takes int32 and int64 size_splits.")
   def testInt8SizeSplitsInt32Value(self):
     # On GPU, int32 values use a separate kernel registration.
     with self.cached_session(use_gpu=True):
