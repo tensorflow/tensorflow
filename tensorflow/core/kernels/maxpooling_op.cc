@@ -1476,6 +1476,7 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
         context, ShapeFromFormatWithStatus(data_format_, params.tensor_in_batch,
                                            params.out_height, params.out_width,
                                            params.depth, &out_shape));
+    // Degenerate pooling output should return an empty tensor.
     if (out_shape.num_elements() == 0) {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));

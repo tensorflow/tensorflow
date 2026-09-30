@@ -851,6 +851,57 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           self.assertEqual(values.shape, (1, 0, 1, 3))
 
   @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolOversizedWindowWidthCollapseReturnsEmpty(self):
+    input_data = np.ones([1, 1, 2, 3], dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session():
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          y = nn_ops.max_pool(
+              x, ksize=[1, 1, 3, 1], strides=[1, 1, 1, 1], padding="VALID"
+          )
+          if context.executing_eagerly():
+            values = self.evaluate(y)
+          else:
+            values = y.eval(feed_dict={x: input_data})
+          self.assertEqual(values.shape, (1, 1, 0, 3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolWithArgmaxOversizedWindowReturnsEmpty(self):
+    input_data = np.ones([1, 2, 2, 3], dtype=np.float32)
+    devices = (
+        ("/CPU:0", "/GPU:0") if test_util.is_gpu_available() else ("/CPU:0",)
+    )
+    for device in devices:
+      with ops.device(device):
+        with self.cached_session() as sess:
+          if context.executing_eagerly():
+            x = constant_op.constant(input_data)
+          else:
+            x = array_ops.placeholder(dtypes.float32, shape=[1, None, None, 3])
+          out, argmax = gen_nn_ops.max_pool_with_argmax(
+              input=x,
+              ksize=[1, 3, 3, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+              Targmax=dtypes.int64,
+          )
+          if context.executing_eagerly():
+            out_val, argmax_val = self.evaluate([out, argmax])
+          else:
+            out_val, argmax_val = sess.run(
+                [out, argmax], feed_dict={x: input_data}
+            )
+          self.assertEqual(out_val.shape, (1, 0, 0, 3))
+          self.assertEqual(argmax_val.shape, (1, 0, 0, 3))
+
+  @test_util.run_in_graph_and_eager_modes
   def testMaxPoolEmptySpatialDimReturnsEmpty(self):
     x = array_ops.zeros([1, 0, 8, 8], dtype=dtypes.float32)
     devices = (
