@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -242,6 +243,62 @@ TEST_F(ConfigAssignerTest, CacheHit) {
                            std::move(cache_manager)));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr.get()), IsOk());
+}
+
+TEST_F(ConfigAssignerTest, ForceConfigBypassesCacheAndAutotuning) {
+  auto cache_manager = std::make_unique<MockAutotunerCache>();
+  EXPECT_CALL(*cache_manager, Lookup(_)).Times(0);
+  EXPECT_CALL(*cache_manager, Insert(_, _)).Times(0);
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
+  EXPECT_CALL(*backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::UNSPECIFIED_BACKEND));
+  EXPECT_CALL(*backend, GetSupportedConfigs).Times(0);
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_forced_config")))
+      .Times(1)
+      .WillOnce(Return(absl::OkStatus()));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  config_.force_config = absl::StrCat(
+      "backend: UNSPECIFIED_BACKEND\nbackend_config { gemm { algorithm: ",
+      GetAlgorithmId("test_forced_config"), " } }");
+
+  auto profiler = std::make_unique<MockProfiler>();
+  ASSERT_OK_AND_ASSIGN(
+      auto config_assigner,
+      CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
+                           std::move(cache_manager)));
+
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  EXPECT_THAT(config_assigner->AssignConfig(dummy_instr.get()), IsOk());
+}
+
+TEST_F(ConfigAssignerTest, ForceConfigInvalidProtoFails) {
+  auto backend = std::make_unique<MockCodegenBackend>();
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  config_.force_config = "invalid proto content {";
+  EXPECT_THAT(
+      CreateConfigAssigner(std::move(backends), nullptr, config_, nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(ConfigAssignerTest, ForceConfigUnregisteredBackendFails) {
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, backend())
+      .WillRepeatedly(Return(autotuner::Backend::UNSPECIFIED_BACKEND));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  config_.force_config =
+      "backend: TRITON\nbackend_config { gemm { algorithm: 1 } }";
+  EXPECT_THAT(
+      CreateConfigAssigner(std::move(backends), nullptr, config_, nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(ConfigAssignerTest, ExpectAllInstructionsInCache) {
@@ -949,7 +1006,8 @@ TEST(ConfigAssignerOptionsTest, ToString) {
       "  \"prefer_estimated_configs\": true,\n"
       "  \"dump_hlos\": false,\n"
       "  \"use_new_cache_format\": false,\n"
-      "  \"compile_all_supported_configs\": false\n"
+      "  \"compile_all_supported_configs\": false,\n"
+      "  \"force_config\": \"\"\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

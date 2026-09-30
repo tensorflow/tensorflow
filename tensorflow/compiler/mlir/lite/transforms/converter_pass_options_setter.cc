@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
 
+#include "tensorflow/compiler/mlir/lite/transforms/large_constant_fold_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
@@ -42,6 +43,8 @@ void ConverterPassOptionsSetter::SetOptions(
 void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}
 
 void ConverterPassOptionsSetter::SetOptions(
-    LargeConstantFoldPassOptions& options) const {}
+    LargeConstantFoldPassOptions& options) const {
+  options.fold_fp16_resource_casts = pass_config_.fold_fp16_resource_casts;
+}
 
 }  // namespace mlir::TFL

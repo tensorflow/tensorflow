@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/spmd/dot_handler.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -65,19 +66,24 @@ class CreateShardedConvolutionFunctor final
       const Window& conv_window) const override {
     HloInstruction* l = ll.hlo();
     HloInstruction* r = rr.hlo();
+    HloInstruction* sharded_conv;
     if (dims_info_.conv_spatial_dims.empty() &&
         conv_->feature_group_count() == 1 && conv_->batch_group_count() == 1) {
       ABSL_ASSIGN_OR_RETURN(
-          auto sharded_conv,
+          auto sharded_conv_ptr,
           dot_as_convolution_util::CreateShardedConvForDotGeneralConvolution(
               *conv_, dims_info_, l, r));
-      return b->AddInstruction(std::move(sharded_conv));
+      sharded_conv = b->AddInstruction(std::move(sharded_conv_ptr));
     } else {
       ABSL_ASSIGN_OR_RETURN(
-          auto sharded_conv,
+          auto sharded_conv_ptr,
           CreateShardedConvolution(*conv_, dims_info_, l, r, conv_window));
-      return b->AddInstruction(std::move(sharded_conv));
+      sharded_conv = b->AddInstruction(std::move(sharded_conv_ptr));
     }
+    if (conv_->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
+      sharded_conv->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+    }
+    return sharded_conv;
   }
 
  private:

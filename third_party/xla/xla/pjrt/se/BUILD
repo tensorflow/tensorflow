@@ -277,6 +277,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/integrations:tf_allocator_adapter",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
@@ -384,7 +385,9 @@ cc_library(
     hdrs = ["pjrt_stream_executor_device_description.h"],
     deps = [
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],

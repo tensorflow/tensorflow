@@ -402,23 +402,28 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
   // Flip flop between arguments to prevent caching.
   std::minstd_rand0 engine;
 
-  std::vector<Literal> args_small = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/false)
-                                        .value();
-  std::vector<Literal> args_large = MakeFakeArguments(module.get(), &engine,
-                                                      /*use_large_range=*/true)
-                                        .value();
+  FakeArgumentsOptions small_options;
+  small_options.engine = &engine;
+  small_options.use_large_range = false;
+  auto args_small = MakeFakeArguments(module.get(), small_options);
+  CHECK_OK(args_small);
+
+  FakeArgumentsOptions large_options;
+  large_options.engine = &engine;
+  large_options.use_large_range = true;
+  auto args_large = MakeFakeArguments(module.get(), large_options);
+  CHECK_OK(args_large);
 
   std::unique_ptr<OpaqueExecutable> compiled = Compile(std::move(module));
 
   // First run to warm up stuff.
-  CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), args_small).status());
+  CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), *args_small).status());
 
   // Trace `kNumProfilingRuns` times to get decent measurement.
   std::unique_ptr<HloOpProfiler::KernelTracer> tracer =
       HloOpProfiler::GetKernelTracer();
   for (int i = 0; i < kNumProfilingRuns; i++) {
-    Measure(runner_, compiled.get(), args_small, args_large);
+    Measure(runner_, compiled.get(), *args_small, *args_large);
   }
 
   return absl::Nanoseconds(std::move(*tracer).getMedianKernelTimeNs());

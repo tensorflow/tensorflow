@@ -19,16 +19,46 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.platform import test
 
 
 class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
+
+  def testGetItemFromEmptyList(self):
+    # Regression test for GitHub issue 109648. Reading from a statically
+    # empty list appears in code that never runs, such as the body of a
+    # while loop with a zero trip count, but XLA compiles that code anyway
+    # and used to reject the read at compile time. It now yields zeros of
+    # the element shape.
+    with self.session() as sess, self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_shape=[2], element_dtype=dtypes.float32, num_elements=0
+      )
+      e = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(e), [0.0, 0.0])
+
+  def testMapFnOverEmptyTensor(self):
+    # End to end case for GitHub issue 109648: map_fn over a zero length
+    # tensor compiles its loop body even though it never runs, and the
+    # TensorListGetItem in that body used to fail compilation. The whole
+    # function is jit-compiled so the list stays inside XLA rather than
+    # crossing the XLA/TF boundary at the unstack and stack ops.
+    @def_function.function(jit_compile=True)
+    def f(x):
+      return map_fn.map_fn(lambda t: t + 1.0, x)
+
+    with self.session() as sess:
+      x = array_ops.zeros([0], dtype=dtypes.float32)
+      self.assertAllEqual(sess.run(f(x)).shape, (0,))
 
   def testElementShape(self):
     with self.session() as sess, self.test_scope():
@@ -271,6 +301,51 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       z = list_ops.tensor_list_stack(z, element_dtype=dtypes.float32)
       self.assertAllEqual(z.shape.as_list(), [None])
       self.assertAllEqual(z, [0.0, 0.0])
+
+  def testSetItemResizeWarnsAndTruncates(self):
+    # Regression test for GitHub issue 127528. A TensorListSetItem that is
+    # allowed to grow the list cannot grow it under XLA, because the buffer
+    # that TensorListReserve allocated has a static shape. The write is
+    # dropped, either by returning the list unchanged when the element does
+    # not fit, or by letting DynamicUpdateSlice clamp an out-of-range index so
+    # the element overwrites an earlier one.
+    #
+    # The lowering logs a warning rather than failing, because the attribute is
+    # set by every dynamic_size TensorArray including the many that never write
+    # past the end, so compilation still has to succeed here.
+    with self.session(), self.test_scope():
+      tensor_list = list_ops.tensor_list_reserve(
+          element_shape=[], element_dtype=dtypes.float32, num_elements=1
+      )
+      set_item = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
+          index=0,
+          item=constant_op.constant(1.0),
+          resize_if_index_out_of_bounds=True,
+      )
+      stacked = list_ops.tensor_list_stack(
+          set_item, element_dtype=dtypes.float32
+      )
+      self.assertAllEqual(self.evaluate(stacked), [1.0])
+
+  def testSetItemWithoutResizeStillCompiles(self):
+    # Counterpart to the test above: the warning is keyed off the attribute,
+    # so this pins that an ordinary fixed-size write compiles to the same
+    # result and that the attribute alone changes nothing but the logging.
+    with self.session(), self.test_scope():
+      tensor_list = list_ops.tensor_list_reserve(
+          element_shape=[], element_dtype=dtypes.float32, num_elements=1
+      )
+      set_item = list_ops.tensor_list_set_item(
+          input_handle=tensor_list,
+          index=0,
+          item=constant_op.constant(1.0),
+          resize_if_index_out_of_bounds=False,
+      )
+      stacked = list_ops.tensor_list_stack(
+          set_item, element_dtype=dtypes.float32
+      )
+      self.assertAllEqual(self.evaluate(stacked), [1.0])
 
   def testInvalidSplitLength(self):
     with self.session(), self.test_scope():

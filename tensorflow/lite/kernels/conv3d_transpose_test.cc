@@ -211,6 +211,22 @@ TEST(Conv3dTransposePrepareSecurityTest, RejectsCol2ImOverflow) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+TEST(Conv3dTransposePrepareSecurityTest,
+     RejectsSpatialOutputDimensionsOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConv3dTransposeOpModel m(
+      {1, kHugeDim, kHugeDim, 1, 1}, {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_depth=*/kHugeDim, /*stride_width=*/1,
+      /*stride_height=*/kHugeDim);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 TEST(Conv3dTransposePrepareSecurityTest, RejectsZeroFilterOutputChannels) {
   PrepareOnlyConv3dTransposeOpModel m({1, 1, 1, 1, 1},
                                       {TensorType_FLOAT32, {1, 1, 1, 0, 1}},
@@ -227,6 +243,63 @@ TEST(Conv3dTransposePrepareSecurityTest, RejectsMismatchedOutputChannels) {
                                       {TensorType_FLOAT32, {}}, Padding_SAME);
 
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(Conv3dTransposePrepareSecurityTest,
+     RejectsZeroFilterOutputChannelsEvenIfOutputShapeMatches) {
+  PrepareOnlyConv3dTransposeOpModel m({1, 1, 1, 1, 0},
+                                      {TensorType_FLOAT32, {1, 1, 1, 0, 1}},
+                                      {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+                                      {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(Conv3dTransposePrepareSecurityTest, RejectsInvalidStrides) {
+  PrepareOnlyConv3dTransposeOpModel m(
+      {1, 1, 1, 1, 1}, {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_depth=*/0, /*stride_width=*/1,
+      /*stride_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(Conv3dTransposePrepareSecurityTest, RejectsInvalidDilations) {
+  PrepareOnlyConv3dTransposeOpModel m(
+      {1, 1, 1, 1, 1}, {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+      {TensorType_FLOAT32, {1, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME, /*stride_depth=*/1, /*stride_width=*/1,
+      /*stride_height=*/1, ActivationFunctionType_NONE,
+      /*dilation_depth=*/0, /*dilation_width=*/1, /*dilation_height=*/1);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST(Conv3dTransposePrepareSecurityTest, RejectsTotalOutputDimensionsOverflow) {
+  if (sizeof(void*) <= 4) {
+    GTEST_SKIP() << "Interpreter construction overflows before kernel Prepare "
+                    "on 32-bit.";
+  }
+  constexpr int kHugeDim = 46341;
+  PrepareOnlyConv3dTransposeOpModel m(
+      {kHugeDim, 1, 1, 1, kHugeDim},
+      {TensorType_FLOAT32, {1, 1, 1, kHugeDim, 1}},
+      {TensorType_FLOAT32, {kHugeDim, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Padding_SAME);
+
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_P(Conv3dTransposeOpTest, HandlesZeroElementsTest) {
+  Conv3dTransposeOpModel m(
+      {0, 1, 1, 1, 1}, {TensorType_FLOAT32, {1, 1, 1, 1, 1}},
+      {TensorType_FLOAT32, {0, 1, 1, 1, 1}}, {TensorType_FLOAT32, {}},
+      Conv3dTransposeOpTest::GetParam());
+
+  m.SetFilter({1.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 1, 1, 1, 1));
 }
 
 TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {

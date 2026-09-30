@@ -117,8 +117,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           Value offset = kernel.getArgument(kernel_p + 2);
           Value &zero = constants[0];
           if (!zero) {
-            zero = LLVM::ConstantOp::create(b, loc, offset.getType(),
-                                            b.getIndexAttr(0));
+            zero =
+                LLVM::ConstantOp::create(b, loc, offset.getType(),
+                                         b.getIntegerAttr(offset.getType(), 0));
           }
           offset.replaceAllUsesWith(zero);
         }
@@ -129,9 +130,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
               kernel.getArgument(kernel_p + 2 + memref.getRank() * 2);
           Value &stride_val = constants[const_stride->second];
           if (!stride_val) {
-            stride_val =
-                LLVM::ConstantOp::create(b, loc, inner_stride.getType(),
-                                         b.getIndexAttr(const_stride->second));
+            stride_val = LLVM::ConstantOp::create(
+                b, loc, inner_stride.getType(),
+                b.getIntegerAttr(inner_stride.getType(), const_stride->second));
           }
           inner_stride.replaceAllUsesWith(stride_val);
         }

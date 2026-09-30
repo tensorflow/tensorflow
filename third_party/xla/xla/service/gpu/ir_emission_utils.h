@@ -120,7 +120,7 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonNestedGemmFusionKind =
     "__triton_nested_gemm_fusion";
 
-// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+// Fusions that use cuDNN have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 
 inline constexpr absl::string_view kUncompilableFusion =
@@ -154,15 +154,8 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
 
 // Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
-// with parameter uses symmetric memory.
-bool IsMosaicWithSymmetricParameter(const HloInstruction& hlo);
-
-// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
 // with collective metadata.
 bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
-
-// Returns true if instruction is a Mosaic GPU collective instruction.
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);
 
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.

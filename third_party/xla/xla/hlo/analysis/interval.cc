@@ -29,6 +29,12 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 
 namespace xla {
+namespace {
+
+constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
+constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+
+}  // namespace
 
 std::ostream& operator<<(std::ostream& out, const Interval& interval) {
   out << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
@@ -37,6 +43,10 @@ std::ostream& operator<<(std::ostream& out, const Interval& interval) {
 
 std::string Interval::ToString() const {
   return absl::StrFormat("[%d, %d]", lower, upper);
+}
+
+bool Interval::IsUnconstrained() const {
+  return lower == kMin && upper == kMax;
 }
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -49,8 +59,7 @@ int64_t Interval::GetLoopTripCount() const {
   if (!IsFeasible()) {
     return 0;
   }
-  DCHECK((static_cast<absl::int128>(upper) - lower + 1) <=
-         std::numeric_limits<int64_t>::max());
+  DCHECK((static_cast<absl::int128>(upper) - lower + 1) <= kMax);
   return upper - lower + 1;
 }
 
@@ -82,9 +91,6 @@ Interval Interval::operator+(const Interval& rhs) const {
   int64_t out_lower;
   int64_t out_upper;
 
-  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-
   bool lower_overflow = llvm::AddOverflow(lower, rhs.lower, out_lower);
   bool upper_overflow = llvm::AddOverflow(upper, rhs.upper, out_upper);
 
@@ -110,9 +116,6 @@ Interval Interval::operator+(const Interval& rhs) const {
 }
 
 Interval Interval::operator*(const Interval& rhs) const {
-  constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-
   auto mul = [&](int64_t p) {
     int64_t l = lower;
     int64_t u = upper;
@@ -137,19 +140,13 @@ Interval Interval::operator*(const Interval& rhs) const {
 }
 
 Interval Interval::operator-() const {
-  int64_t ub = lower == std::numeric_limits<int64_t>::min()
-                   ? std::numeric_limits<int64_t>::max()
-                   : -lower;
-  int64_t lb = upper == std::numeric_limits<int64_t>::max()
-                   ? std::numeric_limits<int64_t>::min()
-                   : -upper;
+  int64_t ub = lower == kMin ? kMax : -lower;
+  int64_t lb = upper == kMax ? kMin : -upper;
   return Interval{lb, ub};
 }
 
 Interval Interval::FloorDiv(int64_t rhs) const {
   auto saturate_div = [](int64_t lhs, int64_t rhs) {
-    constexpr int64_t kMin = std::numeric_limits<int64_t>::min();
-    constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
     if (lhs == kMin) {
       return rhs > 0 ? kMin : kMax;
     }

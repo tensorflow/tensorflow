@@ -100,6 +100,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
                                      mlir::PatternRewriter& rewriter);
 
+// Rewrites stablehlo all-gather op to a triton implementation.
+mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
+                                     mlir::PatternRewriter& rewriter);
+
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions);

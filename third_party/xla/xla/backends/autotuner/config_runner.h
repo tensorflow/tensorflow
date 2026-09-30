@@ -81,6 +81,7 @@ class ConfigRunner {
     absl::Duration duration = absl::ZeroDuration();
     int scratch_bytes = 0;
     int cluster_index = -1;
+    std::string diff_report_with_first_cluster = "";
 
     std::string ToString(bool verbose = false) const;
     AutotuneResult ToProto() const;
@@ -112,9 +113,10 @@ class ConfigRunner {
                                  bool is_trusted_config, bool allow_new_cluster)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
-  int AssignToOutputCluster(std::vector<OutputCluster>& clusters,
-                            ScopedShapedBuffer& output, bool is_trusted_config,
-                            bool allow_new_cluster)
+  int AssignToOutputCluster(
+      std::vector<OutputCluster>& clusters, ScopedShapedBuffer& output,
+      bool is_trusted_config, bool allow_new_cluster,
+      std::string* diff_report_with_first_cluster = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
   void DemoteNonWinningClusterConfigs(

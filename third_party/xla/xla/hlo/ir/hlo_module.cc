@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/sort_json.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/env.h"
@@ -203,19 +205,21 @@ HloComputation* HloModule::AddComputationInternal(
   }
 
   computation->set_parent(this);
-  topological_sort_.AddNode(computation.get());
-  for (auto& [caller, count] : computation->caller_computations_) {
-    if (caller->parent() == this) {
-      topological_sort_.AddEdge(caller, computation.get());
-    }
-  }
-  for (auto& [callee, count] : computation->callee_computations_) {
-    if (callee->parent() == this) {
-      topological_sort_.AddEdge(computation.get(), callee);
-    }
-  }
+  computation->index_in_module_ = computations_.size();
+  HloComputation* computation_raw_ptr = computation.get();
   computations_.push_back(std::move(computation));
-  return computations_.back().get();
+  topological_sort_.AddNode(computation_raw_ptr);
+  for (auto& [caller, count] : computation_raw_ptr->caller_computations_) {
+    if (caller->parent() == this) {
+      topological_sort_.AddEdge(caller, computation_raw_ptr);
+    }
+  }
+  for (auto& [callee, count] : computation_raw_ptr->callee_computations_) {
+    if (callee->parent() == this) {
+      topological_sort_.AddEdge(computation_raw_ptr, callee);
+    }
+  }
+  return computation_raw_ptr;
 }
 
 HloComputation* HloModule::AddEntryComputation(
@@ -399,6 +403,22 @@ void HloModule::Print(
   if (!frontend_attributes_.map().empty()) {
     AppendCat(printer, ", frontend_attributes=",
               FrontendAttributesToString(frontend_attributes_));
+  }
+  if (options.print_backend_config() && has_backend_config()) {
+    absl::string_view config = raw_backend_config_string();
+    std::string sorted_config;
+    if (options.sort_backend_config()) {
+      sorted_config = SortJson(config).value_or(std::string(config));
+      config = sorted_config;
+    }
+    printer->Append(", backend_config=");
+    if (printer->is_hasher() || LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(absl::CEscape(config));
+      printer->Append("\"");
+    }
   }
   if (!original_value_recovery_table_.empty()) {
     HloPrintOptions new_options = options;
@@ -742,6 +762,10 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
 
   if (!config().device_type().empty()) {
     proto->set_device_type(config().device_type());
+  }
+
+  if (has_backend_config()) {
+    proto->set_backend_config(raw_backend_config_string());
   }
 }
 
@@ -1174,6 +1198,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   ABSL_RETURN_IF_ERROR(
       InlineMetadataPayloadsFromProtoPayloadTable(module.get(), proto));
 
+  if (!proto.backend_config().empty()) {
+    module->set_raw_backend_config_string(proto.backend_config());
+  }
+
   return module;
 }
 
@@ -1358,12 +1386,18 @@ void HloModule::CleanupComputations() {
   if (to_be_deleted_computations_.empty()) {
     return;
   }
+  std::vector<int> old_to_new(computations_.size(), -1);
   computations_.erase(
       std::remove_if(computations_.begin(), computations_.end(),
                      [](const std::unique_ptr<HloComputation>& comp) {
                        return comp == nullptr;
                      }),
       computations_.end());
+  for (size_t i = 0; i < computations_.size(); ++i) {
+    old_to_new[computations_[i]->index_in_module_] = i;
+    computations_[i]->index_in_module_ = i;
+  }
+  topological_sort_.Reindex(old_to_new);
   to_be_deleted_computations_.clear();
 }
 
@@ -1393,13 +1427,18 @@ absl::Status HloModule::ReorderComputationsToPostOrder() {
     comp_map[comp_ptr] = std::move(comp);
   }
 
+  std::vector<int> old_to_new(computations_.size(), -1);
   computations_.clear();
   computations_.reserve(post_order.size());
-  for (HloComputation* comp : post_order) {
+  for (size_t i = 0; i < post_order.size(); ++i) {
+    HloComputation* comp = post_order[i];
     auto it = comp_map.find(comp);
     TF_RET_CHECK(it != comp_map.end()) << "Computation not found in module";
+    old_to_new[comp->index_in_module_] = i;
+    comp->index_in_module_ = i;
     computations_.push_back(std::move(it->second));
   }
+  topological_sort_.Reindex(old_to_new);
 
   TF_RET_CHECK(computations_.size() == comp_map.size())
       << "Lost computations during reordering. Original count: "
@@ -1597,16 +1636,18 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
        ++it) {
     ++num_computations;
+    HloComputation* computation = computations_[*it].get();
     if (execution_threads.empty() ||
-        execution_threads.contains(it->execution_thread())) {
-      post_order.push_back(&*it);
+        execution_threads.contains(computation->execution_thread())) {
+      post_order.push_back(computation);
     }
   }
 
   if (num_computations != computation_count()) {
-    for (HloComputation& computation : topological_sort_) {
-      LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
-                 << computation.parent()->name() << ")";
+    for (int32_t idx : topological_sort_) {
+      HloComputation* computation = computations_[idx].get();
+      LOG(ERROR) << "Reverse postorder: " << computation->name() << " ("
+                 << computation->parent()->name() << ")";
     }
     for (const HloComputation* computation : computations()) {
       LOG(ERROR) << "Computations: " << computation->name() << " ("
@@ -1738,6 +1779,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->set_is_dynamic(is_dynamic());
   module->set_hlo_passes_started(hlo_passes_started());
   module->set_frontend_attributes(frontend_attributes());
+  module->backend_config_ = backend_config_;
   *module->metadata() = metadata();
   // The canonical module id should be the same as the unique id from the
   // module. We don't want to copy the id from the other metadata.
@@ -1788,6 +1830,12 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
     LOG(ERROR) << "Failed to sort module computations for " << name() << "; "
                << status;
   }
+  std::vector<int> old_to_new(module->computations_.size(), -1);
+  for (size_t i = 0; i < module->computations_.size(); ++i) {
+    old_to_new[module->computations_[i]->index_in_module_] = i;
+    module->computations_[i]->index_in_module_ = i;
+  }
+  module->topological_sort_.Reindex(old_to_new);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(
@@ -2105,5 +2153,12 @@ void HloModule::OriginalValueRecoveryTable::BuildAndAddRecoveryComputation(
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
+
+bool HloModule::IsEntryComputationUnboundedDynamic() const {
+  if (computations().begin() == computations().end()) {
+    return false;
+  }
+  return (*computations().begin())->IsEntryInstUnboundedDynamic();
+}
 
 }  // namespace xla

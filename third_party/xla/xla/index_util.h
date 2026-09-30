@@ -42,10 +42,7 @@ class IndexUtil {
   // on the shape and its layout. The first index in the multi_index is
   // dimension 0.
   static int64_t MultidimensionalIndexToLinearIndex(
-      const Shape& shape, absl::Span<const int64_t> multi_index) {
-    return MultidimensionalIndexToLinearIndex(
-        shape, LayoutUtil::MinorToMajor(shape), multi_index);
-  }
+      const Shape& shape, absl::Span<const int64_t> multi_index);
 
   // Converts a multidimensional index (eg {x, y, z}) into a linear index based
   // on the shape and its layout. The first index in the multi_index is
@@ -94,9 +91,10 @@ class IndexUtil {
     // D{L(1)} * ...
 
     // Scale factor holding the growing product of D{L(i)} terms.
+    absl::Span<const int64_t> dims = shape.dimensions();
     for (size_t i = 0; i < multi_index.size(); ++i) {
       DCHECK_GE(multi_index[i], 0);
-      DCHECK_LT(multi_index[i], shape.dimensions(i))
+      DCHECK_LT(multi_index[i], dims[i])
           << "indexing beyond extent in dimension " << i << ":"
           << "\n\tindex: " << absl::StrJoin(multi_index, ",")
           << "\n\tshape: " << ShapeUtil::HumanString(shape);
@@ -107,7 +105,7 @@ class IndexUtil {
     int64_t linear_index = multi_index[minor_to_major[0]];
     int64_t scale = 1;
     for (int i = 1; i < minor_to_major.size(); ++i) {
-      scale *= shape.dimensions(minor_to_major[i - 1]);
+      scale *= dims[minor_to_major[i - 1]];
       linear_index += scale * multi_index[minor_to_major[i]];
     }
     return linear_index;

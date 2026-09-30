@@ -24,11 +24,13 @@ limitations under the License.
 #include <memory>
 #include <new>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 
 #include "absl/base/optimization.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/executor.h"
@@ -351,7 +353,13 @@ class AsyncValue {
   template <typename T>
   static uint16_t CreateTypeInfoAndReturnTypeId() {
     return CreateTypeInfoAndReturnTypeIdImpl(
-        MakeTypeInfo<internal::ConcreteAsyncValue<T>>());
+        TypeName<T>(), MakeTypeInfo<internal::ConcreteAsyncValue<T>>());
+  }
+
+  // Process-stable key for `T`, used to deduplicate type ids across DSOs.
+  template <typename T>
+  static absl::string_view TypeName() {
+    return typeid(T).name();
   }
 
   std::atomic<uint32_t> refcount_{1};
@@ -469,7 +477,8 @@ class AsyncValue {
     };
   }
 
-  static uint16_t CreateTypeInfoAndReturnTypeIdImpl(const TypeInfo& type_info);
+  static uint16_t CreateTypeInfoAndReturnTypeIdImpl(absl::string_view type_name,
+                                                    const TypeInfo& type_info);
 
   template <typename T>
   T& GetConcreteValue() const;

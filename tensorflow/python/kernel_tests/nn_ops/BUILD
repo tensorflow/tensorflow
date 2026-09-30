@@ -436,9 +436,11 @@ py_library(
     srcs = ["depthwise_conv_op_base.py"],
     strict_deps = True,
     deps = [
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
@@ -596,6 +598,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["lrn_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -827,6 +830,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["softmax_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -844,6 +848,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["softplus_op_test.py"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
@@ -907,9 +912,6 @@ cuda_py_strict_test(
         "TF_FORCE_GPU_ALLOW_GROWTH": "true",
         "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
     },
-    tags = [
-        "exclusive-if-local",
-    ],
     deps = [
         ":xent_op_test_base",
         "//tensorflow/python/client:session",

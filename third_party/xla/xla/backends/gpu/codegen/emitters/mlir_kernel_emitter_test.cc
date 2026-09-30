@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -117,20 +117,19 @@ constexpr absl::string_view kModule = R"(
 TEST_F(MlirKernelFusionTest, CreateMlirModule) {
   auto module = ParseAndReturnVerifiedModule(kModule).value();
   DummyCopyEmitter emitter;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      emitter.CreateMLIRModule(
-          mlir_context_,
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          "fusion",
-          /*buffer_assignment=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto mlir_module,
+                       emitter.CreateMLIRModule(
+                           mlir_context_,
+                           *Cast<HloFusionInstruction>(
+                               module->entry_computation()->root_instruction()),
+                           "fusion",
+                           /*buffer_assignment=*/nullptr));
 
   std::string out;
   llvm::raw_string_ostream stream(out);
   stream << *mlir_module;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto filecheck_result, RunFileCheck(out, R"(
+  ASSERT_OK_AND_ASSIGN(auto filecheck_result, RunFileCheck(out, R"(
     // CHECK:      func.func @fusion(
     // CHECK-SAME:     %[[IN:.*]]: tensor<100xf32> {xla.slice_index = 0
     // CHECK-SAME:     %[[OUT:.*]]: tensor<100xf32> {xla.slice_index = 1
@@ -144,8 +143,8 @@ TEST_F(MlirKernelFusionTest, CreateMlirModule) {
 }
 
 TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModule));
   CubinCustomKernelCompiler kernel_compiler(
       [](llvm::Module& llvm_module, const se::DeviceDescription& descr,
          const DebugOptions& opts) { return std::vector<uint8_t>{}; },
@@ -154,9 +153,9 @@ TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
   ObjectPool<std::unique_ptr<mlir::MLIRContext>> mlir_context_pool(
       []() { return CreateMlirContext(); });
   MlirKernelFusion emitter(std::make_unique<DummyCopyEmitter>());
-  TF_ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
-                          mlir_context_pool.GetOrCreate());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                       mlir_context_pool.GetOrCreate());
+  ASSERT_OK_AND_ASSIGN(
       LlvmKernelSource source,
       emitter
           .CreateLLVMModule(
@@ -173,7 +172,7 @@ TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
   llvm::raw_string_ostream stream(out);
   stream << *llvm_module.getModuleUnlocked();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto filecheck_result,
       RunFileCheck(
           out, absl::StrReplaceAll(

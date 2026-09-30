@@ -280,8 +280,10 @@ class Tests(test.TestCase):
     with ops.Graph().as_default():
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
-      with self.assertRaisesRegex(TypeError,
-                                  "Expected list for 'values' argument"):
+      with self.assertRaisesRegex(
+          TypeError,
+          r"Argument `values` must be a sequence of Tensor objects",
+      ):
         _ = array_ops_stack.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
@@ -361,6 +363,7 @@ class Tests(test.TestCase):
     ctx = context.context()
     ctx.ensure_initialized()
 
+    full_exception_text = ""
     try:
       math_ops.mat_mul([[1., 1.] * 2], [[1., 1.] * 3])
     except errors.InvalidArgumentError:

@@ -453,6 +453,16 @@ class GemmDimensionAdapter {
       result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
     }
 
+    // For 2D tensors with an implicit batch dimension, set the batch stride to
+    // the total packed size of the non-batch dimensions as required by cuDNN
+    // for operations like block-scale dequantization.
+    if (dim_indices[kBatchDimensionIndex] == -1 &&
+        result.sizes[kBatchDimensionIndex] == 1) {
+      result.strides[kBatchDimensionIndex] =
+          std::max(result.sizes[1] * result.strides[1],
+                   result.sizes[2] * result.strides[2]);
+    }
+
     if (!slicing_is_present) {
       result.slices.reset();
     }
@@ -537,18 +547,21 @@ class ConvDimensionAdapter {
              });
     };
 
-    // Pattern 1: hlo -> broadcast
-    if (all_users_are_broadcast(hlo)) {
-      return hlo->users()[0];
+    // Trace through single-user chains that preserve the 1D dimensions
+    // (e.g. hlo -> convert -> ... -> elementwise -> ... -> broadcast).
+    const HloInstruction* current = hlo;
+    while (current->user_count() == 1) {
+      const HloInstruction* user = current->users()[0];
+      if (user->IsElementwise() &&
+          ShapeUtil::SameDimensions(user->shape(), hlo->shape())) {
+        current = user;
+        continue;
+      }
+      break;
     }
 
-    // Pattern 2: hlo -> convert -> broadcast
-    if (hlo->user_count() == 1 &&
-        hlo->users()[0]->opcode() == HloOpcode::kConvert) {
-      const HloInstruction* convert = hlo->users()[0];
-      if (all_users_are_broadcast(convert)) {
-        return convert->users()[0];
-      }
+    if (all_users_are_broadcast(current)) {
+      return current->users()[0];
     }
 
     return nullptr;

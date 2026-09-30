@@ -16,13 +16,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
 
 // CPU-specific fields for SymbolRepositories.
-struct CpuBackendSpecificData : public BackendSpecificData {};
+struct CpuBackendSpecificData : public BackendSpecificData {
+  std::optional<TargetMachineOptions> target_machine_options;
+};
 
 }  // namespace xla::cpu
 

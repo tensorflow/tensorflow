@@ -55,11 +55,26 @@ class MockCommandBuffer : public CommandBuffer {
                absl::Span<const Command* const> dependencies,
                StreamPriority priority),
               (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateLaunch,
+              (const ThreadDim& threads, const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
+               const NativeKernel& kernel,
+               const KernelArgsPackedArrayBase& args,
+               absl::Span<const Command* const> dependencies,
+               StreamPriority priority),
+              (override));
   MOCK_METHOD(absl::Status, UpdateLaunch,
               (const Command* command, const ThreadDim& threads,
                const BlockDim& blocks,
                const std::optional<ClusterDim>& cluster_dims,
                const Kernel& kernel, const KernelArgs& args),
+              (override));
+  MOCK_METHOD(absl::Status, UpdateLaunch,
+              (const Command* command, const ThreadDim& threads,
+               const BlockDim& blocks,
+               const std::optional<ClusterDim>& cluster_dims,
+               const NativeKernel& kernel,
+               const KernelArgsPackedArrayBase& args),
               (override));
   MOCK_METHOD(absl::StatusOr<const Command*>, CreateChildCommand,
               (const CommandBuffer& nested,
@@ -143,6 +158,10 @@ class MockCommandBuffer : public CommandBuffer {
   MOCK_METHOD(absl::Status, UpdateWhile,
               (const Command* command, DeviceAddress<bool> pred,
                UpdateCommands update_cond, UpdateCommands update_body),
+              (override));
+  MOCK_METHOD(absl::StatusOr<const Command*>, CreateHost,
+              (absl::AnyInvocable<void()> callback,
+               absl::Span<const Command* const> dependencies),
               (override));
   MOCK_METHOD(absl::Status, SetPriority, (StreamPriority priority), (override));
   MOCK_METHOD(absl::Status, Submit, (Stream * stream), (override));

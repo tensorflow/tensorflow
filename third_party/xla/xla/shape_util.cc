@@ -56,10 +56,8 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1031,18 +1029,24 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
   DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
-  int64_t allocated_element_count;
-
   CHECK(shape.IsArray()) << shape.ToString();
-  allocated_element_count = ElementsIn(shape);
+  auto [element_count, count_overflow] =
+      ExtentProduct</*kBoundedDynamicOk=*/false>(shape);
+  CHECK(!count_overflow);
 
   if (shape.has_layout() && shape.layout().element_size_in_bits() != 0) {
-    const int64_t num_bits =
-        allocated_element_count * shape.layout().element_size_in_bits();
+    int64_t element_size_in_bits = shape.layout().element_size_in_bits();
+    auto [num_bits, overflow] =
+        OverflowSafeMultiply(element_count, element_size_in_bits);
+    CHECK(!overflow);
     return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
   }
-  return allocated_element_count *
-         ByteSizeOfPrimitiveType(shape.element_type());
+
+  int64_t byte_width = ByteSizeOfPrimitiveType(shape.element_type());
+  auto [total_bytes, overflow] =
+      OverflowSafeMultiply(element_count, byte_width);
+  CHECK(!overflow);
+  return total_bytes;
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElementsRecursive(
@@ -1062,12 +1066,12 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSize(
-    const Shape& shape) {
-  return SerializedSizeWithProto(shape, shape.ToProto());
+    const Shape& shape, bool pack_pred) {
+  return SerializedSizeWithProto(shape, shape.ToProto(), pack_pred);
 }
 
 /* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSizeWithProto(
-    const Shape& shape, const ShapeProto& proto) {
+    const Shape& shape, const ShapeProto& proto, bool pack_pred) {
   // The size computed here must be kept in sync with the serialized format as
   // described in the comments for LiteralBase::SerializeWithShapeProto in
   // literal.h.
@@ -1086,7 +1090,15 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
         if (subshape.is_dynamic()) {
           size += sizeof(DynamicSizeType) * subshape.dimensions().size();
         }
-        if (primitive_util::IsSubByteNonPredType(subshape.element_type())) {
+        if (subshape.element_type() == PRED) {
+          if (pack_pred) {
+            // PRED is packed 8 elements per byte.
+            size += CeilOfRatio<int64_t>(ElementsIn(subshape), 8);
+          } else {
+            size += ByteSizeOfElements(subshape);
+          }
+        } else if (primitive_util::IsSubByteNonPredType(
+                       subshape.element_type())) {
           // 4-bit types are packed 2 elements per byte.
           size += CeilOfRatio<int64_t>(
               ElementsIn(subshape),
@@ -2325,6 +2337,9 @@ ShapeUtil::ByteStrides(const Shape& shape) {
   CHECK(shape.IsArray());
   if (shape.layout().tiles().empty()) {
     return ByteSizeOfElements(shape);
+  }
+  if (shape.is_unbounded_dynamic()) {
+    return Shape::kUnboundedSize;
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();

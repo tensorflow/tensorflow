@@ -25,7 +25,6 @@ namespace ynnpack {
 
 bool IsRuntimeBmm(const TfLiteRegistration* registration,
                   const TfLiteNode* node);
-bool IsRuntimeBmm(TfLiteContext* context, int node_index);
 
 TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
                                     const TfLiteNode* node,

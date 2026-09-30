@@ -292,12 +292,8 @@ absl::Status NcclCollectives::GroupLaunch(
 }
 
 GxlCollectives* NcclCollectives::gxl_collectives() {
-  absl::call_once(gxl_init_flag_, [this] {
-    if (xla::GetDebugOptionsFromFlags()
-            .xla_gpu_enable_gxl_ragged_all_to_all()) {
-      gxl_collectives_ = CreateGxlCollectives();
-    }
-  });
+  absl::call_once(gxl_init_flag_,
+                  [this] { gxl_collectives_ = CreateGxlCollectives(); });
   return gxl_collectives_.get();
 }
 
@@ -473,9 +469,13 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
   ABSL_ASSIGN_OR_RETURN(auto comms, JoinFutures(absl::MakeSpan(futures)).Await());
 
-  if (auto* gxl = gxl_collectives()) {
-    ABSL_RETURN_IF_ERROR(gxl->MaybeAttachGxlCommunicators(absl::MakeSpan(comms),
-                                                     ranks, clique_key));
+  if (gpu_config.use_gxl) {
+    std::vector<Communicator*> comm_ptrs;
+    comm_ptrs.reserve(comms.size());
+    for (const auto& comm : comms) {
+      comm_ptrs.push_back(comm.get());
+    }
+    ABSL_RETURN_IF_ERROR(MaybeAttachGxlCommunicators(clique_key, ranks, comm_ptrs));
   }
 
   return comms;
@@ -567,9 +567,11 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   ABSL_ASSIGN_OR_RETURN(auto split_comms,
                    JoinFutures(absl::MakeSpan(futures)).Await());
 
-  if (auto* gxl = gxl_collectives()) {
-    ABSL_RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
-        comms, absl::MakeSpan(split_comms), ranks));
+  if (gpu_config.use_gxl) {
+    if (auto* gxl = gxl_collectives()) {
+      ABSL_RETURN_IF_ERROR(gxl->MaybeAttachSplitGxlCommunicators(
+          comms, absl::MakeSpan(split_comms), ranks));
+    }
   }
 
   return split_comms;
@@ -588,6 +590,15 @@ NcclCollectives::InitializeTopology(const Topology& topology) {
   }
 
   return nullptr;
+}
+
+absl::Status NcclCollectives::MaybeAttachGxlCommunicators(
+    const CliqueKey& clique_key, absl::Span<const DeviceRank> ranks,
+    absl::Span<Communicator* const> comms) {
+  if (auto* gxl = gxl_collectives()) {
+    return gxl->MaybeAttachGxlCommunicators(comms, ranks, clique_key);
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

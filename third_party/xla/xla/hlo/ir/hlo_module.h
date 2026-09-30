@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -723,9 +724,8 @@ class HloModule {
     CHECK(spmd_parameters_shardings_.has_value());
     return *spmd_parameters_shardings_;
   }
-  void set_spmd_parameters_shardings(
-      const std::vector<HloSharding>& shardings) {
-    spmd_parameters_shardings_ = shardings;
+  void set_spmd_parameters_shardings(absl::Span<const HloSharding> shardings) {
+    spmd_parameters_shardings_.emplace(shardings.begin(), shardings.end());
   }
 
   // Checks if this config has the entry computation output's HLO sharding for
@@ -855,8 +855,8 @@ class HloModule {
   }
 
   void set_profile_info(
-      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
-    profile_info_list_ = profile_info;
+      absl::Span<const HloModuleProto::ProfileInfo> profile_info) {
+    profile_info_list_.assign(profile_info.begin(), profile_info.end());
   }
 
   const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
@@ -930,6 +930,44 @@ class HloModule {
   // instructions' metadata to refer to the canonical `StackFrameId`s.
   void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
 
+  // Backend config accessors for HloModule.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
+
  private:
   friend class HloComputation;
 
@@ -947,6 +985,9 @@ class HloModule {
   // Sharabled copy-on-write instance.
   // If you want to modify it, use mutable_config().
   std::shared_ptr<const HloModuleConfig> config_;
+
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
 
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -1079,11 +1120,8 @@ class HloModule {
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
   // module.
-  // TODO(phawkins): unique_id_ may not be as dense as we might like for this
-  // data structure.
-  TopologicalSort<HloComputation, int64_t,
-                  &HloComputation::topological_sort_node_,
-                  &HloComputation::unique_id_, HloComputation::NeighborIterator,
+  TopologicalSort<HloComputation, int32_t, &HloComputation::index_in_module_,
+                  HloComputation::NeighborIterator,
                   &HloComputation::callers_begin, &HloComputation::callers_end,
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
@@ -1235,6 +1273,8 @@ class HloModule {
   debug_attributes() const {
     return debug_attributes_;
   }
+
+  bool IsEntryComputationUnboundedDynamic() const;
 
  private:
   absl::flat_hash_map<OriginalArray, std::vector<DebugAttributes>>

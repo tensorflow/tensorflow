@@ -278,6 +278,32 @@ class HloLiveRange {
   absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
+// Returns the latest schedule time at which `view` (a value colored
+// `view_color`, e.g. memory_space_assignment::Options::dus_view_color or
+// BufferAssigner::Options::dus_view_color) still has its underlying storage
+// read through it: the max schedule time over the transitive closure of the
+// view's readers, following users that are themselves view colored. A view
+// is an address into another buffer with no storage of its own, so that
+// buffer must stay reserved until this time.
+//
+// REQUIRES: view->shape().IsTuple() == false.
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule);
+
+// Extends, in `hlo_live_range`, the live range end of every value used as
+// the base (operand 0) of a view to the view's last transitive reader (see
+// ViewExtendedTransitiveUseTime). The view is an address into the base's
+// buffer with no storage of its own, so every consumer of liveness that can
+// recycle or overlap storage (allocation reuse, heap simulation) must see
+// the base held live until its last reader through the view. Values are
+// visited in `dataflow_analysis.values()` order (the analysis `hlo_live_range`
+// was built from).
+void ExtendViewBaseLiveRanges(HloLiveRange* hlo_live_range,
+                              const HloDataflowAnalysis& dataflow_analysis,
+                              int64_t view_color);
+
 }  // namespace xla
 
 #endif  // XLA_HLO_UTILS_HLO_LIVE_RANGE_H_

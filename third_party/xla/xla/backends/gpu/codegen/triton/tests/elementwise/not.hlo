@@ -11,7 +11,7 @@ fusion {
 
 // CHECK:  xtile.entry_func
 // CHECK-SAME: (%[[INPUT:[a-zA-Z0-9]*]]: memref<100xi32>,
-// CHECK-SAME:  %[[OUTPUT:[a-zA-Z0-9]*]]: memref<100xi32>, %[[PID:.*]]: index)
+// CHECK-SAME:  %[[OUTPUT:[a-zA-Z0-9]*]]: memref<100xi32>, %[[PID:.*]]: index{{( \{xla.range = \[0 : index, 0 : index\]\})?}})
 // CHECK-SAME:  attributes {num_opaque_args = 0 : i32} {
 
 // CHECK-DAG:  %[[Cm1:.*]] = arith.constant dense<-1> : tensor<128xi32>

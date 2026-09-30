@@ -785,9 +785,9 @@ absl::StatusOr<Shape> ShardingParamShardingSpec::GetShardShape(
     const Shape& shape) const {
   if (shape.dims().size() != sharding_param_.dim_shards().size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "Numbers of dimensions don't match. From Shape %d vs from "
-        "ShardingParam %d",
-        shape.dims().size(), sharding_param_.dim_shards().size()));
+        "Numbers of dimensions don't match. From Shape %v vs from "
+        "ShardingParam %s",
+        shape, sharding_param_.DebugString()));
   }
   std::vector<int64_t> dims;
   dims.reserve(shape.dims().size());

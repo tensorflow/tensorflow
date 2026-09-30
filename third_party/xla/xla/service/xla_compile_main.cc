@@ -80,8 +80,9 @@ int main(int argc, char* argv[]) {
                 " GPU. Only used if autotuning is enabled in XLA_FLAGS."),
       tsl::Flag("symbol_repo", &options.repo_options.symbol_repo,
                 "Which SymbolRepository to look up --symbol_reference in. If "
-                "the repository contains a GpuTargetConfig, "
-                "--gpu_target_config will take precedence if it is also set."),
+                "the repository contains a target config (GpuTargetConfig or "
+                "TargetMachineOptionsProto), it will be used unless overridden "
+                "by CLI flags."),
       tsl::Flag("symbol_reference", &options.repo_options.symbol_id,
                 "Symbol ID to look up in a SymbolRepository. Overrides "
                 "--module_file."),
@@ -103,6 +104,11 @@ int main(int argc, char* argv[]) {
       tsl::Flag("result_output_file", &options.result_output_file,
                 "File to write a serialized xla.CompilationResult proto to. "
                 "Required if --output_file is not set."),
+      tsl::Flag("cpu_target_config",
+                &options.cpu_options.cpu_target_config_path,
+                "The path to a text-format TargetMachineOptionsProto. If not "
+                "provided, host target machine options or "
+                "--target_cpu/--target_features/--target_triple will be used."),
       tsl::Flag("target_cpu", &options.cpu_options.target_cpu,
                 "The target cpu."),
       tsl::Flag("target_features", &options.cpu_options.target_features,

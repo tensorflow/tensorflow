@@ -19,12 +19,15 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -130,6 +133,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
     return self._testBinaryOp(
         np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
 
+  def testVDotComplexConjugation(self):
+    a = np_array_ops.array([1 + 2j, 3 + 4j], dtype=np.complex64)
+    b = np_array_ops.array([5 + 6j, 7 + 8j], dtype=np.complex64)
+    self.match(np_math_ops.vdot(a, b), np.vdot(a, b))
+
   def testLcm(self):
     a = np_array_ops.array(6, dtype=np.int8)
     b = np_array_ops.array(22, dtype=np.int8)
@@ -207,6 +215,19 @@ class MathTest(test.TestCase, parameterized.TestCase):
     expected = np.hypot(x, y)
     np.testing.assert_equal(actual.tolist(), expected.tolist())
 
+  def testLogaddexpEqualInputsGradient(self):
+    # Both partial derivatives of logaddexp(x, x) are 0.5. `maximum` used to
+    # send the whole gradient to x1 there, giving 1.0 and 0.0.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x1 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      x2 = constant_op.constant([0.0, 1.0, -2.0, 100.0], dtype=dtype)
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x1)
+        tape.watch(x2)
+        y = math_ops.reduce_sum(np_math_ops.logaddexp(x1, x2))
+      for grad in tape.gradient(y, (x1, x2)):
+        self.assertAllClose(grad, [0.5, 0.5, 0.5, 0.5])
+
   def testLogaddexp(self):
     self._testBinaryOp(np_math_ops.logaddexp, np.logaddexp, 'logaddexp')
     self._testBinaryOp(np_math_ops.logaddexp2, np.logaddexp2, 'logaddexp2')
@@ -252,6 +273,18 @@ class MathTest(test.TestCase, parameterized.TestCase):
     a = np.zeros(100)
     np.testing.assert_equal(np_math_ops.argsort(a, kind='stable'), r)
 
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array([3, 1, 2]), axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array([[3, 1], [6, 5]]), axis=-3)
+
+    # NumPy treats 0-d inputs as 1-D of size 1, so axes -1 and 0 are
+    # valid on scalars, while other axes are out of bounds.
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5)))
+    self.assertAllEqual([0], np_math_ops.argsort(np_array_ops.array(5), axis=0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argsort(np_array_ops.array(5), axis=1)
+
     def testArgsortRaisesErrorForComplexDtypes(self):
       """Test that argsort raises TypeError for complex64 and complex128."""
       complex64_array = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex64)
@@ -265,6 +298,43 @@ class MathTest(test.TestCase, parameterized.TestCase):
           TypeError, 'argsort does not support complex64/complex128 dtypes'
       ):
         np_math_ops.argsort(complex128_array)
+
+  def testSort(self):
+    a = np_array_ops.array([[3, 1, 2], [6, 5, 4]])
+    self.match(np_math_ops.sort(a), np.sort(a))
+    self.match(np_math_ops.sort(a, axis=0), np.sort(a, axis=0))
+    self.match(np_math_ops.sort(a, axis=-1), np.sort(a, axis=-1))
+    # NumPy raises for 0-d inputs with a concrete axis (unlike argsort,
+    # which treats scalars as 1-D of size 1).
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(np_array_ops.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.sort(a, axis=-3)
+
+  def testConcatenate(self):
+    a = np_array_ops.array([[1, 2], [3, 4]])
+    b = np_array_ops.array([[5, 6], [7, 8]])
+    self.match(np_math_ops.concatenate([a, b]), np.concatenate([a, b]))
+    self.match(
+        np_math_ops.concatenate([a, b], axis=1), np.concatenate([a, b], axis=1)
+    )
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.concatenate([a, b], axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.concatenate([a, b], axis=-3)
+
+  def testCountNonzero(self):
+    a = np_array_ops.array([[0, 1, 2], [3, 0, 0]])
+    self.assertAllEqual(np_math_ops.count_nonzero(a), np.count_nonzero(a))
+    self.assertAllEqual(
+        np_math_ops.count_nonzero(a, axis=0), np.count_nonzero(a, axis=0)
+    )
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.count_nonzero(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.count_nonzero(a, axis=-3)
 
   def testArgMaxArgMin(self):
     data = [
@@ -293,6 +363,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
             np_math_ops.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
         self.match(
             np_math_ops.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
+
+  def testArgMaxArgMinOutOfBoundsAxis(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmax(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmax(a, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmin(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.argmin(a, axis=-3)
 
   @parameterized.parameters([False, True])
   def testIsCloseEqualNan(self, equal_nan):
@@ -379,6 +460,36 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np.isclose(a, b, rtol=1e-6, atol=0.5),
     )
 
+  def testIsinf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isinf(x), np.isinf(x))
+    self.match(np_math_ops.isinf(np.array([1, 2])), np.isinf(np.array([1, 2])))
+    # NumPy supports complex inputs: True if either part is infinite.
+    c = np.array(
+        [1 + 2j, complex(np.inf, 0), complex(0, np.inf), complex(np.nan, 0)]
+    )
+    self.match(np_math_ops.isinf(c), np.isinf(c))
+
+  def testIsneginf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isneginf(x), np.isneginf(x))
+    self.match(
+        np_math_ops.isneginf(np.array([1, 2])), np.isneginf(np.array([1, 2]))
+    )
+    # NumPy rejects complex inputs as ambiguous.
+    with self.assertRaisesRegex(TypeError, 'ambiguous'):
+      np_math_ops.isneginf(np.array([1 + 2j]))
+
+  def testIsposinf(self):
+    x = np.array([1.0, np.inf, -np.inf, np.nan], np.float64)
+    self.match(np_math_ops.isposinf(x), np.isposinf(x))
+    self.match(
+        np_math_ops.isposinf(np.array([1, 2])), np.isposinf(np.array([1, 2]))
+    )
+    # NumPy rejects complex inputs as ambiguous.
+    with self.assertRaisesRegex(TypeError, 'ambiguous'):
+      np_math_ops.isposinf(np.array([1 + 2j]))
+
   @parameterized.named_parameters(
       ('isclose_int32', np_math_ops.isclose, np.int32),
       ('allclose_int32', np_math_ops.allclose, np.int32),
@@ -432,7 +543,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
             tensor.TensorSpec([None, 2], np.float32),
         ],
     )
-    self.match(compiled_cross_2(a2, b2), np.cross(a2, b2), check_dtype=False)
+    try:
+      expected_2 = np.cross(a2, b2)
+    except ValueError:
+      expected_2 = a2[..., 0] * b2[..., 1] - a2[..., 1] * b2[..., 0]
+    self.match(compiled_cross_2(a2, b2), expected_2, check_dtype=False)
 
   def testCrossDynamicUnknownBatchDim(self):
     # A fully dynamic shape still works outside of jit compilation.
@@ -465,6 +580,18 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([]))
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
+
+  def testAverageZeroWeights(self):
+    # NumPy raises ZeroDivisionError when weights sum to zero.
+    x = np_array_ops.array([1, 2, 3])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(x, weights=np_array_ops.array([0, 0, 0]))
+
+    x2 = np_array_ops.ones([2, 2])
+    with self.assertRaises(errors.InvalidArgumentError):
+      np_math_ops.average(
+          x2, axis=0, weights=np_array_ops.array([[0, 1], [0, 1]])
+      )
 
   def testClip(self):
 
@@ -501,6 +628,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test([0, 20, -5, 4], [-5, 0, -5, 0], [0, 5, 0, 5], check_dtype=False)
     run_test([[1, 2, 3], [4, 5, 6]], [2, 0, 2], 5, check_dtype=False)
     run_test([[1, 2, 3], [4, 5, 6]], 0, [5, 3, 1], check_dtype=False)
+
+  def testClipBothBoundsNone(self):
+    # NumPy (>= 2.0) returns the input unchanged when both bounds are None.
+    # Compare against a static expected value rather than calling
+    # np.clip(..., None, None), which raises on NumPy < 2.0.
+    a = np_array_ops.array([1, -2, 3])
+    self.match(
+        np_math_ops.clip(a, None, None), np.array([1, -2, 3]), check_dtype=False
+    )
 
   def testPtp(self):
 
@@ -669,6 +805,37 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       a2.flatten('invalid')
 
+  def testDiff(self):
+    a = np_array_ops.array([[1, 2, 3], [4, 6, 8]])
+    self.match(np_math_ops.diff(a), np.diff(a))
+    self.match(np_math_ops.diff(a, axis=0), np.diff(a, axis=0))
+    self.match(np_math_ops.diff(a, axis=-1), np.diff(a, axis=-1))
+    self.match(np_math_ops.diff(a, n=2, axis=1), np.diff(a, n=2, axis=1))
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32)),
+        np.diff(np.array([1, 3, 6], dtype=np.int32)),
+    )
+    self.match(
+        np_math_ops.diff(np_array_ops.array([True, False, True])),
+        np.diff(np.array([True, False, True])),
+    )
+    # Dtype and value parity for float inputs and n=0.
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1.5, 2.5, 4.0], np.float32)),
+        np.diff(np.array([1.5, 2.5, 4.0], dtype=np.float32)),
+    )
+    self.match(
+        np_math_ops.diff(np_array_ops.array([1, 3, 6], dtype=np.int32), n=0),
+        np.diff(np.array([1, 3, 6], dtype=np.int32), n=0),
+    )
+    # NumPy raises ValueError for 0-d inputs too.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(np_array_ops.array(5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(a, axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.diff(a, axis=-3)
+
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)
     x2 = ops.convert_to_tensor(2147483647)
@@ -690,6 +857,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(np_math_ops.signbit([-3, 3]), [True, False])
     negative_zero = ops.convert_to_tensor([-0.0], dtype=dtypes.bfloat16)
     self.assertAllEqual(np_math_ops.signbit(negative_zero), [True])
+
+  def testSinc(self):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = constant_op.constant([0.0, -0.0, 0.5, 1.0, -1.5], dtype=dtype)
+      self.assertAllClose(np_math_ops.sinc(x), np.sinc(x.numpy()))
+
+  def testSincGradientAtZero(self):
+    # `sinc(0)` is 1 and its derivative there is 0. The unselected
+    # `sin(pi_x) / pi_x` branch evaluates to 0/0, which used to turn the
+    # gradient at zero into NaN through `where`.
+    for dtype in (dtypes.float32, dtypes.float64):
+      x_np = np.array([0.0, -0.0, 0.5, 1.0, -1.5])
+      x = constant_op.constant(x_np, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_sum(np_math_ops.sinc(x))
+      pi_x = np.pi * x_np
+      expected = np.where(
+          x_np == 0,
+          0.0,
+          (pi_x * np.cos(pi_x) - np.sin(pi_x)) / (np.pi * x_np * x_np),
+      ).astype(dtype.as_numpy_dtype)
+      self.assertAllClose(tape.gradient(y, x), expected)
 
   def testConcatenateAxisNone(self):
     a = np_array_ops.array([1, 2])

@@ -101,6 +101,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "llvm_util_test",
+    srcs = ["llvm_util_test.cc"],
+    deps = [
+        ":llvm_util",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AsmParser",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 cc_library(
     name = "llvm_type_conversion_util",
     hdrs = ["llvm_type_conversion_util.h"],
@@ -355,7 +367,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",

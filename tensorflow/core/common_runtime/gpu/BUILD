@@ -327,7 +327,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "gpu_bfc_allocator_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "gpu_bfc_allocator_test.cc",
     ],
@@ -380,9 +380,10 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/synchronization",
-        "@xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@xla//xla/tsl/framework:device_id",
-    ],
+    ] + if_cuda([
+        "@xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -443,8 +444,9 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/synchronization",
+    ] + if_cuda([
         "@xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-    ],
+    ]),
 )
 
 tf_cuda_cc_test(

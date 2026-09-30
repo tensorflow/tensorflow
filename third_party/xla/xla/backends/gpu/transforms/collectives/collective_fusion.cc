@@ -111,6 +111,10 @@ std::vector<HloInstruction*> GetFusionCandidates(
 }
 
 bool ShouldFlatten(const HloInstruction* instr) {
+  if (HloPredicateIsNotOp<HloOpcode::kAllReduce, HloOpcode::kAllReduceStart>(
+          instr)) {
+    return false;
+  }
   const int64_t size_bytes =
       ShapeUtil::ElementsIn(instr->shape()) *
       primitive_util::ByteWidth(instr->shape().element_type());

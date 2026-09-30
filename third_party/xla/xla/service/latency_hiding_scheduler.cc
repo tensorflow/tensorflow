@@ -46,6 +46,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -267,8 +270,8 @@ GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
     // Scheduling an async-start op will decrease the number of resources in
     // use.
     if (sched_state.async_tracker->IsSupportedAsyncStart(*instr)) {
-      CHECK_EQ(instr->users().size(), 1);
-      auto* async_done = *instr->users().begin();
+      const HloInstruction* async_done = FindDone(instr);
+      CHECK_NE(async_done, nullptr);
       CHECK(sched_state.async_tracker->IsSupportedAsyncDone(*async_done));
       auto num_resources_needed_per_instr =
           sched_state.async_tracker->GetNumResourcesPerInstruction(*async_done);
@@ -298,30 +301,79 @@ GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
   return max_resources_needed;
 }
 
+struct HbmUsageEstimate {
+  // Peak heap size of the simulated allocation, including fragmentation.
+  int64_t heap_size = 0;
+  // heap_size minus the heap size of an ideal, fragmentation-free allocation.
+  int64_t fragmentation_size = 0;
+};
+
+// Runs a whole-module HeapSimulator on the current schedule. Only
+// default-memory-space arrays are counted.
+//
+// If `fragmentation_only`, this is the legacy fragmentation estimate: all
+// values are counted with their unpadded ShapeUtil::ByteSizeOf size and spatial
+// packing; `shape_size_bytes` is ignored.
+//
+// Otherwise, this estimates the non-parameter memory, which is what memory
+// limits typically apply to: HloBuffers containing an entry computation
+// parameter get size 0 (HeapSimulator requires every value it allocates to be
+// assigned, so they are zero-sized instead of being filtered out), sizes come
+// from `shape_size_bytes`, and fast-merge packing is used, as in TPU buffer
+// assignment.
+absl::StatusOr<HbmUsageEstimate> EstimateHbmUsage(
+    const HloModule& module, const HloAliasAnalysis& alias_analysis,
+    const AliasInfo* alias_info, bool fragmentation_only,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes = nullptr) {
+  using Heap = GlobalDecreasingSizeBestFitHeap<HloValue>;
+  absl::flat_hash_set<BufferValue::Id> excluded_value_ids;
+  if (!fragmentation_only) {
+    CHECK(shape_size_bytes != nullptr);
+    const HloComputation* entry = module.entry_computation();
+    for (const HloBuffer& buffer : alias_analysis.buffers()) {
+      if (absl::c_any_of(buffer.values(), [&](const HloValue* value) {
+            const HloInstruction* def = value->defining_instruction();
+            return def->opcode() == HloOpcode::kParameter &&
+                   def->parent() == entry;
+          })) {
+        for (const HloValue* value : buffer.values()) {
+          excluded_value_ids.insert(value->id());
+        }
+      }
+    }
+  }
+  BufferValue::SizeFunction size_fn =
+      [&](const BufferValue& buffer) -> int64_t {
+    if (excluded_value_ids.contains(buffer.id())) {
+      return 0;
+    }
+    const Shape& shape = buffer.shape();
+    if (!shape.IsArray() || !shape.has_layout() ||
+        shape.layout().memory_space() != Layout::kDefaultMemorySpace) {
+      return 0;
+    }
+    return fragmentation_only ? ShapeUtil::ByteSizeOf(shape)
+                              : shape_size_bytes(shape);
+  };
+  ABSL_ASSIGN_OR_RETURN(
+      HeapSimulator::Result<HloValue> result,
+      HeapSimulator::Run(
+          std::make_unique<Heap>(/*alignment=*/1, fragmentation_only
+                                                      ? Heap::kSpatial
+                                                      : Heap::kFastMerge),
+          module, module.schedule(), alias_analysis, alias_info, &size_fn));
+  return HbmUsageEstimate{result.heap_size, result.fragmentation_size};
+}
+
 int64_t EstimateFragmentationSize(HloModule* module,
                                   const HloAliasAnalysis& alias_analysis,
                                   const AliasInfo* alias_info) {
   // Run heap simulator on the whole module to estimate the fragmentation size.
-  auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
-      /*alignment=*/1);
-  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
-    const Shape& shape = buffer.shape();
-    if (!shape.IsArray()) {
-      return 0;
-    }
-    if (!shape.has_layout()) {
-      return 0;
-    }
-    if (shape.layout().memory_space() != Layout::kDefaultMemorySpace) {
-      return 0;
-    }
-    return ShapeUtil::ByteSizeOf(shape);
-  };
-  auto result =
-      HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
-                         alias_analysis, alias_info, &size_fn);
-  CHECK_OK(result.status());
-  int64_t fragmentation_size = result.value().fragmentation_size;
+  absl::StatusOr<HbmUsageEstimate> estimate =
+      EstimateHbmUsage(*module, alias_analysis, alias_info,
+                       /*fragmentation_only=*/true);
+  CHECK_OK(estimate.status());
+  int64_t fragmentation_size = estimate->fragmentation_size;
   VLOG(3) << module->name() << ": Heap simulator estimated fragmentation size: "
           << fragmentation_size;
   return fragmentation_size > 0 ? fragmentation_size : 0;
@@ -355,6 +407,73 @@ CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
+const HloInstruction* FindStart(const HloInstruction* done) {
+  if (done == nullptr) {
+    return nullptr;
+  }
+  if (done->IsAsyncDone()) {
+    const HloInstruction* start =
+        hlo_instruction_utils::async::FindAsyncStart(done);
+    if (start != nullptr && start->parent() != done->parent()) {
+      return done->operand(0);
+    }
+    return start;
+  }
+  switch (done->opcode()) {
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecvDone: {
+      return done->operand(0);
+    }
+    default: {
+      return nullptr;
+    }
+  }
+}
+
+HloInstruction* FindStart(HloInstruction* done) {
+  return const_cast<HloInstruction*>(
+      FindStart(const_cast<const HloInstruction*>(done)));
+}
+
+const HloInstruction* FindDone(const HloInstruction* start) {
+  if (start == nullptr) {
+    return nullptr;
+  }
+  if (start->IsAsyncStart()) {
+    return hlo_instruction_utils::async::FindAsyncDone(start);
+  }
+  HloOpcode done_opcode;
+  switch (start->opcode()) {
+    case HloOpcode::kCopyStart: {
+      done_opcode = HloOpcode::kCopyDone;
+      break;
+    }
+    case HloOpcode::kSend: {
+      done_opcode = HloOpcode::kSendDone;
+      break;
+    }
+    case HloOpcode::kRecv: {
+      done_opcode = HloOpcode::kRecvDone;
+      break;
+    }
+    default: {
+      return nullptr;
+    }
+  }
+  for (const HloInstruction* user : start->users()) {
+    if (user->opcode() == done_opcode) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+HloInstruction* FindDone(HloInstruction* start) {
+  return const_cast<HloInstruction*>(
+      FindDone(const_cast<const HloInstruction*>(start)));
+}
+
 bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
                                    const HloGraphNode& target) const {
   CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
@@ -366,10 +485,10 @@ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
 
 bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
                                  const HloGraphNode& target) const {
-  return (from.GetInstr().opcode() == HloOpcode::kSend &&
-          target.GetInstr().opcode() == HloOpcode::kSendDone) ||
-         (from.GetInstr().opcode() == HloOpcode::kRecv &&
-          target.GetInstr().opcode() == HloOpcode::kRecvDone);
+  return (from.GetOpcode() == HloOpcode::kSend &&
+          target.GetOpcode() == HloOpcode::kSendDone) ||
+         (from.GetOpcode() == HloOpcode::kRecv &&
+          target.GetOpcode() == HloOpcode::kRecvDone);
 }
 
 std::optional<LatencyEstimator::TimeCost>
@@ -1609,6 +1728,31 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
   const auto& sched_state = sched_state_;
   HloGraphNode* an = a.node;
   HloGraphNode* bn = b.node;
+
+  // Update the resource_constrained of the candidate before any
+  // target specific rule is applied so rules can access the
+  // up-to-date value.
+  UpdateCandidateResourceConstrained(sched_state, a, an);
+  UpdateCandidateResourceConstrained(sched_state, b, bn);
+
+  const SchedulerConfig& config = sched_state.config;
+  if (config.force_delay_over_memory_pressure) {
+    if (ABSL_PREDICT_FALSE(core_->early_target_scheduling_rule_ != nullptr)) {
+      if (auto value = InvokeTargetSchedulingFunction(
+              core_->early_target_scheduling_rule_, a, b, reason)) {
+        return *value;
+      }
+    }
+
+    // Schedule according to ForceDelayAfterTarget when we executed the
+    // early target scheduling rule.
+    if (auto res = CmpDirectional(
+            core_->top_down_scheduling_, an->GetForceDelayAfterTarget(),
+            bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget", reason)) {
+      return *res;
+    }
+  }
+
   // Schedule according to ForceEarly.
   if (auto res =
           CmpDirectional(core_->top_down_scheduling_, !an->GetForceEarly(),
@@ -1641,29 +1785,6 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     }
   }
 
-  // Update the resource_constrained of the candidate before any
-  // target specific rule is applied so rules can access the
-  // up-to-date value.
-  UpdateCandidateResourceConstrained(sched_state, a, an);
-  UpdateCandidateResourceConstrained(sched_state, b, bn);
-
-  const SchedulerConfig& config = sched_state.config;
-  if (config.force_delay_over_memory_pressure) {
-    if (ABSL_PREDICT_FALSE(core_->early_target_scheduling_rule_ != nullptr)) {
-      if (auto value = InvokeTargetSchedulingFunction(
-              core_->early_target_scheduling_rule_, a, b, reason)) {
-        return *value;
-      }
-    }
-
-    // Schedule according to ForceDelayAfterTarget when we executed the
-    // early target scheduling rule.
-    if (auto res = CmpDirectional(
-            core_->top_down_scheduling_, an->GetForceDelayAfterTarget(),
-            bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget", reason)) {
-      return *res;
-    }
-  }
 
   std::pair<int64_t, int64_t> a_increase = {0, 0};
   std::pair<int64_t, int64_t> b_increase = {0, 0};
@@ -1736,7 +1857,11 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     }
   }
   if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
-      an->GetInstr().opcode() == bn->GetInstr().opcode()) {
+      sched_state.async_tracker->IsSupportedAsyncStart(
+          *an->GetInstr().operand(0)) &&
+      sched_state.async_tracker->IsSupportedAsyncStart(
+          *bn->GetInstr().operand(0)) &&
+      an->GetOpcode() == bn->GetOpcode()) {
     const HloGraphNode& start_an =
         sched_state.sched_graph->GetNode(an->GetInstr().operand(0));
     const HloGraphNode& start_bn =
@@ -2874,15 +2999,17 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
       // For supported async collective done ops, save their corresponding
       // start ops in the map
-      if (n->IsSupportedAsyncDone() &&
-          scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
-              *n->GetInstr().operand(0))) {
-        sched_state->resource_occupiers_in_flight[resource.first].insert(
-            n->GetInstr().operand(0));
-      } else {
-        sched_state->resource_occupiers_in_flight[resource.first].insert(
-            &n->GetInstr());
+      const HloInstruction* occupier = &n->GetInstr();
+      if (n->IsSupportedAsyncDone()) {
+        const HloInstruction* start = FindStart(&n->GetInstr());
+        if (start != nullptr &&
+            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
+                *start)) {
+          occupier = start;
+        }
       }
+      sched_state->resource_occupiers_in_flight[resource.first].insert(
+          occupier);
     }
   }
   VLOG(10) << "Memory pressure before schedule: "
@@ -2977,6 +3104,11 @@ HloScheduleGraph::HloScheduleGraph(
     DCHECK_EQ(n, GetNodePtr(instr));
     n->instr_ = instr;
     n->opcode_ = instr->opcode();
+    n->is_host_transfer_ =
+        (n->opcode_ == HloOpcode::kSend || n->opcode_ == HloOpcode::kSendDone ||
+         n->opcode_ == HloOpcode::kRecv ||
+         n->opcode_ == HloOpcode::kRecvDone) &&
+        static_cast<const HloSendRecvInstruction*>(instr)->is_host_transfer();
     n->original_position_ = current_pos;
     current_pos++;
 
@@ -3122,8 +3254,8 @@ HloScheduleGraph::HloScheduleGraph(
       // happens. Add an edge between this instruction and the start in this
       // case.
       if (instr_node->IsSupportedAsyncDone()) {
-        const HloInstruction* async_start = instr->operand(0);
-        if (alias_analysis != nullptr) {
+        const HloInstruction* async_start = FindStart(instr);
+        if (alias_analysis != nullptr && async_start != nullptr) {
           for (const HloBuffer* buffer :
                alias_analysis->ComputeBuffersAt(instr, {})) {
             for (const HloValue* value : buffer->values()) {
@@ -3136,6 +3268,8 @@ HloScheduleGraph::HloScheduleGraph(
                   // identified as use.instruction. Add checks here to avoid
                   // adding dependencies for these instructions.
                   if (use.instruction == async_start ||
+                      reachability->IsReachable(async_start, use.instruction) ||
+                      reachability->IsReachable(use.instruction, async_start) ||
                       reachability->IsReachable(instr, use.instruction)) {
                     continue;
                   }
@@ -3476,6 +3610,44 @@ void HloScheduleGraph::AnnotateGraph(
   }
 }
 
+bool DefaultSchedulerCore::DefaultSchedulingInstructionCrossesOverlapLimit(
+    const SchedulingState& sched_state, const HloGraphNode* node) {
+  if (!node->HasRecursiveResources()) {
+    return false;
+  }
+  const HloInstruction& instr = node->GetInstr();
+  const bool is_nested_sync_comp = !instr.called_computations().empty() &&
+                                   instr.opcode() != HloOpcode::kAsyncStart &&
+                                   instr.opcode() != HloOpcode::kAsyncDone;
+
+  auto& num_resources_needed = node->GetRecursiveResources();
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [resource, count] : num_resources_needed) {
+    auto it = sched_state.max_concurrent_resource.find(resource);
+    if (it == sched_state.max_concurrent_resource.end()) {
+      continue;
+    }
+    if (is_nested_sync_comp &&
+        sched_state.async_tracker->IsInorderResource(resource)) {
+      int64_t total_capacity =
+          sched_state.async_tracker->GetNumAvailableResources(resource);
+      if (it->second < total_capacity) {
+        VLOG(5) << "In-order resource " << resource
+                << " currently has outer in-flight operations (available "
+                << it->second << " < total " << total_capacity
+                << "). Cannot schedule nested computation " << instr.name();
+        return true;
+      }
+    }
+    if (count > it->second) {
+      VLOG(5) << "Cross overlap limit for resource: " << resource
+              << " count: " << count << " limit: " << it->second;
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
   module_ = module;
@@ -3514,7 +3686,8 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
                      instr->opcode() == HloOpcode::kAsyncDone;
             })) {
           VLOG(2) << "Dropping annotations on the following ops because the "
-                     "group contains only async-start and async-done ops: ";
+                     "group contains only async-start, async-done and async "
+                     "intermediary ops: ";
           for (HloInstruction* instr : ops) {
             VLOG(2) << " " << instr->name();
             RemoveSchedulingAnnotation(instr);
@@ -3523,7 +3696,8 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
         }
         for (HloInstruction* instr : ops) {
           if (instr->opcode() == HloOpcode::kAsyncDone) {
-            HloInstruction* start = instr->async_chain_start();
+            HloInstruction* start = FindStart(instr);
+            CHECK_NE(start, nullptr);
             auto start_annotation = GetSchedulingAnnotation(start);
             CHECK_OK(start_annotation);
             if (!(*start_annotation).has_value()) {
@@ -3545,24 +3719,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
 
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
-        [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          if (!node->HasRecursiveResources()) {
-            return false;
-          }
-          auto& num_resources_needed = node->GetRecursiveResources();
-          for (const auto& [resource, count] : num_resources_needed) {
-            auto it = sched_state.max_concurrent_resource.find(resource);
-            if (it == sched_state.max_concurrent_resource.end()) {
-              continue;
-            }
-            if (count > it->second) {
-              VLOG(5) << "Cross overlap limit for resource: " << resource
-                      << " count: " << count << " limit: " << it->second;
-              return true;
-            }
-          }
-          return false;
-        };
+        DefaultSchedulingInstructionCrossesOverlapLimit;
     is_default_scheduling_instruction_crosses_overlap_limit_ = true;
   }
   return absl::OkStatus();
@@ -3608,7 +3765,8 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
         // 2. if get_max_resources is true, then we compute the resource usage
         // assuming maximum overlapping, where the resources used by the
         // async-done ops need to be accumulated.
-        const HloInstruction* start = instr->operand(0);
+        const HloInstruction* start = FindStart(instr);
+        CHECK_NE(start, nullptr);
         if (absl::c_find(instrs, start) == instrs.end() || get_max_resources) {
           num_resources_needed[resource] += usage;
           continue;
@@ -4128,11 +4286,12 @@ LatencyHidingScheduler::LatencyHidingStatistics(
                                   .inner]
           .push_back({instr, current_time, curr_pos});
     } else if (instr_node.IsSupportedAsyncDone()) {
-      const HloInstruction* start_instr = instr->operand(0);
+      const HloInstruction* start_instr = FindStart(instr);
       // TODO: Handle pipelined Send/Recv in while-body, which
       // is the only situation where an async done operand is not an async
       // start.
-      if (scheduling_context->GetAsyncTracker()->IsSupportedAsyncStart(
+      if (start_instr != nullptr &&
+          scheduling_context->GetAsyncTracker()->IsSupportedAsyncStart(
               *start_instr)) {
         auto it = find_outstanding_async(start_instr);
         const HloGraphNode& start_node =
@@ -4338,6 +4497,21 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
                  .ToString());
     }
   }
+  AsyncTracker* async_tracker = scheduling_context_->GetAsyncTracker().get();
+  const bool use_heap_simulator =
+      async_tracker->GetConfig().enable_schedule_by_structure;
+  // With schedule-by-structure, the first rerun starts from the same input
+  // schedule as the first try, so that it only differs in the scheduler
+  // configuration.
+  std::vector<std::pair<HloComputation*, HloInstructionSequence>>
+      input_sequences;
+  if (use_heap_simulator && scheduler_core_->GetRerunTimes() > 0) {
+    input_sequences.reserve(computations_to_schedule_.size());
+    for (HloComputation* computation : computations_to_schedule_) {
+      input_sequences.emplace_back(computation,
+                                   module->schedule().sequence(computation));
+    }
+  }
   for (HloComputation* computation : computations_to_schedule_) {
     ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                      scheduler_core_->ScheduleComputation(computation));
@@ -4351,26 +4525,63 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
         scheduler_core_->GetSchedulingState().get());
     scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
   }
-  int64_t fragmentation_size =
-      scheduling_context_->GetAsyncTracker()
-              ->GetConfig()
-              .estimate_fragmentation_size
-          ? EstimateFragmentationSize(module,
-                                      *scheduling_context_->GetAliasAnalysis(),
-                                      scheduling_context_->GetAliasInfo())
-          : 0;
   uint64_t initial_memory_limit = scheduler_core_->GetMemoryLimit();
-  for (int64_t iter = 0; iter < scheduler_core_->GetRerunTimes() &&
-                         scheduler_core_->GetMemoryPeak() + fragmentation_size >
-                             initial_memory_limit;
-       iter++) {
-    LOG(INFO) << "LatencyHidingScheduler current memory usage: "
-              << scheduler_core_->GetMemoryPeak() + fragmentation_size
-              << " bytes, does not fit in initial limit: "
+  // Returns the memory usage of the current schedule that decides whether to
+  // rerun with a tighter memory limit. With schedule-by-structure, the LHS
+  // memory peak is not a reliable measure of the final memory usage, so a
+  // HeapSimulator estimate of the non-parameter memory (the part the memory
+  // limit applies to) is used instead.
+  auto estimate_memory_usage = [&]() -> absl::StatusOr<int64_t> {
+    if (!use_heap_simulator) {
+      int64_t fragmentation_size =
+          async_tracker->GetConfig().estimate_fragmentation_size
+              ? EstimateFragmentationSize(
+                    module, *scheduling_context_->GetAliasAnalysis(),
+                    scheduling_context_->GetAliasInfo())
+              : 0;
+      return scheduler_core_->GetMemoryPeak() + fragmentation_size;
+    }
+    const absl::Time start = absl::Now();
+    ABSL_ASSIGN_OR_RETURN(
+        HbmUsageEstimate estimate,
+        EstimateHbmUsage(*module, *scheduling_context_->GetAliasAnalysis(),
+                         scheduling_context_->GetAliasInfo(),
+                         /*fragmentation_only=*/false,
+                         scheduling_context_->GetShapeSizeBytes()));
+    LOG(INFO) << "[" << name()
+              << "] LatencyHidingScheduler HeapSimulator memory estimate: "
+              << estimate.heap_size
+              << " bytes (fragmentation: " << estimate.fragmentation_size
+              << "). LHS memory peak: " << scheduler_core_->GetMemoryPeak()
+              << ". Estimate took "
+              << absl::FormatDuration(absl::Now() - start);
+    return estimate.heap_size;
+  };
+  for (int64_t iter = 0; iter < scheduler_core_->GetRerunTimes(); iter++) {
+    ABSL_ASSIGN_OR_RETURN(int64_t memory_usage, estimate_memory_usage());
+    if (static_cast<uint64_t>(memory_usage) <= initial_memory_limit) {
+      break;
+    }
+    uint64_t new_limit =
+        static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
+    if (use_heap_simulator) {
+      async_tracker->SetEnableCpdForSyncCollective(false);
+      if (iter == 0) {
+        // Restart from the original schedule when we changed the scheduler
+        // config.
+        for (const auto& [computation, sequence] : input_sequences) {
+          module->schedule().set_sequence(computation, sequence);
+        }
+        async_tracker->InvalidateCache();
+      }
+    }
+    LOG(INFO) << "[" << name()
+              << "] LatencyHidingScheduler current memory usage: "
+              << memory_usage << " bytes, does not fit in initial limit: "
               << initial_memory_limit << ". Setting the new limit to "
-              << static_cast<uint64_t>(scheduler_core_->GetMemoryLimit() * 0.9);
+              << new_limit;
     ABSL_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
-    scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
+    scheduler_core_->SetMemoryLimit(new_limit);
     for (HloComputation* computation : computations_to_schedule_) {
       ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                        scheduler_core_->ScheduleComputation(computation));
@@ -4382,14 +4593,6 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
           scheduler_core_->GetSchedulingState().get());
       scheduling_context_->GetAsyncTracker()->InvalidateCache(computation);
     }
-    fragmentation_size =
-        scheduling_context_->GetAsyncTracker()
-                ->GetConfig()
-                .estimate_fragmentation_size
-            ? EstimateFragmentationSize(
-                  module, *scheduling_context_->GetAliasAnalysis(),
-                  scheduling_context_->GetAliasInfo())
-            : 0;
   }
   LOG(INFO) << "[" << name() << "]"
             << " LatencyHidingScheduler current memory usage: "

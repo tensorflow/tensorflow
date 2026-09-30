@@ -52,20 +52,19 @@ std::string TypeNameVariant(const VariantTensorDataProto& value) {
 }
 
 template <>
-void EncodeVariant(const VariantTensorDataProto& value,
+bool EncodeVariant(const VariantTensorDataProto& value,
                    VariantTensorData* data) {
-  data->FromConstProto(value);
+  return data->FromConstProto(value);
 }
 
 template <>
 bool DecodeVariant(VariantTensorData* data, VariantTensorDataProto* value) {
-  data->ToProto(value);
-  return true;
+  return data->ToProto(value);
 }
 
 template <>
-void EncodeVariant(const VariantTensorDataProto& value, std::string* buf) {
-  value.SerializeToString(buf);
+bool EncodeVariant(const VariantTensorDataProto& value, std::string* buf) {
+  return value.SerializeToString(buf);
 }
 
 template <>
@@ -73,14 +72,15 @@ bool DecodeVariant(std::string* buf, VariantTensorDataProto* value) {
   return value->ParseFromString(*buf);
 }
 
-void EncodeVariantList(const Variant* variant_array, int64_t n,
+bool EncodeVariantList(const Variant* variant_array, int64_t n,
                        std::unique_ptr<port::StringListEncoder> e) {
   for (int i = 0; i < n; ++i) {
     std::string s;
-    variant_array[i].Encode(&s);
+    if (!variant_array[i].Encode(&s)) return false;
     e->Append(s);
   }
   e->Finalize();
+  return true;
 }
 
 bool DecodeVariantList(std::unique_ptr<port::StringListDecoder> d,

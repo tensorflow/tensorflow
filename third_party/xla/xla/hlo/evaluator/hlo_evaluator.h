@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 #define XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
-#include "absl/log/log.h"
-#include "absl/status/status_macros.h"
 #define _USE_MATH_DEFINES
 
+#include <cmath>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -29,18 +30,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/array2d.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -59,6 +63,8 @@ limitations under the License.
 
 namespace xla {
 
+class HloDataflowAnalysis;
+
 // Responsible for evaluating HLO and obtaining the evaluation result.
 //
 // This class is not thread-safe.
@@ -68,12 +74,35 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Precomputed analyses that can be passed to Evaluate functions to avoid
   // recomputation during evaluation.
   struct PrecomputedAnalyses {
-    TuplePointsToAnalysis* tuple_points_to;
+    PrecomputedAnalyses() : dataflow_analysis(nullptr) {}
+    PrecomputedAnalyses(const HloDataflowAnalysis* df)  // NOLINT
+        : dataflow_analysis(df) {}
+
+    const HloDataflowAnalysis* dataflow_analysis;
   };
+
+  struct SpecializationCache;
 
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
-  explicit HloEvaluator(int64_t max_loop_iterations = -1);
+  //
+  // If `cache_call_computation_evals` is true, HloEvaluator caches evals on
+  // computations on call ops to avoid re-evaluating the same call on identical
+  // constant arguments. If `specialization_cache` is non-null, this evaluator
+  // shares the provided cache; otherwise, if `cache_call_computation_evals` is
+  // true, a new `SpecializationCache` is created.
+  //
+  // Note that the cache is keyed by the raw `HloComputation` pointer:
+  //   1. If a called computation is modified in-place, the cache will not be
+  //      updated or invalidated automatically; users should not enable caching
+  //      if called computations may be modified.
+  //   2. `HloEvaluator` does not automatically clear the cache between
+  //      evaluations and the user of `HloEvaluator` should call
+  //      `ClearSpecializationCache()` when appropriate.
+  explicit HloEvaluator(
+      int64_t max_loop_iterations = -1,
+      bool cache_call_computation_evals = false,
+      std::shared_ptr<SpecializationCache> specialization_cache = nullptr);
 
   // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
   static bool IsOpcodeImplemented(HloOpcode opcode);
@@ -81,9 +110,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Called by the evaluator to create an embedded evaluator to execute a
   // sub-region of control flow. Subclasses should override this to return an
   // instance of the subclass instead.
+  // TODO(b/260601110): Cache call computations also for HloEvaluator
+  // subclasses, e.g. TpuHloEvaluator.
   virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
       int64_t max_loop_iterations) {
-    auto result = std::make_unique<HloEvaluator>(max_loop_iterations);
+    auto result = std::make_unique<HloEvaluator>(max_loop_iterations,
+                                                 cache_call_computation_evals_,
+                                                 specialization_cache_);
     result->set_use_fast_path(use_fast_path_);
     result->set_custom_call_handler(custom_call_handler_);
     result->set_eval_literal_handler(eval_literal_handler_);
@@ -270,6 +303,149 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       const Array2D<tsl::float8_e5m2>& rhs);
   static std::unique_ptr<Array2D<uint8_t>> MatmulArray2D(
       const Array2D<uint8_t>& lhs, const Array2D<uint8_t>& rhs);
+
+  // Data structures for memoizing call computation evaluations.
+  //
+  // HloEvaluator caches (if requested by cache_call_computation_evals) the
+  // results of kCall evaluations to avoid re-evaluating the same computation on
+  // identical constant arguments.
+  //
+  // SpecializationKey identifies an evaluation by its target HloComputation
+  // pointer and concrete argument literals.
+  //
+  // Because the key uses the raw `HloComputation` pointer, if a computation is
+  // modified in-place, existing cache entries for that computation pointer are
+  // not invalidated or updated; callers should not enable caching if
+  // computations may be modified.
+  //
+  // SpecializationCache stores the mapping from SpecializationKey to the
+  // evaluated result Literal, along with backing storage for argument literals.
+  //
+  // Note that the embedded evaluators created for nested calls share the
+  // top-level evaluator's cache so that memoization benefits nested calls.
+  struct SpecializationKey {
+    const HloComputation* computation = nullptr;
+    std::vector<LiteralSlice> arguments;
+
+    SpecializationKey() = default;
+    SpecializationKey(const HloComputation* computation,
+                      absl::Span<const Literal* const> args)
+        : computation(computation) {
+      arguments.reserve(args.size());
+      for (const Literal* arg : args) {
+        arguments.push_back(LiteralSlice(*arg));
+      }
+    }
+    SpecializationKey(const HloComputation* computation,
+                      std::vector<LiteralSlice> args)
+        : computation(computation), arguments(std::move(args)) {}
+
+    bool operator==(const SpecializationKey& other) const {
+      if (computation != other.computation ||
+          arguments.size() != other.arguments.size()) {
+        return false;
+      }
+      for (int64_t i = 0; i < arguments.size(); ++i) {
+        if (!arguments[i].Equal(other.arguments[i],
+                                /*layout_sensitive=*/true)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const SpecializationKey& key) {
+      h = H::combine(std::move(h), key.computation, key.arguments.size());
+      for (const auto& arg : key.arguments) {
+        h = H::combine(std::move(h), Literal::AbslHashable<true>(arg));
+      }
+      return h;
+    }
+  };
+
+  // SpecializationCache stores the mapping from SpecializationKey to the
+  // evaluated result Literal, along with backing storage for argument literals.
+  //
+  // Employed if cache_call_computation_evals is true.
+  //
+  // See the description on SpecializationKey for more details.
+  struct SpecializationCache {
+    using EntryMap = absl::flat_hash_map<SpecializationKey, Literal>;
+
+    mutable absl::Mutex mu;
+    // A deque never relocates existing elements. It means all existing pointers
+    // and references to previously stored Literals remain valid for the
+    // lifetime of the SpecializationCache.
+    std::deque<Literal> arg_storage ABSL_GUARDED_BY(mu);
+    EntryMap entries ABSL_GUARDED_BY(mu);
+
+    SpecializationCache() = default;
+    SpecializationCache(const SpecializationCache&) = delete;
+    SpecializationCache& operator=(const SpecializationCache&) = delete;
+    SpecializationCache(SpecializationCache&&) = delete;
+    SpecializationCache& operator=(SpecializationCache&&) = delete;
+
+    void Clear() {
+      absl::MutexLock lock(&mu);
+      entries.clear();
+      arg_storage.clear();
+    }
+    size_t size() const {
+      absl::MutexLock lock(&mu);
+      return entries.size();
+    }
+    bool empty() const {
+      absl::MutexLock lock(&mu);
+      return entries.empty();
+    }
+
+    std::optional<Literal> Find(const SpecializationKey& key) const {
+      absl::ReaderMutexLock lock(&mu);
+      auto it = entries.find(key);
+      if (it != entries.end()) {
+        return it->second.Clone();
+      }
+      return std::nullopt;
+    }
+
+    std::optional<Literal> Find(const HloComputation* computation,
+                                absl::Span<const Literal* const> args) const {
+      return Find(SpecializationKey(computation, args));
+    }
+
+    void Insert(const HloComputation* computation,
+                absl::Span<const Literal* const> args, Literal result) {
+      absl::MutexLock lock(&mu);
+      if (entries.contains(SpecializationKey(computation, args))) {
+        return;
+      }
+      std::vector<LiteralSlice> slices;
+      slices.reserve(args.size());
+      for (const Literal* arg : args) {
+        arg_storage.push_back(arg->Clone());
+        slices.push_back(LiteralSlice(arg_storage.back()));
+      }
+      entries.emplace(SpecializationKey(computation, std::move(slices)),
+                      std::move(result));
+    }
+  };
+
+  // Clears all cached call computation results and argument literals. Must be
+  // called by the user if computations are modified.
+  void ClearSpecializationCache() {
+    if (specialization_cache_ != nullptr) {
+      specialization_cache_->Clear();
+    }
+  }
+
+  // Used by unit tests.
+  bool cache_call_computation_evals() const {
+    return cache_call_computation_evals_;
+  }
+  const SpecializationCache* specialization_cache() const {
+    return specialization_cache_.get();
+  }
 
  protected:
   // Evaluates the given instruction, and stores the evaluation result in the
@@ -637,9 +813,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Optional handler exercised when evaluating literals.
   EvalLiteralHandler eval_literal_handler_;
 
-  // TODO(ezhulenev): Move cache members to EvaluationState.
-  std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
-
   // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the
   // instruction at only the given shape index.
@@ -650,6 +823,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Mutable evaluation state that holds the state of an in-progress evaluation.
   EvaluationState state_;
+
+  // Guard for call computation evaluation caching.
+  bool cache_call_computation_evals_ = false;
+  // Shared across top-level and embedded evaluators. Using shared_ptr allows
+  // embedded evaluators to safely share cache ownership without raw-pointer
+  // lifetime issues or manual ownership tracking.
+  std::shared_ptr<SpecializationCache> specialization_cache_;
 
   HloEvaluator(const HloEvaluator&) = delete;
   HloEvaluator& operator=(const HloEvaluator&) = delete;

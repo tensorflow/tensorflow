@@ -79,12 +79,14 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
+    visibility = ["//visibility:public"],
     deps = [":pjrt_c_api_hdrs"],
 )
 
 cc_library(
     name = "pjrt_c_api_tpu_topology_extension_hdrs",
     hdrs = ["pjrt_c_api_tpu_topology_extension.h"],
+    visibility = ["//visibility:public"],
     deps = [":pjrt_c_api_hdrs"],
 )
 
@@ -272,32 +274,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_c_api_triton_extension_hdrs",
-    hdrs = ["pjrt_c_api_triton_extension.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":pjrt_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "pjrt_c_api_triton_internal",
-    srcs = ["pjrt_c_api_triton_internal.cc"],
-    hdrs = ["pjrt_c_api_triton_internal.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":pjrt_c_api_hdrs",
-        ":pjrt_c_api_helpers",
-        ":pjrt_c_api_status_utils",
-        ":pjrt_c_api_triton_extension_hdrs",
-        ":pjrt_c_api_wrapper_impl",
-        "//xla/pjrt:triton",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-cc_library(
     name = "pjrt_c_api_gpu_extension_hdrs",
     hdrs = ["pjrt_c_api_gpu_extension.h"],
     visibility = ["//visibility:public"],
@@ -458,6 +434,7 @@ cc_library(
         ":pjrt_c_api_multi_slice_internal_types",
         ":pjrt_c_api_shardings_extension_hdrs",
         ":pjrt_c_api_status_utils",
+        "//xla:custom_options",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -475,7 +452,6 @@ cc_library(
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -670,8 +646,6 @@ cc_library(
         ":pjrt_c_api_shardings_extension_hdrs",
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_stream_extension_hdrs",
-        ":pjrt_c_api_triton_extension_hdrs",
-        ":pjrt_c_api_triton_internal",
         ":pjrt_c_api_wrapper_impl",
         ":pjrt_c_api_xla_transform_extension_hdrs",
         ":pjrt_c_api_xla_transform_internal",
@@ -815,7 +789,6 @@ xla_test(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_test_base",
         ":pjrt_c_api_test_common",
-        ":pjrt_c_api_triton_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla:future",
         "//xla:literal",

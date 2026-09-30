@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 

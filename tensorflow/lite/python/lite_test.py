@@ -2904,5 +2904,43 @@ class QuantizationModeTest(LiteTest, parameterized.TestCase):
     logging.root.removeHandler(handler)
 
 
+class FlatbufferMlirTranslationTest(TestModels):
+
+  def testFlatbufferToMlirAndBack(self):
+    saved_model_dir = os.path.join(
+        self.get_temp_dir(), 'simple_savedmodel_mlir'
+    )
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16], dtype=dtypes.float32, name='input'
+        )
+        out_tensor = in_tensor + 1.0
+        inputs = {'x': in_tensor}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    mlir_str = lite._flatbuffer_to_mlir(tflite_model)
+    self.assertIsInstance(mlir_str, str)
+    self.assertIn('module', mlir_str)
+
+    mlir_elided = lite._flatbuffer_to_mlir(
+        tflite_model, cl_options=['-mlir-elide-elementsattrs-if-larger=8']
+    )
+    self.assertIsInstance(mlir_elided, str)
+
+    mlir_bc = lite._flatbuffer_to_mlir(tflite_model, bytecode=True)
+    self.assertIsInstance(mlir_bc, bytes)
+
+    reloaded_tflite = lite._mlir_to_flatbuffer(mlir_str)
+    self.assertIsNotNone(reloaded_tflite)
+
+    reloaded_tflite_from_bc = lite._mlir_to_flatbuffer(mlir_bc)
+    self.assertIsNotNone(reloaded_tflite_from_bc)
+
+
 if __name__ == '__main__':
   test.main()

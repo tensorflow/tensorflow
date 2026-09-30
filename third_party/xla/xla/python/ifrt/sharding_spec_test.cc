@@ -650,7 +650,8 @@ TEST_P(ShardingParamShardingSpecTest, GetShardShape) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape 3 vs from ShardingParam 2")));
+                            "Shape [6,6,6] vs from ShardingParam "
+                            "2x3 to [1, 0] on 3x2")));
 }
 
 TEST_P(ShardingParamShardingSpecTest, HasSamePartitioning) {
@@ -707,7 +708,8 @@ TEST_P(ShardingParamShardingSpecTest, DisassembleFailsWhenRankNotMatch) {
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Numbers of dimensions don't match. From "
-                            "Shape 3 vs from ShardingParam 2")));
+                            "Shape [6,6,6] vs from ShardingParam "
+                            "2x3 to [1, 0] on 3x2")));
 }
 
 TEST_P(ShardingParamShardingSpecTest, DisassembleFailsForUnevenSharding) {

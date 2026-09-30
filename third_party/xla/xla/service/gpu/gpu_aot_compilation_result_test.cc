@@ -178,8 +178,8 @@ class GpuAotCompilationResultTest : public ::testing::Test {
                 AnyOf(IsOkAndHolds(kCudaSymbol),
                       StatusIs(absl::StatusCode::kNotFound)));
     if (!registry.FindSymbol("persistent_kernel_name", platform_id_).ok()) {
-      TF_ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name",
-                                           platform_id_, kCudaSymbol));
+      ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name", platform_id_,
+                                        kCudaSymbol));
     }
   }
 
@@ -236,10 +236,14 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
 
   EnsureCudaSymbolIsRegistered();
 
+  std::shared_ptr<HloModule> expected_module =
+      result->shared_optimized_module();
+
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       std::move(*result).LoadExecutable(platform_.id(), GetDeviceDescription(),
                                         DebugOptions()));
+  EXPECT_EQ(executable->shared_module(), expected_module);
 
   {
     ASSERT_OK_AND_ASSIGN(

@@ -163,10 +163,20 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
                                      const CommandBuffer& nested) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateHostNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      absl::AnyInvocable<void()> callback) override;
+
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
       const ThreadDim& threads, const BlockDim& blocks,
       const std::optional<ClusterDim>& cluster_dims, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+      const ThreadDim& threads, const BlockDim& blocks,
+      const std::optional<ClusterDim>& cluster_dims, const NativeKernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
@@ -174,6 +184,13 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                 const BlockDim& blocks,
                                 const std::optional<ClusterDim>& cluster_dims,
                                 const Kernel& kernel,
+                                const KernelArgsPackedArrayBase& args) override;
+
+  absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
+                                const ThreadDim& threads,
+                                const BlockDim& blocks,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const NativeKernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
   absl::StatusOr<GraphNodeHandle> CreateEmptyNode(

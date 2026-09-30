@@ -537,4 +537,72 @@ std::string HloLiveRange::ToString() const {
   return output;
 }
 
+int64_t ViewExtendedTransitiveUseTime(
+    const HloInstruction* view, int64_t view_color,
+    const absl::flat_hash_map<const HloInstruction*, int64_t>&
+        instruction_schedule) {
+  CHECK(!view->shape().IsTuple() && view->shape().has_layout() &&
+        view->shape().layout().memory_space() == view_color)
+      << "not a view: " << view->ToString();
+  auto is_view_colored = [view_color](const HloInstruction* instruction) {
+    return instruction->shape().has_layout() &&
+           instruction->shape().layout().memory_space() == view_color;
+  };
+  int64_t use_time = -1;
+  absl::flat_hash_set<const HloInstruction*> visited = {view};
+  std::vector<const HloInstruction*> worklist = {view};
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+    auto time_it = instruction_schedule.find(current);
+    if (time_it != instruction_schedule.end()) {
+      use_time = std::max(use_time, time_it->second);
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (is_view_colored(user)) {
+        if (visited.insert(user).second) {
+          worklist.push_back(user);
+        }
+      } else {
+        auto user_time_it = instruction_schedule.find(user);
+        if (user_time_it != instruction_schedule.end()) {
+          use_time = std::max(use_time, user_time_it->second);
+        }
+      }
+    }
+  }
+  return use_time;
+}
+
+void ExtendViewBaseLiveRanges(HloLiveRange* hlo_live_range,
+                              const HloDataflowAnalysis& dataflow_analysis,
+                              int64_t view_color) {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
+      instruction_schedule = hlo_live_range->instruction_schedule();
+  absl::flat_hash_map<const HloValue*, HloLiveRange::LiveRangeBounds>&
+      buffer_live_ranges = hlo_live_range->buffer_live_ranges();
+  // dataflow_analysis.values() is id ordered, so the walk is deterministic.
+  for (const HloValue* value : dataflow_analysis.values()) {
+    auto live_range_it = buffer_live_ranges.find(value);
+    if (live_range_it == buffer_live_ranges.end()) {
+      continue;
+    }
+    HloLiveRange::LiveRangeBounds& live_range = live_range_it->second;
+    for (const HloUse& use : value->GetUses()) {
+      const HloInstruction* user = use.instruction;
+      // Only the viewed value itself (operand 0 of the view) needs the
+      // extension; a view's start index operands are consumed at the view's
+      // own time.
+      if (use.operand_number != 0 || user->shape().IsTuple() ||
+          !user->shape().has_layout() ||
+          user->shape().layout().memory_space() != view_color) {
+        continue;
+      }
+      live_range.end =
+          std::max(live_range.end, ViewExtendedTransitiveUseTime(
+                                       user, view_color, instruction_schedule));
+    }
+  }
+}
+
 }  // namespace xla

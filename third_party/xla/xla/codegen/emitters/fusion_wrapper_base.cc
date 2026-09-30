@@ -56,6 +56,8 @@ absl::StatusOr<bool> FusionWrapperBase::RunImpl(
         computation->AddInstruction(HloInstruction::CreateFusion(
             instruction->shape(), ChooseFusionKind(*instruction, *instruction),
             instruction));
+    fusion_instruction->fused_instructions_computation()->SetExecutionThread(
+        computation->execution_thread());
     const absl::string_view wrapped_opcode =
         HloOpcodeString(instruction->opcode());
     module->SetAndUniquifyInstrName(fusion_instruction,

@@ -42,7 +42,7 @@ class TestUserContext : public RTTIExtends<TestUserContext, UserContext> {
 
   std::string DebugString() const override { return debug_string_; }
 
-  // No new `ID` is not defined because tests below do not exercise RTTI.
+  inline static char ID = 0;  // NOLINT
 
  private:
   explicit TestUserContext(UserContextId id, std::string debug_string)

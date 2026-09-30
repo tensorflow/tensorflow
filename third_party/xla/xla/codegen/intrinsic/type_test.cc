@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/type.h"
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -45,14 +46,14 @@ TEST(TypeTest, TypeFromIrType) {
 }
 
 TEST(TypeTest, VerifySameWidth) {
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
+  EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_FALSE(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 8)).ok());
 }
 
 TEST(TypeTest, VerifySameWidthAndElementType) {
-  TF_EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(
+  EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(
       Type::VerifySameWidthAndElementType(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_FALSE(
       Type::VerifySameWidthAndElementType(Type::V(F32, 4), Type::V(F32, 8))

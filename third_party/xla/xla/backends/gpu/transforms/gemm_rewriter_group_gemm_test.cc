@@ -16,13 +16,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/error_spec.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -220,8 +220,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 
@@ -301,8 +301,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 
@@ -477,8 +477,8 @@ ENTRY AddRaggedDotsFunc {
   debug_options_with_autotune.set_xla_gpu_autotune_level(4);
   HloModuleConfig config;
   config.set_debug_options(debug_options_with_autotune);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-4, 1e-5}));
 }
 

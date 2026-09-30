@@ -1107,7 +1107,7 @@ bool FusionInfoCache::ContainsScan(const HloInstruction& instr) {
   }
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = contains_scan_.find(&instr);
     if (it != contains_scan_.end()) {
       return it->second;
@@ -1116,7 +1116,7 @@ bool FusionInfoCache::ContainsScan(const HloInstruction& instr) {
 
   bool contains_scan = ContainsScanNoCache(instr);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   contains_scan_.emplace(&instr, contains_scan);
   return contains_scan;
 }

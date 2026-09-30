@@ -38,8 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -81,12 +79,12 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemzeroThunk> thunk,
       MemzeroThunk::FromProto(thunk_info, proto.memzero_thunk(),
                               buffer_allocations));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -104,12 +102,12 @@ TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Memset32BitValueThunk> thunk,
       Memset32BitValueThunk::FromProto(
           thunk_info, proto.memset32bit_value_thunk(), buffer_allocations));
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -119,14 +117,14 @@ TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
 
 TEST(MemzeroThunkTest, RecordCommandBuffer) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(uint32_t) * length;
 
   se::DeviceAddress<uint32_t> dest =
       executor->AllocateArray<uint32_t>(length, 0);
-  TF_ASSERT_OK(stream->Memset32(&dest, 0xFFFFFFFF, byte_length));
+  ASSERT_OK(stream->Memset32(&dest, 0xFFFFFFFF, byte_length));
 
   BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, 0, byte_length);
@@ -148,21 +146,20 @@ TEST(MemzeroThunkTest, RecordCommandBuffer) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(execute_params, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<uint32_t> result(length, 0xFFFFFFFF);
-  TF_ASSERT_OK(stream->Memcpy(result.data(), dest, byte_length));
+  ASSERT_OK(stream->Memcpy(result.data(), dest, byte_length));
   EXPECT_EQ(result, std::vector<uint32_t>(length, 0));
 }
 
@@ -170,7 +167,7 @@ TEST(MemzeroThunkTest, RecordCommandBuffer) {
 // and re-submits to verify the same command node is reused.
 TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(uint32_t) * length;
@@ -179,8 +176,8 @@ TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
       executor->AllocateArray<uint32_t>(length, 0);
   se::DeviceAddress<uint32_t> dest_second =
       executor->AllocateArray<uint32_t>(length, 0);
-  TF_ASSERT_OK(stream->Memset32(&dest_first, 0xFFFFFFFF, byte_length));
-  TF_ASSERT_OK(stream->Memset32(&dest_second, 0xFFFFFFFF, byte_length));
+  ASSERT_OK(stream->Memset32(&dest_first, 0xFFFFFFFF, byte_length));
+  ASSERT_OK(stream->Memset32(&dest_second, 0xFFFFFFFF, byte_length));
 
   BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, 0, byte_length);
@@ -203,22 +200,21 @@ TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(params_first, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params_first, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify dest_first was zeroed.
   std::vector<uint32_t> result_first(length, 0xFFFFFFFF);
-  TF_ASSERT_OK(stream->Memcpy(result_first.data(), dest_first, byte_length));
+  ASSERT_OK(stream->Memcpy(result_first.data(), dest_first, byte_length));
   EXPECT_EQ(result_first, std::vector<uint32_t>(length, 0));
 
   // Second recording: RecordUpdate pointing at dest_second.
@@ -230,32 +226,32 @@ TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
                                    /*collective_cliques=*/nullptr,
                                    /*collective_memory=*/nullptr);
 
-  TF_ASSERT_OK(command_buffer->Update());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
       const se::CommandBuffer::Command* updated_cmd,
       thunk.Record(params_second, record_params, Command::RecordUpdate{cmd},
                    command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);  // same command node is reused
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify dest_second was zeroed.
   std::vector<uint32_t> result_second(length, 0xFFFFFFFF);
-  TF_ASSERT_OK(stream->Memcpy(result_second.data(), dest_second, byte_length));
+  ASSERT_OK(stream->Memcpy(result_second.data(), dest_second, byte_length));
   EXPECT_EQ(result_second, std::vector<uint32_t>(length, 0));
 }
 
 TEST(Memset32BitValueThunkTest, RecordCommandBuffer) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(uint32_t) * length;
 
   se::DeviceAddress<uint32_t> dest =
       executor->AllocateArray<uint32_t>(length, 0);
-  TF_ASSERT_OK(stream->MemZero(&dest, byte_length));
+  ASSERT_OK(stream->MemZero(&dest, byte_length));
 
   BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, 0, byte_length);
@@ -276,21 +272,20 @@ TEST(Memset32BitValueThunkTest, RecordCommandBuffer) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(execute_params, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<uint32_t> result(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(result.data(), dest, byte_length));
+  ASSERT_OK(stream->Memcpy(result.data(), dest, byte_length));
   EXPECT_EQ(result, std::vector<uint32_t>(length, 42));
 }
 
@@ -298,7 +293,7 @@ TEST(Memset32BitValueThunkTest, RecordCommandBuffer) {
 // and re-submits to verify the same command node is reused.
 TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(uint32_t) * length;
@@ -307,8 +302,8 @@ TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
       executor->AllocateArray<uint32_t>(length, 0);
   se::DeviceAddress<uint32_t> dest_second =
       executor->AllocateArray<uint32_t>(length, 0);
-  TF_ASSERT_OK(stream->MemZero(&dest_first, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&dest_second, byte_length));
+  ASSERT_OK(stream->MemZero(&dest_first, byte_length));
+  ASSERT_OK(stream->MemZero(&dest_second, byte_length));
 
   BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, 0, byte_length);
@@ -330,22 +325,21 @@ TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(params_first, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params_first, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify dest_first was set.
   std::vector<uint32_t> result_first(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(result_first.data(), dest_first, byte_length));
+  ASSERT_OK(stream->Memcpy(result_first.data(), dest_first, byte_length));
   EXPECT_EQ(result_first, std::vector<uint32_t>(length, 42));
 
   // Second recording: RecordUpdate pointing at dest_second.
@@ -357,19 +351,19 @@ TEST(Memset32BitValueThunkTest, RecordCommandBufferUpdate) {
                                    /*collective_cliques=*/nullptr,
                                    /*collective_memory=*/nullptr);
 
-  TF_ASSERT_OK(command_buffer->Update());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK_AND_ASSIGN(
       const se::CommandBuffer::Command* updated_cmd,
       thunk.Record(params_second, record_params, Command::RecordUpdate{cmd},
                    command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);  // same command node is reused
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Verify dest_second was set.
   std::vector<uint32_t> result_second(length, 0);
-  TF_ASSERT_OK(stream->Memcpy(result_second.data(), dest_second, byte_length));
+  ASSERT_OK(stream->Memcpy(result_second.data(), dest_second, byte_length));
   EXPECT_EQ(result_second, std::vector<uint32_t>(length, 42));
 }
 

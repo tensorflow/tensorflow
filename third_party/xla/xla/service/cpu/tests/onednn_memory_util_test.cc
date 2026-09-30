@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -97,7 +96,7 @@ TEST_P(MemoryUtilTest, VerifyMemRefTest) {
 
   absl::StatusOr<bool> match =
       RunFileCheck(filecheck_input, GetMemRefTestPattern(shape));
-  TF_ASSERT_OK(match.status());
+  ASSERT_OK(match.status());
   EXPECT_TRUE(match.value());
 }
 

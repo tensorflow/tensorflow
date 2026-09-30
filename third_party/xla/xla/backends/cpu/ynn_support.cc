@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <tuple>
+#include <vector>
 
 #include "ynnpack/include/ynnpack.h"
 #include "absl/algorithm/container.h"
@@ -51,6 +53,7 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kAbs, ynn_unary_abs},
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
+          {HloOpcode::kCos, ynn_unary_cos},
           {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
           {HloOpcode::kExpm1, ynn_unary_expm1},
@@ -60,10 +63,12 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kLogistic, ynn_unary_sigmoid},
           {HloOpcode::kNegate, ynn_unary_negate},
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
-          {HloOpcode::kRsqrt, ynn_unary_reciprocal_square_root},
+          {HloOpcode::kRsqrt, ynn_unary_rsqrt},
           {HloOpcode::kSign, ynn_unary_sign},
-          {HloOpcode::kSqrt, ynn_unary_square_root},
+          {HloOpcode::kSin, ynn_unary_sin},
+          {HloOpcode::kSqrt, ynn_unary_sqrt},
           {HloOpcode::kTanh, ynn_unary_tanh},
+          {HloOpcode::kTan, ynn_unary_tan},
       });
   return *unary_op_map;
 }
@@ -127,7 +132,16 @@ bool IsLayoutSupportedByYnn(const Shape& shape) {
     // TODO(b/460602165): We should eliminate this limitation.
     return false;
   }
-  return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
+  if (!shape.has_layout()) {
+    return true;
+  }
+  std::vector<int64_t> minor_to_major;
+  for (int64_t dim : shape.layout().minor_to_major()) {
+    if (shape.dimensions(dim) != 1) {
+      minor_to_major.push_back(dim);
+    }
+  }
+  return absl::c_is_sorted(minor_to_major, std::greater<int64_t>());
 }
 
 namespace {
@@ -160,6 +174,28 @@ bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
   }
 
   return hlo->shape().element_type() == input->shape().element_type();
+}
+
+bool IsCopyOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kCopy);
+  if (!CheckOperandCount(hlo, 1)) {
+    return false;
+  }
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (hlo->shape().element_type() != input->shape().element_type()) {
+    return false;
+  }
+  if (hlo->shape().dimensions() != input->shape().dimensions()) {
+    return false;
+  }
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+  return true;
 }
 
 bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo) {

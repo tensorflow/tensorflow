@@ -227,6 +227,16 @@ absl::Status ValidateComplexUseInTritonFusion(
   }
   return absl::OkStatus();
 }
+
+bool IsAllGatherFusion(const HloFusionInstruction& fusion) {
+  const HloComputation* computation = fusion.fused_instructions_computation();
+  if (computation == nullptr) {
+    return false;
+  }
+  return absl::c_any_of(computation->instructions(),
+                        HloPredicateIsOp<HloOpcode::kAllGather>);
+}
+
 }  // namespace
 
 namespace ttir = ::mlir::triton;
@@ -300,7 +310,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
   const HloComputation* computation = fusion.fused_instructions_computation();
 
-  if (use_experimental_tiling) {
+  if (use_experimental_tiling || IsAllGatherFusion(fusion)) {
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
@@ -376,7 +386,8 @@ absl::StatusOr<TritonKernelSource> CreateTritonModule(
   const DebugOptions& debug_options =
       fusion.GetModule()->config().debug_options();
   bool use_experimental_tiling =
-      debug_options.xla_gpu_experimental_enable_tiling_propagation();
+      debug_options.xla_gpu_experimental_enable_tiling_propagation() ||
+      IsAllGatherFusion(fusion);
   bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();

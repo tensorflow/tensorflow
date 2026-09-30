@@ -17,20 +17,34 @@ fusion{
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]: memref<65536xf32>,
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]+]]: i32,
 // CHECK-SAME:    %[[ARG3:[a-zA-Z0-9_]+]]: i32,
-// CHECK-SAME:    %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<i32>>,
-// CHECK-SAME:    %[[ARG5:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<f32>>,
-// CHECK-SAME:    %[[PID:[a-zA-Z0-9_]+]]: index)
+// CHECK-SAME:    %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
+// CHECK-SAME:    %[[ARG5:[a-zA-Z0-9_]+]]: !tt.ptr<i64>,
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9_]+]]: index{{( \{xla.range = \[0 : index, 15 : index\]\})?}})
 // CHECK-SAME:    attributes {num_opaque_args = 4 : i32} {
+// CHECK-DAG:    %[[C1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:    %[[WORLD_SIZE:.*]] = arith.constant 2 : i32
 
 // CHECK:        %[[EXTRACT_0:.*]] = xtile.extract
 // CHECK-SAME:     : memref<65536xf32> -> tensor<4096xf32>
+
+// The signal value is derived from this block's own slot in the local signal
+// buffer (`SignalBuffers[rank][block_id * world_size + rank]`).
+// CHECK:        %[[BLOCK_ID:.*]] = tt.get_program_id x
+// CHECK:        %[[SIGNAL_BUFFER_ADDR:.*]] = tt.addptr %[[ARG4]], %[[ARG2]]
+// CHECK:        %[[SIGNAL_BUFFER_INT:.*]] = tt.load %[[SIGNAL_BUFFER_ADDR]]
+// CHECK:        %[[SIGNAL_BUFFER:.*]] = tt.int_to_ptr %[[SIGNAL_BUFFER_INT]]
+// CHECK:        %[[BLOCK_OFFSET:.*]] = arith.muli %[[BLOCK_ID]], %[[WORLD_SIZE]]
+// CHECK:        %[[COUNTER_IDX:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[ARG2]]
+// CHECK:        %[[COUNTER_PTR:.*]] = tt.addptr %[[SIGNAL_BUFFER]], %[[COUNTER_IDX]]
+// CHECK:        %[[COUNTER:.*]] = tt.load %[[COUNTER_PTR]] {isVolatile = true}
+// CHECK:        %[[SIGNAL_VALUE:.*]] = arith.addi %[[COUNTER]], %[[C1]]
 
 // CHECK:        tt.store %{{[a-zA-Z0-9_]+}}, %{{[a-zA-Z0-9_]+}}
 // CHECK-SAME:     : tensor<4096x!tt.ptr<f32>>
 
 // CHECK:        ttg.barrier local
-// CHECK:        triton_xla.block_barrier
-// CHECK-SAME:    {world_size = 2 : i32} : (!tt.ptr<!tt.ptr<i32>>, i32, i32)
+// CHECK:        triton_xla.block_barrier %[[ARG4]], %[[ARG2]], %[[SIGNAL_VALUE]]
+// CHECK-SAME:    <world_size = 2> : (!tt.ptr<i64>, i32, i32)
 
 // CHECK:        xtile.insert
 // CHECK-SAME:     : tensor<4096xf32> -> memref<65536xf32>

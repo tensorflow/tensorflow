@@ -250,7 +250,7 @@ absl::Status RegisterCustomCallTarget(const std::string& fn_name, nb::object fn,
     // Register a single execute handler
     nb::capsule capsule;
     if (nb::try_cast<nb::capsule>(fn, capsule)) {
-      return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
+      return ffi::TakeError(ffi::Ffi::RegisterStaticHandler(
           ffi::GetXlaFfiApi(), fn_name, platform,
           reinterpret_cast<XLA_FFI_Handler*>(capsule.data())));
     }
@@ -278,7 +278,7 @@ absl::Status RegisterCustomCallTarget(const std::string& fn_name, nb::object fn,
       ABSL_ASSIGN_OR_RETURN(bundle.initialize, handler("initialize"));
       ABSL_ASSIGN_OR_RETURN(bundle.execute, handler("execute"));
 
-      return ffi::TakeStatus(ffi::Ffi::RegisterStaticHandler(
+      return ffi::TakeError(ffi::Ffi::RegisterStaticHandler(
           ffi::GetXlaFfiApi(), fn_name, platform, bundle, traits));
     }
 
@@ -335,7 +335,7 @@ absl::Status RegisterCustomTypeId(absl::string_view type_name,
   XLA_FFI_TypeId* type_id_ptr =
       reinterpret_cast<XLA_FFI_TypeId*>(static_cast<void*>(capsule.data()));
   XLA_FFI_TypeInfo* type_info_ptr = nullptr;
-  return ffi::TakeStatus(ffi::Ffi::RegisterTypeId(
+  return ffi::TakeError(ffi::Ffi::RegisterTypeId(
       xla::ffi::GetXlaFfiApi(), type_name, type_id_ptr, type_info_ptr));
 }
 

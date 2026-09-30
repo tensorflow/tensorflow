@@ -141,6 +141,23 @@ void StripMetadataForLogicalShape(xla::Shape& shape) {
   }
 }
 
+absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataPrefixIfPresent(
+    PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape) {
+  auto device_requirements = PjRtShapeAndMetadataTransferRequirements::Get(
+      device_shape, PjRtDynamicShapeKind::kPrefix);
+  if (device_requirements.metadata_size == 0) {
+    return raw_buffer;
+  }
+  size_t total_size = raw_buffer->GetOnDeviceSizeInBytes();
+  if (total_size < device_requirements.metadata_size) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Buffer size (%d) is smaller than metadata size (%d)",
+                        total_size, device_requirements.metadata_size));
+  }
+  return raw_buffer->Slice(device_requirements.array_offset,
+                           total_size - device_requirements.metadata_size);
+}
+
 absl::StatusOr<PjRtRawBufferRef> RemoveDynamicShapeMetadataIfPresent(
     PjRtRawBufferRef raw_buffer, const xla::Shape& device_shape,
     const xla::Shape& logical_shape, PjRtDynamicShapeKind kind) {

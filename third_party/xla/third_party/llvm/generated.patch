@@ -1,73 +1,59 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/include/lldb/Symbol/Symbol.h b/lldb/include/lldb/Symbol/Symbol.h
---- a/lldb/include/lldb/Symbol/Symbol.h
-+++ b/lldb/include/lldb/Symbol/Symbol.h
-@@ -53,11 +53,7 @@
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeTypes.h
+@@ -837,7 +837,7 @@
  
-   Symbol(const Symbol &rhs);
- 
--  ~Symbol() {
--    if (m_type != lldb::eSymbolTypeReExported &&
--        m_type != lldb::eSymbolTypeInvalid)
--      m_addr_or_reexport.GetAddressRange(*this).Clear();
--  }
-+  ~Symbol() { m_addr_or_reexport.Clear(*this); }
- 
-   const Symbol &operator=(const Symbol &rhs);
- 
-@@ -419,6 +415,13 @@
-     // impl to let the compiler know it's handled.
-     ~AddrRangeOrReExport() {}
- 
-+    void Clear(const Symbol &sym) {
-+      if (sym.GetType() == lldb::eSymbolTypeReExported)
-+        m_reexport_info.Clear();
-+      else
-+        m_addr_range.Clear();
-+    }
-+
-   private:
-     union {
-       // Contains the value, or the section offset address when the value is an
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -5964,6 +5964,8 @@
-                                 ISD::matchUnaryPredicate(
-                                     Y,
-                                     [&](auto *C) {
-+                                      if (!C)
-+                                        return true;
-                                       const APInt &YConst = C->getAsAPIntVal();
-                                       return (Opcode == ISD::ABDS)
-                                                  ? YConst.isSignedIntN(Bits)
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/abd-combine.ll b/llvm/test/CodeGen/AArch64/abd-combine.ll
---- a/llvm/test/CodeGen/AArch64/abd-combine.ll
-+++ b/llvm/test/CodeGen/AArch64/abd-combine.ll
-@@ -523,9 +523,26 @@
-   ret <1 x i64> %10
+   SDValue ScalarizeVecRes_ADDRSPACECAST(SDNode *N);
+   SDValue ScalarizeVecRes_BITCAST(SDNode *N);
+-  SDValue ScalarizeVecRes_BUILD_VECTOR(SDNode *N);
++  SDValue ScalarizeVecRes_BUILD_VECTOR_OR_SPLAT(SDNode *N);
+   SDValue ScalarizeVecRes_EXTRACT_SUBVECTOR(SDNode *N);
+   SDValue ScalarizeVecRes_FP_ROUND(SDNode *N);
+   SDValue ScalarizeVecRes_CONVERT_FROM_ARBITRARY_FP(SDNode *N);
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
+@@ -63,7 +63,10 @@
+     break;
+   case ISD::MERGE_VALUES:      R = ScalarizeVecRes_MERGE_VALUES(N, ResNo);break;
+   case ISD::BITCAST:           R = ScalarizeVecRes_BITCAST(N); break;
+-  case ISD::BUILD_VECTOR:      R = ScalarizeVecRes_BUILD_VECTOR(N); break;
++  case ISD::SPLAT_VECTOR:
++  case ISD::BUILD_VECTOR:
++    R = ScalarizeVecRes_BUILD_VECTOR_OR_SPLAT(N);
++    break;
+   case ISD::EXTRACT_SUBVECTOR: R = ScalarizeVecRes_EXTRACT_SUBVECTOR(N); break;
+   case ISD::FP_ROUND:          R = ScalarizeVecRes_FP_ROUND(N); break;
+   case ISD::CONVERT_FROM_ARBITRARY_FP:
+@@ -475,10 +478,10 @@
+                      NewVT, Op);
  }
  
-+; Poison elements in the constant operand pass a null ConstantSDNode to the
-+; matchUnaryPredicate lambda in visitABD; make sure that does not crash.
-+define <4 x i32> @abdu_const_poison(<4 x i8> %x) {
-+; CHECK-LABEL: abdu_const_poison:
-+; CHECK:       // %bb.0:
-+; CHECK-NEXT:    mov w8, #8388736 // =0x800080
-+; CHECK-NEXT:    bic v0.4h, #255, lsl #8
-+; CHECK-NEXT:    fmov d1, x8
-+; CHECK-NEXT:    uabdl v0.4s, v0.4h, v1.4h
-+; CHECK-NEXT:    ret
-+  %ext = zext <4 x i8> %x to <4 x i32>
-+  %sub = sub <4 x i32> <i32 128, i32 128, i32 poison, i32 poison>, %ext
-+  %abs = call <4 x i32> @llvm.abs.v4i32(<4 x i32> %sub, i1 false)
-+  ret <4 x i32> %abs
-+}
+-SDValue DAGTypeLegalizer::ScalarizeVecRes_BUILD_VECTOR(SDNode *N) {
++SDValue DAGTypeLegalizer::ScalarizeVecRes_BUILD_VECTOR_OR_SPLAT(SDNode *N) {
+   EVT EltVT = N->getValueType(0).getVectorElementType();
+   SDValue InOp = N->getOperand(0);
+-  // The BUILD_VECTOR operands may be of wider element types and
++  // The BUILD_VECTOR / SPLAT operands may be of wider element types and
+   // we may need to truncate them back to the requested return type.
+   if (EltVT.isInteger())
+     return DAG.getNode(ISD::TRUNCATE, SDLoc(N), EltVT, InOp);
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll b/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
+--- a/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
++++ b/llvm/test/CodeGen/AArch64/lowmaskedlanes.ll
+@@ -245,3 +245,14 @@
+   tail call void @llvm.masked.store(<vscale x 8 x i16> %a, ptr align 1 %p, <vscale x 8 x i1> %m)
+   ret void
+ }
 +
- declare <8 x i8> @llvm.aarch64.neon.umax.v8i8(<8 x i8>, <8 x i8>)
- declare <1 x i64> @llvm.aarch64.neon.saddlp.v1i64.v2i32(<2 x i32>)
- declare <8 x i8> @llvm.aarch64.neon.uabd.v8i8(<8 x i8>, <8 x i8>)
- declare <8 x i16> @llvm.aarch64.neon.uabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i16> @llvm.aarch64.neon.sabd.v8i16(<8 x i16>, <8 x i16>)
- declare <8 x i32> @llvm.abs.v8i32(<8 x i32>, i1)
-+declare <4 x i32> @llvm.abs.v4i32(<4 x i32>, i1)
++define void @store_low1_nxv8f16_splat(ptr %0) {
++; CHECK-LABEL: store_low1_nxv8f16_splat:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    fmov h0, #1.00000000
++; CHECK-NEXT:    str h0, [x0]
++; CHECK-NEXT:    ret
++  %2 = tail call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 0, i32 1)
++  tail call void @llvm.masked.store.nxv8f16.p0(<vscale x 8 x half> splat (half 0xH3C00), ptr align 2 %0, <vscale x 8 x i1> %2)
++  ret void
++}

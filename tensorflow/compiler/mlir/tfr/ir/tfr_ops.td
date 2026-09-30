@@ -41,6 +41,7 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -389,7 +390,8 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [Pure]> {
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
                                     FunctionOpInterface,
-                                    IsolatedFromAbove, Symbol]> {
+                                    IsolatedFromAbove,
+                                    SymbolName, SymbolVisibility, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
 
   let description = [{
@@ -422,7 +424,8 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name,
     OptionalAttr<DictArrayAttr>:$arg_attrs,
-    OptionalAttr<DictArrayAttr>:$res_attrs
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+    OptionalAttr<StrAttr>:$sym_visibility
   );
 
   let results = (outs);

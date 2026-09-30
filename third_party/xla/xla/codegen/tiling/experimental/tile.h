@@ -143,6 +143,17 @@ H AbslHashValue(H h, const DimTile& dim_tile) {
   return H::combine(std::move(h), static_cast<size_t>(dim_tile_hash));
 }
 
+// Simplifies groups of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(
+    llvm::ArrayRef<llvm::MutableArrayRef<DimTile>> dim_tile_groups,
+    const TilingSpace& space);
+
+// Simplifies a list of DimTiles using the dimension and symbol bounds of the
+// given tiling space.
+void SimplifyDimTiles(llvm::MutableArrayRef<DimTile> dim_tiles,
+                      const TilingSpace& space);
+
 // Tile is a collection of tilings for every dimension of output tensor
 // of an HLO instruction. TiledHloInstruction associates a Tile
 // with an HLO instruction.
@@ -194,6 +205,9 @@ class Tile {
   // and upper bounds according to the input. The other fields are copied from
   // the original tile.
   Tile CloneWithNewDims(llvm::SmallVector<DimTile> new_dim_tiles) const;
+
+  // Creates a copy of the tile associated with a new tiling space.
+  Tile CloneWithNewTilingSpace(const TilingSpace& new_space) const;
 
   bool operator==(const Tile& other) const;
 

@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/casts.h"
 
@@ -79,10 +78,10 @@ ENTRY e {
   ROOT r = s32[] fusion(p), kind=kLoop, calls=add2
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("host"));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   Compiler* compiler = backend().compiler();
   ASSERT_NE(compiler, nullptr);
@@ -98,20 +97,20 @@ ENTRY e {
                   absl::string_view test_name, absl::string_view hlo, int input,
                   int expected_result) {
     SCOPED_TRACE(test_name);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(
         std::vector<std::unique_ptr<CompiledModule>> aot_results,
         compiler->CompileAheadOfTime(std::move(module), *aot_options));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                            aot_results[0]->SerializeAsString());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                         aot_results[0]->SerializeAsString());
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<CompiledModule> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                            std::move(*aot_result).LoadExecutable());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                         std::move(*aot_result).LoadExecutable());
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -120,9 +119,9 @@ ENTRY e {
     const xla::Literal literal_expected_result =
         xla::LiteralUtil::CreateR0<int32_t>(expected_result);
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                            test_runner_as_hlo_runner().ExecuteWithExecutable(
-                                wrapped_executable.get(), {&literal_input}));
+    ASSERT_OK_AND_ASSIGN(Literal result,
+                         test_runner_as_hlo_runner().ExecuteWithExecutable(
+                             wrapped_executable.get(), {&literal_input}));
 
     EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
   };
@@ -143,27 +142,27 @@ ENTRY main {
   ROOT result = f32[] add(a_plus_b, b)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("host"));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   Compiler* compiler = backend().compiler();
   ASSERT_NE(compiler, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(module_string));
 
   xla::Compiler::CompileOptions compile_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
                                          compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       compiler->RunBackend(std::move(hlo_module), stream_exec,
                                             compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+  ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
       absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
@@ -214,31 +213,31 @@ ENTRY main {
   ROOT result = f32[] add(a_plus_b, b)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("host"));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   Compiler* compiler = backend().compiler();
   ASSERT_NE(compiler, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(module_string));
 
   xla::Compiler::CompileOptions compile_options;
   TargetMachineOptions target_machine_options(
       kTargetTripleForHost, kTargetCpuForHost, "+foo-feature,-bar-feature");
   compile_options.cpu_target_config.emplace(target_machine_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
                                          compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       compiler->RunBackend(std::move(hlo_module), stream_exec,
                                             compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+  ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
       absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
@@ -267,27 +266,27 @@ ENTRY main {
   ROOT result = f32[] add(a, b)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("host"));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("host"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   Compiler* compiler = backend().compiler();
   ASSERT_NE(compiler, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(module_string));
 
   xla::Compiler::CompileOptions compile_options;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
                                          compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       compiler->RunBackend(std::move(hlo_module), stream_exec,
                                             compile_options));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+  ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
       absl::down_cast<CpuAotCompilationResult*>(aot_result.get());

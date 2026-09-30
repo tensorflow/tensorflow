@@ -740,6 +740,13 @@ class Delegate {
     }
   }
 
+  ~Delegate() {
+    if (workspace_mutex_ != nullptr && workspace_ != nullptr) {
+      std::lock_guard<std::mutex> lock(*workspace_mutex_);
+      workspace_.reset();
+    }
+  }
+
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context,
                                        TfLiteIntArray** moe_ops_to_delegate);
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
@@ -935,7 +942,7 @@ class Delegate {
       nullptr, &xnn_release_workspace};
 
   TfLiteXNNPackDelegateOptions options_{};
-  std::mutex workspace_mutex_;
+  std::shared_ptr<std::mutex> workspace_mutex_ = std::make_shared<std::mutex>();
 
   // If no weight cache is provided and a cache is set in the delegate options,
   // this will be used as a weight cache.
@@ -1492,12 +1499,19 @@ class Subgraph {
         return nullptr;
       }
     }
-    status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
-                                   delegate.workspace(), delegate.threadpool(),
-                                   flags, &runtime_ptr);
+    {
+      std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
+      status = xnn_create_runtime_v4(
+          subgraph.get(), delegate.weights_cache(), delegate.workspace(),
+          delegate.threadpool(), flags, &runtime_ptr);
+    }
     if (delegate.weight_cache_provider_->IsActive() &&
         delegate.weight_cache_provider_->CanStartBuildStep()) {
       if (!delegate.weight_cache_provider_->StopBuildStep()) {
+        if (runtime_ptr != nullptr) {
+          std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
+          xnn_delete_runtime(runtime_ptr);
+        }
         TF_LITE_KERNEL_LOG(context,
                            "XNNPack delegate failed to stop cache build step.");
         return nullptr;
@@ -1514,12 +1528,16 @@ class Subgraph {
   }
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
-                       bool enable_subgraph_reshaping, Delegate* delegate) {
+                       bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Prepare(context);
     }
 
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    std::lock_guard<std::mutex> lock(*workspace_mutex_);
+    if (runtime_ == nullptr) {
+      TF_LITE_KERNEL_LOG(context, "XNNPACK runtime is null.");
+      return kTfLiteError;
+    }
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
 
@@ -1594,13 +1612,16 @@ class Subgraph {
     return kTfLiteOk;
   }
 
-  TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
-                      Delegate* delegate) {
+  TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Invoke(context);
     }
 
-    std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    std::lock_guard<std::mutex> lock(*workspace_mutex_);
+    if (runtime_ == nullptr) {
+      TF_LITE_KERNEL_LOG(context, "XNNPACK runtime is null.");
+      return kTfLiteError;
+    }
 
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
@@ -2062,17 +2083,17 @@ class Subgraph {
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Relu) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActReluN1To1:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (ReluMinus1To1) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActRelu6:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Relu6) in node #%d",
             node_index);
-        return kTfLiteOk;
+        return kTfLiteError;
       case kTfLiteActTanh:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (Tanh) in node #%d",
@@ -2105,6 +2126,11 @@ class Subgraph {
       TF_LITE_MAYBE_KERNEL_LOG(
           context, "unsupported non-default weights format in node #%d",
           node_index);
+      return kTfLiteError;
+    }
+    if (params->quant_spec != nullptr && params->quant_spec_size > 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(context, "unsupported quant_spec in node #%d",
+                               node_index);
       return kTfLiteError;
     }
 
@@ -2636,6 +2662,7 @@ class Subgraph {
                   context,
                   "unsupported quantization type %d in tensor #%d in node #%d",
                   tensor.quantization.type, tensor_index, node_index);
+              return kTfLiteError;
           }
           return kTfLiteOk;
         }
@@ -5586,6 +5613,7 @@ class Subgraph {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context, "invalid padding mode (%d) in node #%d",
           static_cast<int>(pool_params->padding), node_index);
+      return kTfLiteError;
     }
 
     if (subgraph != nullptr) {
@@ -5877,6 +5905,7 @@ class Subgraph {
           logging_context,
           "unexpected number of dimensions %d in the output shape in node %d",
           SizeOfDimension(&shape_tensor, 0), node_index);
+      return kTfLiteError;
     }
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, shape_tensor, node->inputs->data[1],
@@ -5966,6 +5995,7 @@ class Subgraph {
           logging_context,
           "number of dimensions %d must be less than %d in SLICE node #%d",
           num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloatOrQUInt8Type(delegate, logging_context, input_tensor,
@@ -5987,6 +6017,7 @@ class Subgraph {
                                  "begin %" PRId64
                                  " must be greater than 0 in SLICE node #%d",
                                  begin[i], node_index);
+        return kTfLiteError;
       }
       if (size[i] <= 0) {
         // TODO(b/329228576): Add support for negative begin.
@@ -6215,6 +6246,7 @@ class Subgraph {
                                "number of dimensions %d must be less than %d "
                                "in TRANSPOSE node #%d",
                                dims_count, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
     std::array<size_t, XNN_MAX_TENSOR_DIMS> perm;
     for (int i = 0; i < dims_count; ++i) {
@@ -6272,6 +6304,7 @@ class Subgraph {
                                "number of dimensions %d must be less than %d "
                                "in STRIDED_SLICE node #%d",
                                num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+      return kTfLiteError;
     }
 
     // Only support strides = 1.
@@ -7142,7 +7175,12 @@ class Subgraph {
     return enable_subgraph_reshaping_;
   }
 
-  inline Delegate* GetDelegate() const { return delegate_; }
+  ~Subgraph() {
+    if (workspace_mutex_ != nullptr && runtime_ != nullptr) {
+      std::lock_guard<std::mutex> lock(*workspace_mutex_);
+      runtime_.reset();
+    }
+  }
 
  private:
   Subgraph(Delegate& delegate, xnn_runtime_t runtime,
@@ -7156,7 +7194,7 @@ class Subgraph {
         tflite_tensor_to_xnnpack_(std::move(tflite_tensor_to_xnnpack)),
         resources_(delegate.local_id_to_resources_),
         enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
-        delegate_(&delegate) {
+        workspace_mutex_(delegate.workspace_mutex_) {
     for (int t : externals) {
       externals_[t] = nullptr;
     }
@@ -7165,10 +7203,9 @@ class Subgraph {
   Subgraph(Delegate& delegate,
            std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel)
       : runtime_(nullptr, &xnn_delete_runtime),
-        moe_kernel_(std::move(moe_kernel)) {
-    enable_subgraph_reshaping_ = delegate.enable_subgraph_reshaping();
-    delegate_ = &delegate;
-  }
+        moe_kernel_(std::move(moe_kernel)),
+        enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        workspace_mutex_(delegate.workspace_mutex_) {}
 
   // Keep track of expanded scales for shared tensors to manage their lifetime.
   // Must be declared before runtime_ so it outlives runtime_ during
@@ -7200,7 +7237,7 @@ class Subgraph {
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
   bool enable_subgraph_reshaping_ = false;
-  Delegate* delegate_;
+  std::shared_ptr<std::mutex> workspace_mutex_;
 };
 
 TfLiteIntArray* Delegate::PrepareOpsToDelegate(
@@ -7720,9 +7757,7 @@ TfLiteStatus SubgraphPrepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   Subgraph* subgraph = static_cast<Subgraph*>(node->user_data);
-  return static_cast<Subgraph*>(node->user_data)
-      ->Prepare(context, node, subgraph->EnableSubgraphReshaping(),
-                subgraph->GetDelegate());
+  return subgraph->Prepare(context, node, subgraph->EnableSubgraphReshaping());
 }
 
 TfLiteStatus SubgraphInvoke(TfLiteContext* context, TfLiteNode* node) {
@@ -7731,9 +7766,7 @@ TfLiteStatus SubgraphInvoke(TfLiteContext* context, TfLiteNode* node) {
   }
 
   Subgraph* subgraph = static_cast<Subgraph*>(node->user_data);
-  return static_cast<Subgraph*>(node->user_data)
-      ->Invoke(context, subgraph->EnableSubgraphReshaping(),
-               subgraph->GetDelegate());
+  return subgraph->Invoke(context, subgraph->EnableSubgraphReshaping());
 }
 
 void SubgraphFree(TfLiteContext* context, void* buffer) {

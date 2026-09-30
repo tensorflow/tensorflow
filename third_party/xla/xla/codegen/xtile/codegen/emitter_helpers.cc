@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -54,6 +52,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/tiling/experimental/reshape_analysis.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
@@ -260,6 +259,33 @@ bool IsTritonDotScaledOperandType(PrimitiveType type) {
 bool IsPackedTritonDotScaledOperandType(PrimitiveType type) {
   return IsTritonDotScaledOperandType(type) &&
          primitive_util::IsSubByteNonPredType(type);
+}
+
+bool IsAllOnesScale(const HloInstruction& scale) {
+  const HloInstruction* value = &scale;
+  while (true) {
+    switch (value->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConvert:
+      case HloOpcode::kCopy:
+      case HloOpcode::kReshape:
+        value = value->operand(0);
+        break;
+      case HloOpcode::kParameter: {
+        const HloInstruction* fusion = value->parent()->FusionInstruction();
+        if (fusion == nullptr ||
+            value->parameter_number() >= fusion->operand_count()) {
+          return false;
+        }
+        value = fusion->operand(value->parameter_number());
+        break;
+      }
+      default:
+        return value->opcode() == HloOpcode::kConstant &&
+               value->literal().IsAll(1);
+    }
+  }
 }
 
 absl::StatusOr<SmallVector<int64_t>> GetStorageShape(
@@ -908,51 +934,14 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                   std::move(replica_id_offsets), std::move(replica_id_bounds));
 }
 
-absl::StatusOr<int64_t> GetConstantIntValue(mlir::Value value) {
-  if (std::optional<int64_t> int_value = mlir::getConstantIntValue(value);
-      int_value.has_value()) {
-    return int_value.value();
-  }
-  return absl::InternalError(absl::StrFormat(
-      "Expected constant integer value for replica ID bound, but got: %v",
-      value));
-}
-
 absl::StatusOr<TensorValue> EmitParameterExtract(mlir::ImplicitLocOpBuilder& b,
                                                  const TileInfo& tile_info,
                                                  Value arg) {
   auto tensor_type = mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                                  tile_info.storage_type());
-  mlir::Value source_buffer = arg;
-  if (!tile_info.replica_id_offsets().empty()) {
-    const auto& replica_id_offsets = tile_info.replica_id_offsets();
-    const auto& replica_id_bounds = tile_info.replica_id_bounds();
-    CHECK_EQ(replica_id_offsets.size(), replica_id_bounds.size());
-    const int num_replica_dims = replica_id_offsets.size();
-    for (int i = 0; i < num_replica_dims - 1; ++i) {
-      mlir::Value replica_id = replica_id_offsets[i];
-      ABSL_ASSIGN_OR_RETURN(int64_t next_bound,
-                       GetConstantIntValue(replica_id_bounds[i + 1]));
-      mlir::Type next_buffer_type =
-          mlir::MemRefType::get({next_bound}, b.getI64Type());
-      source_buffer = b.create<xtile::SelectBufferOp>(
-          next_buffer_type, source_buffer, replica_id);
-    }
-    // Final selection to obtain the spatial buffer
-    mlir::Value replica_id = replica_id_offsets.back();
-    ABSL_ASSIGN_OR_RETURN(PrimitiveType element_type,
-                     GetPrimitiveType(tile_info.storage_type()));
-    xla::Shape spatial_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
-        element_type, tile_info.storage_shape(),
-        tile_info.minor_to_major_layout());
-    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType spatial_memref_type,
-                     GetMemRefType(spatial_shape, tile_info.storage_type()));
-    source_buffer = b.create<xtile::SelectBufferOp>(spatial_memref_type,
-                                                    source_buffer, replica_id);
-  }
   return xla::xtile::ExtractTileOp::create(
-      b, tensor_type, source_buffer, tile_info.offsets(),
-      tile_info.padded_tile_sizes(), tile_info.tile_strides());
+      b, tensor_type, arg, tile_info.offsets(), tile_info.padded_tile_sizes(),
+      tile_info.tile_strides());
 }
 
 absl::StatusOr<TensorValue> EmitScope(
@@ -1134,7 +1123,7 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
     const std::optional<GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& tile_requirements_visitor) {
+    const DefaultTileRequirementsVisitor& /*tile_requirements_visitor*/) {
   SmallVector<Type> fn_arg_types;
 
   auto hlo_computation = fusion.fused_instructions_computation();
@@ -1142,20 +1131,9 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     ABSL_ASSIGN_OR_RETURN(Type ir_type,
                      GetMlirType(b, p->shape().element_type(), gpu_cc));
-    ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> replica_id_bounds,
-                     tile_requirements_visitor.RequiredReplicaIdBounds(*p));
-    if (!replica_id_bounds.empty()) {
-      // Nested pointer schema for replica dimensions.
-      // R x S x <type> where R is the number of replica dimensions and S is
-      // the shape on the local device. In total we have R pointers to
-      // S-dimensional tensors.
-      fn_arg_types.push_back(
-          mlir::MemRefType::get({replica_id_bounds.front()}, b.getI64Type()));
-    } else {
-      ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
-                       GetMemRefType(p->shape(), ir_type));
-      fn_arg_types.push_back(memref_type);
-    }
+    ABSL_ASSIGN_OR_RETURN(mlir::MemRefType memref_type,
+                     GetMemRefType(p->shape(), ir_type));
+    fn_arg_types.push_back(memref_type);
   }
 
   // Add result types.
@@ -1209,7 +1187,6 @@ absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
   mlir::RankedTensorType input_type = input.getType();
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
 
-  // At this point we know that neither the input nor the output are 0D tensors.
   auto output_tensor_type = mlir::RankedTensorType::get(
       padded_tile_sizes, input_type.getElementType());
 
@@ -1220,6 +1197,40 @@ absl::StatusOr<TensorValue> EmitTiledReshape(mlir::ImplicitLocOpBuilder& b,
                      absl::StrJoin(output_tensor_type.getShape(), "x")));
   }
   return mlir::stablehlo::ReshapeOp::create(b, output_tensor_type, input);
+}
+
+absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
+    mlir::ImplicitLocOpBuilder& b, const Shape& output_shape,
+    ArrayRef<int64_t> output_tile_sizes, TensorValue input) {
+  SmallVector<int64_t> padded_output_tile_sizes =
+      GetPaddedTileSizes(output_tile_sizes);
+  SmallVector<int64_t> dim_positions =
+      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+  // If all output dimensions are non-trivial, no broadcast expansion is needed.
+  if (dim_positions.size() == padded_output_tile_sizes.size()) {
+    return EmitTiledReshape(b, padded_output_tile_sizes, input);
+  }
+  SmallVector<int64_t> reshape_tile_sizes;
+  reshape_tile_sizes.reserve(dim_positions.size());
+  for (int64_t dim : dim_positions) {
+    reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
+  }
+  // In legacy tiling, backward propagation does not clamp trivial dimensions
+  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
+  // Dot), the input tile already contains elements along that dimension (e.g.
+  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
+  // expansion is needed; reshape directly to the full output tile.
+  //
+  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
+  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
+  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
+    return EmitTiledReshape(b, padded_output_tile_sizes, input);
+  }
+  ABSL_ASSIGN_OR_RETURN(TensorValue re,
+                   EmitTiledReshape(b, reshape_tile_sizes, input));
+  // Broadcast handles expansion of trivial dimensions (tt.expand_dims if tile
+  // size == 1, or tt.broadcast if tile size > 1).
+  return BroadcastInDims(b, re, padded_output_tile_sizes, dim_positions);
 }
 
 TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,

@@ -373,9 +373,6 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>& output_buffers,
     ModuleOutputMode module_output_mode, bool log_output) {
   CHECK(!output_buffers.empty());
-  absl::Mutex mu;
-  absl::Status status;
-  size_t num_pending_transfers = 0;
   bool device_0_is_local = false;
   for (PjRtDevice* device : GetLocalDevices(client)) {
     if (device->id() == 0) {
@@ -383,67 +380,81 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
     }
   }
 
-  if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-      device_0_is_local) {
-    num_pending_transfers = output_buffers[0].size();
-  } else if (module_output_mode == ModuleOutputMode::kReturnOutputs) {
-    for (const auto& bs : output_buffers) {
-      num_pending_transfers += bs.size();
+  PerDeviceLiteralVecType outputs;
+  absl::Mutex mu;
+  absl::Status status;
+  size_t num_pending_transfers = 0;
+
+  absl::Status issue_status = [&]() -> absl::Status {
+    for (int i = 0; i < output_buffers.size(); ++i) {
+      if (output_buffers[i].empty()) {
+        continue;
+      }
+      const int device_id = output_buffers[i][0]->device()->id();
+      std::vector<Literal>& output_slice = outputs[device_id];
+      if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
+          (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+           device_id == 0)) {
+        output_slice.reserve(output_buffers[i].size());
+        for (const auto& buffer : output_buffers[i]) {
+          if (buffer->device() != output_buffers[i][0]->device()) {
+            return absl::InternalError(
+                "All outputs from a given vector of outputs should be for the "
+                "same device");
+          }
+          ABSL_ASSIGN_OR_RETURN(auto logical_shape,
+                           buffer->logical_on_device_shape());
+          output_slice.emplace_back(
+              ShapeUtil::DeviceShapeToHostShape(logical_shape));
+          {
+            absl::MutexLock lock(mu);
+            ++num_pending_transfers;
+          }
+          buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
+            absl::MutexLock lock(mu);
+            --num_pending_transfers;
+            status.Update(s);
+          });
+        }
+      } else {
+        for (const auto& buffer : output_buffers[i]) {
+          if (buffer->device() != output_buffers[i][0]->device()) {
+            return absl::InternalError(
+                "All outputs from a given vector of outputs should be for the "
+                "same device");
+          }
+          ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+        }
+      }
     }
+    return absl::OkStatus();
+  }();
+
+  // The ToLiteral callbacks above reference `outputs`, `mu`, `status` and
+  // `num_pending_transfers`, so every issued transfer must complete before this
+  // function returns, including when a transfer fails or issuing one fails.
+  {
+    auto all_transfers_done = [&]() { return num_pending_transfers == 0; };
+    absl::MutexLock lock(mu);
+    mu.Await(absl::Condition(&all_transfers_done));
+    ABSL_RETURN_IF_ERROR(issue_status);
+    ABSL_RETURN_IF_ERROR(status);
   }
 
-  PerDeviceLiteralVecType outputs;
-  for (int i = 0; i < output_buffers.size(); ++i) {
-    if (output_buffers[i].empty()) {
-      continue;
-    }
-    const int device_id = output_buffers[i][0]->device()->id();
-    std::vector<Literal>& output_slice = outputs[device_id];
-    if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
-        (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-         device_id == 0)) {
-      output_slice.reserve(output_buffers[i].size());
-      for (const auto& buffer : output_buffers[i]) {
-        TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
-            << "All outputs from a given vector of outputs should be for the "
-               "same device";
-        ABSL_ASSIGN_OR_RETURN(auto logical_shape, buffer->logical_on_device_shape());
-        output_slice.emplace_back(
-            ShapeUtil::DeviceShapeToHostShape(logical_shape));
-        buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
-          absl::MutexLock lock(mu);
-          --num_pending_transfers;
-          status.Update(s);
-        });
+  if (log_output &&
+      (module_output_mode == ModuleOutputMode::kReturnOutputs ||
+       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+        device_0_is_local))) {
+    for (const PjRtDevice* device : GetLocalDevices(client)) {
+      int device_id = device->id();
+      if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
+          device_id != 0) {
+        continue;
       }
-    } else {
-      for (const auto& buffer : output_buffers[i]) {
-        TF_RET_CHECK(buffer->device() == output_buffers[i][0]->device())
-            << "All outputs from a given vector of outputs should be for the "
-               "same device";
-        ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
-      }
-    }
-  }
-  if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
-      (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-       device_0_is_local)) {
-    auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
-    absl::MutexLock lock(mu);
-    mu.Await(absl::Condition(&cond));
-    ABSL_RETURN_IF_ERROR(status);
-    if (log_output) {
-      for (const PjRtDevice* device : GetLocalDevices(client)) {
-        int device_id = device->id();
-        if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
-            device_id != 0) {
-          continue;
-        }
-        LOG(INFO) << "Outputs for device_id: " << device_id;
-        const std::vector<Literal>& output_slice = outputs[device_id];
-        for (int i = 0; i < output_slice.size(); ++i) {
-          LOG(INFO) << "output[" << i << "]: " << output_slice[i].ToString();
-        }
+      LOG(INFO) << "Outputs for device_id: " << device_id;
+      const std::vector<Literal>& output_slice = outputs[device_id];
+      for (int i = 0; i < output_slice.size(); ++i) {
+        LOG(INFO) << "output[" << i << "]: " << output_slice[i].ToString();
       }
     }
   }
@@ -1004,23 +1015,18 @@ CreateArgumentsOnDevice(PjRtClient& client,
         }
       }
     } else {
+      FakeArgumentsOptions options;
+      options.engine = engine;
+      options.pseudo_random = kUseRandomInputs;
       if (flatten_arguments) {
-        ABSL_ASSIGN_OR_RETURN(
-            LiteralVec tupled_argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
       } else {
-        ABSL_ASSIGN_OR_RETURN(
-            argument_literals,
-            MakeFakeArguments(my_hlo_module, kUseRandomInputs,
-                              /*use_large_range=*/false,
-                              /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+        ABSL_ASSIGN_OR_RETURN(argument_literals,
+                         MakeFakeArguments(my_hlo_module, options));
       }
       if (kUseSharedInputs) {
         break;
@@ -1271,7 +1277,7 @@ absl::Status DumpOutput(
   results.resize(write_tasks.size());
   {
     tsl::Env* env = tsl::Env::Default();
-    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner::DumpOutput", 16);
+    tsl::thread::ThreadPool thread_pool(env, "XlaHloRunner_DumpOutput", 16);
     for (int i = 0; i < write_tasks.size(); ++i) {
       thread_pool.Schedule(
           [&write_tasks, &results, i]() { results[i] = write_tasks[i](); });

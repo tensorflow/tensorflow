@@ -101,17 +101,6 @@ bool IsSdpa(const TfLiteRegistration* registration, const TfLiteNode* node) {
   return false;
 }
 
-bool IsSdpa(TfLiteContext* context, int node_index) {
-  TfLiteNode* node = nullptr;
-  TfLiteRegistration* registration = nullptr;
-  if (context == nullptr ||
-      context->GetNodeAndRegistration(context, node_index, &node,
-                                      &registration) != kTfLiteOk) {
-    return false;
-  }
-  return IsSdpa(registration, node);
-}
-
 TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
                              const TfLiteNode* node, TfLiteContext* context) {
   TF_LITE_ENSURE(context, IsSdpa(registration, node));
@@ -141,6 +130,30 @@ TfLiteStatus IsSdpaSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE_EQ(context, k.dims->size, 4);
   TF_LITE_ENSURE_EQ(context, v.dims->size, 4);
   TF_LITE_ENSURE_EQ(context, output.dims->size, 4);
+
+  bool is_seq_major = true;
+  if (registration->builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node->builtin_data != nullptr) {
+    const auto* composite_params =
+        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+    if (composite_params->name != nullptr &&
+        strcmp(composite_params->name, "odml.sdpa_transposed") == 0) {
+      is_seq_major = false;
+    }
+  } else if (registration->builtin_code == kTfLiteBuiltinCustom &&
+             registration->custom_name != nullptr &&
+             strcmp(registration->custom_name, "odml.sdpa_transposed") == 0) {
+    is_seq_major = false;
+  }
+  if (is_seq_major) {
+    TF_LITE_ENSURE_EQ(context, q.dims->data[2], k.dims->data[2]);
+    TF_LITE_ENSURE_EQ(context, k.dims->data[2], v.dims->data[2]);
+  } else {
+    TF_LITE_ENSURE(context, k.dims->data[1] > 0);
+    TF_LITE_ENSURE_EQ(context, k.dims->data[1], v.dims->data[1]);
+    TF_LITE_ENSURE(context, q.dims->data[1] >= k.dims->data[1] &&
+                                q.dims->data[1] % k.dims->data[1] == 0);
+  }
 
   // If 4th input is present, it can be Mask or Param.
   if (node->inputs->size >= 4 && node->inputs->data[3] != -1) {
@@ -251,7 +264,9 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t current_mask_val_id = mask_val_id;
 
   if (sdpa_inputs.param_index != -1) {
-    // Slice K
+    // Slice K to the current kv-seq length. The length is carried by a dummy
+    // external input whose seq axis is resized from the param tensor at each
+    // invoke.
     size_t full_dims_k[YNN_MAX_TENSOR_RANK];
     for (int i = 0; i < k_tensor.dims->size; ++i) {
       full_dims_k[i] = k_tensor.dims->data[i];
@@ -268,47 +283,6 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
         subgraph, /*num_axes=*/1, slice_axes_k, current_k_val_id,
         dummy_val_id_k, &sliced_k_val_id, /*flags=*/0));
     current_k_val_id = sliced_k_val_id;
-
-    // Slice V
-    const TfLiteTensor& v_tensor = context->tensors[sdpa_inputs.v_index];
-    size_t full_dims_v[YNN_MAX_TENSOR_RANK];
-    for (int i = 0; i < v_tensor.dims->size; ++i) {
-      full_dims_v[i] = v_tensor.dims->data[i];
-    }
-    uint32_t dummy_val_id_v = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_STATUS(GetOrCreateDummyInput(
-        context, subgraph, next_external_id, dummy_inputs,
-        sdpa_inputs.param_index, v_seq_axis, v_tensor.dims->size, full_dims_v,
-        GetYnnType(v_tensor.type), &dummy_val_id_v));
-
-    uint32_t sliced_v_val_id = YNN_INVALID_VALUE_ID;
-    int32_t slice_axes_v[1] = {v_seq_axis};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
-        subgraph, /*num_axes=*/1, slice_axes_v, current_v_val_id,
-        dummy_val_id_v, &sliced_v_val_id, /*flags=*/0));
-    current_v_val_id = sliced_v_val_id;
-
-    if (mask_val_id != YNN_INVALID_VALUE_ID) {
-      const TfLiteTensor& mask_tensor =
-          context->tensors[sdpa_inputs.mask_index];
-      size_t full_dims_mask[YNN_MAX_TENSOR_RANK];
-      for (int i = 0; i < mask_tensor.dims->size; ++i) {
-        full_dims_mask[i] = mask_tensor.dims->data[i];
-      }
-      int mask_seq_axis = mask_tensor.dims->size - 1;
-      uint32_t dummy_val_id_mask = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_STATUS(GetOrCreateDummyInput(
-          context, subgraph, next_external_id, dummy_inputs,
-          sdpa_inputs.param_index, mask_seq_axis, mask_tensor.dims->size,
-          full_dims_mask, GetYnnType(mask_tensor.type), &dummy_val_id_mask));
-
-      uint32_t sliced_mask_val_id = YNN_INVALID_VALUE_ID;
-      int32_t slice_axes_mask[1] = {mask_seq_axis};
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
-          subgraph, /*num_axes=*/1, slice_axes_mask, current_mask_val_id,
-          dummy_val_id_mask, &sliced_mask_val_id, /*flags=*/0));
-      current_mask_val_id = sliced_mask_val_id;
-    }
   }
 
   uint32_t mask_val_to_add_id = current_mask_val_id;
@@ -345,9 +319,10 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
     }
   }
 
+  // Bring Q and K to [B, H, S, D]. V is handled below, next to the dot that
+  // consumes it.
   uint32_t q_trans_id = YNN_INVALID_VALUE_ID;
   uint32_t k_trans_id = YNN_INVALID_VALUE_ID;
-  uint32_t v_trans_id = YNN_INVALID_VALUE_ID;
 
   if (is_seq_major) {
     const int32_t io_perm[] = {0, 2, 1, 3};
@@ -357,18 +332,10 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
         subgraph, 4, io_perm, current_k_val_id, &k_trans_id, 0));
-
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 4, io_perm, current_v_val_id, &v_trans_id, 0));
   } else {
     // For sdpa_transposed, Q and K are already in correct layout.
     q_trans_id = q_val_id;
     k_trans_id = current_k_val_id;
-
-    // V is transposed [B, H, D, S], we need to transpose it to [B, H, S, D].
-    const int32_t v_perm[] = {0, 1, 3, 2};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 4, v_perm, current_v_val_id, &v_trans_id, 0));
   }
 
   uint32_t scale_const_id = YNN_INVALID_VALUE_ID;
@@ -376,148 +343,214 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
       ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &scale_val,
                         YNN_VALUE_FLAG_COPY_DATA_FP32, &scale_const_id));
 
+  const int q_head_dim = is_seq_major ? 2 : 1;
+  const int k_head_dim = is_seq_major ? 2 : 1;
+  const int n_q = q_tensor.dims->data[q_head_dim];
+  const int n_kv = k_tensor.dims->data[k_head_dim];
+  TF_LITE_ENSURE(context, n_kv > 0 && n_q % n_kv == 0);
+  const size_t g_heads_per_kv = static_cast<size_t>(n_q / n_kv);
+
   const int q_seq_dim = is_seq_major ? 1 : 2;
-  bool use_decode1 = (q_tensor.dims->data[q_seq_dim] <= 32);
+  bool use_decode1 =
+      !is_seq_major &&
+      (q_tensor.dims->data[q_seq_dim] * static_cast<int>(g_heads_per_kv) <= 32);
+  // Prefill with grouped heads: keep the head axis as [n_kv, g] and let the dot
+  // broadcast K/V over g, instead of folding g into the row axis.
+  const bool gqa_batch = g_heads_per_kv > 1 && !is_seq_major && !use_decode1;
+  const bool gqa_fold = g_heads_per_kv > 1 && !gqa_batch;
+
+  if (gqa_fold) {
+    uint32_t q_5d_id = YNN_INVALID_VALUE_ID;
+    const size_t q_splits[2] = {static_cast<size_t>(n_kv), g_heads_per_kv};
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, /*axis=*/1,
+                                                   /*num_splits=*/2, q_splits,
+                                                   q_trans_id, &q_5d_id, 0));
+    uint32_t q_packed_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(
+        subgraph, /*axis=*/2, /*axes_count=*/2, q_5d_id, &q_packed_id, 0));
+    q_trans_id = q_packed_id;
+  }
+
+  if (gqa_batch) {
+    const size_t q_splits[2] = {static_cast<size_t>(n_kv), g_heads_per_kv};
+    uint32_t q_5d_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_split_dim(subgraph, /*axis=*/1,
+                                                   /*num_splits=*/2, q_splits,
+                                                   q_trans_id, &q_5d_id, 0));
+    q_trans_id = q_5d_id;
+    const int32_t expand_axis = 2;
+    uint32_t k_5d_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+        subgraph, /*num_new_axes=*/1, &expand_axis, k_trans_id, &k_5d_id, 0));
+    k_trans_id = k_5d_id;
+  }
 
   bool need_slice_out = false;
   uint32_t post_bmm_id = YNN_INVALID_VALUE_ID;
   uint32_t* post_bmm_ptr = &post_bmm_id;
 
-  if (!need_slice_out && !is_seq_major) {
+  if (!need_slice_out && !is_seq_major && g_heads_per_kv == 1) {
     post_bmm_ptr = &output_val_id;
   }
 
-  if (use_decode1) {
-    uint32_t q_scaled_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                                q_trans_id, scale_const_id,
-                                                &q_scaled_id, 0));
+  // Scale Q.
+  uint32_t q_scaled_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
+                                              q_trans_id, scale_const_id,
+                                              &q_scaled_id, 0));
 
+  // Scores: S = Q @ K^T, [B, H, Q, S].
+  const int32_t swap_last_two_perm[] = {-1, -2};
+  uint32_t scores_id = YNN_INVALID_VALUE_ID;
+  if (use_decode1) {
+    // Compute S^T = K @ Q^T and transpose the (small) result.
     uint32_t q_scaled_t_id = YNN_INVALID_VALUE_ID;
-    const int32_t q_t_perm[] = {0, 1, 3, 2};
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 4, q_t_perm, q_scaled_id, &q_scaled_t_id, 0));
+        subgraph, 2, swap_last_two_perm, q_scaled_id, &q_scaled_t_id,
+        YNN_NODE_FLAG_KEEP_DIMS));
 
     uint32_t scores_ts_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, k_trans_id, q_scaled_t_id,
                        YNN_INVALID_VALUE_ID, &scores_ts_id, 0));
 
-    uint32_t scores_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 4, q_t_perm, scores_ts_id, &scores_id, 0));
-
-    uint32_t logits_id = scores_id;
-    if (has_logit_cap) {
-      uint32_t cap_const_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &logit_cap_val,
-                            YNN_VALUE_FLAG_COPY_DATA_FP32, &cap_const_id));
-
-      uint32_t scores_div_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_divide,
-                                                  scores_id, cap_const_id,
-                                                  &scores_div_id, 0));
-
-      uint32_t scores_tanh_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_unary(
-          subgraph, ynn_unary_tanh, scores_div_id, &scores_tanh_id, 0));
-
-      uint32_t scores_capped_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                                  scores_tanh_id, cap_const_id,
-                                                  &scores_capped_id, 0));
-      logits_id = scores_capped_id;
-    }
-
-    uint32_t masked_logits_id = YNN_INVALID_VALUE_ID;
-    if (mask_val_to_add_id != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
-                                                  logits_id, mask_val_to_add_id,
-                                                  &masked_logits_id, 0));
-    } else {
-      masked_logits_id = logits_id;
-    }
-
-    uint32_t probs_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn::define_softmax(subgraph, masked_logits_id, 1.0f, probs_id));
-
-    if (!is_seq_major) {
-      // Rewrite BMM2: O = (V @ P^T)^T to avoid transposing V.
-      // P is [B, N, 1, S] -> P^T is [B, N, S, 1]
-      // V is [B, N, H, S]
-      // V @ P^T is [B, N, H, 1] -> transpose to [B, N, 1, H]
-      uint32_t probs_t_id = YNN_INVALID_VALUE_ID;
-      const int32_t probs_t_perm[] = {0, 1, 3, 2};
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-          subgraph, 4, probs_t_perm, probs_id, &probs_t_id, 0));
-
-      uint32_t post_bmm_t_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_dot(subgraph, /*num_k_dims=*/1, current_v_val_id,
-                         probs_t_id, YNN_INVALID_VALUE_ID, &post_bmm_t_id, 0));
-
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-          subgraph, 4, probs_t_perm, post_bmm_t_id, post_bmm_ptr, 0));
-    } else {
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_dot(subgraph, /*num_k_dims=*/1, probs_id, v_trans_id,
-                         YNN_INVALID_VALUE_ID, post_bmm_ptr, 0));
-    }
-
+        subgraph, 2, swap_last_two_perm, scores_ts_id, &scores_id,
+        YNN_NODE_FLAG_KEEP_DIMS));
   } else {
-    // General case: S = Q @ K^T
-    uint32_t q_scaled_id = YNN_INVALID_VALUE_ID;
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                                q_trans_id, scale_const_id,
-                                                &q_scaled_id, 0));
-
     uint32_t k_trans_t_id = YNN_INVALID_VALUE_ID;
-    const int32_t k_t_perm[] = {0, 1, 3, 2};
-    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
-        subgraph, 4, k_t_perm, k_trans_id, &k_trans_t_id, 0));
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_static_transpose(subgraph, 2, swap_last_two_perm, k_trans_id,
+                                    &k_trans_t_id, YNN_NODE_FLAG_KEEP_DIMS));
 
-    uint32_t scores_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, q_scaled_id, k_trans_t_id,
                        YNN_INVALID_VALUE_ID, &scores_id, 0));
+  }
 
-    uint32_t logits_id = scores_id;
-    if (has_logit_cap) {
-      uint32_t cap_const_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(
-          ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &logit_cap_val,
-                            YNN_VALUE_FLAG_COPY_DATA_FP32, &cap_const_id));
-
-      uint32_t scores_div_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_divide,
-                                                  scores_id, cap_const_id,
-                                                  &scores_div_id, 0));
-
-      uint32_t scores_tanh_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_unary(
-          subgraph, ynn_unary_tanh, scores_div_id, &scores_tanh_id, 0));
-
-      uint32_t scores_capped_id = YNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
-                                                  scores_tanh_id, cap_const_id,
-                                                  &scores_capped_id, 0));
-      logits_id = scores_capped_id;
-    }
-
-    uint32_t masked_logits_id = YNN_INVALID_VALUE_ID;
-    if (mask_val_to_add_id != YNN_INVALID_VALUE_ID) {
-      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
-                                                  logits_id, mask_val_to_add_id,
-                                                  &masked_logits_id, 0));
-    } else {
-      masked_logits_id = logits_id;
-    }
-
-    uint32_t probs_id = YNN_INVALID_VALUE_ID;
+  uint32_t logits_id = scores_id;
+  if (has_logit_cap) {
+    uint32_t cap_const_id = YNN_INVALID_VALUE_ID;
     TF_LITE_ENSURE_YNN_STATUS(
-        ynn::define_softmax(subgraph, masked_logits_id, 1.0f, probs_id));
+        ynn_define_tensor(subgraph, ynn_type_fp32, 0, nullptr, &logit_cap_val,
+                          YNN_VALUE_FLAG_COPY_DATA_FP32, &cap_const_id));
+
+    uint32_t scores_div_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_divide,
+                                                scores_id, cap_const_id,
+                                                &scores_div_id, 0));
+
+    uint32_t scores_tanh_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_unary(
+        subgraph, ynn_unary_tanh, scores_div_id, &scores_tanh_id, 0));
+
+    uint32_t scores_capped_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_multiply,
+                                                scores_tanh_id, cap_const_id,
+                                                &scores_capped_id, 0));
+    logits_id = scores_capped_id;
+  }
+
+  uint32_t masked_logits_id = YNN_INVALID_VALUE_ID;
+  if (mask_val_to_add_id != YNN_INVALID_VALUE_ID) {
+    uint32_t mask_to_add_id = mask_val_to_add_id;
+    if (sdpa_inputs.param_index != -1) {
+      // Slice the mask along its kv-seq (last) axis using the logits as the
+      // template.
+      const TfLiteTensor& mask_tensor =
+          context->tensors[sdpa_inputs.mask_index];
+      int32_t mask_seq_axis = mask_tensor.dims->size - 1;
+      uint32_t sliced_mask_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
+          subgraph, /*num_axes=*/1, &mask_seq_axis, mask_to_add_id, logits_id,
+          &sliced_mask_id, /*flags=*/0));
+      mask_to_add_id = sliced_mask_id;
+    }
+    if (gqa_fold || gqa_batch) {
+      const int32_t expand_axis = 2;
+      uint32_t mask_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+          subgraph, /*num_new_axes=*/1, &expand_axis, mask_to_add_id,
+          &mask_5d_id, 0));
+      mask_to_add_id = mask_5d_id;
+    }
+    if (gqa_fold) {
+      const size_t logits_splits[2] = {g_heads_per_kv, 0};
+      uint32_t logits_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2,
+                               logits_splits, logits_id, &logits_5d_id, 0));
+
+      uint32_t masked_logits_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
+                                                  logits_5d_id, mask_to_add_id,
+                                                  &masked_logits_5d_id, 0));
+
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_fuse_dim(subgraph, /*axis=*/2, /*axes_count=*/2,
+                              masked_logits_5d_id, &masked_logits_id, 0));
+    } else {
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(subgraph, ynn_binary_add,
+                                                  logits_id, mask_to_add_id,
+                                                  &masked_logits_id, 0));
+    }
+  } else {
+    masked_logits_id = logits_id;
+  }
+
+  uint32_t probs_id = YNN_INVALID_VALUE_ID;
+  TF_LITE_ENSURE_YNN_STATUS(
+      ynn::define_softmax(subgraph, masked_logits_id, 1.0f, probs_id));
+
+  if (sdpa_inputs.param_index != -1) {
+    // Slice V along its kv-seq axis against a value whose matching slinky dim
+    // carries the K slice's symbolic extent (slice_like matches dims by
+    // position, so the template must have the same layout along that axis).
+    // Seq-major V [B, S, H, D] shares K's layout, so the sliced K works;
+    // transposed V [B, H, D, S] has kv-seq last, like the scores.
+    uint32_t v_template_id = is_seq_major ? current_k_val_id : scores_id;
+    int32_t slice_axes_v[1] = {v_seq_axis};
+    uint32_t sliced_v_val_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_slice_like(
+        subgraph, /*num_axes=*/1, slice_axes_v, current_v_val_id, v_template_id,
+        &sliced_v_val_id, /*flags=*/0));
+    current_v_val_id = sliced_v_val_id;
+  }
+  if (gqa_batch) {
+    const int32_t expand_axis = 2;
+    uint32_t v_5d_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_expand_dims(
+        subgraph, /*num_new_axes=*/1, &expand_axis, current_v_val_id, &v_5d_id,
+        0));
+    current_v_val_id = v_5d_id;
+  }
+
+  // O = P @ V.
+  if (use_decode1 && !is_seq_major) {
+    // Rewrite BMM2: O = (V @ P^T)^T to avoid transposing V.
+    // P is [B, N, 1, S] -> P^T is [B, N, S, 1]
+    // V is [B, N, H, S]
+    // V @ P^T is [B, N, H, 1] -> transpose to [B, N, 1, H]
+    uint32_t probs_t_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_static_transpose(subgraph, 2, swap_last_two_perm, probs_id,
+                                    &probs_t_id, YNN_NODE_FLAG_KEEP_DIMS));
+
+    uint32_t post_bmm_t_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_dot(subgraph, /*num_k_dims=*/1, current_v_val_id, probs_t_id,
+                       YNN_INVALID_VALUE_ID, &post_bmm_t_id, 0));
+
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+        subgraph, 2, swap_last_two_perm, post_bmm_t_id, post_bmm_ptr,
+        YNN_NODE_FLAG_KEEP_DIMS));
+  } else {
+    // Bring V to [B, H, S, D].
+    const int32_t seq_major_v_perm[] = {2, 1};
+    uint32_t v_trans_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+        subgraph, 2, is_seq_major ? seq_major_v_perm : swap_last_two_perm,
+        current_v_val_id, &v_trans_id, YNN_NODE_FLAG_KEEP_DIMS));
 
     TF_LITE_ENSURE_YNN_STATUS(
         ynn_define_dot(subgraph, /*num_k_dims=*/1, probs_id, v_trans_id,
@@ -527,7 +560,33 @@ TfLiteStatus DefineSdpaNode(TfLiteContext* context, ynn_subgraph_t subgraph,
   uint32_t post_trans_id = *post_bmm_ptr;
   uint32_t* post_trans_ptr = &post_trans_id;
 
-  if (is_seq_major) {
+  if (gqa_fold) {
+    const size_t out_splits[2] = {g_heads_per_kv, 0};
+    uint32_t out_5d_id = YNN_INVALID_VALUE_ID;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_split_dim(subgraph, /*axis=*/2, /*num_splits=*/2, out_splits,
+                             *post_bmm_ptr, &out_5d_id, 0));
+    if (is_seq_major) {
+      const int32_t perm_5d[] = {0, 3, 1, 2, 4};
+      uint32_t out_trans_5d_id = YNN_INVALID_VALUE_ID;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_static_transpose(
+          subgraph, 5, perm_5d, out_5d_id, &out_trans_5d_id, 0));
+      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+      TF_LITE_ENSURE_YNN_STATUS(
+          ynn_define_fuse_dim(subgraph, /*axis=*/2, /*axes_count=*/2,
+                              out_trans_5d_id, post_trans_ptr, 0));
+    } else {
+      post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+      TF_LITE_ENSURE_YNN_STATUS(ynn_define_fuse_dim(subgraph, /*axis=*/1,
+                                                    /*axes_count=*/2, out_5d_id,
+                                                    post_trans_ptr, 0));
+    }
+  } else if (gqa_batch) {
+    post_trans_ptr = need_slice_out ? &post_trans_id : &output_val_id;
+    TF_LITE_ENSURE_YNN_STATUS(
+        ynn_define_fuse_dim(subgraph, /*axis=*/1, /*axes_count=*/2,
+                            *post_bmm_ptr, post_trans_ptr, 0));
+  } else if (is_seq_major) {
     if (!need_slice_out) {
       post_trans_ptr = &output_val_id;
     } else {

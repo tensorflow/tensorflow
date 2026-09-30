@@ -57,3 +57,38 @@ xla_cc_binary(
         "@tsl//tsl/platform:platform_port",
     ],
 )
+
+xla_cc_binary(
+    name = "fusion_to_tiled_hlo",
+    srcs = ["fusion_to_tiled_hlo.cc"],
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
+        "//xla/codegen/tiling/experimental:tile",
+        "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile:block_level_parameters",
+        "//xla/codegen/xtile:tiling_from_block_parameters",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tools:hlo_module_loader",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+alias(
+    name = "hlo_to_tiled_hlo",
+    actual = ":fusion_to_tiled_hlo",
+)

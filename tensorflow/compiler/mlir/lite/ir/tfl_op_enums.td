@@ -49,6 +49,7 @@ def TFL_DimensionType : I32EnumAttr<
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
     "dimension_type_attr"> {
   let convertFromStorage = "$_self";
+  let assemblyFormat = "$value";
 }
 
 // Allowed activation function cases
@@ -106,7 +107,9 @@ def TFL_MirrorPaddingType : I32EnumAttr<"MirrorPaddingType", "mirror_pad_enum", 
   let cppNamespace = "::mlir::TFL";
 }
 def TFL_MirrorPaddingAttr : EnumAttr<TFL_Dialect, TFL_MirrorPaddingType,
-    "mirror_pad_attr">;
+    "mirror_pad_attr"> {
+  let assemblyFormat = "$value";
+}
 
 // LSTM Kernel Type attributes
 def TFL_LSTM_KT_FULL  : I32EnumAttrCase<"FULL", 0>;
@@ -119,7 +122,9 @@ def TFL_LSTMKernelType : I32EnumAttr<"LSTMKernelType", "lstm_kernel_type",
   let cppNamespace = "::mlir::TFL";
 }
 def TFL_LSTMKernelTypeAttr : EnumAttr<TFL_Dialect, TFL_LSTMKernelType,
-    "lstm_kernel_type_attr">;
+    "lstm_kernel_type_attr"> {
+  let assemblyFormat = "$value";
+}
 
 def I32ArrayParameter :
     AttrOrTypeParameter<"::llvm::ArrayRef<int32_t>", ""> {

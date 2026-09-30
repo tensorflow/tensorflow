@@ -207,7 +207,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> RunInterpreterHloPasses(
     std::unique_ptr<HloModule> hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
-  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // The TopkDecomposer generates a compare op with order=TOTAL and must
   // run before the ComparisonExpander which rewrites such comparisons.
   pipeline.AddPass<TopkDecomposer>();
   pipeline.AddPass<DynamicIndexSplitter>();

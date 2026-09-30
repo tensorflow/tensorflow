@@ -105,3 +105,35 @@ func.func @no_unroll_unit_leading(%arg0: tensor<1x4xf32>, %arg1: tensor<1x4xf32>
 // CHECK-COUNT-2: vector.transfer_read %{{.*}} : tensor<1x4xf32>, vector<1x4xf32>
 // CHECK-COUNT-1: arith.addf %{{.*}}, %{{.*}} : vector<1x4xf32>
 // CHECK-COUNT-1: vector.transfer_write %{{.*}} : vector<1x4xf32>, tensor<1x4xf32>
+
+// -----
+
+func.func @no_unroll_transpose(%arg0: vector<2x4xf32>) -> vector<4x2xf32> {
+  %0 = vector.transpose %arg0, [1, 0] : vector<2x4xf32> to vector<4x2xf32>
+  return %0 : vector<4x2xf32>
+}
+// CHECK-LABEL: func.func @no_unroll_transpose(
+// CHECK: vector.transpose %{{.*}}, [1, 0] : vector<2x4xf32> to vector<4x2xf32>
+
+// -----
+
+func.func @unroll_large_transpose(%arg0: vector<32x16xf32>)
+    -> vector<16x32xf32> {
+  %0 = vector.transpose %arg0, [1, 0]
+    : vector<32x16xf32> to vector<16x32xf32>
+  return %0 : vector<16x32xf32>
+}
+// CHECK-LABEL: func.func @unroll_large_transpose(
+// CHECK-COUNT-2: vector.transpose %{{.*}}, [1, 0] : vector<16x16xf32> to vector<16x16xf32>
+
+// -----
+
+func.func @unroll_batch_transpose(%arg0: vector<2x4x8xf32>)
+    -> vector<2x8x4xf32> {
+  %0 = vector.transpose %arg0, [0, 2, 1]
+    : vector<2x4x8xf32> to vector<2x8x4xf32>
+  return %0 : vector<2x8x4xf32>
+}
+// CHECK-LABEL: func.func @unroll_batch_transpose(
+// CHECK-COUNT-2: vector.transpose %{{.*}}, [0, 2, 1] : vector<1x4x8xf32> to vector<1x8x4xf32>
+

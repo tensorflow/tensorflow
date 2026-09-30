@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -26,8 +27,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -97,6 +100,30 @@ bool IsCrossHostOneShotKernelEnabled(
 // Returns true if all replicas in every replica group of the collective
 // are located on the same host (node).
 bool IsAllReplicasLocal(int64_t gpus_per_host,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if all replicas in every replica group of the collective
+// are located on the same host (or within a single GB cluster host / partition
+// if xla_gpu_unsupported_use_cross_host_one_shot_kernel is enabled for the
+// collective).
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
+                        const DebugOptions& debug_options,
+                        std::optional<DebugOptions::CollectiveOpType> op_type,
+                        absl::Span<const ReplicaGroup> replica_groups,
+                        CollectiveOpGroupMode group_mode,
+                        const DeviceAssignment* device_assignment = nullptr);
+
+// Returns true if all replicas in every replica group of the collective
+// are located on the same host (or within a single GB cluster host / partition
+// if xla_gpu_unsupported_use_cross_host_one_shot_kernel is enabled for the
+// collective).
+absl::StatusOr<bool> IsAllReplicasLocal(
+    const GpuTopology& gpu_topology, const HloInstruction& instruction,
+    const DeviceAssignment* device_assignment = nullptr);
+
+bool IsAllReplicasLocal(const GpuTopology& gpu_topology,
                         absl::Span<const ReplicaGroup> replica_groups,
                         CollectiveOpGroupMode group_mode,
                         const DeviceAssignment* device_assignment = nullptr);

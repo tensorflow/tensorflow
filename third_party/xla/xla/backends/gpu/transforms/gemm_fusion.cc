@@ -39,15 +39,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/analysis/shape_tracker.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -59,6 +64,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1150,6 +1156,109 @@ absl::Status RemoveEdgeBitcasts(HloInstruction* fusion,
   return absl::OkStatus();
 }
 
+// Builds a map replacing known power-of-2 variables `v` with `v * 2` to model
+// that we know they will be divisiable by 2. Specifically, extract the
+// variables for block_m, block_n, block_k.
+llvm::DenseMap<SymbolicExpr, SymbolicExpr> BuildEvenBlockSizeReplacements(
+    const experimental::TiledHloInstruction& tiled_dot,
+    mlir::MLIRContext& mlir_context) {
+  const DotDimensionNumbers& dim_numbers =
+      tiled_dot.hlo()->dot_dimension_numbers();
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> even_variable_replacements;
+  auto add_var_from_tile = [&](const experimental::DimTile& dim_tile) {
+    llvm::DenseSet<VariableID> vars;
+    dim_tile.size.GetUsedVariables(vars);
+    CHECK_EQ(vars.size(), 1)
+        << "Expected exactly one tiling variable for non-batch dot dimension: "
+        << dim_tile.size.ToString();
+    VariableID var = *vars.begin();
+    SymbolicExpr var_expr = CreateSymbolicVariable(var, &mlir_context);
+    even_variable_replacements[var_expr] = var_expr * 2;
+  };
+
+  // Output non-batch dimensions (block_m, block_n).
+  for (int64_t d = dim_numbers.lhs_batch_dimensions_size();
+       d < tiled_dot.tile().dim_tiles().size(); ++d) {
+    add_var_from_tile(tiled_dot.tile().dim_tiles()[d]);
+  }
+  // Contracting dimension variable (block_k).
+  for (int64_t k_dim : dim_numbers.lhs_contracting_dimensions()) {
+    if (k_dim < tiled_dot.operand(0)->tile().dim_tiles().size()) {
+      add_var_from_tile(tiled_dot.operand(0)->tile().dim_tiles()[k_dim]);
+    }
+  }
+  return even_variable_replacements;
+}
+
+// Returns true if `inst` is an S4 instruction whose minor-most non-unit
+// physical dimension has a tile size not divisible by 2.
+bool InstructionHasUntileableS4MinorDimension(
+    const experimental::TiledHloInstruction& inst,
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
+  const Shape& shape = inst.hlo()->shape();
+  if (shape.element_type() != PrimitiveType::S4 || !shape.has_layout()) {
+    return false;
+  }
+
+  // Find the minor-most non-unit dimension according to the physical layout.
+  llvm::ArrayRef<experimental::DimTile> dim_tiles = inst.tile().dim_tiles();
+  auto minor_to_major = shape.layout().minor_to_major();
+  auto minor_dim = absl::c_find_if(
+      minor_to_major, [&](int64_t dim) { return shape.dimensions(dim) != 1; });
+  if (minor_dim == minor_to_major.end()) {
+    return false;
+  }
+
+  // Evaluate whether the tile size is divisible by 2 after taking into account
+  // that non-batch dimensions are even multiples.
+  SymbolicExpr tile_size = dim_tiles[*minor_dim].size.Replace(replacement_map);
+  return !tile_size.IsMultipleOf(2);
+}
+
+// Most S4 parameters are okay, but there are cases where the tile size along
+// the minor-most physical dimension is not divisible by 2 (e.g. if it
+// corresponds to a batch dimension which we blindly tile to 1 at the moment, or
+// due to complex reshape / transpose indexing before the dot). In such cases,
+// we cannot emit sub-byte memory loads. If we detect this case, forbid the
+// fusion.
+// TODO(b/514309966): Fix tiling to handle this case and remove this check.
+FusionDecision CanUnpackS4ParametersInFusion(
+    const HloFusionAdaptor& fusion_adaptor, mlir::MLIRContext& mlir_context) {
+  auto tiling_space =
+      experimental::TilingSpace::Create(fusion_adaptor, &mlir_context);
+  if (!tiling_space.ok()) {
+    return FusionDecision::Forbid(tiling_space.status().message());
+  }
+  auto tiled_computation = experimental::TiledHloComputation::Tile(
+      fusion_adaptor, std::move(*tiling_space));
+  if (!tiled_computation.ok()) {
+    return FusionDecision::Forbid(tiled_computation.status().message());
+  }
+
+  if (tiled_computation->roots().size() != 1 ||
+      tiled_computation->roots()[0]->hlo()->opcode() != HloOpcode::kDot) {
+    return FusionDecision::Forbid(
+        "Expected tiled computation root to be a single dot instruction.");
+  }
+  const experimental::TiledHloInstruction* tiled_dot =
+      tiled_computation->roots()[0];
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
+      BuildEvenBlockSizeReplacements(*tiled_dot, mlir_context);
+
+  // Parameters to the dot will be within its hlo_regions.
+  for (const auto& region : tiled_dot->hlo_regions()) {
+    for (const auto& inst : region.instructions()) {
+      if (InstructionHasUntileableS4MinorDimension(*inst, replacement_map)) {
+        return FusionDecision::Forbid(
+            "Cannot tile S4 parameter with minor dimension tile size not "
+            "divisible by 2.");
+      }
+    }
+  }
+  return FusionDecision::Allow();
+}
+
 // Checks if the fusion can be tiled by SymbolicTileAnalysis.
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion) {
@@ -1268,6 +1377,36 @@ FusionDecision ShouldFuseConcat(const HloInstruction& concat,
   return FusionDecision::Allow();
 }
 
+// Returns true if the specified dimensions map to the parameter such that their
+// minor-most physical dimension has stride 1 and a size that is at least 16
+// bytes (128 bits) and 16-byte aligned for vectorized and coalesced memory
+// loads.
+bool HasCoalescedMinorDimension(const ShapeTracker& inverted_tracker,
+                                const Shape& operand_shape,
+                                absl::Span<const int64_t> dims) {
+  std::optional<std::vector<int64_t>> mapped_dims =
+      inverted_tracker.MapInputDimensionsToOutputUnordered(dims);
+  if (!mapped_dims.has_value() || mapped_dims->empty()) {
+    return false;
+  }
+
+  absl::Span<const int64_t> minor_to_major =
+      operand_shape.layout().minor_to_major();
+  auto minor_dim = absl::c_find_if(minor_to_major, [&](int64_t dim) {
+    return operand_shape.dimensions(dim) != 1;
+  });
+  if (minor_dim == minor_to_major.end()) {
+    return false;
+  }
+  if (!absl::c_linear_search(*mapped_dims, *minor_dim)) {
+    return false;
+  }
+
+  int64_t minor_bits = operand_shape.dimensions(*minor_dim) *
+                       primitive_util::BitWidth(operand_shape.element_type());
+  return minor_bits >= 128 && minor_bits % 128 == 0;
+}
+
 FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
                                    const HloInstruction& fusion,
                                    const TrackerInfo& tracker) {
@@ -1309,7 +1448,9 @@ FusionDecision ShouldFuseTranspose(const HloInstruction& transpose,
     return FusionDecision::Forbid("Batch dimension splits other dimensions.");
   }
   if (operand_index == 1 &&
-      !inverted_tracker->MapsToOneStride(non_contracting)) {
+      !inverted_tracker->MapsToOneStride(non_contracting) &&
+      !HasCoalescedMinorDimension(
+          *inverted_tracker, transpose.operand(0)->shape(), non_contracting)) {
     return FusionDecision::Forbid(
         "Non-contracting RHS dimension has non-contiguous section.");
   }
@@ -1459,6 +1600,29 @@ FusionDecision ShouldFuseUser(const HloInstruction* user,
       break;
   }
 
+  int64_t src_operand_index = user->operand_index(fusion);
+  for (int i = 0; i < user->operand_count(); ++i) {
+    const HloInstruction* operand = user->operand(i);
+    // Skip source operand.
+    if (i == src_operand_index) {
+      continue;
+    }
+    // Currently only
+    //  - effective parameters
+    //  - broadcasts of effective parameters
+    //  - broadcasts of scalars
+    // are accepted as other inputs of non-unary operations in
+    // the output fusion.
+    if ((operand->opcode() == HloOpcode::kBroadcast &&
+         (ShapeUtil::IsScalar(operand->operand(0)->shape()) ||
+          hlo_query::IsEffectiveParameter(*operand->operand(0)))) ||
+        hlo_query::IsEffectiveParameter(*operand)) {
+      continue;
+    }
+    return FusionDecision::Forbid(
+        "Has multiple inputs - not properly analyzed yet.");
+  }
+
   if (!triton_fusion::IsOutputWorthFusing(original_user)) {
     return FusionDecision::Forbid(
         "Not obviously profitable to fuse as output.");
@@ -1602,6 +1766,20 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
   // BFS of operands until we cannot tile.
   ABSL_RETURN_IF_ERROR(
       FuseOperandsBFS(mlir_context, fusion_search_space, queue, fusion));
+
+  bool prologue_has_s4 = absl::c_any_of(
+      fusion->fused_instructions_computation()->parameter_instructions(),
+      [](const HloInstruction* param) {
+        return param->shape().element_type() == PrimitiveType::S4;
+      });
+  // Before creating the epilogue, check if we can tile the dot's S4 prologue.
+  if (prologue_has_s4) {
+    if (FusionDecision decision = CanUnpackS4ParametersInFusion(
+            *HloFusionAdaptor::ForInstruction(fusion), mlir_context);
+        !decision.IsAllowed()) {
+      return decision;
+    }
+  }
 
   // Initialize tracker for dot users.
   std::optional<ShapeTracker> epilogue_tracker = ShapeTracker(dot->shape());

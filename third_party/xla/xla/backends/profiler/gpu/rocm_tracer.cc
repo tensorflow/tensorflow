@@ -400,7 +400,7 @@ void RocmTracer::EmitMarkerEvent(std::string label, uint64_t start_ns,
   event.stream_id = RocmTracerEvent::kInvalidStreamId;
   event.scope_range_id = 0;
 
-  absl::MutexLock lock(&collector_mutex_);
+  absl::MutexLock lock(collector_mutex_);
   if (collector()) {
     collector()->AddEvent(std::move(event), /*is_auxiliary=*/false);
   }

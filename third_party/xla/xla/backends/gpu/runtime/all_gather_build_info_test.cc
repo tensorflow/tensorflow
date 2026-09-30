@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -66,16 +69,17 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
   // will trigger the "replica groups must be provided" error path.
   absl::StatusOr<AllGatherInfo> BuildInfo(
       CollectiveKernelEnabled collective_kernel_enabled,
-      PrimitiveType element_type, int64_t num_elements,
+      PrimitiveType element_type, std::vector<int64_t> input_dims,
       std::vector<int32_t> replica_groups, int num_hosts = 1,
       int active_links = 18) {
     const int num_replicas =
         replica_groups.empty() ? 1 : static_cast<int>(replica_groups.size());
     const std::string element_type_str =
         primitive_util::LowercasePrimitiveTypeName(element_type);
-    const std::string input_shape_str = absl::StrFormat("%d", num_elements);
-    const std::string output_shape_str =
-        absl::StrFormat("%d", num_elements * num_replicas);
+    std::vector<int64_t> output_dims = input_dims;
+    output_dims[0] *= num_replicas;
+    const std::string input_shape_str = absl::StrJoin(input_dims, ",");
+    const std::string output_shape_str = absl::StrJoin(output_dims, ",");
     const std::string replica_groups_str =
         replica_groups.empty()
             ? ""
@@ -125,6 +129,16 @@ class BuildAllGatherInfoTest : public HloHardwareIndependentTestBase {
                               Cast<HloAllGatherInstruction>(hlo_instr),
                               /*device_assignment=*/nullptr);
   }
+
+  absl::StatusOr<AllGatherInfo> BuildInfo(
+      CollectiveKernelEnabled collective_kernel_enabled,
+      PrimitiveType element_type, int64_t num_elements,
+      std::vector<int32_t> replica_groups, int num_hosts = 1,
+      int active_links = 18) {
+    return BuildInfo(collective_kernel_enabled, element_type,
+                     std::vector<int64_t>{num_elements},
+                     std::move(replica_groups), num_hosts, active_links);
+  }
 };
 
 TEST_F(BuildAllGatherInfoTest, SucceedsForSupportedF32) {
@@ -168,22 +182,50 @@ TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoDevices) {
                HasSubstr("only supported for power of 2")));
 }
 
-TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedUnsignedType) {
-  // U32 is not supported by the Triton all-gather kernel.
+TEST_F(BuildAllGatherInfoTest, FailsForUnsupportedType) {
+  // F8E4M3FN is not supported by the Triton all-gather kernel.
   EXPECT_THAT(
-      BuildInfo(CollectiveKernelEnabled(true), U32, /*num_elements=*/512,
-                /*replica_groups=*/{0, 1}),
+      BuildInfo(CollectiveKernelEnabled(true), F8E4M3FN,
+                /*num_elements=*/512, /*replica_groups=*/{0, 1}),
       StatusIs(absl::StatusCode::kUnimplemented,
                HasSubstr("is not supported for the all-gather kernel")));
 }
 
-TEST_F(BuildAllGatherInfoTest, FailsForUnalignedElements) {
-  // 7 is not divisible by kNumElementsPerThread (which is >= 2).
+TEST_F(BuildAllGatherInfoTest, FailsForNonPowerOfTwoGatherDimSize) {
   EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), F32, /*num_elements=*/7,
                         /*replica_groups=*/{0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("not aligned to the memory transaction "
-                                 "alignment requirement")));
+                       HasSubstr("per-rank size along the gather dimension to "
+                                 "be a power of 2")));
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), S32,
+                        /*input_dims=*/{3, 4}, /*replica_groups=*/{0, 1}),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("per-rank size along the gather dimension to "
+                                 "be a power of 2")));
+}
+
+TEST_F(BuildAllGatherInfoTest,
+       SucceedsForSubTransactionAndUnalignedNonGatherDim) {
+  // s32[2] = 8 bytes (< 16-byte transaction).
+  EXPECT_THAT(BuildInfo(CollectiveKernelEnabled(true), S32, /*num_elements=*/2,
+                        /*replica_groups=*/{0, 1}),
+              IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                                 Field(&AllGatherInfo::num_elements, 2),
+                                 Field(&AllGatherInfo::element_type, S32))));
+  // s32[2, 7] = 56 bytes (gather dim = 2, non-gather dim = 7).
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), S32, /*input_dims=*/{2, 7},
+                /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 14),
+                         Field(&AllGatherInfo::element_type, S32))));
+  // s32[2, 529] = 4,232 bytes (gather dim = 2, non-gather dim = 529).
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), S32, /*input_dims=*/{2, 529},
+                /*replica_groups=*/{0, 1}),
+      IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
+                         Field(&AllGatherInfo::num_elements, 1058),
+                         Field(&AllGatherInfo::element_type, S32))));
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsIfReplicaGroupsEmpty) {
@@ -211,6 +253,52 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
                 /*replica_groups=*/{0, 1}, /*num_hosts=*/1,
                 /*active_links=*/0),
       StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("NVLink/UALink")));
+}
+
+TEST_F(BuildAllGatherInfoTest, FailsForLargeInputs) {
+  // 2 * 1024 * 1024 F32 elements = 8 MB > 4 MB limit -> unimplemented.
+  EXPECT_THAT(
+      BuildInfo(CollectiveKernelEnabled(true), F32,
+                /*num_elements=*/2 * 1024 * 1024, /*replica_groups=*/{0, 1}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("only supported for small inputs")));
+}
+
+TEST_F(BuildAllGatherInfoTest,
+       CreateAllGatherKernelSpecMatchesAllReduceArgumentLayout) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    param_0 = f32[512] parameter(0)
+    ROOT all-gather = f32[1024] all-gather(param_0),
+        dimensions={0}, replica_groups={{0,1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const HloInstruction* instr = HloHardwareIndependentTestBase::FindInstruction(
+      module.get(), HloOpcode::kAllGather);
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveKernelSpec spec,
+      CreateAllGatherKernelSpec(instr, LaunchDimensions(4, 128)));
+  EXPECT_FALSE(spec.codegen_config.copy_input_to_scratch);
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 6);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,
+            KernelArgType::kInputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].type,
+            KernelArgType::kOutputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
+            KernelArgType::kRuntimeRank);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
+            KernelArgType::kInvocationCount);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 1);
 }
 
 }  // namespace

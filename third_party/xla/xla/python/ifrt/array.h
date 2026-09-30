@@ -131,7 +131,7 @@ class Array : public RTTIExtends<Array, Value> {
   // they use DMA) and across different `DType` and `Shape`. We may need to add
   // an API that lets users query the alignment requirement of the specific
   // implementation.
-  ABSL_MUST_USE_RESULT
+  [[nodiscard]]
   virtual tsl::Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) = 0;

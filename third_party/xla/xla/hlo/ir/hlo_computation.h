@@ -1005,6 +1005,46 @@ class HloComputation {
   // provided permutation.
   absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
 
+  bool IsEntryInstUnboundedDynamic() const;
+
+  // Backend config accessors for HloComputation.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::StatusOr<ConfigProto> backend_config() const {
+    ConfigProto proto;
+    ABSL_RETURN_IF_ERROR(backend_config_->GetProto(&proto));
+    return proto;
+  }
+
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    if (backend_config_.use_count() > 1) {
+      backend_config_ =
+          std::make_shared<BackendConfigWrapper>(*backend_config_);
+    }
+    return backend_config_->ApplyFnOnProto(fn);
+  }
+
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
+    return absl::OkStatus();
+  }
+
+  const std::string& raw_backend_config_string() const {
+    return backend_config_->GetRawString();
+  }
+
+  void set_raw_backend_config_string(std::string config_str) {
+    backend_config_ =
+        std::make_shared<BackendConfigWrapper>(std::move(config_str));
+  }
+
+  bool has_backend_config() const { return !backend_config_->empty(); }
+
+  void clear_backend_config() {
+    backend_config_ = std::make_shared<BackendConfigWrapper>();
+  }
+
  private:
   friend class HloModule;
 
@@ -1126,6 +1166,9 @@ class HloComputation {
 
   std::string name_;
 
+  std::shared_ptr<BackendConfigWrapper> backend_config_ =
+      std::make_shared<BackendConfigWrapper>();
+
   // Callers and callees of this computation.
   // * These include all computations that have a caller/callee relationship
   //   with this computation, even those that may not belong to a module. For
@@ -1201,19 +1244,9 @@ class HloComputation {
                             callee_computations_.end());
   }
 
-  template <typename S, typename Index, TopologicalSortNode<S> S::* Link,
-            Index S::* IndexInParent, typename PredecessorIterator,
-            PredecessorIterator (S::*PredecessorsBegin)() const,
-            PredecessorIterator (S::*PredecessorsEnd)() const,
-            typename SuccessorIterator,
-            SuccessorIterator (S::*SuccessorsBegin)() const,
-            SuccessorIterator (S::*SuccessorsEnd)() const>
-  friend class TopologicalSort;
-
-  template <typename S, TopologicalSortNode<S> S::* Link>
-  friend class TopologicalSortIterator;
-
-  TopologicalSortNode<HloComputation> topological_sort_node_;
+  // Dense index of this computation within its parent HloModule, used as the
+  // node index in the module's TopologicalSort.
+  int32_t index_in_module_ = -1;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
