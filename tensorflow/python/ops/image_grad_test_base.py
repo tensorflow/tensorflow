@@ -112,6 +112,97 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
 
         self.assertAllClose(grad_cpu, grad_gpu, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGradGradNumerical(self):
+    for nptype in self.TYPES:
+      for grads_shape, image_size in (
+          ([1, 5, 4, 2], [2, 3]),
+          ([2, 2, 3, 2], [4, 5]),
+          ([1, 3, 3, 1], [3, 3]),
+          ([1, 1, 1, 1], [2, 3]),
+          ([0, 2, 3, 1], [2, 3]),
+          ([1, 0, 3, 1], [2, 3]),
+          ([1, 2, 0, 1], [2, 3]),
+          ([1, 2, 3, 0], [2, 3])):
+        for align_corners, half_pixel_centers in (
+            (False, False), (True, False), (False, True)):
+          with self.subTest(dtype=nptype, grads_shape=grads_shape,
+                            image_size=image_size, align_corners=align_corners,
+                            half_pixel_centers=half_pixel_centers):
+            input_tensor = constant_op.constant(
+                np.zeros(grads_shape, dtype=nptype))
+
+            def resize_grad(t, size=image_size, align_corners=align_corners,
+                            half_pixel_centers=half_pixel_centers):
+              return gen_image_ops.resize_nearest_neighbor_grad(
+                  t, size, align_corners=align_corners,
+                  half_pixel_centers=half_pixel_centers)
+
+            with self.cached_session():
+              analytical, numerical = gradient_checker_v2.compute_gradient(
+                  resize_grad, [input_tensor], delta=1 / 8)
+              self.assertAllEqual(analytical, numerical)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedGradientTape(self):
+    for align_corners, half_pixel_centers in (
+        (False, False), (True, False), (False, True)):
+      x = constant_op.constant(
+          np.arange(6).reshape([1, 2, 3, 1]), dtype=dtypes.float32)
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          resized = gen_image_ops.resize_nearest_neighbor(
+              x, [5, 4], align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers)
+          loss = math_ops.reduce_sum(resized * resized)
+        gradient = inner_tape.gradient(loss, x)
+      second_gradient = outer_tape.gradient(gradient, x)
+      expected = gen_image_ops.resize_nearest_neighbor_grad(
+          2 * array_ops.ones_like(resized), [2, 3],
+          align_corners=align_corners, half_pixel_centers=half_pixel_centers)
+      self.assertAllEqual(
+          self.evaluate(expected), self.evaluate(second_gradient))
+
+  @test_util.run_deprecated_v1
+  def testGradGradDynamicShape(self):
+    with self.cached_session() as sess:
+      grads = array_ops.placeholder(dtypes.float32, shape=[None] * 4)
+      image_size = array_ops.placeholder(dtypes.int32, shape=[2])
+      incoming_grad = array_ops.placeholder(dtypes.float32, shape=[None] * 4)
+      for align_corners, half_pixel_centers in (
+          (False, False), (True, False), (False, True)):
+        with test_util.AbstractGradientTape(use_tape=False) as tape:
+          resized_grad = gen_image_ops.resize_nearest_neighbor_grad(
+              grads, image_size, align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers)
+        gradient, size_gradient = tape.gradient(
+            resized_grad, [grads, image_size], incoming_grad)
+        self.assertIsNone(size_gradient)
+        for grads_shape, size in (([2, 5, 4, 2], [2, 3]),
+                                 ([1, 1, 1, 1], [4, 5]),
+                                 ([0, 2, 3, 1], [2, 3]),
+                                 ([1, 0, 3, 1], [2, 3]),
+                                 ([1, 2, 0, 1], [2, 3]),
+                                 ([1, 2, 3, 0], [2, 3])):
+          incoming = np.arange(
+              grads_shape[0] * size[0] * size[1] * grads_shape[3],
+              dtype=np.float32).reshape(
+                  [grads_shape[0], *size, grads_shape[3]])
+          if 0 in grads_shape:
+            expected = array_ops.zeros(grads_shape, dtype=dtypes.float32)
+          else:
+            expected = gen_image_ops.resize_nearest_neighbor(
+                incoming, grads_shape[1:3], align_corners=align_corners,
+                half_pixel_centers=half_pixel_centers)
+          actual = sess.run(gradient, feed_dict={
+              grads: np.zeros(grads_shape, dtype=np.float32),
+              image_size: size,
+              incoming_grad: incoming,
+          })
+          self.assertAllEqual(self.evaluate(expected), actual)
+
 
 class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
 
