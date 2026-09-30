@@ -1167,6 +1167,17 @@ class ArrayMethodsTest(test.TestCase):
 
     run_test([1, 2, 3], 0)
     run_test([1, 2, 3], 1)
+    # Valid negative and boundary axes still work.
+    run_test([1, 2, 3], -1)
+    run_test([1, 2, 3], -2)
+    a = np.ones((2, 3))
+    # Assert exact boundary tests
+    run_test(a, -3)
+    run_test(a, 2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, -4)
 
   def testSqueeze(self):
 
