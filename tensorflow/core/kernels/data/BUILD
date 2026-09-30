@@ -1658,7 +1658,6 @@ tf_cc_test(
         ":iterator_ops",
         ":range_dataset_op",
         ":window_dataset_op",
-        "//tensorflow/core/kernels/data/experimental:sliding_window_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
