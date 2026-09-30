@@ -40,10 +40,10 @@ struct XentFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstMatrix labels,
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
-                  typename TTypes<T>::Matrix backprop, T* tail_scratch) {
+                  typename TTypes<T>::Matrix backprop) {
     XentEigenImpl<GPUDevice, T>::Compute(d, shape, logits_bcast, labels_bcast,
                                          logits, labels, scratch, loss,
-                                         backprop, tail_scratch);
+                                         backprop);
   }
 };
 }  // end namespace functor

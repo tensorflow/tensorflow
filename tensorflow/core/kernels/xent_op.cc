@@ -76,21 +76,14 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
 
     // loss is 1-D (one per example), and size is batch_size.
 
+    // The second half holds float64 tail sums without a separate allocation.
+    const int scratch_cols = std::is_same<T, double>::value ? 2 : 1;
     Tensor scratch;
     OP_REQUIRES_OK(
         context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                        TensorShape({shape_in.dim_size(0), 1}),
+                                        TensorShape({shape_in.dim_size(0),
+                                                     scratch_cols}),
                                         &scratch));
-    // Only float64 needs a separate reduction of non-maximal probabilities.
-    Tensor tail_scratch;
-    T* tail_data = nullptr;
-    if constexpr (std::is_same_v<T, double>) {
-      OP_REQUIRES_OK(
-          context, context->allocate_temp(DataTypeToEnum<T>::value,
-                                          TensorShape({shape_in.dim_size(0)}),
-                                          &tail_scratch));
-      tail_data = tail_scratch.flat<T>().data();
-    }
 
     Tensor* loss_out = nullptr;
     OP_REQUIRES_OK(context,
@@ -102,15 +95,13 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                 {0}, 1, shape_in, &back_out));
 
     if (shape_in.dim_size(0) > 0) {
-      const Device& d = context->eigen_device<Device>();
       functor::XentFunctor<Device, T> functor;
-      functor(d, shape_in.AsEigenDSizes<2>(),
+      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
               BCast::ToIndexArray<2>(bcast.x_bcast()),
               BCast::ToIndexArray<2>(bcast.y_bcast()),
               logits_in.template shaped<T, 2>(bcast.x_reshape()),
               labels_in.template shaped<T, 2>(bcast.y_reshape()),
-              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>(),
-              tail_data);
+              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
     }
   }
 };
@@ -128,11 +119,11 @@ struct XentFunctorBase {
                   typename TTypes<T>::ConstMatrix labels,
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
-                  typename TTypes<T>::Matrix backprop, T* tail_scratch) {
+                  typename TTypes<T>::Matrix backprop) {
     if (shape[0] > 0) {
       XentEigenImpl<Device, T>::Compute(d, shape, logits_bcast, labels_bcast,
                                         logits, labels, scratch, loss,
-                                        backprop, tail_scratch);
+                                        backprop);
     }
   }
 };

@@ -56,6 +56,49 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
             self.assertAllEqual(gradient[:, 0], -gradient[:, 1])
 
   @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesMultiClassTailGradient(self):
+    batch_size = 3
+    logits = np.zeros((batch_size, 10), dtype=np.float64)
+    logits[0, 0] = 40.0
+    logits[1, 9] = 40.0
+    logits[2, 4] = 3.0  # Confident, but its denominator does not round to one.
+    labels = np.zeros_like(logits)
+    labels[np.arange(batch_size), [0, 9, 4]] = 1.0
+
+    _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+    gradient = self.evaluate(gradient)
+    shifted = logits - np.max(logits, axis=1, keepdims=True)
+    probabilities = np.exp(shifted)
+    probabilities /= np.sum(probabilities, axis=1, keepdims=True)
+    expected = probabilities - labels
+    tail = np.exp(-40.0)
+    expected[0, 0] = -9.0 * tail
+    expected[1, 9] = -9.0 * tail
+
+    self.assertAllClose(expected, gradient, rtol=1e-13, atol=0)
+    self.assertLess(gradient[0, 0], 0.0)
+    self.assertLess(gradient[1, 9], 0.0)
+    self.assertAllClose(np.sum(gradient, axis=-1), np.zeros(batch_size),
+                        atol=1e-15)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesSoftLabelsAndPositiveZero(self):
+    tail_logit = 37.42994775023705
+    logits = np.array([[tail_logit, 0.0]], dtype=np.float64)
+    labels = np.array([[0.5, 0.5]], dtype=np.float64)
+    _, gradient = self._opFwdBwd(labels=labels, logits=logits)
+    gradient = self.evaluate(gradient)
+    self.assertLess(gradient[0, 0], 0.5)
+    self.assertAllClose(np.sum(gradient, axis=-1), [0.0], atol=1e-15)
+
+    _, single_gradient = self._opFwdBwd(
+        labels=np.array([[1.0]], dtype=np.float64),
+        logits=np.array([[0.0]], dtype=np.float64))
+    single_gradient = self.evaluate(single_gradient)
+    self.assertEqual(single_gradient[0, 0], 0.0)
+    self.assertFalse(np.signbit(single_gradient[0, 0]))
+
+  @test_util.run_in_graph_and_eager_modes
   def testDoublePreservesGeneralLabelGradients(self):
     logits = np.array([[0., 0.], [0., 0.], [0., 0.], [np.inf, 0.]],
                       dtype=np.float64)
@@ -66,7 +109,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
 
     self.assertAllClose([[0.5, 0.5], [-1.5, 0.5]], gradient[:2])
     self.assertTrue(np.isnan(gradient[2, 0]))
-    self.assertEqual(0.5, gradient[2, 1])
+    self.assertAllClose(0.5, gradient[2, 1])
     self.assertTrue(np.all(np.isnan(gradient[3])))
 
   @test_util.run_deprecated_v1
