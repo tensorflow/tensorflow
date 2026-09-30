@@ -61,15 +61,15 @@ def _ResizeNearestNeighborGradGrad(op: ops.Operation, grad):
         half_pixel_centers=op.get_attr("half_pixel_centers"))
 
   # Resize rejects zero spatial dimensions and zero channels.
-  num_elements = image.shape.num_elements()
-  if num_elements is None:
+  shape = image.shape
+  if shape.rank == 4 and 0 in shape.as_list():
+    grads = array_ops.zeros_like(image)
+  elif shape.rank == 4 and shape[1:].is_fully_defined():
+    grads = resize()
+  else:
     grads = cond.cond(
         array_ops.size(image, out_type=dtypes.int64) > 0,
         resize, lambda: array_ops.zeros_like(image))
-  elif num_elements == 0:
-    grads = array_ops.zeros_like(image)
-  else:
-    grads = resize()
   return [grads, None]
 
 
