@@ -2560,5 +2560,138 @@ TEST_F(TpuOpsVerificationTest, TileSizeOpIndexOutOfBoundsTooLarge) {
   EXPECT_THAT(VerifyOp(tile_size_op),
               StatusIs(_, HasSubstr("Index out of bounds")));
 }
+
+TEST_F(TpuOpsVerificationTest, SharedMemRefSliceOpNotSupportedOnTc) {
+  auto func_op =
+      Create<func::FuncOp>("tc_kernel", builder().getFunctionType({}, {}));
+  func_op->setAttr(TPUDialect::GetCoreTypeKey(),
+                   CoreTypeAttr::get(builder().getContext(), CoreType::kTc));
+  builder().setInsertionPointToStart(func_op.addEntryBlock());
+
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice),
+              StatusIs(_, HasSubstr("Unsupported core type: tc")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest, SharedMemRefSliceOpValid) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice), absl_testing::IsOk());
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpInvalidSourceMemorySpace) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmem);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice),
+              StatusIs(_, HasSubstr("Source memref must have memory space "
+                                    "#tpu.memory_space<vmem_shared>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpNullSourceMemorySpace) {
+  Value source = AllocaI32({8, 128});
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice),
+              StatusIs(_, HasSubstr("Source memref must have memory space "
+                                    "#tpu.memory_space<vmem_shared>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpInvalidSourceCoreType) {
+  auto source_space =
+      MemorySpaceAttr::get(builder().getContext(), MemorySpace::kVmemShared,
+                           CoreType::kScScalarSubcore);
+  auto source_type =
+      MemRefType::get({8, 128}, i32(), AffineMap(), source_space);
+  Value source = Create<memref::AllocaOp>(source_type).getMemref();
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice),
+              StatusIs(_, HasSubstr("Source memref must have memory space "
+                                    "#tpu.memory_space<vmem_shared>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpInvalidTargetMemorySpace) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, i32(), MemorySpace::kVmemShared), source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("Target memref must have memory space "
+                            "#tpu.memory_space<vmem, sc_vector_subcore>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpNullTargetMemorySpace) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice =
+      Create<SharedMemRefSliceOp>(GetMemRefType({8, 8}, i32()), source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("Target memref must have memory space "
+                            "#tpu.memory_space<vmem, sc_vector_subcore>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpInvalidTargetCoreType) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto target_space = MemorySpaceAttr::get(
+      builder().getContext(), MemorySpace::kVmem, CoreType::kScScalarSubcore);
+  auto target_type = MemRefType::get({8, 8}, i32(), AffineMap(), target_space);
+  auto slice = Create<SharedMemRefSliceOp>(target_type, source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("Target memref must have memory space "
+                            "#tpu.memory_space<vmem, sc_vector_subcore>")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpElementTypeMismatch) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 8}, builder().getF32Type(), MemorySpace::kVmem),
+      source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("Source and target element types must match")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest, SharedMemRefSliceOpShapeMismatch) {
+  Value source = AllocaI32({8, 128}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({4, 8}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(VerifyOp(slice),
+              StatusIs(_, HasSubstr("Target shape must match source shape")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpStripeAlignmentMismatch) {
+  Value source = AllocaI32({8, 80}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, 7}, i32(), MemorySpace::kVmem), source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("must be divisible by target shape's minormost")));
+}
+
+TEST_F(TpuOpsVectorSubcoreVerificationTest,
+       SharedMemRefSliceOpDynamicTrailingDimension) {
+  Value source = AllocaI32({8, ShapedType::kDynamic}, MemorySpace::kVmemShared);
+  auto slice = Create<SharedMemRefSliceOp>(
+      GetMemRefType({8, ShapedType::kDynamic}, i32(), MemorySpace::kVmem),
+      source);
+  EXPECT_THAT(
+      VerifyOp(slice),
+      StatusIs(_, HasSubstr("Source and target minormost dimension cannot be "
+                            "dynamic")));
+}
+
 }  // namespace
 }  // namespace mlir::tpu
