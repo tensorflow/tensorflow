@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// FuzzTest coverage for TFLite model loading, interpreter build, and invoke.
-// This exercises interpreter_builder.cc get_readonly_data / ParseTensors, which
-// perform an unchecked uint64 addition (offset + size > allocation_->bytes())
-// on attacker-controlled external-buffer offsets. On overflow the check is
-// bypassed and a wild pointer (allocation_->base() + offset) is used as tensor
-// data, which is dereferenced during Invoke. The OSS-Fuzz tensorflow build has
-// no TFLite target that reaches this path.
+// FuzzTest coverage for the TFLite untrusted-model ingress path: model
+// verification, model load, interpreter build, and invoke. tflite::Verify() is
+// the validation layer for untrusted models, so the target runs it first and
+// stops on rejection; everything it accepts goes on to ParseTensors and the
+// kernels. This covers the verifier's checks on attacker-controlled model
+// metadata (including the uint64 external-offset bounds checks in
+// VerifyTensors / VerifyOperators) and the runtime behind them. The OSS-Fuzz
+// tensorflow build has no TFLite target that reaches this path.
 
 #include <cstring>
 #include <memory>
@@ -30,10 +31,19 @@ limitations under the License.
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/tools/verifier.h"
 
 namespace {
 
 void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
+  // Supported ingress path: an untrusted model is verified before anything is
+  // built from it. Inputs the verifier rejects stop here. The error reporter
+  // is optional and would only add stderr noise under the fuzzer.
+  if (!tflite::Verify(model_bytes.data(), model_bytes.size(),
+                      /*error_reporter=*/nullptr)) {
+    return;
+  }
+
   auto model = tflite::FlatBufferModel::BuildFromBuffer(model_bytes.data(),
                                                         model_bytes.size());
   if (model == nullptr) return;
@@ -54,8 +64,7 @@ void FuzzModelBuildAndInvoke(const std::string& model_bytes) {
     }
   }
 
-  // The unchecked external-offset arithmetic sets a wild read-only tensor
-  // pointer that is dereferenced here.
+  // Runs the kernels on whatever the verifier accepted.
   interpreter->Invoke();
 }
 FUZZ_TEST(TfliteInterpreterBuilder, FuzzModelBuildAndInvoke);
