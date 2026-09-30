@@ -579,6 +579,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
                               .HostMemory("output"),            \
                           SplitVOpCPU<int32, len_type>);
 
+REGISTER_GPU_int32(int8);
 REGISTER_GPU_int32(int32_t);
 REGISTER_GPU_int32(int64_t);
 
@@ -596,6 +597,7 @@ REGISTER_GPU_int32(int64_t);
                               .HostMemory("output"),            \
                           SplitVOpCPU<int32, len_type>);
 
+TF_CALL_int8(REGISTER_DEFAULT_KERNEL);
 TF_CALL_int32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_int64(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL
