@@ -278,8 +278,10 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
 
     const int64_t N = input_shape_vec(0);
 
-    Tensor sparse_handles(DT_INT64, TensorShape({N}));
-    auto sparse_handles_t = sparse_handles.vec<int64_t>();
+    Tensor* sparse_handles = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({N}), &sparse_handles));
+    auto sparse_handles_t = sparse_handles->vec<int64_t>();
 
     OP_REQUIRES_OK(context, input_st.IndicesValid());
 
@@ -347,8 +349,6 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
         }
       }
     }
-
-    context->set_output(0, sparse_handles);
   }
 };
 
