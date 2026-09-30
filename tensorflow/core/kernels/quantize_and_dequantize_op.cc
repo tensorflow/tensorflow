@@ -104,27 +104,34 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                                     " > input_max ", max_val));
       } else {
         OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
-                    absl::InvalidArgumentError(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_min_tensor when the"
                         " axis is specified, received ",
-                        input_min_tensor.shape()));
+                        input_min_tensor.shape().DebugString()));
         OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
-                    absl::InvalidArgumentError(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_max_tensor when the"
                         " axis is specified, received ",
-                        input_max_tensor.shape()));
+                        input_max_tensor.shape().DebugString())));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
                             input_min_tensor.dim_size(0), " expected ", depth,
                             " to match dim ", axis_, " of the input ",
-                            input_min_tensor.shape()));
+                            input.shape()));
         OP_REQUIRES(
             ctx, input_max_tensor.dim_size(0) == depth,
             InvalidArgument("input_max_tensor has incorrect size, was ",
                             input_max_tensor.dim_size(0), " expected ", depth,
                             " to match dim ", axis_, " of the input ",
-                            input_max_tensor.shape()));
+                            input.shape()));
+        auto min_vals = input_min_tensor.vec<T>();
+        auto max_vals = input_max_tensor.vec<T>();
+        for (int i = 0; i < depth; ++i) {
+          OP_REQUIRES(ctx, min_vals(i) <= max_vals(i),
+                      InvalidArgument("Invalid range: input_min ", min_vals(i),
+                                      " > input_max ", max_vals(i)));
+        }
       }
     } else {
       auto range_shape = (axis_ == -1) ? TensorShape({}) : TensorShape({depth});
@@ -324,27 +331,34 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
                                     " > input_max ", max_val));
       } else {
         OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_min_tensor.shape()),
-                    absl::InvalidArgumentError(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_min_tensor when the"
                         " axis is specified, received ",
-                        input_min_tensor.shape()));
+                        input_min_tensor.shape().DebugString())));
         OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_max_tensor.shape()),
-                    absl::InvalidArgumentError(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Shape must be rank 1 for input_max_tensor when the"
                         " axis is specified, received ",
-                        input_max_tensor.shape()));
+                        input_max_tensor.shape().DebugString())));
         OP_REQUIRES(
             ctx, input_min_tensor.dim_size(0) == depth,
             InvalidArgument("input_min_tensor has incorrect size, was ",
                             input_min_tensor.dim_size(0), " expected ", depth,
                             " to match dim ", axis_, " of the input ",
-                            input_min_tensor.shape()));
+                            input.shape()));
         OP_REQUIRES(
             ctx, input_max_tensor.dim_size(0) == depth,
             InvalidArgument("input_max_tensor has incorrect size, was ",
                             input_max_tensor.dim_size(0), " expected ", depth,
                             " to match dim ", axis_, " of the input ",
-                            input_max_tensor.shape()));
+                            input.shape()));
+        auto min_vals = input_min_tensor.vec<T>();
+        auto max_vals = input_max_tensor.vec<T>();
+        for (int i = 0; i < depth; ++i) {
+          OP_REQUIRES(ctx, min_vals(i) <= max_vals(i),
+                      InvalidArgument("Invalid range: input_min ", min_vals(i),
+                                      " > input_max ", max_vals(i)));
+        }
       }
     } else {
       auto range_shape = (axis_ == -1) ? TensorShape({}) : TensorShape({depth});

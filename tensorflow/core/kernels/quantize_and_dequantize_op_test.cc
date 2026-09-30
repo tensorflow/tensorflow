@@ -549,18 +549,122 @@ TEST_F(QuantizeAndDequantizeTest,
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
-  // Input has two slices along axis 0, each with its own range.
-  AddInputFromArray<float>(TensorShape({2, 3}),
-                           {-1.0, 0.0, 1.0, -2.0, 0.0, 2.0});
+  // Input has two slices along axis 0, each with its own range and
+  // non-trivial quantization/saturation.
+  AddInputFromArray<float>(TensorShape({2, 4}),
+                           {-0.8, -0.5, 0.3, 33.0, -1.6, -1.0, 0.6, -10.0});
   AddInputFromArray<float>(TensorShape({2}), {-1.0, -2.0});  // Min
   AddInputFromArray<float>(TensorShape({2}), {1.0, 2.0});    // Max
 
   TF_ASSERT_OK(RunOpKernel());
 
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));
-  test::FillValues<float>(
-      &expected, {-1.0, 0.0, 1.0, -2.0, 0.0, 2.0});
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
+  test::FillValues<float>(&expected,
+                          {-102.0f / 127, -64.0f / 127, 38.0f / 127, 1.0f,
+                           -204.0f / 127, -128.0f / 127, 76.0f / 127,
+                           -256.0f / 127});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
+TEST_F(QuantizeAndDequantizeTest,
+       Convert_2D_tensor_with_int8_range_given_axis_1_V4) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV4")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("signed_input", true)
+          .Attr("num_bits", 8)
+          .Attr("range_given", true)
+          .Attr("axis", 1)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  AddInputFromArray<float>(TensorShape({2, 2}), {-0.8, -1.6, 0.3, 10.0});
+  AddInputFromArray<float>(TensorShape({2}), {-1.0, -2.0});  // Min
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 2.0});    // Max
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(
+      &expected, {-102.0f / 127, -204.0f / 127, 38.0f / 127, 2.0f});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
+TEST_F(QuantizeAndDequantizeTest,
+       Convert_2D_tensor_with_int8_range_given_axis_0_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("signed_input", true)
+          .Attr("range_given", true)
+          .Attr("axis", 0)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  AddInputFromArray<float>(TensorShape({2, 4}),
+                           {-0.8, -0.5, 0.3, 33.0, -1.6, -1.0, 0.6, -10.0});
+  AddInputFromArray<float>(TensorShape({2}), {-1.0, -2.0});  // Min
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 2.0});    // Max
+  AddInputFromArray<int32_t>(TensorShape({}), {8});          // num_bits
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
+  test::FillValues<float>(&expected,
+                          {-102.0f / 127, -64.0f / 127, 38.0f / 127, 1.0f,
+                           -204.0f / 127, -128.0f / 127, 76.0f / 127,
+                           -256.0f / 127});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+}
+
+TEST_F(QuantizeAndDequantizeTest, Invalid_range_shape_with_axis_given) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("num_bits", 8)
+          .Attr("range_given", true)
+          .Attr("axis", 0)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2}), {-0.5, 0.0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {-1.0});  // Scalar instead of vec
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 1.0});
+
+  EXPECT_THAT(
+      RunOpKernel(),
+      absl_testing::StatusIs(
+          error::INVALID_ARGUMENT,
+          MatchesRegex(
+              "Shape must be rank 1 for input_min_tensor when the axis is "
+              "specified.*")));
+}
+
+TEST_F(QuantizeAndDequantizeTest, Invalid_per_channel_range_given) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_op", "QuantizeAndDequantizeV2")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Attr("num_bits", 8)
+          .Attr("range_given", true)
+          .Attr("axis", 0)
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2}), {-0.5, 0.0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({2}), {-1.0, 2.0});  // Slice 1 min > max
+  AddInputFromArray<float>(TensorShape({2}), {1.0, 1.0});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  MatchesRegex("Invalid range: input_min 2 > input_max 1")));
 }
 
 // Convert a 2D tensor with signed 8 bits, given range and round_mode half_up.
