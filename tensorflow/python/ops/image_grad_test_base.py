@@ -203,6 +203,27 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
           })
           self.assertAllEqual(self.evaluate(expected), actual)
 
+  @test_util.run_deprecated_v1
+  def testGradGradStaticDimensionsAvoidControlFlow(self):
+    with self.cached_session() as sess:
+      for shape, feed_shape in (
+          ([None, 5, 4, 2], [2, 5, 4, 2]),
+          ([None, 5, 4, 2], [0, 5, 4, 2]),
+          ([None, 0, None, 2], [1, 0, 3, 2]),
+          ([None, None, None, 0], [1, 2, 3, 0]),
+          ([0, None, None, None], [0, 2, 3, 1])):
+        grads = array_ops.placeholder(dtypes.float32, shape=shape)
+        with test_util.AbstractGradientTape(use_tape=False) as tape:
+          resized_grad = gen_image_ops.resize_nearest_neighbor_grad(
+              grads, [2, 3])
+        gradient = tape.gradient(resized_grad, grads)
+        actual = sess.run(gradient, feed_dict={
+            grads: np.zeros(feed_shape, dtype=np.float32),
+        })
+        self.assertAllEqual(np.ones(feed_shape, dtype=np.float32), actual)
+      for op in grads.graph.get_operations():
+        self.assertNotIn(op.type, ("If", "StatelessIf", "Switch", "Merge"))
+
 
 class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
 
