@@ -65,11 +65,11 @@ class MultiplexDenseOp : public OpKernel {
                     a_values_tensor.shape().DebugString(),
                     " b shape: ", b_values_tensor.shape().DebugString()));
     OP_REQUIRES(ctx, a_values_tensor.shape() == cond_tensor.shape(),
-                ::tensorflow::errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "a and cond must have the same shape. "
                     "a shape: ",
                     a_values_tensor.shape().DebugString(),
-                    " cond shape: ", cond_tensor.shape().DebugString()));
+                    " cond shape: ", cond_tensor.shape().DebugString())));
     OP_REQUIRES(ctx, a_values_tensor.NumElements() > 0,
                 ::tensorflow::errors::InvalidArgument(
                     "Inputs must have at least one element."));
