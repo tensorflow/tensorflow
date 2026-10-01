@@ -59,7 +59,6 @@ constexpr const char VARIABLES_MODULE[] =
 constexpr const char CORE_TYPES_MODULE[] =
     "tensorflow.python.types.core";
 std::string PyObjectToString(PyObject* o);
-}  // namespace
 
 std::unordered_map<std::string, PyObject*>* RegisteredPyObjectMap() {
   static auto* m = new std::unordered_map<std::string, PyObject*>();
@@ -70,6 +69,8 @@ mutex* RegisteredPyObjectMapMutex() {
   static auto* mu = new mutex();
   return mu;
 }
+
+}  // namespace
 
 PyObject* GetRegisteredPyObject(const std::string& name) {
   PyObject* value = nullptr;

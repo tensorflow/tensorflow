@@ -58,6 +58,8 @@ class ScopedPyObjectCriticalSection {
 }  // namespace
 #endif
 
+namespace {
+
 template <typename F>
 decltype(auto) RunEventsWriterMethod(py::handle self, F&& fn) {
 #ifdef Py_GIL_DISABLED
@@ -67,6 +69,8 @@ decltype(auto) RunEventsWriterMethod(py::handle self, F&& fn) {
 #endif
   return std::forward<F>(fn)();
 }
+
+}  // namespace
 
 PYBIND11_MODULE(
     _pywrap_events_writer, m, pybind11::mod_gil_not_used()) {

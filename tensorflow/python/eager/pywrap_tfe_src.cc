@@ -1574,6 +1574,8 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   PyObject* graph_shape_fn_;
 };
 
+namespace {
+
 static absl::Mutex py_vspace_mutex(absl::kConstInit);
 
 std::shared_ptr<PyVSpace>& PyVSpaceStorage() {
@@ -1588,6 +1590,8 @@ std::shared_ptr<PyVSpace> GetPyVSpace() {
   PyReaderMutexLock lock(&py_vspace_mutex);
   return PyVSpaceStorage();
 }
+
+}  // namespace
 
 bool HasAccumulator();
 

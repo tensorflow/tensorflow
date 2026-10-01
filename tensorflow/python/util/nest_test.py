@@ -1062,10 +1062,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     def compare(first, second):
       try:
-        start.wait()
+        start.wait(timeout=10.0)
         for _ in range(2000):
           nest.assert_same_structure(first, second)
-      except BaseException as e:  # pylint: disable=broad-exception-caught
+      except (ValueError, TypeError, RuntimeError, AssertionError) as e:
         errors.append(e)
 
     threads = [
