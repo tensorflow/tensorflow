@@ -630,6 +630,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(VALID_FFT_RANKS, range(3), (np.float32, np.float64)))
+  @test_util.disable_xla("XLA zero-pads empty FFT axes to fft_length")
   def test_empty_with_explicit_fft_length(self, rank, extra_dims, np_rtype):
     # An empty FFT axis skips the "input dimension must be at least
     # fft_length" requirement. `fft_length` must not then size that axis in
@@ -656,6 +657,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self.assertEqual(0, out_bwd.size)
 
   @parameterized.parameters((np.float32,), (np.float64,))
+  @test_util.disable_xla("XLA zero-pads empty FFT axes to fft_length")
   def test_empty_axis_next_to_non_empty_axis(self, np_rtype):
     # Only an empty FFT axis stays empty. The other FFT axis is still sized
     # from `fft_length`, and the batch dimension is untouched.
