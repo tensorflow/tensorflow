@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.nn_ops import xent_op_test_base
@@ -75,7 +75,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
         with self.subTest(batch_size=batch_size, dtype=dtype):
           empty = constant_op.constant([], shape=[batch_size, 0], dtype=dtype)
           with self.assertRaisesRegex(
-              (ValueError, errors_impl.InvalidArgumentError),
+              (ValueError, errors.InvalidArgumentError),
               "Must have at least one class, but got 0 classes"):
             result = gen_nn_ops.softmax_cross_entropy_with_logits(
                 features=empty, labels=empty)
@@ -91,7 +91,7 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
         for batch_size in (0, 1):
           with self.subTest(batch_size=batch_size, dtype=dtype):
             with self.assertRaisesRegex(
-                errors_impl.InvalidArgumentError,
+                errors.InvalidArgumentError,
                 "Must have at least one class, but got 0 classes"):
               sess.run(result, feed_dict={
                   features: np.zeros((batch_size, 0),
