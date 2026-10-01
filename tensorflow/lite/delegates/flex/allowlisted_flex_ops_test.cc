@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops_internal.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tflite {
