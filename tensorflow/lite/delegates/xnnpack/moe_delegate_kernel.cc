@@ -1,4 +1,3 @@
-
 /* Copyright 2026 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +21,11 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -69,6 +71,91 @@ struct MoeExpertsAssignment {
   int token = 0;
   int route = 0;
 };
+
+// Scratch buffers used only during `Invoke()`. Sharing them across the MoE
+// nodes belonging to the same delegate/subgraph avoids retaining ~35 MB per
+// layer across all MoE layers.
+struct MoeScratchBuffers {
+  std::vector<int> expert_counts;
+  std::vector<int> expert_offsets;
+  std::vector<int> write_offsets;
+  std::vector<int> normalized_experts;
+  std::vector<MoeExpertsAssignment> assignments;
+  std::vector<float> routed_src;
+  std::vector<float> gate_up;
+  std::vector<float> hidden;
+  std::vector<float> down;
+  std::vector<float> kernel_buffer;
+  std::vector<char> workspace;
+};
+
+class MoeScratchPool {
+ public:
+  std::unique_ptr<MoeScratchBuffers> Acquire() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!free_list_.empty()) {
+      std::unique_ptr<MoeScratchBuffers> buf = std::move(free_list_.back());
+      free_list_.pop_back();
+      return buf;
+    }
+    return std::make_unique<MoeScratchBuffers>();
+  }
+
+  void Release(std::unique_ptr<MoeScratchBuffers> buf) {
+    if (buf == nullptr) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    free_list_.push_back(std::move(buf));
+  }
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::unique_ptr<MoeScratchBuffers>> free_list_;
+};
+
+class ScopedScratchBuffers {
+ public:
+  explicit ScopedScratchBuffers(MoeScratchPool* pool)
+      : pool_(pool), buf_(pool->Acquire()) {}
+
+  ~ScopedScratchBuffers() { pool_->Release(std::move(buf_)); }
+
+  ScopedScratchBuffers(const ScopedScratchBuffers&) = delete;
+  ScopedScratchBuffers& operator=(const ScopedScratchBuffers&) = delete;
+
+  MoeScratchBuffers* get() const { return buf_.get(); }
+
+ private:
+  MoeScratchPool* pool_;
+  std::unique_ptr<MoeScratchBuffers> buf_;
+};
+
+std::shared_ptr<MoeScratchPool> GetOrCreateScratchPool(const void* key) {
+  struct Registry {
+    std::mutex mutex;
+    std::unordered_map<const void*, std::weak_ptr<MoeScratchPool>> pools;
+  };
+  static Registry* const registry = new Registry();
+
+  std::lock_guard<std::mutex> lock(registry->mutex);
+  auto it = registry->pools.find(key);
+  if (it != registry->pools.end()) {
+    if (std::shared_ptr<MoeScratchPool> existing = it->second.lock()) {
+      return existing;
+    }
+  }
+  for (auto iter = registry->pools.begin(); iter != registry->pools.end();) {
+    if (iter->second.expired()) {
+      iter = registry->pools.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+  auto created = std::make_shared<MoeScratchPool>();
+  registry->pools[key] = created;
+  return created;
+}
 
 }  // namespace
 
@@ -308,12 +395,18 @@ class MoeExpertsDelegateKernel::Impl {
       per_expert_scale_id = node->inputs->data[6];
     }
 
-    return std::unique_ptr<Impl>(
-        new Impl(attr, node->inputs->data[0], node->inputs->data[1],
-                 node->inputs->data[2], gate_weight_id, gate_scale_id,
-                 ff1_weight_id, ff1_scale_id, linear_weight_id, linear_scale_id,
-                 per_expert_scale_id, node->outputs->data[0],
-                 std::move(gate_up_fc), std::move(linear_fc), threadpool));
+    const void* pool_key = params->delegate != nullptr
+                               ? static_cast<const void*>(params->delegate)
+                               : static_cast<const void*>(context);
+    std::shared_ptr<MoeScratchPool> scratch_pool =
+        GetOrCreateScratchPool(pool_key);
+
+    return std::unique_ptr<Impl>(new Impl(
+        attr, node->inputs->data[0], node->inputs->data[1],
+        node->inputs->data[2], gate_weight_id, gate_scale_id, ff1_weight_id,
+        ff1_scale_id, linear_weight_id, linear_scale_id, per_expert_scale_id,
+        node->outputs->data[0], std::move(gate_up_fc), std::move(linear_fc),
+        threadpool, std::move(scratch_pool)));
   }
 
   TfLiteStatus Prepare(TfLiteContext* context) {
@@ -408,24 +501,29 @@ class MoeExpertsDelegateKernel::Impl {
       return kTfLiteError;
     }
 
+    ScopedScratchBuffers scratch_guard(scratch_pool_.get());
+    MoeScratchBuffers* scratch = scratch_guard.get();
+
     std::fill(output, output + tokens * attr_.model_dim, 0.0f);
     const int dispatches = tokens * attr_.num_active_experts;
-    if (!BuildExpertAssignments(context, top_indices, tokens, dispatches)) {
+    if (!BuildExpertAssignments(context, top_indices, tokens, dispatches,
+                                scratch)) {
       return kTfLiteError;
     }
 
     for (int expert = 0; expert < attr_.num_experts; ++expert) {
-      const int begin = expert_offsets_[expert];
-      const int end = expert_offsets_[expert + 1];
+      const int begin = scratch->expert_offsets[expert];
+      const int end = scratch->expert_offsets[expert + 1];
       const int routed_tokens = end - begin;
       if (routed_tokens == 0) {
         continue;
       }
-      if (!RunExpert(context, expert, assignments_.data() + begin,
+      if (!RunExpert(context, expert, scratch->assignments.data() + begin,
                      routed_tokens, src, top_weights, gate_weight, gate_scale,
                      gate_scale_elements, ff1_weight, ff1_scale,
                      ff1_scale_elements, linear_weight, linear_scale,
-                     linear_scale_elements, per_expert_scale, output)) {
+                     linear_scale_elements, per_expert_scale, output,
+                     scratch)) {
         return kTfLiteError;
       }
     }
@@ -438,7 +536,7 @@ class MoeExpertsDelegateKernel::Impl {
        int ff1_weight_id, int ff1_scale_id, int linear_weight_id,
        int linear_scale_id, int per_expert_scale_id, int output_id,
        XnnOperatorPtr gate_up_fc, XnnOperatorPtr linear_fc,
-       pthreadpool_t threadpool)
+       pthreadpool_t threadpool, std::shared_ptr<MoeScratchPool> scratch_pool)
       : attr_(attr),
         src_id_(src_id),
         top_weights_id_(top_weights_id),
@@ -453,7 +551,27 @@ class MoeExpertsDelegateKernel::Impl {
         output_id_(output_id),
         gate_up_fc_(std::move(gate_up_fc)),
         linear_fc_(std::move(linear_fc)),
-        threadpool_(threadpool) {}
+        threadpool_(threadpool),
+        scratch_pool_(std::move(scratch_pool)) {}
+
+  template <typename Fn>
+  static void ParallelFor(pthreadpool_t threadpool, size_t count,
+                          size_t tile_size, Fn&& fn) {
+    if (count == 0) {
+      return;
+    }
+    if (threadpool == nullptr || count <= tile_size) {
+      fn(0, count);
+      return;
+    }
+    using FnType = std::decay_t<Fn>;
+    pthreadpool_parallelize_1d_tile_1d(
+        threadpool,
+        [](void* ctx, size_t offset, size_t size) {
+          (*static_cast<FnType*>(ctx))(offset, size);
+        },
+        &fn, count, tile_size, /*flags=*/0);
+  }
 
   static std::optional<flexbuffers::Map> ReadAttributeMap(
       TfLiteContext* context, const TfLiteNode* node,
@@ -570,6 +688,12 @@ class MoeExpertsDelegateKernel::Impl {
     return 0.5f * x * (1.0f + std::tanh(inner));
   }
 
+  float Activate(float x) const {
+    return (attr_.activation == MoeExpertsAttributes::Activation::kGeluTanh)
+               ? GeluTanh(x)
+               : Gelu(x);
+  }
+
   static void* AlignWorkspace(void* ptr) {
     const uintptr_t address = reinterpret_cast<uintptr_t>(ptr);
     const uintptr_t aligned = (address + kMoeXnnpackWorkspaceAlignment - 1) &
@@ -586,13 +710,14 @@ class MoeExpertsDelegateKernel::Impl {
 
   bool BuildExpertAssignments(TfLiteContext* context,
                               const int32_t* top_indices, size_t tokens,
-                              size_t dispatches) {
+                              size_t dispatches, MoeScratchBuffers* scratch) {
     const size_t num_experts = static_cast<size_t>(attr_.num_experts);
     const size_t num_active_experts =
         static_cast<size_t>(attr_.num_active_experts);
-    EnsureSize(&expert_counts_, num_experts);
-    std::fill(expert_counts_.begin(), expert_counts_.begin() + num_experts, 0);
-    EnsureSize(&normalized_experts_, dispatches);
+    EnsureSize(&scratch->expert_counts, num_experts);
+    std::fill(scratch->expert_counts.begin(),
+              scratch->expert_counts.begin() + num_experts, 0);
+    EnsureSize(&scratch->normalized_experts, dispatches);
 
     for (size_t token = 0; token < tokens; ++token) {
       for (size_t route = 0; route < num_active_experts; ++route) {
@@ -606,36 +731,38 @@ class MoeExpertsDelegateKernel::Impl {
                              kMoeCustomOp, expert);
           return false;
         }
-        normalized_experts_[dispatch] = expert;
-        ++expert_counts_[expert];
+        scratch->normalized_experts[dispatch] = expert;
+        ++scratch->expert_counts[expert];
       }
     }
 
-    EnsureSize(&expert_offsets_, num_experts + 1);
-    expert_offsets_[0] = 0;
+    EnsureSize(&scratch->expert_offsets, num_experts + 1);
+    scratch->expert_offsets[0] = 0;
     for (size_t expert = 0; expert < num_experts; ++expert) {
-      expert_offsets_[expert + 1] =
-          expert_offsets_[expert] + expert_counts_[expert];
+      scratch->expert_offsets[expert + 1] =
+          scratch->expert_offsets[expert] + scratch->expert_counts[expert];
     }
 
-    EnsureSize(&write_offsets_, num_experts);
-    std::copy_n(expert_offsets_.begin(), num_experts, write_offsets_.begin());
-    EnsureSize(&assignments_, dispatches);
+    EnsureSize(&scratch->write_offsets, num_experts);
+    std::copy_n(scratch->expert_offsets.begin(), num_experts,
+                scratch->write_offsets.begin());
+    EnsureSize(&scratch->assignments, dispatches);
     for (size_t token = 0; token < tokens; ++token) {
       for (size_t route = 0; route < num_active_experts; ++route) {
         const size_t dispatch = token * num_active_experts + route;
-        const int expert = normalized_experts_[dispatch];
-        assignments_[write_offsets_[expert]++] = {static_cast<int>(token),
-                                                  static_cast<int>(route)};
+        const int expert = scratch->normalized_experts[dispatch];
+        scratch->assignments[scratch->write_offsets[expert]++] = {
+            static_cast<int>(token), static_cast<int>(route)};
       }
     }
     return true;
   }
 
-  static void CopyExpertWeightRows(const float* weight, size_t num_experts,
-                                   size_t expert, size_t output_channels,
-                                   size_t input_channels, float* dst) {
-    for (size_t out = 0; out < output_channels; ++out) {
+  static void CopyExpertWeightRowsRange(const float* weight, size_t num_experts,
+                                        size_t expert, size_t out_begin,
+                                        size_t out_end, size_t input_channels,
+                                        float* dst) {
+    for (size_t out = out_begin; out < out_end; ++out) {
       const size_t row_idx = out * num_experts + expert;
       const float* src = weight + row_idx * input_channels;
       std::memcpy(dst + out * input_channels, src,
@@ -643,71 +770,143 @@ class MoeExpertsDelegateKernel::Impl {
     }
   }
 
+  static float DotExpertWeightRowFp32(const float* src_row,
+                                      size_t input_channels,
+                                      const float* input) {
+    float sum = 0.0f;
+#if defined(__clang__)
+#pragma clang loop vectorize(enable) interleave(enable)
+#endif
+    for (size_t in = 0; in < input_channels; ++in) {
+      sum += src_row[in] * input[in];
+    }
+    return sum;
+  }
+
+  float DotExpertWeightRow(const void* weight, const float* scale,
+                           const BlockScaleLayout& layout, size_t num_experts,
+                           size_t expert, size_t out, size_t input_channels,
+                           const float* input) const {
+    const size_t row_idx = out * num_experts + expert;
+    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
+      const int8_t* src_row_packed =
+          static_cast<const int8_t*>(weight) + (row_idx * input_channels) / 2;
+      const float* row_scales = scale + row_idx * layout.groups_per_row;
+      return DotDequantizeExpertWeightRowInt4(src_row_packed, row_scales,
+                                              layout, input_channels, input);
+    }
+    if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
+      const int8_t* src_row =
+          static_cast<const int8_t*>(weight) + row_idx * input_channels;
+      const float* row_scales = scale + row_idx * layout.groups_per_row;
+      return DotDequantizeExpertWeightRowInt8(src_row, row_scales, layout,
+                                              input_channels, input);
+    }
+    const float* src_row =
+        static_cast<const float*>(weight) + row_idx * input_channels;
+    return DotExpertWeightRowFp32(src_row, input_channels, input);
+  }
+
   void CopyGateUpExpertWeight(const void* gate_weight, const float* gate_scale,
                               size_t gate_scale_elements,
                               const void* ff1_weight, const float* ff1_scale,
-                              size_t ff1_scale_elements, size_t expert) {
+                              size_t ff1_scale_elements, size_t expert,
+                              MoeScratchBuffers* scratch) {
     const size_t hidden_dim = static_cast<size_t>(attr_.hidden_dim);
     const size_t model_dim = static_cast<size_t>(attr_.model_dim);
     const size_t num_experts = static_cast<size_t>(attr_.num_experts);
     const size_t rows = 2 * hidden_dim;
-    EnsureSize(&kernel_buffer_, rows * model_dim);
-    float* dst = kernel_buffer_.data();
+    EnsureSize(&scratch->kernel_buffer, rows * model_dim);
+    float* gate_dst = scratch->kernel_buffer.data();
+    float* ff1_dst = gate_dst + hidden_dim * model_dim;
+
+    constexpr size_t kRowTile = 16;
     if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
-      CopyAndDequantizeExpertWeightRowsInt4(
-          static_cast<const int8_t*>(gate_weight), gate_scale,
-          gate_scale_elements, num_experts, expert, hidden_dim, model_dim, dst);
-      CopyAndDequantizeExpertWeightRowsInt4(
-          static_cast<const int8_t*>(ff1_weight), ff1_scale, ff1_scale_elements,
-          num_experts, expert, hidden_dim, model_dim,
-          dst + hidden_dim * model_dim);
+      ParallelFor(threadpool_, hidden_dim, kRowTile,
+                  [&](size_t offset, size_t size) {
+                    const size_t out_end = offset + size;
+                    CopyAndDequantizeExpertWeightRowsInt4Range(
+                        static_cast<const int8_t*>(gate_weight), gate_scale,
+                        gate_scale_elements, num_experts, expert, hidden_dim,
+                        offset, out_end, model_dim, gate_dst);
+                    CopyAndDequantizeExpertWeightRowsInt4Range(
+                        static_cast<const int8_t*>(ff1_weight), ff1_scale,
+                        ff1_scale_elements, num_experts, expert, hidden_dim,
+                        offset, out_end, model_dim, ff1_dst);
+                  });
     } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
-      CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(gate_weight), gate_scale,
-          gate_scale_elements, num_experts, expert, hidden_dim, model_dim, dst);
-      CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(ff1_weight), ff1_scale, ff1_scale_elements,
-          num_experts, expert, hidden_dim, model_dim,
-          dst + hidden_dim * model_dim);
+      ParallelFor(threadpool_, hidden_dim, kRowTile,
+                  [&](size_t offset, size_t size) {
+                    const size_t out_end = offset + size;
+                    CopyAndDequantizeExpertWeightRowsInt8Range(
+                        static_cast<const int8_t*>(gate_weight), gate_scale,
+                        gate_scale_elements, num_experts, expert, hidden_dim,
+                        offset, out_end, model_dim, gate_dst);
+                    CopyAndDequantizeExpertWeightRowsInt8Range(
+                        static_cast<const int8_t*>(ff1_weight), ff1_scale,
+                        ff1_scale_elements, num_experts, expert, hidden_dim,
+                        offset, out_end, model_dim, ff1_dst);
+                  });
     } else {
-      CopyExpertWeightRows(static_cast<const float*>(gate_weight), num_experts,
-                           expert, hidden_dim, model_dim, dst);
-      CopyExpertWeightRows(static_cast<const float*>(ff1_weight), num_experts,
-                           expert, hidden_dim, model_dim,
-                           dst + hidden_dim * model_dim);
+      ParallelFor(
+          threadpool_, hidden_dim, kRowTile, [&](size_t offset, size_t size) {
+            const size_t out_end = offset + size;
+            CopyExpertWeightRowsRange(static_cast<const float*>(gate_weight),
+                                      num_experts, expert, offset, out_end,
+                                      model_dim, gate_dst);
+            CopyExpertWeightRowsRange(static_cast<const float*>(ff1_weight),
+                                      num_experts, expert, offset, out_end,
+                                      model_dim, ff1_dst);
+          });
     }
   }
 
   void CopyExpertWeight(const void* weight, const float* scale,
                         size_t scale_elements, size_t expert,
-                        size_t output_channels, size_t input_channels) {
+                        size_t output_channels, size_t input_channels,
+                        MoeScratchBuffers* scratch) {
     const size_t num_experts = static_cast<size_t>(attr_.num_experts);
-    EnsureSize(&kernel_buffer_, output_channels * input_channels);
+    EnsureSize(&scratch->kernel_buffer, output_channels * input_channels);
+    float* dst = scratch->kernel_buffer.data();
+    constexpr size_t kRowTile = 16;
     if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt4) {
-      CopyAndDequantizeExpertWeightRowsInt4(
-          static_cast<const int8_t*>(weight), scale, scale_elements,
-          num_experts, expert, output_channels, input_channels,
-          kernel_buffer_.data());
+      ParallelFor(threadpool_, output_channels, kRowTile,
+                  [&](size_t offset, size_t size) {
+                    CopyAndDequantizeExpertWeightRowsInt4Range(
+                        static_cast<const int8_t*>(weight), scale,
+                        scale_elements, num_experts, expert, output_channels,
+                        offset, offset + size, input_channels, dst);
+                  });
     } else if (attr_.weight_type == MoeExpertsAttributes::WeightType::kInt8) {
-      CopyAndDequantizeExpertWeightRowsInt8(
-          static_cast<const int8_t*>(weight), scale, scale_elements,
-          num_experts, expert, output_channels, input_channels,
-          kernel_buffer_.data());
+      ParallelFor(threadpool_, output_channels, kRowTile,
+                  [&](size_t offset, size_t size) {
+                    CopyAndDequantizeExpertWeightRowsInt8Range(
+                        static_cast<const int8_t*>(weight), scale,
+                        scale_elements, num_experts, expert, output_channels,
+                        offset, offset + size, input_channels, dst);
+                  });
     } else {
-      CopyExpertWeightRows(static_cast<const float*>(weight), num_experts,
-                           expert, output_channels, input_channels,
-                           kernel_buffer_.data());
+      ParallelFor(threadpool_, output_channels, kRowTile,
+                  [&](size_t offset, size_t size) {
+                    CopyExpertWeightRowsRange(
+                        static_cast<const float*>(weight), num_experts, expert,
+                        offset, offset + size, input_channels, dst);
+                  });
     }
   }
 
   bool RunDynamicFullyConnected(TfLiteContext* context, xnn_operator_t op,
                                 int batch_size, int input_channels,
                                 int output_channels, const float* input,
-                                const float* kernel, float* output) {
+                                const float* kernel, float* output,
+                                MoeScratchBuffers* scratch) {
     size_t workspace_size = 0;
     xnn_status status = xnn_reshape_dynamic_fully_connected_nc_f32(
-        op, batch_size, input_channels, output_channels, input_channels,
-        output_channels, &workspace_size, threadpool_);
+        op, static_cast<size_t>(batch_size),
+        static_cast<size_t>(input_channels),
+        static_cast<size_t>(output_channels),
+        static_cast<size_t>(input_channels),
+        static_cast<size_t>(output_channels), &workspace_size, threadpool_);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "%s failed to reshape dynamic FC",
                          kMoeCustomOp);
@@ -718,8 +917,10 @@ class MoeExpertsDelegateKernel::Impl {
                          kMoeCustomOp);
       return false;
     }
-    EnsureSize(&workspace_, workspace_size + kMoeXnnpackWorkspaceAlignment - 1);
-    char* workspace = static_cast<char*>(AlignWorkspace(workspace_.data()));
+    EnsureSize(&scratch->workspace,
+               workspace_size + kMoeXnnpackWorkspaceAlignment - 1);
+    char* workspace =
+        static_cast<char*>(AlignWorkspace(scratch->workspace.data()));
     status = xnn_setup_dynamic_fully_connected_nc_f32(
         op, workspace, input, kernel, /*bias=*/nullptr, output);
     if (status != xnn_status_success) {
@@ -735,6 +936,70 @@ class MoeExpertsDelegateKernel::Impl {
     return true;
   }
 
+  // Fast path when a single token is routed to `expert` (e.g. decode). Computes
+  // the gate/ff1 and linear projections directly from the (quantized) expert
+  // rows without materializing or repacking a dense FP32 weight matrix.
+  void RunExpertSingleToken(
+      size_t expert, const MoeExpertsAssignment& assignment, const float* src,
+      const float* top_weights, const void* gate_weight,
+      const float* gate_scale, size_t gate_scale_elements,
+      const void* ff1_weight, const float* ff1_scale, size_t ff1_scale_elements,
+      const void* linear_weight, const float* linear_scale,
+      size_t linear_scale_elements, const float* per_expert_scale,
+      float* output, MoeScratchBuffers* scratch) {
+    const size_t model_dim = static_cast<size_t>(attr_.model_dim);
+    const size_t hidden_dim = static_cast<size_t>(attr_.hidden_dim);
+    const size_t num_experts = static_cast<size_t>(attr_.num_experts);
+    const size_t num_active_experts =
+        static_cast<size_t>(attr_.num_active_experts);
+    const size_t token = static_cast<size_t>(assignment.token);
+    const size_t route = static_cast<size_t>(assignment.route);
+    const float* token_src = src + token * model_dim;
+
+    EnsureSize(&scratch->hidden, hidden_dim);
+    float* hidden = scratch->hidden.data();
+
+    const size_t gate_ff1_rows = hidden_dim * num_experts;
+    const BlockScaleLayout gate_layout =
+        ResolveBlockScaleLayout(gate_scale_elements, gate_ff1_rows, model_dim);
+    const BlockScaleLayout ff1_layout =
+        ResolveBlockScaleLayout(ff1_scale_elements, gate_ff1_rows, model_dim);
+
+    constexpr size_t kHiddenTile = 16;
+    ParallelFor(threadpool_, hidden_dim, kHiddenTile,
+                [&](size_t offset, size_t size) {
+                  const size_t end = offset + size;
+                  for (size_t out = offset; out < end; ++out) {
+                    const float gate_val = DotExpertWeightRow(
+                        gate_weight, gate_scale, gate_layout, num_experts,
+                        expert, out, model_dim, token_src);
+                    const float ff1_val = DotExpertWeightRow(
+                        ff1_weight, ff1_scale, ff1_layout, num_experts, expert,
+                        out, model_dim, token_src);
+                    hidden[out] = Activate(gate_val) * ff1_val;
+                  }
+                });
+
+    const size_t linear_rows = model_dim * num_experts;
+    const BlockScaleLayout linear_layout =
+        ResolveBlockScaleLayout(linear_scale_elements, linear_rows, hidden_dim);
+    const float route_scale = per_expert_scale[expert] *
+                              top_weights[token * num_active_experts + route];
+    float* token_output = output + token * model_dim;
+
+    constexpr size_t kModelTile = 32;
+    ParallelFor(threadpool_, model_dim, kModelTile,
+                [&](size_t offset, size_t size) {
+                  const size_t end = offset + size;
+                  for (size_t out = offset; out < end; ++out) {
+                    const float down_val = DotExpertWeightRow(
+                        linear_weight, linear_scale, linear_layout, num_experts,
+                        expert, out, hidden_dim, hidden);
+                    token_output[out] += down_val * route_scale;
+                  }
+                });
+  }
+
   bool RunExpert(TfLiteContext* context, int expert,
                  const MoeExpertsAssignment* expert_assignments,
                  int routed_tokens, const float* src, const float* top_weights,
@@ -743,54 +1008,67 @@ class MoeExpertsDelegateKernel::Impl {
                  const float* ff1_scale, size_t ff1_scale_elements,
                  const void* linear_weight, const float* linear_scale,
                  size_t linear_scale_elements, const float* per_expert_scale,
-                 float* output) {
+                 float* output, MoeScratchBuffers* scratch) {
+    if (routed_tokens == 1) {
+      RunExpertSingleToken(
+          static_cast<size_t>(expert), expert_assignments[0], src, top_weights,
+          gate_weight, gate_scale, gate_scale_elements, ff1_weight, ff1_scale,
+          ff1_scale_elements, linear_weight, linear_scale,
+          linear_scale_elements, per_expert_scale, output, scratch);
+      return true;
+    }
+
     const size_t model_dim = static_cast<size_t>(attr_.model_dim);
     const size_t hidden_dim = static_cast<size_t>(attr_.hidden_dim);
     const size_t num_active_experts =
         static_cast<size_t>(attr_.num_active_experts);
     const size_t tokens = static_cast<size_t>(routed_tokens);
-    EnsureSize(&routed_src_, tokens * model_dim);
-    EnsureSize(&gate_up_, tokens * 2 * hidden_dim);
-    EnsureSize(&hidden_, tokens * hidden_dim);
-    EnsureSize(&down_, tokens * model_dim);
+    EnsureSize(&scratch->routed_src, tokens * model_dim);
+    EnsureSize(&scratch->gate_up, tokens * 2 * hidden_dim);
+    EnsureSize(&scratch->hidden, tokens * hidden_dim);
+    EnsureSize(&scratch->down, tokens * model_dim);
 
     // TODO: lower this token dispatch as a gather-style delegate op. Keeping it
     // here preserves correctness while XNNPACK lacks a ragged/grouped gather.
     for (size_t i = 0; i < tokens; ++i) {
       const size_t token = static_cast<size_t>(expert_assignments[i].token);
       const float* token_src = src + token * model_dim;
-      std::memcpy(routed_src_.data() + i * model_dim, token_src,
+      std::memcpy(scratch->routed_src.data() + i * model_dim, token_src,
                   model_dim * sizeof(float));
     }
 
     CopyGateUpExpertWeight(gate_weight, gate_scale, gate_scale_elements,
-                           ff1_weight, ff1_scale, ff1_scale_elements, expert);
-    if (!RunDynamicFullyConnected(context, gate_up_fc_.get(), routed_tokens,
-                                  attr_.model_dim, 2 * attr_.hidden_dim,
-                                  routed_src_.data(), kernel_buffer_.data(),
-                                  gate_up_.data())) {
+                           ff1_weight, ff1_scale, ff1_scale_elements,
+                           static_cast<size_t>(expert), scratch);
+    if (!RunDynamicFullyConnected(
+            context, gate_up_fc_.get(), routed_tokens, attr_.model_dim,
+            2 * attr_.hidden_dim, scratch->routed_src.data(),
+            scratch->kernel_buffer.data(), scratch->gate_up.data(), scratch)) {
       return false;
     }
 
-    for (size_t token = 0; token < tokens; ++token) {
-      const float* gate = gate_up_.data() + token * 2 * hidden_dim;
-      const float* ff1 = gate + hidden_dim;
-      float* hidden = hidden_.data() + token * hidden_dim;
-      for (size_t dim = 0; dim < hidden_dim; ++dim) {
-        float act_val =
-            (attr_.activation == MoeExpertsAttributes::Activation::kGeluTanh)
-                ? GeluTanh(gate[dim])
-                : Gelu(gate[dim]);
-        hidden[dim] = act_val * ff1[dim];
-      }
-    }
+    constexpr size_t kTokenTile = 4;
+    ParallelFor(threadpool_, tokens, kTokenTile,
+                [&](size_t offset, size_t size) {
+                  const size_t end = offset + size;
+                  for (size_t token = offset; token < end; ++token) {
+                    const float* gate =
+                        scratch->gate_up.data() + token * 2 * hidden_dim;
+                    const float* ff1 = gate + hidden_dim;
+                    float* hidden = scratch->hidden.data() + token * hidden_dim;
+                    for (size_t dim = 0; dim < hidden_dim; ++dim) {
+                      hidden[dim] = Activate(gate[dim]) * ff1[dim];
+                    }
+                  }
+                });
 
-    CopyExpertWeight(linear_weight, linear_scale, linear_scale_elements, expert,
-                     model_dim, hidden_dim);
-    if (!RunDynamicFullyConnected(context, linear_fc_.get(), routed_tokens,
-                                  attr_.hidden_dim, attr_.model_dim,
-                                  hidden_.data(), kernel_buffer_.data(),
-                                  down_.data())) {
+    CopyExpertWeight(linear_weight, linear_scale, linear_scale_elements,
+                     static_cast<size_t>(expert), model_dim, hidden_dim,
+                     scratch);
+    if (!RunDynamicFullyConnected(
+            context, linear_fc_.get(), routed_tokens, attr_.hidden_dim,
+            attr_.model_dim, scratch->hidden.data(),
+            scratch->kernel_buffer.data(), scratch->down.data(), scratch)) {
       return false;
     }
 
@@ -803,7 +1081,7 @@ class MoeExpertsDelegateKernel::Impl {
       const float route_scale =
           expert_scale * top_weights[token * num_active_experts + route];
       float* token_output = output + token * model_dim;
-      const float* token_down = down_.data() + i * model_dim;
+      const float* token_down = scratch->down.data() + i * model_dim;
       for (size_t dim = 0; dim < model_dim; ++dim) {
         token_output[dim] += token_down[dim] * route_scale;
       }
@@ -826,17 +1104,7 @@ class MoeExpertsDelegateKernel::Impl {
   XnnOperatorPtr gate_up_fc_{nullptr, &xnn_delete_operator};
   XnnOperatorPtr linear_fc_{nullptr, &xnn_delete_operator};
   pthreadpool_t threadpool_ = nullptr;
-  std::vector<int> expert_counts_;
-  std::vector<int> expert_offsets_;
-  std::vector<int> write_offsets_;
-  std::vector<int> normalized_experts_;
-  std::vector<MoeExpertsAssignment> assignments_;
-  std::vector<float> routed_src_;
-  std::vector<float> gate_up_;
-  std::vector<float> hidden_;
-  std::vector<float> down_;
-  std::vector<float> kernel_buffer_;
-  std::vector<char> workspace_;
+  std::shared_ptr<MoeScratchPool> scratch_pool_;
 };
 
 MoeExpertsDelegateKernel::MoeExpertsDelegateKernel(std::unique_ptr<Impl> impl)
