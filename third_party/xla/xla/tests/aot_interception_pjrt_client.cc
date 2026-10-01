@@ -134,7 +134,7 @@ std::string RegenerationHint(absl::string_view target_name) {
       "reviewing the differences.\n"
       "(Google-internal: run, from the workspace root, "
       "third_party/tensorflow/compiler/xla/tests/"
-      "aot_compatibility_experimental/google/update_goldens.py ",
+      "aot_compatibility/google/update_goldens.py ",
       label, ")");
 }
 

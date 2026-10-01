@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/aot_compatibility_experimental/test_lib.h"
+#include "xla/tests/aot_compatibility/test_lib.h"
 #include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 
 namespace xla {
-namespace aot_compatibility_experimental {
+namespace aot_compatibility {
 
 using ::testing::TestParamInfo;
 using ::testing::UnitTest;
@@ -158,5 +158,5 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 }  // namespace
-}  // namespace aot_compatibility_experimental
+}  // namespace aot_compatibility
 }  // namespace xla
