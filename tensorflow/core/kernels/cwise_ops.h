@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace Eigen {
 namespace internal {
@@ -76,6 +77,39 @@ struct safe_scalar_binary_pow_op {
 template <typename Scalar, typename Exponent>
 struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
+// Eigen evaluates complex powers as exp(exponent * log(base)), which yields
+// NaN for 0^0. IEEE 754 requires z^0 == 1, which TensorFlow follows,
+// including non-finite bases. Handle zero exponents before the logarithm as a
+// TensorFlow-local workaround, without depending on an upstream Eigen change.
+template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
+struct tf_scalar_pow_op;
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/false> : scalar_pow_op<T, T> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/false>>
+    : functor_traits<scalar_pow_op<T, T>> {};
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
+                                                     const T& exponent) const {
+    if (TF_PREDICT_FALSE(exponent == T(0))) {
+      return T(1);
+    }
+    return scalar_pow_op<T, T>::operator()(base, exponent);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_pow_op<T, T>>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
 };
 
 template <typename T, typename DivOrMod>
@@ -1263,7 +1297,7 @@ struct truncate_div_real
     : base<T, Eigen::internal::google_truncate_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
+struct pow : base<T, Eigen::internal::tf_scalar_pow_op<T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
