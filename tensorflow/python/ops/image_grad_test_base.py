@@ -153,7 +153,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
         outer_tape.watch(x)
         with backprop.GradientTape() as inner_tape:
           inner_tape.watch(x)
-          resized = gen_image_ops.resize_nearest_neighbor(
+          resized = image_ops.resize_nearest_neighbor(
               x, [5, 4], align_corners=align_corners,
               half_pixel_centers=half_pixel_centers)
           loss = math_ops.reduce_sum(resized * resized)
@@ -164,6 +164,50 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
           align_corners=align_corners, half_pixel_centers=half_pixel_centers)
       self.assertAllEqual(
           self.evaluate(expected), self.evaluate(second_gradient))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyResizeGradients(self):
+    for image_shape, size in (([1, 2, 3, 1], [0, 3]),
+                             ([1, 2, 3, 1], [2, 0]),
+                             ([1, 0, 3, 1], [0, 2]),
+                             ([1, 2, 0, 1], [2, 0]),
+                             ([0, 2, 3, 1], [4, 5]),
+                             ([1, 2, 3, 0], [4, 5])):
+      for align_corners, half_pixel_centers in (
+          (False, False), (True, False), (False, True)):
+        with self.subTest(image_shape=image_shape, size=size,
+                          align_corners=align_corners,
+                          half_pixel_centers=half_pixel_centers):
+          image = array_ops.zeros(image_shape)
+          with backprop.GradientTape() as outer_tape:
+            outer_tape.watch(image)
+            with backprop.GradientTape() as inner_tape:
+              inner_tape.watch(image)
+              resized = image_ops.resize_nearest_neighbor(
+                  image, size, align_corners=align_corners,
+                  half_pixel_centers=half_pixel_centers)
+              loss = math_ops.reduce_sum(resized * resized)
+            gradient = inner_tape.gradient(loss, image)
+          second_gradient = outer_tape.gradient(gradient, image)
+          self.assertAllEqual(self.evaluate(gradient), np.zeros(image_shape))
+          self.assertAllEqual(
+              self.evaluate(second_gradient), np.zeros(image_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputCannotResizeToNonemptyOutput(self):
+    for image_shape in ([1, 0, 3, 1], [1, 2, 0, 1]):
+      with self.subTest(image_shape=image_shape):
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "input image must be of non-zero"):
+          self.evaluate(image_ops.resize_nearest_neighbor(
+              array_ops.zeros(image_shape), [2, 3]))
+    for size in ([0, 3], [2, 0]):
+      with self.subTest(size=size):
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, "positive for non-empty grads"):
+          self.evaluate(gen_image_ops.resize_nearest_neighbor_grad(
+              array_ops.ones([1, 2, 3, 1]), size))
 
   @test_util.run_deprecated_v1
   def testGradGradDynamicShape(self):
@@ -190,12 +234,9 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
               grads_shape[0] * size[0] * size[1] * grads_shape[3],
               dtype=np.float32).reshape(
                   [grads_shape[0], *size, grads_shape[3]])
-          if 0 in grads_shape:
-            expected = array_ops.zeros(grads_shape, dtype=dtypes.float32)
-          else:
-            expected = gen_image_ops.resize_nearest_neighbor(
-                incoming, grads_shape[1:3], align_corners=align_corners,
-                half_pixel_centers=half_pixel_centers)
+          expected = image_ops.resize_nearest_neighbor(
+              incoming, grads_shape[1:3], align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers)
           actual = sess.run(gradient, feed_dict={
               grads: np.zeros(grads_shape, dtype=np.float32),
               image_size: size,
@@ -217,6 +258,8 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
           resized_grad = gen_image_ops.resize_nearest_neighbor_grad(
               grads, [2, 3])
         gradient = tape.gradient(resized_grad, grads)
+        if shape[1] is not None and shape[2] is not None:
+          self.assertEqual(gradient.op.inputs[1].op.type, "Const")
         actual = sess.run(gradient, feed_dict={
             grads: np.zeros(feed_shape, dtype=np.float32),
         })

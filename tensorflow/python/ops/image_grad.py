@@ -18,7 +18,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
 
@@ -52,25 +51,17 @@ def _ResizeNearestNeighborGrad(op: ops.Operation, grad):
 def _ResizeNearestNeighborGradGrad(op: ops.Operation, grad):
   """The transpose of the nearest neighbor resize gradient is a resize."""
   image = op.inputs[0]
-
-  def resize():
-    return gen_image_ops.resize_nearest_neighbor(
-        grad,
-        array_ops.shape(image)[1:3],
-        align_corners=op.get_attr("align_corners"),
-        half_pixel_centers=op.get_attr("half_pixel_centers"))
-
-  # Resize rejects zero spatial dimensions and zero channels.
-  shape = image.shape
-  if shape.rank == 4 and 0 in shape.as_list():
-    grads = array_ops.zeros_like(image)
-  elif shape.rank == 4 and shape[1:].is_fully_defined():
-    grads = resize()
+  if image.get_shape()[1:3].is_fully_defined():
+    image_shape = image.get_shape()[1:3]
   else:
-    grads = cond.cond(
-        array_ops.size(image, out_type=dtypes.int64) > 0,
-        resize, lambda: array_ops.zeros_like(image))
-  return [grads, None]
+    image_shape = array_ops.shape(image)[1:3]
+  return [
+      gen_image_ops.resize_nearest_neighbor(
+          grad,
+          image_shape,
+          align_corners=op.get_attr("align_corners"),
+          half_pixel_centers=op.get_attr("half_pixel_centers")), None
+  ]
 
 
 @ops.RegisterGradient("AdjustContrastv2")
