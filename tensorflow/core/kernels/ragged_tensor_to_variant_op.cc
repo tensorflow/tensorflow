@@ -270,6 +270,16 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
 
     const auto& flat_variants = encoded_variant.flat<Variant>();
 
+    // The flat_values gradient must have rank >= 1: the missing-value path
+    // below rebuilds a zero piece by overwriting dimension 0, which traps in
+    // `TensorShape::set_dim` for a 0-D `dense_values_shape`. Reject that here
+    // instead of crashing.
+    OP_REQUIRES(context, dense_values_shape.dims() > 0,
+                errors::InvalidArgument(
+                    "dense_values_shape must have rank >= 1, but got rank ",
+                    dense_values_shape.dims()));
+    const int64_t expected_values = dense_values_shape.num_elements();
+
     // Get a Tensor containing the flat_values for each variant.
     std::vector<Tensor> values;
     int64_t total_values = 0;
@@ -291,10 +301,19 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
         auto piece_size = flat_row_splits(i + 1) - flat_row_splits(i);
         TensorShape zeros_shape = dense_values_shape;
         zeros_shape.set_dim(0, piece_size);
+        // Bound the running total before materializing the zero piece, so a
+        // crafted `row_splits` can't drive an oversized allocation (OOM) or
+        // overflow `total_values` before the equality check below runs.
+        total_values += zeros_shape.num_elements();
+        OP_REQUIRES(context, total_values <= expected_values,
+                    errors::InvalidArgument(
+                        "Number of encoded ragged values (", total_values,
+                        ") exceeds the number of values implied by "
+                        "dense_values_shape (",
+                        expected_values, ")"));
         Tensor zero(value_dtype, zeros_shape);
         zero.flat<VALUE_TYPE>().setZero();
         values.push_back(zero);
-        total_values += zero.NumElements();
       }
     }
 
@@ -304,15 +323,26 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
     // variants whose values exceed `dense_values_shape` would overflow `out`,
     // and the single-value path would otherwise emit a wrongly shaped output.
     OP_REQUIRES(
-        context, total_values == dense_values_shape.num_elements(),
+        context, total_values == expected_values,
         errors::InvalidArgument(
             "Expected the number of encoded ragged values (", total_values,
             ") to match the number of values implied by dense_values_shape (",
-            dense_values_shape.num_elements(), ")"));
+            expected_values, ")"));
 
     if (values.size() == 1) {
-      // Just one flat_value tensor: return as-is.
-      context->set_output(0, values[0]);
+      // Just one flat_value tensor. Its element count already matches
+      // `dense_values_shape`, but its own layout may differ, so reshape to the
+      // declared shape to keep the output-shape contract.
+      if (values[0].shape() == dense_values_shape) {
+        context->set_output(0, values[0]);
+      } else {
+        Tensor out;
+        OP_REQUIRES(context, out.CopyFrom(values[0], dense_values_shape),
+                    errors::InvalidArgument(
+                        "Failed to reshape encoded ragged values to "
+                        "dense_values_shape"));
+        context->set_output(0, out);
+      }
     } else {
       Tensor* out = nullptr;
       OP_REQUIRES_OK(context,
