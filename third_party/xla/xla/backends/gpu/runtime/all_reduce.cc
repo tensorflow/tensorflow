@@ -361,6 +361,17 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
   ABSL_ASSIGN_OR_RETURN(
       const bool is_local,
       IsAllReplicasLocal(gpu_topology, *all_reduce, device_assignment));
+  const DebugOptions& debug_options =
+      all_reduce->GetModule()->config().debug_options();
+  if (IsCrossHostOneShotKernelEnabled(debug_options, DebugOptions::ALLREDUCE) &&
+      device_info.gpu_compute_capability().IsRocm()) {
+    return absl::UnimplementedError(
+        "Cross-host one-shot all-reduce (xla_gpu_unsupported_use_cross_host_"
+        "one_shot_kernel=ALLREDUCE) requires kLoadStoreAccessible symmetric "
+        "memory (NCCL symmetric-memory windows), which is not supported on "
+        "ROCm/RCCL. Disable the cross-host flag to use the single-host "
+        "kXlaRendezvous path, or run on a CUDA/NCCL target.");
+  }
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
