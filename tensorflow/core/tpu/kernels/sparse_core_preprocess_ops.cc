@@ -208,9 +208,18 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     const int32_t* indices_or_row_splits_ptr =
         indices_or_row_splits.flat<int32_t>().data();
     int32_t current_row_id = -1;
+    int32_t num_elements = indices_or_row_splits.NumElements();
     for (int32_t i = 0; i < total_id_count; ++i) {
-      while (i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
+      while (1 + current_row_id < num_elements &&
+             i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
         current_row_id += 1;
+      }
+      if (current_row_id >= sample_count) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Invalid indices_or_row_splits input, indices of RaggedTensor "
+            "contained a row_id ",
+            current_row_id, " that was >= the sample count (", sample_count,
+            ")."));
       }
       *(row_ids_before_padding + i) = current_row_id;
     }
