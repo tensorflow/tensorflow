@@ -106,8 +106,8 @@ struct XentEigenImpl {
                          .eval()
                          .sum(along_class);
 
-    // When the float64 denominator rounds to one, subtracting a unit label
-    // erases its tail gradient. Sum non-maximal terms separately.
+    // Near a unit float64 denominator, subtracting a unit label loses the tail
+    // gradient. Sum small terms separately to retain that signal.
     if constexpr (std::is_same_v<T, double>) {
       if (scratch_storage.size() == 2 * scratch.size()) {
         // The packed second half may not be aligned when batch_size is odd.
@@ -115,7 +115,7 @@ struct XentEigenImpl {
         typename TTypes<T>::UnalignedVec tail(tail_data, batch_size);
         backprop.device(d) = backprop.exp();
         tail.device(d) =
-            (backprop < backprop.constant(T(1)))
+            (backprop < backprop.constant(T(0.5)))
                 .select(backprop, backprop.constant(T(0)))
                 .sum(along_class) /
             scratch.reshape(batch_only);
@@ -127,11 +127,12 @@ struct XentEigenImpl {
         // Keep this lazy to avoid dynamic heap allocations (malloc/free) on CPU
         // and maintain GPU device execution compatibility via kernel fusion.
         backprop.device(d) =
-            backprop / denominator - labels_broadcast -
-            ((scratch == scratch.constant(T(1))).broadcast(one_by_class) &&
-             (backprop == backprop.constant(T(1))))
-                    .template cast<T>() *
-                tail_ratio_bcast;
+            ((scratch < scratch.constant(T(1) + T(1e-14)))
+                 .broadcast(one_by_class) &&
+             (backprop > backprop.constant(T(0.5))))
+                .select((labels_broadcast.constant(T(1)) - labels_broadcast) -
+                            tail_ratio_bcast,
+                        backprop / denominator - labels_broadcast);
         return;
       }
     }

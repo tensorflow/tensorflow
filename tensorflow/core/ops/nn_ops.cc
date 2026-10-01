@@ -1322,7 +1322,7 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
 
         if (c->Rank(c->output(1)) != 2) {
           return absl::InvalidArgumentError(absl::StrCat(
-              "Shape must be broadcasted with rank 2, but its rank ",
+              "Shape must be broadcasted with rank 2, but its rank is ",
               c->Rank(c->output(1))));
         }
         input = c->output(1);
@@ -1351,6 +1351,13 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
       ShapeHandle labels;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &features));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &labels));
+
+      DimensionHandle num_classes = c->Dim(features, 1);
+      if (c->ValueKnown(num_classes) && c->Value(num_classes) <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Must have at least one class, but got ",
+                         c->Value(num_classes), " classes."));
+      }
 
       DimensionHandle batch_size;
       TF_RETURN_IF_ERROR(
