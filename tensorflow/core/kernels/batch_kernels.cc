@@ -904,10 +904,13 @@ class UnbatchResource : public ResourceBase {
     std::vector<int64_t> batch_keys;
     std::vector<Tensor> split_inputs;
     if (nonempty_input) {
+      const int64_t num_indices = batch_index_t.dim_size(0);
+      sizes.reserve(num_indices);
+      batch_keys.reserve(num_indices);
       auto batch_indices =
-          batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
+          batch_index_t.shaped<int64_t, 2>({num_indices, 3});
       int64_t remaining_size = data_t.dim_size(0);
-      for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
+      for (int64_t i = 0; i < num_indices; ++i) {
         const int64_t start = batch_indices(i, 1);
         const int64_t limit = batch_indices(i, 2);
         if (start < 0 || limit < start) {
