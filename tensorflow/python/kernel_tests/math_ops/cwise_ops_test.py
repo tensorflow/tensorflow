@@ -1157,15 +1157,37 @@ class RoundingTest(test.TestCase):
       with test_util.force_cpu():
         # --- double ---
         with self.subTest(dtype=np.float64):
+          # Boundary: empty tensor (N=0).
+          self.assertAllEqual(
+              np.array([], dtype=np.float64),
+              self.evaluate(
+                  math_ops.floor(np.array([], dtype=np.float64))))
+          # Boundary: rank-0 scalar (N=1), smallest negative double subnormal.
+          self.assertEqual(
+              -1.0,
+              self.evaluate(math_ops.floor(
+                  constant_op.constant(
+                      np.float64(-5e-324), dtype=dtypes_lib.float64))))
+          # Negative subnormals -> -1.0.
           neg_sub64 = np.array(
-              [-5e-324, -1e-310, -2.2250738585072009e-308], dtype=np.float64)
+              [-5e-324, -1e-310, -2.2250738585072009e-308],
+              dtype=np.float64)
           self.assertAllEqual(
               np.full_like(neg_sub64, -1.0),
               self.evaluate(math_ops.floor(neg_sub64)))
+          # Positive subnormals -> +0.0 (sign bit clear).
+          pos_sub64 = np.array([5e-324, 1e-310], dtype=np.float64)
+          out_ps = self.evaluate(math_ops.floor(pos_sub64))
+          self.assertAllEqual(np.zeros_like(pos_sub64), out_ps)
+          self.assertAllEqual(
+              np.signbit(np.zeros_like(pos_sub64)), np.signbit(out_ps))
+          # -0.0 must be preserved.
           neg_zero64 = np.array([-0.0], dtype=np.float64)
           out_nz = self.evaluate(math_ops.floor(neg_zero64))
           self.assertAllEqual(np.signbit(neg_zero64), np.signbit(out_nz))
-          normal64 = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=np.float64)
+          # Normal values.
+          normal64 = np.array(
+              [-1.5, -0.5, 0.0, 0.5, 1.5], dtype=np.float64)
           self.assertAllEqual(
               np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=np.float64),
               self.evaluate(math_ops.floor(normal64)))
@@ -1173,24 +1195,48 @@ class RoundingTest(test.TestCase):
         # --- float16 and bfloat16 ---
         for dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
           with self.subTest(dtype=dtype):
-            # Smallest negative subnormal for float16 / bfloat16 is the value
-            # with bits 0x8001 in the respective 16-bit format.
-            bits_neg_sub = np.frompyfunc(
-                lambda b: np.frombuffer(
-                    np.array(b, dtype=np.uint16).tobytes(), dtype=dtype)[0],
-                1, 1)
+            # Helper: create a dtype value from its raw uint16 bit pattern.
+            def _from_bits(b, dt=dtype):
+              return np.frombuffer(
+                  np.array(b, dtype=np.uint16).tobytes(), dtype=dt)[0]
+            bits_neg_sub = np.frompyfunc(_from_bits, 1, 1)
+
+            # Boundary: empty tensor (N=0).
+            self.assertAllEqual(
+                np.array([], dtype=dtype),
+                self.evaluate(
+                    math_ops.floor(np.array([], dtype=dtype))))
+            # Boundary: rank-0 scalar (N=1).
+            scalar_val = bits_neg_sub(
+                np.uint16(0x8001)).astype(dtype).item()
+            self.assertEqual(
+                -1.0,
+                self.evaluate(math_ops.floor(
+                    constant_op.constant(scalar_val))))
+            # Negative subnormals -> -1.0.
             neg_sub = bits_neg_sub(
                 np.array([0x8001, 0x8002, 0x8003], dtype=np.uint16)
             ).astype(dtype)
             out_sub = self.evaluate(math_ops.floor(neg_sub))
             self.assertAllEqual(
                 np.full(len(neg_sub), -1.0, dtype=dtype), out_sub)
-
+            # Positive subnormals -> +0.0 (sign bit clear).
+            pos_sub = bits_neg_sub(
+                np.array([0x0001, 0x0002], dtype=np.uint16)
+            ).astype(dtype)
+            out_ps = self.evaluate(math_ops.floor(pos_sub))
+            self.assertAllEqual(np.zeros_like(pos_sub), out_ps)
+            self.assertAllEqual(
+                np.signbit(np.zeros_like(pos_sub)),
+                np.signbit(out_ps))
+            # -0.0 must be preserved.
             neg_zero = np.array([-0.0], dtype=dtype)
             out_nz = self.evaluate(math_ops.floor(neg_zero))
-            self.assertAllEqual(np.signbit(neg_zero), np.signbit(out_nz))
-
-            normal_vals = np.array([-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
+            self.assertAllEqual(
+                np.signbit(neg_zero), np.signbit(out_nz))
+            # Normal values.
+            normal_vals = np.array(
+                [-1.5, -0.5, 0.0, 0.5, 1.5], dtype=dtype)
             self.assertAllEqual(
                 np.array([-2.0, -1.0, 0.0, 0.0, 1.0], dtype=dtype),
                 self.evaluate(math_ops.floor(normal_vals)))

@@ -956,7 +956,11 @@ cpu_floor_packet_correction(const Packet& x, const Packet& r,
   // r == -0.0 AND x was not a genuine -0.0 (i.e. it was a flushed subnormal).
   const IPacket fix = pandnot(pcmp_eq(r_bits, sign_bit_mask),
                               pcmp_eq(x_bits, sign_bit_mask));
-  return pselect(preinterpret<Packet>(fix), pset1<Packet>(-1.0), r);
+  return pselect(
+      preinterpret<Packet>(fix),
+      pset1<Packet>(
+          static_cast<typename unpacket_traits<Packet>::type>(-1.0)),
+      r);
 }
 
 // Functor for tf.math.floor on float32 on CPU.
