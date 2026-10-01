@@ -1,4 +1,4 @@
-# Copyright 2025 The OpenXLA Authors.
+# Copyright 2026 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,19 +21,19 @@ gpu_device_info {
   shared_memory_per_block: 49152
   shared_memory_per_core: 233472
   threads_per_core_limit: 2048
-  core_count: 158
+  core_count: 18
   fpus_per_core: 128
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 7936000000000
-  l2_cache_size: 135528448
+  memory_bandwidth: 917082000000
+  l2_cache_size: 15859712
   clock_rate_ghz: 1.965
-  device_memory_size: 297021865984
+  device_memory_size: 22011707392
   shared_memory_per_block_optin: 232448
   cuda_compute_capability {
     major: 10
-    minor: 3
+    feature_extension: ACCELERATED_FEATURES
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
@@ -228,6 +228,16 @@ gpu_device_info {
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 10.0a"
+  model_str: "sm_10.0a with 22011707392B RAM, 18 cores, 1965000KHz clock, 3996000KHz mem clock, 15859712B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 68719476736
+  ecc_enabled: true
+  name: "NVIDIA B200 MIG 1g.23gb"
+  mem_clock_ghz: 3.996
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"
@@ -236,4 +246,4 @@ gpu_device_info {
   collective_memory_granularity: 2097152
 }
 platform_name: "CUDA"
-device_description_str: "NVIDIA B300"
+device_description_str: "NVIDIA B200 MIG 1g.23gb"
