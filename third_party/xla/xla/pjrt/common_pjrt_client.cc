@@ -2999,6 +2999,12 @@ CommonPjRtLoadedExecutable::Execute(
     int launching = num_addressable_devices;
     int failed = 0;
     absl::Status first_failure_status;
+    const bool profiling_requested = options.execution_profile != nullptr;
+    std::vector<ExecutionProfile> device_execution_profiles;
+    if (profiling_requested) {
+      device_execution_profiles.resize(num_addressable_devices,
+                                       *options.execution_profile);
+    }
 
     {
       // The gang_schedule mutex ensures that all calls to Schedule() happen
@@ -3028,10 +3034,15 @@ CommonPjRtLoadedExecutable::Execute(
 
               // Two phase launch. Phase 1: Prepare on all cores. Abort
               // launch on prepare failure.
+              ExecuteOptions device_options = options;
+              if (profiling_requested) {
+                device_options.execution_profile =
+                    &device_execution_profiles[i];
+              }
               std::optional<ExecuteLaunchArgs> launch_args;
               absl::Status launch_status = ExecutePrepareWithOomRetries(
                   launch_args, argument_handles[i], run_id, replica, partition,
-                  options,
+                  device_options,
                   /*host_callback_idx=*/i);
               // Wait for prepare to finish on all cores.
               if (client()->supports_two_phase_launch()) {
@@ -3068,7 +3079,8 @@ CommonPjRtLoadedExecutable::Execute(
 
               // Phase 2: Launch. It cannot fail.
               results[i] =
-                  ExecuteLaunch(*launch_args, returned_futures.has_value());
+                  ExecuteLaunch(*launch_args, returned_futures.has_value() ||
+                                                  profiling_requested);
 
               absl::MutexLock lock(mu);
               --launching;
@@ -3083,6 +3095,25 @@ CommonPjRtLoadedExecutable::Execute(
     };
     absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&done));
+
+    if (profiling_requested) {
+      absl::Status execution_status = absl::OkStatus();
+      for (auto& result : results) {
+        if (result.ok()) {
+          CHECK(result->future.has_value());
+          absl::Status status = result->future->Await();
+          if (execution_status.ok() && !status.ok()) {
+            execution_status = std::move(status);
+          }
+        }
+      }
+      if (!execution_status.ok()) {
+        return execution_status;
+      }
+      // Return the profile from device 0 because current API supports only a
+      // single profile.
+      *options.execution_profile = std::move(device_execution_profiles.front());
+    }
   }
   VLOG(3) << "Replicated execution complete.";
 

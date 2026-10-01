@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/aot_compatibility_experimental/test_lib.h"
+#include "xla/tests/aot_compatibility/test_lib.h"
 
 #include <stdlib.h>
 
@@ -38,7 +38,7 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
-namespace aot_compatibility_experimental {
+namespace aot_compatibility {
 namespace {
 
 using ::absl_testing::StatusIs;
@@ -510,5 +510,5 @@ TEST(TestLibTest, WriteGoldenTextProtoRoundTripWithHeader) {
 }
 
 }  // namespace
-}  // namespace aot_compatibility_experimental
+}  // namespace aot_compatibility
 }  // namespace xla

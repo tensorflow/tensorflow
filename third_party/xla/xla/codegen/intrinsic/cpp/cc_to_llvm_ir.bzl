@@ -178,7 +178,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     variable_name = "k{}Ir".format(to_camel_case(base_name))
     embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
 
-    # Generate an empty bitcode file for MacOS and Windows.
+    # Generate an empty bitcode file for Windows.
     native.genrule(
         name = name + "_empty_bc",
         outs = [name + "_empty.bc"],
@@ -191,7 +191,6 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         selects.config_setting_group(
             name = "empty_bitcode",
             match_any = [
-                "//xla/tsl:macos",
                 "//xla/tsl:windows",
             ],
         )

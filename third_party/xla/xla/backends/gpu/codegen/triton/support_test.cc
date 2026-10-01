@@ -531,6 +531,85 @@ INSTANTIATE_TEST_SUITE_P(PadTestSuite, PadTest,
                          AllTestCombinationsForOpcodesWithTiling(kTestedOpsPad),
                          SupportTestTypeAndOpcodeAndDeviceAndTilingToString);
 
+TEST_F(HloHardwareIndependentTestBase, PadOutsideGemmFusionIsRejected) {
+  const std::string kHlo = R"(
+HloModule PadOutsideGemmFusion
+
+ENTRY main {
+  p0 = f32[4, 4] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT pad = f32[32, 16] pad(p0, p1), padding=0_28_0x0_12_0
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloInstruction* pad = module->entry_computation()->root_instruction();
+  auto decision = IsTritonSupportedInstruction(
+      *pad, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()));
+  EXPECT_FALSE(decision);
+  EXPECT_THAT(
+      decision.Explain(),
+      ::testing::HasSubstr("Pads are only supported within GEMM fusions"));
+}
+
+TEST_F(HloHardwareIndependentTestBase, PadInsideGenericTritonFusionIsRejected) {
+  const std::string kHlo = R"(
+HloModule PadInsideGenericTritonFusion
+
+triton_computation {
+  p0 = f32[4, 4] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT pad = f32[32, 16] pad(p0, p1), padding=0_28_0x0_12_0
+}
+
+ENTRY main {
+  p0 = f32[4, 4] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[32, 16] fusion(p0, p1), kind=kCustom,
+      calls=triton_computation,
+      backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloComputation* comp =
+      module->GetComputationWithName("triton_computation");
+  ASSERT_NE(comp, nullptr);
+  const HloInstruction* pad = comp->root_instruction();
+  auto decision = IsTritonSupportedInstruction(
+      *pad, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()));
+  EXPECT_FALSE(decision);
+  EXPECT_THAT(
+      decision.Explain(),
+      ::testing::HasSubstr("Pads are only supported within GEMM fusions"));
+}
+
+TEST_F(HloHardwareIndependentTestBase, PadInsideGemmFusionIsAllowed) {
+  const std::string kHlo = R"(
+HloModule PadInsideGemmFusion
+
+gemm_computation {
+  p0 = f32[4, 4] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT pad = f32[32, 16] pad(p0, p1), padding=0_28_0x0_12_0
+}
+
+ENTRY main {
+  p0 = f32[4, 4] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = f32[32, 16] fusion(p0, p1), kind=kCustom,
+      calls=gemm_computation,
+      backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  const HloComputation* comp =
+      module->GetComputationWithName("gemm_computation");
+  ASSERT_NE(comp, nullptr);
+  const HloInstruction* pad = comp->root_instruction();
+  auto decision = IsTritonSupportedInstruction(
+      *pad, se::GpuComputeCapability(se::CudaComputeCapability::Ampere()));
+  EXPECT_TRUE(decision);
+}
+
 using UnaryElementwiseTest =
     SupportTestWithTypeAndOpcodeAndDeviceAndTilingParam;
 

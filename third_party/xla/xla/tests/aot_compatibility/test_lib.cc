@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/aot_compatibility_experimental/test_lib.h"
+#include "xla/tests/aot_compatibility/test_lib.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -45,7 +45,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 
 namespace xla {
-namespace aot_compatibility_experimental {
+namespace aot_compatibility {
 
 using ::testing::TestInfo;
 using ::testing::UnitTest;
@@ -77,7 +77,7 @@ bool IsEnvFlagEnabled(const char* name) {
 }
 
 // The undeclared-outputs directory exists only when the golden-update helper
-// (`third_party/tensorflow/compiler/xla/tests/aot_compatibility_experimental/google/update_goldens.py`)
+// (`third_party/tensorflow/compiler/xla/tests/aot_compatibility/google/update_goldens.py`)
 // drives the test. Shared so both callers enforce it with the same message.
 absl::StatusOr<std::string> GetUndeclaredOutputsDir() {
   const char* out_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
@@ -86,7 +86,7 @@ absl::StatusOr<std::string> GetUndeclaredOutputsDir() {
         "TEST_UNDECLARED_OUTPUTS_DIR is unset. Golden updates must be driven "
         "by the golden-update helper for this package "
         "(Google-internal: third_party/tensorflow/compiler/xla/tests/"
-        "aot_compatibility_experimental/google/update_goldens.py), which sets "
+        "aot_compatibility/google/update_goldens.py), which sets "
         "it; running the test target directly will not work.");
   }
   return std::string(out_dir);
@@ -128,7 +128,7 @@ std::string GetExecutablesDirectory(absl::string_view target_name,
                                     AOTTestPlatform platform) {
   return tsl::io::JoinPath(
       tsl::testing::TensorFlowSrcRoot(),
-      absl::StrCat("compiler/xla/tests/aot_compatibility_experimental/",
+      absl::StrCat("compiler/xla/tests/aot_compatibility/",
                    AOTInterceptionPjrtClient::PlatformSubdir(platform),
                    "/executables"),
       target_name);
@@ -251,5 +251,5 @@ DebugOptions AotCompatibilityTest::GetDebugOptionsForTest() const {
   return debug_options;
 }
 
-}  // namespace aot_compatibility_experimental
+}  // namespace aot_compatibility
 }  // namespace xla

@@ -64,6 +64,10 @@ toc:
     path: /xla/persisted_autotuning
   - title: Determinism (GPU)
     path: /xla/determinism
+  - title: GPU AOT compilation
+    path: /xla/gpu_aot
+  - title: GPU AOT compatibility
+    path: /xla/gpu_aot_compatibility
   # TPU backend sub-section
   - heading: TPU backend
   - title: Sparsecore (embeddings)
@@ -105,6 +109,8 @@ toc:
     path: /xla/tools
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
+  - title: HLO Isolation tool for numeric issues
+    path: /xla/hlo_isolation
 
 - title: Contributing
   # This is the default tab for the Contributing section.

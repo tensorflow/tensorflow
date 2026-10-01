@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -107,6 +108,14 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
+
+// Reshapes a reduce-scatter fusion (whose root is a reduce-scatter that
+// satisfies IsReduceScatterFlattenable) to a 2D reduce-scatter along dimension
+// 0: the fused parameter becomes [R * R, OutputSize / R] and the root
+// [R, OutputSize / R], where R is the number of replicas per group.
+// Bitcasts are inserted around the fusion in the parent computation.
+absl::Status FlattenReduceScatterFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

@@ -809,10 +809,12 @@ void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent& event,
   event.graph_id = graph_id_info.graph_id;
   // TODO(rahulnayar): Re-enable this check once the bug is fixed.
   // DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
-  event.graph_node_id = graph_id_info.node_id_map.begin()->first;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
-  event.cuda_graph_info.orig_graph_node_id =
-      graph_id_info.node_id_map.begin()->second;
+  if (!graph_id_info.node_id_map.empty()) {
+    event.graph_node_id = graph_id_info.node_id_map.begin()->first;
+    event.cuda_graph_info.orig_graph_node_id =
+        graph_id_info.node_id_map.begin()->second;
+  }
   VLOG(3) << "Observed CudaGraphNode API exit."
           << " name=" << cbdata->functionName;
   graph_id_info.node_id_map.clear();

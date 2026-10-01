@@ -2161,7 +2161,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
               .xla_gpu_experimental_gemm_fusion_v2());
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
-      pipeline.AddPass<GemmFusion>(gpu_version);
+      pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
       pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
     }

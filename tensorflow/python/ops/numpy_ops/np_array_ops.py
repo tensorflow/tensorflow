@@ -1337,6 +1337,15 @@ def _boundaries_to_sizes(a, boundaries, axis):
 @np_utils.np_doc('split')
 def split(ary, indices_or_sections, axis=0):
   ary = asarray(ary)
+  if isinstance(axis, (int, np.integer)):
+    rank = ary.shape.rank
+    if rank is not None:
+      axis_int = int(axis)
+      if axis_int < -rank or axis_int >= rank:
+        raise ValueError(
+            f'Argument `axis` (received axis={axis}) is out of bounds '
+            f'for input of rank {rank}.'
+        )
   if not isinstance(indices_or_sections, int):
     indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
   return array_ops.split(ary, indices_or_sections, axis=axis)

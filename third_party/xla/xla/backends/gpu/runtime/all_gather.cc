@@ -48,6 +48,7 @@ limitations under the License.
 namespace xla::gpu {
 
 absl::Status IsAllGatherKernelSupported(int64_t num_elements,
+                                        int64_t num_devices,
                                         PrimitiveType element_type) {
   // Only types in kSupportedAllGatherTypes are allowed. Complex types, tokens,
   // tuples, and exotic types (e.g. 4-bit, 8-bit floats) are not supported.
@@ -59,11 +60,11 @@ absl::Status IsAllGatherKernelSupported(int64_t num_elements,
         primitive_util::LowercasePrimitiveTypeName(element_type)));
   }
 
-  const int64_t byte_size =
-      num_elements * primitive_util::ByteWidth(element_type);
-  if (byte_size > kMaxAllGatherSizeBytes) {
+  const int64_t output_byte_size =
+      num_elements * num_devices * primitive_util::ByteWidth(element_type);
+  if (output_byte_size > kMaxAllGatherSizeBytes) {
     return absl::UnimplementedError(
-        "Custom all-gather strategy is only supported for small inputs.");
+        "Custom all-gather strategy is only supported for small outputs.");
   }
 
   return absl::OkStatus();
@@ -123,7 +124,7 @@ absl::Status IsAllGatherKernelSupported(
         "dimension to be a power of 2. Got %d.",
         per_rank_gather_dim_size));
   }
-  return IsAllGatherKernelSupported(num_elements, element_type);
+  return IsAllGatherKernelSupported(num_elements, num_devices, element_type);
 }
 
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(

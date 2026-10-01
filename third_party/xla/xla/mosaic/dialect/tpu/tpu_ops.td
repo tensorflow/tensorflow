@@ -124,6 +124,7 @@ def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
         return get($_ctxt, value, std::nullopt);
     }]>
   ];
+  let genVerifyDecl = 1;
 }
 
 class TPU_Op<string mnemonic, list<Trait> traits = []> :
@@ -2047,6 +2048,28 @@ def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {
     attr-dict $source `,` $index `:` type($source)
   }];
 
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefMemorySpaceIsOp : TPU_Op<"memref_memory_space_is", [Pure]> {
+  let summary = "Check if a memref resides in the given memory space.";
+  let description = [{
+    Returns true if `source` is in `memory_space`. If `memory_space` has no
+    core type, the core type of `source` is ignored.
+
+    The result is resolved at compile time, once the memory space of `source`
+    is fully known: `any` is specialized, and a missing memory space or core
+    type is filled in from the enclosing function's `tpu.core_type`.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, TPU_MemorySpaceAttr:$memory_space);
+  let results = (outs I1:$result);
+
+  let assemblyFormat = [{
+    $source `,` $memory_space attr-dict `:` type($source)
+  }];
+
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
