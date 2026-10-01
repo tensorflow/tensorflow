@@ -186,6 +186,14 @@ class SegmentReduce : public XlaOpKernel {
       }
     }
 
+    // With no segments, every segment id is dropped and the result is empty.
+    // XLA rejects a scatter into a dimension of size zero, so return the
+    // empty buffer as is.
+    if (num_segments == 0) {
+      ctx->SetOutput(0, buffer);
+      return;
+    }
+
     if (FilterNaNs() && xla::primitive_util::IsFloatingPointType(type_)) {
       data = xla::Select(xla::IsNan(data), InitialValue(builder), data);
     }

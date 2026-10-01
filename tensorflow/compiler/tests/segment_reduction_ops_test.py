@@ -175,6 +175,14 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
               np.array([0, 1, 2, 3, 4, 5], dtype=dtype),
               np.array([0, 0, 2, 3, 3, 3], dtype=np.int32), 5))
 
+  def testUnsortedSegmentReductionWithZeroSegments(self):
+    # With no segments, every segment id is dropped and the result is empty.
+    data = np.ones([2, 3], dtype=np.float32)
+    indices = np.array([-1, -2], dtype=np.int32)
+    for reduction in (self._unsortedSegmentSum, self._unsortedSegmentProd,
+                      self._unsortedSegmentMin, self._unsortedSegmentMax):
+      self.assertEqual(reduction(data, indices, 0).shape, (0, 3))
+
   def testUnsortedSegmentSum0DIndices1DData(self):
     for dtype in self.numeric_types:
       self.assertAllClose(
