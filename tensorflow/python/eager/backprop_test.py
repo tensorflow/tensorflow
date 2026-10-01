@@ -1153,6 +1153,30 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
             target, invalid_sources, unconnected_gradients='zero')
 
   @test_util.run_in_graph_and_eager_modes
+  def testTapeQueriesRejectInvalidStringDtype(self):
+    if not context.executing_eagerly():
+      return
+    x = constant_op.constant(1.0)
+
+    class InvalidTensor:
+      _id = x._id
+
+      def __init__(self, dtype):
+        self.dtype = dtype
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      for query in (pywrap_tfe.TFE_Py_TapeSetShouldRecordBackprop,
+                    pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes):
+        for dtype in ('', 'invalid_dtype', 'float32\x00invalid'):
+          for inputs in ([InvalidTensor(dtype), x], [x, InvalidTensor(dtype)]):
+            with self.subTest(query=query, dtype=dtype, inputs=inputs):
+              with self.assertRaisesRegex(
+                  TypeError, 'Invalid TensorFlow dtype'):
+                query(inputs)
+          self.assertTrue(query([x]))
+
+  @test_util.run_in_graph_and_eager_modes
   def testUnconnectedGradientsNestedDefunZeros(self):
 
     @def_function.function
