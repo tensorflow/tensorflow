@@ -18,6 +18,7 @@ import os
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -1094,10 +1095,17 @@ class RoundingTest(test.TestCase):
     # Simulate no visible GPUs so that op placement cannot be overridden by
     # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
     # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
+    # _reset_context() is required before set_visible_devices because the
+    # eager context may already be initialized by earlier tests in the suite;
+    # calling set_visible_devices on an initialized context raises RuntimeError.
+    context._reset_context()
     original_visible_devices = config.get_visible_devices('GPU')
     config.set_visible_devices([], 'GPU')
-    self.addCleanup(
-        config.set_visible_devices, original_visible_devices, 'GPU')
+
+    def _restore_float32():
+      context._reset_context()
+      config.set_visible_devices(original_visible_devices, 'GPU')
+    self.addCleanup(_restore_float32)
 
     with test_util.force_cpu():
       # --- Boundary checks ---
@@ -1107,11 +1115,15 @@ class RoundingTest(test.TestCase):
       self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
 
       # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
-      scalar_out = self.evaluate(
-          math_ops.floor(
-              constant_op.constant(-1.40129846e-45,
-                                   dtype=dtypes_lib.float32)))
-      self.assertEqual(-1.0, scalar_out)
+      # A 1-element tensor uses Eigen's scalar tail loop, which goes through
+      # XMM registers on MSVC; skip on Windows for the same reason as the
+      # short-array test below.
+      if os.name != 'nt':
+        scalar_out = self.evaluate(
+            math_ops.floor(
+                constant_op.constant(-1.40129846e-45,
+                                     dtype=dtypes_lib.float32)))
+        self.assertEqual(-1.0, scalar_out)
 
       # --- Scalar / short-array test (skipped on Windows) ---
       # MSVC flushes negative subnormals to -0.0f through an XMM register
@@ -1159,10 +1171,17 @@ class RoundingTest(test.TestCase):
     # Simulate no visible GPUs so that op placement cannot be overridden by
     # the GPU runtime or XLA.  This ensures the CPU kernel (with the FTZ/DAZ
     # workaround) is always exercised, even in cwise_ops_test_xla_gpu runs.
+    # _reset_context() is required before set_visible_devices because the
+    # eager context may already be initialized by earlier tests in the suite;
+    # calling set_visible_devices on an initialized context raises RuntimeError.
+    context._reset_context()
     original_visible_devices = config.get_visible_devices('GPU')
     config.set_visible_devices([], 'GPU')
-    self.addCleanup(
-        config.set_visible_devices, original_visible_devices, 'GPU')
+
+    def _restore_non_float32():
+      context._reset_context()
+      config.set_visible_devices(original_visible_devices, 'GPU')
+    self.addCleanup(_restore_non_float32)
 
     with test_util.force_cpu():
       # --- double ---
