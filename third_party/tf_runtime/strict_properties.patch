@@ -1,0 +1,44 @@
+diff --git a/include/tfrt/basic_kernels/opdefs/tfrt_base.td b/include/tfrt/basic_kernels/opdefs/tfrt_base.td
+--- a/include/tfrt/basic_kernels/opdefs/tfrt_base.td
++++ b/include/tfrt/basic_kernels/opdefs/tfrt_base.td
+@@ -35,6 +35,7 @@
+   }];
+
+   let cppNamespace = "::tfrt::compiler";
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+
+ def TFRT_ChainType :
+diff --git a/include/tfrt/core_runtime/opdefs/corert_base.td b/include/tfrt/core_runtime/opdefs/corert_base.td
+--- a/include/tfrt/core_runtime/opdefs/corert_base.td
++++ b/include/tfrt/core_runtime/opdefs/corert_base.td
+@@ -30,6 +30,7 @@
+   }];
+
+   let cppNamespace = "::tfrt::corert";
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+
+ // Deivce is an aggregate of Core Runtime ops. It is passed to corert.executeop
+diff --git a/include/tfrt/core_runtime/opdefs/sync/core_runtime.td b/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
+--- a/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
++++ b/include/tfrt/core_runtime/opdefs/sync/core_runtime.td
+@@ -35,6 +35,7 @@
+   }];
+
+   let cppNamespace = "::tfrt::corert_sync";
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+
+ // Base class for corert dialect ops.
+diff --git a/include/tfrt/test_kernels/opdefs/test_kernels.td b/include/tfrt/test_kernels/opdefs/test_kernels.td
+--- a/include/tfrt/test_kernels/opdefs/test_kernels.td
++++ b/include/tfrt/test_kernels/opdefs/test_kernels.td
+@@ -35,6 +35,7 @@
+   }];
+
+   let cppNamespace = "::tfrt::test";
++  let useStrictPropertiesInAssemblyFormat = 0;
+ }
+
+ def ProtoExampleType : OpaqueType<"proto", "example", "!proto.example type">;
