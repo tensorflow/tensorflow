@@ -400,7 +400,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     values = [0, 2**63, 2**64 - 1]
     for convert in (_create_tensor, constant_op.constant,
                     ops.convert_to_tensor):
-      for value in values + [values, [values]]:
+      for value in values + [values, [values], []]:
         with self.subTest(convert=convert.__name__, value=value):
           tensor = convert(value, dtype=dtypes.uint64)
           self.assertEqual(tensor.dtype, dtypes.uint64)
