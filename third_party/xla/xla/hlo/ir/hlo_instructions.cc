@@ -3089,6 +3089,14 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
   }
+  auto relay_and_drop_control_deps = [this](HloInstruction* instr) {
+    if (instr->HasControlDependencies()) {
+      CHECK_OK(instr->RemoveControlDependencyTo(this));
+      CHECK_OK(this->RemoveControlDependencyTo(instr));
+      CHECK_OK(this->CopyAllControlDepsFrom(instr));
+      CHECK_OK(instr->DropAllControlDeps());
+    }
+  };
   if (instruction_to_merge->IsMultiOutputFusion()) {
     for (auto [old_root, tuple_index] : old_fusion_outputs) {
       auto new_root = FindOrDie(old_to_new, old_root);
@@ -3098,6 +3106,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
         if (gte->opcode() == HloOpcode::kGetTupleElement &&
             gte->tuple_index() == tuple_index) {
           CHECK_OK(gte->ReplaceAllUsesWith(new_root));
+          relay_and_drop_control_deps(gte);
           CHECK_OK(gte->parent()->RemoveInstruction(gte));
         }
       }
@@ -3116,6 +3125,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     new_roots.insert(unfused_root);
     CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
   }
+  relay_and_drop_control_deps(instruction_to_merge);
   CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
   if (GetModule() && remove_computation) {

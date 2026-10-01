@@ -71,8 +71,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class ExecutionWatchdogScope;
-
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -319,8 +317,7 @@ class GpuExecutable : public Executable {
           persistent_alloc_indices,
       NumAdditionalStreams num_additional_streams,
       CollectiveMemoryCache& collective_memory_cache,
-      bool collective_use_minimal_resource,
-      ExecutionWatchdogScope* absl_nullable execution_watchdog);
+      bool collective_use_minimal_resource);
 
   // Compare current allocation's address with previous run's address, and
   // report the allocation info if memory addressed changed. Useful for identify

@@ -540,15 +540,8 @@ class ConvDimensionAdapter {
   }
 
   const HloInstruction* get_broadcast_user(const HloInstruction* hlo) {
-    auto all_users_are_broadcast = [](const HloInstruction* instr) {
-      return !instr->users().empty() &&
-             absl::c_all_of(instr->users(), [](const HloInstruction* u) {
-               return u->opcode() == HloOpcode::kBroadcast;
-             });
-    };
-
     // Trace through single-user chains that preserve the 1D dimensions
-    // (e.g. hlo -> convert -> ... -> elementwise -> ... -> broadcast).
+    // (e.g. hlo -> elementwise -> ... -> broadcast).
     const HloInstruction* current = hlo;
     while (current->user_count() == 1) {
       const HloInstruction* user = current->users()[0];
@@ -560,7 +553,12 @@ class ConvDimensionAdapter {
       break;
     }
 
-    if (all_users_are_broadcast(current)) {
+    auto all_users_are_broadcast =
+        !current->users().empty() &&
+        absl::c_all_of(current->users(), [](const HloInstruction* u) {
+          return u->opcode() == HloOpcode::kBroadcast;
+        });
+    if (all_users_are_broadcast) {
       return current->users()[0];
     }
 
