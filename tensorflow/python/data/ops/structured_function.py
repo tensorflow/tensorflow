@@ -106,8 +106,8 @@ class StructuredFunctionWrapper():
         (legacy behavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
-      debug_mode_flag: (Optional.) Whether to use `py_function` wrapping when debug
-        mode is enabled. Does not affect synchronous execution.
+      debug_mode_flag: (Optional.) Whether to use `py_function` wrapping when
+        debug mode is enabled. Does not affect synchronous execution.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
