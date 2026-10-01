@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -330,17 +331,24 @@ class WriteAudioSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("step must be a scalar, got shape ",
+                                        tmp->shape().DebugString()));
     const int64_t step = tmp->scalar<int64_t>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("tag must be a scalar, got shape ",
+                                        tmp->shape().DebugString()));
     const std::string& tag = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("sample_rate", &tmp));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+        errors::InvalidArgument("sample_rate must be a scalar, got shape ",
+                                tmp->shape().DebugString()));
     const float sample_rate = tmp->scalar<float>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
-    OP_REQUIRES(ctx, t->dims() == 2 || t->dims() == 3,
-                errors::InvalidArgument("tensor must have 2 or 3 dims, got ",
-                                        t->shape().DebugString()));
 
     OP_REQUIRES_OK(ctx,
                    s->WriteAudio(step, *t, tag, max_outputs_, sample_rate));
