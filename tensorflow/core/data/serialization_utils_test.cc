@@ -225,6 +225,40 @@ TEST(SerializationUtilsTest, VariantTensorDataReaderSkipsOnlyMalformedEntries) {
   EXPECT_EQ(val_int64, 42);
 }
 
+TEST(SerializationUtilsTest, VariantTensorDataReaderSkipsNullEntries) {
+  // A null VariantTensorData pointer must be skipped without dereferencing it,
+  // leaving valid entries deserialized alongside it readable.
+  VariantTensorData valid;
+  valid.metadata_ = "Iterator@@key1";
+  Tensor value(DT_INT64, {});
+  value.scalar<int64_t>()() = 42;
+  valid.tensors_.push_back(value);
+  std::vector<const VariantTensorData*> reader_data = {nullptr, &valid};
+  VariantTensorDataReader reader(reader_data);
+  EXPECT_TRUE(reader.Contains("Iterator", "key1"));
+  int64_t val_int64;
+  TF_ASSERT_OK(reader.ReadScalar("Iterator", "key1", &val_int64));
+  EXPECT_EQ(val_int64, 42);
+}
+
+TEST(SerializationUtilsTest, VariantTensorDataReaderSingletonMetadata) {
+  // Metadata that splits into a single key (a name with no subkeys) must build
+  // an empty key map without indexing past it.
+  VariantTensorData data;
+  data.metadata_ = "Iterator";
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
+  std::vector<const VariantTensorData*> reader_data;
+  reader_data.push_back(&data);
+  VariantTensorDataReader reader(reader_data);
+  EXPECT_FALSE(reader.Contains("Iterator", "key1"));
+  int64_t val_int64;
+  EXPECT_EQ(reader.ReadScalar("Iterator", "key1", &val_int64).code(),
+            error::NOT_FOUND);
+  Tensor val_tensor;
+  EXPECT_EQ(reader.ReadTensor("Iterator", "key1", &val_tensor).code(),
+            error::NOT_FOUND);
+}
+
 class ParameterizedIteratorStateVariantTest
     : public DatasetOpsTestBase,
       public ::testing::WithParamInterface<std::vector<Tensor>> {

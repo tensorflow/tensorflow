@@ -185,6 +185,10 @@ absl::Status UpdateCheckpointElements(
 VariantTensorDataReader::VariantTensorDataReader(
     const std::vector<const tensorflow::VariantTensorData*>& data) {
   for (const auto& d : data) {
+    if (d == nullptr) {
+      VLOG(1) << "Found null VariantTensorData pointer; skipping.";
+      continue;
+    }
     std::string metadata;
     d->get_metadata(&metadata);
     auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
