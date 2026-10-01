@@ -150,6 +150,32 @@ class EigTest(test.TestCase):
     self.assertAllClose(
         SortEigenValues(self.evaluate(e)), complex_expected, atol=1e-5)
 
+    # A batched list, to cover rank > 2 coming in unconverted.
+    batched_matrix = [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]]
+    batched_expected = SortEigenValues(
+        np.linalg.eigvals(np.array(batched_matrix, dtype=np.float32)).astype(
+            np.complex64))
+    e, _ = linalg_ops.eig(batched_matrix)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), batched_expected, atol=1e-5)
+    e = linalg_ops.eigvals(batched_matrix)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), batched_expected, atol=1e-5)
+
+    # 64-bit float input. A plain Python float list cannot cover this: it
+    # converts to float32, so the double precision case needs an array.
+    matrix64 = np.array(matrix, dtype=np.float64)
+    expected64 = SortEigenValues(np.linalg.eigvals(matrix64).astype(
+        np.complex128))
+    e, _ = linalg_ops.eig(matrix64)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), expected64, atol=1e-10)
+    e = linalg_ops.eigvals(matrix64)
+    self.assertEqual(e.dtype, dtypes_lib.complex128)
+    self.assertAllClose(
+        SortEigenValues(self.evaluate(e)), expected64, atol=1e-10)
+
     # A list that converts to an unsupported dtype still reports that.
     with self.assertRaisesRegex(ValueError, "must have dtype"):
       linalg_ops.eig([[1, 2], [3, 4]])
