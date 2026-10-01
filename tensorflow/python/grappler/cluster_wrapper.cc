@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -48,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -61,8 +61,8 @@ namespace {
 // SingleMachine uses process-global provisioning state. Serialize Python
 // creation/shutdown paths that update that state without relying on static
 // destruction order during interpreter shutdown.
-std::mutex& GetClusterLifecycleMutex() {
-  static absl::NoDestructor<std::mutex> mu;
+tensorflow::mutex& GetClusterLifecycleMutex() {
+  static absl::NoDestructor<tensorflow::mutex> mu;
   return *mu;
 }
 
@@ -77,7 +77,7 @@ absl::Status _GetOpPerformanceDataAndRunTime(
   if (!status.ok()) return status;
 
   tensorflow::RunMetadata run_metadata;
-  tsl::MaybeRaiseRegisteredFromStatusWithGIL(
+  TF_RETURN_IF_ERROR(
       cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
@@ -98,21 +98,21 @@ PYBIND11_MODULE(
            bool disable_detailed_stats) -> tensorflow::grappler::Cluster* {
           // TODO(petebu): Make these named arguments with default values
           // instead.
-          std::unique_lock<std::mutex> lifecycle_lock(
-              GetClusterLifecycleMutex());
-
-          int num_cpu_cores =
-              tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-          int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
-          int timeout_s = 60 * 10;
-          std::unique_ptr<tensorflow::grappler::Cluster> cluster =
-              std::make_unique<tensorflow::grappler::SingleMachine>(
-                  timeout_s, num_cpu_cores, num_gpus);
-          cluster->DisableDetailedStats(disable_detailed_stats);
-          cluster->AllowSoftPlacement(allow_soft_placement);
-          cluster->SetNumWarmupSteps(10);
-          absl::Status provision_status = cluster->Provision();
-          lifecycle_lock.unlock();
+          std::unique_ptr<tensorflow::grappler::Cluster> cluster;
+          absl::Status provision_status;
+          {
+            tensorflow::mutex_lock lifecycle_lock(GetClusterLifecycleMutex());
+            int num_cpu_cores =
+                tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+            int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
+            int timeout_s = 60 * 10;
+            cluster = std::make_unique<tensorflow::grappler::SingleMachine>(
+                timeout_s, num_cpu_cores, num_gpus);
+            cluster->DisableDetailedStats(disable_detailed_stats);
+            cluster->AllowSoftPlacement(allow_soft_placement);
+            cluster->SetNumWarmupSteps(10);
+            provision_status = cluster->Provision();
+          }
           tsl::MaybeRaiseRegisteredFromStatusWithGIL(provision_status);
           return cluster.release();
         });
@@ -145,9 +145,12 @@ PYBIND11_MODULE(
     if (cluster == nullptr) {
       return;
     }
-    std::lock_guard<std::mutex> cluster_lock(cluster->ExternalMutex());
-    std::lock_guard<std::mutex> lifecycle_lock(GetClusterLifecycleMutex());
-    (void)cluster->Shutdown();
+    if (cluster->type() == "single_machine") {
+      tensorflow::mutex_lock lifecycle_lock(GetClusterLifecycleMutex());
+      (void)cluster->Shutdown();
+    } else {
+      (void)cluster->Shutdown();
+    }
   });
 
   m.def("TF_ListDevices",
@@ -155,12 +158,10 @@ PYBIND11_MODULE(
           if (cluster == nullptr) {
             tsl::MaybeRaiseRegisteredFromStatusWithGIL(
                 absl::InvalidArgumentError("Cluster cannot be None."));
-            return {};
           }
 
           std::vector<py::bytes> named_devices;
           {
-            std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
             const auto& devices = cluster->GetDevices();
 
             for (const auto& dev : devices) {
@@ -200,7 +201,6 @@ PYBIND11_MODULE(
         std::string cluster_type;
 
         {
-          std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
           const auto& devices = cluster->GetDevices();
           cluster_type = cluster->type();
 
@@ -266,12 +266,11 @@ PYBIND11_MODULE(
           }
 
           std::vector<std::string> device_names;
-          for (const std::string& type : feasible) {
-            auto it = device_types.find(type);
-            DCHECK(it != device_types.end());
-            for (const std::string& name : it->second) {
-              device_names.push_back(name);
+          for (const auto& [type, names] : device_types) {
+            if (feasible.find(type) == feasible.end()) {
+              continue;
             }
+            device_names.insert(device_names.end(), names.begin(), names.end());
           }
           result[node] = device_names;
         }
@@ -297,10 +296,8 @@ PYBIND11_MODULE(
           if (cluster == nullptr || item == nullptr) {
             tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::InvalidArgumentError(
                 "You need both a cluster and an item to measure costs."));
-            return {};
           }
 
-          std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
 
           const int num_measurements = cluster->type() == "virtual" ? 1 : 10;
           tensorflow::grappler::MeasuringCostEstimator cost_measure(
@@ -310,10 +307,9 @@ PYBIND11_MODULE(
           tensorflow::grappler::Costs costs;
           absl::Status s = _GetOpPerformanceDataAndRunTime(
               *item, &cost_measure, &op_performance_data, &costs);
-          double run_time = FLT_MAX;
-          if (s.ok()) {
-            run_time = static_cast<double>(costs.execution_time.count()) / 1e9;
-          }
+          tsl::MaybeRaiseRegisteredFromStatusWithGIL(s);
+          double run_time =
+              static_cast<double>(costs.execution_time.count()) / 1e9;
           tensorflow::StepStats step_stats;
           if (generate_timeline) {
             tensorflow::RunMetadata metadata;
@@ -348,7 +344,6 @@ PYBIND11_MODULE(
               "You need both a cluster and an item to determine peak "
               "memory usage.")));
         }
-        std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
 
         tensorflow::grappler::GraphMemory memory(*item);
 

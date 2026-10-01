@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -93,15 +92,8 @@ tensorflow::GraphDef TF_OptimizeGraph(
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
 
-    absl::Status optimize_status;
-    if (cluster != nullptr) {
-      std::lock_guard<std::mutex> lock(cluster->ExternalMutex());
-      optimize_status =
-          optimizer.Optimize(cluster, *grappler_item, &out_graph);
-    } else {
-      optimize_status =
-          optimizer.Optimize(nullptr, *grappler_item, &out_graph);
-    }
+    absl::Status optimize_status =
+        optimizer.Optimize(cluster, *grappler_item, &out_graph);
     tsl::MaybeRaiseRegisteredFromStatusWithGIL(optimize_status);
     if (strip_default_attributes) {
       tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),

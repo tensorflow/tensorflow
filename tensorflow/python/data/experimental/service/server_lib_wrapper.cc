@@ -15,7 +15,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -50,18 +49,15 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::DispatchGrpcDataServer>(
       m, "DispatchGrpcDataServer")
       .def("start", [](tensorflow::data::DispatchGrpcDataServer* server) {
-        std::lock_guard<std::mutex> lock(server->ExternalMutex());
         return server->Start();
       })
       .def("stop", [](tensorflow::data::DispatchGrpcDataServer* server) {
-        std::lock_guard<std::mutex> lock(server->ExternalMutex());
         server->Stop();
       })
       .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
       .def("bound_port",
            [](tensorflow::data::DispatchGrpcDataServer* server) {
-             std::lock_guard<std::mutex> lock(server->ExternalMutex());
              return server->BoundPort();
            })
       .def("num_workers",
@@ -69,7 +65,6 @@ PYBIND11_MODULE(
              int num_workers;
              absl::Status status;
              {
-               std::lock_guard<std::mutex> lock(server->ExternalMutex());
                status = server->NumWorkers(&num_workers);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -82,7 +77,6 @@ PYBIND11_MODULE(
              std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
              absl::Status status;
              {
-               std::lock_guard<std::mutex> lock(server->ExternalMutex());
                status = server->SnapshotStreams(path, &streams);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -92,18 +86,15 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::WorkerGrpcDataServer>(
       m, "WorkerGrpcDataServer")
       .def("start", [](tensorflow::data::WorkerGrpcDataServer* server) {
-        std::lock_guard<std::mutex> lock(server->ExternalMutex());
         return server->Start();
       })
       .def("stop", [](tensorflow::data::WorkerGrpcDataServer* server) {
-        std::lock_guard<std::mutex> lock(server->ExternalMutex());
         server->Stop();
       })
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,
            py::call_guard<py::gil_scoped_release>())
       .def("bound_port",
            [](tensorflow::data::WorkerGrpcDataServer* server) {
-             std::lock_guard<std::mutex> lock(server->ExternalMutex());
              return server->BoundPort();
            })
       .def("num_tasks",
@@ -111,7 +102,6 @@ PYBIND11_MODULE(
              int num_tasks;
              absl::Status status;
              {
-               std::lock_guard<std::mutex> lock(server->ExternalMutex());
                status = server->NumTasks(&num_tasks);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -124,7 +114,6 @@ PYBIND11_MODULE(
                  snapshot_task_progresses;
              absl::Status status;
              {
-               std::lock_guard<std::mutex> lock(server->ExternalMutex());
                status =
                    server->SnapshotTaskProgresses(&snapshot_task_progresses);
              }

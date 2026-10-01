@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_CLUSTER_H_
 #define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_CLUSTER_H_
 
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -44,13 +43,6 @@ class Cluster {
  public:
   explicit Cluster(int timeout_s);
   virtual ~Cluster();
-
-  // Serializes compound external operations on this Cluster instance.
-  //
-  // This mutex intentionally lives in Cluster rather than in an individual
-  // Python extension so separate extension modules can coordinate access to
-  // the same native Cluster object.
-  std::mutex& ExternalMutex() const { return external_mu_; }
 
   // Returns a string that represent the type of cluster that was instantiated.
   virtual std::string type() const = 0;
@@ -151,8 +143,6 @@ class Cluster {
   SessionOptions options_;
   RunOptions run_options_;
 
- private:
-  mutable std::mutex external_mu_;
 };
 
 }  // end namespace grappler

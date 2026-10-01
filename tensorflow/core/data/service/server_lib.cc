@@ -55,6 +55,7 @@ GrpcDataServerBase::GrpcDataServerBase(
       server_options_(std::move(options)) {}
 
 absl::Status GrpcDataServerBase::Start() {
+  mutex_lock lock(lifecycle_mu_);
   if (stopped_) {
     return absl::FailedPreconditionError(
         "Server cannot be started after it has been stopped.");
@@ -86,11 +87,12 @@ absl::Status GrpcDataServerBase::Start() {
 
   started_ = true;
   LOG(INFO) << "Started tf.data " << server_type_
-            << " running at 0.0.0.0:" << BoundPort();
+            << " running at 0.0.0.0:" << bound_port_;
   return absl::OkStatus();
 }
 
 void GrpcDataServerBase::Stop() {
+  mutex_lock lock(lifecycle_mu_);
   if (stopped_) {
     return;
   }
@@ -98,7 +100,7 @@ void GrpcDataServerBase::Stop() {
     StopServiceInternal();
     server_->Shutdown();
     LOG(INFO) << "Shut down " << server_type_ << " server running at port "
-              << BoundPort();
+              << bound_port_;
   }
   stopped_ = true;
 }
@@ -106,7 +108,7 @@ void GrpcDataServerBase::Stop() {
 void GrpcDataServerBase::Join() {
   ::grpc::Server* server = nullptr;
   {
-    std::lock_guard<std::mutex> lock(ExternalMutex());
+    mutex_lock lock(lifecycle_mu_);
     if (!server_) {
       return;
     }
@@ -116,7 +118,10 @@ void GrpcDataServerBase::Join() {
   server->Wait();
 }
 
-int GrpcDataServerBase::BoundPort() { return bound_port(); }
+int GrpcDataServerBase::BoundPort() {
+  mutex_lock lock(lifecycle_mu_);
+  return bound_port_;
+}
 
 void GrpcDataServerBase::AddProfilerServiceToBuilder(
     ::grpc::ServerBuilder& builder) {

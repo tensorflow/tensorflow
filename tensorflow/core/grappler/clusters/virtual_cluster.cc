@@ -88,6 +88,7 @@ absl::Status VirtualCluster::Run(
 
 absl::Status VirtualCluster::Run(const GrapplerItem& item,
                                  RunMetadata* metadata) {
+  mutex_lock lock(run_mu_);
   // Initializes an analytical cost estimator to estimate the graph cost. Makes
   // sure to use static shape inference to prevent the virtual scheduler from
   // calling the Run method on the cluster and creating an infinite loop.

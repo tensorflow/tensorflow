@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -62,12 +62,6 @@ class GrpcDataServerBase {
   // Returns the port bound by the server. Only valid after calling Start().
   int BoundPort();
 
-  // Serializes compound external operations on this server instance.
-  //
-  // Join() deliberately only holds this mutex while snapshotting server_, since
-  // holding it while waiting would prevent Stop() from shutting the server down.
-  std::mutex& ExternalMutex() const { return external_mu_; }
-
   // Exports the server state to improve debuggability.
   virtual ServerStateExport ExportState() const = 0;
 
@@ -86,7 +80,7 @@ class GrpcDataServerBase {
   const std::string server_type_;
 
  private:
-  mutable std::mutex external_mu_;
+  mutable mutex lifecycle_mu_;
 
   int bound_port_;
   bool started_ = false;
