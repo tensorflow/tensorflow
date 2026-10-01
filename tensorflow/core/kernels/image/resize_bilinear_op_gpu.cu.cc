@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <type_traits>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -69,7 +70,7 @@ __global__ void ResizeBilinearKernel_faster(
     float bottom_left_reg[kChannelsPerThread];
     float bottom_right_reg[kChannelsPerThread];
     float out_reg[kChannelsPerThread];
-    for (int b = 0; b < batch; b++) {
+    for (int64_t b = 0; b < batch; b++) {
       for (int c = c_start * kChannelsPerThread; c < channels;
            c += kChannelsPerThread * num_channel_threads) {
         // 16 byte read from global memory and cache them in registers.
@@ -128,7 +129,7 @@ __global__ void ResizeBilinearKernel(
     const int x = idx % out_width;
     idx /= out_width;
     const int y = idx % out_height;
-    const int b = idx / out_height;
+    const int64_t b = idx / out_height;
 
     const float in_y = (static_cast<float>(y) + 0.5f) * height_scale - 0.5f;
     const int top_y_index = in_y > 0.0 ? floorf(in_y) : 0;
@@ -181,7 +182,7 @@ __global__ void ResizeBilinearGradKernel(const int32_t nthreads,
     const int x = idx % resized_width;
     idx /= resized_width;
     const int y = idx % resized_height;
-    const int b = idx / resized_height;
+    const int64_t b = idx / resized_height;
 
     const float original_y =
         (static_cast<float>(y) + 0.5f) * height_scale - 0.5f;
@@ -245,7 +246,7 @@ __global__ void ResizeBilinearDeterministicGradKernel(
     const int out_x_center = idx % original_width;
     idx /= original_width;
     const int out_y_center = idx % original_height;
-    const int b = idx / original_height;
+    const int64_t b = idx / original_height;
 
     int in_y_start = max(
         0, __float2int_ru((out_y_center - 1 + offset) * inverse_height_scale -
@@ -263,7 +264,7 @@ __global__ void ResizeBilinearDeterministicGradKernel(
       float out_x = out_x_start;
       int in_x = in_x_start;
       while (out_x < out_x_center + 1 && in_x < resized_width) {
-        int in_idx =
+        int64_t in_idx =
             ((b * resized_height + in_y) * resized_width + in_x) * channels + c;
         // Clamping to zero is necessary because out_x and out_y can be negative
         // due to half-pixel adjustments to out_y_start and out_x_start.
@@ -296,7 +297,7 @@ __global__ void LegacyResizeBilinearKernel(
     const int x = idx % out_width;
     idx /= out_width;
     const int y = idx % out_height;
-    const int b = idx / out_height;
+    const int64_t b = idx / out_height;
 
     const float in_y = y * height_scale;
     const int top_y_index = floorf(in_y);
@@ -347,7 +348,7 @@ __global__ void LegacyResizeBilinearGradKernel(
     const int x = idx % resized_width;
     idx /= resized_width;
     const int y = idx % resized_height;
-    const int b = idx / resized_height;
+    const int64_t b = idx / resized_height;
 
     const float original_y = y * height_scale;
     const int top_y_index = floorf(original_y);
