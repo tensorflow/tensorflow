@@ -677,6 +677,17 @@ class BatchOpsTest(test.TestCase):
               )
           )
 
+  def testUnbatchGradScalarGradientShape(self):
+    if context.executing_eagerly():
+      return
+    with self.assertRaisesRegex(ValueError, "Shape must be at least rank 1"):
+      gen_batch_ops.unbatch_grad(
+          original_input=constant_op.constant([1.0]),
+          batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+          grad=constant_op.constant(1.0),
+          id=constant_op.constant(0, dtype=dtypes.int64),
+      )
+
   def testUnbatchGradEmptyOriginalInput(self):
     for batch_id, grad_shape in enumerate(
         ([0], [2], [2, 0], [2, 3], [2, 3, 4])
@@ -697,10 +708,13 @@ class BatchOpsTest(test.TestCase):
 
   def testUnbatchGradValidAfterScalarGradient(self):
     def unbatch_grad(grad):
+      grad = constant_op.constant(grad)
+      if not context.executing_eagerly():
+        grad = array_ops.placeholder_with_default(grad, shape=None)
       return gen_batch_ops.unbatch_grad(
           original_input=constant_op.constant([1.0]),
           batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
-          grad=constant_op.constant(grad),
+          grad=grad,
           id=constant_op.constant(0, dtype=dtypes.int64),
           shared_name="unbatch_grad_after_scalar_gradient",
       )

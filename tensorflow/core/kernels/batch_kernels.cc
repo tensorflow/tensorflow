@@ -1129,7 +1129,6 @@ class UnbatchGradResource : public ResourceBase {
     const Tensor& grad_t = context->input(2);
     const Tensor& batch_key_t = context->input(3);
 
-    mutex_lock ml(mu_);
     if (!TensorShapeUtils::IsScalar(batch_key_t.shape())) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Expected `id` to be scalar. Received ", batch_key_t.DebugString()));
@@ -1141,6 +1140,7 @@ class UnbatchGradResource : public ResourceBase {
     }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
+    mutex_lock ml(mu_);
     // Mark our tensor as available.
     if (!available_tensors_.emplace(batch_key, grad_t).second) {
       return absl::InvalidArgumentError("Two runs with the same batch key.");

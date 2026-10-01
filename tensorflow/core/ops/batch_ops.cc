@@ -187,7 +187,9 @@ REGISTER_OP("UnbatchGrad")
     .Attr("shared_name: string = ''")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(2))));
+      shape_inference::ShapeHandle grad_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &grad_shape));
+      c->set_output(0, c->UnknownShapeOfRank(c->Rank(grad_shape)));
       return absl::OkStatus();
     });
 
