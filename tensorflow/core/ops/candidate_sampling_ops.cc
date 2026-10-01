@@ -16,9 +16,9 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
-#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -49,7 +49,7 @@ absl::Status UnigramCandidateSamplerShapeFn(InferenceContext* c) {
   int64_t range_max;
   TF_RETURN_IF_ERROR(c->GetAttr("range_max", &range_max));
   if (range_max >= std::numeric_limits<int32_t>::max()) {
-    return absl::InvalidArgumentError(
+    return errors::InvalidArgument(
         "range_max must be less than 2147483647 for unigram samplers");
   }
   return CandidateSamplerShapeFn(c);
