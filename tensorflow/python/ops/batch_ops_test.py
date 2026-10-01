@@ -762,6 +762,30 @@ class BatchOpsTest(test.TestCase):
       self.evaluate(unbatch_grad(1.0))
     self.assertAllEqual(self.evaluate(unbatch_grad([2.0])), [2.0])
 
+  def testUnbatchGradValidAfterInvalidIndex(self):
+    for batch_id, (index, message) in enumerate((
+        (np.array(0, dtype=np.int64), "Expected a matrix"),
+        (np.empty((0, 5), dtype=np.int64), "Wrong shape"),
+        (np.empty((0, 3), dtype=np.int64), "batch_index is empty"),
+    )):
+      def unbatch_grad(batch_index):
+        batch_index = constant_op.constant(batch_index, dtype=dtypes.int64)
+        if not context.executing_eagerly():
+          batch_index = array_ops.placeholder_with_default(
+              batch_index, shape=None)
+        return gen_batch_ops.unbatch_grad(
+            original_input=constant_op.constant([1.0]),
+            batch_index=batch_index,
+            grad=constant_op.constant([2.0]),
+            id=constant_op.constant(batch_id, dtype=dtypes.int64),
+            shared_name="unbatch_grad_after_invalid_index")
+
+      with self.subTest(batch_id=batch_id):
+        with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+          self.evaluate(unbatch_grad(index))
+        self.assertAllEqual(
+            self.evaluate(unbatch_grad([[batch_id, 0, 1]])), [2.0])
+
   def testUnbatchGradInvalidBatchId(self):
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       self.evaluate(

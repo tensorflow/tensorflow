@@ -1150,6 +1150,10 @@ class UnbatchGradResource : public ResourceBase {
           "Got: ",
           batch_index_t.dim_size(1), "."));
     }
+    if (data_t.NumElements() > 0 && batch_index_t.NumElements() == 0) {
+      return absl::InvalidArgumentError(
+          "batch_index is empty while the tensor isn't.");
+    }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     mutex_lock ml(mu_);
@@ -1161,10 +1165,6 @@ class UnbatchGradResource : public ResourceBase {
     // Check whether we have a valid input tensor and, if so, create its
     // dispatch logic.
     if (data_t.NumElements() > 0) {
-      if (batch_index_t.NumElements() == 0) {
-        return absl::InvalidArgumentError(
-            "batch_index is empty while the tensor isn't.");
-      }
       std::unordered_set<int64_t> missing_tensors;
       const auto batch_index =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
