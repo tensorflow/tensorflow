@@ -27,6 +27,7 @@ limitations under the License.
 #define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
 #endif
 
+#include <cstdint>
 #include <limits>
 #include <numeric>
 
