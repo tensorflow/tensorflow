@@ -1935,6 +1935,7 @@ cc_library(
         ":collective_params",
         ":collective_thunk",
         ":collective_thunk_proto_cc",
+        ":collective_types_proto_cc",
         ":command",
         ":command_state",
         ":thunk",
@@ -4532,10 +4533,16 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "collective_types_proto",
+    srcs = ["collective_types.proto"],
+)
+
+tf_proto_library(
     name = "collective_kernel_thunk_proto",
     srcs = ["collective_kernel_thunk.proto"],
     deps = [
         ":collective_thunk_proto",
+        ":collective_types_proto",
         "//xla/service/gpu:launch_dimensions_proto",
     ],
 )
