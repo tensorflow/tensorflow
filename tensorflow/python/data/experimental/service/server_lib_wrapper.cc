@@ -49,9 +49,15 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::DispatchGrpcDataServer>(
       m, "DispatchGrpcDataServer")
       .def("start", [](tensorflow::data::DispatchGrpcDataServer* server) {
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(server->Start());
+        absl::Status status;
+        {
+          py::gil_scoped_release release;
+          status = server->Start();
+        }
+        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
       })
       .def("stop", [](tensorflow::data::DispatchGrpcDataServer* server) {
+        py::gil_scoped_release release;
         server->Stop();
       })
       .def("join", &tensorflow::data::DispatchGrpcDataServer::Join,
@@ -88,9 +94,15 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::WorkerGrpcDataServer>(
       m, "WorkerGrpcDataServer")
       .def("start", [](tensorflow::data::WorkerGrpcDataServer* server) {
-        tsl::MaybeRaiseRegisteredFromStatusWithGIL(server->Start());
+        absl::Status status;
+        {
+          py::gil_scoped_release release;
+          status = server->Start();
+        }
+        tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
       })
       .def("stop", [](tensorflow::data::WorkerGrpcDataServer* server) {
+        py::gil_scoped_release release;
         server->Stop();
       })
       .def("join", &tensorflow::data::WorkerGrpcDataServer::Join,

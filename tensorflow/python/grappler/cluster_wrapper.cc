@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
@@ -192,7 +193,7 @@ PYBIND11_MODULE(
       "TF_GetSupportedDevices",
       [](tensorflow::grappler::Cluster* cluster,
          tensorflow::grappler::GrapplerItem* item)
-          -> std::unordered_map<std::string, std::vector<std::string>> {
+          -> std::map<std::string, std::vector<std::string>> {
         if (cluster == nullptr || item == nullptr) {
           tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(
               absl::InternalError("You need both a cluster and an "
@@ -210,27 +211,33 @@ PYBIND11_MODULE(
           }
         }
 
-        std::unordered_map<std::string, std::set<std::string>>
-            supported_device_types;
+        std::map<std::string, std::set<std::string>> supported_device_types;
         std::unordered_map<std::string, std::set<std::string>>
             device_restrictions;
 
-        for (const auto& node : item->graph.node()) {
-          for (const auto& dev : device_types) {
-            const std::string& type = dev.first;
-            if (cluster_type != "single_machine") {
+        if (cluster_type != "single_machine") {
+          for (const auto& node : item->graph.node()) {
+            auto& supported = supported_device_types[node.name()];
+            for (const auto& dev : device_types) {
               // The actual kernel may not be linked in this binary.
-              supported_device_types[node.name()].insert(type);
-            } else {
-              // Check the kernel capabilities
+              supported.insert(dev.first);
+            }
+          }
+        } else {
+          for (const auto& node : item->graph.node()) {
+            auto& supported = supported_device_types[node.name()];
+            for (const auto& dev : device_types) {
+              const std::string& type = dev.first;
+
+              // Check the kernel capabilities.
               const tensorflow::DeviceType dev_type(type);
               absl::Status s =
                   tensorflow::FindKernelDef(dev_type, node, nullptr, nullptr);
               if (s.ok()) {
-                supported_device_types[node.name()].insert(type);
+                supported.insert(type);
 
                 // Check which inputs are restricted to reside on the host.
-                // TODO: extends this to support outputs as well
+                // TODO: extends this to support outputs as well.
                 tensorflow::MemoryTypeVector inp_mtypes;
                 tensorflow::MemoryTypeVector out_mtypes;
                 absl::Status s = tensorflow::MemoryTypesForNode(
@@ -251,7 +258,7 @@ PYBIND11_MODULE(
           }
         }
 
-        std::unordered_map<std::string, std::vector<std::string>> result;
+        std::map<std::string, std::vector<std::string>> result;
         for (const auto& supported_dev : supported_device_types) {
           const std::string& node = supported_dev.first;
           std::set<std::string> feasible;
@@ -341,7 +348,7 @@ PYBIND11_MODULE(
          tensorflow::grappler::Cluster* cluster)
           -> std::unordered_map<std::string,
                                 std::tuple<int64_t, std::vector<MemoryUsage>>> {
-        if (item == nullptr || cluster == nullptr) {
+        if (cluster == nullptr || item == nullptr) {
           tsl::MaybeRaiseRegisteredFromStatusWithGIL(absl::Status(absl::InternalError(
               "You need both a cluster and an item to determine peak "
               "memory usage.")));

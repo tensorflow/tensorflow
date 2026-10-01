@@ -134,7 +134,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         cluster.dispatcher_address()))
 
     self._make_stream_dir(snapshot_dir.full_path, bad_stream_dir_name)
-    with self.assertRaisesRegex(RuntimeError, "Can't parse"):
+    with self.assertRaisesRegex(errors.InternalError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -152,7 +152,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     os.makedirs(os.path.join(self._splits_dir(snapshot_dir.full_path),
                              bad_source_dir_name))
-    with self.assertRaisesRegex(RuntimeError, "Can't parse"):
+    with self.assertRaisesRegex(errors.InternalError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -166,7 +166,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     os.makedirs(os.path.join(self._splits_dir(snapshot_dir.full_path),
                              "source_1"))
-    with self.assertRaisesRegex(RuntimeError, "Found conflict"):
+    with self.assertRaisesRegex(errors.InternalError, "Found conflict"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -190,7 +190,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(os.path.join(self._source_dir(snapshot_dir.full_path),
                             bad_split_filename))
     with self.assertRaisesRegex(
-        ValueError,
+        errors.InvalidArgumentError,
         "Expected split_<local_split_index>_<global_split_index>"):
       cluster.restart_dispatcher()
 
@@ -206,7 +206,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(os.path.join(self._source_dir(snapshot_dir.full_path),
                             "split_1_0"))
     with self.assertRaisesRegex(
-        ValueError,
+        errors.InvalidArgumentError,
         "The local split index 1 exceeds the global split index 0"):
       cluster.restart_dispatcher()
 
@@ -221,7 +221,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     write_file(os.path.join(self._source_dir(snapshot_dir.full_path),
                             "split_0_1"))
-    with self.assertRaisesRegex(RuntimeError, "Found missing global"):
+    with self.assertRaisesRegex(errors.InternalError, "Found missing global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -237,7 +237,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         snapshot_dir.full_path, stream_idx=0), "split_0_1"))
     write_file(os.path.join(self._source_dir(
         snapshot_dir.full_path, stream_idx=1, worker=1), "split_0_1"))
-    with self.assertRaisesRegex(RuntimeError, "Found duplicate global"):
+    with self.assertRaisesRegex(errors.InternalError, "Found duplicate global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -253,7 +253,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         self._source_dir(snapshot_dir.full_path, stream_idx=0), "split_0_1"))
     write_file(os.path.join(
         self._source_dir(snapshot_dir.full_path, stream_idx=1), "split_0_1"))
-    with self.assertRaisesRegex(RuntimeError, "worker is already assigned"):
+    with self.assertRaisesRegex(errors.InternalError, "worker is already assigned"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
