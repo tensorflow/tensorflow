@@ -1595,7 +1595,6 @@ tf_kernel_library(
         "@xla//xla/hlo/builder:value_inference",
         "@xla//xla/hlo/builder:xla_builder",
         "@xla//xla/hlo/builder/lib:constants",
-        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 

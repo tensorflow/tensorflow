@@ -15,6 +15,8 @@
 """Tests for slicing."""
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -71,6 +73,23 @@ class SliceTest(xla_test.XLATestCase):
       # (0, 0, 2), so the slice holds the first coordinate of each.
       self.assertAllEqual([[0], [0]], sliced.eval(feed_dict=params))
       self.assertAllEqual((0, 1), empty.eval(feed_dict=params).shape)
+
+  def testSliceWithRuntimeSizeBeyondInput(self):
+    # Regression test for GitHub issue 128405. When `size` is only known at
+    # run time, a size beyond the input, which eager rejects as out of range,
+    # was set as the dimension size of an output that holds at most one
+    # element, which corrupted the heap on some platforms.
+
+    @def_function.function(jit_compile=True)
+    def slice_size(m, w):
+      v = math_ops.matvec(m, math_ops.cast(w, dtypes.int32))  # [19]
+      return array_ops.shape(array_ops.slice(v, v, v))
+
+    with self.session():
+      with self.test_scope():
+        m = constant_op.constant([[1, 5]])
+        w = constant_op.constant([4, 3], dtype=dtypes.uint8)
+        self.assertLessEqual(self.evaluate(slice_size(m, w))[0], 1)
 
   def test3D(self):
     for dtype in self.numeric_types:
