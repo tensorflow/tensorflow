@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
@@ -485,88 +487,289 @@ void MemRefSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<MemRefSliceFoldConstantDynamicDim>(context);
 }
 
-LogicalResult MemRefSqueezeOp::verify() {
-  MemRefType source_type = getInput().getType();
-  MemRefType target_type = getType();
+LogicalResult SharedMemRefSliceOp::verify() {
+  CoreType core_type = GetCoreTypeOfParentOp(**this);
+  if (core_type != CoreType::kScVectorSubcore) {
+    return emitOpError("Unsupported core type: ") << core_type;
+  }
 
-  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
+  auto source_type = getMemRef().getType();
+  auto target_type = getType();
+  auto source_memory_space = source_type.getMemorySpace();
+  auto target_memory_space = target_type.getMemorySpace();
+
+  auto expected_source_memory_space =
+      tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmemShared);
+  if (source_memory_space != expected_source_memory_space) {
+    return emitOpError("Source memref must have memory space ")
+           << expected_source_memory_space;
+  }
+  auto expected_target_memory_space = tpu::MemorySpaceAttr::get(
+      getContext(), tpu::MemorySpace::kVmem, CoreType::kScVectorSubcore);
+  if (target_memory_space != expected_target_memory_space &&
+      target_memory_space !=
+          tpu::MemorySpaceAttr::get(getContext(), tpu::MemorySpace::kVmem)) {
+    return emitOpError("Target memref must have memory space ")
+           << expected_target_memory_space;
+  }
+  if (source_type.getElementType() != target_type.getElementType()) {
+    return emitOpError("Source and target element types must match.");
+  }
+
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  ArrayRef<int64_t> target_shape = target_type.getShape();
+  if (source_shape.size() != target_shape.size()) {
+    return emitOpError("Target shape rank must match source shape rank.");
+  }
+  if (source_shape.empty()) {
+    return emitOpError("Source and target memrefs must be at least rank 1.");
+  }
+  if (source_shape.drop_back() != target_shape.drop_back()) {
+    return emitOpError(
+        "Target shape must match source shape for all dimensions except the "
+        "last.");
+  }
+  if (source_shape.back() == 0 || target_shape.back() == 0) {
+    return emitOpError(
+        "Source and target minormost dimension must be greater than 0.");
+  }
+  if (ShapedType::isDynamic(source_shape.back()) ||
+      ShapedType::isDynamic(target_shape.back())) {
+    return emitOpError(
+        "Source and target minormost dimension cannot be dynamic.");
+  }
+  if (source_shape.back() % target_shape.back() != 0) {
+    return emitOpError(
+        "Source shape's minormost dimension must be divisible by target "
+        "shape's minormost dimension.");
+  }
+  return success();
+}
+
+FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
+    MemRefType source_type, ArrayRef<int64_t> target_shape,
+    int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+    int64_t spmem_word_size_bytes,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  if (!source_type.hasStaticShape() ||
+      !ShapedType::isStaticShape(target_shape)) {
+    return emit_error() << "SharedMemRefSliceOp requires static shapes.";
+  }
+  if (spmem_stripe_granularity_bytes % spmem_word_size_bytes != 0) {
+    return emit_error() << "Shared VMEM stripe granularity ("
+                        << spmem_stripe_granularity_bytes
+                        << " bytes) must be a multiple of the VMEM word size ("
+                        << spmem_word_size_bytes << " bytes).";
+  }
+  auto layout_attr = dyn_cast<TiledLayoutAttr>(source_type.getLayout());
+  if (!layout_attr) {
+    return emit_error()
+           << "SharedMemRefSliceOp requires a tiled source layout.";
+  }
+  ArrayRef<xla::Tile> tiles = layout_attr.getTiles();
+  if (tiles.empty()) {
+    return emit_error()
+           << "shared_memref_slice input tiling layout tiles cannot be empty";
+  }
+  ArrayRef<int64_t> source_shape = source_type.getShape();
+  CHECK(!layout_attr.getTileStrides().empty());
+  if (layout_attr.getTileStrides().back() != 1) {
+    return emit_error()
+           << "The last dimension of the MemRef must be contiguous for "
+              "SharedMemRefSliceOp.";
+  }
+
+  int64_t bitwidth = source_type.getElementTypeBitWidth();
+  int64_t word_bitwidth = spmem_word_size_bytes * 8;
+  if (word_bitwidth % bitwidth != 0) {
+    return emit_error() << "Element bitwidth (" << bitwidth
+                        << ") must divide the VMEM word bitwidth ("
+                        << word_bitwidth << ").";
+  }
+  int64_t packing = word_bitwidth / bitwidth;
+  int64_t stripe_elems = spmem_stripe_granularity_bytes * 8 / bitwidth;
+  int64_t stripe_words = spmem_stripe_granularity_bytes / spmem_word_size_bytes;
+
+  // Case 1: 1D DMA-granule tiling (e.g. `#tpu.tiled<(8), [16, 1]>`), where the
+  // single 1D tile already equals `stripe_width` (`target_shape.back()`), so
+  // the tile dimensions stay unchanged and the leading tile strides are scaled
+  // down by `num_sc_tiles`.
+  bool is_1d_stripe_tiling =
+      tiles.size() == 1 &&
+      tiles[0].dimensions() == ArrayRef<int64_t>{stripe_elems};
+  // Case 2: Full-width tiling where `tiles[0]` spans `source_shape.back()`
+  // (either a single unpacked tile or a 2D packed layout with sub-tile
+  // `(packing, 1)`), so `tiles[0]`'s trailing dimension is rewritten to
+  // `target_shape.back()` (`stripe_width`) and tile strides remain unchanged.
+  bool is_packed_tiling =
+      tiles.size() == 2 && tiles[0].dimensions().size() >= 2 &&
+      tiles[1].dimensions() == ArrayRef<int64_t>{packing, 1};
+  bool is_unpacked_tiling = tiles.size() == 1 &&
+                            tiles[0].dimensions().size() >= 2 &&
+                            bitwidth == word_bitwidth;
+  bool is_full_width_tiling =
+      (is_unpacked_tiling || is_packed_tiling) &&
+      tiles[0].dimensions().back() == source_shape.back();
+
+  int64_t stripe_width;
+  if (is_packed_tiling && is_full_width_tiling) {
+    stripe_width = stripe_words;
+  } else if ((is_unpacked_tiling && is_full_width_tiling) ||
+             is_1d_stripe_tiling) {
+    stripe_width = stripe_elems;
+  } else {
+    return emit_error() << "Expected a 1D stripe tile (" << stripe_elems
+                        << ") or a full-width 2D tile with trailing dimension "
+                        << source_shape.back()
+                        << ". 1D TC tilings are not yet supported.";
+  }
+  int64_t expected_source_last_dim = num_sc_tiles * stripe_width;
+
+  if (source_shape.back() != expected_source_last_dim) {
+    return emit_error() << "Source trailing dimension (" << source_shape.back()
+                        << ") must equal " << expected_source_last_dim;
+  }
+  if (target_shape.back() != stripe_width) {
+    return emit_error() << "Target trailing dimension (" << target_shape.back()
+                        << ") must equal " << stripe_width;
+  }
+
+  SmallVector<xla::Tile> new_tiles(tiles.begin(), tiles.end());
+  SmallVector<int64_t> new_tile_strides(layout_attr.getTileStrides());
+  if (is_1d_stripe_tiling) {
+    for (int64_t i = 0; i < new_tile_strides.size() - 1; ++i) {
+      if (ShapedType::isDynamic(new_tile_strides[i])) {
+        continue;
+      }
+      if (new_tile_strides[i] % num_sc_tiles != 0) {
+        return emit_error()
+               << "Tile strides must be divisible by the ratio of source and "
+                  "target trailing dimensions.";
+      }
+      new_tile_strides[i] /= num_sc_tiles;
+    }
+  } else {
+    CHECK(is_full_width_tiling);
+    // The minormost dimension of the memref shape and the first tile are both
+    // scaled down by num_sc_tiles, so the tile strides are unchanged.
+    SmallVector<int64_t> first_tile_dims =
+        llvm::to_vector(tiles[0].dimensions());
+    first_tile_dims.back() = target_shape.back();
+    new_tiles[0] = xla::Tile(first_tile_dims);
+  }
+
+  return TiledLayoutAttr::get(source_type.getContext(), new_tiles,
+                              new_tile_strides);
+}
+
+LogicalResult MemRefSqueezeOp::verify() {
+  MemRefType input_type = getInput().getType();
+  MemRefType result_type = getType();
+
+  if (result_type.getMemorySpace() != input_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
-  if (target_type.getElementType() != source_type.getElementType()) {
+  if (result_type.getElementType() != input_type.getElementType()) {
     return emitOpError("Element types don't match.");
   }
 
-  auto source_shape = source_type.getShape();
-  auto target_shape = target_type.getShape();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const ArrayRef<int64_t> result_shape = result_type.getShape();
+  // NOTE: In cases where there is flexibility on which dimension to squeeze,
+  //   such as 1x1x2 -> 1x2 (can squeeze dimension 1 or 2), this may choose
+  //   dimensions that have padding and fail in inferResultLayout.
+  // TODO(tlongeri): Unify logic in inferMemRefReshape such that we don't
+  //  need computeSqueezedDimsChecked at all.
   FAILUREOR_ASSIGN_OR_RETURN(
-      auto squeezed,
-      computeSqueezedDimsChecked(*this, source_shape, target_shape));
-  if (squeezed.empty() && source_shape != target_shape) {
+      const SmallVector<int64_t> squeezed,
+      computeSqueezedDimsChecked(*this, input_shape, result_shape));
+  if (squeezed.empty() && input_shape != result_shape) {
     return emitOpError(
         "Source and target shapes must be the same if no dimensions are "
         "squeezed.");
   }
 
-  auto source_layout = source_type.getLayout();
-  auto target_layout = target_type.getLayout();
-  bool has_tiled_layout = isa<TiledLayoutAttr>(source_layout);
-  if (has_tiled_layout != isa<TiledLayoutAttr>(target_layout)) {
-    return emitOpError(
-        "Either both src and dst or none of them should have a tiled layout");
-  }
-  if (has_tiled_layout) {
-    return verifyTiling();
+  FAILUREOR_ASSIGN_OR_RETURN(
+      const MemRefLayoutAttrInterface expected_result_layout,
+      inferResultLayout(input_type.getLayout(), squeezed,
+                        [&]() { return emitOpError(); }));
+  if (result_type.getLayout() != expected_result_layout) {
+    return emitOpError("Expected result layout to be ")
+           << expected_result_layout;
   }
   return success();
 }
 
-mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
-  MemRefType source_type = getInput().getType();
-  auto source_shape = source_type.getShape();
-  auto target_shape = getType().getShape();
-  auto squeezed_or =
-      computeSqueezedDimsChecked(*this, source_shape, target_shape);
-  if (failed(squeezed_or)) {
-    return {};
-  }
-  auto& squeezed = squeezed_or.value();
+FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
+    const MemRefLayoutAttrInterface input_layout,
+    const ArrayRef<int64_t> squeezed,
+    const function_ref<InFlightDiagnostic()> emit_error) {
+  // TODO(tlongeri): Make MemRefReshapeOp::inferResultLayout more general and
+  // use that instead.
+  MLIRContext* const ctx = input_layout.getContext();
+  if (auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
+    const int64_t input_rank = tiled_layout.getRank();
+    const int64_t result_rank = input_rank - squeezed.size();
 
-  auto tiles = cast<TiledLayoutAttr>(source_type.getLayout()).getTiles();
-  switch (tiles.size()) {
-    case 0:
-      break;
-    case 1: {
-      auto tile = tiles.front();
-      auto tile_dims = tile.dimensions();
-      int first_tiled = source_shape.size() - tile_dims.size();
-      for (int dim : squeezed) {
-        if (dim >= first_tiled) {
-          int tile_idx = dim - first_tiled;
-          if (tile_idx < 0 || tile_idx >= static_cast<int>(tile_dims.size())) {
-            return emitOpError() << "Internal error: tile index out of bounds.";
-          }
-          if (tile_dims[tile_idx] != 1) {
-            return emitOpError()
-                   << "All tiled squeezed dimensions must be of size 1.";
-          }
-        }
-      }
-      break;
-    }
-    default: {
-      auto first_tile = tiles.front();
-      for (int dim : squeezed) {
-        int first_tiled = source_shape.size() - first_tile.dimensions().size();
-        if (dim >= first_tiled) {
-          return emitOpError() << "When multiple tiles are present, no tiled "
-                                  "dimensions can be squeezed.";
-        }
+    SmallVector<int64_t> tile_strides;
+    tile_strides.reserve(result_rank);
+    for (int64_t i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(squeezed, i)) {
+        tile_strides.push_back(tiled_layout.getTileStrides()[i]);
       }
     }
-  }
 
-  return {};
+    const ArrayRef<xla::Tile> tiles = tiled_layout.getTiles();
+
+    if (tiles.size() == 1 && tiles[0].dimensions().size() == 2 &&
+        tiles[0].dimension(0) == 1 &&
+        !llvm::is_contained(squeezed, input_rank - 1) &&
+        llvm::is_contained(squeezed, input_rank - 2) && result_rank >= 2) {
+      // For legacy reasons, for T(1, B) that squeezes the 2nd minor, infer
+      // T(1, B) instead of T(B) like in the code below.
+      return MemRefLayoutAttrInterface(TiledLayoutAttr::get(
+          ctx, {xla::Tile({1, tiles[0].dimension(1)})}, tile_strides));
+    }
+
+    SmallVector<xla::Tile> result_tiles;
+    result_tiles.reserve(tiles.size());
+    // Perform expansion as in TiledLayoutAttr::getExpandedShape, maintaining a
+    // mapping from expanded shape dimension to corresponding input dimension.
+    SmallVector<int64_t> expanded_dims = llvm::to_vector(
+        llvm::iota_range<int64_t>(0, input_rank, /*Inclusive=*/false));
+    for (const xla::Tile& input_tile : tiles) {
+      const int64_t tile_rank = input_tile.dimensions().size();
+      const int64_t expanded_rank = expanded_dims.size();
+      SmallVector<int64_t> tile;
+      for (int64_t i = 0; i < tile_rank; ++i) {
+        const int64_t input_dim = expanded_dims[expanded_rank - tile_rank + i];
+        if (llvm::is_contained(squeezed, input_dim)) {
+          if (input_tile.dimension(i) != 1) {
+            return emit_error() << "Dimension " << input_dim
+                                << " is padded but is squeezed.";
+          }
+        } else {
+          tile.push_back(input_tile.dimension(i));
+        }
+        expanded_dims.push_back(input_dim);
+      }
+      if (!tile.empty()) {
+        result_tiles.emplace_back(tile);
+      }
+    }
+    return MemRefLayoutAttrInterface(
+        TiledLayoutAttr::get(ctx, result_tiles, tile_strides));
+  }
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(input_layout);
+      affine_map_attr && affine_map_attr.isIdentity()) {
+    const int64_t input_rank = affine_map_attr.getValue().getNumInputs();
+    const int64_t result_rank = input_rank - squeezed.size();
+    // Untiled squeeze
+    return MemRefLayoutAttrInterface(AffineMapAttr::get(
+        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
+  }
+  return emit_error() << "Only tiled or identity layouts supported.";
 }
 
 // Rewrites
@@ -608,7 +811,7 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
 
     MemRefType result_type = op.getType();
     FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int> squeezed,
+        SmallVector<int64_t> squeezed,
         computeSqueezedDimsChecked(op, cast_result_type.getShape(),
                                    result_type.getShape()));
 
@@ -955,70 +1158,137 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
+OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  if (llvm::is_sorted(getPermutation())) {
+    return getVector();
+  }
+  if (auto cst = dyn_cast_if_present<SplatElementsAttr>(adaptor.getVector())) {
+    return cst.reshape(getType());
+  }
+  if (auto prev_op = getVector().getDefiningOp<TransposeOp>()) {
+    ArrayRef<int64_t> prev_perm = prev_op.getPermutation();
+    ArrayRef<int64_t> curr_perm = getPermutation();
+    CHECK_EQ(prev_perm.size(), curr_perm.size());
+    SmallVector<int64_t> composed_perm(curr_perm.size());
+    for (size_t i = 0; i < curr_perm.size(); ++i) {
+      composed_perm[i] = prev_perm[curr_perm[i]];
+    }
+    if (llvm::is_sorted(composed_perm)) {
+      return prev_op.getVector();
+    }
+  }
+  return nullptr;
+}
+
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
-  if (tgt_ty.getMemorySpace() != src_ty.getMemorySpace()) {
-    return emitOpError("Memory spaces do not match.");
+  FAILUREOR_ASSIGN_OR_RETURN(
+      auto result_type, inferResultType(src_ty, tgt_ty.getElementType(),
+                                        [this]() { return emitOpError(); }));
+  if (result_type != tgt_ty) {
+    return emitOpError("Expected result type to be ") << result_type;
   }
-  if (src_ty.getRank() != tgt_ty.getRank()) {
-    return emitOpError("Ranks do not match.");
-  }
-  if (src_ty.getRank() <= 1) {
-    return emitOpError("Not implemented: 1d memref bitcast.");
-  }
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  for (int i = 0; i < src_ty.getRank(); ++i) {
-    auto src_dim_size = src_ty.getDimSize(i);
-    auto tgt_dim_size = tgt_ty.getDimSize(i);
-    if (i == src_ty.getRank() - 2) {
-      auto src_bits = src_dim_size * src_bitwidth;
-      auto tgt_bits = tgt_dim_size * tgt_bitwidth;
-      if (src_bits != tgt_bits) {
-        return emitOpError(
-                   "Expected the same number of bits on the 2nd minormost "
-                   "dim: (")
-               << src_dim_size << " * " << src_bitwidth << ") vs ("
-               << tgt_dim_size << " * " << tgt_bitwidth << ")";
-        ;
-      }
-    } else {
-      if (src_dim_size != tgt_dim_size) {
-        return emitOpError("Expected the same dim size on dim ")
-               << i << ": " << src_dim_size << " vs " << tgt_dim_size;
-      }
-    }
-  }
-  // Source and target attributes may be different before propagation is done by
-  // the canonicalizer, so we allow this when attributes are "unset" in the
-  // target type.
-  auto tgt_layout = dyn_cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  if (!tgt_layout) {
-    return success();
-  }
-  auto src_layout = dyn_cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  if (!src_layout) {
-    return emitOpError("Expected a tiled layout for the input memref.");
-  }
-  return verifyTiling();
+  return success();
 }
 
-mlir::InFlightDiagnostic MemRefBitcastOp::verifyTiling() {
-  auto src_ty = getMemRefType(getInput());
-  auto tgt_ty = getType();
-  auto src_bitwidth = getElementTypeBitwidth(src_ty);
-  auto tgt_bitwidth = getElementTypeBitwidth(tgt_ty);
-  auto src_layout = cast<tpu::TiledLayoutAttr>(src_ty.getLayout());
-  auto tgt_layout = cast<tpu::TiledLayoutAttr>(tgt_ty.getLayout());
-  // TODO(jevinjiang): verify memref tiling is valid. Here we just assume the
-  // source and target tilings are valid.
-  auto src_tile = src_layout.getTiles().front().dimensions();
-  auto tgt_tile = tgt_layout.getTiles().front().dimensions();
-  if (src_tile[0] * src_bitwidth != tgt_tile[0] * tgt_bitwidth) {
-    return emitOpError("Invalid memref bitcast.");
+mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
+    const MemRefType input_type, const Type result_elem_type,
+    function_ref<InFlightDiagnostic()> emit_error) {
+  const int8_t input_bitwidth = getElementTypeBitwidth(input_type);
+  const int8_t result_bitwidth = getTypeBitwidth(result_elem_type);
+  if (input_bitwidth == result_bitwidth) {
+    return MemRefType(
+        MemRefType::Builder(input_type).setElementType(result_elem_type));
   }
-  return {};
+  const int64_t rank = input_type.getRank();
+  if (rank < 2) {
+    return emit_error() << "Cannot bitcast along 2nd minor in 1D memref";
+  }
+  if (input_type.isDynamicDim(rank - 2)) {
+    return emit_error() << "Not implemented: Dynamic 2nd minor dimension";
+  }
+  if (input_type.getDimSize(rank - 2) * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Input 2nd minor dimension bits not a multiple of "
+                           "result bitwidth";
+  }
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[rank - 2] =
+      input_type.getDimSize(rank - 2) * input_bitwidth / result_bitwidth;
+
+  if (auto affine_layout = dyn_cast<AffineMapAttr>(input_type.getLayout());
+      affine_layout && affine_layout.isIdentity()) {
+    // An affine map layout is interpreted as "unset"/"unknown" (non-standard
+    // semantics)
+    return MemRefType(MemRefType::Builder(input_type)
+                          .setShape(result_shape)
+                          .setElementType(result_elem_type));
+  }
+  const auto input_layout =
+      dyn_cast<tpu::TiledLayoutAttr>(input_type.getLayout());
+  if (input_layout == nullptr) {
+    return emit_error() << "Expected a tiled layout for the input memref.";
+  }
+  ArrayRef<xla::Tile> input_tiles = input_layout.getTiles();
+  while (!input_tiles.empty() && llvm::all_of(input_tiles.back().dimensions(),
+                                              llvm::equal_to<int64_t>(1))) {
+    input_tiles = input_tiles.drop_back(1);
+  }
+  const int64_t num_input_tiles = input_tiles.size();
+  for (int64_t i = 0; i < num_input_tiles - 1; ++i) {
+    if (input_tiles[i].dimensions().size() <
+        input_tiles[i + 1].dimensions().size()) {
+      // NOTE: TiledLayoutAttr verification allows tiles that tile across
+      // previous levels, like T(256)(128)(2, 1), but it enforces that
+      // previous levels are evenly divided by later levels.
+      return emit_error() << "Not implemented: Tile at level " << i + 1
+                          << " tiles across previous tiles.";
+    }
+  }
+
+  const bool has_interleaving_tile =
+      !input_tiles.empty() && input_tiles.back().dimensions().size() >= 2 &&
+      *(input_tiles.back().dimensions().end() - 1) == 1;
+  const int64_t input_factor =
+      has_interleaving_tile ? *(input_tiles.back().dimensions().end() - 2) : 1;
+  if (input_factor * input_bitwidth % result_bitwidth != 0) {
+    return emit_error() << "Not implemented: Input 2nd minor interleaving tile "
+                           "bits not a multiple of result bitwidth";
+  }
+  const int64_t result_factor = input_factor * input_bitwidth / result_bitwidth;
+  SmallVector<xla::Tile> result_tiles;
+  result_tiles.reserve(input_tiles.size());
+  for (const xla::Tile& input_tile : input_tiles) {
+    const int64_t tile_rank = input_tile.dimensions().size();
+    SmallVector<int64_t> tile;
+    if (tile_rank == 0) {
+      continue;  // Skip
+    }
+    if (tile_rank == 1) {
+      // Recall we checked tiles are of decreasing rank. This is part of a
+      // suffix of 1D tiles. The input factor must be 1 since the last tile
+      // is not of the form (..., A, 1).
+      // The suffix ...(A)(B)(C) becomes ...(1, A)(1, B)(1, C)
+      CHECK_EQ(input_factor, 1);
+      CHECK_NE(result_factor, 1);  // Identical bitwidths handled above
+      tile.push_back(1);
+    }
+    tile.append(input_tile.dimensions().begin(), input_tile.dimensions().end());
+    CHECK_EQ(*(tile.end() - 2) * result_factor % input_factor, 0);
+    *(tile.end() - 2) = *(tile.end() - 2) * result_factor / input_factor;
+    // Since tiles are of decreasing rank and higher level tiles divide lower
+    // level tiles, we can safely remove all-1s tiles.
+    if (!llvm::all_of(tile, llvm::equal_to<int64_t>(1))) {
+      result_tiles.emplace_back(tile);
+    }
+  }
+  if (!has_interleaving_tile && result_factor != 1) {
+    result_tiles.emplace_back(xla::Tile({result_factor, 1}));
+  }
+  auto result_layout = tpu::TiledLayoutAttr::get(
+      input_type.getContext(), result_tiles, input_layout.getTileStrides());
+  return MemRefType::get(result_shape, result_elem_type, result_layout,
+                         input_type.getMemorySpace());
 }
 
 LogicalResult MemRefBitcastOp::canonicalize(MemRefBitcastOp op,
@@ -1148,6 +1418,73 @@ LogicalResult CompressStoreVregOp::verify() {
 }
 
 template <typename Op>
+LogicalResult verifyCompressStoreExpandLoad(
+    Op op, VectorType ty, int32_t compress_expand_dim, StringRef vector_name,
+    StringRef compress_expand_dim_name) {
+  MemRefType ref_ty = op.getBase().getType();
+  const int64_t rank = ref_ty.getRank();
+  if (ty.getRank() != rank) {
+    return op.emitOpError("Expected ")
+           << vector_name << " to have the same rank as base (" << rank
+           << "). Got: " << ty.getRank() << ".";
+  }
+  if (llvm::size(op.getIndices()) != rank) {
+    return op.emitOpError("Expected ") << rank << " indices.";
+  }
+  if (compress_expand_dim < 0 || compress_expand_dim >= rank) {
+    return op.emitOpError("Expected ")
+           << compress_expand_dim_name << " to be in [0, " << rank
+           << "). Got: " << compress_expand_dim << ".";
+  }
+  const StringRef non_target_dim_adjective =
+      compress_expand_dim_name == "compress_dim" ? "Non-compressed"
+                                                 : "Non-expanded";
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i == compress_expand_dim || ref_ty.isDynamicDim(i)) {
+      continue;
+    }
+    if (ty.getDimSize(i) > ref_ty.getDimSize(i)) {
+      return op.emitOpError(non_target_dim_adjective)
+             << " dimension " << i << " of " << vector_name
+             << " goes out of bounds of base (" << ty.getDimSize(i) << " > "
+             << ref_ty.getDimSize(i) << ").";
+    }
+  }
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return op.emitOpError("Expected base memref to be in VMEM.");
+  }
+  if (ty.getElementType() != ref_ty.getElementType()) {
+    return op.emitOpError("Expected base and ")
+           << vector_name << " element type to match";
+  }
+  // Note: We deliberately do not go through verifyStoreOp / verifyLoadOp, which
+  // reject masked stores/loads of non-32-bit element types. The mask here is
+  // mandatory and narrow element types are allowed. They are rejected later, in
+  // the vector layout passes.
+  if (ty.getShape() != op.getMask().getType().getShape()) {
+    return op.emitOpError("Expected mask shape to match ")
+           << (vector_name == "valueToStore" ? "value" : "result")
+           << " shape: (" << ty.getShape() << "). Got: ("
+           << op.getMask().getType().getShape() << ").";
+  }
+  return success();
+}
+
+LogicalResult VectorCompressStoreOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getValueToStore().getType(), getCompressDim(),
+      /*vector_name=*/"valueToStore",
+      /*compress_expand_dim_name=*/"compress_dim");
+}
+
+LogicalResult VectorExpandLoadOp::verify() {
+  return verifyCompressStoreExpandLoad(
+      *this, getResult().getType(), getExpandDim(),
+      /*vector_name=*/"result",
+      /*compress_expand_dim_name=*/"expand_dim");
+}
+
+template <typename Op>
 LogicalResult verifyLoadOp(Op op) {
   MemRefType ref_ty = op.getBase().getType();
   if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
@@ -1167,6 +1504,31 @@ LogicalResult verifyLoadOp(Op op) {
       return op.emitOpError(
           "Expected mask shape to be broadcastable to result shape.");
     }
+  }
+  return success();
+}
+
+LogicalResult ExpandLoadVregOp::verify() {
+  MemRefType ref_ty = getBase().getType();
+  if (ref_ty.getMemorySpace() && !HasMemorySpace(ref_ty, MemorySpace::kVmem)) {
+    return emitOpError("Expected base memref to be in VMEM.");
+  }
+  VectorType result_ty = getResult().getType();
+  if (result_ty.getElementType() != ref_ty.getElementType()) {
+    return emitOpError("Expected base and result element type to match");
+  }
+  if (llvm::size(getIndices()) != ref_ty.getRank()) {
+    return emitOpError("Expected ") << ref_ty.getRank() << " indices.";
+  }
+  // Note: We deliberately do not go through verifyLoadOp, which rejects masked
+  // loads of non-32-bit element types. The mask here is mandatory and narrow
+  // element types are allowed. They are rejected later, in the vector layout
+  // passes.
+  VectorType mask_ty = getMask().getType();
+  if (result_ty.getShape()[0] != mask_ty.getShape()[0]) {
+    return emitOpError(
+               "Expected result dimension 0 to match mask dimension 0: ")
+           << result_ty.getShape()[0] << " vs " << mask_ty.getShape()[0] << ".";
   }
   return success();
 }
@@ -3110,6 +3472,16 @@ LogicalResult SubcoreIdOp::verify() {
   }
   return success();
 }
+
+LogicalResult TileSizeOp::verify() {
+  MemRefType memref_ty = getSource().getType();
+  const int32_t index = getIndex();
+  if (index < 0 || index >= memref_ty.getRank()) {
+    return emitOpError("Index out of bounds");
+  }
+  return success();
+}
+
 }  // namespace tpu
 }  // namespace mlir
 

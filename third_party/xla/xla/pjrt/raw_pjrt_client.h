@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
@@ -119,6 +120,9 @@ class PjRtExecutableLoadState
 
   struct DeviceAndAssignment {
     PjRtDevice* device;
+    LocalDeviceId local_device_id;
+    GlobalDeviceId global_device_id;
+    int process_index;
     std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
@@ -155,8 +159,7 @@ class PjRtRawClient {
 
   // Returns true if memory allocations for async transfers in `memory_space`
   // should be deferred behind an allocation event.
-  virtual bool ShouldCreateAsyncAllocationEvent(
-      PjRtMemorySpace* memory_space) const {
+  virtual bool ShouldCreateAsyncAllocationEvent(int memory_kind_id) const {
     return false;
   }
 
@@ -196,7 +199,7 @@ class PjRtRawClient {
   // setting an event into the event promise populates the device-event.
   virtual absl::StatusOr<
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) {
     return absl::UnimplementedError(
         "CreateLinkedEventPromise is not supported");
@@ -204,12 +207,13 @@ class PjRtRawClient {
 
   // Creates a device event that signals completion of a dependency future.
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) = 0;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) = 0;
 
   // Creates a device event that signals completion of work on an external
   // stream.
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
-      PjRtMemorySpace* memory_space, std::intptr_t stream) {
+      LocalDeviceId local_device_id, std::intptr_t stream) {
     return absl::UnimplementedError(
         "CreateDeviceEventForStream is not supported");
   }
@@ -235,6 +239,10 @@ class PjRtRawClient {
   // Returns the host memory allocator for the client or null if not supported.
   virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
     return nullptr;
+  }
+
+  virtual int GetNumaNode(LocalDeviceId local_device_id) const {
+    return tsl::port::kNUMANoAffinity;
   }
 
   // Returns the required byte alignment for host memory when performing DMA.
@@ -269,6 +277,11 @@ class PjRtRawClient {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
 
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      LocalDeviceId local_device_id, absl::string_view description) const {
+    return nullptr;
+  }
+
   virtual absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
                                                int32_t launch_id,
                                                absl::Status error) {
@@ -285,7 +298,7 @@ class PjRtRawClient {
     return absl::UnimplementedError("TransferToOutfeed is not supported");
   }
 
-  virtual absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
+  virtual absl::Status WaitOnStream(LocalDeviceId local_device_id,
                                     PjRtDeviceEventRef event,
                                     std::intptr_t stream) {
     return absl::UnimplementedError(
@@ -307,7 +320,8 @@ class PjRtRawClient {
     return absl::UnimplementedError("ClearMemoryStats is not supported.");
   }
 
-  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
+  virtual void ScheduleRemoteSend(LocalDeviceId local_device_id,
+                                  int memory_kind_id,
                                   PjRtRawBufferRef raw_buffer,
                                   PjRtDeviceEventRefVector definition_events,
                                   PjRtDeviceEventPromiseRef usage_event_promise,

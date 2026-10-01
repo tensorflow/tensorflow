@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/config_assigner_pass.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
@@ -259,7 +258,8 @@ absl::StatusOr<AutotunerEnvironment> CreateAutotunerEnvironment(
       ConfigAssignerPass::GetEnabledBackends(
           stream_executor_0, allocator.get(), target_config.get(),
           alias_info.get(), debug_options, mlir_context.get(),
-          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id()));
+          compiler->ShapeSizeBytesFunction(), compiler.get(), platform->id(),
+          thread_pool.get()));
 
   AutotuneCacheContext ctx = AutotuneCacheContext::Create(
       target_config->device_description, autotuner_backends);

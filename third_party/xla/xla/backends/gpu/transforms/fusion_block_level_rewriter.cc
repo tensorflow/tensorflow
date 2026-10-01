@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -215,7 +216,9 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+    mlir::MLIRContext* mlir_context, bool use_experimental_tiling,
+    tsl::thread::ThreadPool* thread_pool = nullptr,
+    MlirContextPool* mlir_context_pool = nullptr) {
   bool dump_fusion_visualization = fusion_instruction->GetModule()
                                        ->config()
                                        .debug_options()
@@ -263,14 +266,18 @@ absl::StatusOr<bool> ProcessFusionInstruction(
       fusion_instruction->GetModule()
           ->config()
           .debug_options()
-          .xla_gpu_experimental_enable_same_shape_multi_output_fusion());
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+      mlir_context_pool);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
 
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_runtime_data_or_error,
-      indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
+  ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
+                   indexing_performance_model
+                       .TryFindBestTilingForFusionAsync(
+                           *fusion_adaptor,
+                           thread_pool ? thread_pool->AsExecutor() : nullptr)
+                       .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
@@ -340,7 +347,8 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
             fusion_instruction, device_info_, shape_size_, mlir_context_,
             module->config()
                 .debug_options()
-                .xla_gpu_experimental_enable_tiling_propagation()));
+                .xla_gpu_experimental_enable_tiling_propagation(),
+            thread_pool_, mlir_context_pool_));
 
     has_changed |= changed;
   }

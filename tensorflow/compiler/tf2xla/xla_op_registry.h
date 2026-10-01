@@ -66,7 +66,7 @@ constexpr std::array<DataType, 14> kNumericTypes = {
      DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
      DT_BFLOAT16}};
 
-constexpr std::array<DataType, 25> kCpuAllTypes = {{DT_UINT8,
+constexpr std::array<DataType, 26> kCpuAllTypes = {{DT_UINT8,
                                                     DT_QUINT8,
                                                     DT_UINT16,
                                                     DT_UINT32,
@@ -89,10 +89,11 @@ constexpr std::array<DataType, 25> kCpuAllTypes = {{DT_UINT8,
                                                     DT_FLOAT8_E4M3FNUZ,
                                                     DT_FLOAT8_E4M3B11FNUZ,
                                                     DT_FLOAT8_E5M2FNUZ,
+                                                    DT_FLOAT8_E8M0FNU,
                                                     DT_INT4,
                                                     DT_UINT4}};
 
-constexpr std::array<DataType, 25> kGpuAllTypes = {{DT_UINT8,
+constexpr std::array<DataType, 26> kGpuAllTypes = {{DT_UINT8,
                                                     DT_QUINT8,
                                                     DT_UINT16,
                                                     DT_UINT32,
@@ -115,6 +116,7 @@ constexpr std::array<DataType, 25> kGpuAllTypes = {{DT_UINT8,
                                                     DT_FLOAT8_E4M3FNUZ,
                                                     DT_FLOAT8_E4M3B11FNUZ,
                                                     DT_FLOAT8_E5M2FNUZ,
+                                                    DT_FLOAT8_E8M0FNU,
                                                     DT_INT4,
                                                     DT_UINT4}};
 

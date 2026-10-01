@@ -23,6 +23,7 @@ import jax.numpy as jnp
 
 from xla.benchmarks import benchmark_configs
 from xla.benchmarks import results_utils
+from xla.benchmarks.collectives import collectives_benchmark
 from xla.benchmarks.dma_microbenchmarks import memory_base
 from xla.benchmarks.jax_microbenchmarks import matmul_lib
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
@@ -213,6 +214,78 @@ class BenchmarkConfigsTest(parameterized.TestCase):
     self.assertEqual(df["num_dmas"].iloc[0], 4)
     self.assertAlmostEqual(df["latency_us"].iloc[0], 15.0)
     self.assertGreater(df["bandwidth_gbps"].iloc[0], 0.0)
+
+  def test_collectives_configs(self):
+    configs = benchmark_configs.get_collectives_configs()
+    self.assertLen(configs, 2)
+    for cfg in configs:
+      self.assertIsInstance(
+          cfg, collectives_benchmark.CollectiveBenchmarkConfig
+      )
+      self.assertEqual(cfg.suite, "all_gather")
+      self.assertStartsWith(cfg.test_name, "test_all_gather_")
+      self.assertEqual(
+          cfg.as_dict(), {"suite": cfg.suite, "test": cfg.test_name}
+      )
+
+  def test_collectives_benchmark_end_to_end_and_skip(self):
+    # 1. On CPU without TPU, CollectiveBenchmark.run() catches SkipTest.
+    cfg_skip = benchmark_configs.get_collectives_configs()[0]
+    self.assertEqual(cfg_skip.get_benchmark().run(), [None])
+
+    # 2. With TPU info patched using spec_set=True, run() executes the test
+    # method, records bandwidth/latency metrics, and populates the table.
+    class _FakeCollectiveSuite(collectives_benchmark.CollectivesBenchmarks):
+
+      def setUp(self):
+        absltest.TestCase.setUp(self)
+        self.latencies_us = []
+        self.metrics = {}
+
+      def test_ag(self):
+        self._print_collective_bandwidth_statistics(
+            op_name="all-gather-major-dim",
+            per_device_size_bytes=256 * 1024 * 1024,
+            total_size_bytes=1024 * 1024 * 1024,
+            bus_data_bytes=768 * 1024 * 1024,
+            num_devices=4,
+            latencies_us=[100.0, 200.0],
+        )
+
+    cfg = collectives_benchmark.CollectiveBenchmarkConfig(
+        suite="all_gather", test_class=_FakeCollectiveSuite, test_name="test_ag"
+    )
+    with unittest.mock.patch.object(
+        pltpu,
+        "get_tpu_info",
+        spec_set=True,
+        return_value=pltpu.get_tpu_info_for_chip(pltpu.ChipVersion.TPU_V5E, 1),
+    ):
+      prof_results = cfg.get_benchmark().run()
+
+    df = results_utils.create_results_table([(cfg, prof_results)])
+    self.assertEqual(
+        list(df.columns),
+        [
+            "suite",
+            "test",
+            "per_device_size_mib",
+            "total_size_mib",
+            "num_devices",
+            "bus_bandwidth_gbps",
+            "effective_bandwidth_gbps",
+            "latency_us",
+            "flops",
+        ],
+    )
+    self.assertEqual(df["suite"].iloc[0], "all_gather")
+    self.assertEqual(df["test"].iloc[0], "test_ag")
+    self.assertEqual(df["per_device_size_mib"].iloc[0], 256.0)
+    self.assertEqual(df["total_size_mib"].iloc[0], 1024.0)
+    self.assertEqual(df["num_devices"].iloc[0], 4)
+    self.assertAlmostEqual(df["latency_us"].iloc[0], 150.0)
+    self.assertGreater(df["bus_bandwidth_gbps"].iloc[0], 0.0)
+    self.assertGreater(df["effective_bandwidth_gbps"].iloc[0], 0.0)
 
 
 if __name__ == "__main__":

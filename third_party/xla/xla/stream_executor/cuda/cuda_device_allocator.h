@@ -53,6 +53,10 @@ class CudaDeviceAllocator : public MemoryAllocator {
 
     // Whether to mark allocations as GPUDirect RDMA capable.
     bool enable_rdma = false;
+
+    // Whether to use CUDA Virtual Memory Management (VMM) APIs. If false,
+    // falls back to legacy cuMemAlloc / cuMemFree APIs.
+    bool use_vmm = true;
   };
 
   explicit CudaDeviceAllocator(StreamExecutor* executor);

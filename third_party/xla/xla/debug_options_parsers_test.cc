@@ -110,6 +110,7 @@ std::vector<UppercaseStringSetterTestSpec> GetUppercaseStringSetterTestCases() {
       UppercaseStringSetterTestSpec{"sse4_2", "SSE4_2"},
       UppercaseStringSetterTestSpec{"aVx512", "AVX512"},
       UppercaseStringSetterTestSpec{"AMx_fP16", "AMX_FP16"},
+      UppercaseStringSetterTestSpec{"amx_FP8", "AMX_FP8"},
   });
 }
 
@@ -441,15 +442,15 @@ TEST(ParseRepeatedEnumModifiersTest, Invalid) {
 TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
 
-  // Check that the default setting has 6 types.
+  // Check that the default setting has 8 types.
   const auto& enabled_types = debug_options.xla_gpu_enable_command_buffer();
-  ASSERT_EQ(enabled_types.size(), 7);
+  ASSERT_EQ(enabled_types.size(), 8);
   ASSERT_THAT(
       enabled_types,
-      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLAS,
-                  DebugOptions::CUBLASLT, DebugOptions::CUDNN,
-                  DebugOptions::CUSTOM_CALL, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::FUSION));
+      ElementsAre(DebugOptions::COLLECTIVES_KERNEL, DebugOptions::CONDITIONAL,
+                  DebugOptions::CUBLAS, DebugOptions::CUBLASLT,
+                  DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
+                  DebugOptions::DYNAMIC_SLICE_FUSION, DebugOptions::FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -458,30 +459,33 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   // Removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=-fusion,-cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_EQ(enabled_types.size(), 6);
   EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+              ElementsAre(DebugOptions::COLLECTIVES_KERNEL,
+                          DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
                           DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
                           DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Removing an option that isn't there and adding a duplicate.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublaslt,-fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_EQ(enabled_types.size(), 6);
   EXPECT_THAT(enabled_types,
-              ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
+              ElementsAre(DebugOptions::COLLECTIVES_KERNEL,
+                          DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
                           DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
                           DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Adding an option.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 6);
+  EXPECT_EQ(enabled_types.size(), 7);
   EXPECT_THAT(
       enabled_types,
-      ElementsAre(DebugOptions::CONDITIONAL, DebugOptions::CUBLASLT,
-                  DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::DYNAMIC_SLICE_FUSION, DebugOptions::CUBLAS));
+      ElementsAre(DebugOptions::COLLECTIVES_KERNEL, DebugOptions::CONDITIONAL,
+                  DebugOptions::CUBLASLT, DebugOptions::CUDNN,
+                  DebugOptions::CUSTOM_CALL, DebugOptions::DYNAMIC_SLICE_FUSION,
+                  DebugOptions::CUBLAS));
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=custom_call,fusion");

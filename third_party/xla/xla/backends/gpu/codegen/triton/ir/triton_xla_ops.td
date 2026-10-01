@@ -204,7 +204,7 @@ def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
     let summary = "Remove a size-1 dimension from a tensor.";
     let arguments = (ins TT_Tensor:$src, I32Attr:$axis);
     let results = (outs TT_Tensor:$result);
-    let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
+    let assemblyFormat = "$src prop-dict attr-dict `:` type($src) `->` type($result)";
 }
 
 def TTXLA_GetTidOp : TTXLA_Op<"get_tid", [Pure]> {
@@ -331,8 +331,53 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     It takes a pointer of pointers to signal buffers (one from each
     participating GPU), the rank of the current device, and a signal value to
     write/wait for. The signal values on consequent calls to this operation must
-    increase monotonically for the same signal buffers pointer. A block on one
-    GPU synchronizes with blocks on other GPUs with the same block id.
+    increase monotonically for the same signal buffers pointer.
+
+    Each GPU `r`'s signal buffer (`$signal_buffers[r]`) is logically a 2D array
+    of `i32` flags with shape `[num_blocks][world_size]`, flattened as
+    `block_idx * world_size + slot_idx`.
+
+    This barrier supports three synchronization modes via `$barrier_mode`:
+
+    ### 1. `symmetric` (default; `$signal_stride == 0`, `$signal_slot` omitted)
+    Used when block `block_idx` on every GPU produces and consumes data for the
+    same `block_idx`:
+    - **Signal (Write)**: Block `block_idx` on GPU `r` atomically writes
+      `$signal_value` to index `block_idx * world_size + r` in every peer GPU's
+      signal buffer (`$signal_buffers[0..world_size)`).
+    - **Wait (Read)**: Block `block_idx` on GPU `r` spin-waits on its
+      own buffer `$signal_buffers[r]` until all `world_size` slots at
+      `block_idx * world_size + [0..world_size)` reach `>= $signal_value`.
+
+    ### 2. `consumer_symmetric` (`$signal_stride > 0`, `$signal_slot` provided)
+    Used when `world_size` blocks on the same GPU (spaced by `$signal_stride` in
+    block ID) each produce `$signal_slot` (`0 <= $signal_slot < world_size`)
+    of a tile that will be consumed by a single target block on every peer GPU:
+    - Let `base_block = block_idx - $signal_slot * $signal_stride` be the base
+      block index within the stride, and
+      `target_block = base_block + r * $signal_stride` be the
+      consumer block ID on every GPU that reads the tile produced on
+      `r`.
+    - **Signal (Write)**: Block `block_idx` on GPU `r` atomically writes
+      `$signal_value` to index `target_block * world_size + $signal_slot` in
+      every peer GPU's signal buffer (`$signal_buffers[0..world_size)`).
+    - **Wait (Read)**: Block `block_idx` on GPU `r` spin-waits on its
+      own buffer `$signal_buffers[r]` until all `world_size` producer
+      slots at `block_idx * world_size + [0..world_size)` reach
+      `>= $signal_value`.
+
+    ### 3. `producer_symmetric` (`$signal_stride > 0`, `$signal_slot` provided)
+    Used when block `block_idx` on every GPU produces data at its own
+    `block_idx`, and consumer block `block_idx` on GPU `r` waits for data
+    produced by `target_block` across all peer GPUs:
+    - Let `base_block = block_idx - $signal_slot * $signal_stride` and
+      `target_block = base_block + r * $signal_stride`.
+    - **Signal (Write)**: Block `block_idx` on GPU `r` atomically writes
+      `$signal_value` to index `block_idx * world_size + r` in every peer GPU's
+      signal buffer (`$signal_buffers[0..world_size)`).
+    - **Wait (Read)**: Block `block_idx` on GPU `r` spin-waits on its own
+      buffer `$signal_buffers[r]` until all `world_size` slots at
+      `target_block * world_size + [0..world_size)` reach `>= $signal_value`.
 
     *NOTE* Block orchestration order is not guaranteed across GPUs,
     so there is a chance of a deadlock should the number of blocks be greater
@@ -346,17 +391,6 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     within a single NV Link domain, this should not be an issue since the number
     of participating GPUs would usually be much smaller than the number of
     threads per block.
-
-    The synchronization logic is as follows:
-    1. Each GPU (identified by `device_rank`) writes the `signal` value to an
-       index `blockId * world_size + device_rank` in *every* buffer provided in
-       `$signal_buffers`.
-    2. After writing, GPU `r` polls its own buffer (`$signal_buffers[r]`).
-    3. It waits until the values at locations corresponding to all other ranks
-       (i.e., `blockId * world_size + [0..world_size)` are greater than or equal
-       to the `signal` value.
-    4. When the wait is over, all GPUs working on the same `blockId` have
-       successfully synchronized.
 
     This operation ensures that GPUs in the same synchronization group do not
     get more than one "wave" (or chunk) of data processing ahead of each other.
@@ -376,19 +410,28 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     I32:$device_rank,
     // The signal value to write/wait for.
     I32:$signal_value,
+    // Optional producer slot index in [0, world_size) for asymmetric barriers.
+    Optional<I32>:$signal_slot,
     // The number of devices participating in the barrier.
     // The length of the first dimension of the signal buffers should be the
     // same as this value.
-    I32Attr:$world_size
+    I32Attr:$world_size,
+    // Optional block-ID stride between consumer blocks for asymmetric barriers.
+    DefaultValuedOptionalAttr<I32Attr, "0">:$signal_stride,
+    // Synchronization mode for the barrier.
+    DefaultValuedAttr<TTXLA_BarrierModeAttr,
+                      "::mlir::triton::xla::BarrierMode::kSymmetric">:$barrier_mode
   );
 
   // This is a barrier op and produces no results.
   let results = (outs);
 
   let assemblyFormat = [{
-    $signal_buffers `,` $device_rank `,` $signal_value `,` attr-dict `:`
+    $signal_buffers `,` $device_rank `,` $signal_value (`,` $signal_slot^)? prop-dict attr-dict `:`
     functional-type(operands, results)
   }];
+
+  let hasVerifier = 1;
 }
 
 def TTXLA_GetRankOp : TTXLA_Op<"get_rank", [Pure]> {
@@ -422,7 +465,7 @@ def TTXLA_GetPeerPtrOp : TTXLA_Op<"get_peer_ptr", [Pure]> {
   let results = (outs Arg<TT_PtrLike, "", [MemRead<GlobalMemory>]>:$result);
 
   let assemblyFormat = [{
-    $address `,` $peer_id `,` $metadata `,` attr-dict `:`
+    $address `,` $peer_id `,` $metadata prop-dict attr-dict `:`
     functional-type(operands, results)
   }];
 }

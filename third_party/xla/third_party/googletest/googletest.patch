@@ -16,7 +16,7 @@ diff --git a/BUILD.bazel b/BUILD.bazel
 index cc254457..49120384 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -178,6 +178,10 @@ alias(
+@@ -181,6 +181,24 @@ alias(
  cc_library(
      name = "gtest_main",
      srcs = ["googlemock/src/gmock_main.cc"],
@@ -24,6 +24,20 @@ index cc254457..49120384 100644
 +        "googletest/include/gtest/*.h",
 +        "googlemock/include/gmock/*.h",
 +    ]),
++    includes = [
++        "googlemock",
++        "googlemock/include",
++        "googletest",
++        "googletest/include",
++    ],
++    tags = [
++        # Prefer `:gtest` when DWYU suggests adding a missing gtest dependency.
++        "avoid_dep",
++        # Prevent DWYU from removing `gtest_main` (needed for its `main()` entry point).
++        # Note: Do not set `alwayslink = True` here, as targets that also link
++        # `//tensorflow/core:test_main` would get duplicate `main()` definitions (ODR violation).
++        "keep_dep",
++    ],
      features = select({
          ":windows": ["windows_export_all_symbols"],
          "//conditions:default": [],

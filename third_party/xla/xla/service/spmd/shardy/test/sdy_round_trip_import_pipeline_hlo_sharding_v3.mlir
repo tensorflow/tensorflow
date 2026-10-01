@@ -61,6 +61,34 @@ module @module_1 {
     return %6 : tensor<16xi64>
   }
 
+  // A replicated HloShardingV1/V2 is a placeholder sharding that is ignored on
+  // import. Verify no `sdy.sharding` is added to the custom call, as opposed to
+  // one holding a null sharding.
+  // CHECK-LABEL: func @x64_combine_replicated_placeholder
+  func.func @x64_combine_replicated_placeholder(
+    %arg0: tensor<16xi64>) -> tensor<16xi64> {
+    // CHECK-NEXT: %[[SPLIT_LOW:.*]] = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[SPLIT_HIGH:.*]] = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    // CHECK-NEXT: %[[COMBINE:.*]] = stablehlo.custom_call @X64Combine(%[[SPLIT_LOW]], %[[SPLIT_HIGH]]) : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    // CHECK-NEXT: return %[[COMBINE]]
+    %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<16xi64>) -> tensor<16xui32>
+    %2 = stablehlo.custom_call @X64Combine(%0, %1) {mhlo.sharding = "{replicated}"} : (tensor<16xui32>, tensor<16xui32>) -> tensor<16xi64>
+    return %2 : tensor<16xi64>
+  }
+
+  // CHECK-LABEL: func @mixed_tuple_sharding_placeholder
+  func.func @mixed_tuple_sharding_placeholder(%arg0: tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>> {
+    // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @xla_python_gpu_callback(%arg0)
+    // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a"}, {}]>, <@mesh_0, [{?}, {?}]>]>} : (tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>)
+    // CHECK-NEXT: %[[TUPLE:.*]] = stablehlo.tuple %[[CUSTOM_CALL]]#0, %[[CUSTOM_CALL]]#1 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    // CHECK-NEXT: return %[[TUPLE]] : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    %0 = stablehlo.custom_call @xla_python_gpu_callback(%arg0) {
+      mhlo.sharding = "{{mesh['a'=2,'b'=2], [{'a'}, {}]}, {replicated}}"
+    } : (tensor<8x8xf32>) -> tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+    return %0 : tuple<tensor<8x8xf32>, tensor<8x8xf32>>
+  }
+
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,

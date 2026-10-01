@@ -175,6 +175,13 @@ common --enable_workspace
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
 
+# external_include_paths feature forces passing external repositories headers
+# via -isystem alters how Clang resolves their file paths. This feature with
+# old versions of rules_cc triggering errors.
+# Following lines can be removed after rules_cc will be updated to >= 0.2.22
+common --features=-external_include_paths
+common --host_features=-external_include_paths
+
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
 common:clang_local --noincompatible_enable_cc_toolchain_resolution
 common:clang_local --noincompatible_enable_android_toolchain_resolution
@@ -709,6 +716,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_windows_x86_cpu_2022 --features=-with_wrapper
 
 # Override the remote instance and BES instance names to use the new RBE pools
 common:rbe_windows_x86_cpu_2022 --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance

@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -100,10 +101,12 @@ class TritonDotFusionSearchSpace {
   // group" (4 warps) within a CTA to cooperate on a single instruction.
   /// https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-instructions
   static constexpr int kMinWarpsPerCtaForWgmma = 4;
-  // Approximation on the maximum number of warps we would want to oversubscribe
-  // the SMs with to overlap different GPU pipes (memory, tensor core, ALU,
-  // special function unit, etc.)
-  // TODO: b/408114338 - Figure out a better model for this.
+  // Range of warps per scheduler we want to oversubscribe the SMs with to
+  // overlap different GPU pipes (memory, tensor core, ALU, special function
+  // unit, etc.). Memory-bound dots use up to kMaxWarpsPerScheduler to hide
+  // memory latency, while compute-bound dots scale down to
+  // kMinWarpsPerScheduler to avoid resource contention and thrashing.
+  static constexpr int kMinWarpsPerScheduler = 2;
   static constexpr int kMaxWarpsPerScheduler = 5;
 
   // Callback type for `ExtendConfigs`. The method should append zero or more
@@ -121,20 +124,28 @@ class TritonDotFusionSearchSpace {
   bool HasExpensiveTransitiveParent(const HloInstruction* operand) const;
 
   // Computes the maximum number of total warps we should have to sufficiently
-  // saturate the GPU.
+  // saturate the GPU based on hardware properties and the dot's arithmetic
+  // intensity.
   //
   // We're counting warps instead of blocks here, since we already need this
   // value as a consideration to decide how large the blocks should be (which
   // then impacts how many of them we should have).
   int GetDesiredTotalWarps() const;
 
+  // Computes the arithmetic intensity (FLOPs / byte) of the dot operation.
+  double GetArithmeticIntensity() const;
+
+  // Computes the hardware ridge-point arithmetic intensity (FLOPs / byte)
+  // where the dot transitions from memory-bound to compute-bound, based on
+  // device peak matrix ops and memory bandwidth.
+  double GetRidgePoint() const;
+
   // Computes the maximum sensible size of the output tile (block_m, block_n)
   // based on the dot shape and element type, and the available registers on
   // the core.
   OutputTile GetMaxOutputTile() const;
 
-  // Computes the number of result tiles we would have without
-  // splitting the contracting dimension for a given output tile.
+  // Computes the number of result tiles we would have for a given output tile.
   int64_t GetNumResultTiles(OutputTile output_tile) const;
 
   // Decides if the problem is small enough so it makes sense to trade off
@@ -169,10 +180,9 @@ class TritonDotFusionSearchSpace {
   // input tilings.
   int GetMaxNumStages(OutputTile output_tile, int contracting_tile_size) const;
 
-  // Finds all promising output shape tilings (block_m, block_n), based on
-  // `config` with already determined contracting split value and appends them
-  // to `updated_configs`. Each config in the input list might yield zero or
-  // more configs in the output.
+  // Finds all promising output shape tilings (block_m, block_n) based on
+  // `config` and appends them to `updated_configs`. Each config in the input
+  // list might yield zero or more configs in the output.
   void AddOutputTilings(const ConfigWithNotes& config,
                         std::vector<ConfigWithNotes>& updated_configs) const;
 
@@ -184,17 +194,17 @@ class TritonDotFusionSearchSpace {
                            std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Finds all promising values for the contracting dimension tile size
-  // (block_k), based on `config` with already determined contracting split and
-  // output tiling, and appends them to `updated_configs`. Each config in the
-  // input list might yield zero or more configs in the output.
+  // (block_k), based on `config` with already determined output tiling, and
+  // appends them to `updated_configs`. Each config in the input list might
+  // yield zero or more configs in the output.
   void AddContractingTiling(
       const ConfigWithNotes& config,
       std::vector<ConfigWithNotes>& updated_configs) const;
 
   // Finds all promising values for the pipelining parameter, based on
-  // `config` with already determined contracting split, output tiling, and
-  // contracting tile size, and appends them to `updated_configs`. Each config
-  // in the input list might yield zero or more configs in the output.
+  // `config` with already determined output tiling and contracting tile size,
+  // and appends them to `updated_configs`. Each config in the input list might
+  // yield zero or more configs in the output.
   void AddPipeliningParameter(
       const ConfigWithNotes& config,
       std::vector<ConfigWithNotes>& updated_configs) const;
@@ -228,6 +238,8 @@ class TritonDotFusionSearchSpace {
   int64_t rhs_parallel_size_;
   int operand_bitwidth_;
   int compute_bitwidth_;
+  PrimitiveType operand_type_;
+  PrimitiveType compute_type_;
   bool lhs_has_expensive_op_;
   bool rhs_has_expensive_op_;
   int desired_total_warps_;

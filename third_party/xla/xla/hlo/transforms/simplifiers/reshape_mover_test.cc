@@ -22,10 +22,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -38,6 +40,8 @@ namespace xla {
 namespace {
 
 namespace m = xla::match;
+
+using ::absl_testing::IsOkAndHolds;
 
 class ReshapeMoverTest : public HloHardwareIndependentTestBase {
  protected:
@@ -435,6 +439,104 @@ TEST_F(ReshapeMoverTest, ShardingConsistencyPreservation) {
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   auto elementwise_op = FindInstruction(m.get(), HloOpcode::kMultiply);
   EXPECT_FALSE(elementwise_op->has_sharding());
+}
+
+TEST_F(ReshapeMoverTest, InspectionDoesNotCrossCallBoundaries) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    callee {
+      p = f32[1,8,1,7] parameter(0)
+      ROOT r = f32[8,7] reshape(p)
+    }
+
+    ENTRY test {
+      p0 = f32[1,8,1,7] parameter(0)
+      p1 = f32[1,8,1,7] parameter(1)
+      r0 = f32[8,7] reshape(p0)
+      call0 = f32[8,7] call(p1), to_apply=callee
+      ROOT add = f32[8,7] add(r0, call0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ReshapeMover().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(ReshapeMoverTest, SinkingDoesNotCrossCallBoundaries) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    // CHECK-LABEL: %callee (
+    // CHECK-DAG: %[[p0:.+]] = f32[1,8,1,7]{{.*}} parameter(0)
+    // CHECK-DAG: %[[p1:.+]] = f32[1,8,1,7]{{.*}} parameter(1)
+    // CHECK: %[[add:.+]] = f32[1,8,1,7]{{.*}} add(%[[p0]], %[[p1]])
+    // CHECK: ROOT %[[r:.+]] = f32[8,7]{{.*}} reshape(%[[add]])
+    callee {
+      p0 = f32[1,8,1,7] parameter(0)
+      p1 = f32[1,8,1,7] parameter(1)
+      r0 = f32[8,7] reshape(p0)
+      r1 = f32[8,7] reshape(p1)
+      ROOT add = f32[8,7] add(r0, r1)
+    }
+
+    // CHECK-LABEL: ENTRY %test (
+    // CHECK-DAG: %[[p0:.+]] = f32[1,8,1,7]{{.*}} parameter(0)
+    // CHECK-DAG: %[[p1:.+]] = f32[1,8,1,7]{{.*}} parameter(1)
+    // CHECK: ROOT %[[call:.+]] = f32[8,7]{{.*}} call(%[[p0]], %[[p1]]), to_apply=%callee
+    ENTRY test {
+      p0 = f32[1,8,1,7] parameter(0)
+      p1 = f32[1,8,1,7] parameter(1)
+      ROOT call = f32[8,7] call(p0, p1), to_apply=callee
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ReshapeMover().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(ReshapeMoverTest, SinkingDoesNotCrossCallBoundariesFromCaller) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    callee {
+      p0 = f32[8,7] parameter(0)
+      ROOT negate = f32[8,7] negate(p0)
+    }
+
+    ENTRY test {
+      p0 = f32[1,8,1,7] parameter(0)
+      r0 = f32[8,7] reshape(p0)
+      ROOT call = f32[8,7] call(r0), to_apply=callee
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ReshapeMover().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(ReshapeMoverTest, DoesNotTargetCallOps) {
+  const std::string hlo_string = R"(
+    HloModule test
+
+    callee {
+      p0 = f32[8,7] parameter(0)
+      p1 = f32[8,7] parameter(1)
+      ROOT add = f32[8,7] add(p0, p1)
+    }
+
+    ENTRY test {
+      p0 = f32[1,8,1,7] parameter(0)
+      p1 = f32[1,8,1,7] parameter(1)
+      r0 = f32[8,7] reshape(p0)
+      r1 = f32[8,7] reshape(p1)
+      ROOT call = f32[8,7] call(r0, r1), to_apply=callee
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(ReshapeMover().Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

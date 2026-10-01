@@ -28,8 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -60,7 +58,7 @@ Thunk::ThunkInfo GetExampleThunkInfo() {
 
 TEST(SequentialThunkTest, EmptySequentialThunkToProto) {
   SequentialThunk thunk{GetExampleThunkInfo(), {}};
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_sequential_thunk());
   EXPECT_EQ(proto.sequential_thunk().thunks_size(), 0);
 
@@ -76,7 +74,7 @@ TEST(SequentialThunkTest, EmptySequentialThunkFromProto) {
     return absl::InternalError("This should never be called");
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SequentialThunk> sequential_thunk,
       SequentialThunk::FromProto(GetExampleThunkInfo(), proto, deserializer));
 
@@ -108,7 +106,7 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
                                       always_fail_deserializer);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SequentialThunk> outer_thunk,
       SequentialThunk::FromProto(GetExampleThunkInfo(), outer_proto,
                                  only_supports_sequential_thunk_deserializer));
@@ -162,7 +160,7 @@ TEST(SequentialThunkTest, TransformNested) {
   thunks.Emplace<DummyThunk>(Thunk::Kind::kGemm, make_info(3));
   SequentialThunk sequential_thunk(Thunk::ThunkInfo(), std::move(thunks));
 
-  TF_EXPECT_OK(sequential_thunk.TransformNested(
+  EXPECT_OK(sequential_thunk.TransformNested(
       [&](std::unique_ptr<Thunk> thunk) -> std::unique_ptr<Thunk> {
         return std::make_unique<DummyThunk>(
             Thunk::Kind::kCopy,

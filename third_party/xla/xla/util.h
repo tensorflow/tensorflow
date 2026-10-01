@@ -345,8 +345,7 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type) \
   template <typename... Args>                                  \
   struct error_type##StrCat {                                  \
-    absl::Status status;                                       \
-    /* NOLINTNEXTLINE(google-explicit-constructor) */
+    absl::Status status;
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)           \
   /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
   operator absl::Status() const { return status; }                       \
@@ -360,8 +359,9 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 #if defined(PLATFORM_GOOGLE)
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                       \
   XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                      \
-  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =             \
-                                           absl::SourceLocation::current())   \
+  explicit error_type##StrCat(                                                \
+      Args&&... concat,                                                       \
+      absl::SourceLocation loc = absl::SourceLocation::current())             \
       : status(                                                               \
             WithLogBacktrace(absl::error_type##Error(                         \
                                  absl::StrCat(std::forward<Args>(concat)...)) \
@@ -370,16 +370,23 @@ XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
 #else
 #define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)       \
   XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)      \
-  error_type##StrCat(Args&&... concat)                        \
+  explicit error_type##StrCat(Args&&... concat)               \
       : status(WithLogBacktrace(absl::error_type##Error(      \
             absl::StrCat(std::forward<Args>(concat)...)))) {} \
   XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
 #endif
 
-XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
-XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
-XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Aborted);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Cancelled);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(DeadlineExceeded);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(FailedPrecondition);
 XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(NotFound);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unavailable);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unknown);
 
 #undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE
 #undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX

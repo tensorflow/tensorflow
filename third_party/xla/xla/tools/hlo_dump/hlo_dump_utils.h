@@ -27,12 +27,53 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 
 namespace xla::numerics::debug_info {
 
 inline constexpr double kNanInfMismatchDiffScore = -1.0;
+
+struct SliceBoundingBox {
+  int64_t slice_index = 0;
+  std::string slice_key;
+  std::vector<int64_t> slice_coords;
+  std::vector<int64_t> box_min;  // Inclusive bounds within this slice
+  std::vector<int64_t> box_max;  // Inclusive bounds within this slice
+  int64_t mismatch_count = 0;
+};
+
+struct MismatchBoundingBox {
+  std::vector<int64_t> tensor_shape;
+  std::vector<int64_t> box_min;  // Inclusive
+  std::vector<int64_t> box_max;  // Inclusive
+  std::string pattern;
+  std::vector<std::vector<int64_t>> top_mismatch_coords;
+  int64_t mismatch_count = 0;
+  int64_t total_elements = 0;
+  std::vector<int64_t> mismatched_slices;
+  absl::flat_hash_map<std::string, SliceBoundingBox> slice_boxes;
+};
+
+struct TensorVisualizationInfo {
+  std::string instruction_name;
+  std::string opcode;
+  std::vector<int64_t> shape;
+  bool has_mismatch = false;
+  std::vector<int64_t> box_min;
+  std::vector<int64_t> box_max;
+  std::string pattern;
+  struct TopMismatchPoint {
+    std::vector<int64_t> coord;
+    double rel_error = 0.0;
+  };
+  std::vector<TopMismatchPoint> top_mismatches;
+  int64_t mismatch_count = 0;
+  int64_t total_elements = 0;
+  std::vector<int64_t> mismatched_slices;
+  absl::flat_hash_map<std::string, SliceBoundingBox> slice_boxes;
+};
 
 struct MismatchDetails {
   std::string target_instruction_name;
@@ -45,6 +86,7 @@ struct MismatchDetails {
   std::optional<double> percentage_of_elems_exceeding_both_errors;
   std::optional<bool> result_of_reduce;
   std::optional<std::string> custom_description;
+  std::optional<MismatchBoundingBox> bounding_box;
 };
 
 struct TensorKey {
@@ -116,7 +158,22 @@ std::string ConvertHloToHtml(
     const absl::flat_hash_map<TensorKey, TensorAnnotation>& annotations,
     OriginalValueRecoveryInfo recovery_info = {},
     const xla::StackFrameIndexProto* stack_frame_index = nullptr,
-    const GraphData* graph_data = nullptr);
+    const GraphData* graph_data = nullptr,
+    const absl::flat_hash_map<std::string, TensorVisualizationInfo>*
+        tensor_visualizations = nullptr);
+
+std::string ClassifyMismatchPattern(const MismatchBoundingBox& bbox);
+
+MismatchBoundingBox ComputeBoundingBoxFromLiteralMask(
+    const LiteralSlice& mismatches);
+
+absl::flat_hash_map<std::string, TensorVisualizationInfo>
+PopulateTensorVisualizations(const HloModule& module,
+                             absl::Span<const MismatchDetails> mismatches);
+
+std::string SerializeTensorVisualizationsJs(
+    const absl::flat_hash_map<std::string, TensorVisualizationInfo>&
+        visualizations);
 
 absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
     const HloModule& module, absl::Span<const MismatchDetails> mismatches);

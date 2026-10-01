@@ -41,9 +41,9 @@ __global__ void simple_print() { printf("hello, world!\n"); }
 __global__ void empty() {}
 
 // Simple kernel accesses memory.
-__global__ void access(int *addr) { *addr = *addr * 2; }
+__global__ void access(int* addr) { *addr = *addr * 2; }
 
-unsigned *g_device_copy;
+unsigned* g_device_copy;
 
 unsigned *gpu0_buf, *gpu1_buf;
 
@@ -61,13 +61,13 @@ void EmptyKernel(int iters) {
   }
 }
 
-void AccessKernel(int *addr) { access<<<1, 1>>>(addr); }
+void AccessKernel(int* addr) { access<<<1, 1>>>(addr); }
 
 void Synchronize() { cudaDeviceSynchronize(); }
 
 void UnifiedMemoryHtoDAndDtoH() {
-  int *addr = nullptr;
-  cudaMallocManaged(reinterpret_cast<void **>(&addr), sizeof(int));
+  int* addr = nullptr;
+  cudaMallocManaged(reinterpret_cast<void**>(&addr), sizeof(int));
   // The page is now in host memory.
   *addr = 1;
   // The kernel wants to access the page. HtoD transfer happens.
@@ -80,21 +80,21 @@ void UnifiedMemoryHtoDAndDtoH() {
 
 void MemCopyH2D() {
   unsigned host_val = 0x12345678;
-  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
   cudaMemcpy(g_device_copy, &host_val, sizeof(unsigned),
              cudaMemcpyHostToDevice);
 }
 
 void MemCopyH2D_Async() {
   unsigned host_val = 0x12345678;
-  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
   cudaMemcpyAsync(g_device_copy, &host_val, sizeof(unsigned),
                   cudaMemcpyHostToDevice);
 }
 
 void MemCopyD2H() {
   unsigned host_val = 0;
-  cudaMalloc(reinterpret_cast<void **>(&g_device_copy), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void**>(&g_device_copy), sizeof(unsigned));
   cudaMemcpy(&host_val, g_device_copy, sizeof(unsigned),
              cudaMemcpyDeviceToHost);
 }
@@ -104,10 +104,10 @@ namespace {
 // Helper function to set up memory buffers on two devices.
 void P2PMemcpyHelper() {
   cudaSetDevice(0);
-  cudaMalloc(reinterpret_cast<void **>(&gpu0_buf), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void**>(&gpu0_buf), sizeof(unsigned));
   cudaDeviceEnablePeerAccess(/*peerDevice=*/1, /*flags=*/0);
   cudaSetDevice(1);
-  cudaMalloc(reinterpret_cast<void **>(&gpu1_buf), sizeof(unsigned));
+  cudaMalloc(reinterpret_cast<void**>(&gpu1_buf), sizeof(unsigned));
   cudaDeviceEnablePeerAccess(/*peerDevice=*/0, /*flags=*/0);
 }
 
@@ -134,14 +134,32 @@ void MemCopyP2PExplicit() {
 
 // The test about cuda graph is based on Nvidia's CUPTI sample code
 // under extras/CUPTI/samples/cuda_graphs_trace/ dir of CUDA distribution.
-__global__ void VecAdd(const int *a, const int *b, int *c, int n) {
+__global__ void VecAdd(const int* a, const int* b, int* c, int n) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
   if (i < n) c[i] = a[i] + b[i];
 }
 
-__global__ void VecSub(const int *a, const int *b, int *c, int n) {
+__global__ void VecSub(const int* a, const int* b, int* c, int n) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
   if (i < n) c[i] = a[i] - b[i];
+}
+
+// Adds a graph node through the polymorphic cudaGraphAddNode API instead of
+// the type-specific cudaGraphAdd*Node entry points. CUDA 13 folded the
+// dependencyData argument of cudaGraphAddNode_v2 into cudaGraphAddNode.
+static cudaError_t AddGraphNode(cudaGraphNode_t* node, cudaGraph_t graph,
+                                const cudaGraphNode_t* dependencies,
+                                size_t num_dependencies,
+                                cudaGraphNodeParams* node_params) {
+#if CUDART_VERSION >= 13000
+  return cudaGraphAddNode(node, graph, dependencies,
+                          /*dependencyData=*/nullptr, num_dependencies,
+                          node_params);
+#else
+  return cudaGraphAddNode_v2(node, graph, dependencies,
+                             /*dependencyData=*/nullptr, num_dependencies,
+                             node_params);
+#endif
 }
 
 void CudaGraphCreateAndExecute() {
@@ -151,8 +169,11 @@ void CudaGraphCreateAndExecute() {
   int blocks_per_grid = 0;
 
   cudaStream_t stream = nullptr;
-  cudaKernelNodeParams kernel_params;
-  cudaMemcpy3DParms memcpy_params = {nullptr};
+  cudaGraphNodeParams kernel_params{};
+  kernel_params.type = cudaGraphNodeTypeKernel;
+  cudaGraphNodeParams memcpy_node_params{};
+  memcpy_node_params.type = cudaGraphNodeTypeMemcpy;
+  cudaMemcpy3DParms& memcpy_params = memcpy_node_params.memcpy.copyParams;
   cudaGraph_t graph;
   cudaGraph_t cloned_graph;
   cudaGraphExec_t graph_exec;
@@ -165,9 +186,9 @@ void CudaGraphCreateAndExecute() {
 
   // Allocates vectors in device memory.
   int *d_a, *d_b, *d_c;
-  cudaMalloc((void **)&d_a, kNumBytes);
-  cudaMalloc((void **)&d_b, kNumBytes);
-  cudaMalloc((void **)&d_c, kNumBytes);
+  cudaMalloc((void**)&d_a, kNumBytes);
+  cudaMalloc((void**)&d_b, kNumBytes);
+  cudaMalloc((void**)&d_c, kNumBytes);
 
   cudaGraphCreate(&graph, 0);
 
@@ -181,7 +202,7 @@ void CudaGraphCreateAndExecute() {
   {
     ScopedAnnotation memcpy_1_annotation(
         "Thunk:#name=my_module/prep,hlo_op=memcpy.1#");
-    cudaGraphAddMemcpyNode(&nodes[0], graph, nullptr, 0, &memcpy_params);
+    AddGraphNode(&nodes[0], graph, nullptr, 0, &memcpy_node_params);
   }
 
   memcpy_params.srcPtr.ptr = vec_b.data();
@@ -189,30 +210,30 @@ void CudaGraphCreateAndExecute() {
   {
     ScopedAnnotation memcpy_2_annotation(
         "Thunk:#name=my_module/prep,hlo_op=memcpy.2#");
-    cudaGraphAddMemcpyNode(&nodes[1], graph, nullptr, 0, &memcpy_params);
+    AddGraphNode(&nodes[1], graph, nullptr, 0, &memcpy_node_params);
   }
 
   // Init kernel params.
   int num = kNumElements;
-  void *kernelArgs[] = {(void *)&d_a, (void *)&d_b, (void *)&d_c, (void *)&num};
+  void* kernelArgs[] = {(void*)&d_a, (void*)&d_b, (void*)&d_c, (void*)&num};
   blocks_per_grid = (kNumElements + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  kernel_params.func = (void *)VecAdd;
-  kernel_params.gridDim = dim3(blocks_per_grid, 1, 1);
-  kernel_params.blockDim = dim3(kThreadsPerBlock, 1, 1);
-  kernel_params.sharedMemBytes = 0;
-  kernel_params.kernelParams = (void **)kernelArgs;
-  kernel_params.extra = nullptr;
+  kernel_params.kernel.func = (void*)VecAdd;
+  kernel_params.kernel.gridDim = dim3(blocks_per_grid, 1, 1);
+  kernel_params.kernel.blockDim = dim3(kThreadsPerBlock, 1, 1);
+  kernel_params.kernel.sharedMemBytes = 0;
+  kernel_params.kernel.kernelParams = (void**)kernelArgs;
+  kernel_params.kernel.extra = nullptr;
   {
     ScopedAnnotation add_1_annotation(
         "Thunk:#name=my_module/body,hlo_op=add.1#");
-    cudaGraphAddKernelNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
+    AddGraphNode(&nodes[2], graph, &nodes[0], 2, &kernel_params);
   }
 
-  kernel_params.func = (void *)VecSub;
+  kernel_params.kernel.func = (void*)VecSub;
   {
     ScopedAnnotation sub_1_annotation(
         "Thunk:#name=my_module/body,hlo_op=sub.1#");
-    cudaGraphAddKernelNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
+    AddGraphNode(&nodes[3], graph, &nodes[2], 1, &kernel_params);
   }
   memcpy_params.kind = cudaMemcpyDeviceToHost;
   memcpy_params.srcPtr.ptr = d_c;
@@ -223,7 +244,7 @@ void CudaGraphCreateAndExecute() {
   {
     ScopedAnnotation memcpy_3_annotation(
         "Thunk:#name=my_module/post,hlo_op=memcpy.3#");
-    cudaGraphAddMemcpyNode(&nodes[4], graph, &nodes[3], 1, &memcpy_params);
+    AddGraphNode(&nodes[4], graph, &nodes[3], 1, &memcpy_node_params);
   }
   cudaGraphClone(&cloned_graph, graph);
 

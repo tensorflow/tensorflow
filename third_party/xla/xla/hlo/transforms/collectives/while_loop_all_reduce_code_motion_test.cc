@@ -2895,6 +2895,93 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceAccumulate) {
   VLOG(1) << transformed_while->while_body()->ToString();
 }
 
+class ScatterSelectReplicationTest
+    : public WhileLoopAllReduceCodeMotionTest,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {};
+
+TEST_P(ScatterSelectReplicationTest, ChecksCarryPredicateReplication) {
+  const auto [cross_partition, replicated_predicate, swap_select_operands] =
+      GetParam();
+  constexpr absl::string_view kHloModule = R"(
+    HloModule scatter_select_replication
+
+    sum {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT result = f32[] add(x, y)
+    }
+
+    condition {
+      state = (s32[], f32[4]) parameter(0)
+      iteration = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(2)
+      ROOT result = pred[] compare(iteration, limit), direction=LT
+    }
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      iteration = s32[] get-tuple-element(state), index=0
+      carry = f32[4] get-tuple-element(state), index=1
+      id = u32[] $0()
+      zero_id = u32[] constant(0)
+      $1
+      predicate = pred[4] broadcast(predicate_scalar), dimensions={}
+      zero_scalar = f32[] constant(0)
+      zero = f32[4] broadcast(zero_scalar), dimensions={}
+      base = f32[4] select(predicate, $2, $3)
+      indices = s32[1] constant({0})
+      updates = f32[1] constant({1})
+      scatter = f32[4] scatter(base, indices, updates),
+          update_window_dims={}, inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=sum
+      reduced = f32[4] all-reduce(scatter), $4
+          replica_groups={{0,1,2,3}}, to_apply=sum
+      one = s32[] constant(1)
+      next_iteration = s32[] add(iteration, one)
+      ROOT result = (s32[], f32[4]) tuple(next_iteration, reduced)
+    }
+
+    ENTRY main {
+      iteration = s32[] constant(0)
+      zero_scalar = f32[] constant(0)
+      carry = f32[4] broadcast(zero_scalar), dimensions={}
+      initial = (s32[], f32[4]) tuple(iteration, carry)
+      ROOT loop = (s32[], f32[4]) while(initial), condition=condition, body=body
+    }
+  )";
+  std::string hlo = absl::Substitute(
+      kHloModule, cross_partition ? "partition-id" : "replica-id",
+      replicated_predicate
+          ? (swap_select_operands ? "predicate_scalar = pred[] constant(true)"
+                                  : "predicate_scalar = pred[] constant(false)")
+          : "predicate_scalar = pred[] compare(id, zero_id), direction=EQ",
+      swap_select_operands ? "zero" : "carry",
+      swap_select_operands ? "carry" : "zero",
+      cross_partition ? "channel_id=1, use_global_device_ids=true," : "");
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(
+                           hlo, /*replica_count=*/cross_partition ? 1 : 4,
+                           /*num_partitions=*/cross_partition ? 4 : 1));
+  module->mutable_config().set_use_spmd_partitioning(cross_partition);
+  // A device-dependent select cannot be retained when the all-reduce moves
+  // outside the loop: it would discard earlier local contributions. The
+  // replicated cases reset all devices together and remain eligible.
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_EQ(changed, replicated_predicate);
+  ASSERT_OK(HloVerifier(false, true).Run(module.get()).status());
+  HloInstruction* loop =
+      find_op<HloOpcode::kWhile>(module->entry_computation());
+  EXPECT_EQ(absl::c_count_if(loop->while_body()->instructions(),
+                             HloPredicateIsOp<HloOpcode::kAllReduce>),
+            replicated_predicate ? 0 : 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(All, ScatterSelectReplicationTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Bool()));
+
 TEST_F(WhileLoopAllReduceCodeMotionTest, ScatterAllReduceWithSelectAndConvert) {
   constexpr absl::string_view kHloModule = R"(
     HloModule scatter_select_all_reduce

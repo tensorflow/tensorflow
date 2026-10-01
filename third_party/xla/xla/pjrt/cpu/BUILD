@@ -248,7 +248,6 @@ cc_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_xfeed",
-        "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",

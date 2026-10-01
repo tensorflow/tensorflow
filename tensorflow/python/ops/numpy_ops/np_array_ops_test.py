@@ -1022,9 +1022,20 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[2, -3], [-6, 7]], axis=1, keepdims=True)
     run_test([[2, -3], [-6, 7]], axis=(0, 1))
     run_test([[2, -3], [-6, 7]], axis=(1, 0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      math_fun(np_array_ops.array([[2, -3], [-6, 7]]), axis=(0, 2))
 
   def testSum(self):
     self._testReduce(np_array_ops.sum, np.sum, 'sum')
+    # Scalar input: axes -1 and 0 are in bounds, 1 and -2 are not.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.sum(5, axis=-2)
 
   def testAmax(self):
     self._testReduce(np_array_ops.amax, np.amax, 'amax')
@@ -1156,6 +1167,17 @@ class ArrayMethodsTest(test.TestCase):
 
     run_test([1, 2, 3], 0)
     run_test([1, 2, 3], 1)
+    # Valid negative and boundary axes still work.
+    run_test([1, 2, 3], -1)
+    run_test([1, 2, 3], -2)
+    a = np.ones((2, 3))
+    # Assert exact boundary tests
+    run_test(a, -3)
+    run_test(a, 2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, -4)
 
   def testSqueeze(self):
 
@@ -1202,6 +1224,33 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [1, 2, 0])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
+    a = np.arange(6).reshape(2, 3)
+    # Valid negative and mixed axes still work.
+    self.match(np_array_ops.transpose(a, [0, -1]), np.transpose(a, [0, -1]))
+    self.match(np_array_ops.transpose(a, [-2, -1]), np.transpose(a, [-2, -1]))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a, [0, 1, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, 2])
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.transpose(a, [0, -3])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [1, 1])
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a, [0, -2])
+    # Test scalar rank.
+    a_scalar = np.array(5)
+    self.match(np_array_ops.transpose(a_scalar, []), np.transpose(a_scalar, []))
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_scalar, [0])
+    # Test vector rank.
+    a_vector = np.array([1, 2, 3])
+    with self.assertRaisesRegex(ValueError, "axes don't match array"):
+      np_array_ops.transpose(a_vector, [0, 1])
+    # Duplicate detection must not be bypassed by mixed int/Tensor axes.
+    a3 = np.arange(24).reshape(2, 3, 4)
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.transpose(a3, [0, 0, constant_op.constant(2)])
 
   def match_shape(self, actual, expected, msg=None):
     if msg:
@@ -1265,6 +1314,12 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(
         np.take(a, indices, axis=axis),
         np_array_ops.take(a, indices, axis=axis))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take(a, indices, axis=-4)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.take([1, 2, 3], [0], axis=1)
 
   def testTakeAlongAxis(self):
     rng = np.random.default_rng()

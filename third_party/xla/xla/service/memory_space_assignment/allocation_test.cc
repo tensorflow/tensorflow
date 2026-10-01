@@ -296,5 +296,98 @@ TEST_F(AllocationTest, MirroredAllocationDelegatesChunkToOriginalAllocation) {
   EXPECT_EQ(alloc.chunk().offset, 128);
 }
 
+TEST_F(AllocationTest, ParentAllocationPropagatesOriginalValue) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+while_body {
+  param = (f32[2,3]{1,0}, f32[2,3]{1,0}) parameter(0), origin={({"bp0"}, {"bp1"})}
+  gte0 = f32[2,3]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[2,3]{1,0} get-tuple-element(param), index=1
+  add = f32[2,3]{1,0} add(gte0, gte1)
+  ROOT root = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(add, gte1), origin={({"br0"}, {"br1"})}
+}
+
+while_condition {
+  param = (f32[2,3]{1,0}, f32[2,3]{1,0}) parameter(0), origin={({"cp0"}, {"cp1"})}
+  ROOT cond = pred[] constant(true)
+}
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0), origin={{"p0"}}
+  p1 = f32[2,3]{1,0} parameter(1), origin={{"p1"}}
+  p2 = f32[2,3]{1,0} parameter(2), origin={{"p2"}}
+  init = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(p0, p1), origin={({"p0"}, {"p1"})}
+  while = (f32[2,3]{1,0}, f32[2,3]{1,0}) while(init), condition=while_condition, body=while_body, origin={({"w0"}, {"w1"}),["while#$"]}
+  entry_gte0 = f32[2,3]{1,0} get-tuple-element(while), index=0
+  ROOT out = (f32[2,3]{1,0}) tuple(entry_gte0)
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  std::unique_ptr<HloLiveRange> hlo_live_range;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
+  RunAnalysis(module.get(),
+              {"p0", "p1", "p2", "init", "while", "entry_gte0", "out"},
+              hlo_live_range, alias_analysis);
+
+  HloInstruction* p2 = FindInstruction(module.get(), "p2");
+  HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  HloInstruction* entry_gte0 = FindInstruction(module.get(), "entry_gte0");
+
+  HeapSimulator::Chunk chunk = HeapSimulator::Chunk::FromOffsetSize(0, 24);
+  PinnedAllocation p2_pinned(HloPosition{p2, {}}, MemorySpace::kDefault, chunk,
+                             /*start_time=*/0, /*end_time=*/10);
+
+  ParentAllocation parent_alloc(
+      p2_pinned, while_instr,
+      HloPosition{while_instr->while_body()->parameter_instruction(0), {}},
+      /*time=*/5);
+
+  BitcastSplitFn split_fn = nullptr;
+  ASSERT_OK(parent_alloc.Process(split_fn, *hlo_live_range, *alias_analysis));
+  ASSERT_OK(parent_alloc.PostProcess());
+
+  ASSERT_NE(while_instr->while_init()->original_value(), nullptr);
+  EXPECT_EQ(while_instr->while_init()->original_value()->ToString(),
+            R"(({"p0"}, {"p1"}, {"p2"}))");
+
+  ASSERT_NE(while_instr->original_value(), nullptr);
+  EXPECT_EQ(while_instr->original_value()->ToString(),
+            R"(({"w0"}, {"w1"}, {"p2"}),["while#$"])");
+
+  ASSERT_NE(
+      while_instr->while_body()->parameter_instruction(0)->original_value(),
+      nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"bp0"}, {"bp1"}, {"p2"}))");
+
+  ASSERT_NE(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_condition()
+                ->parameter_instruction(0)
+                ->original_value()
+                ->ToString(),
+            R"(({"cp0"}, {"cp1"}, {"p2"}))");
+
+  ASSERT_NE(while_instr->while_body()->root_instruction()->original_value(),
+            nullptr);
+  EXPECT_EQ(while_instr->while_body()
+                ->root_instruction()
+                ->original_value()
+                ->ToString(),
+            R"(({"br0"}, {"br1"}, {"p2"}))");
+
+  const HloInstruction* tuple_with_old_shape = entry_gte0->operand(0);
+  ASSERT_NE(tuple_with_old_shape->original_value(), nullptr);
+  EXPECT_EQ(tuple_with_old_shape->original_value()->ToString(),
+            R"(({"w0"}, {"w1"}),["while#$"])");
+}
+
 }  // namespace
 }  // namespace xla::memory_space_assignment

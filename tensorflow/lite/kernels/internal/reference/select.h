@@ -109,18 +109,22 @@ void RunSelectOp(const D* cond, const T* x, const T* y, T* output,
     } else {
       TFLITE_DCHECK_EQ(cond_stride_0, 1);
       if (x_stride_0 == 0 && y_stride_0 == 0) {
+        const T x0 = *x;
+        const T y0 = *y;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : *y;
+          output[i] = cond[i] ? x0 : y0;
         }
       } else if (x_stride_0 == 0) {
         TFLITE_DCHECK_EQ(y_stride_0, 1);
+        const T x0 = *x;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? *x : y[i];
+          output[i] = cond[i] ? x0 : y[i];
         }
       } else if (y_stride_0 == 0) {
         TFLITE_DCHECK_EQ(x_stride_0, 1);
+        const T y0 = *y;
         for (size_t i = 0; i < output_shape_0; ++i) {
-          output[i] = cond[i] ? x[i] : *y;
+          output[i] = cond[i] ? x[i] : y0;
         }
       } else {
         TFLITE_DCHECK_EQ(x_stride_0, 1);

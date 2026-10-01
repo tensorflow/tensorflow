@@ -213,6 +213,18 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestInvalidIOUThreshold) {
       << s;
 }
 
+TEST_F(NonMaxSuppressionV2GPUOpTest, TestInvalidMaxOutputSize) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
+  AddInputFromArray<int>(TensorShape({}), {-1});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+
+  absl::Status s = RunOpKernel();
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be non-negative")) << s;
+}
+
 TEST_F(NonMaxSuppressionV2GPUOpTest, TestEmptyInput) {
   MakeOp();
   AddInputFromArray<float>(TensorShape({0, 4}), {});
@@ -446,6 +458,19 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestInvalidIOUThreshold) {
       << s;
 }
 
+TEST_F(NonMaxSuppressionV3GPUOpTest, TestInvalidMaxOutputSize) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
+  AddInputFromArray<int>(TensorShape({}), {-1});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+
+  absl::Status s = RunOpKernel();
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be non-negative")) << s;
+}
+
 TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
   MakeOp();
   AddInputFromArray<float>(TensorShape({0, 4}), {});
@@ -537,6 +562,19 @@ TEST_F(NonMaxSuppressionV4GPUOpTest, DifferentInputAndThresholdTypesWorks) {
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
   Tensor expected_num_valid = test::AsScalar<int>(2);
   test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+}
+
+TEST_F(NonMaxSuppressionV4GPUOpTest, TestInvalidMaxOutputSize) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
+  AddInputFromArray<int>(TensorShape({}), {-1});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+
+  absl::Status s = RunOpKernel();
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(absl::StrContains(s.message(), "must be non-negative")) << s;
 }
 
 #endif

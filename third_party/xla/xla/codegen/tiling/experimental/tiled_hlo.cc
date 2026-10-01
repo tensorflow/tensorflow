@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/util.h"
 

@@ -3,9 +3,7 @@
 ## Prerequisites
 
 These benchmarks are intended to run on a TPU v6e or 7x Cloud VM running Python
->= 3.12 (required by JAX >= 0.11). Please refer to
-[these instructions](https://docs.cloud.google.com/tpu/docs/create-tpu-vm) for
-steps on how to create one.
+\>= 3.12 (required by JAX \>= 0.11).
 
 ## Quickstart
 
@@ -25,6 +23,9 @@ python3 xla/benchmarks/run_benchmarks.py --benchmarks=dense_matmul --csv_path=<p
 
 # Run DMA benchmark suite and write results to a CSV file
 python3 xla/benchmarks/run_benchmarks.py --benchmarks=dma --csv_path=<path_to_dir>
+
+# Run collectives benchmark suite and write results to a CSV file
+python3 xla/benchmarks/run_benchmarks.py --benchmarks=collectives --csv_path=<path_to_dir>
 
 # Run full benchmark suite and write results to multiple CSV files
 python3 xla/benchmarks/run_benchmarks.py --csv_path=<path_to_dir>

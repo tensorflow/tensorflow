@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -173,6 +174,71 @@ TEST(CompiledMemoryStatsTest, Serialization) {
   CompiledMemoryStats deserialized = CompiledMemoryStats::FromProto(serialized);
   EXPECT_EQ(serialized.SerializeAsString(),
             deserialized.ToProto().SerializeAsString());
+}
+
+TEST(IsEarlyExitCompilationTest, DefaultsToFalse) {
+  CompileOptions options;
+  EXPECT_FALSE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest, DebugOptionsExitWithLayouts) {
+  CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_early_exit_with_layouts(true);
+  EXPECT_TRUE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest,
+     DebugOptionsExperimentalExitAfterConfigAssignment) {
+  CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_experimental_early_exit(
+          DebugOptions::EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT);
+  EXPECT_TRUE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest, EnvOptionOverridesExitWithLayouts) {
+  CompileOptions options;
+  options.env_option_overrides = {{"xla_early_exit_with_layouts", true}};
+  EXPECT_TRUE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest,
+     EnvOptionOverridesExperimentalExitAfterConfigAssignment) {
+  CompileOptions options;
+  options.env_option_overrides = {
+      {"xla_gpu_experimental_early_exit",
+       std::string("EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT")}};
+  EXPECT_TRUE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest,
+     EnvOptionOverridesDebugOptionsExitWithLayouts) {
+  CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_early_exit_with_layouts(true);
+  options.env_option_overrides = {{"xla_early_exit_with_layouts", false}};
+  EXPECT_FALSE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest,
+     EnvOptionOverridesDebugOptionsExperimentalExit) {
+  CompileOptions options;
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_experimental_early_exit(
+          DebugOptions::EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT);
+  options.env_option_overrides = {{"xla_gpu_experimental_early_exit",
+                                   std::string("EARLY_EXIT_POINT_UNSET")}};
+  EXPECT_FALSE(IsEarlyExitCompilation(options));
+}
+
+TEST(IsEarlyExitCompilationTest, CombinedEnvOptionOverrides) {
+  CompileOptions options;
+  options.env_option_overrides = {
+      {"xla_gpu_experimental_early_exit",
+       std::string("EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT")},
+      {"xla_early_exit_with_layouts", false}};
+  EXPECT_TRUE(IsEarlyExitCompilation(options));
 }
 
 }  // namespace

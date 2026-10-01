@@ -1227,5 +1227,216 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(HloDceTest, DceAlreadyRemovedInstructionInReversePostOrder) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_already_removed_guard
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  dead_pure_producer = f32[8] negate(p0)
+  dead_consumer = f32[8] custom-call(dead_pure_producer), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  // Removing `dead_consumer` cascades removal to its pure operand
+  // `dead_pure_producer` (detaching it from parent). Subsequent reverse
+  // postorder iteration must skip `dead_pure_producer` rather than crashing.
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_consumer"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_pure_producer"), nullptr);
+}
+
+TEST_F(HloDceTest, PreserveInstructionWithFrontendAttributeFalse) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_preserve_self_attr_false
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  live_ag = f32[16] all-gather(p0), dimensions={0}, replica_groups={{0,1}}, channel_id=1, frontend_attributes={xla_allow_dce_side_effecting_op="false"}
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_NE(FindInstruction(module.get(), "live_ag"), nullptr);
+}
+
+TEST_F(HloDceTest, PreserveAsyncPairWhenStartHasFrontendAttributeFalse) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_preserve_async_pair_start_attr_false
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT ag = f32[16] all-gather(p0), dimensions={0}, replica_groups={{0,1}}, channel_id=1
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  live_start = ((f32[8]), f32[16]) async-start(p0), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="false"}
+  live_done = f32[16] async-done(live_start), calls=async_comp
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  // `live_done` must check its `async-start` operand's attribute so `live_done`
+  // is not removed and `live_start` is not orphaned.
+  HloDCE dce(/*remove_cross_partition_collective_ops=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_NE(FindInstruction(module.get(), "live_done"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "live_start"), nullptr);
+}
+
+TEST_F(HloDceTest, DceAsyncWrappedCollective) {
+  constexpr absl::string_view kUnconstrainedHlo = R"hlo(
+HloModule test_async_wrapped_collective_unconstrained
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT ag = f32[16] all-gather(p0), dimensions={0}, replica_groups={{0,1}}, channel_id=1
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  dead_start = ((f32[8]), f32[16]) async-start(p0), calls=async_comp
+  dead_done = f32[16] async-done(dead_start), calls=async_comp
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  // Preserved when remove_cross_partition_collective_ops=false.
+  {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kUnconstrainedHlo));
+    HloDCE dce(/*remove_cross_partition_collective_ops=*/false);
+    ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+    EXPECT_FALSE(changed);
+    EXPECT_NE(FindInstruction(module.get(), "dead_done"), nullptr);
+    EXPECT_NE(FindInstruction(module.get(), "dead_start"), nullptr);
+  }
+
+  // Preserved when constrain_layout=true on the wrapped collective.
+  constexpr absl::string_view kConstrainedHlo = R"hlo(
+HloModule test_async_wrapped_collective_constrained
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT ag = f32[16] all-gather(p0), dimensions={0}, replica_groups={{0,1}}, channel_id=1, constrain_layout=true
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  dead_start = ((f32[8]), f32[16]) async-start(p0), calls=async_comp
+  dead_done = f32[16] async-done(dead_start), calls=async_comp
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kConstrainedHlo));
+    HloDCE dce(/*remove_cross_partition_collective_ops=*/true);
+    ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+    EXPECT_FALSE(changed);
+    EXPECT_NE(FindInstruction(module.get(), "dead_done"), nullptr);
+    EXPECT_NE(FindInstruction(module.get(), "dead_start"), nullptr);
+  }
+
+  // Eliminated when unconstrained and
+  // remove_cross_partition_collective_ops=true.
+  {
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kUnconstrainedHlo));
+    HloDCE dce(/*remove_cross_partition_collective_ops=*/true);
+    ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(FindInstruction(module.get(), "dead_done"), nullptr);
+    EXPECT_EQ(FindInstruction(module.get(), "dead_start"), nullptr);
+  }
+}
+
+TEST_F(HloDceTest, DceSelfAttributeSideEffectingCustomCallAndAsync) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_self_attr_true_custom_call_and_async
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT inner_cc = f32[8] custom-call(p0), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  dead_cc = f32[8] custom-call(p0), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  dead_start = ((f32[8]), f32[8]) async-start(p0), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  dead_done = f32[8] async-done(dead_start), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_cc"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_done"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_start"), nullptr);
+}
+
+TEST_F(HloDceTest, DcePairedAsyncDoneInheritingStartAttributeTrue) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_paired_async_done_inheriting_start_attr_true
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT inner_cc = f32[8] custom-call(p0), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  dead_start = ((f32[8]), f32[8]) async-start(p0), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  dead_done = f32[8] async-done(dead_start), calls=async_comp
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_done"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_start"), nullptr);
+}
+
+TEST_F(HloDceTest, DceSinglePassReversePostOrderSideEffectingChain) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule test_single_pass_reverse_postorder_chain
+
+async_comp {
+  p0 = f32[8] parameter(0)
+  ROOT inner_cc = f32[8] custom-call(p0), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  producer_cc = f32[8] custom-call(p0), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  dead_start = ((f32[8]), f32[8]) async-start(producer_cc), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  dead_done = f32[8] async-done(dead_start), calls=async_comp, frontend_attributes={xla_allow_dce_side_effecting_op="true"}
+  ROOT root = f32[8] copy(p0)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  // Reverse postorder visits consumers before operands (`dead_done` ->
+  // `dead_start` -> `producer_cc`), allowing a single pass to eliminate the
+  // entire chain even though `RemoveInstructionAndUnusedOperands` does not
+  // recurse into side-effecting operands.
+  ASSERT_OK_AND_ASSIGN(bool changed, dce.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_done"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "dead_start"), nullptr);
+  EXPECT_EQ(FindInstruction(module.get(), "producer_cc"), nullptr);
+}
+
 }  // namespace
 }  // namespace xla

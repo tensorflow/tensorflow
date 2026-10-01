@@ -964,5 +964,49 @@ TEST_F(GpuHloCostAnalysisTest, TritonCustomCallEscapedJsonBackendConfig) {
   }
 }
 
+TEST_F(GpuHloCostAnalysisTest,
+       DeterministicElementwiseUseRootsUtilizationOrder) {
+  absl::string_view hlo_string = R"(
+  HloModule m
+
+  f {
+    p0 = f32[16777216] parameter(0)
+    p1 = f32[16777216] parameter(1)
+    root0 = f32[16777216] add(p0, p1)
+    root1 = f32[16777216] multiply(p0, p1)
+    root2 = f32[16777216] subtract(p0, p1)
+    root3 = f32[16777216] divide(p0, p1)
+    root4 = f32[16777216] maximum(p0, p1)
+    slice0 = f32[1] slice(root0), slice={[0:1]}
+    slice1 = f32[1] slice(root1), slice={[0:1]}
+    slice2 = f32[1] slice(root2), slice={[0:1]}
+    slice3 = f32[1] slice(root3), slice={[0:1]}
+    slice4 = f32[16777216] slice(root4), slice={[0:16777216]}
+    ROOT root = (f32[1], f32[1], f32[1], f32[1], f32[16777216]) tuple(slice0, slice1, slice2, slice3, slice4)
+  }
+
+  ENTRY main {
+    p0 = f32[16777216] parameter(0)
+    p1 = f32[16777216] parameter(1)
+    ROOT fusion = (f32[1], f32[1], f32[1], f32[1], f32[16777216]) fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  const HloInstruction* p0 = fusion->fused_parameter(0);
+  const HloInstruction* p1 = fusion->fused_parameter(1);
+
+  // In ascending unique_id() order (root0..root4), summing the four 2^-24
+  // utilizations before 1.0f produces 1.0f + 2^-22 (0x1.000002p+0f).
+  const float expected_utilization = 1.0f + 4.0f * (1.0f / 16777216.0f);
+  EXPECT_EQ(analysis_.operand_utilization(*fusion, 0), expected_utilization);
+  EXPECT_EQ(analysis_.operand_utilization(*fusion, 1), expected_utilization);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(p0, p1),
+            expected_utilization);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(p1, p0),
+            expected_utilization);
+}
+
 }  // namespace gpu
 }  // namespace xla
