@@ -123,14 +123,14 @@ TEST(EigenUnaryTest, FastTanhfIsVectorized32) {
   llvm::raw_string_ostream stream(ir);
   module->print(stream, nullptr);
 
-  bool is_512 = absl::StrContains(ir, "fmul <16 x float>");
-  bool is_256 = absl::StrContains(ir, "fmul <8 x float>");
-  EXPECT_TRUE(is_512 || is_256);
-
   std::string v16f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v16f32");
   std::string v8f32_ir = GetFunctionIr(*module, "xla.unused.tanh.v8f32");
   std::string v8f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v8f64");
   std::string v4f64_ir = GetFunctionIr(*module, "xla.unused.tanh.v4f64");
+
+  bool is_512 = absl::StrContains(v8f64_ir, "fmul <8 x double>");
+  bool is_256 = absl::StrContains(v4f64_ir, "fmul <4 x double>");
+  EXPECT_TRUE(is_512 || is_256);
 
   if (is_512) {
     EXPECT_THAT(v16f32_ir, ContainsRegex("fmul <16 x float>"));
@@ -247,14 +247,14 @@ TEST(EigenUnaryTest, AtanIsVectorized32) {
   llvm::raw_string_ostream stream(ir);
   module->print(stream, nullptr);
 
-  bool is_512 = absl::StrContains(ir, "fmul <16 x float>");
-  bool is_256 = absl::StrContains(ir, "fmul <8 x float>");
-  EXPECT_TRUE(is_512 || is_256);
-
   std::string v16f32_ir = GetFunctionIr(*module, "xla.atan.v16f32");
   std::string v8f32_ir = GetFunctionIr(*module, "xla.atan.v8f32");
   std::string v8f64_ir = GetFunctionIr(*module, "xla.atan.v8f64");
   std::string v4f64_ir = GetFunctionIr(*module, "xla.atan.v4f64");
+
+  bool is_512 = absl::StrContains(v16f32_ir, "fmul <16 x float>");
+  bool is_256 = absl::StrContains(v16f32_ir, "fmul <8 x float>");
+  EXPECT_TRUE(is_512 || is_256);
 
   if (is_512) {
     EXPECT_THAT(v16f32_ir, ContainsRegex("fmul <16 x float>"));
