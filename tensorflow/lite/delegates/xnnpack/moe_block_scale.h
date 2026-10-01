@@ -214,6 +214,16 @@ inline void CopyAndDequantizeExpertWeightRowsInt4(
       input_channels, dst);
 }
 
+// The dot products below ask clang to vectorize float reductions, which it only
+// does when the loop hint allows reordering them. Instrumented builds (e.g.
+// --config=ubsan) can block that transformation, and clang reports it as
+// -Wpass-failed, which -Werror turns into a build break. The loops stay correct
+// when left scalar, so the warning is silenced for this section only.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpass-failed"
+#endif
+
 // Computes the dot product of a single int8 weight row with `input`
 // (`[input_channels]`) without materializing a dequantized FP32 row buffer.
 inline float DotDequantizeExpertWeightRowInt8(const int8_t* src_row,
@@ -323,6 +333,10 @@ inline float DotDequantizeExpertWeightRowInt4(const int8_t* src_row_packed,
   }
   return total;
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 }  // namespace xnnpack
 }  // namespace tflite
