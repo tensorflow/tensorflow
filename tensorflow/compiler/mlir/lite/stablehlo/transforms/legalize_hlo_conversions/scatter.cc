@@ -173,7 +173,7 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
   int64_t num_updates = indices_type.getDimSize(0);
   // For TF::TensorScatterUpdateOp, `indices` must have at least 2 axes:
   // `(num_updates, index_depth)`. Reshape indices and updates if necessary.
-  if (std::is_same<TfOp, TF::TensorScatterUpdateOp>::value &&
+  if (std::is_same_v<TfOp, TF::TensorScatterUpdateOp> &&
       indices_type.getRank() == 1 && updates_type.getRank() == 1 &&
       index_depth == 1 && num_updates == 1) {
     ImplicitLocOpBuilder builder(loc, rewriter);
