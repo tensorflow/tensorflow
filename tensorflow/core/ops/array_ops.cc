@@ -2682,12 +2682,30 @@ REGISTER_OP("ExtractImagePatches")
 
       int64_t ksize_rows = ksizes[1];
       int64_t ksize_cols = ksizes[2];
+      if (ksize_rows <= 0 || ksize_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial ksizes to be "
+                         "positive, but got: [",
+                         ksize_rows, ", ", ksize_cols, "]"));
+      }
 
       int64_t stride_rows = strides[1];
       int64_t stride_cols = strides[2];
+      if (stride_rows <= 0 || stride_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial strides to be "
+                         "positive, but got: [",
+                         stride_rows, ", ", stride_cols, "]"));
+      }
 
       int64_t rate_rows = rates[1];
       int64_t rate_cols = rates[2];
+      if (rate_rows <= 0 || rate_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial rates to be "
+                         "positive, but got: [",
+                         rate_rows, ", ", rate_cols, "]"));
+      }
 
       int64_t ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
       int64_t ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
@@ -2780,10 +2798,24 @@ REGISTER_OP("ExtractVolumePatches")
       int64_t ksize_planes = ksizes[1];
       int64_t ksize_rows = ksizes[2];
       int64_t ksize_cols = ksizes[3];
+      if (ksize_planes <= 0 || ksize_rows <= 0 || ksize_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractVolumePatches requires spatial ksizes to be "
+                         "positive, but got: [",
+                         ksize_planes, ", ", ksize_rows, ", ", ksize_cols,
+                         "]"));
+      }
 
       int64_t stride_planes = strides[1];
       int64_t stride_rows = strides[2];
       int64_t stride_cols = strides[3];
+      if (stride_planes <= 0 || stride_rows <= 0 || stride_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractVolumePatches requires spatial strides to be "
+                         "positive, but got: [",
+                         stride_planes, ", ", stride_rows, ", ", stride_cols,
+                         "]"));
+      }
 
       /*
       int64_t rate_planes = rates[1];
