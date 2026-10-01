@@ -2253,7 +2253,6 @@ xla_test(
         "//xla:error_spec",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
-        "//xla/stream_executor:semantic_version",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "@com_google_googletest//:gtest_main",
     ],
