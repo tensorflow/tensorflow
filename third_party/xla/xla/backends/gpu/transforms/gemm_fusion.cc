@@ -44,13 +44,16 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
+#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -739,9 +742,12 @@ HloInstruction* CreateBitcastWithShape(Shape shape,
 // create an optimal fusion.
 class FusionSearchSpace {
  public:
+  // Dot instruction is kept, but not owned, so must outlive the search space.
   FusionSearchSpace(HloInstruction* dot,
-                    const se::GpuComputeCapability& gpu_version)
-      : original_dot_(dot) {
+                    const se::DeviceDescription& device_description)
+      : original_dot_(dot), device_description_(device_description) {
+    const se::GpuComputeCapability& gpu_version =
+        device_description.gpu_compute_capability();
     module_ = std::make_unique<HloModule>(
         absl::StrCat(dot->name(), "_fusion_search_space"),
         dot->GetModule()->config());
@@ -761,6 +767,9 @@ class FusionSearchSpace {
 
   HloInstruction* original_dot() const { return original_dot_; }
   HloComputation* entry() const { return entry_; }
+  const se::DeviceDescription& device_description() const {
+    return device_description_;
+  }
 
   const absl::flat_hash_map<HloInstruction*, HloInstruction*>&
   original_to_fused() const {
@@ -810,6 +819,8 @@ class FusionSearchSpace {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> fused_to_original_;
   // Pointer to the dot instruction in the original module.
   HloInstruction* original_dot_ = nullptr;
+  // Description of the target GPU.
+  const se::DeviceDescription& device_description_;
 };
 
 HloInstruction* FusionSearchSpace::FuseOperandsRecursively(
@@ -1261,7 +1272,8 @@ FusionDecision CanUnpackS4ParametersInFusion(
 
 // Checks if the fusion can be tiled by SymbolicTileAnalysis.
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
-                       const HloFusionAdaptor& fusion) {
+                       const HloFusionAdaptor& fusion,
+                       const se::DeviceDescription& device_description) {
   if (fusion.GetRoots()[0]
           .instruction()
           .GetModule()
@@ -1281,7 +1293,28 @@ FusionDecision CanTile(mlir::MLIRContext& mlir_context,
           absl::StrCat("Fusion is not tileable with experimental tiling: ",
                        tiled_computation.status().message()));
     }
-    return FusionDecision::Allow();
+
+    // The symbolic tiling may be satisfiable in theory, but we don't have any
+    // tiles that we will actually try. For example, the constraints may require
+    // a tile size to be divisible by 3, but all Triton tiles are powers of 2.
+    std::optional<HloInstructionAdaptor> dot =
+        HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
+          return node.opcode() == HloOpcode::kDot;
+        });
+    if (!dot.has_value()) {
+      return FusionDecision::Forbid("No dot instruction found in the fusion.");
+    }
+    for (const TritonGemmConfig& config :
+         GetDefaultTritonConfigs(device_description.gpu_compute_capability())) {
+      absl::StatusOr<xtile::BlockLevelParameters> params =
+          FindBlockLevelParameters(fusion, &dot->instruction(), config,
+                                   &mlir_context, device_description);
+      if (params.ok()) {
+        return FusionDecision::Allow();
+      }
+    }
+    return FusionDecision::Forbid(
+        "None of the default Triton configs can be used to tile the fusion.");
   }
   auto fusion_analysis =
       SymbolicTileAnalysis::AnalyzeFusion(fusion, &mlir_context);
@@ -1293,7 +1326,8 @@ FusionDecision CanTile(mlir::MLIRContext& mlir_context,
 
 // Returns true if fusing `producer` into `consumer` is possible and supported.
 FusionDecision CanFuse(mlir::MLIRContext& mlir_context,
-                       HloInstruction* producer, HloInstruction* consumer) {
+                       HloInstruction* producer, HloInstruction* consumer,
+                       const se::DeviceDescription& device_description) {
   // If the candidate is not a user of the fusion, we have already fused the
   // instruction.
   if (!consumer->IsUserOf(producer)) {
@@ -1304,7 +1338,8 @@ FusionDecision CanFuse(mlir::MLIRContext& mlir_context,
     return FusionDecision::Forbid("Cannot fuse parameter.");
   }
   return CanTile(mlir_context,
-                 *HloFusionAdaptor::ForProducerConsumer(producer, consumer));
+                 *HloFusionAdaptor::ForProducerConsumer(producer, consumer),
+                 device_description);
 }
 
 bool IsBinaryElementwiseOfBroadcastParamOrConst(const HloInstruction& hlo) {
@@ -1320,7 +1355,6 @@ bool IsBinaryElementwiseOfBroadcastParamOrConst(const HloInstruction& hlo) {
   }
   return false;
 }
-
 
 // Holds shape tracking information for an instruction during backward BFS.
 struct TrackerInfo {
@@ -1655,7 +1689,8 @@ absl::Status FuseOperandsBFS(
         *FindOrDefault(search_space.fused_to_original(), candidate, candidate);
     if (FusionDecision decision =
             ShouldFuseOperand(candidate, original_candidate, fusion, tracker)
-                .And(CanFuse(mlir_context, candidate, fusion));
+                .And(CanFuse(mlir_context, candidate, fusion,
+                             search_space.device_description()));
         !decision.IsAllowed()) {
       VLOG(5) << "Not fusing operand: " << candidate->ToString()
               << " due to decision: " << decision.Explain();
@@ -1737,13 +1772,15 @@ FusionSearchSpace::GetOrCreateOriginalInstruction(
 // it fuses tileable operands using BFS. Then it fuses tileable users and their
 // operands until it reaches the root of the search space.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
-    FusionSearchSpace& fusion_search_space,
-    const se::GpuComputeCapability gpu_version, absl::string_view name) {
+    FusionSearchSpace& fusion_search_space, absl::string_view name) {
+  const se::DeviceDescription& device_description =
+      fusion_search_space.device_description();
   HloInstruction* original_dot = fusion_search_space.original_dot();
   HloInstruction* dot =
       fusion_search_space.original_to_fused().at(original_dot);
   mlir::MLIRContext mlir_context;
-  if (!CanTile(mlir_context, *HloFusionAdaptor::ForInstruction(dot))) {
+  if (!CanTile(mlir_context, *HloFusionAdaptor::ForInstruction(dot),
+               device_description)) {
     return FusionDecision::Forbid("Cannot tile the dot instruction.");
   }
 
@@ -1804,7 +1841,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
         fusion_search_space.fused_to_original().at(user);
     if (FusionDecision decision =
             ShouldFuseUser(user, *original_user, fusion, epilogue_tracker)
-                .And(CanFuse(mlir_context, fusion, user));
+                .And(CanFuse(mlir_context, fusion, user, device_description));
         !decision.IsAllowed()) {
       VLOG(5) << "Not fusing user: " << decision.Explain();
       break;
@@ -1838,14 +1875,14 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
 }
 
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
-    HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
+    HloDotInstruction& dot, const se::DeviceDescription& device_description,
     absl::string_view name) {
   VLOG(3) << "Creating dot fusion v2 around dot: " << dot.ToString();
-  FusionSearchSpace fusion_search_space(&dot, gpu_version);
+  FusionSearchSpace fusion_search_space(&dot, device_description);
   VLOG(3) << "Found fusion search space: \n"
           << fusion_search_space.entry()->ToString();
 
-  return CreateTileableFusion(fusion_search_space, gpu_version, name);
+  return CreateTileableFusion(fusion_search_space, name);
 }
 
 }  // namespace
@@ -1853,9 +1890,11 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusionV2(
 // Fuses dot and the compatible and profitable to fuse operations around it
 // into a new fusion computation.
 absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
-    HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
+    HloDotInstruction& dot, const se::DeviceDescription& device_description,
     absl::string_view name) {
   VLOG(5) << dot.ToString();
+  const se::GpuComputeCapability& gpu_version =
+      device_description.gpu_compute_capability();
   if (CodegenDecision is_supported =
           IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
@@ -1866,7 +1905,7 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
           ->config()
           .debug_options()
           .xla_gpu_experimental_gemm_fusion_v2()) {
-    return CreateDotFusionV2(dot, gpu_version, name);
+    return CreateDotFusionV2(dot, device_description, name);
   }
 
   HloComputation::Builder builder(name);
@@ -1950,8 +1989,9 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateDotFusion(
 // operations that can target the triton GEMM emitter.
 class GemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmFusionVisitor(const se::GpuComputeCapability& gpu_version)
-      : gpu_version_(gpu_version) {}
+  explicit GemmFusionVisitor(const se::DeviceDescription& device_description)
+      : device_description_(device_description),
+        gpu_version_(device_description.gpu_compute_capability()) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
@@ -1973,7 +2013,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     std::string fusion_name = absl::StrCat("gemm_fusion_", dot->name());
     ABSL_ASSIGN_OR_RETURN(
         auto fusion_or_decision,
-        CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_,
+        CreateDotFusion(*Cast<HloDotInstruction>(dot), device_description_,
                         absl::StrCat(fusion_name, "_computation")));
 
     if (std::holds_alternative<FusionDecision>(fusion_or_decision)) {
@@ -2077,12 +2117,14 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
+  const se::DeviceDescription& device_description_;
   se::GpuComputeCapability gpu_version_;
 };
 
 absl::StatusOr<bool> RunOnComputation(
-    HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
-  GemmFusionVisitor visitor(gpu_version);
+    HloComputation* computation,
+    const se::DeviceDescription& device_description) {
+  GemmFusionVisitor visitor(device_description);
   ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
@@ -2092,13 +2134,14 @@ absl::StatusOr<bool> RunOnComputation(
 absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(compute_capability_));
+  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+      device_description_.gpu_compute_capability()));
 
   bool changed = false;
   for (HloComputation* computation :
        GetFusibleComputations(*module, execution_threads)) {
     ABSL_ASSIGN_OR_RETURN(bool result,
-                     RunOnComputation(computation, compute_capability_));
+                     RunOnComputation(computation, device_description_));
     changed |= result;
   }
   return changed;
