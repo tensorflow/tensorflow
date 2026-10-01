@@ -400,17 +400,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
       std::optional<absl::Span<int64_t const>> byte_strides,
       PjRtMemorySpace* memory_space) override;
 
-  absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>> AllocateLinearizeDest(
-      bool sync, const xla::Shape& device_shape,
-      absl::Span<const int64_t> byte_strides,
-      PjRtRawBufferRef dest_buffer) override;
-
   bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                               const Shape& shape,
                               PjRtMemorySpace* memory_space) const override;
-
-  tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
-      size_t size, PjRtMemorySpace* memory_space) override;
 
  protected:
   friend class PjRtStreamExecutorRawBuffer;

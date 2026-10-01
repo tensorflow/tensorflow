@@ -570,41 +570,6 @@ bool PjRtStreamExecutorClient::ShouldPerformZeroCopyLinearize(
          !raw_client()->ShouldStageHostToDeviceTransfers(data, size);
 }
 
-absl::StatusOr<tsl::AsyncValueRef<PjRtStagingBuffer>>
-PjRtStreamExecutorClient::AllocateLinearizeDest(
-    bool sync, const xla::Shape& device_shape,
-    absl::Span<const int64_t> byte_strides, PjRtRawBufferRef dest_buffer) {
-  if (dest_buffer->GetHostPointer() != nullptr) {
-    return CommonPjRtClient::AllocateLinearizeDest(sync, device_shape,
-                                                   byte_strides, dest_buffer);
-  }
-  PjRtMemorySpace* memory_space = dest_buffer->memory_space();
-  ABSL_ASSIGN_OR_RETURN(size_t size, GetOnDeviceBytesCount(memory_space->kind_id(),
-                                                      device_shape));
-
-  auto* cpp_buf = dest_buffer->down_cast<PjRtStreamExecutorRawBuffer>();
-  LocalDeviceState* local_device = cpp_buf->local_device();
-
-  HostMemoryAllocator::AllocateOptions alloc_opts;
-  alloc_opts.numa_node = local_device->executor()->numa_node();
-  alloc_opts.local_device_id = local_device->local_device_id();
-  HostMemoryAllocator::OwnedPtr staging_buffer =
-      GetHostMemoryAllocator()->Allocate(size, alloc_opts);
-  if (size > 0 && staging_buffer == nullptr) {
-    return ResourceExhausted(
-        "Failed to allocate a %d-byte pinned host staging buffer for a "
-        "host-to-device transfer. The pinned host pool may be exhausted or "
-        "fragmented (see XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB), or the "
-        "underlying pinned allocation failed; check earlier allocator "
-        "warnings for the root cause.",
-        size);
-  }
-
-  absl::Span<uint8_t> span(staging_buffer.get(), size);
-  return PjRtStagingBuffer::Create(
-      span, [staging_buffer = std::move(staging_buffer)]() {});
-}
-
 absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
 PjRtStreamExecutorRawClient::CreateLinkedEventPromise(
     LocalDeviceId local_device_id, int memory_kind_id,
@@ -2150,18 +2115,6 @@ bool PjRtStreamExecutorClient::ShouldDoDirectTransfer(
   }
 
   return LayoutUtil::HasDescendingLayout(shape.layout());
-}
-
-tsl::AsyncValueRef<PjRtStagingBuffer>
-PjRtStreamExecutorClient::AllocateForDelinearizationAsync(
-    size_t size, PjRtMemorySpace* memory_space) {
-  void* ptr = malloc(size);
-  if (ptr == nullptr) {
-    return tsl::MakeErrorAsyncValueRef(absl::ResourceExhaustedError(
-        absl::StrCat("Failed to allocate staging buffer of size ", size)));
-  }
-  absl::Span<uint8_t> span(static_cast<uint8_t*>(ptr), size);
-  return PjRtStagingBuffer::Create(span, [ptr]() { free(ptr); });
 }
 
 void PjRtStreamExecutorRawClient::ScheduleRemoteSend(
