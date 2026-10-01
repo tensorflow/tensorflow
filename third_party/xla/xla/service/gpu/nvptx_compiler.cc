@@ -594,9 +594,16 @@ NVPTXCompiler::CompileTargetBinary(
     selected_module = llvm_module;
   }
   const DebugOptions& debug_options = module_config.debug_options();
+  const se::cuda::CompilationProvider* compilation_provider = nullptr;
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
+    if (selected_module->empty() && selected_module->global_empty()) {
+      return BackendCompileResult{};
+    }
+    ABSL_ASSIGN_OR_RETURN(compilation_provider,
+                     GetCompilationProvider(debug_options, nullptr));
+
     // This may print multiple lines per HLO compilation because of the
     // parallelized compilation of LLVM modules.
     XLA_SCOPED_LOGGING_TIMER_IF(
@@ -606,10 +613,22 @@ NVPTXCompiler::CompileTargetBinary(
         debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
+    absl::StatusOr<int> ptx_isa_version =
+        compilation_provider->GetLatestPtxIsaVersion();
+    std::optional<int> max_ptx_isa_version;
+    if (ptx_isa_version.ok()) {
+      max_ptx_isa_version = *ptx_isa_version;
+    } else {
+      VLOG(2) << "Could not query latest PTX ISA version from compilation "
+                 "provider ("
+              << compilation_provider->name()
+              << "): " << ptx_isa_version.status();
+    }
     ABSL_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 debug_options));
+                                 debug_options, /*configure_target=*/nullptr,
+                                 max_ptx_isa_version));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -638,9 +657,10 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      const se::cuda::CompilationProvider* compilation_provider,
-      GetCompilationProvider(module_config.debug_options(), nullptr));
+  if (compilation_provider == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(compilation_provider,
+                     GetCompilationProvider(debug_options, nullptr));
+  }
 
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());

@@ -18,6 +18,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,7 +55,8 @@ std::string GetSmName(
 absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
-    std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
+    std::function<void(llvm::TargetMachine*)> configure_target = nullptr,
+    std::optional<int> max_ptx_isa_version = std::nullopt);
 
 // Returns the LLVM command line flags that we use for compilation.
 std::vector<std::string> GetNVPTXBackendOptions(
