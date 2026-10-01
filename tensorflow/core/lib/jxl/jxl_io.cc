@@ -164,6 +164,14 @@ bool DecodeImage(absl::string_view encoded, int channels, int channel_bits,
       xsize = info.xsize;
       ysize = info.ysize;
       if (xsize == 0 || ysize == 0) return false;
+      // Reject sizes whose byte count wraps around size_t, which would let an
+      // undersized output buffer pass the checks below and in
+      // JXL_DEC_NEED_IMAGE_OUT_BUFFER, which use the same product.
+      if (channels > 0 &&
+          xsize > std::numeric_limits<size_t>::max() / ysize /
+                      static_cast<size_t>(channels) / bytes_per_sample) {
+        return false;
+      }
       if (output_size_bytes < xsize * ysize * channels * bytes_per_sample) {
         return false;
       }
