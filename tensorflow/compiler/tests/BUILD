@@ -1436,13 +1436,8 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",

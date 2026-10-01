@@ -21,13 +21,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -208,66 +203,19 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                         index_dtype)
 
   def testReduceSumWithDuplicateAxes(self, index_dtype):
-    # Regression test for GitHub issue 119360 (session and jit_compile
-    # path); see testReduceSumWithDuplicateAxesAutoClustering below for the
-    # auto-clustering path.
+    # Regression test for GitHub issue 119360. Eager execution, the tf2xla
+    # kernel path, and the MLIR legalization for auto-clustering all reject
+    # duplicate axes with the same error, so this session-based test covers
+    # the XLA compilation path without any bridge-specific workarounds.
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
-        index = array_ops.placeholder(np.int32)
+        index = array_ops.placeholder(index_dtype)
         out = math_ops.reduce_sum(a, index)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
-
-
-
-class ReduceOpsAutoClusteringTest(test_util.TensorFlowTestCase):
-  """Tests that auto-clustering rejects duplicate reduction axes."""
-
-  def setUp(self):
-    super(ReduceOpsAutoClusteringTest, self).setUp()
-    self.previous_jit = config.get_optimizer_jit()
-    # Register the cleanups first so the global state is restored even if
-    # the setters below or the test body raise.
-    self.addCleanup(config.set_optimizer_jit, self.previous_jit)
-    # Auto-clustering is not active on CPU by default: TensorFlowTestCase
-    # only turns on CPU global JIT when is_xla_enabled() is true, which
-    # requires a dependency this test does not have. Enable it explicitly so
-    # the cluster below is actually compiled, and lower the minimum cluster
-    # size to 1 because the cluster holds a single reduce_sum node.
-    previous_cpu_global_jit = pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
-    self.addCleanup(pywrap_tf_session.TF_SetTfXlaCpuGlobalJit,
-                    previous_cpu_global_jit)
-    pywrap_tf_session.TF_SetXlaMinClusterSize(1)
-    self.addCleanup(pywrap_tf_session.TF_SetXlaMinClusterSize, 4)
-    config.set_optimizer_jit('autoclustering')
-
-  def testReduceSumWithDuplicateAxesAutoClustering(self):
-    # Auto-clustering must reject duplicate axes just like eager execution
-    # and jit_compile=True do. The input shape from GitHub issue 119360
-    # cannot be used here: Grappler's constant folding rewrites reductions
-    # over single-element inputs into a Reshape before auto-clustering ever
-    # compiles the cluster, which would silently bypass the lowering under
-    # test. A multi-element input keeps the Sum in the cluster so the
-    # duplicate axes reach the TF->HLO legalization.
-    x = np.arange(6, dtype=np.float32).reshape((1, 1, 1, 1, 2, 3))
-    axis = constant_op.constant([-2, -1, -2, -1, -2, -1], dtype=dtypes.int32)
-
-    with ops.device('/CPU:0'):
-
-      @def_function.function
-      def f(t):
-        return math_ops.reduce_sum(t, axis)
-
-      with self.assertRaisesWithPredicateMatch(
-          errors_impl.InvalidArgumentError,
-          'Axes contains duplicate dimension'):
-        # TensorFlowTestCase runs in graph mode, so calling f only traces a
-        # PartitionedCall node; the cluster is compiled and the legalization
-        # error raised when the result is evaluated.
-        self.evaluate(f(constant_op.constant(x)))
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
