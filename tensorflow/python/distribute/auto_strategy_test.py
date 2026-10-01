@@ -20,12 +20,11 @@ import os
 from unittest import mock
 
 from tensorflow.python.distribute import auto_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.distribute.experimental import (
-    multi_worker_mirrored_strategy)
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.platform import test
@@ -167,16 +166,23 @@ class AutoStrategyTest(test.TestCase):
 
   @mock.patch.object(config, "get_visible_devices", return_value=[])
   def testMalformedTFConfigGracefulFallback(self, mock_get_visible_devices):
-    for malformed in ["123", "null", "[1, 2]"]:
+    for malformed in [
+        "123",
+        "null",
+        "[1, 2]",
+        '{"cluster": {"worker": null}}',
+        '{"cluster": {"chief": null}}',
+        '{"cluster": {"worker": "not-a-list"}}',
+    ]:
       os.environ["TF_CONFIG"] = malformed
       strategy = auto_strategy.AutoStrategy()
       self.assertIsInstance(strategy, one_device_strategy.OneDeviceStrategy)
       self.assertIn("CPU:0", strategy.extended._device)
 
   @mock.patch.object(
-      multi_worker_mirrored_strategy, "MultiWorkerMirroredStrategy"
+      collective_all_reduce_strategy, "CollectiveAllReduceStrategy"
   )
-  def testMultiWorkerDetection(self, mock_mwms_cls):
+  def testMultiWorkerDetection(self, mock_cars_cls):
     # Prevent the real constructor from starting a live gRPC
     # CoordinationService and blocking indefinitely waiting for a second
     # worker (localhost:23456) that never connects, causing a 300s+ timeout.
@@ -187,9 +193,9 @@ class AutoStrategyTest(test.TestCase):
         "task": {"type": "worker", "index": 0}
     })
     strategy = auto_strategy.AutoStrategy()
-    # Verify AutoStrategy dispatched to MultiWorkerMirroredStrategy.
-    mock_mwms_cls.assert_called_once()
-    self.assertIs(strategy, mock_mwms_cls.return_value)
+    # Verify AutoStrategy dispatched to CollectiveAllReduceStrategy.
+    mock_cars_cls.assert_called_once()
+    self.assertIs(strategy, mock_cars_cls.return_value)
 
 
 if __name__ == "__main__":

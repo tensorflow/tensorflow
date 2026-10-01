@@ -17,13 +17,12 @@
 import json
 import os
 
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.distribute.experimental import (
-    multi_worker_mirrored_strategy)
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.tpu import tpu_strategy_util
@@ -60,9 +59,12 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
     if isinstance(tf_config, dict):
       cluster = tf_config.get("cluster", {})
       if isinstance(cluster, dict):
-        if (len(cluster.get("worker", [])) > 1
-            or len(cluster.get("chief", [])) > 0):
-          return multi_worker_mirrored_strategy.MultiWorkerMirroredStrategy()
+        workers = cluster.get("worker") or []
+        chiefs = cluster.get("chief") or []
+        if (isinstance(workers, (list, tuple)) and len(workers) > 1) or (
+            isinstance(chiefs, (list, tuple)) and len(chiefs) > 0
+        ):
+          return collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
   # Check for TPUs
   if config.list_logical_devices("TPU") or os.environ.get("TPU_NAME"):
