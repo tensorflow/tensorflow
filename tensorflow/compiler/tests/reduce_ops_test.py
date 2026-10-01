@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -210,12 +211,23 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(np.float32)
-        index = array_ops.placeholder(index_dtype)
+        # The axes must be compile-time constants for the reduction to be
+        # lowered by the MLIR legalization pattern under test instead of
+        # falling back to the legacy tf2xla kernel.
+        index = constant_op.constant([0, 0], dtype=index_dtype)
         out = math_ops.reduce_sum(a, index)
+        # Duplicate axes that only alias the same dimension after negative
+        # index normalization must be rejected as well.
+        index_neg = constant_op.constant([0, -1], dtype=index_dtype)
+        out_neg = math_ops.reduce_sum(a, index_neg)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
-        sess.run(out, {a: [10, 20, 30], index: [0, 0]})
+        sess.run(out, {a: [10, 20, 30]})
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          'Axes contains duplicate dimension'):
+        sess.run(out_neg, {a: [10, 20, 30]})
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
