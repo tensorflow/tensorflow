@@ -274,15 +274,15 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     }
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
-    auto tiled_dot =
-        absl::c_find_if(tiled_computation->tiled_root_region().instructions(),
-                        [&](const auto& tiled) { return tiled->hlo() == dot; });
+    absl::Span<const experimental::TiledHloInstruction* const> instructions =
+        tiled_computation->instructions();
+    auto tiled_dot = absl::c_find_if(
+        instructions, [&](const auto* tiled) { return tiled->hlo() == dot; });
     // That should never happen.
-    CHECK(tiled_dot !=
-          tiled_computation->tiled_root_region().instructions().end())
+    CHECK(tiled_dot != instructions.end())
         << "Dot tiled instruction not found in tiled computation";
     absl::StatusOr<llvm::SmallVector<int64_t>> static_tile_sizes =
-        tiled_dot->get()->tile().GetStaticTileSizes();
+        (*tiled_dot)->tile().GetStaticTileSizes();
     if (!static_tile_sizes.ok()) {
       VLOG(8) << "Failed to get static tile sizes for dot instruction "
               << dot->ToString()
