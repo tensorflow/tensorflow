@@ -27,6 +27,7 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Gt;
 using ::testing::Not;
 
@@ -54,7 +55,7 @@ TEST(GpuBandwidthBenchmarkTest, FormatBandwidthTableMultipleEntries) {
 
 TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthValidDevice) {
   const absl::StatusOr<double> peak_bw =
-      GetPeakBandwidthBytesPerSec(/*device_id=*/0);
+      GetPeakBandwidthBytesPerSec(/*ordinal=*/0);
   if (!peak_bw.ok()) {
     GTEST_SKIP() << "No GPU device available: " << peak_bw.status();
   }
@@ -62,8 +63,46 @@ TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthValidDevice) {
 }
 
 TEST(GpuBandwidthBenchmarkTest, GetPeakBandwidthInvalidDevice) {
-  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/-1), Not(IsOk()));
-  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*device_id=*/9999), Not(IsOk()));
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*ordinal=*/-1), Not(IsOk()));
+  EXPECT_THAT(GetPeakBandwidthBytesPerSec(/*ordinal=*/9999), Not(IsOk()));
+}
+
+TEST(GpuBandwidthBenchmarkTest, MeasureD2dBandwidthValidDevice) {
+  const absl::StatusOr<double> bw = MeasureD2dBandwidthBytesPerSec(
+      /*ordinal=*/0, /*size_bytes=*/1024 * 1024);
+  if (!bw.ok() && (bw.status().code() == absl::StatusCode::kNotFound ||
+                   bw.status().code() == absl::StatusCode::kUnavailable)) {
+    GTEST_SKIP() << "No GPU platform or device available: " << bw.status();
+  }
+  EXPECT_THAT(bw, IsOkAndHolds(Gt(0.0)));
+}
+
+TEST(GpuBandwidthBenchmarkTest, MeasureD2dBandwidthInvalidArguments) {
+  EXPECT_THAT(
+      MeasureD2dBandwidthBytesPerSec(/*ordinal=*/-1, /*size_bytes=*/1024),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(MeasureD2dBandwidthBytesPerSec(/*ordinal=*/0, /*size_bytes=*/0),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(MeasureD2dBandwidthBytesPerSec(/*ordinal=*/0,
+                                             /*size_bytes=*/1024,
+                                             /*warmup_runs=*/10,
+                                             /*measurement_runs=*/0),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(GpuBandwidthBenchmarkTest, MeasureD2dBandwidthScalesWithTransferSize) {
+  const absl::StatusOr<double> bw_small =
+      MeasureD2dBandwidthBytesPerSec(/*ordinal=*/0, /*size_bytes=*/8 * 1024);
+  if (!bw_small.ok() &&
+      (bw_small.status().code() == absl::StatusCode::kNotFound ||
+       bw_small.status().code() == absl::StatusCode::kUnavailable)) {
+    GTEST_SKIP() << "No GPU platform or device available: "
+                 << bw_small.status();
+  }
+  EXPECT_THAT(bw_small, IsOkAndHolds(Gt(0.0)));
+  const absl::StatusOr<double> bw_large = MeasureD2dBandwidthBytesPerSec(
+      /*ordinal=*/0, /*size_bytes=*/16 * 1024 * 1024);
+  EXPECT_GT(*bw_large, *bw_small);
 }
 
 }  // namespace

@@ -30,9 +30,9 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Verifier.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
@@ -55,7 +55,10 @@ TEST(TanhTest, Name) {
   EXPECT_EQ(Tanh::Name(Type::V(F64, 16)), "xla.tanh.v16f64");
 }
 
-// with_fma = true leads to 3 ULPs of error on F32 and 8 on F64.
+// Measured error is 0 ULPs on F32 and 1 on F64. The budgets are kept looser
+// than that because contraction depends on the host ISA: `JitRunner` builds its
+// target machine from `llvm::sys::getHostCPUName()`, so a host without FMA
+// evaluates the polynomial unfused.
 constexpr int kNumUlpsF32 = 3;
 constexpr int kNumUlpsF64 = 3;  // with_fma = false in tanh.cc
 

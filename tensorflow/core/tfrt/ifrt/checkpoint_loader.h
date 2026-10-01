@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
@@ -89,6 +90,14 @@ class CheckpointLoader {
       const tensorflow::tfrt_stub::FallbackTensor& shape_and_slices,
       absl::Span<const tensorflow::DataType> restored_dtypes,
       const std::vector<bool>& truncate_in_cast, tf_mlrt::Context& context);
+
+  // Deletes from the ResourceManager every materialized variable that was
+  // loaded on device (`device_variables`) and is NOT needed on host
+  // (`host_needed`). Host-only variables (not in `device_variables`) are
+  // preserved on the host.
+  absl::Status FreezeCleanup(
+      const absl::flat_hash_set<std::string>& device_variables,
+      const absl::flat_hash_set<std::string>& host_needed);
 
  protected:
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;

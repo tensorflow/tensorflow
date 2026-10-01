@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -42,6 +44,7 @@ namespace {
 
 using ::absl_testing::StatusIs;
 using ::mlir::MLIRContext;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 MATCHER_P(MatchString, tiling_space_string, "") {
@@ -441,7 +444,7 @@ TEST_F(TilingSpaceSameShapeMultiOutputTest, TwoOutputsEqualShapesParallelDims) {
   )"));
 }
 
-class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
+class TilingSpaceSimplifyExpressionsTest : public TilingSpaceTest {
  public:
   void SetUp() override {
     TilingSpaceTest::SetUp();
@@ -463,41 +466,71 @@ class TilingSpaceSimplifyExpressionTest : public TilingSpaceTest {
     CHECK_OK(tiling_space_->AssignTileSizes({16, 2}));
   }
 
+  SymbolicExpr ParseExpr(absl::string_view expr_str) {
+    return ParseSymbolicExpr(expr_str, &mlir_context_, /*num_dims=*/2);
+  }
+
   std::unique_ptr<TilingSpace> tiling_space_;
 };
 
-TEST_F(TilingSpaceSimplifyExpressionTest, ModRemovedIfLessThanDivisor) {
-  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_0 * 8) % 96), tid_0 * 8);
+TEST_F(TilingSpaceSimplifyExpressionsTest, ModRemovedIfLessThanDivisor) {
+  EXPECT_THAT(
+      tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96")}),
+      ElementsAre(ParseExpr("d0 * 8")));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, FloorDivFactorsDivisor) {
-  SymbolicExpr tid_1 = CreateDimExpr(1, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression((tid_1 * 2).floorDiv(10)),
-            tid_1.floorDiv(5));
+TEST_F(TilingSpaceSimplifyExpressionsTest, MultipleExpressionsSimplified) {
+  EXPECT_THAT(tiling_space_->SimplifyExpressions({ParseExpr("(d0 * 8) mod 96"),
+                                                  ParseExpr("(d1 * 2) / 10"),
+                                                  ParseExpr("d0 * 16 + 500")}),
+              ElementsAre(ParseExpr("d0 * 8"), ParseExpr("d1 / 5"),
+                          ParseExpr("d0 * 16 + 500")));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest,
-       ExpressionUnchangedIfNotAlgebraicallyFolds) {
-  SymbolicExpr tid_0 = CreateDimExpr(0, &mlir_context_);
-  EXPECT_EQ(tiling_space_->SimplifyExpression(tid_0 * 16 + 500),
-            tid_0 * 16 + 500);
+TEST_F(TilingSpaceSimplifyExpressionsTest, DimTileSimplify) {
+  DimTile dt{ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+             ParseExpr("d0 * 16 + 500"),
+             ParseExpr("(d0 * 16 + d1 * 2) mod 200")};
+  dt.Simplify(*tiling_space_);
+  EXPECT_EQ(dt.offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dt.size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dt.stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dt.upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, NestedFloorDivFactorsDivisor) {
-  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) / 200", &mlir_context_,
-                                /*num_dims=*/2);
-  EXPECT_EQ(tiling_space_->SimplifyExpression(expr),
-            ParseSymbolicExpr("(d0 * 8 + d1) / 100", &mlir_context_,
-                              /*num_dims=*/2));
+TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTiles) {
+  llvm::SmallVector<DimTile> dim_tiles = {
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")},
+      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  SimplifyDimTiles(dim_tiles, *tiling_space_);
+  EXPECT_EQ(dim_tiles[0].offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dim_tiles[0].size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dim_tiles[0].stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dim_tiles[0].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+  EXPECT_EQ(dim_tiles[1].offset, ParseExpr("d1 / 5"));
+  EXPECT_EQ(dim_tiles[1].size, ParseExpr("d0 * 8"));
+  EXPECT_EQ(dim_tiles[1].stride, ParseExpr("d0 * 16 + 500"));
+  EXPECT_EQ(dim_tiles[1].upper_bound, ParseExpr("d0 * 16 + d1 * 2"));
+
+  llvm::SmallVector<DimTile> empty_dim_tiles;
+  SimplifyDimTiles(empty_dim_tiles, *tiling_space_);
+  EXPECT_TRUE(empty_dim_tiles.empty());
 }
 
-TEST_F(TilingSpaceSimplifyExpressionTest, NestedModRemovedIfLessThanDivisor) {
-  auto expr = ParseSymbolicExpr("(d0 * 16 + d1 * 2) mod 200", &mlir_context_,
-                                /*num_dims=*/2);
-  EXPECT_EQ(
-      tiling_space_->SimplifyExpression(expr),
-      ParseSymbolicExpr("d0 * 16 + d1 * 2", &mlir_context_, /*num_dims=*/2));
+TEST_F(TilingSpaceSimplifyExpressionsTest, SimplifyDimTilesGroups) {
+  llvm::SmallVector<DimTile> group1 = {
+      {ParseExpr("(d0 * 8) mod 96"), ParseExpr("(d1 * 2) / 10"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  llvm::SmallVector<DimTile> group2 = {
+      {ParseExpr("(d1 * 2) / 10"), ParseExpr("(d0 * 8) mod 96"),
+       ParseExpr("d0 * 16 + 500"), ParseExpr("(d0 * 16 + d1 * 2) mod 200")}};
+  SimplifyDimTiles({group1, group2}, *tiling_space_);
+  EXPECT_EQ(group1[0].offset, ParseExpr("d0 * 8"));
+  EXPECT_EQ(group1[0].size, ParseExpr("d1 / 5"));
+  EXPECT_EQ(group2[0].offset, ParseExpr("d1 / 5"));
+  EXPECT_EQ(group2[0].size, ParseExpr("d0 * 8"));
 }
 
 TEST_F(TilingSpaceTest, ClonePerformsDeepCopies) {
@@ -610,6 +643,42 @@ TEST_F(TilingSpaceTest, CloneAssignsIndependentTileSizes) {
   // Cloned space remains unaffected.
   EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 16);
   EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+}
+
+TEST_F(TilingSpaceTest, CloneIntoAnotherContextRebindsRootTiles) {
+  auto root = ParseAndGetRoot(R"(
+      HloModule m
+      ENTRY e {
+        p0 = f32[1000, 10] parameter(0)
+        ROOT a0 = f32[1000, 10] exponential(p0)
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto original_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+
+  mlir::MLIRContext target_context;
+  std::unique_ptr<TilingSpace> cloned_space =
+      original_space->Clone(&target_context);
+  ASSERT_NE(cloned_space, nullptr);
+  EXPECT_EQ(cloned_space->mlir_context(), &target_context);
+  EXPECT_EQ(cloned_space->num_dimensions(), original_space->num_dimensions());
+
+  for (const auto& root_tile : cloned_space->tiled_roots()) {
+    for (const auto& dim_tile : root_tile.dim_tiles()) {
+      EXPECT_EQ(dim_tile.size.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.offset.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.stride.GetContext(), &target_context);
+      EXPECT_EQ(dim_tile.upper_bound.GetContext(), &target_context);
+    }
+  }
+
+  EXPECT_TRUE(cloned_space->IsSymbolic());
+  EXPECT_OK(cloned_space->AssignTileSizes({64, 2}));
+  EXPECT_FALSE(cloned_space->IsSymbolic());
+  EXPECT_EQ(cloned_space->dimensions()[0].tile_size, 64);
+  EXPECT_EQ(cloned_space->dimensions()[1].tile_size, 2);
+  EXPECT_TRUE(original_space->IsSymbolic());
 }
 
 }  // namespace

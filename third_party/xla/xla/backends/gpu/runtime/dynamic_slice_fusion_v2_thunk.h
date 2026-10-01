@@ -40,9 +40,8 @@ namespace xla::gpu {
 
 // A dynamic slice fusion thunk that wraps an embedded thunk sequence and at
 // run time adjusts buffer slices for arguments and results based on the current
-// while loop iteration. The byte offset for each sliced buffer is computed as:
-//
-//   offset + loop_iteration[loop_index] * stride
+// while loop iteration. Each sliced buffer's byte offset is computed from a
+// linear progression or looked up in a table indexed by loop iteration.
 //
 // This allows the embedded thunks to operate on a different slice of the buffer
 // at each loop iteration without any device-to-host synchronization.

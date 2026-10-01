@@ -52,9 +52,8 @@ struct scalar_arg_op<std::complex<double>> {
 
 template <typename Scalar, typename Exponent>
 struct safe_scalar_binary_pow_op {
-  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
-  static_assert(std::is_integral<Exponent>::value &&
-                    std::is_signed<Exponent>::value,
+  static_assert(std::is_integral_v<Scalar>, "Integer type expected");
+  static_assert(std::is_integral_v<Exponent> && std::is_signed_v<Exponent>,
                 "Signed integer type expected");
 
   bool* const error;
@@ -79,9 +78,42 @@ struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
+// Eigen evaluates complex powers as exp(exponent * log(base)), which yields
+// NaN for 0^0. IEEE 754 requires z^0 == 1, which TensorFlow follows,
+// including non-finite bases. Handle zero exponents before the logarithm as a
+// TensorFlow-local workaround, without depending on an upstream Eigen change.
+template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
+struct tf_scalar_pow_op;
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/false> : scalar_pow_op<T, T> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/false>>
+    : functor_traits<scalar_pow_op<T, T>> {};
+
+template <typename T>
+struct tf_scalar_pow_op<T, /*IsComplex=*/true> : scalar_pow_op<T, T> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& base,
+                                                     const T& exponent) const {
+    if (TF_PREDICT_FALSE(Eigen::numext::is_exactly_zero(exponent))) {
+      return T(1);
+    }
+    return scalar_pow_op<T, T>::operator()(base, exponent);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/true>> {
+  enum {
+    Cost = functor_traits<scalar_pow_op<T, T>>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
 
   bool* const error;
 
@@ -377,8 +409,7 @@ struct google_floor_div {
 };
 
 template <typename T>
-struct google_floor_div<
-    T, typename std::enable_if<std::is_unsigned<T>::value>::type> {
+struct google_floor_div<T, std::enable_if_t<std::is_unsigned_v<T>>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     return x / y;
@@ -653,7 +684,11 @@ struct xlogy_op {
     scalar_log_op<Scalar> log_op;
     Packet log_y = log_op.packetOp(y);
     Packet x_log_y = pmul(x, log_y);
-    return pselect(mask, x, x_log_y);
+    // Select zeros rather than x. An x can compare equal to zero without being
+    // +0: -0 does, and so does a subnormal when denormals are flushed, as they
+    // are in TensorFlow's kernels. Returning x would leak either one, while
+    // the scalar path above returns +0 for both.
+    return pselect(mask, zeros, x_log_y);
   }
 };
 
@@ -683,7 +718,8 @@ struct xlog1py_op {
     scalar_log1p_op<Scalar> log1p_op;
     Packet log1p_y = log1p_op.packetOp(y);
     Packet x_log1p_y = pmul(x, log1p_y);
-    return pselect(mask, x, x_log1p_y);
+    // Select zeros rather than x; see xlogy_op.
+    return pselect(mask, zeros, x_log1p_y);
   }
 };
 
@@ -715,7 +751,8 @@ struct xdivy_op {
     Packet zeros = pzero(x);
     Packet mask = pcmp_eq(x, zeros);
     Packet x_div_y = pdiv(x, y);
-    return pselect(mask, x, x_div_y);
+    // Select zeros rather than x; see xlogy_op.
+    return pselect(mask, zeros, x_div_y);
   }
 };
 
@@ -754,10 +791,21 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+
+// digamma has poles at zero and at the negative integers. Eigen's
+// scalar_digamma_op returns NaN for all of them; TensorFlow returns -inf at
+// zero (the limit from the right) and NaN at the negative integers, matching
+// the XLA lowering in xla/hlo/builder/lib/math.cc.
 template <typename Scalar>
 struct digamma_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
+    if (x < Scalar(0.)) {
+      Scalar floor_x = Eigen::numext::floor(x);
+      if (x == floor_x) {
+        return Eigen::NumTraits<Scalar>::quiet_NaN();
+      }
+    }
     if (x == Scalar(0.)) {
       return -Eigen::NumTraits<Scalar>::infinity();
     }
@@ -766,10 +814,21 @@ struct digamma_op {
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
     Packet zeros = pzero(x);
-    Packet mask = pcmp_eq(x, zeros);
+    Packet is_zero = pcmp_eq(x, zeros);
+    Packet is_lt_zero = pcmp_lt(x, zeros);
+    Packet is_integer = pcmp_eq(x, pfloor(x));
+    Packet is_negative_integer = pand(is_lt_zero, is_integer);
+
+    Packet is_unsafe = por(is_zero, is_negative_integer);
+    Packet safe_x = pselect(is_unsafe, pset1<Packet>(Scalar(1.)), x);
+
     Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
-    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
-    return pselect(mask, infs, digamma_x);
+    Packet nans = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet digamma_x =
+        Eigen::internal::scalar_digamma_op<Scalar>().packetOp(safe_x);
+
+    Packet result = pselect(is_negative_integer, nans, digamma_x);
+    return pselect(is_zero, infs, result);
   }
 };
 
@@ -873,6 +932,42 @@ struct functor_traits<scalar_erfinv_op<float>> {
     Cost = functor_traits<scalar_log1p_op<float>>::Cost +
            20 * NumTraits<float>::MulCost,
     PacketAccess = packet_traits<float>::HasLog1p,
+  };
+};
+
+// igamma(a, x) = P(a, x) is defined only for a > 0, x >= 0.  Eigen's
+// scalar_igamma_op short-circuits to 0 when x == 0 before the domain check
+// fires, so a <= 0 with x == 0 silently returns 0 instead of NaN.  The
+// wrapper restores the mathematically correct NaN for out-of-domain inputs.
+template <typename Scalar>
+struct igamma_op : binary_op_base<Scalar, Scalar> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& x) const {
+    if (x == Scalar(0) && !(a > Scalar(0))) {
+      return Eigen::NumTraits<Scalar>::quiet_NaN();
+    }
+    return Eigen::internal::scalar_igamma_op<Scalar>()(a, x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& x) const {
+    Packet zeros = pzero(x);
+    Packet x_is_zero = pcmp_eq(x, zeros);
+    Packet a_gt_zero = pcmp_lt(zeros, a);
+    Packet domain_error = pandnot(x_is_zero, a_gt_zero);
+    Packet nan = pset1<Packet>(Eigen::NumTraits<Scalar>::quiet_NaN());
+    Packet igamma_val =
+        Eigen::internal::scalar_igamma_op<Scalar>().packetOp(a, x);
+    return pselect(domain_error, nan, igamma_val);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<igamma_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_igamma_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::AddCost,
+    PacketAccess = functor_traits<scalar_igamma_op<Scalar>>::PacketAccess,
   };
 };
 
@@ -990,6 +1085,35 @@ struct log1p : base<T, Eigen::internal::scalar_log1p_op<T>> {};
 
 template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T>> {};
+
+// Specialization of sign for complex types to avoid underflow in |z|^2.
+// Eigen's scalar_sign_op computes |z|^2 = re^2 + im^2 as a float32
+// intermediate. When |z| < sqrt(float32_tiny) ~= 1.08e-19, this underflows
+// to 0, causing sign(z) to incorrectly return 0. We fix this by checking
+// whether the input is nonzero directly, and using std::abs() (which uses
+// hypot internally) to avoid intermediate underflow/overflow.
+template <typename RealType>
+struct safe_complex_sign_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    const RealType re = z.real();
+    const RealType im = z.imag();
+    if (re == RealType(0) && im == RealType(0)) {
+      return std::complex<RealType>(0, 0);
+    }
+    // Use hypot directly to avoid intermediate underflow/overflow.
+    // std::abs(complex) may compute sqrt(re*re + im*im) which underflows
+    // when FTZ is enabled and |re|^2 or |im|^2 is subnormal.
+    const RealType mag = std::hypot(re, im);
+    return std::complex<RealType>(re / mag, im / mag);
+  }
+};
+
+template <>
+struct sign<complex64> : base<complex64, safe_complex_sign_op<float>> {};
+
+template <>
+struct sign<complex128> : base<complex128, safe_complex_sign_op<double>> {};
 
 template <typename T>
 struct sinh : base<T, Eigen::internal::scalar_sinh_op<T>> {};
@@ -1172,18 +1296,19 @@ struct truncate_div_real
     : base<T, Eigen::internal::google_truncate_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_pow_op<T, T>> {};
+struct pow : base<T, Eigen::internal::tf_scalar_pow_op<T>> {};
 
 template <typename T>
 struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
   static constexpr bool has_errors = true;
 };
 
-// Version of safe_pow for integers which returns 0 if RHS is negative and LHS
-// is not 1 or -1. For use on GPUs, where we cannot raise an error.
+// Version of safe_pow for GPU computation. The integer Pow GPU kernel checks
+// negative exponents separately and reports an error after the device work
+// completes; this functor must still produce a defined result on the device.
 template <typename T>
 struct safe_pow_ignore_error_op {
-  static_assert(std::is_integral<T>::value, "Integer type expected");
+  static_assert(std::is_integral_v<T>, "Integer type expected");
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
                                                      const T& y) const {
     if (TF_PREDICT_FALSE(y < 0)) {
@@ -1209,7 +1334,7 @@ struct minimum
     : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
 
 template <typename T>
-struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+struct igamma : base<T, Eigen::internal::igamma_op<T>> {};
 
 template <typename T>
 struct random_gamma_grad
@@ -1300,7 +1425,7 @@ struct left_shift_op {
     } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
       y_clamped = sizeof(T) * CHAR_BIT - 1;
     }
-    using U = typename std::make_unsigned<T>::type;
+    using U = std::make_unsigned_t<T>;
     return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
   }
 };

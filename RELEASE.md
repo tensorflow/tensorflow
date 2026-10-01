@@ -1,3 +1,36 @@
+# Release 2.23.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+*   <BREAKING CHANGES GO HERE>
+
+### Known Caveats
+
+*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+
+### Major Features and Improvements
+
+* `tf.lite`
+    * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+
+### Bug Fixes and Other Changes
+
+*   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
+    number of rows or columns of the input are now clamped to the matrix
+    dimensions instead of raising an `InvalidArgumentError`. This matches the
+    documented definition of the op and the behavior of the XLA lowering used by
+    `tf.function(jit_compile=True)`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.22.0
 
 ## TensorFlow
@@ -24,6 +57,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
     * Adds support for FP16 in Transpose and DynamicUpdateSlice operator.
     * Transpose now supports up to 8D tensors.
     * Adds support for FLOAT8_E4M3FN and FLOAT8_E5M2 data types.
+*   `tf.experimental.fold`: Adds support for folding/reconstructing image
+    tensors from extracted spatial patches as an inverse operation to
+    `tf.image.extract_patches`.
 
 ### Bug Fixes and Other Changes
 
@@ -63,6 +99,14 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
         arithmetic; combining integer inputs with floating-point tolerances
         (including the defaults) now raises an error unless automatic type
         promotion is enabled, which keeps the cost of promotion opt-in.
+
+*   `tf.nn.elu`
+
+    *   Fixes the second derivative computed by automatic differentiation for
+        small negative inputs. There `elu(x)` rounds to `0.0`, which made the
+        backward pass of the gradient take the positive branch and return `0`
+        instead of a value close to `1`. Fixes
+        [#124830](https://github.com/tensorflow/tensorflow/issues/124830).
 
 *   oneDNN (MKL) convolution and transpose kernels
 
@@ -3518,7 +3562,7 @@ This release introduces several vulnerability fixes:
     *   Add `keepdims` argument to all `GlobalPooling` layers.
     *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
         control the inclusion of `Rescaling` layer in the model.
-    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion`
+    *   Add optional argument (`force`) to `make_(train|test|predict)_function`
         methods to skip the cached function and generate a new one. This is
         useful to regenerate in a single call the compiled training function
         when any `.trainable` attribute of any model's layer has changed.

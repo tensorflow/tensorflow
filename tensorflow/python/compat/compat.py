@@ -52,8 +52,11 @@ def _update_forward_compatibility_date_number(date_to_override=None):
       date += datetime.timedelta(days=int(delta_days))
 
   if date < _FORWARD_COMPATIBILITY_HORIZON:
-    logging.warning("Trying to set the forward compatibility date to the past"
-                    " date %s. This will be ignored by TensorFlow." % (date))
+    logging.warning(
+        "Trying to set the forward compatibility date to the past"
+        " date %s. This will be ignored by TensorFlow.",
+        date,
+    )
     return
   _FORWARD_COMPATIBILITY_DATE_NUMBER = _date_to_date_number(
       date.year, date.month, date.day)

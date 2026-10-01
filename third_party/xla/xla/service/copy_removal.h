@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_COPY_REMOVAL_H_
 
 #include <cstdint>
+#include <deque>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -392,7 +394,8 @@ class CopyRemover {
 
     // The uses are maintained outside of HloValue::uses() because
     // HloValue::uses() is not updatable (a fully updatable dataflow analysis
-    // is slow).
+    // is slow). Besides the value's own uses this holds the uses of the
+    // readers of its views (see AddViewUses).
     std::vector<const HloUse*> uses;
 
     // next/prev elements in the linked list. The list is circularly linked so
@@ -401,9 +404,16 @@ class CopyRemover {
     ValueNode* next = nullptr;
   };
 
+  // `view_color` is the layout memory space color of view values: address
+  // stand ins that own no storage and alias the buffer of their operand 0
+  // (BufferAssigner::Options::dus_view_color). A reader of such a value reads
+  // the viewed buffer at its own position, so it counts as a use of the
+  // viewed value; otherwise a producer merged into that buffer between the
+  // view and its reader would be read through the view.
   CopyRemover(const HloModule& module, const HloAliasAnalysis& alias_analysis,
               const AliasInfo* alias_info, HloOrdering* ordering,
-              const absl::flat_hash_set<absl::string_view>& execution_threads);
+              const absl::flat_hash_set<absl::string_view>& execution_threads,
+              std::optional<int64_t> view_color = std::nullopt);
 
   // Add a list containing the given values to CopyRemover. This
   // represents the values contained in a single buffer. For each value in
@@ -412,6 +422,29 @@ class CopyRemover {
   void AddValueList(
       absl::Span<const HloValue* const> values,
       absl::flat_hash_map<const HloValue*, ValueNode*>* value_to_node);
+
+  // Appends to `node->uses` a use at every reader of a view of `value`: a
+  // use at operand 0 of a view colored instruction, followed through the view
+  // colored bitcasts and copies that forward its address (the reader side of
+  // ExtendViewBaseLiveRanges in hlo_live_range.cc).
+  //
+  // The walk is flat, and correct only under a contract the pass that creates
+  // views enforces: a view colored value never escapes into a tuple, a called
+  // computation (while, call, conditional) or an async pair, where the reads
+  // would happen later than the position recorded here; a reader never
+  // writes through it; and its operand 0 is never itself view colored (views
+  // are one level deep, so the readers found here read `value`'s own buffer).
+  // A view colored user that is not a bitcast or copy is recorded as a reader
+  // at its own position on purpose: an in place writer through a view is
+  // ordered only when its write is also a dataflow use of the viewed buffer.
+  void AddViewUses(const HloValue* value, ValueNode* node);
+
+  // Returns true if `use` was synthesized by AddViewUses rather than taken
+  // from an HloValue: such a use reads the value through a view, not as the
+  // operand it names.
+  bool IsViewUse(const HloUse* use) const {
+    return view_uses_by_pointer_.contains(use);
+  }
 
   // This method also fills in copy_map_ which indicates which nodes
   // in the value lists corresponding to the source and destination values of
@@ -537,6 +570,12 @@ class CopyRemover {
     ValueNode* dest = nullptr;
   };
   absl::flat_hash_map<const HloInstruction*, CopyNodes> copy_map_;
+
+  // See the constructor. The synthesized uses live here so ValueNode::uses can
+  // point at them like at HloValue uses; a deque keeps the pointers stable.
+  std::optional<int64_t> view_color_;
+  std::deque<HloUse> view_uses_;
+  absl::flat_hash_set<const HloUse*> view_uses_by_pointer_;
 };
 };  // namespace xla
 

@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/custom_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -2337,9 +2338,21 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     execute_context = args->options->context->execute_context;
   }
   options.context = execute_context.get();
+
+  // Custom options are owned by the caller only for the duration of the C API
+  // call, so we copy them.
+  if (args->options->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, num_custom_options) &&
+      args->options->num_custom_options > 0) {
+    options.custom_options = std::make_shared<const xla::CustomOptions>(
+        ConvertFromPjRtNamedValueList(args->options->custom_options,
+                                      args->options->num_custom_options));
+  }
+
   options.multi_slice_config = nullptr;
   // TODO(b/485591964): Remove this check after 12week compatibility window.
-  if (args->options->struct_size >= PJRT_ExecuteOptions_STRUCT_SIZE &&
+  if (args->options->struct_size >=
+          PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, multi_slice_config) &&
       args->options->multi_slice_config != nullptr) {
     options.multi_slice_config =
         args->options->multi_slice_config->config.get();

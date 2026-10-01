@@ -102,70 +102,35 @@ template <typename OperandT>
 absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
                                 LiteralSlice lhs_literal,
                                 LiteralSlice rhs_literal) {
-  auto populate = [&](auto compare_op) -> absl::StatusOr<Literal> {
-    Literal result(shape);
-
-    // If layout is the same, we can use linear indexing into the literals.
-    const Layout& lhs_layout = lhs_literal.shape().layout();
-    const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
-                       LayoutUtil::Equal(lhs_layout, shape.layout());
-
-    if (same_layout) {
-      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
-          [&](int64_t linear_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.GetLinear<OperandT>(linear_index);
-            auto rhs = rhs_literal.GetLinear<OperandT>(linear_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
-    } else {
-      ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
-          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
-            auto lhs = lhs_literal.Get<OperandT>(multi_index);
-            auto rhs = rhs_literal.Get<OperandT>(multi_index);
-            if constexpr (is_specialized_floating_point_v<OperandT>) {
-              if (comparison.IsTotalOrder()) {
-                return compare_op(ToSignMagnitude(lhs), ToSignMagnitude(rhs));
-              }
-            }
-            return compare_op(lhs, rhs);
-          }));
+  if constexpr (is_complex_v<OperandT>) {
+    if (comparison.GetDirection() != ComparisonDirection::kEq &&
+        comparison.GetDirection() != ComparisonDirection::kNe) {
+      return Unimplemented("Unsupported comparison: %s", comparison.ToString());
     }
-    return result;
-  };
-  switch (comparison.GetDirection()) {
-    case ComparisonDirection::kEq:
-      return populate([](auto lhs, auto rhs) { return lhs == rhs; });
-    case ComparisonDirection::kNe:
-      return populate([](auto lhs, auto rhs) { return lhs != rhs; });
-    case ComparisonDirection::kGe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs >= rhs; });
-      }
-      break;
-    case ComparisonDirection::kGt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs > rhs; });
-      }
-      break;
-    case ComparisonDirection::kLe:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs <= rhs; });
-      }
-      break;
-    case ComparisonDirection::kLt:
-      if constexpr (!is_complex_v<OperandT>) {
-        return populate([](auto lhs, auto rhs) { return lhs < rhs; });
-      }
-      break;
   }
+  Literal result(shape);
 
-  return Unimplemented("Unsupported comparison: %s", comparison.ToString());
+  // If layout is the same, we can use linear indexing into the literals.
+  const Layout& lhs_layout = lhs_literal.shape().layout();
+  const Layout& rhs_layout = rhs_literal.shape().layout();
+  bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                     LayoutUtil::Equal(lhs_layout, shape.layout());
+
+  if (same_layout) {
+    ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
+        [&](int64_t linear_index, int /*thread_id*/) {
+          return comparison.Compare(
+              lhs_literal.GetLinear<OperandT>(linear_index),
+              rhs_literal.GetLinear<OperandT>(linear_index));
+        }));
+  } else {
+    ABSL_RETURN_IF_ERROR(result.PopulateParallel<bool>(
+        [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+          return comparison.Compare(lhs_literal.Get<OperandT>(multi_index),
+                                    rhs_literal.Get<OperandT>(multi_index));
+        }));
+  }
+  return result;
 }
 
 std::optional<bool> GetInstructionStaticValueAsBool(
@@ -247,7 +212,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
     DCHECK(absl::endian::native == absl::endian::big);
     error_detail = absl::byteswap(error_detail);
   }
-  (*error_payload.data()) = error_detail;
+  (error_payload[0]) = error_detail;
   error.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(error_payload));
   return error;
 }
@@ -893,12 +858,17 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
 // in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
 // type-agnostic evaluator will be able to accept Tuple primitive type, whereas
 // HloEvaluatorTypedVisitor cannot.
-HloEvaluator::HloEvaluator(int64_t max_loop_iterations,
-                           bool cache_call_computation_evals, bool is_embedded)
+HloEvaluator::HloEvaluator(
+    int64_t max_loop_iterations, bool cache_call_computation_evals,
+    std::shared_ptr<SpecializationCache> specialization_cache)
     : max_loop_iterations_(max_loop_iterations),
       cache_call_computation_evals_(cache_call_computation_evals),
-      is_embedded_(is_embedded) {
-  if (cache_call_computation_evals_ && !is_embedded_) {
+      specialization_cache_(std::move(specialization_cache)) {
+  // Each HandleCall creates its own child evaluator, and in order to have one
+  // shared cache for all call hierarchy, child evaluators borrow the cache
+  // passed from their parents via CreateEmbedded. If no cache is passed and
+  // caching is enabled, create a new one.
+  if (cache_call_computation_evals_ && specialization_cache_ == nullptr) {
     specialization_cache_ = std::make_shared<SpecializationCache>();
   }
   for (int i = PrimitiveType_MIN; i < PrimitiveType_ARRAYSIZE; ++i) {
@@ -963,10 +933,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
   OnEvaluateComputation(computation);
 
-  if (!is_embedded_) {
-    ClearSpecializationCache();
-  }
-
   if (args.size() != computation.num_parameters()) {
     return InvalidArgument(
         "Expected %d argument%s, but got %d.", computation.num_parameters(),
@@ -1022,9 +988,6 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     bool recursively_evaluate_nonconstant_operands,
     const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
         substitutions) {
-  if (!is_embedded_) {
-    ClearSpecializationCache();
-  }
   ScopedEvaluateState evaluate_state(&state_);
 
   // Use the substitutions to manually set instructions results to a specific
@@ -3672,14 +3635,12 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
     return absl::OkStatus();
   }
 
-  if (specialization_cache_ == nullptr) {
-    specialization_cache_ = std::make_shared<SpecializationCache>();
-  }
+  TF_RET_CHECK(specialization_cache_ != nullptr);
 
-  const Literal* cached_result =
-      specialization_cache_->Find(computation, arg_literals);
-  if (cached_result != nullptr) {
-    SetEvaluatedLiteralFor(call, cached_result->Clone());
+  if (std::optional<Literal> cached_result =
+          specialization_cache_->Find(computation, arg_literals);
+      cached_result.has_value()) {
+    SetEvaluatedLiteralFor(call, std::move(*cached_result));
     return absl::OkStatus();
   }
 
@@ -3690,9 +3651,7 @@ absl::Status HloEvaluator::HandleCall(const HloInstruction* call) {
   ABSL_ASSIGN_OR_RETURN(Literal result,
                    embedded_evaluator->Evaluate(*computation, arg_literals));
 
-  if (specialization_cache_->Find(computation, arg_literals) == nullptr) {
-    specialization_cache_->Insert(computation, arg_literals, result.Clone());
-  }
+  specialization_cache_->Insert(computation, arg_literals, result.Clone());
 
   SetEvaluatedLiteralFor(call, std::move(result));
   return absl::OkStatus();

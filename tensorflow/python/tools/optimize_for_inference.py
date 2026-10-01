@@ -153,12 +153,13 @@ def parse_args():
       """)
   parser.add_argument(
       "--toco_compatible",
-      type=bool,
+      type="bool",
       default=False,
       help="""\
       If true, only use ops compatible with Tensorflow
       Lite Optimizing Converter.\
-      """)
+      """,
+  )
   parser.add_argument(
       "--placeholder_to_const_names",
       type=str,

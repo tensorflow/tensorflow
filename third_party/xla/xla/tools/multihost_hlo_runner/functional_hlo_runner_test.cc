@@ -453,6 +453,42 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
       {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, ExecutionProfileIsNotWrittenByMultipleDevices) {
+#ifndef ABSL_HAVE_THREAD_SANITIZER
+  GTEST_SKIP() << "TSan-only regression test";
+#endif
+
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                       GetPjRtClient());
+
+  constexpr int kRequiredDeviceCount = 2;
+  const int kDeviceCount = client->device_count();
+  if (kDeviceCount < kRequiredDeviceCount) {
+    GTEST_SKIP() << "Requires " << kRequiredDeviceCount
+                 << " devices, but found only " << kDeviceCount;
+  }
+
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 2;
+  std::vector<ExecutionProfile> profiles;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.execution_profiles = &profiles;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+
+  EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client,
+      /*preproc_options=*/{}, raw_compile_options, running_options,
+      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+  ASSERT_EQ(profiles.size(), 1);
+  EXPECT_GT(profiles[0].compute_time_ns(), 0);
+}
+
 TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());

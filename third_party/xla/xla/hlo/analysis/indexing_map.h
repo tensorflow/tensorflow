@@ -173,6 +173,9 @@ class IndexingMap {
   // Returns the range evaluator for the indexing map's domain.
   RangeEvaluator GetRangeEvaluator() const;
 
+  // Computes the range for each result of the indexing map.
+  llvm::SmallVector<Interval> ComputeResultRanges() const;
+
   // Getters for dimension vars.
   const Variable& GetDimVar(int64_t id) const { return dim_vars_[id]; }
   const std::vector<Variable>& GetDimVars() const { return dim_vars_; }
@@ -238,6 +241,11 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const { return is_known_empty_; }
 
+  // Resets the indexing map to the canonical "known" empty indexing map, i.e.
+  // (d0...)[s0...]{r0...} -> (0...) symbolic map.
+  // Does not change the number of symbols, dimensions or results.
+  void ResetToKnownEmpty();
+
   bool IsUndefined() const { return symbolic_map_ == SymbolicMap(); }
 
   // Removes unused symbols from the `symbolic_map_` and constraints.
@@ -286,16 +294,8 @@ class IndexingMap {
   // Returns true if simplification was performed.
   bool MergeModConstraints();
 
-  // Resets the indexing map to the canonical "known" empty indexing map, i.e.
-  // (d0...)[s0...]{r0...} -> (0...) symbolic map.
-  // Does not change the number of symbols, dimensions or results.
-  void ResetToKnownEmpty();
-
   // Verify if all intervals for DimVars, RangeVars and RTVars are feasible.
   bool VerifyVariableIntervals();
-
-  // Verify if all intervals for constraints.
-  bool VerifyConstraintIntervals();
 
   SymbolicMap symbolic_map_;
 

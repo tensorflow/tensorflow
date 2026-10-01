@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <tuple>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
@@ -198,6 +199,99 @@ TEST(DotThunkTest, DotS8S8S32) {
       out_shape, [&](auto) { return out_shape.dimensions(0); });
   EXPECT_EQ(out, expected);
 }
+
+// Correctness test for mixed-precision integer dots (s8 x s8 -> s32). HLO
+// semantics require the sum of products to accumulate in the wider result type
+// (s32). A previous implementation accumulated the Eigen contraction in the
+// promoted operand type (int8) before casting to int32, which
+// wrapped/overflowed for contraction dimensions larger than a handful of
+// elements.
+//
+// We use K = 256 with every element equal to 2: the correct per-output value is
+// 256 * 2 * 2 = 1024, while an int8 accumulator wraps to 1024 mod 256 == 0.
+// Matrices are square and all elements equal, so the expected result is 1024
+// for every output element regardless of layout/transpose, letting us sweep
+// every layout/canonical combination (which exercises the transpose_lhs /
+// transpose_rhs branches of the Eigen MatMul) with a single expected value.
+class DotThunkMixedPrecisionWrapTest
+    : public testing::TestWithParam<std::tuple<bool, bool, bool, bool>> {};
+
+TEST_P(DotThunkMixedPrecisionWrapTest, DotS8S8S32) {
+  constexpr int64_t kK = 256;
+  const std::vector<int64_t> row_major = {1, 0};
+  const std::vector<int64_t> col_major = {0, 1};
+
+  const auto& [lhs_col_major, rhs_col_major, out_col_major, canonical] =
+      GetParam();
+
+  auto make_shape = [&](PrimitiveType type, bool col_major_layout) {
+    return ShapeUtil::MakeShapeWithDenseLayout(
+        type, {kK, kK}, col_major_layout ? col_major : row_major);
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto lhs,
+                       (LiteralUtil::CreateLiteralWithGenerator<S8, int8_t>(
+                           make_shape(S8, lhs_col_major),
+                           [](auto) { return static_cast<int8_t>(2); })));
+  ASSERT_OK_AND_ASSIGN(auto rhs,
+                       (LiteralUtil::CreateLiteralWithGenerator<S8, int8_t>(
+                           make_shape(S8, rhs_col_major),
+                           [](auto) { return static_cast<int8_t>(2); })));
+  ASSERT_OK_AND_ASSIGN(
+      auto out, (LiteralUtil::CreateLiteralWithGenerator<S32, int32_t>(
+                    make_shape(S32, out_col_major), [](auto) { return 0; })));
+
+  BufferAllocations allocations = CreateBufferAllocations(lhs, rhs, out);
+
+  auto [lhs_alloc, rhs_alloc, out_alloc] =
+      CreateBufferAllocation(lhs, rhs, out);
+  auto [lhs_slice, rhs_slice, out_slice] =
+      CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
+
+  DotDimensionNumbers dot_dimensions;
+  if (canonical) {
+    dot_dimensions.add_lhs_contracting_dimensions(1);
+    dot_dimensions.add_rhs_contracting_dimensions(0);
+  } else {
+    dot_dimensions.add_lhs_contracting_dimensions(0);
+    dot_dimensions.add_rhs_contracting_dimensions(1);
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      DotThunk::Create({"dot"}, dot_dimensions, lhs_slice, lhs.shape(),
+                       rhs_slice, rhs.shape(), out_slice, out.shape()));
+
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = &device;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  ASSERT_OK_AND_ASSIGN(auto expected,
+                       (LiteralUtil::CreateLiteralWithGenerator<S32, int32_t>(
+                           ShapeUtil::MakeShape(S32, {kK, kK}),
+                           [](auto) { return kK * 2 * 2; })));
+  EXPECT_EQ(out, expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DotThunkMixedPrecisionWrapTest, DotThunkMixedPrecisionWrapTest,
+    testing::Combine(testing::Bool(), testing::Bool(), testing::Bool(),
+                     testing::Bool()),
+    [](const testing::TestParamInfo<DotThunkMixedPrecisionWrapTest::ParamType>&
+           info) {
+      return absl::StrCat(
+          std::get<0>(info.param) ? "lhs_col_major" : "lhs_row_major", "__",
+          std::get<1>(info.param) ? "rhs_col_major" : "rhs_row_major", "__",
+          std::get<2>(info.param) ? "out_col_major" : "out_row_major", "__",
+          std::get<3>(info.param) ? "canonical" : "non_canonical");
+    });
 
 }  // namespace
 }  // namespace xla::cpu

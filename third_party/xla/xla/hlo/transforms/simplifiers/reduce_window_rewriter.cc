@@ -154,9 +154,8 @@ static absl::StatusOr<HloComputation*> ScalarizeComputation(
         break;
       default: {
         if (!inst->IsElementwise()) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Instruction is not elementwise: ",
-                           HloOpcodeString(inst->opcode())));
+          return InvalidArgumentStrCat("Instruction is not elementwise: ",
+                                       HloOpcodeString(inst->opcode()));
         }
         ABSL_ASSIGN_OR_RETURN(Shape shape, get_scalar_shape(inst->shape()));
         new_inst = builder.AddInstruction(
@@ -857,10 +856,8 @@ absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
   }
 
   bool changed = false;
-  for (const auto& computation : module->computations(execution_threads)) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (const HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (auto* scan = DynCast<HloScanInstruction>(instruction)) {

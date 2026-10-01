@@ -203,11 +203,68 @@ full digest below.
 This error means that there was an issue that prevented the program from
 properly executing and could not be recovered automatically. This error was
 unable to be specifically categorized and there is no further error information
-available.
+available. If RapidEye cannot identify the culprit, follow the [Manual Diagnosis
+](#manual-diagnosis) instructions below.
+
+### Manual Diagnosis
+
+Always inspect the [RapidEye diagnosis](#diagnosis) first when investigating a
+hang. Only use the manual diagnostic flags below as a fallback when RapidEye
+cannot identify the culprit—such as unknown MXLA hangs, single-slice hangs, or
+exceptionally slow step times.
+
+#### Diagnostic Flags Reference
+
+When diagnosing stalls, timeouts, or program stragglers that RapidEye cannot
+automatically classify, the following flags enable detailed low-level execution
+logs and prevent premature job crashes:
+
+```bash
+# Enable low-level logging for TensorCore and SparseCore execution states
+--xla_tpu_enable_log_recorder=true
+--xla_tpu_enable_sc_log_recorder=true
+
+# Extend synchronization wait timeouts to prevent false-positive stall
+# detections
+--xla_tpu_debug_sflag_wait_timeout_ms=150000
+--xla_tpu_debug_sc_sflag_wait_timeout_ms=150000
+
+# Prevent immediate hard crash upon timeout detection so logs can be gathered
+--xla_tpu_debug_sflag_wait_shalt_on_detection=false
+
+# Enable hierarchical tracking of HLO progress
+--xla_tpu_enable_progress_tracker=16
+
+# Prevent the coordinator from aborting all workers prematurely on hang
+--megascale_error_reporter_abort_on_hang=false
+```
+
+#### Purpose and Usage
+
+- **Preventing Premature Aborts**: By default, when a hang is detected, the
+  coordinator immediately aborts all workers
+  (`megascale_error_reporter_abort_on_hang=true`). Setting this flag to `false`
+  keeps workers alive long enough to flush thread stack traces and detailed TPU
+  states to Cloud Logging.
+- **Investigating Slow Steps vs. Real Hangs**: For exceptionally large models or
+  initialization steps that take longer than the default timeout (typically 60
+  seconds), increasing `--xla_tpu_debug_sflag_wait_timeout_ms=150000` (150s)
+  rules out false positives.
+- **Inspecting Timeout Logs**: In Cloud Logging, search for:
+  ```text
+  Wait timeout on sflag
+  ```
+  Group matching logs by HLO opcode to isolate the first worker or core that
+  failed to make progress, distinguishing the culprit from bystander workers
+  waiting on dependencies.
 
 <!-- linter style on -->
 
 ## Performance
+
+For an in-depth reference on configuring and tuning Megascale flags (such as
+collective buffer sizing and zero-copy memory premapping), see the
+[Megascale Performance Tuning Flags guide](performance_tuning.md).
 
 ### Get an XProf session
 
@@ -254,7 +311,7 @@ checkpoint size.
 
 ### Network Analysis
 
-MegaScale also provides a Colab
+Megascale also provides a Colab
 [notebook](https://github.com/openxla/xla/blob/main/xla/megascale/tools/network_analysis_oss.ipynb)
 to help analyze network performance using an XProf trace.
 

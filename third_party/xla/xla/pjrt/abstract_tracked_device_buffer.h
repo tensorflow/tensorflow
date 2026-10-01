@@ -118,14 +118,7 @@ class AbstractTrackedDeviceBuffer {
   absl::Status BlockForOperationsToComplete(PjRtMemorySpace* memory_space);
 
   absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
-      PjRtMemorySpace* memory_space) {
-    if (definition_events().size() != 1) {
-      return absl::InternalError(
-          "GetMergedDefinitionEvent only supported on TPU for buffers with "
-          "exactly 1 definition event.");
-    }
-    return definition_events_[0];
-  }
+      PjRtMemorySpace* memory_space);
 
   absl::Status WaitUntilBufferReadyOnStream(PjRtMemorySpace* memory_space,
                                             std::intptr_t stream);

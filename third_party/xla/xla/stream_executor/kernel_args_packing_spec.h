@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -47,6 +48,19 @@ class KernelArgPackingRelocation {
   static absl::StatusOr<KernelArgPackingRelocation> FromProto(
       const KernelArgPackingRelocationProto& proto);
 
+  friend bool operator==(const KernelArgPackingRelocation& a,
+                         const KernelArgPackingRelocation& b) {
+    return a.kind_ == b.kind_ && a.argument_index_ == b.argument_index_;
+  }
+  friend bool operator!=(const KernelArgPackingRelocation& a,
+                         const KernelArgPackingRelocation& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgPackingRelocation& r) {
+    return H::combine(std::move(h), r.kind_, r.argument_index_);
+  }
+
  private:
   Kind kind_;
   int argument_index_;
@@ -65,6 +79,14 @@ class KernelArgPackingSpec {
 
   // Builds KernelArgPackingSpec that refers to the given arg number.
   static KernelArgPackingSpec BuildArgRelocation(int argument_index);
+
+  // Returns the index of the argument this spec relocates, or `std::nullopt`
+  // if this spec holds a constant.
+  std::optional<int> relocation_argument_index() const {
+    return relocation_.has_value()
+               ? std::make_optional(relocation_->argument_index())
+               : std::nullopt;
+  }
 
   // Builds KernelArgPackingSpec that refers to a constant. The value must be
   // trivially copyable.
@@ -85,6 +107,19 @@ class KernelArgPackingSpec {
 
   static absl::StatusOr<KernelArgPackingSpec> FromProto(
       const KernelArgPackingSpecProto& proto);
+
+  friend bool operator==(const KernelArgPackingSpec& a,
+                         const KernelArgPackingSpec& b) {
+    return a.constant_ == b.constant_ && a.relocation_ == b.relocation_;
+  }
+  friend bool operator!=(const KernelArgPackingSpec& a,
+                         const KernelArgPackingSpec& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgPackingSpec& s) {
+    return H::combine(std::move(h), s.constant_, s.relocation_);
+  }
 
  private:
   KernelArgPackingSpec(std::vector<char> constant,
@@ -146,6 +181,11 @@ class KernelArgsPackingSpec {
       std::vector<KernelArgPackingSpec> kernel_arguments)
       : kernel_arguments_(std::move(kernel_arguments)) {}
 
+  // Builds the packing spec that passes the first `num_args` device buffer
+  // pointers to the kernel unchanged, in order. This is the right spec for
+  // kernels whose signature is exactly "all inputs, then all outputs".
+  static KernelArgsPackingSpec Identity(int num_args);
+
   // Adds a single argument packing spec to the kernel arguments packing spec.
   void AddArgument(KernelArgPackingSpec spec) {
     kernel_arguments_.push_back(std::move(spec));
@@ -163,6 +203,20 @@ class KernelArgsPackingSpec {
     kernel_arguments_.push_back(KernelArgPackingSpec::BuildFor(value));
   }
 
+  // Number of arguments the kernel will be launched with.
+  size_t size() const { return kernel_arguments_.size(); }
+
+  // Returns the largest device buffer index referenced by any relocation, or
+  // `std::nullopt` if the spec contains no relocations.
+  std::optional<int> MaxArgumentIndex() const;
+
+  // Returns an error if any relocation refers to a device buffer index that is
+  // out of range for `num_available_args` buffers. `BuildArguments` performs
+  // the same check, but only once the kernel is actually launched; calling
+  // `Validate` while emitting lets a mismatch between the packing spec and the
+  // kernel arguments surface at compile time instead.
+  absl::Status Validate(size_t num_available_args) const;
+
   // Materializes the argument buffers for this packing spec. The `args` span
   // must contain at least the number of arguments referenced in the packing
   // spec, otherwise an error will be returned.
@@ -174,6 +228,19 @@ class KernelArgsPackingSpec {
 
   static absl::StatusOr<KernelArgsPackingSpec> FromProto(
       const KernelArgsPackingSpecProto& proto);
+
+  friend bool operator==(const KernelArgsPackingSpec& a,
+                         const KernelArgsPackingSpec& b) {
+    return a.kernel_arguments_ == b.kernel_arguments_;
+  }
+  friend bool operator!=(const KernelArgsPackingSpec& a,
+                         const KernelArgsPackingSpec& b) {
+    return !(a == b);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const KernelArgsPackingSpec& s) {
+    return H::combine(std::move(h), s.kernel_arguments_);
+  }
 
  private:
   std::vector<KernelArgPackingSpec> kernel_arguments_;

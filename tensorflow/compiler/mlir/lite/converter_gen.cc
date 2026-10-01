@@ -62,11 +62,11 @@ llvm::cl::opt<ActionType> action(
                                 "Generate TFLite runtime verifiers")));
 
 // Returns the associated option name for the given op definition.
-static inline std::string GetOperatorOptionName(const Record &def) {
+static inline std::string GetOperatorOptionName(const Record& def) {
   assert(def.getName().starts_with("TFL_") && "unexpected op prefix");
   assert(def.getName().ends_with("Op") && "unexpected op suffix");
 
-  auto *custom_option = dyn_cast<StringInit>(def.getValueInit("customOption"));
+  auto* custom_option = dyn_cast<StringInit>(def.getValueInit("customOption"));
   std::ostringstream oss;
   if (custom_option)
     oss << custom_option->getValue().str();
@@ -90,7 +90,7 @@ static inline bool IsLstmOp(const StringRef op_name) {
   return op_name.take_back(6) == "LSTMOp";
 }
 
-static int HasOptions(const Record &def) {
+static int HasOptions(const Record& def) {
   if (def.getValueAsBit("hasOptions")) {
     return 1;
   }
@@ -100,13 +100,13 @@ static int HasOptions(const Record &def) {
   return 0;
 }
 
-static void EmitOptionBuilders(const RecordKeeper &record_keeper,
-                               const std::vector<const Record *> &defs,
-                               raw_ostream *ostream) {
-  raw_ostream &os = *ostream;
+static void EmitOptionBuilders(const RecordKeeper& record_keeper,
+                               const std::vector<const Record*>& defs,
+                               raw_ostream* ostream) {
+  raw_ostream& os = *ostream;
 
   const auto attr_type = record_keeper.getClass("Attr");
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     const int has_options = HasOptions(*def);
     // TFLite ops without options are skipped over.
     if (!has_options) {
@@ -125,11 +125,11 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     // Construct all the builder option needed.
     SmallVector<std::string, 8> options;
     // Add options due to attributes (not-derived).
-    auto *arg_values = def->getValueAsDag("arguments");
+    auto* arg_values = def->getValueAsDag("arguments");
     mlir::tblgen::Operator op(*def);
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      const auto *arg_def = dyn_cast<DefInit>(arg);
+      const auto* arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         // This binds the name of the attribute in the TD file with the name
@@ -156,8 +156,8 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     }
 
     // Add options due to derived attributes.
-    for (const auto &val : def->getValues()) {
-      if (auto *record = dyn_cast<RecordRecTy>(val.getType())) {
+    for (const auto& val : def->getValues()) {
+      if (auto* record = dyn_cast<RecordRecTy>(val.getType())) {
         if (record->isSubClassOf(attr_type)) {
           if (record->getClasses().size() != 1) {
             PrintFatalError(
@@ -174,7 +174,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     }
 
     os << "  tflite::" << tflite_option_name << "Builder b(*fbb);\n";
-    for (const auto &option : options)
+    for (const auto& option : options)
       os << formatv("  b.add_{0}(std::move({0}));\n", option);
     os << "  return b.Finish();\n}\n";
   }
@@ -187,11 +187,11 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
 // arguments that depend on op definitions should be auto-generated and then
 // operator should be built by the caller because it does not require
 // auto-generation.
-static void EmitOperatorBuilders(const std::vector<const Record *> &defs,
-                                 raw_ostream *ostream) {
-  raw_ostream &os = *ostream;
+static void EmitOperatorBuilders(const std::vector<const Record*>& defs,
+                                 raw_ostream* ostream) {
+  raw_ostream& os = *ostream;
 
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     StringRef op_name = def->getName().drop_front(4);
 
     const bool has_intermediates = op_name.take_back(6) == "LSTMOp";
@@ -257,7 +257,7 @@ static void EmitOperatorBuilders(const std::vector<const Record *> &defs,
   }
 }
 
-static inline std::string GetOperatorName(const Record &def) {
+static inline std::string GetOperatorName(const Record& def) {
   auto name = def.getValueAsString("opName");
   // Special case for basic_lstm.
   if (name == "basic_lstm") {
@@ -275,14 +275,14 @@ static inline std::string GetOperatorName(const Record &def) {
 //
 // TODO(hinsu): Consider converting this to a static constant associative
 // container instead of a series of if conditions, if required.
-static void EmitGetBuiltinOpCode(const std::vector<const Record *> &defs,
-                                 raw_ostream *ostream) {
-  raw_ostream &os = *ostream;
+static void EmitGetBuiltinOpCode(const std::vector<const Record*>& defs,
+                                 raw_ostream* ostream) {
+  raw_ostream& os = *ostream;
 
   os << "std::optional<tflite::BuiltinOperator> "
         "mlir::GetBuiltinOpCode(mlir::Operation* op) {\n";
 
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     StringRef op_name = def->getName().drop_front(4);
     auto operator_name = GetOperatorName(*def);
     os << "  if (isa<mlir::TFL::" << op_name << ">(op))\n"
@@ -304,20 +304,20 @@ static void EmitGetBuiltinOpCode(const std::vector<const Record *> &defs,
 //   ...
 //   return {0, 0};
 // }
-static void EmitOperandNumbers(const RecordKeeper &record_keeper,
-                               const std::vector<const Record *> &defs,
-                               raw_ostream *ostream) {
-  raw_ostream &os = *ostream;
+static void EmitOperandNumbers(const RecordKeeper& record_keeper,
+                               const std::vector<const Record*>& defs,
+                               raw_ostream* ostream) {
+  raw_ostream& os = *ostream;
   const auto attr_type = record_keeper.getClass("Attr");
   const auto optional_tensor = record_keeper.getClass("TFL_TensorOfOrNone");
   os << "llvm::MinMax mlir::OperandNumbersMinMax(llvm::StringRef op_name) {\n";
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     auto op_name = def->getValueAsString("opName");
     int tail_optional_tensor = 0, tensor_number_max = 0;
-    auto *arg_values = def->getValueAsDag("arguments");
+    auto* arg_values = def->getValueAsDag("arguments");
     for (int i = 0, e = arg_values->getNumArgs(); i < e; ++i) {
       auto arg = arg_values->getArg(i);
-      auto *arg_def = dyn_cast<DefInit>(arg);
+      auto* arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (!arg_def->getDef()->isSubClassOf(attr_type)) {
         tensor_number_max++;
@@ -351,9 +351,9 @@ static void EmitOperandNumbers(const RecordKeeper &record_keeper,
 //       const std::vector<int32_t>& intermediates,
 //       flatbuffers::FlatBufferBuilder *fbb,
 //       std::optional<int> debug_metadata_index);
-static void EmitBuildOperator(const std::vector<const Record *> &defs,
-                              raw_ostream *ostream) {
-  raw_ostream &os = *ostream;
+static void EmitBuildOperator(const std::vector<const Record*>& defs,
+                              raw_ostream* ostream) {
+  raw_ostream& os = *ostream;
 
   // Signature
   os << "std::optional<flatbuffers::Offset<tflite::Operator>>\n"
@@ -365,7 +365,7 @@ static void EmitBuildOperator(const std::vector<const Record *> &defs,
         "flatbuffers::FlatBufferBuilder *fbb,"
         "std::optional<int> debug_metadata_index) {\n";
 
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     StringRef op_name = def->getName().drop_front(4);
 
     // Try to cast to each op case and call the corresponding op builder
@@ -391,9 +391,9 @@ static void EmitBuildOperator(const std::vector<const Record *> &defs,
 // where id is an empty string if builtin_options_id is 1, or builtin_options_id
 // otherwise.
 static void EmitBuiltinOptionsToAttributes(
-    const RecordKeeper &record_keeper, const std::vector<const Record *> &defs,
-    raw_ostream *ostream, const int builtin_options_id) {
-  raw_ostream &os = *ostream;
+    const RecordKeeper& record_keeper, const std::vector<const Record*>& defs,
+    raw_ostream* ostream, const int builtin_options_id) {
+  raw_ostream& os = *ostream;
 
   const std::string builtin_options_suffix = [&] {
     switch (builtin_options_id) {
@@ -415,7 +415,7 @@ static void EmitBuiltinOptionsToAttributes(
         "llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes) {\n";
 
   const auto attr_type = record_keeper.getClass("Attr");
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     const int has_options = HasOptions(*def);
     if (has_options != builtin_options_id) {
       continue;
@@ -429,10 +429,10 @@ static void EmitBuiltinOptionsToAttributes(
     os << formatv("  if(const auto *op = op_union.As{0}()) {{\n", option_name);
 
     // We only care about options that are in arguments
-    auto *arg_values = def->getValueAsDag("arguments");
+    auto* arg_values = def->getValueAsDag("arguments");
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      const auto *arg_def = dyn_cast<DefInit>(arg);
+      const auto* arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         StringRef arg_name = arg_values->getArgNameStr(i);
@@ -446,6 +446,21 @@ static void EmitBuiltinOptionsToAttributes(
             "    attributes.emplace_back(builder.getNamedAttr(\"{0}\","
             " Build{1}(op->{0}, builder)));\n",
             arg_name, attr_type);
+      }
+    }
+
+    for (const auto& val : def->getValues()) {
+      if (auto* record = dyn_cast<RecordRecTy>(val.getType())) {
+        if (record->isSubClassOf(attr_type) &&
+            record->getClasses().size() == 1 &&
+            record->getClasses()[0]->getName() == "DerivedQuantSpecAttr") {
+          os << formatv(
+              "    if (auto attr = BuildDerivedQuantSpecAttr(op->{0}, "
+              "builder))\n"
+              "      attributes.emplace_back(builder.getNamedAttr("
+              "mlir::TFL::kQuantSpecAttrName, attr));\n",
+              val.getName());
+        }
       }
     }
 
@@ -463,14 +478,14 @@ static void EmitBuiltinOptionsToAttributes(
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
-static bool OperatorWritersMain(raw_ostream &os, const RecordKeeper &records) {
+static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   emitSourceFileHeader("MLIR TFLite FlatBuffer Builders", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<const Record *> defs = records.getAllDerivedDefinitions("TFL_Op");
+  std::vector<const Record*> defs = records.getAllDerivedDefinitions("TFL_Op");
   llvm::sort(defs, LessRecord());
 
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     // TFLite ops in the .td file are expected to follow the naming convention:
     // TFL_<OpName>Op.
     // The generated TFLite op C++ class should be TFL::<OpName>Op.
@@ -501,15 +516,15 @@ static bool OperatorWritersMain(raw_ostream &os, const RecordKeeper &records) {
   return false;
 }
 
-static void GenOperandResultVerifier(raw_ostream &os,
-                                     llvm::ArrayRef<const llvm::Init *> values,
+static void GenOperandResultVerifier(raw_ostream& os,
+                                     llvm::ArrayRef<const llvm::Init*> values,
                                      StringRef valueKind) {
   mlir::tblgen::FmtContext fctx;
 
   bool first = true;
-  for (const auto &static_value : llvm::enumerate(values)) {
-    auto *definit = llvm::cast<llvm::DefInit>(static_value.value());
-    auto *val = definit->getDef()->getValue("tflRuntimeTypePredicate");
+  for (const auto& static_value : llvm::enumerate(values)) {
+    auto* definit = llvm::cast<llvm::DefInit>(static_value.value());
+    auto* val = definit->getDef()->getValue("tflRuntimeTypePredicate");
     if (!val) continue;
 
     // Create code block on first type to verify.
@@ -550,16 +565,16 @@ static void GenOperandResultVerifier(raw_ostream &os,
 }
 
 // NOLINTNEXTLINE
-static bool RuntimeVerifierWriterMain(raw_ostream &os,
-                                      const RecordKeeper &records) {
+static bool RuntimeVerifierWriterMain(raw_ostream& os,
+                                      const RecordKeeper& records) {
   emitSourceFileHeader("MLIR TFLite Runtime Verifiers", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
+  std::vector<const Record*> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
   // Iterate through all the ops defined.
-  for (const auto *def : defs) {
+  for (const auto* def : defs) {
     mlir::tblgen::Operator op(*def);
     if (!op.getTrait("TflRuntimeVerifyOpInterface::Trait")) continue;
 
@@ -571,7 +586,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os,
     verify_ctx.addSubst("_op", "(*op)");
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-      auto &value = op.getOperand(i);
+      auto& value = op.getOperand(i);
       // Skip from first variadic operands for now. Else getOperand index used
       // below doesn't match.
       if (value.isVariableLength()) break;
@@ -579,7 +594,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os,
         verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
     }
     for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-      auto &value = op.getResult(i);
+      auto& value = op.getResult(i);
       // Skip from first variadic results for now. Else getResult index used
       // below doesn't match.
       if (value.isVariableLength()) break;
@@ -591,7 +606,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os,
     GenOperandResultVerifier(os, def->getValueAsDag("results")->getArgs(),
                              "result");
 
-    for (auto &trait : op.getTraits()) {
+    for (auto& trait : op.getTraits()) {
       if (!trait.getDef().isSubClassOf("GenInternalOpTrait")) {
         continue;
       }
@@ -600,7 +615,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os,
         continue;
       }
 
-      auto *val = trait.getDef().getValue("tflRuntimePredicate");
+      auto* val = trait.getDef().getValue("tflRuntimePredicate");
       if (!val) continue;
 
       auto desc = trait.getDef().getValueAsString("tflRuntimeDescription");
@@ -643,7 +658,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os,
   return false;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv);
   if (action == ActionType::OpConv)

@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -71,7 +70,7 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesNoOverlap) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
               absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
@@ -111,7 +110,7 @@ TEST_F(CollectiveCombinerAnnotatorTest, SynchronousCollectivesWithOverlap) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_THAT(RunCollectiveCombinerAnnotator(module.get()),
               absl_testing::IsOkAndHolds(true));
   const HloInstruction* ar0 =
@@ -139,7 +138,7 @@ TEST_F(CollectiveCombinerAnnotatorTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_FALSE(ContainsCombinableSyncCollective(*module));
 }
 
@@ -161,7 +160,7 @@ TEST_F(CollectiveCombinerAnnotatorTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_TRUE(ContainsCombinableSyncCollective(*module));
 }
 
@@ -179,7 +178,7 @@ TEST_F(CollectiveCombinerAnnotatorTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   // device size = 20000 bytes
   // slop factor = 0.95
@@ -207,8 +206,8 @@ TEST_F(CollectiveCombinerAnnotatorTest,
 
   HloModuleConfig config = GetModuleConfigForTest();
   config.set_device_memory_size(20000);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloText, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
 
   // device size = 20000 bytes
   // slop factor = 0.95

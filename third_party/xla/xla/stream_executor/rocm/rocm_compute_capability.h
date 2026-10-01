@@ -94,7 +94,9 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201", "gfx1250"};
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
+      "gfx1250",  // MI450
+  };
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);
@@ -208,7 +210,8 @@ class RocmComputeCapability {
   // Native bf16 transcendental instructions (v_exp_bf16, v_sqrt_bf16,
   // v_rsq_bf16, v_tanh_bf16, v_log_bf16, etc.), backed by the LLVM
   // FeatureBF16TransInsts subtarget feature. Lets us compute these bf16 ops
-  // without upcasting to f32 (currently used for exp, log, sqrt, rsqrt, tanh).
+  // without upcasting to f32 (currently used for exp2, log2, sqrt, rsqrt,
+  // tanh). bf16 exp and log do not need this; they go through f32.
   bool has_bf16_transcendental_support() const { return gfx1250(); }
 
   bool has_tdm_support() const { return gfx1250(); }

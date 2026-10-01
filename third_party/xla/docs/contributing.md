@@ -107,6 +107,15 @@ the XLA runner could load and execute the program. That means that there should
 be no pointers to `HloInstruction` or to other parts of the compiler or the
 `StreamExecutor`.
 
+##### GPU Compatibility Window {#gpu-compatibility-window}
+
+XLA:GPU guarantees 6 months of backward compatibility (runtimes must execute
+programs compiled up to 6 months earlier) and 2 weeks of forward compatibility
+(runtimes up to 2 weeks older must execute newly compiled programs).
+
+For detailed rules, change triage, rollout procedures, and testing guidance,
+see the [GPU AOT compatibility guide](gpu_aot_compatibility.md).
+
 ### Code standards
 
 *   *Coding style*: We follow [Google's code style guide](https://google.github.io/styleguide/).
@@ -138,6 +147,12 @@ be no pointers to `HloInstruction` or to other parts of the compiler or the
     with a flag first (e.g., via `DebugOptions`). This allows for easy rollback
     of the flag flip if problems arise, and affected users can temporarily
     set the flag themselves before a rollback is performed.
+
+*   *Preprocessor Conditionals (`#ifdef`)*: Avoid using `#if` / `#ifdef` for
+    backend-, hardware-, or version-specific logic whenever possible. Prefer
+    runtime checks via `StreamExecutor`'s `DeviceDescription` or separate build
+    targets. See [The Hitchhiker's Guide to Fewer `#ifdef`s in XLA](./avoiding_ifdefs.md)
+    for details and examples.
 
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place

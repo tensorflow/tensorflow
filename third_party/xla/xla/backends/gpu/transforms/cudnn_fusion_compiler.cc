@@ -540,25 +540,26 @@ class ConvDimensionAdapter {
   }
 
   const HloInstruction* get_broadcast_user(const HloInstruction* hlo) {
-    auto all_users_are_broadcast = [](const HloInstruction* instr) {
-      return !instr->users().empty() &&
-             absl::c_all_of(instr->users(), [](const HloInstruction* u) {
-               return u->opcode() == HloOpcode::kBroadcast;
-             });
-    };
-
-    // Pattern 1: hlo -> broadcast
-    if (all_users_are_broadcast(hlo)) {
-      return hlo->users()[0];
+    // Trace through single-user chains that preserve the 1D dimensions
+    // (e.g. hlo -> elementwise -> ... -> broadcast).
+    const HloInstruction* current = hlo;
+    while (current->user_count() == 1) {
+      const HloInstruction* user = current->users()[0];
+      if (user->IsElementwise() &&
+          ShapeUtil::SameDimensions(user->shape(), hlo->shape())) {
+        current = user;
+        continue;
+      }
+      break;
     }
 
-    // Pattern 2: hlo -> convert -> broadcast
-    if (hlo->user_count() == 1 &&
-        hlo->users()[0]->opcode() == HloOpcode::kConvert) {
-      const HloInstruction* convert = hlo->users()[0];
-      if (all_users_are_broadcast(convert)) {
-        return convert->users()[0];
-      }
+    auto all_users_are_broadcast =
+        !current->users().empty() &&
+        absl::c_all_of(current->users(), [](const HloInstruction* u) {
+          return u->opcode() == HloOpcode::kBroadcast;
+        });
+    if (all_users_are_broadcast) {
+      return current->users()[0];
     }
 
     return nullptr;

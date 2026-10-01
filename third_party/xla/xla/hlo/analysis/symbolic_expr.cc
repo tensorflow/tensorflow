@@ -744,7 +744,9 @@ std::optional<int64_t> SafeEvaluateSymbolicExpr(
   }
   auto lhs = SafeEvaluateSymbolicExpr(expr.GetLHS(), dims, syms);
   auto rhs = SafeEvaluateSymbolicExpr(expr.GetRHS(), dims, syms);
-  if (!lhs || !rhs) return std::nullopt;
+  if (!lhs || !rhs) {
+    return std::nullopt;
+  }
 
   int64_t result;
   bool result_division_is_undefined =
@@ -1067,12 +1069,12 @@ static absl::Mutex& getSymbolicExprStorageMutex() {
 void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context) {
   CHECK(mlir_context != nullptr);
   auto* uniquer = &mlir_context->getAffineUniquer();
-  {
-    absl::MutexLock lock(getSymbolicExprStorageMutex());
-    if (!uniquer->isParametricStorageInitialized(
-            mlir::TypeID::get<SymbolicExprStorage>())) {
-      uniquer->registerParametricStorageType<SymbolicExprStorage>();
-    }
+  mlir::TypeID id = mlir::TypeID::get<SymbolicExprStorage>();
+  absl::MutexLockMaybe lock(mlir_context->isMultithreadingEnabled()
+                                ? &getSymbolicExprStorageMutex()
+                                : nullptr);
+  if (!uniquer->isParametricStorageInitialized(id)) {
+    uniquer->registerParametricStorageType<SymbolicExprStorage>();
   }
 }
 

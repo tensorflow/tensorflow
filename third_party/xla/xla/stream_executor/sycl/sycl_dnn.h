@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_conv_utils.h"
 
 namespace stream_executor {
 namespace sycl {

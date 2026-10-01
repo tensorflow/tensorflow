@@ -221,6 +221,7 @@ TEST_P(CuptiV2SubscribeFallbackTest, FallsBackToV1) {
 
 INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2SubscribeFallbackTest,
                          ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
+                                           CUPTI_ERROR_NOT_COMPATIBLE,
                                            CUPTI_ERROR_UNKNOWN));
 
 TEST_P(CuptiV2TimestampFallbackTest, FallsBackToV1) {
@@ -249,12 +250,14 @@ TEST_P(CuptiV2TimestampFallbackTest, FallsBackToV1) {
   EXPECT_FALSE(CuptiDisabled());
 }
 
-// NOT_SUPPORTED covers an unavailable V2 timestamp capability. UNKNOWN
+// NOT_SUPPORTED covers an unavailable V2 timestamp capability. NOT_COMPATIBLE
+// covers a CUPTI state that is already bound to legacy V1 timestamps. UNKNOWN
 // preserves fallback for an unclassified failure in the optional V2 path.
-// Both are safe to fall back from because the tracer unsubscribes V2 before
-// retrying with V1.
+// All three are safe to fall back from because the tracer unsubscribes V2
+// before retrying with V1.
 INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2TimestampFallbackTest,
                          ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
+                                           CUPTI_ERROR_NOT_COMPATIBLE,
                                            CUPTI_ERROR_UNKNOWN));
 
 TEST_F(CuptiTracerTest,
@@ -402,7 +405,7 @@ TEST_F(CuptiTracerTest, DisableScopeRangeTracking) {
   EnableProfiling(options);
 
   // 3. Simulate callback
-  CUpti_CallbackData cbdata;
+  CUpti_CallbackData cbdata{};
   cbdata.callbackSite = CUPTI_API_EXIT;
   cbdata.context = reinterpret_cast<CUcontext>(uintptr_t{1});
   uint64_t correlationData = 100;

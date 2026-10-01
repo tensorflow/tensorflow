@@ -64,6 +64,10 @@ toc:
     path: /xla/persisted_autotuning
   - title: Determinism (GPU)
     path: /xla/determinism
+  - title: GPU AOT compilation
+    path: /xla/gpu_aot
+  - title: GPU AOT compatibility
+    path: /xla/gpu_aot_compatibility
   # TPU backend sub-section
   - heading: TPU backend
   - title: Sparsecore (embeddings)
@@ -97,12 +101,16 @@ toc:
     path: /xla/oom_debugging
   - title: Debug Megascale
     path: /xla/megascale/debugging_workflow
+  - title: Tune Megascale
+    path: /xla/megascale/performance_tuning
     # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
     path: /xla/tools
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
+  - title: HLO Isolation tool for numeric issues
+    path: /xla/hlo_isolation
 
 - title: Contributing
   # This is the default tab for the Contributing section.
@@ -115,6 +123,8 @@ toc:
     path: /xla/build_from_source
   - title: Testing HLO passes
     path: /xla/test_hlo_passes
+  - title: "Avoiding #ifdefs"
+    path: /xla/avoiding_ifdefs
   - title: Copybara quirks
     path: /xla/copybara
 

@@ -284,5 +284,51 @@ TEST_F(CollectiveFusionTest, AsyncCollectiveCreatorLiftsTritonCollective) {
   EXPECT_TRUE(filecheck_matches) << module->ToString();
 }
 
+TEST_F(CollectiveFusionTest, FusesAndFlattensReduceScatterOneShot) {
+  static constexpr absl::string_view kReduceScatterHlo = R"(
+    HloModule reduce_scatter_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[262144]{0} parameter(0)
+      ROOT rs = f32[32768]{0} reduce-scatter(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          dimensions={0},
+          to_apply=add
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[64,4096]) -> f32[8,4096] {
+    // CHECK:   %[[P0:.*]] = f32[64,4096]{1,0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[8,4096]{1,0} reduce-scatter(%[[P0]]),
+    // CHECK-SAME: dimensions={0},
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[262144]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   %[[BITCAST_IN:.*]] = f32[64,4096]{1,0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[8,4096]{1,0} fusion(%[[BITCAST_IN]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} bitcast(%[[FUSION]])
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
+  RunAndFilecheckHloRewrite(kReduceScatterHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
 }  // namespace
 }  // namespace xla::gpu

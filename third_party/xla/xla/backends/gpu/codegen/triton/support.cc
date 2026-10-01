@@ -440,6 +440,40 @@ CodegenDecision IsTritonSupportedAllReduce(
   return CodegenDecision::Allow();
 }
 
+CodegenDecision IsTritonSupportedReduceScatter(
+    const HloReduceScatterInstruction& reduce_scatter,
+    const se::GpuComputeCapability& gpu_version) {
+  if (!reduce_scatter.shape().IsArray()) {
+    return CodegenDecision::Forbid(
+        "Only non-tuple reduce-scatters are supported.");
+  }
+  if (reduce_scatter.replica_groups().empty()) {
+    return CodegenDecision::Forbid(
+        "Reduce-scatter does not have replica groups.");
+  }
+  if (reduce_scatter.shape().element_type() == PrimitiveType::F8E4M3FN ||
+      reduce_scatter.shape().element_type() == PrimitiveType::F8E5M2 ||
+      reduce_scatter.shape().element_type() == PrimitiveType::S4 ||
+      reduce_scatter.shape().element_type() == PrimitiveType::U4) {
+    return CodegenDecision::Forbid(
+        "4-bit integer, F8E4M3FN and F8E5M2 are not supported for "
+        "reduce-scatters.");
+  }
+
+  bool is_triton_supported_reduce_scatter_computation = absl::c_all_of(
+      reduce_scatter.to_apply()->instructions(),
+      [&](const HloInstruction* instr) {
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version)
+            .IsAllowed();
+      });
+  if (!is_triton_supported_reduce_scatter_computation) {
+    return CodegenDecision::Forbid(
+        "Unsupported reduce-scatter computation by Triton.");
+  }
+
+  return CodegenDecision::Allow();
+}
+
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
   // Only checking one side of bach and contracting dimensions, since they must
@@ -676,6 +710,16 @@ CodegenDecision IsTritonSupportedDot(
 CodegenDecision IsTritonSupportedScaledDot(
     const HloScaledDotInstruction& dot,
     const se::GpuComputeCapability& gpu_version) {
+  if (gpu_version.IsCuda()) {
+    auto cc = gpu_version.cuda_compute_capability();
+    if (!cc || !cc->IsAtLeastAmpere()) {
+      return CodegenDecision::Forbid(
+          "Scaled dot is not supported by Triton for pre-Ampere GPUs.");
+    }
+  } else if (!gpu_version.IsRocm()) {
+    return CodegenDecision::Forbid(
+        "Scaled dot is only supported on CUDA and ROCm.");
+  }
   CHECK_GE(dot.operand_count(), 4);
   PrimitiveType lhs_type = dot.operand(0)->shape().element_type();
   PrimitiveType rhs_type = dot.operand(1)->shape().element_type();
@@ -741,6 +785,19 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   return CodegenDecision::Allow();
 }
 
+bool IsWithinGemmFusion(const HloInstruction& instr) {
+  const HloComputation* computation = instr.parent();
+  if (computation == nullptr || !computation->IsFusionComputation()) {
+    return false;
+  }
+  const HloInstruction* fusion = computation->FusionInstruction();
+  if (fusion == nullptr) {
+    return false;
+  }
+  return IsGpuFusionKind(*fusion, kTritonGemmFusionKind) ||
+         IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
+}
+
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
@@ -797,8 +854,14 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
-  // padding. "Interior" and "low" padding are not supported.
+  // padding within GEMM fusions. "Interior" and "low" padding are not
+  // supported.
   if (instr.opcode() == HloOpcode::kPad) {
+    // TODO(b/568080363): Support pads outside of GEMM fusions.
+    if (!IsWithinGemmFusion(instr)) {
+      return CodegenDecision::Forbid(
+          "Pads are only supported within GEMM fusions.");
+    }
     auto pad = Cast<HloPadInstruction>(&instr);
     bool no_op = true;
     for (const auto& dim_config : pad->padding_config().dimensions()) {
@@ -891,6 +954,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kAllGather:
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");
+    case HloOpcode::kReduceScatter:
+      return IsTritonSupportedReduceScatter(
+          *Cast<HloReduceScatterInstruction>(&instr), gpu_version);
     default:
       // Not all instructions have a special handling.
       break;
@@ -927,6 +993,7 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
+    case HloOpcode::kShuffle:
       return true;
     default:
       return false;

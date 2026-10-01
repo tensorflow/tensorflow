@@ -32,7 +32,7 @@ module @non_ifrt_or_builtin_attributes_removed attributes {
     return %0 : !array loc("sum_w1")
   }
 
-  module @add_one attributes {sym_visibility = "private"} {
+  module @add_one <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<2x2xi32> {jax.buffer_donor = true})
         -> tensor<2x2xi32> attributes {reserved_hbm_bytes = 0 : i64} {
       %0 = stablehlo.constant dense<1> : tensor<2x2xi32>

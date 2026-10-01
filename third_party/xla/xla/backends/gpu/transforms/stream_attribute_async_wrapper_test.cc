@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -45,19 +45,19 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
 
   StreamAttributeAsyncWrapper async_wrapper;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, async_wrapper.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, async_wrapper.Run(module.get()));
   EXPECT_TRUE(changed);
   const HloInstruction* producer =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_EQ(producer->opcode(), HloOpcode::kAsyncDone);
   // Verify that the force_earliest_schedule is set to false for the done op.
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig done_gpu_config,
-                          producer->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig done_gpu_config,
+                       producer->backend_config<GpuBackendConfig>());
   EXPECT_EQ(done_gpu_config.force_earliest_schedule(), false);
 
   const HloInstruction* producer_start = producer->operand(0);
@@ -67,8 +67,8 @@ TEST_F(StreamAttributeAsyncWrapperTest, NonDefaultOpIsWrapped) {
       Cast<HloAsyncInstruction>(producer_start);
   EXPECT_EQ(async->async_wrapped_opcode(), HloOpcode::kAdd);
   // Verify that the backend config is kept intact
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
-                          async->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                       async->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.operation_queue_id(), 1);
   EXPECT_EQ(gpu_config.force_earliest_schedule(), true);
   EXPECT_EQ(async->async_execution_thread(), "parallel");

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/time/clock.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
@@ -46,8 +46,8 @@ class DelayKernelTest : public ::testing::Test {
   // synchronises, which can stall the host for longer than the kernel is
   // willing to wait.
   void WarmUp() {
-    TF_ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
-                            LaunchDelayKernel(stream_.get()));
+    ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
+                         LaunchDelayKernel(stream_.get()));
     *semaphore = GpuSemaphoreState::kRelease;
     ASSERT_THAT(stream_->BlockHostUntilDone(), absl_testing::IsOk());
   }
@@ -57,11 +57,10 @@ class DelayKernelTest : public ::testing::Test {
 
  private:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
-        Platform * platform,
-        PlatformManager::PlatformWithId(rocm::kROCmPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(Platform * platform, PlatformManager::PlatformWithId(
+                                                  rocm::kROCmPlatformId));
+    ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
   }
 };
 
@@ -73,10 +72,10 @@ class DelayKernelTest : public ::testing::Test {
 TEST_F(DelayKernelTest, HostReleaseStopsTheKernelBeforeItTimesOut) {
   WarmUp();
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
-                          LaunchDelayKernel(stream_.get()));
-  TF_ASSERT_OK_AND_ASSIGN(RocmEvent event,
-                          RocmEvent::Create(executor_, /*allow_timing=*/false));
+  ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
+                       LaunchDelayKernel(stream_.get()));
+  ASSERT_OK_AND_ASSIGN(RocmEvent event,
+                       RocmEvent::Create(executor_, /*allow_timing=*/false));
   ASSERT_THAT(stream_->RecordEvent(&event), absl_testing::IsOk());
 
   // The kernel is still spinning, so nothing recorded behind it can have
@@ -98,8 +97,8 @@ TEST_F(DelayKernelTest, HostReleaseStopsTheKernelBeforeItTimesOut) {
 TEST_F(DelayKernelTest, TimesOutWhenTheHostNeverReleasesIt) {
   WarmUp();
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
-                          LaunchDelayKernel(stream_.get()));
+  ASSERT_OK_AND_ASSIGN(GpuSemaphore semaphore,
+                       LaunchDelayKernel(stream_.get()));
   absl::SleepFor(2 * kKernelTimeout);
 
   ASSERT_THAT(stream_->BlockHostUntilDone(), absl_testing::IsOk());

@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -47,7 +46,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -63,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
@@ -212,7 +212,8 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   return ctx;
 }
 
-using InfoStruct = std::variant<AllReduceInfo, AllGatherInfo>;
+using InfoStruct =
+    std::variant<AllReduceInfo, AllGatherInfo, ReduceScatterInfo>;
 
 // Builds helper struct for the given collective instruction.
 absl::StatusOr<InfoStruct> GetCollectiveInfo(
@@ -238,6 +239,14 @@ absl::StatusOr<InfoStruct> GetCollectiveInfo(
                            all_gather, device_assignment));
       return all_gather_info;
     }
+    case HloOpcode::kReduceScatter: {
+      ABSL_ASSIGN_OR_RETURN(
+          ReduceScatterInfo reduce_scatter_info,
+          BuildReduceScatterInfo(
+              /*is_collective_kernel_enabled=*/true, gpu_topology,
+              Cast<HloReduceScatterInstruction>(instr), device_assignment));
+      return reduce_scatter_info;
+    }
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported collective opcode: ", instr->opcode()));
@@ -259,6 +268,11 @@ absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
                        return AllGatherLaunchDimensions(
                            all_gather_info.num_elements,
                            all_gather_info.num_devices, device_info);
+                     },
+                     [&](const ReduceScatterInfo& reduce_scatter_info) {
+                       return ReduceScatterLaunchDimensions(
+                           reduce_scatter_info.num_output_elements,
+                           reduce_scatter_info.num_devices, device_info);
                      }},
       collective_info);
 }
@@ -285,18 +299,28 @@ absl::Status ValidateBlockLevelFusionConfig(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
+// Unmanaged kernel arguments of collectives that use the AllReduce argument
+// layout: rank, signal value (except for reduce-scatter), signal buffers and
+// one remote buffer per parameter.
+absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
     const HloComputation* computation,
-    const HloAllReduceInstruction* all_reduce) {
+    const HloCollectiveInstruction* collective) {
   const int32_t num_devices =
-      all_reduce->device_list()->num_devices_per_group();
+      collective->device_list()->num_devices_per_group();
+  const bool has_invocation_count =
+      collective->opcode() != HloOpcode::kReduceScatter;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
-                              kNumCollectiveMetadataArgs);
+                              num_metadata_args);
 
-  // rank and signal_value
+  // rank (and signal_value when present)
   unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  if (has_invocation_count) {
+    unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  }
   // The shape for signal and scratch buffers does not really matter in the end
   // because this would just be a pointer. For documentation purposes we add
   // the correct shape which would be
@@ -313,16 +337,16 @@ absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
     unmanaged_arguments.push_back(shape);
   }
   TF_RET_CHECK(unmanaged_arguments.size() ==
-               computation->num_parameters() + kNumCollectiveMetadataArgs);
+               computation->num_parameters() + num_metadata_args);
   return unmanaged_arguments;
 }
 
 mlir::LogicalResult PopulateReductionComputation(
-    mlir::PatternRewriter& rewriter, mlir::stablehlo::AllReduceOp op,
+    mlir::PatternRewriter& rewriter, mlir::Operation* op,
     ReductionComputationEmitter& computation_emitter) {
   // At the moment we expect only one operation in the reduction computation
   // to be relevant.
-  auto& reduction_computation_region = op.getComputation();
+  auto& reduction_computation_region = op->getRegion(0);
   int num_ops_to_emit = 0;
   for (auto& block : reduction_computation_region.getBlocks()) {
     for (auto& block_op : block.without_terminator()) {
@@ -372,6 +396,159 @@ mlir::LogicalResult PopulateReductionComputation(
   return mlir::success();
 }
 
+// Emits code that reads the last barrier signal value posted by this block from
+// its own slot in the local rank's signal buffer and returns `last + 1` as the
+// signal value for this launch's first barrier. It replaces the host-provided
+// invocation count argument (see `CollectiveCodegenConfig::device_sync_count`).
+//
+// Arguments:
+// - `signal_buffers`: `!tt.ptr<i64>` table of the per-rank signal buffers.
+// - `rank`: i32 rank of this device in the replica group.
+// - `block_id`: i32 program id of this block.
+// - `world_size`: number of ranks in the replica group.
+// - `signal_slot`, `signal_stride`: See `BlockBarrierOp` for details.
+//   If not set, we use the default indexing of
+//   SignalBuffers[rank][block_id * world_size + rank].
+//
+// After a local CTA barrier, `BlockBarrierOp` writes the barrier signal value
+// into this slot of `SignalBuffers[0..world_size]`, and no other rank or block
+// ever writes to this slot of `SignalBuffers[rank]`.
+// For two-shot `AllReduce`, the second barrier writes `signal_value + 1`, so
+// the slot advances by 2 across launches and adding 1 at entry yields the next
+// launch's first signal value. Signal buffers are allocated and zeroed once per
+// executor, so the counter persists across executions (including CUDA graph
+// replays and device-side loops) without any extra store or thread barrier.
+mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
+                                      mlir::Value signal_buffers,
+                                      mlir::Value rank, mlir::Value block_id,
+                                      int64_t world_size,
+                                      mlir::Value signal_slot = nullptr,
+                                      int64_t signal_stride = 0) {
+  CHECK_EQ(signal_slot != nullptr, signal_stride > 0)
+      << "signal_slot and signal_stride must be set together";
+  const auto ptr_to_i32_type =
+      ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace);
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  mlir::Value signal_buffers_i64 =
+      ttir::BitcastOp::create(b, ptr_to_i64_type, signal_buffers);
+  // SignalBuffers[rank]
+  mlir::Value local_signal_buffer_i64 = ttir::LoadOp::create(
+      b, ttir::AddPtrOp::create(b, ptr_to_i64_type, signal_buffers_i64, rank),
+      ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
+      /*isVolatile=*/false);
+  mlir::Value local_signal_buffer =
+      ttir::IntToPtrOp::create(b, ptr_to_i32_type, local_signal_buffer_i64);
+  mlir::Value world_size_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(world_size)));
+  mlir::Value counter_index;
+  if (signal_slot != nullptr) {
+    // Computes:
+    // counter_index = ((block_id - signal_slot * signal_stride +
+    //                   rank * signal_stride) * world_size) + signal_slot
+    // See LowerBlockBarrierOp in triton_xla_lower_block_barrier_pass.cc for
+    // details on the asymmetric barrier indexing.
+    mlir::Value stride_op = arith::ConstantOp::create(
+        b, b.getI32IntegerAttr(static_cast<int32_t>(signal_stride)));
+    mlir::Value slot_offset = arith::MulIOp::create(b, signal_slot, stride_op);
+    mlir::Value base_block = arith::SubIOp::create(b, block_id, slot_offset);
+    mlir::Value rank_offset = arith::MulIOp::create(b, rank, stride_op);
+    mlir::Value target_block =
+        arith::AddIOp::create(b, base_block, rank_offset);
+    mlir::Value target_block_offset =
+        arith::MulIOp::create(b, target_block, world_size_op);
+    counter_index = arith::AddIOp::create(b, target_block_offset, signal_slot);
+  } else {
+    // SignalBuffers[rank][block_id * world_size + rank]
+    counter_index = arith::AddIOp::create(
+        b, arith::MulIOp::create(b, block_id, world_size_op), rank);
+  }
+  mlir::Value counter_ptr = ttir::AddPtrOp::create(
+      b, ptr_to_i32_type, local_signal_buffer, counter_index);
+  // Volatile to make sure that every launch reads the counter from memory.
+  mlir::Value counter = ttir::LoadOp::create(
+      b, counter_ptr, ttir::CacheModifier::NONE, ttir::EvictionPolicy::NORMAL,
+      /*isVolatile=*/true);
+  return arith::AddIOp::create(
+      b, counter, arith::ConstantOp::create(b, b.getI32IntegerAttr(1)));
+}
+
+// Returns the element offset of the active half of a double buffer that holds
+// `num_elements` elements of `element_type` per half. The lowest bit of
+// `signal_value` selects the half.
+mlir::Value EmitDoubleBufferOffset(mlir::ImplicitLocOpBuilder& b,
+                                   mlir::Value signal_value,
+                                   int64_t num_elements,
+                                   PrimitiveType element_type) {
+  const mlir::Type i64_type = b.getI64Type();
+  mlir::Value signal_value_i64 =
+      arith::ExtSIOp::create(b, i64_type, signal_value);
+  mlir::Value one =
+      arith::ConstantOp::create(b, i64_type, b.getI64IntegerAttr(1));
+  mlir::Value buffer_index = arith::AndIOp::create(b, signal_value_i64, one);
+  // The allocated double buffer size in bytes is aligned to
+  // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
+  // divide the buffer size by 2 and then divide by the element size to get
+  // the number of elements in the buffer. Its important to do this to make
+  // sure that start of the buffers are always aligned to 16 bytes.
+  const int64_t element_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
+      num_elements * element_size, kXlaAllocatedBufferAlignBytes);
+  const int64_t elements_per_buffer = buffer_size / element_size;
+  mlir::Value elements_per_buffer_op = arith::ConstantOp::create(
+      b, i64_type, b.getI64IntegerAttr(elements_per_buffer));
+  return arith::MulIOp::create(b, buffer_index, elements_per_buffer_op);
+}
+
+// Emits instructions to get the pointer to the remote buffer of the given
+// rank.
+// We have a !tt.ptr<i64> pointing to the base of the remote
+// buffers. We add the rank index to the base pointer and load to get to the
+// base pointer of the remote buffer of the given rank. Then we add the buffer
+// offset to get the pointer to the correct buffer inside (double buffering).
+// Note that the returned pointer is of the storage type not the logical type.
+mlir::Value EmitRemoteBufferPtr(mlir::ImplicitLocOpBuilder& b,
+                                mlir::Value remote_buffers, mlir::Value rank,
+                                mlir::Value buffer_offset,
+                                mlir::Type elem_storage_type) {
+  const auto ptr_to_i64_type =
+      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
+  const auto ptr_to_elem_type =
+      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
+  mlir::Value remote_buf_ptr_addr =
+      ttir::AddPtrOp::create(b, ptr_to_i64_type, remote_buffers, rank);
+  mlir::Value remote_buf_i64 =
+      ttir::LoadOp::create(b,                             //
+                           remote_buf_ptr_addr,           //
+                           ttir::CacheModifier::NONE,     //
+                           ttir::EvictionPolicy::NORMAL,  //
+                           /*isVolatile=*/false);         //
+  mlir::Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
+      b, ptr_to_elem_type, remote_buf_i64,
+      llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
+  return ttir::AddPtrOp::create(b, ptr_to_elem_type, remote_buf_ptr_base,
+                                buffer_offset);
+}
+
+// Emits a barrier between this block and the matching blocks of the other
+// ranks. All threads in the block should have completed their writes before we
+// proceed with a block barrier.
+// Otherwise, remote ranks might start reading the data before it is ready.
+void EmitBlockBarrier(
+    mlir::ImplicitLocOpBuilder& b, mlir::Value signal_buffers, mlir::Value rank,
+    mlir::Value signal_value, int64_t world_size,
+    mlir::Value signal_slot = nullptr, int64_t signal_stride = 0,
+    mtx::BarrierMode barrier_mode = mtx::BarrierMode::kSymmetric) {
+  mlir::triton::gpu::BarrierOp::create(b, mlir::triton::gpu::AddrSpace::Local);
+  mtx::BlockBarrierOp::create(
+      b, signal_buffers, rank, signal_value, signal_slot,
+      b.getI32IntegerAttr(static_cast<int32_t>(world_size)),
+      signal_stride > 0
+          ? b.getI32IntegerAttr(static_cast<int32_t>(signal_stride))
+          : mlir::IntegerAttr(),
+      mtx::BarrierModeAttr::get(b.getContext(), barrier_mode));
+}
+
 class AllReduceEmitter {
  public:
   static mlir::LogicalResult Emit(AllReduceEmitterContext ctx,
@@ -414,8 +591,8 @@ class AllReduceEmitter {
     const int32_t start_idx = ctx_.num_input_output_args;
     device_rank_ = ctx_.xtile_entry_fn.getArgument(start_idx);
     CHECK(device_rank_.getType().isInteger(32));
-    signal_value_ = ctx_.xtile_entry_fn.getArgument(start_idx + 1);
-    CHECK(signal_value_.getType().isInteger(32));
+    // The invocation count argument (`start_idx + 1`) is unused: the signal
+    // value comes from a counter in device memory (see Emit setup IR below).
     // !tt.ptr<i64>
     signal_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 2);
     // !tt.ptr<i64>
@@ -460,14 +637,15 @@ class AllReduceEmitter {
           << "Subtile shape: " << absl::StrJoin(subtile_shape_, ",");
     }
     // 3. Emit setup IR.
+    mlir::Value block_id = ttir::GetProgramIdOp::create(builder_, 0);
+    signal_value_ = EmitDeviceInvocationCount(
+        builder_, signal_buffers_, device_rank_, block_id, ctx_.world_size);
     if (remote_input_buffers_.getType() == ptr_to_i64_type_) {
       remote_input_buffers_i64_ = remote_input_buffers_;
     } else {
       remote_input_buffers_i64_ = ttir::BitcastOp::create(
           builder_, ptr_to_i64_type_, remote_input_buffers_);
     }
-    const mlir::Type i64_type = builder_.getI64Type();
-    // Check if last bit of signal_value is 0 or 1.
     mlir::Value signal_value = signal_value_;
     // For two-shot signal value is always incremented by 2.
     // So we need to right shift it by 1 to get the buffer index.
@@ -477,55 +655,18 @@ class AllReduceEmitter {
           arith::ConstantOp::create(builder_, signal_value.getType(),
                                     builder_.getI32IntegerAttr(1)));
     }
-    mlir::Value buffer_index = arith::AndIOp::create(
-        builder_, i64_type,
-        arith::ExtSIOp::create(builder_, i64_type, signal_value),  // i32->i64
-        arith::ConstantOp::create(builder_, i64_type,
-                                  builder_.getI64IntegerAttr(1)));
-    // The allocated double buffer size in bytes is aligned to
-    // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
-    // divide the buffer size by 2 and then divide by the element size to get
-    // the number of elements in the buffer. Its important to do this to make
-    // sure that start of the buffers are always aligned to 16 bytes.
-    const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
-        ctx_.num_elements *
-            ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type),
-        kXlaAllocatedBufferAlignBytes);
-    const int64_t elements_per_buffer =
-        buffer_size / ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type);
-    buffer_offset_ = arith::MulIOp::create(
-        builder_, i64_type, buffer_index,
-        arith::ConstantOp::create(
-            builder_, i64_type,
-            builder_.getI64IntegerAttr(elements_per_buffer)));
+    buffer_offset_ = EmitDoubleBufferOffset(
+        builder_, signal_value, ctx_.num_elements, ctx_.element_type);
     initialized_ = true;
     return absl::OkStatus();
   }
 
-  // Emits instructions to get the pointer to the remote buffer of the given
-  // rank.
-  // We have a !tt.ptr<i64> pointing to the base of the remote
-  // buffers. We add the rank index to the base pointer and load to get to the
-  // base pointer of the remote buffer of the given rank. Then we add the buffer
-  // offset to get the pointer to the correct buffer inside (double buffering).
-  // Note that the returned pointer is of the storage type not the logical type.
+  // Returns the pointer to the active remote buffer of the given rank. See
+  // EmitRemoteBufferPtr.
   mlir::Value GetRemoteBufferPtr(mlir::Value rank_idx) {
     CHECK(initialized_);
-    mlir::Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-        builder_, ptr_to_i64_type_, remote_input_buffers_i64_, rank_idx);
-    mlir::Value remote_buf_i64 =
-        ttir::LoadOp::create(builder_,                      //
-                             remote_buf_ptr_addr,           //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             /*isVolatile=*/false);         //
-    mlir::Value remote_buf_ptr_base =
-        ttir::IntToPtrOp::create(builder_, ptr_to_elem_type_, remote_buf_i64,
-                                 llvm::ArrayRef<mlir::NamedAttribute>{
-                                     xtile::GetDivisibilityAttr(builder_)});
-    mlir::Value remote_buf_ptr = ttir::AddPtrOp::create(
-        builder_, ptr_to_elem_type_, remote_buf_ptr_base, buffer_offset_);
-    return remote_buf_ptr;
+    return EmitRemoteBufferPtr(builder_, remote_input_buffers_i64_, rank_idx,
+                               buffer_offset_, elem_storage_type_);
   }
 
   // Loads a tile from the remote buffer of the given rank.
@@ -622,14 +763,8 @@ class AllReduceEmitter {
 
   mlir::LogicalResult EmitSync(mlir::Value signal_value) {
     CHECK(initialized_);
-    // All threads in the block should have completed their writes before we
-    // proceed with a block barrier.
-    // Otherwise, remote ranks might start reading the data before it is ready.
-    mlir::triton::gpu::BarrierOp::create(builder_,
-                                         mlir::triton::gpu::AddrSpace::Local);
-    mtx::BlockBarrierOp::create(builder_, signal_buffers_, device_rank_,
-                                signal_value,
-                                builder_.getI32IntegerAttr(ctx_.world_size));
+    EmitBlockBarrier(builder_, signal_buffers_, device_rank_, signal_value,
+                     ctx_.world_size);
     return mlir::success();
   }
 
@@ -1069,6 +1204,21 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
     tile_sizes[gather_dim] = std::min(
         tile_sizes[gather_dim], static_cast<int64_t>(llvm::bit_floor(
                                     static_cast<uint64_t>(per_rank_size))));
+  } else if (instr->opcode() == HloOpcode::kReduceScatter) {
+    // The pull-based reduce-scatter kernel requires the input tile of every
+    // program to cover exactly one shard along the scatter dimension, i.e. an
+    // output tile of `shard_size / num_devices` along the scatter dimension.
+    // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
+    const auto* rs = Cast<HloReduceScatterInstruction>(instr);
+    const int64_t scatter_dim = rs->scatter_dimension();
+    const int64_t num_devices =
+        std::get<ReduceScatterInfo>(collective_info).num_devices;
+    TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
+        << "Reduce-scatter output scatter dimension "
+        << output_shape.dimensions(scatter_dim)
+        << " is not divisible by the number of devices " << num_devices;
+    tile_sizes[scatter_dim] =
+        output_shape.dimensions(scatter_dim) / num_devices;
   }
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
   ABSL_RETURN_IF_ERROR(
@@ -1101,27 +1251,10 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   const HloInstruction* root = computation->root_instruction();
   switch (root->opcode()) {
     case HloOpcode::kAllReduce:
-      return GetAllReduceUnmanagedKernelArguments(
-          computation, Cast<HloAllReduceInstruction>(root));
-    case HloOpcode::kAllGather: {
-      // AllGather only needs the 3 metadata args (rank, signal_value,
-      // signal_buffers). No per-parameter scratch buffer args because the
-      // input parameter already maps to the symmetric scratch buffer via
-      // the pointer table mechanism in RequiredReplicaIdBounds.
-      const int32_t num_devices = Cast<HloAllGatherInstruction>(root)
-                                      ->device_list()
-                                      ->num_devices_per_group();
-      std::vector<Shape> unmanaged_arguments;
-      unmanaged_arguments.reserve(kNumCollectiveMetadataArgs);
-      // rank and signal_value
-      unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-      unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-      // signal_buffers: pointer-to-pointer table
-      static constexpr int32_t kMaxBlocksPerGrid = 32;
-      unmanaged_arguments.push_back(
-          ShapeUtil::MakeShape(S32, {num_devices, kMaxBlocksPerGrid}));
-      return unmanaged_arguments;
-    }
+    case HloOpcode::kAllGather:
+    case HloOpcode::kReduceScatter:
+      return GetRemoteBufferUnmanagedKernelArguments(
+          computation, Cast<HloCollectiveInstruction>(root));
     default:
       return std::vector<Shape>();
   }
@@ -1130,22 +1263,18 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation) {
+  const bool has_invocation_count =
+      hlo_computation->root_instruction()->opcode() !=
+      HloOpcode::kReduceScatter;
   // rank: i32
   fn_arg_types.push_back(b.getI32Type());
-  // signal_value: i32
-  fn_arg_types.push_back(b.getI32Type());
+  if (has_invocation_count) {
+    // signal_value: i32
+    fn_arg_types.push_back(b.getI32Type());
+  }
   // signal_buffers: !tt.ptr<i64>
   fn_arg_types.push_back(
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
-
-  // For AllGather, the input parameter already maps to the symmetric scratch
-  // buffer via RequiredReplicaIdBounds/SelectBufferOp, so we don't add
-  // per-parameter scratch buffer opaque args. Only AllReduce (and future ops
-  // that need explicit remote buffer pointers) add them.
-  const HloInstruction* root = hlo_computation->root_instruction();
-  if (root->opcode() == HloOpcode::kAllGather) {
-    return kNumCollectiveMetadataArgs;
-  }
 
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     (void)p;
@@ -1154,8 +1283,10 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     fn_arg_types.push_back(
         ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
   }
-  // num_metadata_args =
-  return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
+  return hlo_computation->num_parameters() + num_metadata_args;
 }
 
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
@@ -1186,6 +1317,8 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
       return CreateAllReduceKernelSpec(collective, launch_dimensions);
     case HloOpcode::kAllGather:
       return CreateAllGatherKernelSpec(collective, launch_dimensions);
+    case HloOpcode::kReduceScatter:
+      return CreateReduceScatterKernelSpec(collective, launch_dimensions);
     default:
       return absl::UnimplementedError(
           absl::StrFormat("CollectiveKernelSpec creation not implemented for "
@@ -1194,77 +1327,330 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
   }
 }
 
-CollectiveCodegenConfig CreateCollectiveCodegenConfig(
-    const HloInstruction* instr) {
-  const HloInstruction* collective = instr;
-  if (instr->opcode() == HloOpcode::kFusion) {
-    collective = instr->fused_instructions_computation()->root_instruction();
-  }
-  CollectiveCodegenConfig config;
-  auto gpu_config = collective->backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return config;
-  }
-  const auto strategy =
-      gpu_config->collective_backend_config().kernel_strategy();
-  // One-shot AllGather: the runtime copies input to symmetric scratch and the
-  // kernel needs a barrier before reading peers' data.
-  if (collective->opcode() == HloOpcode::kAllGather &&
-      strategy == CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT) {
-    config.copy_input_to_scratch = true;
-    config.emit_entry_barrier = true;
-  }
-  return config;
-}
+namespace {
 
-absl::Status EmitCollectiveEntryBarrier(mlir::ModuleOp module,
-                                        int32_t world_size) {
-  // Find the xtile::EntryFuncOp in the module.
-  xtile::EntryFuncOp entry_func = nullptr;
-  for (auto fn : module.getOps<xtile::EntryFuncOp>()) {
-    entry_func = fn;
-    break;
+struct AllGatherRewriteContext {
+  mlir::stablehlo::AllGatherOp op;
+  xtile::ExtractTileOp input_extract;
+  // Local input buffer read by `input_extract`.
+  mlir::TypedValue<mlir::MemRefType> input_buffer;
+  mlir::Value rank_arg;
+  mlir::Value signal_buffers_arg;
+  // !tt.ptr<i64> table of the gathered parameter's per-rank remote buffers.
+  mlir::Value remote_buffers_arg;
+  int64_t world_size = 0;
+  int64_t gather_dim = 0;
+  int64_t split_dim = -1;
+  int64_t signal_stride = 0;
+  PrimitiveType element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID;
+  llvm::ArrayRef<int64_t> per_rank_shape;
+  llvm::ArrayRef<int64_t> tile_sizes;
+};
+
+absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
+    mlir::stablehlo::AllGatherOp op) {
+  if (op.getOperands().size() != 1) {
+    return absl::InvalidArgumentError(
+        "AllGather op must have exactly one operand.");
   }
+  auto entry_func = op->getParentOfType<xtile::EntryFuncOp>();
   if (!entry_func) {
-    return absl::InternalError(
-        "No xtile::EntryFuncOp found in module for barrier insertion.");
+    return absl::InvalidArgumentError(
+        "AllGather op must be in an XTile entry function.");
   }
-
-  // The opaque args are appended after the regular input/output args.
-  // Their count is stored in the "num_opaque_args" attribute.
+  // The peer rank is derived from the program id (see EmitPeerReplicaId). This
+  // requires one tile per program, i.e. no tile loop around the op.
+  if (op->getParentOp() != entry_func.getOperation()) {
+    return absl::InvalidArgumentError(
+        "AllGather op must be directly nested in the XTile entry function.");
+  }
+  // Same layout as AllReduce: the collective metadata arguments followed by one
+  // remote buffer argument per fusion parameter.
   auto num_opaque_attr =
       entry_func->getAttrOfType<mlir::IntegerAttr>("num_opaque_args");
   if (!num_opaque_attr ||
-      num_opaque_attr.getInt() < kNumCollectiveMetadataArgs) {
-    return absl::InternalError(
-        absl::StrCat("Expected at least ", kNumCollectiveMetadataArgs,
-                     " opaque args for collective entry barrier, got ",
-                     num_opaque_attr ? num_opaque_attr.getInt() : 0));
+      num_opaque_attr.getInt() <= kNumCollectiveMetadataArgs) {
+    return absl::InvalidArgumentError(
+        "EntryFuncOp must have the collective metadata arguments followed by "
+        "the remote buffer arguments.");
   }
 
-  // The opaque args start at (total_args - num_opaque_args).
+  mlir::Value input_tile = op.getOperand(0);
+  auto input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+      input_tile.getDefiningOp());
+  if (!input_extract && input_tile.getDefiningOp() &&
+      input_tile.getDefiningOp()->getNumOperands() > 0) {
+    // Workaround(i1_to_i8_workaround): booleans are stored as i8 and cast to
+    // i1 after ExtractTileOp.
+    input_extract = llvm::dyn_cast_if_present<xtile::ExtractTileOp>(
+        input_tile.getDefiningOp()->getOperand(0).getDefiningOp());
+  }
+  if (!input_extract) {
+    return absl::InvalidArgumentError(
+        "AllGather operand must be defined by xtile::ExtractTileOp.");
+  }
+
+  // The gathered operand must be read from a fusion parameter. Its argument
+  // number selects the matching remote buffer argument.
+  auto input_arg =
+      mlir::dyn_cast<mlir::BlockArgument>(input_extract.getSource());
+  const int64_t num_parameters =
+      num_opaque_attr.getInt() - kNumCollectiveMetadataArgs;
+  if (!input_arg ||
+      input_arg.getOwner()->getParentOp() != entry_func.getOperation() ||
+      input_arg.getArgNumber() >= num_parameters) {
+    return absl::InvalidArgumentError(
+        "AllGather operand must be extracted from a fusion parameter.");
+  }
+  // `input_extract` is redirected to the peer's buffer below, so the local
+  // tile must not have other users.
+  if (!input_extract->hasOneUse() || !input_tile.hasOneUse()) {
+    return absl::InvalidArgumentError(
+        "AllGather input tile must only be used by the AllGather op.");
+  }
+
+  ABSL_ASSIGN_OR_RETURN(auto replica_groups,
+                   xla::ConvertReplicaGroups(op.getReplicaGroups(), op));
+  if (replica_groups->replica_groups().empty()) {
+    return absl::InvalidArgumentError(
+        "AllGather replica groups must not be empty.");
+  }
+
+  PrimitiveType element_type = xla::ConvertMlirTypeToPrimitiveType(
+      input_extract.getType().getElementType());
+  if (element_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
+    return absl::InvalidArgumentError(
+        "Could not convert AllGather element type to PrimitiveType.");
+  }
+
+  AllGatherRewriteContext ctx;
+  ctx.op = op;
+  ctx.input_extract = input_extract;
+  ctx.input_buffer = input_extract.getSource();
+  ctx.world_size = replica_groups->num_devices_per_group();
+  ctx.gather_dim = op.getAllGatherDim();
+  ctx.element_type = element_type;
+  ctx.per_rank_shape = ctx.input_buffer.getType().getShape();
+  ctx.tile_sizes = input_extract.getFullTileShape();
+
+  // Every tile must be gathered from a single rank (see EmitPeerReplicaId).
+  const int64_t per_rank_size = ctx.per_rank_shape[ctx.gather_dim];
+  const int64_t tile_size = ctx.tile_sizes[ctx.gather_dim];
+  if (per_rank_size % tile_size != 0) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "AllGather tile size (%d) must divide the per-rank size (%d) along the "
+        "gather dimension.",
+        tile_size, per_rank_size));
+  }
+
   int32_t total_args = entry_func.getNumArguments();
-  int32_t opaque_start =
+  int32_t metadata_args_start =
       total_args - num_opaque_attr.getInt() - kNumTileIndexArgs;
-  // Layout: opaque[0]=rank, opaque[1]=signal_value, opaque[2]=signal_buffers
-  mlir::Value rank_arg = entry_func.getArgument(opaque_start);
-  mlir::Value signal_value_arg = entry_func.getArgument(opaque_start + 1);
-  mlir::Value signal_buffers_arg = entry_func.getArgument(opaque_start + 2);
+  // Layout: opaque[0]=rank, opaque[1]=invocation count (unused, the signal
+  // value comes from a counter in device memory), opaque[2]=signal_buffers,
+  // opaque[3 + i]=remote buffers of parameter i (same as AllReduce).
+  ctx.rank_arg = entry_func.getArgument(metadata_args_start);
+  ctx.signal_buffers_arg = entry_func.getArgument(metadata_args_start + 2);
+  ctx.remote_buffers_arg =
+      entry_func.getArgument(metadata_args_start + kNumCollectiveMetadataArgs +
+                             input_arg.getArgNumber());
 
-  // Insert at the beginning of the entry block, right after program_id
-  // extraction (which is the first op). We want the barrier before any
-  // scf.for tile loop.
-  mlir::Block& entry_block = entry_func.front();
-  auto loc = entry_func.getLoc();
-  mlir::ImplicitLocOpBuilder builder(loc, &entry_block, entry_block.begin());
+  // Find a dimension to split the tile size across `world_size` to balance
+  // the in-kernel D2D subtile copy work across participating ranks.
+  // We prefer splitting along `gather_dim`, but fallback to the innermost
+  // cleanly divisible dimension. If none are found, split_dim remains -1
+  // (unsplit).
+  if (ctx.tile_sizes[ctx.gather_dim] >= ctx.world_size &&
+      ctx.tile_sizes[ctx.gather_dim] % ctx.world_size == 0) {
+    ctx.split_dim = ctx.gather_dim;
+  } else {
+    for (int64_t d = static_cast<int64_t>(ctx.tile_sizes.size()) - 1; d >= 0;
+         --d) {
+      if (ctx.tile_sizes[d] >= ctx.world_size &&
+          ctx.tile_sizes[d] % ctx.world_size == 0) {
+        ctx.split_dim = d;
+        break;
+      }
+    }
+  }
 
-  // Inter-block barrier via signal flags. This blocks until all
-  // remote ranks have also signaled.
-  mtx::BlockBarrierOp::create(builder, signal_buffers_arg, rank_arg,
-                              signal_value_arg,
-                              builder.getI32IntegerAttr(world_size));
+  ctx.signal_stride =
+      ctx.per_rank_shape[ctx.gather_dim] / ctx.tile_sizes[ctx.gather_dim];
+  for (int64_t j = ctx.gather_dim + 1;
+       j < static_cast<int64_t>(ctx.per_rank_shape.size()); ++j) {
+    ctx.signal_stride *=
+        xla::CeilOfRatio(ctx.per_rank_shape[j], ctx.tile_sizes[j]);
+  }
+  return ctx;
+}
 
-  return absl::OkStatus();
+// Returns the rank whose output slice contains this program's tile. Programs
+// enumerate output tiles in row-major order (same assumption as
+// `signal_stride` and the asymmetric barrier), so each run of `signal_stride`
+// consecutive programs covers one rank's slice along `gather_dim`.
+mlir::Value EmitPeerReplicaId(mlir::ImplicitLocOpBuilder& b,
+                              const AllGatherRewriteContext& ctx,
+                              mlir::Value block_id) {
+  mlir::Value stride_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(ctx.signal_stride)));
+  mlir::Value world_size_op = arith::ConstantOp::create(
+      b, b.getI32IntegerAttr(static_cast<int32_t>(ctx.world_size)));
+  mlir::Value tile_group = arith::DivUIOp::create(b, block_id, stride_op);
+  return arith::RemUIOp::create(b, tile_group, world_size_op);
+}
+
+// Returns the active slot of `rank`'s remote buffer as a memref with the type
+// of the local input buffer.
+mlir::Value EmitRemoteBufferMemref(mlir::ImplicitLocOpBuilder& b,
+                                   const AllGatherRewriteContext& ctx,
+                                   mlir::Value rank,
+                                   mlir::Value buffer_offset) {
+  const mlir::MemRefType memref_type = ctx.input_buffer.getType();
+  mlir::Value ptr =
+      EmitRemoteBufferPtr(b, ctx.remote_buffers_arg, rank, buffer_offset,
+                          memref_type.getElementType());
+  return mtx::PtrToMemrefOp::create(b, memref_type, ptr);
+}
+
+void CopySubtileToScratch(mlir::ImplicitLocOpBuilder& b,
+                          AllGatherRewriteContext& ctx,
+                          mlir::Value peer_replica_id,
+                          mlir::Value buffer_offset) {
+  llvm::SmallVector<mlir::Value> stage_offsets(
+      ctx.input_extract.getOffsets().begin(),
+      ctx.input_extract.getOffsets().end());
+  llvm::SmallVector<int64_t> subtile_shape(ctx.tile_sizes.begin(),
+                                           ctx.tile_sizes.end());
+  if (ctx.split_dim != -1) {
+    const int64_t subtile_size = ctx.tile_sizes[ctx.split_dim] / ctx.world_size;
+    mlir::Value subtile_size_val =
+        arith::ConstantIndexOp::create(b, subtile_size);
+    mlir::Value peer_replica_idx =
+        arith::IndexCastOp::create(b, b.getIndexType(), peer_replica_id);
+    mlir::Value subtile_off =
+        arith::MulIOp::create(b, peer_replica_idx, subtile_size_val);
+    stage_offsets[ctx.split_dim] =
+        arith::AddIOp::create(b, stage_offsets[ctx.split_dim], subtile_off);
+    subtile_shape[ctx.split_dim] = subtile_size;
+  }
+
+  auto subtile_tensor_type = mlir::RankedTensorType::get(
+      subtile_shape, ctx.input_extract.getType().getElementType());
+  auto subtile = xtile::ExtractTileOp::create(
+      b, subtile_tensor_type, ctx.input_buffer, stage_offsets, subtile_shape,
+      ctx.input_extract.getStrides());
+
+  mlir::Value own_scratch_slot =
+      EmitRemoteBufferMemref(b, ctx, ctx.rank_arg, buffer_offset);
+  xtile::InsertTileOp::create(b, subtile, own_scratch_slot, stage_offsets,
+                              subtile_shape, ctx.input_extract.getStrides());
+}
+
+}  // namespace
+
+mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
+                                     mlir::PatternRewriter& rewriter) {
+  absl::StatusOr<AllGatherRewriteContext> maybe_ctx = BuildAllGatherContext(op);
+  if (!maybe_ctx.ok()) {
+    return rewriter.notifyMatchFailure(op, maybe_ctx.status().message());
+  }
+  AllGatherRewriteContext& ctx = *maybe_ctx;
+
+  mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+  builder.setInsertionPoint(ctx.input_extract);
+
+  mlir::Value block_id = ttir::GetProgramIdOp::create(builder, 0);
+  mlir::Value peer_replica_id = EmitPeerReplicaId(builder, ctx, block_id);
+  mlir::Value signal_value = EmitDeviceInvocationCount(
+      builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size,
+      /*signal_slot=*/peer_replica_id, ctx.signal_stride);
+  mlir::Value buffer_offset = EmitDoubleBufferOffset(
+      builder, signal_value, Product(ctx.per_rank_shape), ctx.element_type);
+
+  // Copy this program's subtile of the local tile to this rank's remote buffer.
+  CopySubtileToScratch(builder, ctx, peer_replica_id, buffer_offset);
+  // Wait until the peer has staged the whole tile.
+  EmitBlockBarrier(builder, ctx.signal_buffers_arg, ctx.rank_arg, signal_value,
+                   ctx.world_size, /*signal_slot=*/peer_replica_id,
+                   ctx.signal_stride, mtx::BarrierMode::kConsumerSymmetric);
+  // Pull the tile from the peer's remote buffer.
+  mlir::Value pull_scratch_slot =
+      EmitRemoteBufferMemref(builder, ctx, peer_replica_id, buffer_offset);
+  rewriter.modifyOpInPlace(ctx.input_extract, [&]() {
+    ctx.input_extract.getSourceMutable().assign(pull_scratch_slot);
+  });
+  rewriter.replaceOp(op, op.getOperand(0));
+
+  return mlir::success();
+}
+
+absl::Status FlattenReduceScatterFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* parent = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  auto* rs = DynCast<HloReduceScatterInstruction>(
+      fused_computation->root_instruction());
+  TF_RET_CHECK(rs != nullptr) << "Expected a reduce-scatter fusion root.";
+  TF_RET_CHECK(fused_computation->num_parameters() == 1 &&
+               rs->operand(0) == fused_computation->parameter_instruction(0))
+      << "Expected a single parameter feeding the reduce-scatter.";
+  TF_RET_CHECK(IsReduceScatterFlattenable(rs))
+      << "Reduce-scatter is not flattenable.";
+  const Shape original_input_shape = rs->operand(0)->shape();
+  const Shape original_output_shape = rs->shape();
+  const int64_t num_devices = rs->device_list()->num_devices_per_group();
+  TF_RET_CHECK(num_devices > 0);
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(original_output_shape);
+  TF_RET_CHECK(num_output_elements % num_devices == 0)
+      << "Reduce-scatter output element count " << num_output_elements
+      << " is not divisible by the number of devices " << num_devices;
+  const int64_t inner_elements = num_output_elements / num_devices;
+  const PrimitiveType element_type = original_output_shape.element_type();
+  // Input [R * R, OutputSize / R] and output [R, OutputSize / R]: shard `s` of
+  // the input is rows [s * R, (s + 1) * R) and every output row is reduced from
+  // one input row of each rank.
+  const Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      element_type, {num_devices * num_devices, inner_elements}, {1, 0});
+  const Shape flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      element_type, {num_devices, inner_elements}, {1, 0});
+  if (original_input_shape == flat_input_shape &&
+      original_output_shape == flat_output_shape &&
+      rs->scatter_dimension() == 0) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* param = fused_computation->parameter_instruction(0);
+  *param->mutable_shape() = flat_input_shape;
+  HloInstruction* flat_rs =
+      fused_computation->AddInstruction(HloInstruction::CreateReduceScatter(
+          flat_output_shape, {param}, rs->to_apply(), rs->device_list(),
+          rs->constrain_layout(), rs->channel_id(), rs->use_global_device_ids(),
+          /*scatter_dimension=*/0));
+  flat_rs->CopyBackendConfigFrom(rs);
+  flat_rs->set_metadata(rs->metadata());
+  flat_rs->set_frontend_attributes(rs->frontend_attributes());
+  fused_computation->set_root_instruction(flat_rs,
+                                          /*accept_different_shape=*/true);
+  const std::string rs_name(rs->name());
+  ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(rs));
+  // Keep the original name so that the flattened reduce-scatter can still be
+  // matched to the original HLO (e.g. in profiles).
+  flat_rs->SetAndSanitizeName(rs_name);
+
+  *fusion_instr->mutable_shape() = flat_output_shape;
+  HloInstruction* bitcast_to_flat =
+      parent->AddInstruction(HloInstruction::CreateBitcast(
+          flat_input_shape, fusion_instr->mutable_operand(0)));
+  ABSL_RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_flat));
+  HloInstruction* bitcast_to_original = parent->AddInstruction(
+      HloInstruction::CreateBitcast(original_output_shape, fusion_instr));
+  VLOG(3) << "Flattened reduce-scatter fusion " << fusion_instr->name()
+          << " from " << original_input_shape.ToString() << " -> "
+          << original_output_shape.ToString();
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(bitcast_to_original);
 }
 
 }  // namespace xla::gpu

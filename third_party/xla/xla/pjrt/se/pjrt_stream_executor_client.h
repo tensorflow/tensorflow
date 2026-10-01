@@ -99,54 +99,11 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
 class StreamExecutorExecutable;
-
-class PjRtStreamExecutorDevice : public CommonPjRtDevice {
- public:
-  PjRtStreamExecutorDevice(int id, bool is_addressable, int local_device_id,
-                           int process_index, int process_index_in_partition,
-                           int partition_index, std::string device_kind,
-                           LocalChipId local_hardware_id = LocalChipId(-1))
-      : CommonPjRtDevice(
-            std::make_unique<PjRtStreamExecutorDeviceDescription>(
-                id, local_device_id, process_index, process_index_in_partition,
-                partition_index, std::move(device_kind)),
-            LocalDeviceId(local_device_id),
-            local_hardware_id.value() != -1
-                ? local_hardware_id
-                : (is_addressable ? LocalChipId(local_device_id)
-                                  : LocalChipId(-1)),
-            is_addressable) {}
-
-  ~PjRtStreamExecutorDevice() override = default;
-
-  // Must set client exactly once.
-  void SetClient(PjRtClient* client) override {
-    CommonPjRtDevice::SetClient(client);
-    // We have to define debug_string_ and to_string_ here, because
-    // platform_name() requires client_ to be set.
-    std::string device_name =
-        absl::StrCat(MakeAsciiTitlecase(platform_name()), "Device");
-
-    description().SetDebugString(absl::StrCat(platform_name(), ":", id()));
-    description().SetToString(absl::StrCat(device_name, "(id=", id(), ")"));
-  }
-
-  PjRtStreamExecutorDeviceDescription& description() {
-    return *static_cast<PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-  const PjRtStreamExecutorDeviceDescription& description() const override {
-    return *static_cast<const PjRtStreamExecutorDeviceDescription*>(
-        description_ptr());
-  }
-
-  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
-      const override;
-};
 
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
  public:
@@ -190,7 +147,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<AsyncWorkRunner> async_work_runner,
-      se::StreamExecutor* executor = nullptr,
+      se::StreamExecutor* absl_nonnull executor,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options = nullptr);
   ~PjRtStreamExecutorRawClient() override;
 
@@ -209,6 +166,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return state;
   }
 
+  bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
+
   gpu::GpuExecutableRunOptions* gpu_run_options() const {
     return gpu_run_options_.get();
   }
@@ -221,9 +180,18 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return host_memory_allocator_.get();
   }
 
+  int GetNumaNode(LocalDeviceId local_device_id) const override {
+    if (LocalDeviceState* state = device_state(local_device_id)) {
+      return state->executor()->numa_node();
+    }
+    return tsl::port::kNUMANoAffinity;
+  }
+
   bool should_stage_host_to_device_transfers() const {
     return should_stage_host_to_device_transfers_;
   }
+
+  void RecordMemoryStats() override;
 
   se::StreamExecutor* executor() const { return executor_; }
 
@@ -272,15 +240,27 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) override;
 
-  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
-                                  PjRtRawBufferRef raw_buffer,
-                                  PjRtDeviceEventRefVector definition_events,
-                                  PjRtDeviceEventPromiseRef usage_event_promise,
-                                  Future<std::string> serialized_descriptor,
-                                  PjRtBuffer::RemoteSendCallback on_done);
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
+
+  absl::Status WaitOnStream(LocalDeviceId local_device_id,
+                            PjRtDeviceEventRef event,
+                            std::intptr_t stream) override;
+
+  absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents(
+      LocalDeviceId local_device_id) const override;
+
+  absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats(
+      LocalDeviceId local_device_id) const override;
+
+  absl::Status ClearMemoryStats(LocalDeviceId local_device_id) override;
 
   virtual absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
       absl::Span<const PjRtRawBufferRef> buffers,
@@ -292,7 +272,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) override;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) override;
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
@@ -300,13 +281,16 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   absl::Status DmaUnmap(void* data) override;
 
+  void LaunchOnDevice(LocalDeviceId device_id,
+                      absl::AnyInvocable<void()> execute_fn) const override;
+
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
       absl::AnyInvocable<void() &&> on_delete_callback,
       bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
-      PjRtMemorySpace* memory_space, std::intptr_t stream) override;
+      LocalDeviceId local_device_id, std::intptr_t stream) override;
 
   absl::Status TransferToInfeed(LocalDeviceId local_device_id,
                                 const LiteralSlice& literal) override;
@@ -364,7 +348,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
 
-  se::StreamExecutor* executor_;
+  se::StreamExecutor* absl_nonnull executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
   tsl::thread::ThreadPool compile_thread_pool_;
 
@@ -410,75 +394,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
         CommonPjRtClientImpl::raw_client());
   }
 
-  absl::StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const {
-    return executable.SerializeExecutable();
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized,
-                           std::optional<CompileOptions> options,
-                           const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(const absl::Cord& serialized,
-                           std::optional<CompileOptions> options,
-                           const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::shared_ptr<PjRtExecutable> executable,
-      const LoadOptions& load_options) override;
-
-  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
-      const override;
-
-  // Caller is responsible to ensure that `data` has allocated enough memory
-  // for `buffer_size` to do DMA mapping.
-  absl::Status DmaMap(void* data, size_t buffer_size) override;
-
-  absl::Status DmaUnmap(void* data) override;
-
-  bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
-
-  LocalDeviceState& device_state(int device_ordinal) const {
-    LocalDeviceState* state =
-        raw_client()->device_state(LocalDeviceId(device_ordinal));
-    CHECK(state != nullptr)
-        << "LocalDeviceState not found for device ordinal: " << device_ordinal;
-    return *state;
-  }
-  LocalClient* client() const { return raw_client()->client(); }
-  se::DeviceAddressAllocator* allocator() const {
-    return raw_client()->allocator();
-  }
-  HostMemoryAllocator* GetHostMemoryAllocator() const override {
-    return raw_client()->GetHostMemoryAllocator();
-  }
-
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
-    return raw_client()->gpu_run_options();
-  }
-  bool IsOnCpu(PjRtMemorySpace* memory_space) override {
-    return PjRtStreamExecutorRawClient::IsOnCpu(memory_space);
-  }
-
-  bool allows_recursion() const override { return false; }
-  bool allows_execute_recursion() const override { return true; }
-  bool use_stream_based_compaction() const override { return true; }
-
-  PjRtDynamicShapeKind GetDynamicShapeKind(
-      int memory_space_kind_id) const override {
-    return PjRtDynamicShapeKind::kSuffix;
-  }
-
-  bool BufferFromHostBufferSupportsZeroCopy(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides, const Shape& shape,
-      PjRtMemorySpace* memory_space,
-      const Layout* device_layout) const override {
-    return false;
-  }
-
   bool ShouldPerformZeroCopyLinearize(
       const void* data, const xla::Shape& device_shape, PrimitiveType type,
       absl::Span<int64_t const> dims,
@@ -490,19 +405,12 @@ class PjRtStreamExecutorClient : public CommonPjRtClientImpl {
       absl::Span<const int64_t> byte_strides,
       PjRtRawBufferRef dest_buffer) override;
 
-  absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
-                            PjRtDeviceEventRef event,
-                            std::intptr_t stream) override;
-
   bool ShouldDoDirectTransfer(const MutableLiteralBase& literal,
                               const Shape& shape,
                               PjRtMemorySpace* memory_space) const override;
 
   tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space) override;
-
-  void LaunchOnDevice(PjRtDevice* device,
-                      absl::AnyInvocable<void()> execute_fn) const override;
 
  protected:
   friend class PjRtStreamExecutorRawBuffer;
@@ -566,17 +474,6 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
   std::shared_ptr<LocalExecutable> executable_;
   tsl::AsyncValueRef<StreamExecutorExecutable> se_executable_;
   PjRtStreamExecutorRawClient* raw_client_;
-};
-
-// Wraps one or more XLA LocalExecutables (one per partition, as specified by
-// the build options).
-class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
- public:
-  using CommonPjRtLoadedExecutable::CommonPjRtLoadedExecutable;
-
-  ~PjRtStreamExecutorLoadedExecutable() override = default;
-
-  const HloInputOutputAliasConfig& input_output_alias_config() const override;
 };
 
 }  // namespace xla

@@ -121,6 +121,14 @@ class PjRtCpuRawClient : public PjRtRawClient {
     return async_work_runner_.get();
   }
 
+  ThreadPoolAsyncWorkRunner* execute_work_runner() const {
+    return execute_work_runner_.get();
+  }
+
+  tsl::thread::ThreadPool* compile_thread_pool() const {
+    return compile_thread_pool_.get();
+  }
+
   tsl::thread::ThreadPool* eigen_intraop_pool() const {
     return eigen_intraop_pool_.get();
   }
@@ -153,11 +161,12 @@ class PjRtCpuRawClient : public PjRtRawClient {
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) override;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) override;
 
   absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
@@ -289,6 +298,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
   // the member variables of this class that are already destroyed.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
+  std::unique_ptr<ThreadPoolAsyncWorkRunner> execute_work_runner_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;
 };
 
@@ -329,7 +340,8 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
 
 class CpuExecutableLoadState : public PjRtExecutableLoadState {
  public:
-  explicit CpuExecutableLoadState() = default;
+  explicit CpuExecutableLoadState(PjRtCpuRawClient* raw_client)
+      : raw_client_(raw_client) {}
 
   ~CpuExecutableLoadState() override = default;
 
@@ -343,6 +355,7 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
       int attempt) override;
 
  private:
+  PjRtCpuRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
 };
 
@@ -450,14 +463,14 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   const CpuTopologyDescription* topology_;
 };
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
-    GetPjRtCpuClient(CpuClientOptions options);
+[[deprecated("Use public XLA:CPU GetXlaPjRtCpuClient instead")]]
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
+    CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
-    GetPjRtCpuClient(bool asynchronous) {
+[[deprecated("Use public XLA:CPU GetXlaPjRtCpuClient instead")]]
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
+    bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
   return GetPjRtCpuClient(std::move(options));

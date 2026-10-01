@@ -250,6 +250,94 @@ TEST(StreamExecutorGpuClientTest, CopyDelayedErrorBufferToDevice) {
   EXPECT_THAT(recv_buffer->ToLiteral().Await(), error);
 }
 
+TEST(StreamExecutorGpuClientTest,
+     PropagateAsyncHostToDeviceDelayedErrorCollective) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+
+  PjRtDevice* d0 = client->addressable_devices()[0];
+  PjRtDevice* d1 = client->addressable_devices()[1];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * d0_memory_space,
+                       d0->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * d1_memory_space,
+                       d1->default_memory_space());
+
+  static constexpr absl::string_view kAllReduceProgram = R"(
+HloModule AllReduce
+
+sum {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  sum_inputs = f32[4]{0} add(p0, p1)
+  ROOT ar = f32[4]{0} all-reduce(sum_inputs), replica_groups={{0,1}}, to_apply=sum
+}
+)";
+
+  CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(2);
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_executable_terminate_timeout_seconds(5);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      CompileExecutable(kAllReduceProgram, *client, compile_options));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  ASSERT_OK_AND_ASSIGN(auto txm_d0_0, client->CreateBuffersForAsyncHostToDevice(
+                                          {shape}, d0_memory_space));
+  ASSERT_OK_AND_ASSIGN(auto txm_d0_1, client->CreateBuffersForAsyncHostToDevice(
+                                          {shape}, d0_memory_space));
+  ASSERT_OK_AND_ASSIGN(auto txm_d1_0, client->CreateBuffersForAsyncHostToDevice(
+                                          {shape}, d1_memory_space));
+
+  std::unique_ptr<PjRtBuffer> p0_d0 = txm_d0_0->RetrieveBuffer(0);
+  std::unique_ptr<PjRtBuffer> p1_d0 = txm_d0_1->RetrieveBuffer(0);
+  std::unique_ptr<PjRtBuffer> p0_d1 = txm_d1_0->RetrieveBuffer(0);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> p1_d1,
+                       p1_d0->CopyToMemorySpace(d1_memory_space));
+
+  absl::Status input_error =
+      absl::UnavailableError("ReadHostBuffer connection timeout");
+  std::unique_ptr<tsl::Thread> error_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "set_buffer_error", [&]() {
+        // Wait for both devices' launch_on_device() callbacks to block in
+        // p0's BufferSequencingEvent::WaitForEventOnStream().
+        absl::SleepFor(absl::Milliseconds(100));
+        // Poison p0 on d0 first, then p1 (which also poisons p1_d1 via
+        // CopyToMemorySpace), and then p0 on d1. If IsPredeterminedError() is
+        // checked before WaitForEventOnStream(), d0 misses both errors and
+        // launches the collective while d1 sees p1_d1's error and skips
+        // RunAsync(), deadlocking the collective.
+        txm_d0_0->SetBufferError(0, input_error);
+        absl::SleepFor(absl::Milliseconds(50));
+        txm_d0_1->SetBufferError(0, input_error);
+        absl::SleepFor(absl::Milliseconds(50));
+        txm_d1_0->SetBufferError(0, input_error);
+      }));
+
+  std::optional<std::vector<Future<>>> returned_futures =
+      std::vector<Future<>>();
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       executable->Execute({{p0_d0.get(), p1_d0.get()},
+                                            {p0_d1.get(), p1_d1.get()}},
+                                           ExecuteOptions(), returned_futures));
+
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(returned_futures->size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_THAT((*returned_futures)[i].Await(),
+                StatusIs(input_error.code(), HasSubstr(input_error.message())));
+    EXPECT_THAT(results[i][0]->GetReadyFuture().Await(),
+                StatusIs(input_error.code(), HasSubstr(input_error.message())));
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, DistributedInit) {
   auto kv_store = std::make_shared<InMemoryKeyValueStore>();
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "DistributeInit", 4);

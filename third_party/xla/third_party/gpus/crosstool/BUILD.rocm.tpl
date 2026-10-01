@@ -3,7 +3,7 @@
 
 load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@local_config_clang//:clang.bzl", "local_clang")
-load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+load(":cc_toolchain_config.bzl", "cc_toolchain_config", "hipcc_workspace_prefix")
 
 # Local clang configuration for non-hermetic toolchain
 _LOCAL_CLANG = local_clang()
@@ -96,7 +96,7 @@ cc_toolchain_config(
         "-lstdc++",
         "-lm",
     ],
-    linker_bin_path = "external/config_rocm_hipcc/rocm/" + _HIPCC_CONFIG.rocm_root + "/bin",
+    linker_bin_path = hipcc_workspace_prefix() + "/" + _HIPCC_CONFIG.rocm_root + "/bin",
     opt_compile_flags = [
         "-g0",
         "-O2",
