@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
@@ -65,9 +66,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     }
 
     // Allocate the `sparse_indices` output tensor.
-    const int64_t nvals =
-        (rt_nested_splits.back()(rt_nested_splits.back().size() - 1) *
-         index_suffixes.size());
+    const int64_t nvals = rt_dense_values_in.NumElements();
     const int64_t indices_len =
         rt_nested_splits_len + rt_dense_values_in.dims();
     Tensor* sparse_indices_out = nullptr;
@@ -98,7 +97,7 @@ class RaggedTensorToSparseOp : public OpKernel {
         }
 
         // Update index_prefix.
-        for (int dim = 0; dim < index_prefix.size(); ++dim) {
+        for (size_t dim = 0; dim < index_prefix.size(); ++dim) {
           int64_t start = dim > 0 ? rt_nested_splits[dim - 1](pos[dim - 1]) : 0;
           index_prefix[dim] = pos[dim] - start;
         }
@@ -163,6 +162,9 @@ class RaggedTensorToSparseOp : public OpKernel {
   static absl::Status ValidateInputs(
       std::vector<ConstFlatSplits> rt_nested_splits,
       const Tensor& rt_dense_values_in) {
+    if (rt_dense_values_in.dims() == 0) {
+      return InvalidArgument("rt_dense_values must have rank >= 1.");
+    }
     for (int i = 0; i < rt_nested_splits.size(); ++i) {
       if (rt_nested_splits[i].size() == 0) {
         return absl::InvalidArgumentError("ragged splits may not be empty.");
