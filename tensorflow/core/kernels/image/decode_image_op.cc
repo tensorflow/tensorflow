@@ -335,9 +335,7 @@ class DecodeImageV2Op : public OpKernel {
           // 512 MiB (1LL << 29) in jpeg_mem.cc *before* this callback is
           // invoked. An additional op-level 1 GiB bound here is unreachable
           // and was removed after review.
-          const int64_t temp_buffer_size =
-              static_cast<int64_t>(height) * width * channels;
-          buffer_size = static_cast<int>(temp_buffer_size);
+          buffer_size = height * width * channels;
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
           // op. We need to make sure to return 4-D shapes when using
