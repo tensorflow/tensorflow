@@ -242,6 +242,18 @@ TEST_F(SummaryFileWriterTest, WriteAudio) {
       }));
 }
 
+TEST_F(SummaryFileWriterTest, WriteAudioRejectsScalarTensor) {
+  SummaryWriterInterface* writer;
+  TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(), "audio_rank0",
+                                      &env_, &writer));
+  core::ScopedUnref deleter(writer);
+  Tensor scalar(DT_FLOAT, TensorShape({}));
+  scalar.scalar<float>()() = 1.0;
+  absl::Status s = writer->WriteAudio(2, scalar, "name", 1, 1);
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::StrContains(s.message(), "2 or 3 dims")) << s;
+}
+
 TEST_F(SummaryFileWriterTest, WriteEvent) {
   TF_CHECK_OK(
       SummaryTestHelper("event_test",

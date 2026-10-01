@@ -300,10 +300,21 @@ absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
   if (sample_rate <= 0.0f) {
     return absl::InvalidArgumentError("sample_rate must be > 0");
   }
+  if (tensor.dims() != 2 && tensor.dims() != 3) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "tensor must have 2 or 3 dims, got ", tensor.shape().DebugString()));
+  }
   const int batch_size = tensor.dim_size(0);
   const int64_t length_frames = tensor.dim_size(1);
   const int64_t num_channels =
       tensor.dims() == 2 ? 1 : tensor.dim_size(tensor.dims() - 1);
+  const int64_t slice_elements = length_frames * num_channels;
+  size_t sample_rate_truncated = lrintf(sample_rate);
+  if (sample_rate_truncated == 0) {
+    sample_rate_truncated = 1;
+  }
+  const float* data = tensor.flat<float>().data();
+
   const int N = std::min<int>(max_outputs, batch_size);
   for (int i = 0; i < N; ++i) {
     Summary::Value* v = s->add_value();
@@ -319,17 +330,8 @@ absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
     sa->set_length_frames(length_frames);
     sa->set_content_type("audio/wav");
 
-    auto values =
-        tensor.shaped<float, 3>({batch_size, length_frames, num_channels});
-    auto channels_by_frames = typename TTypes<float>::ConstMatrix(
-        values.data() + i * (length_frames * num_channels),
-        Eigen::DSizes<Eigen::DenseIndex, 2>(length_frames, num_channels));
-    size_t sample_rate_truncated = lrintf(sample_rate);
-    if (sample_rate_truncated == 0) {
-      sample_rate_truncated = 1;
-    }
     TF_RETURN_IF_ERROR(wav::EncodeAudioAsS16LEWav(
-        channels_by_frames.data(), sample_rate_truncated, num_channels,
+        data + i * slice_elements, sample_rate_truncated, num_channels,
         length_frames, sa->mutable_encoded_audio_string()));
   }
   return absl::OkStatus();

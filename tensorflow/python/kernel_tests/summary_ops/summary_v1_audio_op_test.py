@@ -66,7 +66,13 @@ class SummaryV1AudioOpTest(test.TestCase):
         # Check the rest of the proto
         self._CheckProto(audio_summ, sample_rate, channels, num_frames)
 
-  def _WriteAudioSummary(self, tensor: np.ndarray) -> None:
+  def _WriteAudioSummary(
+      self,
+      tensor: np.ndarray,
+      step: int | np.ndarray = 0,
+      tag: str | np.ndarray = "audio_test",
+      sample_rate: float | np.ndarray = 16000.0,
+  ) -> None:
     """Helper to call write_audio_summary with standard test parameters."""
     logdir = self.get_temp_dir()
     with context.eager_mode():
@@ -74,10 +80,10 @@ class SummaryV1AudioOpTest(test.TestCase):
       try:
         gen_summary_ops.write_audio_summary(
             writer=writer._resource,
-            step=0,
-            tag="audio_test",
+            step=step,
+            tag=tag,
             tensor=tensor,
-            sample_rate=16000.0,
+            sample_rate=sample_rate,
             max_outputs=3)
       finally:
         writer.close()
@@ -103,14 +109,36 @@ class SummaryV1AudioOpTest(test.TestCase):
     self._WriteAudioSummary(three_d_tensor)
 
   def testWriteAudioSummaryAcceptsEmptyTensor(self):
-    empty_tensor = np.zeros((1, 0), dtype=np.float32)
-    # no exception should be raised
-    self._WriteAudioSummary(empty_tensor)
+    # Test length_frames = 0
+    empty_tensor_frames = np.zeros((1, 0), dtype=np.float32)
+    self._WriteAudioSummary(empty_tensor_frames)
+
+    # Test batch_size = 0
+    empty_tensor_batch = np.zeros((0, 100), dtype=np.float32)
+    self._WriteAudioSummary(empty_tensor_batch)
+
+  def testWriteAudioSummaryRejectsZeroChannels(self):
+    empty_tensor_channels = np.zeros((1, 100, 0), dtype=np.float32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "num_channels"):
+      self._WriteAudioSummary(empty_tensor_channels)
 
   def testWriteAudioSummaryRejects4DTensor(self):
     four_d_tensor = np.zeros((1, 10, 2, 2), dtype=np.float32)
     with self.assertRaisesRegex(errors.InvalidArgumentError, "2 or 3"):
       self._WriteAudioSummary(four_d_tensor)
+
+  def testWriteAudioSummaryRejectsNonScalarInputs(self):
+    tensor = np.zeros((1, 100), dtype=np.float32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "step must be a scalar"):
+      self._WriteAudioSummary(tensor, step=np.array([1, 2], dtype=np.int64))
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "tag must be a scalar"):
+      self._WriteAudioSummary(tensor, tag=np.array(["a", "b"]))
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "sample_rate must be a scalar"):
+      self._WriteAudioSummary(
+          tensor, sample_rate=np.array([1.0, 2.0], dtype=np.float32))
 
 
 if __name__ == "__main__":
