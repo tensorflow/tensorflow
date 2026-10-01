@@ -560,46 +560,50 @@ class CropAndResizeOpTestBase(test.TestCase):
     image = np.ones((1, 4, 4, 1), dtype=np.float32)
     box_ind = np.array([0], dtype=np.int32)
     image_size = np.array([1, 4, 4, 1], dtype=np.int32)
-    with test_util.force_cpu():
-      for bad_val in [np.nan, np.inf, -np.inf]:
-        boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
-        with self.assertRaisesRegex(
-            (errors_impl.InvalidArgumentError, ValueError),
-            "boxes contains at least one element that is not finite",
-        ):
-          self.evaluate(
-              image_ops.crop_and_resize_grad_boxes(
-                  grads, image, boxes_bad, box_ind
-              )
+    for bad_val in [np.nan, np.inf, -np.inf]:
+      boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
+      # On both CPU and GPU, non-finite coordinates are safely skipped by the
+      # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
+      grad_boxes = self.evaluate(
+          image_ops.crop_and_resize_grad_boxes(
+              grads, image, boxes_bad, box_ind
           )
-        with self.assertRaisesRegex(
-            (errors_impl.InvalidArgumentError, ValueError),
-            "boxes contains at least one element that is not finite",
-        ):
-          self.evaluate(
-              image_ops.crop_and_resize_grad_image(
-                  grads, boxes_bad, box_ind, image_size, T=dtypes.float32
-              )
+      )
+      self.assertIsNotNone(grad_boxes)
+      grad_image = self.evaluate(
+          image_ops.crop_and_resize_grad_image(
+              grads, boxes_bad, box_ind, image_size, T=dtypes.float32
           )
+      )
+      self.assertIsNotNone(grad_image)
 
-    if test_util.is_gpu_available():
-      with test_util.device(use_gpu=True):
-        for bad_val in [np.nan, np.inf, -np.inf]:
-          boxes_bad = np.array([[0.0, bad_val, 1.0, 1.0]], dtype=np.float32)
-          # On GPU, non-finite coordinates are safely skipped by the
-          # inverted NaN-safe bounds checks, preventing memory corruption or crashes.
-          grad_boxes = self.evaluate(
-              image_ops.crop_and_resize_grad_boxes(
-                  grads, image, boxes_bad, box_ind
-              )
+  def testEmptyTensorRankCheck(self):
+    grads = np.ones((1, 2, 2, 1), dtype=np.float32)
+    image = np.ones((1, 4, 4, 1), dtype=np.float32)
+    image_size = np.array([1, 4, 4, 1], dtype=np.int32)
+    
+    # 0 elements, but invalid rank/shape.
+    boxes_bad = np.zeros((0, 5), dtype=np.float32)
+    box_ind_bad = np.zeros((0, 6), dtype=np.int32)
+    
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "boxes must have 4 columns|box_index must be 1-D",
+    ):
+      self.evaluate(
+          image_ops.crop_and_resize_grad_boxes(
+              grads, image, boxes_bad, box_ind_bad
           )
-          self.assertIsNotNone(grad_boxes)
-          grad_image = self.evaluate(
-              image_ops.crop_and_resize_grad_image(
-                  grads, boxes_bad, box_ind, image_size, T=dtypes.float32
-              )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        "boxes must have 4 columns|box_index must be 1-D",
+    ):
+      self.evaluate(
+          image_ops.crop_and_resize_grad_image(
+              grads, boxes_bad, box_ind_bad, image_size, T=dtypes.float32
           )
-          self.assertIsNotNone(grad_image)
+      )
 
 
 

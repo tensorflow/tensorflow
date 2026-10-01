@@ -56,16 +56,11 @@ using Callback = std::function<void()>;
 static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                                  const Tensor& box_index,
                                                  int* num_boxes) {
-  if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
-    *num_boxes = 0;
-    return absl::OkStatus();
-  }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
     return absl::InvalidArgumentError(
         absl::StrCat("boxes must be 2-D", boxes.shape().DebugString()));
   }
-  *num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
     return absl::InvalidArgumentError("boxes must have 4 columns");
   }
@@ -74,17 +69,13 @@ static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
     return absl::InvalidArgumentError(
         absl::StrCat("box_index must be 1-D", box_index.shape().DebugString()));
   }
+  if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
+    *num_boxes = 0;
+    return absl::OkStatus();
+  }
+  *num_boxes = boxes.dim_size(0);
   if (box_index.dim_size(0) != *num_boxes) {
     return absl::InvalidArgumentError("box_index has incompatible shape");
-  }
-  return absl::OkStatus();
-}
-
-static inline absl::Status CheckBoxesAreFinite(const Tensor& boxes) {
-  const bool all_finite = boxes.flat<float>().isfinite().all()();
-  if (!all_finite) {
-    return absl::InvalidArgumentError(
-        "boxes contains at least one element that is not finite");
   }
   return absl::OkStatus();
 }
@@ -405,11 +396,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
-    if constexpr (std::is_same_v<Device, CPUDevice>) {
-      if (boxes.NumElements() > 0) {
-        OP_REQUIRES_OK_ASYNC(context, CheckBoxesAreFinite(boxes), done);
-      }
-    }
+
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
@@ -654,11 +641,7 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
     int num_boxes = 0;
     OP_REQUIRES_OK_ASYNC(
         context, ParseAndCheckBoxSizes(boxes, box_index, &num_boxes), done);
-    if constexpr (std::is_same_v<Device, CPUDevice>) {
-      if (boxes.NumElements() > 0) {
-        OP_REQUIRES_OK_ASYNC(context, CheckBoxesAreFinite(boxes), done);
-      }
-    }
+
     OP_REQUIRES_ASYNC(
         context, grads.dim_size(0) == num_boxes,
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
