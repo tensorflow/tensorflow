@@ -20,14 +20,17 @@ import os
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.experimental import (
     multi_worker_mirrored_strategy)
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.AutoStrategy")
+@tf_export("distribute.AutoStrategy", v1=[])
 def AutoStrategy() -> distribute_lib.StrategyBase:
   """Automatically detects hardware and returns the optimal strategy.
 
@@ -54,38 +57,32 @@ def AutoStrategy() -> distribute_lib.StrategyBase:
     except (ValueError, TypeError):
       tf_config = {}
 
-    cluster = tf_config.get("cluster", {})
-    if (len(cluster.get("worker", [])) > 1
-        or len(cluster.get("chief", [])) > 0):
-      return multi_worker_mirrored_strategy.MultiWorkerMirroredStrategy()
+    if isinstance(tf_config, dict):
+      cluster = tf_config.get("cluster", {})
+      if isinstance(cluster, dict):
+        if (len(cluster.get("worker", [])) > 1
+            or len(cluster.get("chief", [])) > 0):
+          return multi_worker_mirrored_strategy.MultiWorkerMirroredStrategy()
 
   # Check for TPUs
-  try:
-    resolver = tpu_cluster_resolver.TPUClusterResolver()
-    from tensorflow.python.distribute import tpu_strategy  # pylint: disable=g-import-not-at-top
-    from tensorflow.python.tpu import tpu_strategy_util  # pylint: disable=g-import-not-at-top
-
-    # Must connect to the cluster before initializing the system
-    if hasattr(config, "experimental_connect_to_cluster"):
-      config.experimental_connect_to_cluster(resolver)
-    else:
-      from tensorflow.python.eager import remote  # pylint: disable=g-import-not-at-top
+  if config.list_logical_devices("TPU") or os.environ.get("TPU_NAME"):
+    try:
+      resolver = tpu_cluster_resolver.TPUClusterResolver()
       remote.connect_to_cluster(resolver)
-
-    if not tpu_strategy_util.get_initialized_tpu_systems():
-      tpu_cluster_resolver.initialize_tpu_system(resolver)
-    return tpu_strategy.TPUStrategy(resolver)
-  except ValueError:
-    # TPUClusterResolver raises ValueError if no TPU is found in the
-    # environment.
-    pass
+      if not tpu_strategy_util.get_initialized_tpu_systems():
+        tpu_cluster_resolver.initialize_tpu_system(resolver)
+      return tpu_strategy.TPUStrategy(resolver)
+    except (ValueError, RuntimeError, ImportError):
+      pass
 
   # Check for GPUs
-  gpus = config.list_physical_devices("GPU")
-  if len(gpus) > 1:
-    return mirrored_strategy.MirroredStrategy()
-  elif len(gpus) == 1:
-    return one_device_strategy.OneDeviceStrategy("/GPU:0")
+  visible_gpus = config.get_visible_devices("GPU")
+  if visible_gpus:
+    logical_gpus = config.list_logical_devices("GPU")
+    if len(logical_gpus) > 1:
+      return mirrored_strategy.MirroredStrategy()
+    elif len(logical_gpus) == 1:
+      return one_device_strategy.OneDeviceStrategy("/GPU:0")
 
   # Fallback to CPU
   return one_device_strategy.OneDeviceStrategy("/CPU:0")

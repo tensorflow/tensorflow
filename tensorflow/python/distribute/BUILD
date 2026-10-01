@@ -2750,6 +2750,7 @@ tf_py_strict_test(
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/distribute/experimental:multi_worker_mirrored_strategy",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/tpu:tpu_strategy_util",
