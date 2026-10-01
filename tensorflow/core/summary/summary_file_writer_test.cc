@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -252,6 +253,48 @@ TEST_F(SummaryFileWriterTest, WriteAudioRejectsScalarTensor) {
   absl::Status s = writer->WriteAudio(2, scalar, "name", 1, 1);
   EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
   EXPECT_TRUE(absl::StrContains(s.message(), "2 or 3 dims")) << s;
+}
+
+TEST_F(SummaryFileWriterTest, WriteAudioRejects1DAnd4DTensors) {
+  SummaryWriterInterface* writer;
+  TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(), "audio_rank1_4",
+                                      &env_, &writer));
+  core::ScopedUnref deleter(writer);
+  for (const TensorShape& shape :
+       {TensorShape({100}), TensorShape({1, 10, 2, 2})}) {
+    Tensor t(DT_FLOAT, shape);
+    t.flat<float>().setZero();
+    absl::Status s = writer->WriteAudio(2, t, "name", 1, 1);
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << shape.DebugString() << " " << s;
+    EXPECT_TRUE(absl::StrContains(s.message(), "2 or 3 dims")) << s;
+  }
+}
+
+TEST_F(SummaryFileWriterTest, WriteAudioRejectsNonFloatTensor) {
+  SummaryWriterInterface* writer;
+  TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(), "audio_double",
+                                      &env_, &writer));
+  core::ScopedUnref deleter(writer);
+  Tensor t(DT_DOUBLE, TensorShape({1, 10}));
+  t.flat<double>().setZero();
+  absl::Status s = writer->WriteAudio(2, t, "name", 1, 1);
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::StrContains(s.message(), "DT_FLOAT")) << s;
+}
+
+TEST_F(SummaryFileWriterTest, WriteAudioRejectsNonFiniteSampleRate) {
+  SummaryWriterInterface* writer;
+  TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(),
+                                      "audio_nonfinite_rate", &env_, &writer));
+  core::ScopedUnref deleter(writer);
+  Tensor t(DT_FLOAT, TensorShape({1, 10}));
+  t.flat<float>().setZero();
+  for (float sample_rate : {std::numeric_limits<float>::quiet_NaN(),
+                            std::numeric_limits<float>::infinity()}) {
+    absl::Status s = writer->WriteAudio(2, t, "name", 1, sample_rate);
+    EXPECT_TRUE(absl::IsInvalidArgument(s)) << sample_rate << " " << s;
+    EXPECT_TRUE(absl::StrContains(s.message(), "finite")) << s;
+  }
 }
 
 TEST_F(SummaryFileWriterTest, WriteEvent) {

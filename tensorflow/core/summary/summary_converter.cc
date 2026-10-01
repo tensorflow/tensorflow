@@ -297,8 +297,14 @@ absl::Status AddTensorAsImageToSummary(const Tensor& tensor,
 absl::Status AddTensorAsAudioToSummary(const Tensor& tensor,
                                        const std::string& tag, int max_outputs,
                                        float sample_rate, Summary* s) {
-  if (sample_rate <= 0.0f) {
-    return absl::InvalidArgumentError("sample_rate must be > 0");
+  if (!(sample_rate > 0.0f) || !std::isfinite(sample_rate)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("sample_rate must be finite and > 0, got ", sample_rate));
+  }
+  if (tensor.dtype() != DT_FLOAT) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("tensor must have dtype DT_FLOAT, got ",
+                     DataTypeString(tensor.dtype())));
   }
   if (tensor.dims() != 2 && tensor.dims() != 3) {
     return absl::InvalidArgumentError(absl::StrCat(
