@@ -676,5 +676,35 @@ ENTRY main {
   }
 }
 
+TEST_F(HloExtractorTest, DoesNotVisitInstructionsBeyondBoundary) {
+  constexpr absl::string_view hlo = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  neg = f32[4] negate(p0)
+  tanh = f32[4] tanh(neg)
+  ROOT exp = f32[4] exponential(tanh)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* neg = FindInstruction(module.get(), "neg");
+  HloInstruction* exp = FindInstruction(module.get(), "exp");
+  bool visited_beyond_boundary = false;
+  auto extract_selector = [&](const HloInstruction* inst) {
+    if (inst == neg) {
+      visited_beyond_boundary = true;
+    }
+    return true;
+  };
+
+  auto extracted = ExtractModule(exp, /*height=*/0, extract_selector);
+  ASSERT_NE(extracted, nullptr);
+  EXPECT_FALSE(visited_beyond_boundary);
+  EXPECT_THAT(extracted->entry_computation()->root_instruction(),
+              op::Exp(op::Parameter(0)));
+}
+
 }  // namespace
 }  // namespace xla
