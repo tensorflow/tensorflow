@@ -500,7 +500,10 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testScalarSizeSplitsRaises(self):
-    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        r"must be 1-D|must be rank 1",
+    ):
       self.evaluate(
           gen_array_ops.split_v(
               value=[1, 2],
