@@ -158,7 +158,8 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams2() {
 }
 
 // Test case 3: multiple fixed-length record files without compression.
-FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3() {
+FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3(
+    int64_t buffer_size = 10) {
   std::vector<tstring> filenames = {LocalTempFilename(), LocalTempFilename()};
   std::vector<std::string> contents = {
       absl::StrCat("HHHHH", "111", "222", "333", "FF"),
@@ -172,7 +173,7 @@ FixedLengthRecordDatasetParams FixedLengthRecordDatasetParams3() {
                                         /*header_bytes=*/5,
                                         /*record_bytes=*/3,
                                         /*footer_bytes=*/2,
-                                        /*buffer_size=*/10,
+                                        /*buffer_size=*/buffer_size,
                                         /*compression_type=*/compression_type,
                                         /*node_name=*/kNodeName);
 }
@@ -322,6 +323,21 @@ TEST_F(FixedLengthRecordDatasetOpTest, BufferLargerThanFile) {
       {CreateTensor<tstring>(TensorShape({}), {"12345678"})}, true));
 }
 
+TEST_F(FixedLengthRecordDatasetOpTest, EmptyFileWithLargeBuffer) {
+  std::vector<tstring> filenames = {LocalTempFilename()};
+  TF_ASSERT_OK(CreateTestFiles(filenames, {""}, CompressionType::UNCOMPRESSED));
+  auto dataset_params = FixedLengthRecordDatasetParams(
+      filenames,
+      /*header_bytes=*/0,
+      /*record_bytes=*/8,
+      /*footer_bytes=*/0,
+      /*buffer_size=*/std::numeric_limits<int64_t>::max(),
+      /*compression_type=*/CompressionType::UNCOMPRESSED,
+      /*node_name=*/kNodeName);
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorGetNext({}, true));
+}
+
 std::vector<IteratorSaveAndRestoreTestCase<FixedLengthRecordDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {
@@ -335,6 +351,11 @@ IteratorSaveAndRestoreTestCases() {
        CreateTensors<tstring>(TensorShape({}),
                               {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
       {/*dataset_params=*/FixedLengthRecordDatasetParams3(),
+       /*breakpoints=*/{0, 2, 6},
+       CreateTensors<tstring>(TensorShape({}),
+                              {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})},
+      {/*dataset_params=*/FixedLengthRecordDatasetParams3(
+           std::numeric_limits<int64_t>::max()),
        /*breakpoints=*/{0, 2, 6},
        CreateTensors<tstring>(TensorShape({}),
                               {{"111"}, {"222"}, {"333"}, {"aaa"}, {"bbb"}})}};
