@@ -21,6 +21,10 @@ Rates are not supported as of now, but the comments hint how to edit the code
 when rates are to be added.
 */
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
