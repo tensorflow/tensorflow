@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 365> a = {{
+  static std::array<OpIndexInfo, 366> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -268,6 +268,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"ResizeBilinear", 1, {1}},
       {"ResizeBilinearGrad"},
       {"ResizeNearestNeighbor", 1, {1}},
+      {"ResizeNearestNeighborGrad", 1, {1}},
       {"Reverse", 1, {0}},
       {"ReverseSequence", 1, {0}},
       {"ReverseV2", 1, {0}},
@@ -428,7 +429,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 490> a = {{
+  static std::array<OpIndexInfo, 491> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -731,6 +732,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"ResizeBilinear"},
       {"ResizeBilinearGrad"},
       {"ResizeNearestNeighbor"},
+      {"ResizeNearestNeighborGrad"},
       {"ResourceGather"},
       {"ResourceGatherNd"},
       {"Reverse"},
