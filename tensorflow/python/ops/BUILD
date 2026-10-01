@@ -1794,7 +1794,6 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_stack",
-        ":cond",
         ":image_ops_gen",
         ":math_ops",
         "//tensorflow/python/framework:dtypes",
