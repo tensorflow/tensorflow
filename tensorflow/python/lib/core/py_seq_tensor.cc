@@ -380,6 +380,7 @@ struct ConverterTraits<uint64_t> {
 #endif
     if (TF_PREDICT_TRUE(PyLong_Check(v) || IsPyDimension(v))) {
       *out = PyLong_AsUnsignedLongLong(v);
+      if (TF_PREDICT_FALSE(PyErr_Occurred())) return ErrorOutOfRange;
       return nullptr;
     }
     if (PyIsInstance(v, &PyIntegerArrType_Type)) {  // NumPy integers
@@ -827,6 +828,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_UINT64:
       status = UInt64Converter::Convert(ctx, obj, &state, &handle, &error);
+      // Preserve Python errors instead of falling back to a signed dtype.
+      if (PyErr_Occurred()) return nullptr;
       break;
 
     case DT_COMPLEX128:
