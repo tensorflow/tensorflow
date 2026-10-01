@@ -1093,8 +1093,9 @@ class RoundingTest(test.TestCase):
 
       with test_util.force_cpu():
         # --- Boundary checks ---
-        # Empty tensor (N=0): floor must return an empty tensor of the same dtype/shape.
-        empty_out = self.evaluate(math_ops.floor(np.array([], dtype=np.float32)))
+        # Empty tensor (N=0): floor must return empty tensor, same dtype/shape.
+        empty_out = self.evaluate(
+            math_ops.floor(np.array([], dtype=np.float32)))
         self.assertAllEqual(np.array([], dtype=np.float32), empty_out)
 
         # Rank-0 scalar tensor (N=1): a negative subnormal must floor to -1.0.
