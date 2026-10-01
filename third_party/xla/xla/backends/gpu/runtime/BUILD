@@ -4229,6 +4229,36 @@ cc_library(
 )
 
 cc_library(
+    name = "reduce_scatter",
+    srcs = ["reduce_scatter.cc"],
+    hdrs = ["reduce_scatter.h"],
+    deps = [
+        ":all_reduce",
+        ":collective_params",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:device_assignment",
+        "//xla/service:gpu_topology",
+        "//xla/service/gpu:gpu_constants",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "all_reduce",
     srcs = ["all_reduce.cc"],
     hdrs = ["all_reduce.h"],

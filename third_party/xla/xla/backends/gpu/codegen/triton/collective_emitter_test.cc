@@ -90,12 +90,12 @@ struct ModuleWithFusion {
   std::unique_ptr<HloModule> module;
 
   const HloFusionInstruction* FusionInstr() const {
-    return Cast<HloFusionInstruction>(
-        module->entry_computation()->root_instruction());
+    return Cast<HloFusionInstruction>(hlo_query::GetFirstInstructionWithOpcode(
+        *module->entry_computation(), HloOpcode::kFusion));
   }
   HloFusionInstruction* MutableFusionInstr() {
-    return Cast<HloFusionInstruction>(
-        module->entry_computation()->root_instruction());
+    return Cast<HloFusionInstruction>(hlo_query::GetFirstInstructionWithOpcode(
+        *module->entry_computation(), HloOpcode::kFusion));
   }
 };
 
@@ -136,6 +136,10 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
         .mutable_debug_options()
         .add_xla_gpu_experimental_use_collective_kernels(
             xla::DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+    module->mutable_config()
+        .mutable_debug_options()
+        .add_xla_gpu_experimental_use_collective_kernels(
+            xla::DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
     CollectiveKernelStrategyAnnotator annotator(*gpu_topology_,
                                                 /*is_multimem_enabled=*/false);
     ABSL_RETURN_IF_ERROR(annotator.Run(module.get()).status());
@@ -155,12 +159,32 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 
  protected:
   static std::string GetModuleStr(const Shape& shape,
-                                  absl::string_view replica_groups = "{0,1}") {
+                                  absl::string_view replica_groups = "{0,1}",
+                                  HloOpcode opcode = HloOpcode::kAllReduce) {
     absl::string_view type_str =
         xla::primitive_util::LowercasePrimitiveTypeName(shape.element_type());
     absl::string_view reduction_kind = "add";
     if (shape.element_type() == PRED) {
       reduction_kind = "or";
+    }
+    if (opcode == HloOpcode::kReduceScatter) {
+      Shape output_shape = shape;
+      output_shape.set_dimensions(0, shape.dimensions(0) / 2);
+      return absl::StrFormat(R"(
+        HloModule test
+        apply_op {
+          x = %4$s[] parameter(0)
+          y = %4$s[] parameter(1)
+          ROOT apply_op = %4$s[] %5$s(x, y)
+        }
+
+        ENTRY test_computation {
+          param_0 = %1$s parameter(0)
+          ROOT reduce-scatter = %2$s reduce-scatter(param_0), to_apply=apply_op, replica_groups={%3$s}, dimensions={0}
+        }
+      )",
+                             shape.ToString(), output_shape.ToString(),
+                             replica_groups, type_str, reduction_kind);
     }
     return absl::StrFormat(R"(
       HloModule test
@@ -192,9 +216,14 @@ class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
 class CollectiveEmitterTest : public CollectiveBlockLevelConfigTest {
  public:
   absl::StatusOr<std::unique_ptr<ModuleWithEmitter>> BuildModuleWithEmitter(
-      std::string module_str, const GpuTopology& gpu_topology) const {
+      std::string module_str, const GpuTopology& gpu_topology,
+      HloOpcode opcode = HloOpcode::kAllReduce) const {
     ABSL_ASSIGN_OR_RETURN(ModuleWithFusion module_with_fusion,
-                     BuildModuleWithFusion(std::move(module_str)));
+                     BuildModuleWithFusion(std::move(module_str), opcode));
+    if (opcode == HloOpcode::kReduceScatter) {
+      ABSL_RETURN_IF_ERROR(
+          FlattenReduceScatterFusion(module_with_fusion.MutableFusionInstr()));
+    }
     ABSL_RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
         gpu_topology, module_with_fusion.MutableFusionInstr()));
     auto result = std::make_unique<ModuleWithEmitter>(
@@ -320,15 +349,22 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 
+struct CollectiveSanityTestCase {
+  Shape shape;
+  HloOpcode opcode;
+};
+
 class CollectiveEmitterParameterizedTest
     : public CollectiveEmitterTest,
-      public ::testing::WithParamInterface<Shape> {};
+      public ::testing::WithParamInterface<CollectiveSanityTestCase> {};
 
 TEST_P(CollectiveEmitterParameterizedTest,
        AllReduceWithTritonGenerateTritonKernelSanity) {
+  const auto& [shape, opcode] = GetParam();
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<ModuleWithEmitter> result,
-      BuildModuleWithEmitter(GetModuleStr(GetParam()), *gpu_topology_));
+      BuildModuleWithEmitter(GetModuleStr(shape, "{0,1}", opcode),
+                             *gpu_topology_, opcode));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
 
@@ -350,7 +386,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
       TritonWrapperResult triton_kernel,
       triton_fusion
           ->GenerateTritonKernelAndWrapper(
-              *result->FusionInstr(), "test-all-reduce", device_info_,
+              *result->FusionInstr(), "test-collective", device_info_,
               result->target_triple, result->data_layout,
               std::move(borrowed_context), &kernel_compiler)
           .Await());
@@ -359,15 +395,19 @@ TEST_P(CollectiveEmitterParameterizedTest,
 INSTANTIATE_TEST_SUITE_P(
     CollectiveEmitterParameterizedTestInstantiation,
     CollectiveEmitterParameterizedTest,
-    ::testing::Values(ShapeUtil::MakeShape(F32, {65536}),
-                      ShapeUtil::MakeShape(BF16, {200, 100}),
-                      ShapeUtil::MakeShape(PRED, {200, 64}),
-                      ShapeUtil::MakeShape(F32, {131072})),
+    ::testing::ValuesIn<CollectiveSanityTestCase>(
+        {{ShapeUtil::MakeShape(F32, {65536}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(BF16, {200, 100}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(PRED, {200, 64}), HloOpcode::kAllReduce},
+         {ShapeUtil::MakeShape(F32, {131072}), HloOpcode::kAllReduce}}),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
-      return primitive_util::LowercasePrimitiveTypeName(
-                 info.param.element_type()) +
-             "__" + absl::StrJoin(info.param.dimensions(), "_");
+      std::string op_prefix =
+          info.param.opcode == HloOpcode::kReduceScatter ? "rs_" : "ar_";
+      return op_prefix +
+             primitive_util::LowercasePrimitiveTypeName(
+                 info.param.shape.element_type()) +
+             "__" + absl::StrJoin(info.param.shape.dimensions(), "_");
     });
 
 struct GreedyPowerOfTwoTilesTestCase {
@@ -560,6 +600,86 @@ TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfigAtMaxBlocks) {
                            *gpu_topology_, module_with_fusion.FusionInstr()));
   // 131072 elements / kAllGatherMaxBlocksPerGrid (64) blocks.
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
+}
+
+TEST_F(CollectiveEmitterTest, FlattenReduceScatterFusion) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 8});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {1, 4, 8});
+  Shape flat_input_shape = ShapeUtil::MakeShape(F32, {4, 16});
+  Shape flat_output_shape = ShapeUtil::MakeShape(F32, {2, 16});
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(
+          GetModuleStr(input_shape, "{0,1}", HloOpcode::kReduceScatter),
+          HloOpcode::kReduceScatter));
+  HloFusionInstruction* fusion_instr = module_with_fusion.MutableFusionInstr();
+  EXPECT_THAT(fusion_instr,
+              AllOf(HasOpcode(HloOpcode::kFusion), HasShape(output_shape)));
+
+  HloComputation* entry_computation =
+      module_with_fusion.module->entry_computation();
+  EXPECT_OK(FlattenReduceScatterFusion(fusion_instr));
+
+  HloInstruction* root = entry_computation->root_instruction();
+  EXPECT_THAT(root, AllOf(HasOpcode(HloOpcode::kBitcast),
+                          HasShape(output_shape), HasNumOperands(1)));
+
+  HloInstruction* new_fusion_instr = root->mutable_operand(0);
+  EXPECT_THAT(new_fusion_instr,
+              AllOf(HasOpcode(HloOpcode::kFusion), HasShape(flat_output_shape),
+                    HasNumOperands(1)));
+
+  HloInstruction* input_bitcast = new_fusion_instr->mutable_operand(0);
+  EXPECT_THAT(input_bitcast,
+              AllOf(HasOpcode(HloOpcode::kBitcast), HasShape(flat_input_shape),
+                    HasNumOperands(1)));
+  EXPECT_THAT(input_bitcast->operand(0), HasOpcode(HloOpcode::kParameter));
+
+  HloComputation* fused_comp =
+      new_fusion_instr->fused_instructions_computation();
+  EXPECT_THAT(fused_comp->parameter_instructions(),
+              ElementsAre(AllOf(HasOpcode(HloOpcode::kParameter),
+                                HasShape(flat_input_shape))));
+  EXPECT_THAT(
+      fused_comp->root_instruction(),
+      AllOf(HasOpcode(HloOpcode::kReduceScatter), HasShape(flat_output_shape)));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest, ReduceScatterBlockLevelConfig) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
+                                         "{0,1}", HloOpcode::kReduceScatter),
+                            HloOpcode::kReduceScatter));
+  ASSERT_OK(
+      FlattenReduceScatterFusion(module_with_fusion.MutableFusionInstr()));
+  ASSERT_OK_AND_ASSIGN(BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+
+  EXPECT_EQ(block_level_config.num_warps(), 16);
+  EXPECT_EQ(block_level_config.num_ctas(), 1);
+  EXPECT_EQ(block_level_config.num_stages(), 1);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(1, 2048));
+}
+
+TEST_F(CollectiveEmitterTest,
+       ReduceScatterGetCollectiveUnmanagedKernelArguments) {
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(GetModuleStr(ShapeUtil::MakeShape(F32, {65536}),
+                                         "{0,1}", HloOpcode::kReduceScatter),
+                            HloOpcode::kReduceScatter));
+  ASSERT_OK(
+      FlattenReduceScatterFusion(module_with_fusion.MutableFusionInstr()));
+  ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 3);
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  ASSERT_EQ(unmanaged_arguments[1].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[1].dimensions()[0], 2);
+  EXPECT_THAT(unmanaged_arguments[2].dimensions(), ElementsAre(2, 4, 16384));
 }
 
 }  // namespace
