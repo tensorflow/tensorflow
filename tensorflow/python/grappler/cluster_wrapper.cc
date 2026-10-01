@@ -198,7 +198,7 @@ PYBIND11_MODULE(
               absl::InternalError("You need both a cluster and an "
                                   "item to get supported devices.")));
         }
-        std::unordered_map<std::string, std::vector<std::string>> device_types;
+        std::unordered_map<std::string, std::set<std::string>> device_types;
         std::string cluster_type;
 
         {
@@ -206,7 +206,7 @@ PYBIND11_MODULE(
           cluster_type = cluster->type();
 
           for (const auto& dev : devices) {
-            device_types[dev.second.type()].push_back(dev.first);
+            device_types[dev.second.type()].insert(dev.first);
           }
         }
 

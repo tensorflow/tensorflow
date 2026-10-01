@@ -65,6 +65,7 @@ PYBIND11_MODULE(
              int num_workers;
              absl::Status status;
              {
+               py::gil_scoped_release release;
                status = server->NumWorkers(&num_workers);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -77,6 +78,7 @@ PYBIND11_MODULE(
              std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
              absl::Status status;
              {
+               py::gil_scoped_release release;
                status = server->SnapshotStreams(path, &streams);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -102,6 +104,7 @@ PYBIND11_MODULE(
              int num_tasks;
              absl::Status status;
              {
+               py::gil_scoped_release release;
                status = server->NumTasks(&num_tasks);
              }
              tsl::MaybeRaiseRegisteredFromStatusWithGIL(status);
@@ -114,6 +117,7 @@ PYBIND11_MODULE(
                  snapshot_task_progresses;
              absl::Status status;
              {
+               py::gil_scoped_release release;
                status =
                    server->SnapshotTaskProgresses(&snapshot_task_progresses);
              }
