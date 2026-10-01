@@ -1783,10 +1783,53 @@ OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
 // GatherNd op
 //===----------------------------------------------------------------------===//
 
+// Returns true if `indices`, read in order, list every coordinate of the
+// leading `indices.shape[-1]` dimensions of `params_type` exactly once in
+// row-major order, and `result_type` equals `params_type`. Such a gather copies
+// `params` unchanged.
+static bool IsIdentityGatherNd(DenseIntElementsAttr indices,
+                               ShapedType params_type, Type result_type) {
+  if (!params_type.hasStaticShape() || result_type != params_type) {
+    return false;
+  }
+  auto indices_shape = indices.getType().getShape();
+  if (indices_shape.empty()) return false;
+  const int64_t depth = indices_shape.back();
+  auto params_shape = params_type.getShape();
+  if (depth <= 0 || depth > static_cast<int64_t>(params_shape.size())) {
+    return false;
+  }
+  // indices.shape[:-1] must equal params.shape[:depth] for the result shape to
+  // match params; the type equality above already guarantees the element type.
+  if (!llvm::equal(indices_shape.drop_back(), params_shape.take_front(depth))) {
+    return false;
+  }
+  llvm::SmallVector<int64_t> coord(depth, 0);
+  auto it = indices.getValues<APInt>().begin();
+  const int64_t num_indices = indices.getNumElements() / depth;
+  for (int64_t i = 0; i < num_indices; ++i) {
+    for (int64_t j = 0; j < depth; ++j, ++it) {
+      if ((*it).getSExtValue() != coord[j]) return false;
+    }
+    // Advance the expected row-major coordinate.
+    for (int64_t j = depth - 1; j >= 0; --j) {
+      if (++coord[j] < params_shape[j]) break;
+      coord[j] = 0;
+    }
+  }
+  return true;
+}
+
 OpFoldResult GatherNdOp::fold(GatherNdOp::FoldAdaptor adaptor) {
   auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
   auto indices =
       mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+
+  if (indices &&
+      IsIdentityGatherNd(indices, mlir::cast<ShapedType>(getParams().getType()),
+                         getType())) {
+    return getParams();
+  }
 
   if (!params || !indices) {
     return nullptr;
