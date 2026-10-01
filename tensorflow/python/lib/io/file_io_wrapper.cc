@@ -101,7 +101,7 @@ PYBIND11_MODULE(
         const auto status =
             ReadFileToString(tensorflow::Env::Default(), filename, &data);
         pybind11::gil_scoped_acquire acquire;
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         return py::bytes(data);
       },
       py::arg("filename"));
@@ -122,7 +122,7 @@ PYBIND11_MODULE(
         const auto status =
             tensorflow::Env::Default()->GetChildren(dirname, &results);
         pybind11::gil_scoped_acquire acquire;
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         return results;
       },
       py::arg("dirname"));
@@ -134,7 +134,7 @@ PYBIND11_MODULE(
         const auto status =
             tensorflow::Env::Default()->GetMatchingPaths(pattern, &results);
         pybind11::gil_scoped_acquire acquire;
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         return results;
       },
       py::arg("pattern"));
@@ -237,7 +237,7 @@ PYBIND11_MODULE(
         const auto status =
             tensorflow::Env::Default()->Stat(filename, self.get());
         py::gil_scoped_acquire acquire;
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
         return self.release();
       },
       py::arg("filename"));
@@ -248,7 +248,7 @@ PYBIND11_MODULE(
     const auto status =
         tensorflow::Env::Default()->GetRegisteredFileSystemSchemes(&results);
     pybind11::gil_scoped_acquire acquire;
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
     return results;
   });
 
@@ -262,7 +262,7 @@ PYBIND11_MODULE(
                                      ? env->NewWritableFile(filename, &file)
                                      : env->NewAppendableFile(filename, &file);
              py::gil_scoped_acquire acquire;
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              return new WritableFileWrapper(std::move(file));
            }),
            py::arg("filename"), py::arg("mode"))
@@ -274,7 +274,7 @@ PYBIND11_MODULE(
              const auto status = RunFileObjectMethod(
                  &self.mutex,
                  [&]() { return self.file->Append(data); });
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
       .def("tell",
            [](WritableFileWrapper& self) {
@@ -285,7 +285,7 @@ PYBIND11_MODULE(
              const auto status = RunFileObjectMethod(
                  &self.mutex,
                  [&]() { return self.file->Tell(&pos); });
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              return pos;
            })
       .def("flush",
@@ -296,7 +296,7 @@ PYBIND11_MODULE(
              const auto status = RunFileObjectMethod(
                  &self.mutex,
                  [&]() { return self.file->Flush(); });
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
       .def("close", [](WritableFileWrapper& self) {
         if (self.file == nullptr) {
@@ -305,7 +305,7 @@ PYBIND11_MODULE(
         const auto status = RunFileObjectMethod(
             &self.mutex,
             [&]() { return self.file->Close(); });
-        tensorflow::MaybeRaiseRegisteredFromStatus(status);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
       });
 
   using tensorflow::io::BufferedInputStream;
@@ -342,7 +342,7 @@ PYBIND11_MODULE(
 
              if (!status.ok() && !absl::IsOutOfRange(status)) {
                result.clear();
-               tensorflow::MaybeRaiseRegisteredFromStatus(status);
+               tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              }
 
              return py::bytes(result);
@@ -369,7 +369,7 @@ PYBIND11_MODULE(
                  &self.mutex,
                  [&]() { return self.stream->Seek(pos); });
 
-             tensorflow::MaybeRaiseRegisteredFromStatus(status);
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
       .def("tell", [](BufferedInputStreamWrapper& self) {
         if (self.stream == nullptr) {
