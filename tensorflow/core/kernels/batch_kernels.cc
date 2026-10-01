@@ -910,20 +910,19 @@ class UnbatchResource : public ResourceBase {
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
         const int64_t start = batch_indices(i, 1);
         const int64_t limit = batch_indices(i, 2);
-        if (limit < start) {
+        if (start < 0 || limit < start) {
           return absl::InvalidArgumentError(absl::StrCat(
               "Invalid batch_index range at row ", i, ": [", start, ", ", limit,
-              "). The limit must not be less than the start."));
+              "). The start must be non-negative and the limit must not be "
+              "less than the start."));
         }
-        // Unsigned subtraction avoids overflow for extreme range endpoints.
-        const uint64_t size =
-            static_cast<uint64_t>(limit) - static_cast<uint64_t>(start);
-        if (size > static_cast<uint64_t>(remaining_size)) {
+        const int64_t size = limit - start;
+        if (size > remaining_size) {
           return absl::InvalidArgumentError(
               "Sum of split sizes must not exceed dim0-size of input tensor");
         }
-        sizes.push_back(static_cast<int64_t>(size));
-        remaining_size -= static_cast<int64_t>(size);
+        sizes.push_back(size);
+        remaining_size -= size;
         batch_keys.push_back(batch_indices(i, 0));
       }
 
