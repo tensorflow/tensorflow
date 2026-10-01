@@ -21,6 +21,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -339,6 +340,61 @@ class SampleFromDatasetsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(
           self.evaluate(runtime_count(constant_op.constant(weights, dtype))),
           6)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_type=["list", "tensor"])))
+  def testSampleFromDatasetsRejectsAllZeroIntegerWeights(self, weights_type):
+    # Skipping replaces all-zero weights with a float weight, so their dtype
+    # has to be checked before.
+    weights = _get_weights_of_type(np.asarray([0, 0], np.int32), weights_type)
+    with self.assertRaisesRegex(TypeError, "`tf.float32` or `tf.float64`"):
+      dataset_ops.Dataset.sample_from_datasets(
+          [dataset_ops.Dataset.range(10),
+           dataset_ops.Dataset.range(20)],
+          weights=weights)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsRuntimeNegativeAndNanWeights(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
+    def count(weights):
+      datasets = [
+          dataset_ops.Dataset.range(3),
+          dataset_ops.Dataset.range(3).repeat()
+      ]
+      sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+          datasets, weights=weights, stop_on_empty_dataset=False)
+      return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+
+    # Like list weights, a runtime weight that isn't positive drops its
+    # dataset.
+    for weights in ([1., -1.], [1., np.nan]):
+      self.assertEqual(self.evaluate(count(constant_op.constant(weights))), 3)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsRuntimeZeroWeightsWithCheckNumerics(self):
+    # The callbacks enable_check_numerics() adds are thread-local, and are
+    # removed again below.
+    check_numerics_callback.enable_check_numerics()
+    try:
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([2], dtypes.float32)])
+      def count(weights):
+        datasets = [
+            dataset_ops.Dataset.range(3),
+            dataset_ops.Dataset.range(3).repeat()
+        ]
+        sample_dataset = dataset_ops.Dataset.sample_from_datasets(
+            datasets, weights=weights, stop_on_empty_dataset=False)
+        return sample_dataset.reduce(np.int64(0), lambda s, _: s + 1)
+
+      self.assertEqual(self.evaluate(count(constant_op.constant([1., 0.]))),
+                       3)
+    finally:
+      check_numerics_callback.disable_check_numerics()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasetsCardinality(self):
