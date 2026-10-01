@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/validate_function_devices.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
@@ -1427,10 +1426,8 @@ absl::Status GetOrCreateKernelAndDevice(
         if (has_xla_must_compile && !ctx.AllowSoftPlacement()) {
           const FunctionDef* fdef = op->GetFunctionDef();
           if (fdef != nullptr) {
-            std::vector<DeviceAttributes> device_attrs;
-            ctx.ListDevices(&device_attrs);
             TF_RETURN_IF_ERROR(ValidateFunctionDeviceConstraints(
-                *fdef, ctx.FuncLibDef(), device_attrs));
+                *fdef, ctx.FuncLibDef(), ctx.ListAllTfDevices()));
           }
         }
         if (ctx.JitCompileRewrite()) {

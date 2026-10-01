@@ -24,19 +24,29 @@ limitations under the License.
 
 namespace tensorflow {
 
+class Device;
 class FunctionLibraryDefinition;
 
 // Validates that device constraints specified on nodes within a FunctionDef
-// (and, recursively, within any functions it calls via PartitionedCall /
-// StatefulPartitionedCall) can be satisfied by the available devices. This is
-// used to ensure that tf.device() constraints are validated even for
-// XLA-compiled functions (jit_compile=True), where the Placer is bypassed.
+// (and, recursively, within any functions it calls through function-bearing
+// node attributes, e.g. the 'f' attribute of (Stateful)PartitionedCall or the
+// branch attributes of If and While) can be satisfied by the available
+// devices. This is used to ensure that tf.device() constraints are validated
+// even for XLA-compiled functions (jit_compile=True), where the Placer is
+// bypassed.
 //
 // `flib_def` may be nullptr, in which case only the nodes of `fdef` itself are
 // validated.
 //
 // Returns OK if all device constraints are satisfiable, or an error status
 // describing the first unsatisfiable device constraint.
+absl::Status ValidateFunctionDeviceConstraints(
+    const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
+    const std::vector<Device*>& available_devices);
+
+// Same as above for callers that hold DeviceAttributes protos instead of
+// Device objects (e.g. unit tests). Prefer the overload above, which avoids
+// copying the device attributes.
 absl::Status ValidateFunctionDeviceConstraints(
     const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
     const std::vector<DeviceAttributes>& available_devices);

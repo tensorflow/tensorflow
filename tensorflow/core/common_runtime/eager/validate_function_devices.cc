@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -32,9 +34,12 @@ namespace tensorflow {
 
 namespace {
 
+// Validates the device constraints of `fdef` and recurses into every nested
+// function reachable through function-bearing node attributes. The
+// visited-functions guard makes cyclic call graphs terminate.
 absl::Status ValidateFunctionDeviceConstraintsImpl(
     const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
-    const std::vector<DeviceAttributes>& available_devices,
+    const std::vector<std::string>& available_device_names,
     const std::vector<DeviceNameUtils::ParsedName>& parsed_available_devices,
     absl::flat_hash_set<std::string>& validated_devices,
     absl::flat_hash_set<std::string>& visited_functions) {
@@ -58,11 +63,6 @@ absl::Status ValidateFunctionDeviceConstraintsImpl(
         }
 
         if (!satisfied) {
-          std::vector<std::string> available_device_names;
-          available_device_names.reserve(available_devices.size());
-          for (const auto& dev : available_devices) {
-            available_device_names.push_back(dev.name());
-          }
           return absl::InvalidArgumentError(absl::StrCat(
               "Could not satisfy device specification '", device,
               "' for operation ", node.name(), " (", node.op(),
@@ -73,31 +73,43 @@ absl::Status ValidateFunctionDeviceConstraintsImpl(
       validated_devices.insert(device);
     }
 
-    // Recurse into nested functions referenced through PartitionedCall /
-    // StatefulPartitionedCall nodes so their device constraints are validated
-    // too. Regular ops are also looked up defensively: op-to-function mappings
-    // can exist in the library (e.g. via function optimization passes), and
-    // Find() simply returns nullptr when the op is a plain op.
+    // Recurse into nested functions. Function-bearing attributes are not
+    // limited to the 'f' attribute of (Stateful)PartitionedCall: control flow
+    // ops carry functions in attributes like 'then_branch'/'else_branch'
+    // (If) or 'cond'/'body' (While), and list-of-function attributes exist
+    // too (e.g. 'branches'). Every 'func' or 'list.func' attribute is
+    // therefore followed, regardless of the op type. Plain ops are looked up
+    // defensively as well: op-to-function mappings can exist in the library
+    // (e.g. via function optimization passes), and Find() simply returns
+    // nullptr when the op is a plain op.
     if (flib_def != nullptr) {
-      std::vector<std::string> inner_funcs;
-      inner_funcs.push_back(node.op());
-      if (node.op() == "PartitionedCall" ||
-          node.op() == "StatefulPartitionedCall") {
-        auto it = node.attr().find(FunctionLibraryDefinition::kFuncAttr);
-        if (it != node.attr().end() && it->second.has_func()) {
-          inner_funcs.push_back(it->second.func().name());
-        }
-      }
-
-      for (const std::string& func_name : inner_funcs) {
+      auto validate_inner = [&](const std::string& func_name) -> absl::Status {
         const FunctionDef* inner_fdef = flib_def->Find(func_name);
         if (inner_fdef != nullptr &&
             visited_functions.insert(func_name).second) {
-          absl::Status inner_status = ValidateFunctionDeviceConstraintsImpl(
-              *inner_fdef, flib_def, available_devices,
+          return ValidateFunctionDeviceConstraintsImpl(
+              *inner_fdef, flib_def, available_device_names,
               parsed_available_devices, validated_devices, visited_functions);
+        }
+        return absl::OkStatus();
+      };
+
+      absl::Status inner_status = validate_inner(node.op());
+      if (!inner_status.ok()) {
+        return inner_status;
+      }
+      for (const auto& attr : node.attr()) {
+        if (attr.second.has_func()) {
+          inner_status = validate_inner(attr.second.func().name());
           if (!inner_status.ok()) {
             return inner_status;
+          }
+        } else if (attr.second.has_list()) {
+          for (const auto& func : attr.second.list().func()) {
+            inner_status = validate_inner(func.name());
+            if (!inner_status.ok()) {
+              return inner_status;
+            }
           }
         }
       }
@@ -107,12 +119,49 @@ absl::Status ValidateFunctionDeviceConstraintsImpl(
   return absl::OkStatus();
 }
 
+std::vector<std::string> DeviceNames(
+    const std::vector<DeviceAttributes>& available_devices) {
+  std::vector<std::string> names;
+  names.reserve(available_devices.size());
+  for (const auto& dev : available_devices) {
+    names.push_back(dev.name());
+  }
+  return names;
+}
+
 }  // namespace
 
 absl::Status ValidateFunctionDeviceConstraints(
     const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
+    const std::vector<Device*>& available_devices) {
+  std::vector<std::string> available_device_names;
+  available_device_names.reserve(available_devices.size());
+  std::vector<DeviceNameUtils::ParsedName> parsed_available_devices;
+  parsed_available_devices.reserve(available_devices.size());
+  for (const Device* dev : available_devices) {
+    if (dev == nullptr) {
+      continue;
+    }
+    available_device_names.push_back(dev->name());
+    // Device parses its name into a ParsedName at construction time, so this
+    // reuses the already-parsed form instead of re-parsing every name.
+    parsed_available_devices.push_back(dev->parsed_name());
+  }
+
+  absl::flat_hash_set<std::string> validated_devices;
+  absl::flat_hash_set<std::string> visited_functions;
+  visited_functions.insert(fdef.signature().name());
+
+  return ValidateFunctionDeviceConstraintsImpl(
+      fdef, flib_def, available_device_names, parsed_available_devices,
+      validated_devices, visited_functions);
+}
+
+absl::Status ValidateFunctionDeviceConstraints(
+    const FunctionDef& fdef, const FunctionLibraryDefinition* flib_def,
     const std::vector<DeviceAttributes>& available_devices) {
-  // Pre-parse available devices once upfront.
+  std::vector<std::string> available_device_names =
+      DeviceNames(available_devices);
   std::vector<DeviceNameUtils::ParsedName> parsed_available_devices;
   parsed_available_devices.reserve(available_devices.size());
   for (const auto& dev : available_devices) {
@@ -127,7 +176,7 @@ absl::Status ValidateFunctionDeviceConstraints(
   visited_functions.insert(fdef.signature().name());
 
   return ValidateFunctionDeviceConstraintsImpl(
-      fdef, flib_def, available_devices, parsed_available_devices,
+      fdef, flib_def, available_device_names, parsed_available_devices,
       validated_devices, visited_functions);
 }
 

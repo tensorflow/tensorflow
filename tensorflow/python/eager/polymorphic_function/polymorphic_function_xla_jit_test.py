@@ -1400,6 +1400,48 @@ class DevicePlacementValidationTest(test.TestCase):
                                 'Could not satisfy device specification'):
       outer(x).numpy()
 
+  def testDevicePlacementValidationNestedControlFlowWithJitCompile(self):
+    """Device constraints inside control flow must be validated too.
+
+    tf.cond and tf.while_loop lower to If and While ops whose nested
+    functions live in attributes like 'then_branch'/'else_branch' and
+    'cond'/'body' rather than the 'f' attribute of a PartitionedCall, so an
+    invalid tf.device() constraint inside their bodies must still be
+    reported instead of silently ignored.
+    """
+    invalid_device = '/device:NONEXISTENT:0'
+    x = constant_op.constant([1.0, 2.0])
+
+    @polymorphic_function.function(jit_compile=True)
+    def with_cond(x):
+
+      def true_branch():
+        with ops.device(invalid_device):
+          return math_ops.add(x, x)
+
+      return cond.cond(
+          constant_op.constant(True), true_branch,
+          lambda: array_ops.identity(x))
+
+    @polymorphic_function.function(jit_compile=True)
+    def with_while(x):
+
+      def loop_body(i, v):
+        with ops.device(invalid_device):
+          return i + 1, math_ops.add(v, v)
+
+      return while_loop.while_loop(
+          lambda i, _: i < 1, loop_body,
+          (constant_op.constant(0), x))[1]
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      with_cond(x).numpy()
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy device specification'):
+      with_while(x).numpy()
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
