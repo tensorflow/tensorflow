@@ -297,6 +297,22 @@ class QuantizedAvgPoolingOpTest(test_util.TensorFlowTestCase):
                 strides=strides,
                 padding="SAME"))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_tensor_input(self):
+    inputs = constant_op.constant(
+        [], shape=[0, 3, 3, 3], dtype=dtypes.quint8)
+    output, min_output, max_output = self.evaluate(
+        nn_ops.quantized_avg_pool(
+            input=inputs,
+            min_input=0.0,
+            max_input=1.0,
+            ksize=[1, 1, 1, 1],
+            strides=[1, 1, 1, 1],
+            padding="SAME"))
+    self.assertEqual(output.shape, (0, 3, 3, 3))
+    self.assertEqual(min_output, 0.0)
+    self.assertEqual(max_output, 1.0)
+
 
 class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
 
@@ -350,6 +366,22 @@ class QuantizedMaxPoolingOpTest(test_util.TensorFlowTestCase):
                 ksize=ksize,
                 strides=strides,
                 padding="SAME"))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_empty_tensor_input(self):
+    inputs = constant_op.constant(
+        [], shape=[0, 3, 3, 3], dtype=dtypes.quint8)
+    output, min_output, max_output = self.evaluate(
+        nn_ops.quantized_max_pool(
+            input=inputs,
+            min_input=0.0,
+            max_input=1.0,
+            ksize=[1, 1, 1, 1],
+            strides=[1, 1, 1, 1],
+            padding="SAME"))
+    self.assertEqual(output.shape, (0, 3, 3, 3))
+    self.assertEqual(min_output, 0.0)
+    self.assertEqual(max_output, 1.0)
 
 
 class RequantizeOpTest(test_util.TensorFlowTestCase):
