@@ -1138,6 +1138,18 @@ class UnbatchGradResource : public ResourceBase {
           "Expected `grad` to have rank at least 1. Received ",
           grad_t.shape().DebugString()));
     }
+    if (!TensorShapeUtils::IsMatrix(batch_index_t.shape())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Wrong shape for index tensor. Expected a matrix of "
+                       "shape [batch_size, 3]; Got: ",
+                       batch_index_t.shape().DebugString(), "."));
+    }
+    if (batch_index_t.dim_size(1) != 3) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Wrong shape for index tensor. Expected 1st dimension size to be 3; "
+          "Got: ",
+          batch_index_t.dim_size(1), "."));
+    }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     mutex_lock ml(mu_);
@@ -1154,19 +1166,6 @@ class UnbatchGradResource : public ResourceBase {
             "batch_index is empty while the tensor isn't.");
       }
       std::unordered_set<int64_t> missing_tensors;
-      // The rank must be validated before any dim_size access, which has
-      // undefined behavior for out-of-range dimension indices.
-      if (!TensorShapeUtils::IsMatrix(batch_index_t.shape())) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Wrong shape for index tensor. Expected a matrix of "
-                         "shape [batch_size, 3]; Got: ",
-                         batch_index_t.shape().DebugString(), "."));
-      }
-      if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "batch_index should contain ", batch_index_t.dim_size(0) * 3,
-            " elements. Received ", batch_index_t.NumElements()));
-      }
       const auto batch_index =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
