@@ -320,11 +320,12 @@ class FFTNBase : public OpKernel {
                       "fft_length[", i,
                       "] must >= 0, but got: ", fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
+      auto input_index = input_rank - fft_rank + i;
+      uint64_t dim = fft_shape[i];
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
         uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
-        auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
@@ -334,21 +335,20 @@ class FFTNBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index))));
-        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
-                           ? fft_shape[i] / 2 + 1
-                           : fft_shape[i];
-        // An empty FFT axis is passed through by the check above. Keep it
-        // empty in the output too. Sizing it from `fft_length` instead would
-        // give a non-empty output for an empty input, and the
-        // `num_elements() == 0` early return below would then hand back the
-        // output buffer without ever writing it.
-        if (input_shape.dim_size(input_index) == 0) {
-          dim = 0;
+        if (IsForward() && inner_most && fft_shape[i] != 0) {
+          dim = fft_shape[i] / 2 + 1;
         }
-        output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
-      } else {
-        output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
       }
+      // An empty FFT axis is passed through, so keep it empty in the output
+      // too. Sizing it from `fft_length` instead would give a non-empty output
+      // for an empty input, and the `num_elements() == 0` early return below
+      // would then hand back the output buffer without ever writing it. This
+      // applies to the complex transforms as well, which also take an explicit
+      // `fft_length`.
+      if (input_shape.dim_size(input_index) == 0) {
+        dim = 0;
+      }
+      output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
     }
 
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out));
