@@ -105,6 +105,8 @@ toc:
     path: /xla/tools
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
+  - title: HLO Isolation tool for numeric issues
+    path: /xla/hlo_isolation
 
 - title: Contributing
   # This is the default tab for the Contributing section.
