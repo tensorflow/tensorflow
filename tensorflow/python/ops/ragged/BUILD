@@ -1062,6 +1062,7 @@ py_test(
         ":ragged_factory_ops",
         ":ragged_functional_ops",
         ":ragged_tensor",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -1069,7 +1070,6 @@ py_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:ragged_conversion_ops_gen",
         "//tensorflow/python/platform:test",
     ],
 )

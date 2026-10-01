@@ -14,12 +14,12 @@
 # ==============================================================================
 """Tests for ragged.to_sparse op."""
 
+from tensorflow import raw_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -184,12 +184,12 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
         if not context.executing_eagerly():
           with self.assertRaisesRegex(
               ValueError, "Shape must be at least rank 1"):
-            gen_ragged_conversion_ops.ragged_tensor_to_sparse(
+            raw_ops.RaggedTensorToSparse(
                 rt_nested_splits=splits, rt_dense_values=values)
           values = array_ops.placeholder_with_default(values, shape=None)
         with self.assertRaisesRegex(
             errors.InvalidArgumentError, "rt_dense_values must have rank >= 1"):
-          self.evaluate(gen_ragged_conversion_ops.ragged_tensor_to_sparse(
+          self.evaluate(raw_ops.RaggedTensorToSparse(
               rt_nested_splits=splits, rt_dense_values=values))
 
   def testGradient(self):
