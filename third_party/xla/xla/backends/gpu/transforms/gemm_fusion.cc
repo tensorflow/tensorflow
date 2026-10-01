@@ -1630,6 +1630,8 @@ FusionDecision ShouldFuseUser(const HloInstruction* user,
             "No shape tracker found for transpose user.");
       }
       return ShouldFuseUserTranspose(*user, *fusion, *tracker);
+    case HloOpcode::kConcatenate:
+      return FusionDecision::Forbid("Not fusing concatenate into epilogue.");
     default:
       break;
   }
@@ -1688,12 +1690,17 @@ absl::Status FuseOperandsBFS(
     const HloInstruction& original_candidate =
         *FindOrDefault(search_space.fused_to_original(), candidate, candidate);
     if (FusionDecision decision =
-            ShouldFuseOperand(candidate, original_candidate, fusion, tracker)
-                .And(CanFuse(mlir_context, candidate, fusion,
-                             search_space.device_description()));
+            ShouldFuseOperand(candidate, original_candidate, fusion, tracker);
         !decision.IsAllowed()) {
       VLOG(5) << "Not fusing operand: " << candidate->ToString()
-              << " due to decision: " << decision.Explain();
+              << " due to profitability decision: " << decision.Explain();
+      continue;
+    }
+    if (FusionDecision decision = CanFuse(mlir_context, candidate, fusion,
+                                          search_space.device_description());
+        !decision.IsAllowed()) {
+      VLOG(5) << "Not fusing operand: " << candidate->ToString()
+              << " due to tileability decision: " << decision.Explain();
       continue;
     }
     VLOG(5) << "Fusing operand: " << candidate->ToString();
@@ -1840,10 +1847,17 @@ absl::StatusOr<std::variant<Fusion, FusionDecision>> CreateTileableFusion(
     HloInstruction* original_user =
         fusion_search_space.fused_to_original().at(user);
     if (FusionDecision decision =
-            ShouldFuseUser(user, *original_user, fusion, epilogue_tracker)
-                .And(CanFuse(mlir_context, fusion, user, device_description));
+            ShouldFuseUser(user, *original_user, fusion, epilogue_tracker);
         !decision.IsAllowed()) {
-      VLOG(5) << "Not fusing user: " << decision.Explain();
+      VLOG(5) << "Not fusing user: " << user->ToString()
+              << " due to profitability decision: " << decision.Explain();
+      break;
+    }
+    if (FusionDecision decision =
+            CanFuse(mlir_context, fusion, user, device_description);
+        !decision.IsAllowed()) {
+      VLOG(5) << "Not fusing user: " << user->ToString()
+              << " due to tileability decision: " << decision.Explain();
       break;
     }
     VLOG(5) << "Fusing user into epilogue: " << user->ToString();

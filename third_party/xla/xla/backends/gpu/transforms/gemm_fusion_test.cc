@@ -2733,6 +2733,31 @@ ENTRY e {
                            m::Bitcast(m::Parameter()))));
 }
 
+TEST_P(GemmFusionTestV2, DoNotFuseConcatenateUser) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[8,150,150] parameter(0)
+  p1 = f32[150,8,32] parameter(1)
+  dot = f32[8,150,32] dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={1},
+    rhs_batch_dims={1}, rhs_contracting_dims={0}
+  b0 = f32[1,8,150,32] bitcast(dot)
+  t = f32[1,150,8,32] transpose(b0), dimensions={0,2,1,3}
+  b1 = f32[1,150,256] bitcast(t)
+  p2 = f32[1,150,128] parameter(2)
+  c = f32[1,150,384] concatenate(p2, b1), dimensions={2}
+  ROOT r = f32[150,384] bitcast(c)
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Concatenate(
+                  m::Parameter(),
+                  m::Bitcast(m::Fusion(m::Parameter(), m::Parameter()))))));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
