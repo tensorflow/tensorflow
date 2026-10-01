@@ -124,6 +124,7 @@ def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
         return get($_ctxt, value, std::nullopt);
     }]>
   ];
+  let genVerifyDecl = 1;
 }
 
 class TPU_Op<string mnemonic, list<Trait> traits = []> :
