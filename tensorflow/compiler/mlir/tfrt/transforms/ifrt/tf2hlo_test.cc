@@ -757,6 +757,48 @@ TEST_F(Tf2HloTest, ToProtoAndFromProto) {
   EXPECT_EQ(result_from_proto.xla_input_shapes[1], shape1);
 }
 
+TEST_F(Tf2HloTest, UpdateCompileMetadataDropsRankMismatchedSharding) {
+  tensorflow::tpu::TPUCompileMetadataProto metadata;
+  metadata.set_num_replicas(1);
+  metadata.set_num_cores_per_replica(2);
+
+  // Arg 0: 2D sharding, but runtime input shape is 1D [4]. Sharding should be
+  // dropped.
+  auto* arg0 = metadata.add_args();
+  arg0->set_name("arg0");
+  arg0->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+  arg0->set_dtype(DT_FLOAT);
+  auto* sharding0 = arg0->mutable_sharding();
+  sharding0->set_type(xla::OpSharding::OTHER);
+  sharding0->add_tile_assignment_dimensions(2);
+  sharding0->add_tile_assignment_dimensions(1);
+  sharding0->add_tile_assignment_devices(0);
+  sharding0->add_tile_assignment_devices(1);
+
+  // Arg 1: 1D sharding, runtime input shape is 1D [4]. Sharding should be kept.
+  auto* arg1 = metadata.add_args();
+  arg1->set_name("arg1");
+  arg1->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+  arg1->set_dtype(DT_FLOAT);
+  auto* sharding1 = arg1->mutable_sharding();
+  sharding1->set_type(xla::OpSharding::OTHER);
+  sharding1->add_tile_assignment_dimensions(2);
+  sharding1->add_tile_assignment_devices(0);
+  sharding1->add_tile_assignment_devices(1);
+
+  std::vector<DtypeAndShape> inputs = {
+      DtypeAndShape{DT_FLOAT, {4}},
+      DtypeAndShape{DT_FLOAT, {4}},
+  };
+
+  TF_ASSERT_OK(UpdateCompileMetadata(metadata, inputs));
+
+  EXPECT_TRUE(metadata.args(0).has_sharding());
+  EXPECT_EQ(metadata.args(0).sharding().type(), xla::OpSharding::REPLICATED);
+  EXPECT_TRUE(metadata.args(1).has_sharding());
+  EXPECT_EQ(metadata.args(1).sharding().tile_assignment_dimensions_size(), 1);
+}
+
 }  // namespace
 }  // namespace ifrt_serving
 }  // namespace tensorflow

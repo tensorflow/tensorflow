@@ -659,9 +659,20 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
   executable_bundle.arg_hlo_shardings.reserve(
       executable_bundle.compile_metadata.args().size());
 
-  for (const auto& arg : executable_bundle.compile_metadata.args()) {
+  for (int i = 0; i < executable_bundle.compile_metadata.args().size(); ++i) {
+    const auto& arg = executable_bundle.compile_metadata.args(i);
     TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
                         xla::HloSharding::FromProto(arg.sharding()));
+    if (hlo_sharding.IsTiled() &&
+        i < executable_bundle.reshaped_input_tensors.size() &&
+        hlo_sharding.TiledDataRank() !=
+            executable_bundle.reshaped_input_tensors[i].dims()) {
+      LOG(WARNING) << "Ignoring rank-" << hlo_sharding.TiledDataRank()
+                   << " sharding for input " << i << " with shape rank "
+                   << executable_bundle.reshaped_input_tensors[i].dims()
+                   << "; falling back to REPLICATED.";
+      hlo_sharding = xla::HloSharding::Replicate();
+    }
     executable_bundle.arg_hlo_shardings.push_back(hlo_sharding);
     TF_ASSIGN_OR_RETURN(
         auto ifrt_sharding,

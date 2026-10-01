@@ -803,6 +803,46 @@ func.func @func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
 
 // -----
 
+// CHECK-LABEL: func @check_resource_arg_sharding_errors
+func.func @check_resource_arg_sharding_errors(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
+  // CHECK-SAME: use_spmd_for_xla_partitioning = false
+  "tf_device.cluster_func"(%arg0) {func = @func, num_cores_per_replica = 1 : i64} : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  func.return
+}
+
+func.func @func(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32> {
+  // Use a four dimension sharding (devices=[1,1,1,1]0)
+  // Since the resource variable tensor only has one dimension, we expect this to fail.
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<32xf32>) -> tensor<32xf32>
+  %2 = "tf.A"(%1) : (tensor<32xf32>) -> tensor<32xf32>
+  func.return %2 : tensor<32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_resource_arg_sharding_rank_mismatch_spmd
+func.func @check_resource_arg_sharding_rank_mismatch_spmd(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = [""]
+  // CHECK-SAME: use_spmd_for_xla_partitioning = true
+  "tf_device.cluster_func"(%arg0) {func = @func_spmd, num_cores_per_replica = 1 : i64, use_spmd_for_xla_partitioning = true} : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  func.return
+}
+
+func.func @func_spmd(%arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32> {
+  // Use a four dimension sharding (devices=[1,1,1,1]0)
+  // In SPMD mode, rank mismatch is sanitized to replicated instead of falling back to MPMD.
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<32xf32>) -> tensor<32xf32>
+  %2 = "tf.A"(%1) : (tensor<32xf32>) -> tensor<32xf32>
+  func.return %2 : tensor<32xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @check_propagation_upwards_when_spmd_for_xla_is_true
 func.func @check_propagation_upwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) {
   // CHECK:      tf_device.cluster_func

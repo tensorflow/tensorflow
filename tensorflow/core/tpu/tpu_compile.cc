@@ -343,6 +343,29 @@ absl::Status MaybeBuildBoundedDynamicArgValues(
   return absl::OkStatus();
 }
 
+// Sanitizes argument sharding to REPLICATED if the sharding rank exceeds
+// the tensor rank. This prevents compilation crashes and SPMD shape mismatches.
+void SanitizeArgShardingIfRankMismatch(
+    int arg_index, const TensorShape& shape,
+    const tpu::TPUCompileMetadataProto::Arg& proto_arg,
+    xla::HloSharding* arg_sharding,
+    tpu::TPUCompileMetadataProto::Arg* sanitized_proto_arg,
+    const tpu::TPUCompileMetadataProto::Arg** proto_arg_to_use) {
+  *proto_arg_to_use = &proto_arg;
+  if (arg_sharding->IsTiled() && shape.dims() < arg_sharding->TiledDataRank()) {
+    LOG(WARNING) << "Ignoring sharding with rank "
+                 << arg_sharding->TiledDataRank() << " for argument "
+                 << arg_index << " (" << proto_arg.name() << ") with rank "
+                 << shape.dims() << "; falling back to REPLICATED.";
+    *arg_sharding = xla::HloSharding::Replicate();
+    *sanitized_proto_arg = proto_arg;
+    sanitized_proto_arg->clear_sharding();
+    sanitized_proto_arg->mutable_sharding()->set_type(
+        xla::OpSharding::REPLICATED);
+    *proto_arg_to_use = sanitized_proto_arg;
+  }
+}
+
 // Populates the arguments, core mapping and per core argument shape for the
 // computation.
 absl::Status BuildComputationArgumentDescriptions(
@@ -422,10 +445,16 @@ absl::Status BuildComputationArgumentDescriptions(
     xla::Shape xla_arg_shape;
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
+    const tpu::TPUCompileMetadataProto::Arg* proto_arg_to_use = nullptr;
+    tpu::TPUCompileMetadataProto::Arg sanitized_proto_arg;
+    SanitizeArgShardingIfRankMismatch(i, arg_shapes[i], proto_arg,
+                                      &arg_sharding, &sanitized_proto_arg,
+                                      &proto_arg_to_use);
     TF_RETURN_IF_ERROR(compiler.XLAShapeForArgument(
         arg, /*is_entry_computation=*/true, arg_sharding, &xla_arg_shape));
-    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
-        proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
+    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(*proto_arg_to_use, i, &xla_arg_shape,
+                                           arg_core_mapping,
+                                           per_core_arg_shapes));
   }
   TF_RET_CHECK(constant_count == guaranteed_constants_size)
       << "Not all of the constant tensors were consumed.";
@@ -677,17 +706,23 @@ absl::Status GetShardingInfo(
     const auto& proto_arg = metadata.args(i);
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
+    const tpu::TPUCompileMetadataProto::Arg* proto_arg_to_use = nullptr;
+    tpu::TPUCompileMetadataProto::Arg sanitized_proto_arg;
+    SanitizeArgShardingIfRankMismatch(i, arg_shapes[i], proto_arg,
+                                      &arg_sharding, &sanitized_proto_arg,
+                                      &proto_arg_to_use);
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i], proto_arg.dtype(), std::nullopt);
+        arg_shapes[i], proto_arg_to_use->dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(auto xla_arg_shape,
                         shape_determination_fns.shape_representation_fn(
-                            arg_shapes[i], proto_arg.dtype(),
+                            arg_shapes[i], proto_arg_to_use->dtype(),
                             /*use_fast_memory=*/false, layout_preference));
     TF_RETURN_IF_ERROR(
         RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
                                       shape_determination_fns, &xla_arg_shape));
-    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
-        proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
+    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(*proto_arg_to_use, i, &xla_arg_shape,
+                                           arg_core_mapping,
+                                           per_core_arg_shapes));
   }
   return absl::OkStatus();
 }

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "xla/hlo/builder/sharding_builder.h"
 #include "xla/tsl/platform/errors.h"
@@ -239,6 +240,29 @@ mlir::ArrayAttr GetStrArrayAttr(Builder* builder,
   return builder->getArrayAttr(strings);
 }
 
+// Returns the ranked tensor type for a type, unwrapping ResourceType subtypes
+// if needed. Returns nullptr if the type is not a ranked tensor or if the
+// resource subtype is not a single ranked tensor.
+RankedTensorType GetRankedTensorType(mlir::Type type) {
+  if (auto tensor_type = mlir::dyn_cast<mlir::TensorType>(type)) {
+    if (auto resource_type = mlir::dyn_cast<mlir::TF::ResourceType>(
+            tensor_type.getElementType())) {
+      if (resource_type.getSubtypes().size() == 1) {
+        return mlir::dyn_cast<RankedTensorType>(
+            resource_type.getSubtypes().front());
+      }
+    }
+    return mlir::dyn_cast<RankedTensorType>(tensor_type);
+  }
+  if (auto resource_type = mlir::dyn_cast<mlir::TF::ResourceType>(type)) {
+    if (resource_type.getSubtypes().size() == 1) {
+      return mlir::dyn_cast<RankedTensorType>(
+          resource_type.getSubtypes().front());
+    }
+  }
+  return nullptr;
+}
+
 // Verify whether the given sharding can be applied to the given (tensor) type.
 // (A bad sharding might mean failing tf.Split ops if the graph later executes
 //  on CPU)
@@ -257,7 +281,7 @@ LogicalResult VerifySharding(mlir::Type type,
     // verify shardings that actually break a tensor apart.
     return mlir::success();
   }
-  if (RankedTensorType ranked_type = mlir::dyn_cast<RankedTensorType>(type)) {
+  if (RankedTensorType ranked_type = GetRankedTensorType(type)) {
     const int64_t tensor_rank = ranked_type.getRank();
     int tile_assignment_rank = sharding->tile_assignment_dimensions_size();
 
@@ -660,6 +684,42 @@ absl::Status MoveSharding(OptionalOpShardingVector& optional_shardings,
   return absl::OkStatus();
 }
 
+// In SPMD mode, if any candidate input or output sharding is incompatible with
+// the tensor rank, drops the sharding so that it safely defaults to replicated.
+// This prevents falling back to MPMD (which is unsupported in IFRT serving and
+// breaks variable loading) and avoids downstream compilation crashes.
+void SanitizeIncompatibleShardingsForSpmd(
+    mlir::func::FuncOp func, OptionalOpShardingVector& optional_input_sharding,
+    OptionalOpShardingVector& optional_output_sharding) {
+  for (int i = 0; i < optional_input_sharding.size(); ++i) {
+    if (optional_input_sharding[i].has_value()) {
+      if (failed(VerifySharding(func.getArgument(i).getType(),
+                                optional_input_sharding[i].value()))) {
+        LOG(WARNING)
+            << "Input sharding for argument " << i << " of function "
+            << func.getName().str()
+            << " is incompatible with tensor rank. Defaulting to replicated "
+            << "in SPMD.";
+        optional_input_sharding[i] = std::nullopt;
+      }
+    }
+  }
+  Operation* terminator = func.front().getTerminator();
+  for (int i = 0; i < optional_output_sharding.size(); ++i) {
+    if (optional_output_sharding[i].has_value()) {
+      if (failed(VerifySharding(terminator->getOperand(i).getType(),
+                                optional_output_sharding[i].value()))) {
+        LOG(WARNING)
+            << "Output sharding for retval " << i << " of function "
+            << func.getName().str()
+            << " is incompatible with tensor rank. Defaulting to replicated "
+            << "in SPMD.";
+        optional_output_sharding[i] = std::nullopt;
+      }
+    }
+  }
+}
+
 // Determines XlaSharding for inputs and outputs. If there are aliased
 // inputs/outputs for which no sharding was found directly, the corresponding
 // output/input sharding is used (if it exists). If we still don't find sharding
@@ -680,6 +740,10 @@ absl::Status IdentifyXlaShardingForInputsAndOutputs(
       optional_output_sharding));
   TF_RETURN_IF_ERROR(DetermineShardingFromAlias(func, optional_input_sharding,
                                                 optional_output_sharding));
+  if (use_spmd) {
+    SanitizeIncompatibleShardingsForSpmd(func, optional_input_sharding,
+                                         optional_output_sharding);
+  }
   SetReplicatedOrMaximalShardingIfNoShardingFound(logical_device_vec, use_spmd,
                                                   optional_input_sharding);
   SetReplicatedOrMaximalShardingIfNoShardingFound(logical_device_vec, use_spmd,
