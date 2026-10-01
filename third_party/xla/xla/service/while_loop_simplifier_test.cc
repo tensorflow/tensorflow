@@ -1347,7 +1347,8 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
   )";
 
   for (std::string dir : {"LT", "GT"}) {
-    for (int i = (dir == "LT" ? 1 : 0); i > -5; i--) {
+    int start = (dir == "LT") ? 1 : 0;
+    for (int i = start; i > -5; i--) {
       std::string hlo_string = absl::StrReplaceAll(
           hlo_template,
           {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
@@ -1393,6 +1394,18 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
                       ->literal()
                       .IsAll(dir == "LT"));
     }
+  }
+
+  // When LOOP_CONSTANT equals the initial value of the induction variable (1),
+  // `i > 1` is false on the first iteration (i == 1) and true on subsequent
+  // iterations, so it must not be simplified to a constant.
+  {
+    std::string hlo_string = absl::StrReplaceAll(
+        hlo_template, {{"{{LOOP_CONSTANT}}", "1"}, {"{{DIRECTION}}", "GT"}});
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+    EXPECT_THAT(
+        WhileLoopSimplifier(/*simplify_compare_instrs=*/true).Run(m.get()),
+        absl_testing::IsOkAndHolds(false));
   }
 }
 

@@ -169,7 +169,7 @@ func.func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
     -> memref<?xf32> attributes {tf_entry} {
   %c0 = arith.constant 0 : index
   %reinterpreted = memref.reinterpret_cast %arg to
-      offset: [0],
+      offset: [%c0],
       sizes: [%n],
       strides: [%c0]: memref<f32> to memref<?xf32, strided<[?], offset: ?>>
 

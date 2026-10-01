@@ -59,15 +59,15 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 
@@ -1158,7 +1158,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       selected = s32[] select(is_lt, inc, dec)
       ds = f32[1,8,8] dynamic-slice(input, selected, c0_s32, c0_s32),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1235,7 +1236,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] subtract(offset_base, offset_base)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1306,7 +1308,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(ivar, c1)
       ROOT dus = f32[8,8,8] dynamic-update-slice(
           output, bitcast, offset, c0, c0),
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
     }
   )";
 
@@ -1455,7 +1458,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] add(index_scalar, c1)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"
@@ -1518,7 +1522,8 @@ TEST_F(DynamicSliceFusionRewriterV2Test,
       offset = s32[] maximum(ivar, c0)
       ds = f32[1,8,8] dynamic-slice(input, offset, c0, c0),
           dynamic_slice_sizes={1,8,8},
-          backend_config={"dynamic_slice_config":{"byte_offset":0,"byte_stride":0}}
+          backend_config={"dynamic_slice_config":{
+            "linear":{"byte_offset":0,"byte_stride":0}}}
       bitcast = f32[8,8] bitcast(ds)
       ROOT hero = f32[8,8] custom-call(bitcast),
           custom_call_target="fake_target"

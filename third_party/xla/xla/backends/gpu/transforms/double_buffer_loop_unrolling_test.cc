@@ -68,15 +68,15 @@ DynamicSliceConfig MakeLoopConfig(int64_t loop_index, int64_t byte_offset,
                                   int64_t byte_stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(byte_stride);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(byte_stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t byte_offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 
@@ -94,8 +94,8 @@ void ExpectDynamicSliceConfig(const HloInstruction* instr,
   } else {
     EXPECT_FALSE(config.has_loop_index());
   }
-  EXPECT_EQ(config.byte_offset(), byte_offset);
-  EXPECT_EQ(config.byte_stride(), byte_stride);
+  EXPECT_EQ(config.linear().byte_offset(), byte_offset);
+  EXPECT_EQ(config.linear().byte_stride(), byte_stride);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -110,8 +110,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
           DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 80);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 80);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -124,8 +124,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
           DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 16);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 16);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -141,8 +141,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
 
   ASSERT_TRUE(new_config.has_loop_index());
   EXPECT_EQ(new_config.loop_index(), 0);
-  EXPECT_EQ(new_config.byte_offset(), 48);
-  EXPECT_EQ(new_config.byte_stride(), 64);
+  EXPECT_EQ(new_config.linear().byte_offset(), 48);
+  EXPECT_EQ(new_config.linear().byte_stride(), 64);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -155,8 +155,56 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
                       /*start_iteration=*/1, /*iteration_stride=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 16);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 16);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, UnrollOffsetTable) {
+  DynamicSliceConfig config;
+  config.set_loop_index(0);
+  for (int64_t offset : {0, 4, 16, 36, 40, 68}) {
+    config.mutable_table()->add_offsets(offset);
+  }
+
+  auto peeled = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::StaticLoopIteration{2});
+  EXPECT_FALSE(peeled.has_loop_index());
+  ASSERT_TRUE(peeled.has_linear());
+  EXPECT_EQ(peeled.linear().byte_offset(), 16);
+  EXPECT_EQ(peeled.linear().byte_stride(), 0);
+
+  auto even = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{0, 2});
+  EXPECT_EQ(even.loop_index(), 0);
+  EXPECT_THAT(even.table().offsets(), ::testing::ElementsAre(0, 16, 40));
+
+  // The odd subsequence is linear and should return to the compact form.
+  auto odd = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{1, 2});
+  EXPECT_EQ(odd.loop_index(), 0);
+  ASSERT_TRUE(odd.has_linear());
+  EXPECT_EQ(odd.linear().byte_offset(), 4);
+  EXPECT_EQ(odd.linear().byte_stride(), 32);
+
+  auto single = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{5, 2});
+  EXPECT_FALSE(single.has_loop_index());
+  ASSERT_TRUE(single.has_linear());
+  EXPECT_EQ(single.linear().byte_offset(), 68);
+  EXPECT_EQ(single.linear().byte_stride(), 0);
+
+  // A loop-invariant subsequence drops the loop index.
+  DynamicSliceConfig alternating;
+  alternating.set_loop_index(0);
+  for (int64_t offset : {8, 4, 8, 4}) {
+    alternating.mutable_table()->add_offsets(offset);
+  }
+  auto invariant = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      alternating, DoubleBufferLoopUnrolling::DynamicLoopIteration{0, 2});
+  EXPECT_FALSE(invariant.has_loop_index());
+  ASSERT_TRUE(invariant.has_linear());
+  EXPECT_EQ(invariant.linear().byte_offset(), 8);
+  EXPECT_EQ(invariant.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -277,7 +325,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -330,7 +379,8 @@ dus_fusion {
   ivar = s32[] parameter(2)
   c0 = s32[] constant(0)
   ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
 }
 
 body {
@@ -403,7 +453,8 @@ async_dus {
   ivar = s32[] parameter(2)
   c0 = s32[] parameter(3)
   ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
 }
 
 body {
@@ -479,7 +530,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -538,7 +590,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -580,8 +633,8 @@ ENTRY main {
     ASSERT_TRUE(backend_config.has_dynamic_slice_config());
     const DynamicSliceConfig& config = backend_config.dynamic_slice_config();
     EXPECT_FALSE(config.has_loop_index());
-    EXPECT_EQ(config.byte_stride(), 0);
-    byte_offsets.push_back(config.byte_offset());
+    EXPECT_EQ(config.linear().byte_stride(), 0);
+    byte_offsets.push_back(config.linear().byte_offset());
   }
   std::sort(byte_offsets.begin(), byte_offsets.end());
   EXPECT_THAT(byte_offsets, ::testing::ElementsAre(16, 48, 80));

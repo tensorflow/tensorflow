@@ -260,6 +260,15 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/
    %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
    return %0 : tensor<6x3xf32>
  }
+@@ -52,7 +52,7 @@
+ 
+ // CHECK-LABEL: @divide_f32
+ func.func @divide_f32(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const values(dense<0> : tensor<1xi8>)
+   // CHECK-DAG: %[[VAR1:.*]] = tosa.reciprocal %arg1
+   // CHECK: tosa.mul %arg0, %[[VAR1]], %[[VAR0]]
+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 @@ -61,10 +61,10 @@
  
  // CHECK-LABEL: @dot_vector_vector
@@ -375,12 +384,26 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-@@ -11,10 +11,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -4,17 +4,17 @@
+ // CHECK-LABEL: @add
+ func.func @add(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[SHIFT50:.+]] = "tosa.const"() <{values = dense<50> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT11:.+]] = "tosa.const"() <{values = dense<11> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT13:.+]] = "tosa.const"() <{values = dense<13> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[SHIFT50:.+]] = tosa.const values(dense<50> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT11:.+]] = tosa.const values(dense<11> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT13:.+]] = tosa.const values(dense<13> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -389,12 +412,26 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
    %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -32,10 +32,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -25,17 +25,17 @@
+ // CHECK-LABEL: @sub
+ func.func @sub(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[SHIFT50:.+]] = "tosa.const"() <{values = dense<50> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT11:.+]] = "tosa.const"() <{values = dense<11> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT13:.+]] = "tosa.const"() <{values = dense<13> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[SHIFT50:.+]] = tosa.const values(dense<50> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT11:.+]] = tosa.const values(dense<11> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT13:.+]] = tosa.const values(dense<13> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -403,12 +440,24 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
    %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -52,10 +52,10 @@
-   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -46,16 +46,16 @@
+ // CHECK-LABEL: @mul
+ func.func @mul(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>> {
+-  // CHECK-DAG: %[[SHIFT37:.+]] = "tosa.const"() <{values = dense<37> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[SHIFT37:.+]] = tosa.const values(dense<37> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT30:.+]] = tosa.const values(dense<30> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1717986918> : tensor<1xi32>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -417,12 +466,28 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
    %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-@@ -74,10 +74,10 @@
-   // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -66,18 +66,18 @@
+ // CHECK-LABEL: @div
+ func.func @div(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[SHIFT37:.+]] = "tosa.const"() <{values = dense<37> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = "tosa.const"() <{values = dense<-3> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[SHIFT37:.+]] = tosa.const values(dense<37> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT30:.+]] = tosa.const values(dense<30> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1717986918> : tensor<1xi32>)
++  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = tosa.const values(dense<-3> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = tosa.const values(dense<-2> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -431,12 +496,30 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
    %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -97,10 +97,10 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -88,19 +88,19 @@
+ // CHECK-LABEL: @max
+ func.func @max(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = "tosa.const"() <{values = dense<-3> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT51:.+]] = "tosa.const"() <{values = dense<51> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT10:.+]] = "tosa.const"() <{values = dense<10> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = tosa.const values(dense<-3> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT51:.+]] = tosa.const values(dense<51> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = tosa.const values(dense<-2> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT10:.+]] = tosa.const values(dense<10> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[SHIFT12:.+]] = tosa.const values(dense<12> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -445,12 +528,30 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
    %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -120,10 +120,10 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -111,19 +111,19 @@
+ // CHECK-LABEL: @min
+ func.func @min(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>,
+                %arg1 : tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>> {
+-  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = "tosa.const"() <{values = dense<-3> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT51:.+]] = "tosa.const"() <{values = dense<51> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT10:.+]] = "tosa.const"() <{values = dense<10> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[ZP_MINUS_3:.+]] = tosa.const values(dense<-3> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT51:.+]] = tosa.const values(dense<51> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = tosa.const values(dense<-2> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT10:.+]] = tosa.const values(dense<10> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[SHIFT12:.+]] = tosa.const values(dense<12> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
@@ -459,11 +560,25 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
    %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
              -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-@@ -140,9 +140,9 @@
-   // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -133,16 +133,16 @@
+ // -----
+ // CHECK-LABEL: @abs
+ func.func @abs(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>> {
+-  // CHECK-DAG: %[[ZP_MINUS_128:.+]] = "tosa.const"() <{values = dense<-128> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT33:.+]] = "tosa.const"() <{values = dense<33> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[ZP_MINUS_128:.+]] = tosa.const values(dense<-128> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT33:.+]] = tosa.const values(dense<33> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[SHIFT30:.+]] = tosa.const values(dense<30> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
 -  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
@@ -471,23 +586,49 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
    // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
    %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
    return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
-@@ -159,8 +159,8 @@
-   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -152,15 +152,15 @@
+ // CHECK-LABEL: @compareGE
+ func.func @compareGE(%arg0 : tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>,
+                    %arg1 : tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1> {
+-  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[SHIFT10:.+]] = "tosa.const"() <{values = dense<10> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[ZP_MINUS_2:.+]] = tosa.const values(dense<-2> : tensor<1xi8>)
++  // CHECK-DAG: %[[SHIFT10:.+]] = tosa.const values(dense<10> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[SHIFT12:.+]] = tosa.const values(dense<12> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_MINUS_1:.+]] = tosa.const values(dense<-1> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
    // CHECK: return %[[V2]]
    %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
-@@ -177,8 +177,8 @@
-   // CHECK-DAG: %[[SHIFT15:.+]] = "tosa.const"() <{values = dense<15> : tensor<1xi8>}>
-   // CHECK-DAG: %[[ZP16_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
-   // CHECK-DAG: %[[ZP32_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
+@@ -171,14 +171,14 @@
+ // CHECK-LABEL: @compareLT
+ func.func @compareLT(%arg0 : tensor<20x20x!quant.uniform<i16:f32, 0.025:0>>,
+                    %arg1 : tensor<20x20x!quant.uniform<i16:f32, 0.075:0>>) -> tensor<20x20xi1> {
+-  // CHECK-DAG: %[[SHIFT17:.+]] = "tosa.const"() <{values = dense<17> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
+-  // CHECK-DAG: %[[SHIFT15:.+]] = "tosa.const"() <{values = dense<15> : tensor<1xi8>}>
+-  // CHECK-DAG: %[[ZP16_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
+-  // CHECK-DAG: %[[ZP32_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
 -  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 -  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
++  // CHECK-DAG: %[[SHIFT17:.+]] = tosa.const values(dense<17> : tensor<1xi8>)
++  // CHECK-DAG: %[[MULTIPLIER_1:.+]] = tosa.const values(dense<1073741824> : tensor<1xi32>)
++  // CHECK-DAG: %[[MULTIPLIER_2:.+]] = tosa.const values(dense<1431655765> : tensor<1xi32>)
++  // CHECK-DAG: %[[SHIFT15:.+]] = tosa.const values(dense<15> : tensor<1xi8>)
++  // CHECK-DAG: %[[ZP16_0:.+]] = tosa.const values(dense<0> : tensor<1xi16>)
++  // CHECK-DAG: %[[ZP32_0:.+]] = tosa.const values(dense<0> : tensor<1xi32>)
 +  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
 +  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false)
    // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
@@ -496,11 +637,19 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_to
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-@@ -7,7 +7,7 @@
-   %shift = "tosa.const"() {values = dense<13> : tensor<1xi8>} : () -> tensor<1xi8>
-   %input_zp = "tosa.const"() {values = dense<-1> : tensor<1xi8>} : () -> tensor<1xi8>
-   %output_zp = "tosa.const"() {values = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+@@ -3,11 +3,11 @@
+ // -----
+ // CHECK-LABEL: @rescale
+ func.func @rescale(%arg0 : tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<2x2xi32> {
+-  %multiplier = "tosa.const"() {values = dense<1431655765> : tensor<1xi32>} : () -> tensor<1xi32>
+-  %shift = "tosa.const"() {values = dense<13> : tensor<1xi8>} : () -> tensor<1xi8>
+-  %input_zp = "tosa.const"() {values = dense<-1> : tensor<1xi8>} : () -> tensor<1xi8>
+-  %output_zp = "tosa.const"() {values = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
 -  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} :
++  %multiplier = tosa.const values(dense<1431655765> : tensor<1xi32>) : () -> tensor<1xi32>
++  %shift = tosa.const values(dense<13> : tensor<1xi8>) : () -> tensor<1xi8>
++  %input_zp = tosa.const values(dense<-1> : tensor<1xi8>) : () -> tensor<1xi8>
++  %output_zp = tosa.const values(dense<0> : tensor<1xi32>) : () -> tensor<1xi32>
 +  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp scale32(true) rounding_mode<SINGLE_ROUND> per_channel(false) input_unsigned(false) output_unsigned(false) :
              (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x2xi32>
  
@@ -508,20 +657,28 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
-@@ -18,7 +18,7 @@
+@@ -16,9 +16,9 @@
+ 
+ // CHECK-LABEL: @iota_dimension_0
  func.func @iota_dimension_0() -> tensor<4x8xf32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{values = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}> : () -> tensor<4x1xf32>
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+-  // CHECK-SAME{LITERAL}: <{values = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}> : () -> tensor<4x1xf32>
 -  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {values = dense<[1, 8]> : vector<2xindex>} : () -> !tosa.shape<2>
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const
++  // CHECK-SAME{LITERAL}: values(dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>) : () -> tensor<4x1xf32>
 +  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[1, 8]> : vector<2xindex>) : () -> !tosa.shape<2>
    // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
    %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
    return %0 : tensor<4x8xf32>
-@@ -28,7 +28,7 @@
+@@ -26,9 +26,9 @@
+ 
+ // CHECK-LABEL: @iota_dimension_1
  func.func @iota_dimension_1() -> tensor<4x8xi32> {
-   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
-   // CHECK-SAME{LITERAL}: <{values = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}> : () -> tensor<1x8xi32>
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+-  // CHECK-SAME{LITERAL}: <{values = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}> : () -> tensor<1x8xi32>
 -  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {values = dense<[4, 1]> : vector<2xindex>} : () -> !tosa.shape<2>
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const
++  // CHECK-SAME{LITERAL}: values(dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>) : () -> tensor<1x8xi32>
 +  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape values(dense<[4, 1]> : vector<2xindex>) : () -> !tosa.shape<2>
    // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
    %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
@@ -541,6 +698,33 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir b/stablehlo
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+@@ -30,7 +30,7 @@
+ 
+ // CHECK-LABEL: @exponential_minus_one
+ func.func @exponential_minus_one(%arg : tensor<10xf32>) -> tensor<10xf32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<1.000000e+00>
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const values(dense<1.000000e+00>
+   // CHECK-DAG: %[[VAR1:.*]] = tosa.exp %arg0
+   // CHECK-DAG: %[[VAR2:.*]] = tosa.sub %[[VAR1]], %[[VAR0]]
+   %0 = "stablehlo.exponential_minus_one"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
+@@ -46,7 +46,7 @@
+ 
+ // CHECK-LABEL: @is_finite
+ func.func @is_finite(%arg : tensor<10xf32>) -> tensor<10xi1> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<0x7F800000>
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const values(dense<0x7F800000>
+   // CHECK-DAG: %[[VAR1:.*]] = tosa.abs %arg0
+   // CHECK-DAG: %[[VAR2:.*]] = tosa.equal %[[VAR1]], %[[VAR0]]
+   // CHECK-DAG: %[[VAR3:.*]] = tosa.logical_not %[[VAR2]]
+@@ -63,7 +63,7 @@
+ 
+ // CHECK-LABEL: @log_plus_one
+ func.func @log_plus_one(%arg : tensor<10xf16>) -> tensor<10xf16> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<1.000000e+00>
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const values(dense<1.000000e+00>
+   // CHECK-DAG: %[[VAR1:.*]] = tosa.add %arg0, %[[VAR0]]
+   // CHECK-DAG: %[[VAR2:.*]] = tosa.log %[[VAR1]]
+   %0 = "stablehlo.log_plus_one"(%arg) : (tensor<10xf16>) -> tensor<10xf16>
 @@ -79,8 +79,8 @@
  
  // CHECK-LABEL: @slice
@@ -552,7 +736,7 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/s
    // CHECK: tosa.slice %arg0, %[[SIZE]], %[[START]]
    %0 = "stablehlo.slice"(%arg) {
      start_indices = array<i64: 2, 1>,
-@@ -123,7 +123,7 @@
+@@ -123,15 +123,15 @@
  
  // CHECK-LABEL: @transpose
  func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
@@ -561,6 +745,16 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/s
    %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
    return %0 : tensor<3x2x1xf32>
  }
+ 
+ // CHECK-LABEL: @while
+ func.func @while(%arg0: tensor<i32>) -> tensor<i32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<3> : tensor<i32>}
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{values = dense<1> : tensor<i32>}
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.const values(dense<3> : tensor<i32>)
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const values(dense<1> : tensor<i32>)
+   // CHECK:     %[[VAR2:.*]] = tosa.while_loop (%[[ARG1:.+]] = %arg0) : (tensor<i32>) -> tensor<i32> {
+   // CHECK:       %[[VAR3:.*]] = tosa.equal %[[ARG1]], %[[VAR0]]
+   // CHECK:       tosa.yield %[[VAR3]]
 @@ -158,7 +158,7 @@
  
  // CHECK-LABEL: @reshape
@@ -1887,6 +2081,68 @@ diff --ruN a/stablehlo/stablehlo/reference/Index.h b/stablehlo/stablehlo/referen
    IndexSpaceIterator operator++(int);
  
   private:
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
+--- stablehlo/stablehlo/reference/InterpreterOps.cpp
++++ stablehlo/stablehlo/reference/InterpreterOps.cpp
+@@ -22,6 +22,7 @@
+ #include <mutex>
+ #include <queue>
+ #include <string>
++#include <utility>
+ 
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/Errc.h"
+@@ -175,36 +176,39 @@
+     SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
+     InterpreterFallback* fallback) {
+   llvm::DefaultThreadPool threadPool;
+-  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
++  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+ 
+   uint32_t numReplicas = programs.size();
+   uint32_t numPartitions = programs[0].size();
+   ProcessGrid processGrid(numReplicas, numPartitions, infeed);
+ 
++  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
++                                                         numPartitions);
++
+   auto inputsIt = inputs.begin();
+ 
+   for (uint32_t i = 0; i < numReplicas; ++i) {
+     for (uint32_t j = 0; j < numPartitions; ++j) {
+       auto funcName = programs[i][j];
+       auto func = llvm::cast<func::FuncOp>(symbolTable.lookup(funcName));
+-      auto evalWrapper = [&](Region& region, ArrayRef<InterpreterValue> args,
+-                             ProcessId processId) {
+-        Process process{processId, &processGrid};
+-        return eval(region, args, fallback, &process,
+-                    /*parent=*/nullptr);
+-      };
+-
+       auto numArgs = func.getBody().front().getArguments().size();
+       SmallVector<InterpreterValue> args(inputsIt, inputsIt + numArgs);
+       inputsIt += numArgs;
+ 
+-      futures.emplace_back(threadPool.async(
+-          evalWrapper, std::ref(func.getBody()), args, ProcessId{i, j}));
++      uint32_t flatIndex = i * numPartitions + j;
++      taskGroup.async([&, flatIndex, func, args = std::move(args),
++                       processId = ProcessId{i, j}]() mutable {
++        Process process{processId, &processGrid};
++        taskOutputs[flatIndex] = eval(func.getBody(), args, fallback, &process,
++                                      /*parent=*/nullptr);
++      });
+     }
+   }
+ 
++  taskGroup.wait();
++
+   SmallVector<InterpreterValue> results;
+-  for (auto& future : futures) results.append(future.get());
++  for (auto& output : taskOutputs) results.append(output);
+   // TODO(#1725): Figure out how to test the outfeed queue.
+   return results;
+ }
 diff --ruN a/stablehlo/stablehlo/reference/Process.cpp b/stablehlo/stablehlo/reference/Process.cpp
 --- stablehlo/stablehlo/reference/Process.cpp
 +++ stablehlo/stablehlo/reference/Process.cpp
@@ -2292,68 +2548,17 @@ diff --ruN a/stablehlo/stablehlo/tests/CheckOps.h b/stablehlo/stablehlo/tests/Ch
                                uint64_t min_ulp_difference,
                                uint64_t max_ulp_difference);
  
-diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.cpp b/stablehlo/stablehlo/reference/InterpreterOps.cpp
---- stablehlo/stablehlo/reference/InterpreterOps.cpp
-+++ stablehlo/stablehlo/reference/InterpreterOps.cpp
-@@ -22,6 +22,7 @@
- #include <mutex>
- #include <queue>
- #include <string>
-+#include <utility>
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.td b/stablehlo/stablehlo/tests/CheckOps.td
+--- stablehlo/stablehlo/tests/CheckOps.td
++++ stablehlo/stablehlo/tests/CheckOps.td
+@@ -24,6 +24,7 @@
  
- #include "llvm/Support/Casting.h"
- #include "llvm/Support/Errc.h"
-@@ -175,11 +176,14 @@
-     SmallVector<SmallVector<StringAttr>> programs, SymbolTable& symbolTable,
-     InterpreterFallback* fallback) {
-   llvm::DefaultThreadPool threadPool;
--  SmallVector<std::shared_future<SmallVector<InterpreterValue>>> futures;
-+  llvm::ThreadPoolTaskGroup taskGroup(threadPool);
+ def CHECK_Dialect : Dialect {
+   let name = "check";
++  let useStrictPropertiesInAssemblyFormat = 0;
+   let cppNamespace = "::mlir::stablehlo::check";
  
-   uint32_t numReplicas = programs.size();
-   uint32_t numPartitions = programs[0].size();
-   ProcessGrid processGrid(numReplicas, numPartitions, infeed);
-+
-+  SmallVector<SmallVector<InterpreterValue>> taskOutputs(numReplicas *
-+                                                         numPartitions);
- 
-   auto inputsIt = inputs.begin();
- 
-@@ -187,24 +191,24 @@
-     for (uint32_t j = 0; j < numPartitions; ++j) {
-       auto funcName = programs[i][j];
-       auto func = llvm::cast<func::FuncOp>(symbolTable.lookup(funcName));
--      auto evalWrapper = [&](Region& region, ArrayRef<InterpreterValue> args,
--                             ProcessId processId) {
--        Process process{processId, &processGrid};
--        return eval(region, args, fallback, &process,
--                    /*parent=*/nullptr);
--      };
--
-       auto numArgs = func.getBody().front().getArguments().size();
-       SmallVector<InterpreterValue> args(inputsIt, inputsIt + numArgs);
-       inputsIt += numArgs;
- 
--      futures.emplace_back(threadPool.async(
--          evalWrapper, std::ref(func.getBody()), args, ProcessId{i, j}));
-+      uint32_t flatIndex = i * numPartitions + j;
-+      taskGroup.async([&, flatIndex, func, args = std::move(args),
-+                       processId = ProcessId{i, j}]() mutable {
-+        Process process{processId, &processGrid};
-+        taskOutputs[flatIndex] = eval(func.getBody(), args, fallback, &process,
-+                                      /*parent=*/nullptr);
-+      });
-     }
-   }
- 
-+  taskGroup.wait();
-+
-   SmallVector<InterpreterValue> results;
--  for (auto& future : futures) results.append(future.get());
-+  for (auto& output : taskOutputs) results.append(output);
-   // TODO(#1725): Figure out how to test the outfeed queue.
-   return results;
- }
+   let description = [{
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp
@@ -6047,6 +6252,8 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.ml
 +func.func @composite_target(%arg0: tensor<f32>) -> tensor<f32> {
 +  return %arg0: tensor<f32>
 +}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir.bc b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir.bc
+Binary files /dev/null and stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.1_21_0.mlir.bc differ
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 --- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
 +++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir

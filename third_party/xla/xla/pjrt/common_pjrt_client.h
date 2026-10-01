@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/infer_dispatch_info.h"
+#include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -72,6 +73,8 @@ class CommonPjRtClient : public PjRtClient {
   virtual AsyncWorkRunner* async_work_runner() const { return nullptr; }
 
   virtual PjRtRawClient* raw_client() const { return nullptr; }
+
+  virtual LinearizeThrottler* linearize_throttler() const { return nullptr; }
 
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
@@ -1027,6 +1030,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
  public:
   PjRtRawClient* raw_client() const override { return raw_client_.get(); }
 
+  LinearizeThrottler* linearize_throttler() const override {
+    return linearize_throttler_.get();
+  }
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
@@ -1138,7 +1145,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
       std::unique_ptr<PjRtHostMemoryForDeviceManager>
-          host_memory_for_device_manager = nullptr);
+          host_memory_for_device_manager = nullptr,
+      std::optional<LinearizeThrottler::Options> throttler_options =
+          std::nullopt);
 
   bool allow_fallback_for_donation() const override {
     return allow_fallback_for_donation_;
@@ -1183,6 +1192,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   std::unique_ptr<PjRtRawClient> raw_client_;
+  std::unique_ptr<LinearizeThrottler> linearize_throttler_;
 
   bool allow_fallback_for_donation_ = false;
   bool supports_two_phase_launch_ = true;

@@ -487,7 +487,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
             // NOTE: since we are flattening args, all arguments will share the
             // same location as the tuple parameter instruction.
             function.getArgument(arg_index).setLoc(
-                mlir::hlo::GenerateInstructionLocation(instruction, context_));
+                mlir::hlo::GenerateInstructionLocation(instruction, context_,
+                                                       &frame_locations_));
             funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
             ++i;
           });
@@ -521,7 +522,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
       }
       function.getArgument(arg_index).setLoc(
-          mlir::hlo::GenerateInstructionLocation(instruction, context_));
+          mlir::hlo::GenerateInstructionLocation(instruction, context_,
+                                                 &frame_locations_));
       funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
     }
   }
@@ -754,7 +756,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   ABSL_ASSIGN_OR_RETURN(auto result_type,
                    ConvertShapeToType<RankedTensorType>(shape, *builder_));
   mlir::Location loc = mlir::hlo::GenerateInstructionLocation(
-      instruction, func_builder->getContext());
+      instruction, func_builder->getContext(), &frame_locations_);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {

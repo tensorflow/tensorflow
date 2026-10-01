@@ -3231,7 +3231,18 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   }
   ABSL_RETURN_IF_ERROR(fused_instructions_computation()
                       ->RemoveUnusedParametersFromFusedComputation());
+  // Keep every aliasing entry on the operand it names.
+  auto aliasing = output_to_operand_aliasing();
+  std::vector<const HloInstruction*> aliased_operands;
+  aliased_operands.reserve(aliasing.size());
+  for (const auto& entry : aliasing) {
+    aliased_operands.push_back(operand(entry.second.first));
+  }
   RemoveOperandsAtAscendingIndices(operands_to_remove);
+  for (int64_t i = 0; i < aliasing.size(); ++i) {
+    aliasing[i].second.first = operand_index(aliased_operands[i]);
+  }
+  set_output_to_operand_aliasing(std::move(aliasing));
   return absl::OkStatus();
 }
 

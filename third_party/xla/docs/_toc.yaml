@@ -97,6 +97,8 @@ toc:
     path: /xla/oom_debugging
   - title: Debug Megascale
     path: /xla/megascale/debugging_workflow
+  - title: Tune Megascale
+    path: /xla/megascale/performance_tuning
     # XLA Tools sub-section
   - heading: XLA tools
   - title: XLA tooling
