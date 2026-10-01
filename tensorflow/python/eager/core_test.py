@@ -660,7 +660,13 @@ class TFETest(test_util.TensorFlowTestCase):
           worker_errors.append(
               AssertionError('Unexpected error message: %s' % e)
           )
-      except Exception as e:  # pylint: disable=broad-exception-caught
+      except (
+          ValueError,
+          TypeError,
+          RuntimeError,
+          AssertionError,
+          core._NotOkStatusException,  # pylint: disable=protected-access
+      ) as e:
         worker_errors.append(e)
       else:
         worker_errors.append(
