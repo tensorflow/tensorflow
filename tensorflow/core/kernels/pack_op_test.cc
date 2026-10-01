@@ -19,7 +19,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "absl/status/status_matchers.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,12 +28,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-using ::absl_testing::StatusIs;
+using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 
 absl::Status MakeZeroElementShape(int rank, TensorShape* shape) {
@@ -68,6 +68,25 @@ TEST_F(PackOpTest, PackingMaxRankSucceeds) {
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_EQ(GetOutput(0)->dims(), TensorShape::MaxDimensions());
   EXPECT_EQ(GetOutput(0)->dim_size(0), 1);
+}
+
+TEST_F(PackOpTest, PackingMultipleTensorsMaxRankSucceeds) {
+  TF_ASSERT_OK(NodeDefBuilder("pack", "Pack")
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Attr("N", 2)
+                   .Attr("T", DT_FLOAT)
+                   .Attr("axis", 0)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  TensorShape input_shape;
+  TF_ASSERT_OK(
+      MakeZeroElementShape(TensorShape::MaxDimensions() - 1, &input_shape));
+  AddInput<float>(input_shape, [](int) { return 0.0f; });
+  AddInput<float>(input_shape, [](int) { return 0.0f; });
+
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->dims(), TensorShape::MaxDimensions());
+  EXPECT_EQ(GetOutput(0)->dim_size(0), 2);
 }
 
 TEST_F(PackOpTest, PackingBeyondMaxRankFails) {

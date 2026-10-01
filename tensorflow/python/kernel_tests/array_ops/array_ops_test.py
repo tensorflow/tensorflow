@@ -780,6 +780,11 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
     value = array_ops.fill(
         [0] + [1] * 252,
         constant_op.constant(0.0, dtype=dtypes.float32))
+    # User-facing slice syntax.
+    sliced_syntax = value[None, ...]
+    self.assertEqual(254, self.evaluate(array_ops.rank(sliced_syntax)))
+
+    # Low-level op.
     sliced = gen_array_ops.strided_slice(
         value,
         begin=[0],

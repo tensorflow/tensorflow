@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"

@@ -1133,7 +1133,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pack_op",
     prefix = "pack_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -1153,7 +1155,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1194,7 +1195,10 @@ tf_kernel_library(
     name = "shape_ops",
     features = ["-layering_check"],
     prefix = "shape_ops",
-    deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/common_runtime:dma_helper",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -2414,7 +2418,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
     ],
 )
