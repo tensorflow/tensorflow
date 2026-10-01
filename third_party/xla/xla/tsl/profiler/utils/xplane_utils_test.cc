@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -41,6 +42,9 @@ namespace tsl {
 namespace profiler {
 namespace {
 
+using ::testing::AllOf;
+using ::testing::ElementsAre;
+using ::testing::Pair;
 using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
@@ -243,6 +247,18 @@ void CheckXEvent(const XEvent& event, const XPlane& plane,
   EXPECT_EQ(event.offset_ps(), NanoToPico(offset_ns));
   EXPECT_EQ(event.duration_ps(), NanoToPico(duration_ns));
   EXPECT_EQ(event.stats_size(), stats_size);
+}
+
+// Returns the name and offset of each event on the only line of `plane`.
+std::vector<std::pair<std::string, int64_t>> GetLineEvents(
+    const XPlane& plane) {
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
+  XLineVisitor line(&plane_visitor, &plane.lines(0));
+  std::vector<std::pair<std::string, int64_t>> events;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    events.emplace_back(event.Name(), event.OffsetPs());
+  });
+  return events;
 }
 }  // namespace
 
@@ -1042,7 +1058,348 @@ TEST(XplaneUtilsTest, MergeXSpaceTest) {
   EXPECT_EQ(to->planes(0).lines_size(), 2);  // Both lines should be present
 }
 
-TEST(XPlaneUtilsTest, RemoveNonExistentLine) {
+TEST(XplaneUtilsTest, MergeXSpaceKeepsMergedLineSorted) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder line = CreateXLine(&p1, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p1, line, "child", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);  // Starts at 1020ns.
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder line = CreateXLine(&p2, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/500);
+    // A scope that was entered before `child` but only recorded when it exited
+    // in a later chunk.
+    CreateXEvent(&p2, line, "parent", /*display=*/std::nullopt,
+                 /*offset_ns=*/510, /*duration_ns=*/40);  // Starts at 1010ns.
+    CreateXEvent(&p2, line, "later", /*display=*/std::nullopt,
+                 /*offset_ns=*/560, /*duration_ns=*/10);  // Starts at 1060ns.
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  EXPECT_EQ(to->planes(0).lines(0).timestamp_ns(), 500);
+  EXPECT_THAT(GetLineEvents(to->planes(0)),
+              ElementsAre(Pair("parent", 510'000), Pair("child", 520'000),
+                          Pair("later", 560'000)));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceKeepsTiedEventsInMergeOrder) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    XLineBuilder line = CreateXLine(&p1, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p1, line, "to_first", /*display=*/std::nullopt,
+                 /*offset_ns=*/0, /*duration_ns=*/10);
+    CreateXEvent(&p1, line, "to_tied", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder line = CreateXLine(&p2, "line", "line", /*id=*/1,
+                                    /*timestamp_ns=*/1000);
+    CreateXEvent(&p2, line, "from_between", /*display=*/std::nullopt,
+                 /*offset_ns=*/10, /*duration_ns=*/5);
+    // Same timespan as `to_tied`, so it must stay after it.
+    CreateXEvent(&p2, line, "from_tied", /*display=*/std::nullopt,
+                 /*offset_ns=*/20, /*duration_ns=*/10);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  EXPECT_THAT(GetLineEvents(to->planes(0)),
+              ElementsAre(Pair("to_first", 0), Pair("from_between", 10'000),
+                          Pair("to_tied", 20'000), Pair("from_tied", 20'000)));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceKeepsRemappedStatsFindable) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    // Occupy the IDs that `from` uses so its metadata must be remapped.
+    p1.GetOrCreateEventMetadata("other_event");
+    p1.GetOrCreateStatMetadata("other_stat");
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XLineBuilder line = p2.GetOrCreateLine(1);
+    XEventBuilder event = line.AddEvent(*p2.GetOrCreateEventMetadata("step"));
+    event.AddStatValue(
+        *p2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepNum)), 7);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  ASSERT_EQ(to->planes(0).lines(0).events_size(), 1);
+  EXPECT_THAT(
+      to->planes(0).event_metadata(),
+      UnorderedElementsAre(
+          Pair(1, AllOf(Property(&XEventMetadata::id, 1),
+                        Property(&XEventMetadata::name, "other_event"))),
+          Pair(2, AllOf(Property(&XEventMetadata::id, 2),
+                        Property(&XEventMetadata::name, "step")))));
+  EXPECT_THAT(
+      to->planes(0).stat_metadata(),
+      UnorderedElementsAre(
+          Pair(1, AllOf(Property(&XStatMetadata::id, 1),
+                        Property(&XStatMetadata::name, "other_stat"))),
+          Pair(2, AllOf(Property(&XStatMetadata::id, 2),
+                        Property(&XStatMetadata::name,
+                                 GetStatTypeStr(StatType::kStepNum))))));
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  XEventVisitor event(&plane, &to->planes(0).lines(0),
+                      &to->planes(0).lines(0).events(0));
+  std::optional<XStatVisitor> step_num = event.GetStat(StatType::kStepNum);
+  ASSERT_TRUE(step_num.has_value());
+  EXPECT_EQ(step_num->IntValue(), 7);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceRemapsEventMetadataStats) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    // Occupy IDs so that the metadata of `from` must be remapped.
+    p1.GetOrCreateEventMetadata("other_event");
+    p1.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp));
+    p1.GetOrCreateStatMetadata("other_stat");
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    // Make the stat metadata IDs of `from` differ from those of `to`.
+    p2.GetOrCreateStatMetadata("padding_a");
+    p2.GetOrCreateStatMetadata("padding_b");
+    XEventMetadata* fusion = p2.GetOrCreateEventMetadata("fusion.1");
+    XEventMetadata* child = p2.GetOrCreateEventMetadata("child_op");
+    fusion->add_child_id(child->id());
+    // Stats that are constant for all events with this metadata are stored on
+    // the metadata itself (e.g. by the TPU trace converter).
+    XStatsBuilder<XEventMetadata> metadata_stats(fusion, &p2);
+    metadata_stats.AddStatValue(
+        *p2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+        "model/dense/MatMul");
+    metadata_stats.AddStatValue(
+        *p2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloCategory)),
+        *p2.GetOrCreateStatMetadata("fusion"));
+    XLineBuilder line = p2.GetOrCreateLine(1);
+    XEventBuilder event = line.AddEvent(*fusion);
+    event.AddStatValue(
+        *p2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloModule)),
+        *p2.GetOrCreateStatMetadata("jit_train_step"));
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  ASSERT_EQ(to->planes(0).lines_size(), 1);
+  ASSERT_EQ(to->planes(0).lines(0).events_size(), 1);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  XEventVisitor event(&plane, &to->planes(0).lines(0),
+                      &to->planes(0).lines(0).events(0));
+  EXPECT_EQ(event.Name(), "fusion.1");
+  std::optional<XStatVisitor> tf_op = event.Metadata().GetStat(StatType::kTfOp);
+  ASSERT_TRUE(tf_op.has_value());
+  EXPECT_EQ(tf_op->StrOrRefValue(), "model/dense/MatMul");
+  std::optional<XStatVisitor> hlo_category =
+      event.Metadata().GetStat(StatType::kHloCategory);
+  ASSERT_TRUE(hlo_category.has_value());
+  EXPECT_EQ(hlo_category->StrOrRefValue(), "fusion");
+  std::optional<XStatVisitor> hlo_module = event.GetStat(StatType::kHloModule);
+  ASSERT_TRUE(hlo_module.has_value());
+  EXPECT_EQ(hlo_module->StrOrRefValue(), "jit_train_step");
+  std::vector<std::string> children;
+  event.Metadata().ForEachChild([&](const XEventMetadataVisitor& child) {
+    children.push_back(std::string(child.Name()));
+  });
+  EXPECT_THAT(children, ElementsAre("child_op"));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceCopiesUnnamedEventMetadataUnderNewId) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    p1.GetOrCreateEventMetadata("a");  // ID 1.
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    // "b" (ID 1) is new to `to`, so it is copied under the first free ID, 2,
+    // which is also the source ID of the unnamed metadata.
+    XEventMetadata* named = p2.GetOrCreateEventMetadata("b");
+    XEventMetadata* unnamed = p2.CreateEventMetadata();
+    unnamed->set_display_name("anonymous");
+    XLineBuilder line = p2.GetOrCreateLine(1);
+    line.AddEvent(*named);
+    line.AddEvent(*unnamed);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  std::vector<std::pair<std::string, std::string>> names;
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      names.emplace_back(event.Name(), event.DisplayName());
+    });
+  });
+  EXPECT_THAT(names, ElementsAre(Pair("b", ""), Pair("", "anonymous")));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceCopiesUnnamedStatMetadataUnderNewId) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    p1.GetOrCreateStatMetadata("a");  // ID 1.
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    // "b" (ID 1) is new to `to`, so it is copied under the first free ID, 2,
+    // which is also the source ID of the unnamed metadata.
+    XStatMetadata* named = p2.GetOrCreateStatMetadata("b");
+    XStatMetadata* unnamed = p2.CreateStatMetadata();
+    unnamed->set_description("anonymous");
+    XLineBuilder line = p2.GetOrCreateLine(1);
+    XEventBuilder event = line.AddEvent(*p2.GetOrCreateEventMetadata("event"));
+    event.AddStatValue(*named, 1);
+    event.AddStatValue(*unnamed, 2);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  const XPlane& merged = to->planes(0);
+  ASSERT_EQ(merged.lines_size(), 1);
+  ASSERT_EQ(merged.lines(0).events_size(), 1);
+  const XEvent& event = merged.lines(0).events(0);
+  ASSERT_EQ(event.stats_size(), 2);
+  const auto& stat_metadata = merged.stat_metadata();
+  ASSERT_TRUE(stat_metadata.contains(event.stats(0).metadata_id()));
+  ASSERT_TRUE(stat_metadata.contains(event.stats(1).metadata_id()));
+  EXPECT_EQ(stat_metadata.at(event.stats(0).metadata_id()).name(), "b");
+  EXPECT_EQ(stat_metadata.at(event.stats(1).metadata_id()).description(),
+            "anonymous");
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceRemapsChildIdOfUnnamedEventMetadata) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    p1.GetOrCreateEventMetadata("other_event");
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    XEventMetadata* parent = p2.GetOrCreateEventMetadata("parent");
+    XEventMetadata* child = p2.CreateEventMetadata();
+    child->set_display_name("child");
+    parent->add_child_id(child->id());
+    p2.GetOrCreateLine(1).AddEvent(*parent);
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  std::vector<std::string> children;
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      event.Metadata().ForEachChild([&](const XEventMetadataVisitor& child) {
+        children.push_back(std::string(child.DisplayName()));
+      });
+    });
+  });
+  EXPECT_THAT(children, ElementsAre("child"));
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceAssignsNewIdsInSourceIdOrder) {
+  constexpr int kNumEvents = 8;
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    p1.GetOrCreateEventMetadata("seed");  // ID 1.
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    for (int i = 0; i < kNumEvents; ++i) {
+      p2.GetOrCreateEventMetadata(absl::StrCat("e", i));  // ID i + 1.
+    }
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  absl::flat_hash_map<std::string, int64_t> id_by_name;
+  // NOLINTNEXTLINE
+  for (const auto& [id, metadata] : to->planes(0).event_metadata()) {
+    id_by_name[metadata.name()] = id;
+  }
+  absl::flat_hash_map<std::string, int64_t> expected = {{"seed", 1}};
+  for (int i = 0; i < kNumEvents; ++i) {
+    expected[absl::StrCat("e", i)] = i + 2;
+  }
+  EXPECT_EQ(id_by_name, expected);
+}
+
+TEST(XplaneUtilsTest, MergeXSpaceRemapsPlaneStatRefValue) {
+  auto to = std::make_unique<XSpace>();
+  auto from = std::make_unique<XSpace>();
+  {
+    XPlaneBuilder p1(to->add_planes());
+    p1.SetName("p1");
+    // Occupy the IDs that `from` uses so its metadata must be remapped.
+    p1.GetOrCreateStatMetadata("other_stat");
+  }
+  {
+    XPlaneBuilder p2(from->add_planes());
+    p2.SetName("p1");
+    p2.AddStatValue(*p2.GetOrCreateStatMetadata("device_vendor"),
+                    *p2.GetOrCreateStatMetadata("Google"));
+  }
+
+  MergeXSpace(std::move(from), to.get());
+
+  ASSERT_EQ(to->planes_size(), 1);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&to->planes(0));
+  std::vector<std::pair<std::string, std::string>> plane_stats;
+  plane.ForEachStat([&](const XStatVisitor& stat) {
+    plane_stats.emplace_back(stat.Name(), stat.StrOrRefValue());
+  });
+  EXPECT_THAT(plane_stats, ElementsAre(Pair("device_vendor", "Google")));
+}
+
+TEST(XplaneUtilsTest, RemoveNonExistentLine) {
   XPlane plane;
   const XLine* line1 = plane.add_lines();
   const XLine* line2 = plane.add_lines();

@@ -54,6 +54,7 @@ default format "NHWC", the data is stored in the order of:
     [batch, height, width, channels].
 Alternatively, the format could be "NCHW", the data storage order of:
     [batch, channels, height, width].
+Without oneDNN, CPU kernels support only "NHWC".
 END
   }
   attr {

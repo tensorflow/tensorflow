@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/error_spec.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 
@@ -1151,12 +1150,8 @@ ENTRY test {
 
 // Test epilogue fusion for grouped GEMM: Swish/SILU Activation
 TEST_F(GroupedGemmRewriteTest, GroupedGemmSwishActivation) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_swish_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_swish_available) {
-    GTEST_SKIP() << "Swish/SILU activation fusion only available on ROCm 7.0+";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
 
   const char* hlo_text = R"(
@@ -1232,12 +1227,8 @@ ENTRY test {
 // Test that Swish activation is NOT fused for grouped GEMM when aux output is
 // required (i.e., when there are users before the activation)
 TEST_F(GroupedGemmRewriteTest, GroupedGemmSwishActivationWithAuxNoFusion) {
-  auto runtime_version = GetToolkitVersion();
-  bool rocm_swish_available =
-      IsRocm() &&
-      (runtime_version >= stream_executor::SemanticVersion(7, 0, 0));
-  if (!rocm_swish_available) {
-    GTEST_SKIP() << "Swish/SILU activation fusion only available on ROCm 7.0+";
+  if (!IsRocm()) {
+    GTEST_SKIP() << "Swish/SILU epilogue fusion is ROCm-only";
   }
 
   const char* hlo_text = R"(

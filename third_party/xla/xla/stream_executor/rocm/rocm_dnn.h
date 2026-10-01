@@ -588,7 +588,6 @@ class MIOpenSupport : public dnn::DnnSupport {
 // and tensorflow/core/grappler/optimizers/generic_layout_optimizer.cc)
 // This will decide whether to use NHWC in Convolution/Batchnorm.
 // This mode can be faster in in FP16 workloads on gfx908 and beyond.
-// Requires ROCm 5.0+.
 // TODO (ROCm): Use autotune to choose between this mode and NCHW
 // when MIOpen has more optimized kernels.
 bool UseNhwcLayoutForRocm();

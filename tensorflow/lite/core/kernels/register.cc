@@ -34,7 +34,7 @@ TfLiteRegistration* Register_HADAMARD_ROTATION();
 
 namespace builtin {
 
-BuiltinOpResolver::BuiltinOpResolver() {
+void BuiltinOpResolver::RegisterBuiltinOps() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
              /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
@@ -409,13 +409,20 @@ BuiltinOpResolver::BuiltinOpResolver() {
   // By definition, all of the ops added above are not user-defined ops,
   // since they are supported by BuiltinOpResolver.
   may_directly_contain_user_defined_ops_ = false;
+}
 
+BuiltinOpResolver::BuiltinOpResolver() {
+  RegisterBuiltinOps();
   // Populate the list of TF Lite delegate creators. The created delegates could
   // be applied to the model graph by default at runtime.
   delegate_creators_.push_back([](TfLiteContext* context) {
     return tflite::MaybeCreateXNNPACKDelegate(context,
                                               XNNPackQS8Options::default_value);
   });
+}
+
+BuiltinOpResolver::BuiltinOpResolver(WithoutDefaultDelegatesTag) {
+  RegisterBuiltinOps();
 }
 
 BuiltinOpResolverWithXNNPACK::BuiltinOpResolverWithXNNPACK(

@@ -15196,6 +15196,32 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfDynamicSlice) {
                                   m::ConstantScalar(6))))));
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfDynamicUpdateSlice) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      operand = s32[6] parameter(0)
+      update = s32[1] parameter(1)
+      i = s32[] parameter(2)
+      j = s32[] parameter(3)
+      ds = s32[3] dynamic-slice(operand, i), dynamic_slice_sizes={3}
+      inner_dus = s32[3] dynamic-update-slice(ds, update, j)
+      ROOT outer_dus = s32[6] dynamic-update-slice(operand, inner_dus, i)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(
+                  m::Parameter(0), m::Parameter(1),
+                  m::Add(m::Clamp(m::ConstantScalar(0), m::Parameter(2),
+                                  m::ConstantScalar(3)),
+                         m::Clamp(m::ConstantScalar(0), m::Parameter(3),
+                                  m::ConstantScalar(2))))));
+}
+
 TEST_F(AlgebraicSimplifierTest, FusesShuffleRotates) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule shuffle_module

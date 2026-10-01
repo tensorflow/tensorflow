@@ -168,8 +168,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_device_memory_size(67'628'957'696);
   b.set_registers_per_core_limit(131072);
   b.set_registers_per_block_limit(131072);
-  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{7, 1, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{7, 1, 0});
 
   b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
@@ -197,8 +197,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI300DeviceInfo() {
   b.set_device_memory_size(int64_t{192} * 1024 * 1024 * 1024);
   b.set_registers_per_core_limit(131072);
   b.set_registers_per_block_limit(131072);
-  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{7, 1, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{7, 1, 0});
 
   b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
@@ -227,8 +227,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI350DeviceInfo() {
   b.set_device_memory_size(270'566'162'432);
   b.set_registers_per_core_limit(131072);
   b.set_registers_per_block_limit(131072);
-  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{7, 1, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{7, 1, 0});
 
   b.set_fpus_per_core(stream_executor::gpu::GetFpusPerCore(cc));
   stream_executor::gpu::FillExecutionUnitDesc(cc, b.clock_rate_ghz(), b);
@@ -254,8 +254,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
   b.set_l2_cache_size(6 * 1024 * 1024);
   b.set_clock_rate_ghz(2.5);
   b.set_device_memory_size(24'000'000'000);
-  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
-  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_runtime_version(stream_executor::SemanticVersion{7, 1, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{7, 1, 0});
 
   // RDNA3 is not in the ROCm table, so picks up 128 through the fallback.
   // Routing it through the lookup anyway keeps every device here on one path.

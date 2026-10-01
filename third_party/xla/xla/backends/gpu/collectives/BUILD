@@ -1149,12 +1149,10 @@ xla_cc_test(
         "rocm-only",
     ],
     deps = [
-        ":rccl_errors",
         ":rccl_symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",
@@ -1174,12 +1172,10 @@ cc_library(
     deps = [
         ":rccl_errors",
         "//xla:util",
-        "//xla/core/collectives:rank_id",
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_config_rocm//rocm:rccl",  # buildcleaner: keep

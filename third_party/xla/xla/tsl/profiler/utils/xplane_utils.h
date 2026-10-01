@@ -320,7 +320,8 @@ Timespan GetDeviceEventTimespan(const XEventVisitor& event);
 // lines, and events out of `from` to avoid memory duplication. It dynamically
 // maps and builds new metadata IDs to prevent collisions on duplicate names.
 // After the merge, `from` will be left as an empty shell and safely
-// deallocated.
+// deallocated. Events of merged lines are kept sorted (see `SortXLine`) as long
+// as the input lines are sorted.
 void MergeXSpace(std::unique_ptr<XSpace> from, XSpace* to);
 
 }  // namespace profiler

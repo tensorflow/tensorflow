@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_TESTS_AOT_COMPATIBILITY_EXPERIMENTAL_TEST_LIB_H_
-#define XLA_TESTS_AOT_COMPATIBILITY_EXPERIMENTAL_TEST_LIB_H_
+#ifndef XLA_TESTS_AOT_COMPATIBILITY_TEST_LIB_H_
+#define XLA_TESTS_AOT_COMPATIBILITY_TEST_LIB_H_
 
 #include <cstdint>
 #include <string>
@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla {
-namespace aot_compatibility_experimental {
+namespace aot_compatibility {
 
 struct AotTestParam {
   AOTTestMode mode;
@@ -90,7 +90,7 @@ class AotCompatibilityTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() const override;
 };
 
-}  // namespace aot_compatibility_experimental
+}  // namespace aot_compatibility
 }  // namespace xla
 
-#endif  // XLA_TESTS_AOT_COMPATIBILITY_EXPERIMENTAL_TEST_LIB_H_
+#endif  // XLA_TESTS_AOT_COMPATIBILITY_TEST_LIB_H_

@@ -140,6 +140,7 @@ cc_library(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",
         "//xla/service/gpu:nvptx_alias_info",

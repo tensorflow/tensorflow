@@ -251,6 +251,7 @@ cc_library(
         ":xplane_schema",
         ":xplane_visitor",
         "//xla/tsl/platform:types",
+        "//xla/tsl/util:sorted_range",
         "//xla/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

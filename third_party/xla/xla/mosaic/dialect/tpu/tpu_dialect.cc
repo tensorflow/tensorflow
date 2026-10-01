@@ -615,6 +615,37 @@ LogicalResult TiledLayoutAttr::verifyLayout(
   return success();
 }
 
+LogicalResult MemorySpaceAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, MemorySpace value,
+    std::optional<CoreType> core_type) {
+  if (!core_type.has_value()) {
+    return success();
+  }
+  switch (value) {
+    case MemorySpace::kAny:
+    case MemorySpace::kHbm:
+    case MemorySpace::kHost:
+    case MemorySpace::kVmemShared:
+      return emitError() << "Memory space " << value
+                         << " cannot be owned by a core";
+    case MemorySpace::kVmem:
+      if (*core_type == CoreType::kScScalarSubcore) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kCmem:
+      if (*core_type != CoreType::kTc) {
+        return emitError() << "Memory space " << value
+                           << " cannot be owned by core " << *core_type;
+      }
+      return success();
+    case MemorySpace::kSmem:
+    case MemorySpace::kSemaphoreMem:
+      return success();
+  }
+}
+
 MemRefType getMemRefType(Value value) {
   if (auto erase_op = value.getDefiningOp<tpu::EraseLayoutOp>()) {
     value = erase_op.getOperand();

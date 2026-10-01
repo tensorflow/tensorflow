@@ -195,6 +195,10 @@ absl::Status FuseCandidate(HloInstruction* candidate,
   if (should_flatten) {
     ABSL_RETURN_IF_ERROR(FlattenCollectiveFusion(fusion_instr));
   }
+  if (fusion_instr->fused_expression_root()->opcode() ==
+      HloOpcode::kReduceScatter) {
+    ABSL_RETURN_IF_ERROR(FlattenReduceScatterFusion(fusion_instr));
+  }
   // NB: Must be done after flattening.
   ABSL_RETURN_IF_ERROR(TrySetGpuBackendConfigForCollective(
       gpu_topology, fusion_instr, device_assignment));

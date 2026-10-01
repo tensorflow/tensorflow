@@ -17,7 +17,7 @@ filegroup(
     name = "test_dummy_test_data",
     testonly = True,
     srcs = glob(["executables/test_dummy_test/**"]),
-    visibility = ["//xla/tests/aot_compatibility_experimental:__pkg__"],
+    visibility = ["//xla/tests/aot_compatibility:__pkg__"],
 )
 
 xla_test(
@@ -39,7 +39,7 @@ xla_test(
         "//xla/tests:aot_interception_pjrt_client",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tests/aot_compatibility_experimental:test_lib",
+        "//xla/tests/aot_compatibility:test_lib",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",

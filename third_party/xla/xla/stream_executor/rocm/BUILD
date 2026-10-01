@@ -1156,7 +1156,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["rocm-only"],
     deps = [
-        ":delay_kernel_rocm",
+        ":delay_kernel_rocm",  # buildcleaner: keep
         ":rocm_event",
         ":rocm_executor",
         ":rocm_platform_id",
@@ -1166,7 +1166,6 @@ xla_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_semaphore",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/time",

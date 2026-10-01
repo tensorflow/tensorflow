@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -63,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
@@ -212,7 +212,8 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
   return ctx;
 }
 
-using InfoStruct = std::variant<AllReduceInfo, AllGatherInfo>;
+using InfoStruct =
+    std::variant<AllReduceInfo, AllGatherInfo, ReduceScatterInfo>;
 
 // Builds helper struct for the given collective instruction.
 absl::StatusOr<InfoStruct> GetCollectiveInfo(
@@ -238,6 +239,14 @@ absl::StatusOr<InfoStruct> GetCollectiveInfo(
                            all_gather, device_assignment));
       return all_gather_info;
     }
+    case HloOpcode::kReduceScatter: {
+      ABSL_ASSIGN_OR_RETURN(
+          ReduceScatterInfo reduce_scatter_info,
+          BuildReduceScatterInfo(
+              /*is_collective_kernel_enabled=*/true, gpu_topology,
+              Cast<HloReduceScatterInstruction>(instr), device_assignment));
+      return reduce_scatter_info;
+    }
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported collective opcode: ", instr->opcode()));
@@ -259,6 +268,11 @@ absl::StatusOr<LaunchDimensions> GetLaunchDimensions(
                        return AllGatherLaunchDimensions(
                            all_gather_info.num_elements,
                            all_gather_info.num_devices, device_info);
+                     },
+                     [&](const ReduceScatterInfo& reduce_scatter_info) {
+                       return ReduceScatterLaunchDimensions(
+                           reduce_scatter_info.num_output_elements,
+                           reduce_scatter_info.num_devices, device_info);
                      }},
       collective_info);
 }
@@ -286,20 +300,27 @@ absl::Status ValidateBlockLevelFusionConfig(
 }
 
 // Unmanaged kernel arguments of collectives that use the AllReduce argument
-// layout: rank, signal value, signal buffers and one remote buffer per
-// parameter.
+// layout: rank, signal value (except for reduce-scatter), signal buffers and
+// one remote buffer per parameter.
 absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
     const HloComputation* computation,
     const HloCollectiveInstruction* collective) {
   const int32_t num_devices =
       collective->device_list()->num_devices_per_group();
+  const bool has_invocation_count =
+      collective->opcode() != HloOpcode::kReduceScatter;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
-                              kNumCollectiveMetadataArgs);
+                              num_metadata_args);
 
-  // rank and signal_value
+  // rank (and signal_value when present)
   unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
-  unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  if (has_invocation_count) {
+    unmanaged_arguments.push_back(ShapeUtil::MakeShape(S32, {}));
+  }
   // The shape for signal and scratch buffers does not really matter in the end
   // because this would just be a pointer. For documentation purposes we add
   // the correct shape which would be
@@ -316,16 +337,16 @@ absl::StatusOr<std::vector<Shape>> GetRemoteBufferUnmanagedKernelArguments(
     unmanaged_arguments.push_back(shape);
   }
   TF_RET_CHECK(unmanaged_arguments.size() ==
-               computation->num_parameters() + kNumCollectiveMetadataArgs);
+               computation->num_parameters() + num_metadata_args);
   return unmanaged_arguments;
 }
 
 mlir::LogicalResult PopulateReductionComputation(
-    mlir::PatternRewriter& rewriter, mlir::stablehlo::AllReduceOp op,
+    mlir::PatternRewriter& rewriter, mlir::Operation* op,
     ReductionComputationEmitter& computation_emitter) {
   // At the moment we expect only one operation in the reduction computation
   // to be relevant.
-  auto& reduction_computation_region = op.getComputation();
+  auto& reduction_computation_region = op->getRegion(0);
   int num_ops_to_emit = 0;
   for (auto& block : reduction_computation_region.getBlocks()) {
     for (auto& block_op : block.without_terminator()) {
@@ -1183,6 +1204,21 @@ absl::StatusOr<BlockLevelFusionConfig> GetCollectiveBlockLevelFusionConfig(
     tile_sizes[gather_dim] = std::min(
         tile_sizes[gather_dim], static_cast<int64_t>(llvm::bit_floor(
                                     static_cast<uint64_t>(per_rank_size))));
+  } else if (instr->opcode() == HloOpcode::kReduceScatter) {
+    // The pull-based reduce-scatter kernel requires the input tile of every
+    // program to cover exactly one shard along the scatter dimension, i.e. an
+    // output tile of `shard_size / num_devices` along the scatter dimension.
+    // FlattenReduceScatterFusion reshapes the fusion so that this is 1.
+    const auto* rs = Cast<HloReduceScatterInstruction>(instr);
+    const int64_t scatter_dim = rs->scatter_dimension();
+    const int64_t num_devices =
+        std::get<ReduceScatterInfo>(collective_info).num_devices;
+    TF_RET_CHECK(output_shape.dimensions(scatter_dim) % num_devices == 0)
+        << "Reduce-scatter output scatter dimension "
+        << output_shape.dimensions(scatter_dim)
+        << " is not divisible by the number of devices " << num_devices;
+    tile_sizes[scatter_dim] =
+        output_shape.dimensions(scatter_dim) / num_devices;
   }
   output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
   ABSL_RETURN_IF_ERROR(
@@ -1216,6 +1252,7 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
   switch (root->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllGather:
+    case HloOpcode::kReduceScatter:
       return GetRemoteBufferUnmanagedKernelArguments(
           computation, Cast<HloCollectiveInstruction>(root));
     default:
@@ -1226,10 +1263,15 @@ absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation) {
+  const bool has_invocation_count =
+      hlo_computation->root_instruction()->opcode() !=
+      HloOpcode::kReduceScatter;
   // rank: i32
   fn_arg_types.push_back(b.getI32Type());
-  // signal_value: i32
-  fn_arg_types.push_back(b.getI32Type());
+  if (has_invocation_count) {
+    // signal_value: i32
+    fn_arg_types.push_back(b.getI32Type());
+  }
   // signal_buffers: !tt.ptr<i64>
   fn_arg_types.push_back(
       ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
@@ -1241,8 +1283,10 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
     fn_arg_types.push_back(
         ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace));
   }
-  // num_metadata_args =
-  return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;
+  const int32_t num_metadata_args = has_invocation_count
+                                        ? kNumCollectiveMetadataArgs
+                                        : kNumCollectiveMetadataArgs - 1;
+  return hlo_computation->num_parameters() + num_metadata_args;
 }
 
 mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
@@ -1273,6 +1317,8 @@ absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
       return CreateAllReduceKernelSpec(collective, launch_dimensions);
     case HloOpcode::kAllGather:
       return CreateAllGatherKernelSpec(collective, launch_dimensions);
+    case HloOpcode::kReduceScatter:
+      return CreateReduceScatterKernelSpec(collective, launch_dimensions);
     default:
       return absl::UnimplementedError(
           absl::StrFormat("CollectiveKernelSpec creation not implemented for "
@@ -1536,6 +1582,75 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
   rewriter.replaceOp(op, op.getOperand(0));
 
   return mlir::success();
+}
+
+absl::Status FlattenReduceScatterFusion(
+    HloFusionInstruction* absl_nonnull fusion_instr) {
+  HloComputation* parent = fusion_instr->parent();
+  HloComputation* fused_computation =
+      fusion_instr->fused_instructions_computation();
+  auto* rs = DynCast<HloReduceScatterInstruction>(
+      fused_computation->root_instruction());
+  TF_RET_CHECK(rs != nullptr) << "Expected a reduce-scatter fusion root.";
+  TF_RET_CHECK(fused_computation->num_parameters() == 1 &&
+               rs->operand(0) == fused_computation->parameter_instruction(0))
+      << "Expected a single parameter feeding the reduce-scatter.";
+  TF_RET_CHECK(IsReduceScatterFlattenable(rs))
+      << "Reduce-scatter is not flattenable.";
+  const Shape original_input_shape = rs->operand(0)->shape();
+  const Shape original_output_shape = rs->shape();
+  const int64_t num_devices = rs->device_list()->num_devices_per_group();
+  TF_RET_CHECK(num_devices > 0);
+  const int64_t num_output_elements =
+      ShapeUtil::ElementsIn(original_output_shape);
+  TF_RET_CHECK(num_output_elements % num_devices == 0)
+      << "Reduce-scatter output element count " << num_output_elements
+      << " is not divisible by the number of devices " << num_devices;
+  const int64_t inner_elements = num_output_elements / num_devices;
+  const PrimitiveType element_type = original_output_shape.element_type();
+  // Input [R * R, OutputSize / R] and output [R, OutputSize / R]: shard `s` of
+  // the input is rows [s * R, (s + 1) * R) and every output row is reduced from
+  // one input row of each rank.
+  const Shape flat_input_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      element_type, {num_devices * num_devices, inner_elements}, {1, 0});
+  const Shape flat_output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      element_type, {num_devices, inner_elements}, {1, 0});
+  if (original_input_shape == flat_input_shape &&
+      original_output_shape == flat_output_shape &&
+      rs->scatter_dimension() == 0) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* param = fused_computation->parameter_instruction(0);
+  *param->mutable_shape() = flat_input_shape;
+  HloInstruction* flat_rs =
+      fused_computation->AddInstruction(HloInstruction::CreateReduceScatter(
+          flat_output_shape, {param}, rs->to_apply(), rs->device_list(),
+          rs->constrain_layout(), rs->channel_id(), rs->use_global_device_ids(),
+          /*scatter_dimension=*/0));
+  flat_rs->CopyBackendConfigFrom(rs);
+  flat_rs->set_metadata(rs->metadata());
+  flat_rs->set_frontend_attributes(rs->frontend_attributes());
+  fused_computation->set_root_instruction(flat_rs,
+                                          /*accept_different_shape=*/true);
+  const std::string rs_name(rs->name());
+  ABSL_RETURN_IF_ERROR(fused_computation->RemoveInstruction(rs));
+  // Keep the original name so that the flattened reduce-scatter can still be
+  // matched to the original HLO (e.g. in profiles).
+  flat_rs->SetAndSanitizeName(rs_name);
+
+  *fusion_instr->mutable_shape() = flat_output_shape;
+  HloInstruction* bitcast_to_flat =
+      parent->AddInstruction(HloInstruction::CreateBitcast(
+          flat_input_shape, fusion_instr->mutable_operand(0)));
+  ABSL_RETURN_IF_ERROR(
+      fusion_instr->ReplaceOperandWithDifferentShape(0, bitcast_to_flat));
+  HloInstruction* bitcast_to_original = parent->AddInstruction(
+      HloInstruction::CreateBitcast(original_output_shape, fusion_instr));
+  VLOG(3) << "Flattened reduce-scatter fusion " << fusion_instr->name()
+          << " from " << original_input_shape.ToString() << " -> "
+          << original_output_shape.ToString();
+  return fusion_instr->ReplaceAllUsesWithDifferentShape(bitcast_to_original);
 }
 
 }  // namespace xla::gpu

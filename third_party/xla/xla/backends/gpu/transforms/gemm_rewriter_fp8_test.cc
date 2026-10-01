@@ -225,7 +225,7 @@ e {
 
 TEST_F(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   if (!IsCuda()) {
-    GTEST_SKIP() << "FP8 Rewrite pattern is different on ROCM-6.2 ";
+    GTEST_SKIP() << "Test is CUDA-specific";
   }
   if (HasFp8Support()) {
     GTEST_SKIP() << "Test requires a pre-Ada GPU";

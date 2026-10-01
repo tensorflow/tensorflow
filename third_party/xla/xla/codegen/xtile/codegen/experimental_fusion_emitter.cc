@@ -673,26 +673,23 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
         return;
       }
       for (const ge::TiledHloInstruction* op : t->operands()) {
-        for (const auto& ri :
-             tiled_ragged_dot.hlo_regions().front().instructions()) {
-          if (ri.get() == op) {
-            collect(op);
-            break;
-          }
+        if (absl::c_linear_search(
+                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
+          collect(op);
         }
       }
     };
     collect(operand_t);
     TensorValue result;
-    for (const auto& region_instr :
+    for (const ge::TiledHloInstruction* region_instr :
          tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!deps.count(region_instr.get())) {
+      if (!deps.count(region_instr)) {
         continue;
       }
       ABSL_ASSIGN_OR_RETURN(TensorValue v,
                        EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), v);
-      if (region_instr.get() == operand_t) {
+      emitter_ctx.MapTiledHloToTensorValue(region_instr, v);
+      if (region_instr == operand_t) {
         result = v;
       }
     }
@@ -717,12 +714,9 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
         return;
       }
       for (const ge::TiledHloInstruction* op : t->operands()) {
-        for (const auto& ri :
-             tiled_ragged_dot.hlo_regions().front().instructions()) {
-          if (ri.get() == op) {
-            collect(op);
-            break;
-          }
+        if (absl::c_linear_search(
+                tiled_ragged_dot.hlo_regions().front().instructions(), op)) {
+          collect(op);
         }
       }
     };
@@ -730,15 +724,15 @@ absl::StatusOr<TensorValue> EmitRaggedDot(
 
     // Emit each dep in def-before-use (region) order.
     TensorValue gs_tile;
-    for (const auto& region_instr :
+    for (const ge::TiledHloInstruction* region_instr :
          tiled_ragged_dot.hlo_regions().front().instructions()) {
-      if (!gs_deps.count(region_instr.get())) {
+      if (!gs_deps.count(region_instr)) {
         continue;
       }
       ABSL_ASSIGN_OR_RETURN(TensorValue result,
                        EmitTiledHloInstruction(emitter_ctx, *region_instr));
-      emitter_ctx.MapTiledHloToTensorValue(region_instr.get(), result);
-      if (region_instr.get() == gs_t) {
+      emitter_ctx.MapTiledHloToTensorValue(region_instr, result);
+      if (region_instr == gs_t) {
         gs_tile = result;
       }
     }
@@ -2000,12 +1994,12 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     EmitterContext& emitter_ctx, const ge::TiledHloRegion& region,
     absl::Span<const ge::TiledHloInstruction* const> roots) {
-  for (const auto& tiled_hlo : region.instructions()) {
+  for (const auto* tiled_hlo : region.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     VLOG(8) << "Emitting " << hlo->ToString(HloPrintOptions::ShortParsable());
     ABSL_ASSIGN_OR_RETURN(TensorValue result,
                      EmitTiledHloInstruction(emitter_ctx, *tiled_hlo));
-    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo.get(), result))
+    TF_RET_CHECK(emitter_ctx.MapTiledHloToTensorValue(tiled_hlo, result))
         << hlo->ToString();
   }
   std::vector<TensorValue> results;
@@ -2400,8 +2394,8 @@ class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
   void PopulateMap(const ge::TiledHloInstruction* tiled_hlo) {
     hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
     for (const auto& region : tiled_hlo->hlo_regions()) {
-      for (const auto& region_instruction : region.instructions()) {
-        PopulateMap(region_instruction.get());
+      for (const auto* region_instruction : region.instructions()) {
+        PopulateMap(region_instruction);
       }
     }
   }

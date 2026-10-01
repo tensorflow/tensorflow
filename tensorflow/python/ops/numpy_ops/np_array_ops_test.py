@@ -1707,6 +1707,29 @@ class ArrayMethodsTest(test.TestCase):
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
 
+  def testSplitOutOfBoundsAxis(self):
+    x_2d = np_array_ops.arange(6).reshape(2, 3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_2d, 2, axis=-3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_2d, 2, axis=2)
+    # Test list sections (caught by the new early static rank bounds
+    # check in split, before _boundaries_to_sizes is reached)
+    with self.assertRaisesRegex(ValueError, 'out of bound'):
+      np_array_ops.split(x_2d, [1], axis=-3)
+
+    x_1d = np_array_ops.arange(3)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_1d, 1, axis=-2)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_1d, 1, axis=1)
+
+    x_0d = np_array_ops.array(5)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_0d, 1, axis=-1)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.split(x_0d, 1, axis=0)
+
   def testHSplitBecomesVsplitFor1DInput(self):
     @def_function.function
     def f(arr):

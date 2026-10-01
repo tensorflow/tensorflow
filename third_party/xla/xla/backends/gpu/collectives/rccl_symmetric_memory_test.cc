@@ -24,13 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/device_address.h"
-
-#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
+#include "xla/stream_executor/device_address.h"
 
 namespace xla::gpu {
 namespace {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/all_gather.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/backends/gpu/runtime/reduce_scatter.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -154,6 +155,43 @@ absl::StatusOr<bool> TryAnnotateAllGather(HloInstruction* instr,
   return true;
 }
 
+// Tries to determine if the ReduceScatter instruction should use the Triton
+// one-shot collective kernel and annotates it accordingly. Returns true if the
+// annotation was written.
+absl::StatusOr<bool> TryAnnotateReduceScatter(HloInstruction* instr,
+                                              const GpuTopology& gpu_topology) {
+  const auto* reduce_scatter = DynCast<HloReduceScatterInstruction>(instr);
+  if (reduce_scatter == nullptr) {
+    return false;
+  }
+
+  const DeviceAssignment* device_assignment = nullptr;
+  if (instr->GetModule()->config().has_static_device_assignment()) {
+    device_assignment =
+        &instr->GetModule()->config().static_device_assignment();
+  }
+
+  absl::StatusOr<ReduceScatterInfo> maybe_info = BuildReduceScatterInfo(
+      /*is_collective_kernel_enabled=*/true, gpu_topology, reduce_scatter,
+      device_assignment);
+  if (!maybe_info.ok()) {
+    VLOG(3) << "[CollectiveKernelStrategyAnnotator] Collective kernel not "
+               "supported for ReduceScatter "
+            << instr->name() << ": " << maybe_info.status();
+    return false;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                   instr->backend_config<GpuBackendConfig>());
+  gpu_config.mutable_collective_backend_config()->set_kernel_strategy(
+      CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+  ABSL_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+
+  VLOG(3) << "[CollectiveKernelStrategyAnnotator] Annotated ReduceScatter "
+          << instr->name() << " with KERNEL_STRATEGY_TRITON_ONE_SHOT";
+  return true;
+}
+
 }  // namespace
 
 CollectiveKernelStrategyAnnotator::CollectiveKernelStrategyAnnotator(
@@ -194,6 +232,10 @@ absl::StatusOr<bool> CollectiveKernelStrategyAnnotator::RunImpl(
       } else if (instr->opcode() == HloOpcode::kAllGather) {
         ABSL_ASSIGN_OR_RETURN(bool annotated,
                          TryAnnotateAllGather(instr, gpu_topology_));
+        changed |= annotated;
+      } else if (instr->opcode() == HloOpcode::kReduceScatter) {
+        ABSL_ASSIGN_OR_RETURN(bool annotated,
+                         TryAnnotateReduceScatter(instr, gpu_topology_));
         changed |= annotated;
       }
     }
