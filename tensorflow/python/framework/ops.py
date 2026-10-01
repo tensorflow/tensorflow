@@ -5858,18 +5858,11 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
-      if name:
-        if not old_name:
-          if not _VALID_OP_NAME_REGEX.match(name):
-            raise ValueError(
-                f"'{name}' is not a valid root scope name. A root scope name "
-                f"has to match the following pattern: "
-                f"{_VALID_OP_NAME_REGEX.pattern}")
-        elif not _VALID_SCOPE_NAME_REGEX.match(name):
-          raise ValueError(
-              f"'{name}' is not a valid scope name. A scope name has to "
-              f"match the following pattern: "
-              f"{_VALID_SCOPE_NAME_REGEX.pattern}")
+      if name and not _VALID_SCOPE_NAME_REGEX.match(name):
+        raise ValueError(
+            f"'{name}' is not a valid scope name. A scope name has to "
+            f"match the following pattern: "
+            f"{_VALID_SCOPE_NAME_REGEX.pattern}")
 
       if not name:
         scope_name = ""

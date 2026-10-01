@@ -2658,10 +2658,18 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope_v2("valid_trailing_underscore_"):
       pass
     invalid_msg = "is not a valid (root )?scope name"
-    # Both modes strictly forbid leading underscores for root scopes.
-    with self.assertRaisesRegex(ValueError, invalid_msg):
-      with ops.name_scope_v2("_valid_leading_underscore"):
+    if context.executing_eagerly():
+      # Eager root scopes accept leading underscores; graph mode does not.
+      with ops.name_scope_v2("_leading_underscore"):
         pass
+      with ops.name_scope_v2("/"):
+        pass
+      v = variables.Variable(1.0, name="_private_var")
+      self.assertEqual(1.0, self.evaluate(v))
+    else:
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("_leading_underscore"):
+          pass
     # Spaces and special chars must always raise.
     with self.assertRaisesRegex(ValueError, invalid_msg):
       with ops.name_scope_v2("scope with spaces"):
