@@ -606,11 +606,16 @@ class ArrayCreationTest(test.TestCase):
     self.assertAllClose(
         np.diagonal([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], axis1=-2, axis2=-1),
         f(x, constant_op.constant(-2), constant_op.constant(-1)))
-    # Duplicate axes are rejected by the C++ Transpose kernel's permutation
-    # check (the dynamic path no longer inserts a Python-level assert).
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                'missing from'):
+    # Duplicate axes fail in `moveaxis`'s dynamic permutation (scatter_nd)
+    # before reaching the Transpose kernel, and the exact message differs
+    # across backends, so only the exception type is asserted here.
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       f(x, constant_op.constant(1), constant_op.constant(1))
+    # Out-of-bounds tensor axes (positive and negative) must raise as well.
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      f(x, constant_op.constant(2), constant_op.constant(0))
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      f(x, constant_op.constant(-3), constant_op.constant(0))
 
   def testDiagonalMixedDtypeTensorAxesTracing(self):
     if test_util.is_xla_enabled():
@@ -1482,6 +1487,8 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllClose(np.take_along_axis(x, ind, axis=-1), g(x, ind))
 
   def testTakeAlongAxisTensorAxisOnStaticRankInput(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
     # A scalar `tf.Tensor` axis on a static-rank input must route to the
     # dynamic path instead of crashing graph construction with
     # `OperatorNotAllowedInGraphError` (comparisons on Tensors are not
@@ -1524,8 +1531,8 @@ class ArrayMethodsTest(test.TestCase):
 
       # Out-of-bounds axes flow untouched to the underlying ops and are
       # rejected by C++ kernels with an `InvalidArgumentError` (the exact
-      # message differs by axis sign: negative indices are flagged by the
-      # scatter kernel, positive ones by the transpose permutation check).
+      # message differs by backend and axis sign, so only the type is
+      # asserted).
       with self.assertRaises(errors_impl.InvalidArgumentError):
         f(x, ind)
 
@@ -1540,9 +1547,24 @@ class ArrayMethodsTest(test.TestCase):
     def g(x, ind):
       return np_array_ops.take_along_axis(x, ind, axis=-5)
 
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                'does not index into shape'):
+    # On GPU the failure originates from a strided_slice kernel with a
+    # backend-specific message, so only the exception type is asserted.
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       g(x, ind)
+
+  def testRepeatTensorAxisOnStaticRankInput(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("Not supported when compiled with XLA.")
+    x = constant_op.constant([[1, 2], [3, 4]])
+
+    @def_function.function
+    def f(x, repeats, axis):
+      return np_array_ops.repeat(x, repeats, axis=axis)
+
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      f(x, 2, constant_op.constant(5))
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      f(x, 2, constant_op.constant(-5))
 
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],

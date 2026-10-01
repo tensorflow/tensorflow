@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
@@ -946,12 +947,48 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
           f'for input of rank {maybe_rank}.'
       )
     axis = normalized
+  elif axis is not None:
+    # `axis` is a runtime value (e.g. a scalar `tf.Tensor`); the underlying
+    # `array_ops.repeat` requires a Python `int` axis and would raise an
+    # opaque `TypeError` (and cannot consume a runtime value at all).
+    # Resolve the static value when possible: an out-of-bounds axis raises
+    # `InvalidArgumentError` with a clear message (mirroring the static-path
+    # `ValueError` above) and an in-bounds axis routes as a plain `int`
+    # (which also fixes the in-bounds tensor-axis `TypeError`). An axis
+    # whose value is only known at runtime cannot be supported, so it
+    # raises `InvalidArgumentError` as well.
+    axis_static = np_utils.get_static_value(ops.convert_to_tensor(axis))
+    if axis_static is None:
+      raise errors_impl.InvalidArgumentError(
+          None,
+          None,
+          f'Argument `axis` (received axis={axis}) must be a Python int or '
+          f'a tensor with a statically known value: `tf.experimental.numpy.'
+          f'repeat` does not support a runtime axis.',
+      )
+    axis_static = int(axis_static)
+    if maybe_rank is not None:
+      # NumPy accepts axes -1 and 0 on 0-d inputs (it flattens them to
+      # 1-D of size 1), so validate against max(rank, 1).
+      validation_rank = 1 if maybe_rank < 1 else maybe_rank
+      normalized = (
+          axis_static + validation_rank if axis_static < 0 else axis_static
+      )
+      if normalized < 0 or normalized >= validation_rank:
+        raise errors_impl.InvalidArgumentError(
+            None,
+            None,
+            f'Argument `axis` (received axis={axis_static}) is out of '
+            f'bounds for input of rank {maybe_rank}.',
+        )
+    # In-bounds (or rank-unknown) tensor axes route as plain ints, which
+    # also fixes the in-bounds tensor-axis `TypeError`.
+    axis = axis_static
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
-  # Skip the static recovery when `axis` is a runtime value (e.g. a scalar
-  # `tf.Tensor`): indexing the shape list with a Tensor is not allowed in
-  # graph mode; `array_ops.repeat` below still runs with the tensor axis.
+  # After the branches above, `axis` is either None or a Python int, so the
+  # best-effort static shape recovery below always applies.
   static_axis = axis is None or isinstance(axis, (int, np.integer))
   if known_shape and static_axis:
     if not original_shape:
