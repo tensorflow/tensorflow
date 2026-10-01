@@ -16,11 +16,23 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/variable_ops_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
+
+TEST(ReadAssignVariable, SimpleAssignOnly) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  TfLiteDelegate* delegate = xnnpack_delegate.get();
+
+  VariableOpsTester()
+      .NumInputs(/*num_inputs=*/1)
+      .NumOutputs(/*num_outputs=*/0)
+      .TestAssignOnly(delegate);
+}
 
 TEST(ReadAssignVariable, SimpleAssignThenRead) {
   auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
