@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include <Python.h>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -42,7 +45,40 @@ namespace tensorflow {
 namespace {
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_file_io, m) {
+
+struct WritableFileWrapper {
+  explicit WritableFileWrapper(
+      std::unique_ptr<tensorflow::WritableFile> writable_file)
+      : file(std::move(writable_file)) {}
+
+  std::unique_ptr<tensorflow::WritableFile> file;
+  absl::Mutex mutex;
+};
+
+struct BufferedInputStreamWrapper {
+  explicit BufferedInputStreamWrapper(
+      std::unique_ptr<tensorflow::io::BufferedInputStream> input_stream)
+      : stream(std::move(input_stream)) {}
+
+  std::unique_ptr<tensorflow::io::BufferedInputStream> stream;
+  absl::Mutex mutex;
+};
+
+template <typename F>
+decltype(auto) RunFileObjectMethod(absl::Mutex* mutex, bool release_gil,
+                                   F&& fn) {
+  if (release_gil) {
+    py::gil_scoped_release release;
+    absl::MutexLock lock(mutex);
+    return std::forward<F>(fn)();
+  }
+
+  absl::MutexLock lock(mutex);
+  return std::forward<F>(fn)();
+}
+
+PYBIND11_MODULE(
+    _pywrap_file_io, m, pybind11::mod_gil_not_used()) {
   m.def(
       "FileExists",
       [](const std::string& filename) {
@@ -222,89 +258,132 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
   });
 
   using tensorflow::WritableFile;
-  py::class_<WritableFile>(m, "WritableFile")
+  py::class_<WritableFileWrapper>(m, "WritableFile")
       .def(py::init([](const std::string& filename, const std::string& mode) {
              py::gil_scoped_release release;
              auto* env = tensorflow::Env::Default();
-             std::unique_ptr<WritableFile> self;
+             std::unique_ptr<WritableFile> file;
              const auto status = mode.find('a') == std::string::npos
-                                     ? env->NewWritableFile(filename, &self)
-                                     : env->NewAppendableFile(filename, &self);
+                                     ? env->NewWritableFile(filename, &file)
+                                     : env->NewAppendableFile(filename, &file);
              py::gil_scoped_acquire acquire;
              tensorflow::MaybeRaiseRegisteredFromStatus(status);
-             return self.release();
+             return new WritableFileWrapper(std::move(file));
            }),
            py::arg("filename"), py::arg("mode"))
       .def("append",
-           [](WritableFile* self, absl::string_view data) {
-             const auto status = self->Append(data);
-             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+           [](WritableFileWrapper& self, absl::string_view data) {
+             if (self.file == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
+             const auto status = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.file->Append(data); });
+             tensorflow::MaybeRaiseRegisteredFromStatus(status);
            })
-      // TODO(slebedev): Make WritableFile::Tell const and change self
-      // to be a reference.
       .def("tell",
-           [](WritableFile* self) {
+           [](WritableFileWrapper& self) {
+             if (self.file == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
              int64_t pos = -1;
-             py::gil_scoped_release release;
-             const auto status = self->Tell(&pos);
-             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+             const auto status = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.file->Tell(&pos); });
+             tensorflow::MaybeRaiseRegisteredFromStatus(status);
              return pos;
            })
       .def("flush",
-           [](WritableFile* self) {
-             py::gil_scoped_release release;
-             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Flush());
+           [](WritableFileWrapper& self) {
+             if (self.file == nullptr) {
+               throw py::value_error("WritableFile is not initialized");
+             }
+             const auto status = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.file->Flush(); });
+             tensorflow::MaybeRaiseRegisteredFromStatus(status);
            })
-      .def("close", [](WritableFile* self) {
-        py::gil_scoped_release release;
-        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Close());
+      .def("close", [](WritableFileWrapper& self) {
+        if (self.file == nullptr) {
+          throw py::value_error("WritableFile is not initialized");
+        }
+        const auto status = RunFileObjectMethod(
+            &self.mutex, /*release_gil=*/true,
+            [&]() { return self.file->Close(); });
+        tensorflow::MaybeRaiseRegisteredFromStatus(status);
       });
 
   using tensorflow::io::BufferedInputStream;
-  py::class_<BufferedInputStream>(m, "BufferedInputStream")
+  py::class_<BufferedInputStreamWrapper>(m, "BufferedInputStream")
       .def(py::init([](const std::string& filename, size_t buffer_size) {
              py::gil_scoped_release release;
+
              std::unique_ptr<tensorflow::RandomAccessFile> file;
              const auto status =
-                 tensorflow::Env::Default()->NewRandomAccessFile(filename,
-                                                                 &file);
+                 tensorflow::Env::Default()->NewRandomAccessFile(filename, &file);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+
              std::unique_ptr<tensorflow::io::RandomAccessInputStream>
                  input_stream(new tensorflow::io::RandomAccessInputStream(
-                     file.release(),
-                     /*owns_file=*/true));
+                     file.release(), /*owns_file=*/true));
+             auto stream = std::make_unique<BufferedInputStream>(
+                 input_stream.release(), buffer_size,
+                 /*owns_input_stream=*/true);
+
              py::gil_scoped_acquire acquire;
-             return new BufferedInputStream(input_stream.release(), buffer_size,
-                                            /*owns_input_stream=*/true);
+             return new BufferedInputStreamWrapper(std::move(stream));
            }),
            py::arg("filename"), py::arg("buffer_size"))
       .def("read",
-           [](BufferedInputStream* self, int64_t bytes_to_read) {
-             py::gil_scoped_release release;
+           [](BufferedInputStreamWrapper& self, int64_t bytes_to_read) {
+             if (self.stream == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
              tensorflow::tstring result;
-             const auto status = self->ReadNBytes(bytes_to_read, &result);
+
+             const auto status = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.stream->ReadNBytes(bytes_to_read, &result); });
+
              if (!status.ok() && !absl::IsOutOfRange(status)) {
                result.clear();
-               tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+               tensorflow::MaybeRaiseRegisteredFromStatus(status);
              }
-             py::gil_scoped_acquire acquire;
+
              return py::bytes(result);
            })
       .def("readline",
-           [](BufferedInputStream* self) {
-             py::gil_scoped_release release;
-             auto output = self->ReadLineAsString();
-             py::gil_scoped_acquire acquire;
+           [](BufferedInputStreamWrapper& self) {
+             if (self.stream == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
+
+             auto output = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.stream->ReadLineAsString(); });
+
              return py::bytes(output);
            })
       .def("seek",
-           [](BufferedInputStream* self, int64_t pos) {
-             py::gil_scoped_release release;
-             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Seek(pos));
+           [](BufferedInputStreamWrapper& self, int64_t pos) {
+             if (self.stream == nullptr) {
+               throw py::value_error("BufferedInputStream is not initialized");
+             }
+
+             const auto status = RunFileObjectMethod(
+                 &self.mutex, /*release_gil=*/true,
+                 [&]() { return self.stream->Seek(pos); });
+
+             tensorflow::MaybeRaiseRegisteredFromStatus(status);
            })
-      .def("tell", [](BufferedInputStream* self) {
-        py::gil_scoped_release release;
-        return self->Tell();
+      .def("tell", [](BufferedInputStreamWrapper& self) {
+        if (self.stream == nullptr) {
+          throw py::value_error("BufferedInputStream is not initialized");
+        }
+
+        return RunFileObjectMethod(
+            &self.mutex, /*release_gil=*/true,
+            [&]() { return self.stream->Tell(); });
       });
 }
 }  // namespace

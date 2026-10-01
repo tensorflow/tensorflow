@@ -75,6 +75,7 @@ EXPORTS
  ??0FunctionParameterCanonicalizer@tensorflow@@QEAA@V?$Span@PEBD@lts_20260526@absl@@V?$Span@PEAU_object@@@34@@Z
  ??0FunctionRecord@tensorflow@@QEAA@$$QEAVFunctionDef@1@$$QEAV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@UStringHash@container_internal@lts_20260526@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@@std@@@2@@lts_20260526@absl@@_N@Z
  ??0GraphDebugInfoBuilder@tensorflow@@QEAA@XZ
+ ??1GraphDebugInfo@tensorflow@@UEAA@XZ
  ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
  ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
  ??0HistogramProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z

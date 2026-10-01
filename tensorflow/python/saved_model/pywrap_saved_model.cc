@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace saved_model {
 namespace python {
 
-PYBIND11_MODULE(pywrap_saved_model, m) {
+PYBIND11_MODULE(pywrap_saved_model, m, pybind11::mod_gil_not_used()) {
   m.doc() = "TensorFlow SavedModel Python bindings";
 
   m.def("Save", [](const char* export_dir) {

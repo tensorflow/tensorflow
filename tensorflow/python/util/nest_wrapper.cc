@@ -19,7 +19,8 @@ limitations under the License.
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_pywrap_nest, m) {
+PYBIND11_MODULE(
+    _pywrap_nest, m, pybind11::mod_gil_not_used()) {
   m.doc() = R"pbdoc(
     _pywrap_nest
     -----

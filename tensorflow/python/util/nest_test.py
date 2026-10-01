@@ -17,6 +17,7 @@
 import collections
 import collections.abc
 import dataclasses
+import threading
 import time
 from typing import NamedTuple
 
@@ -1046,6 +1047,47 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     self.assertRaises(TypeError, nest.assert_same_structure,
                       NestTest.SameNameab(0, 1), NestTest.SameNamedType1(2, 3))
+
+  def testAssertSameStructureConcurrentReverseDictOrder(self):
+    structure1 = {
+        "a": {"x": 1, "y": (2, 3)},
+        "b": [4, {"z": 5}],
+    }
+    structure2 = {
+        "a": {"x": 6, "y": (7, 8)},
+        "b": [9, {"z": 10}],
+    }
+    start = threading.Barrier(4)
+    errors = []
+
+    def compare(first, second):
+      try:
+        start.wait()
+        for _ in range(2000):
+          nest.assert_same_structure(first, second)
+      except BaseException as e:  # pylint: disable=broad-exception-caught
+        errors.append(e)
+
+    threads = [
+        threading.Thread(
+            target=compare, args=(structure1, structure2), daemon=True),
+        threading.Thread(
+            target=compare, args=(structure2, structure1), daemon=True),
+        threading.Thread(
+            target=compare, args=(structure1, structure2), daemon=True),
+        threading.Thread(
+            target=compare, args=(structure2, structure1), daemon=True),
+    ]
+    for thread in threads:
+      thread.start()
+    for thread in threads:
+      thread.join(timeout=10.0)
+
+    self.assertFalse(
+        any(thread.is_alive() for thread in threads),
+        "reverse-order dictionary comparisons deadlocked")
+    if errors:
+      raise errors[0]
 
   EmptyNT = collections.namedtuple("empty_nt", "")  # pylint: disable=invalid-name
 

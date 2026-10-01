@@ -270,6 +270,7 @@ static PyMethodDef FastModule_methods[] = {
 // or the default 'tp_getattro' function to look for the attribute.
 static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
   FastModuleObject *fast_module = FastModuleObject::UncheckedCast(module);
+  PyObject* cb_getattribute = nullptr;
   {
     absl::MutexLock lock(fast_module->mutex);
     auto& attr_map = fast_module->attr_map;
@@ -279,15 +280,11 @@ static PyObject *FastTpGetattro(PyObject *module, PyObject *name) {
       Py_INCREF(value);
       return value;
     }
-  }
-  PyObject *arglist = Py_BuildValue("(O)", name);
-  PyObject *result;
-  PyObject* cb_getattribute = nullptr;
-  {
-    absl::MutexLock lock(fast_module->mutex);
     cb_getattribute = fast_module->cb_getattribute;
     Py_XINCREF(cb_getattribute);
   }
+  PyObject *arglist = Py_BuildValue("(O)", name);
+  PyObject *result;
   // Prefer the customized callback function over the default function.
   if (cb_getattribute != nullptr) {
     result = CallFunc(fast_module, arglist, cb_getattribute);
@@ -377,7 +374,7 @@ FastModuleObject *FastModuleObject::UncheckedCast(PyObject *obj) {
   return reinterpret_cast<FastModuleObject *>(obj);
 }
 
-PYBIND11_MODULE(fast_module_type, m) {
+PYBIND11_MODULE(fast_module_type, m, pybind11::mod_gil_not_used()) {
   FastModuleType.tp_base = &PyModule_Type;
   FastModuleType.tp_setattro = [](PyObject* module, PyObject* name,
                                   PyObject* value) -> int {

@@ -16,6 +16,7 @@
 
 import gc
 import os
+import sys
 import threading
 import weakref
 
@@ -105,6 +106,50 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
     self.assertEqual([1, 2, 3], t.get_shape())
+
+  def testConcurrentShapeCacheFreeThreaded(self):
+    if not hasattr(sys, "_is_gil_enabled") or sys._is_gil_enabled():
+      self.skipTest("Requires free-threaded Python with the GIL disabled.")
+
+    thread_count = 8
+    rounds = 200
+
+    with ops.Graph().as_default():
+      t = array_ops.placeholder(dtypes.float32, shape=[None, 4])
+
+    start = threading.Barrier(thread_count + 1)
+    done = threading.Barrier(thread_count + 1)
+    error_list = []
+
+    def worker():
+      for _ in range(rounds):
+        start.wait(timeout=10.0)
+        try:
+          try:
+            shape = t.shape
+            if shape.rank != 2 or shape[1] != 4:
+              error_list.append(repr(shape))
+          except (ValueError, TypeError, RuntimeError) as e:
+            error_list.append(repr(e))
+        finally:
+          done.wait(timeout=10.0)
+
+    threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+    for thread in threads:
+      thread.start()
+
+    for _ in range(rounds):
+      t._shape_val = None  # pylint: disable=protected-access
+      start.wait(timeout=10.0)
+      done.wait(timeout=10.0)
+
+    for thread in threads:
+      thread.join(timeout=10.0)
+
+    self.assertFalse(
+        any(thread.is_alive() for thread in threads),
+        "Shape cache worker threads deadlocked or exceeded timeout.")
+    self.assertEmpty(error_list)
 
   def testNdim(self):
 

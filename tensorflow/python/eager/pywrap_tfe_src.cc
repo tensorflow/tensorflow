@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/debugging/leak_check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/c_api.h"
@@ -79,16 +80,22 @@ using tensorflow::Status;
 using tensorflow::string;
 using tsl::strings::Printf;
 
-// Added for free-threaded run. Locks are no-op when GIL is enabled.
+namespace {
+
+// Locks are no-ops when the GIL is enabled, but callers always spell out
+// the local lock variable explicitly.
 #ifdef Py_GIL_DISABLED
-#define LOCK_READER(m) absl::ReaderMutexLock lock(&m)
-#define LOCK_WRITER(m) absl::WriterMutexLock lock(&m)
+using PyReaderMutexLock = absl::ReaderMutexLock;
+using PyWriterMutexLock = absl::WriterMutexLock;
 #else
-#define LOCK_READER(m)
-#define LOCK_WRITER(m)
+struct PyReaderMutexLock {
+  explicit PyReaderMutexLock(absl::Mutex*) {}
+};
+struct PyWriterMutexLock {
+  explicit PyWriterMutexLock(absl::Mutex*) {}
+};
 #endif
 
-namespace {
 // NOTE: Items are retrieved from and returned to these unique_ptrs, and they
 // act as arenas. This is important if the same thread requests 2 items without
 // releasing one.
@@ -111,11 +118,10 @@ thread_local std::unordered_map<TFE_Context*,                        // NOLINT
 thread_local tensorflow::TF_StatusPtr thread_local_tf_status(  // NOLINT
     nullptr, tensorflow::internal::TF_StatusDeleter());        // NOLINT
 
-// Added for free-threaded run.
-#ifdef Py_GIL_DISABLED
+// These mutexes are only active through PyReaderMutexLock/PyWriterMutexLock
+// in free-threaded builds.
 static absl::Mutex attr_to_inputs_mutex(absl::kConstInit);
 static absl::Mutex attr_to_defaults_mutex(absl::kConstInit);
-#endif
 
 std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
@@ -182,7 +188,7 @@ AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
   auto* all_attr_to_input_maps = GetAllAttrToInputsMaps();
 
   {
-    LOCK_READER(attr_to_inputs_mutex);
+    PyReaderMutexLock lock(&attr_to_inputs_mutex);
     auto* output =
         tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
     if (output != nullptr) {
@@ -206,7 +212,7 @@ AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
   auto* retval = m.get();
 
   {
-    LOCK_WRITER(attr_to_inputs_mutex);
+    PyWriterMutexLock lock(&attr_to_inputs_mutex);
 #ifdef Py_GIL_DISABLED
     // Double check under the lock to handle concurrent insertions in
     // free-threaded mode.
@@ -239,7 +245,7 @@ GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
   auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
 
   {
-    LOCK_READER(attr_to_defaults_mutex);
+    PyReaderMutexLock lock(&attr_to_defaults_mutex);
     auto* output = tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps,
                                                   op_def.name());
     if (output != nullptr) {
@@ -257,7 +263,7 @@ GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
   }
 
   {
-    LOCK_WRITER(attr_to_defaults_mutex);
+    PyWriterMutexLock lock(&attr_to_defaults_mutex);
 #ifdef Py_GIL_DISABLED
     // Double check under the lock to handle concurrent insertions in
     // free-threaded mode.
@@ -902,17 +908,20 @@ PyObject* GetPythonObjectFromInt(int num) {
 }
 
 // Python subclass of Exception that is created on not ok Status.
-tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex exception_class_mutex(absl::kConstInit);
 PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
+static absl::Mutex fallback_exception_class_mutex(absl::kConstInit);
 
 // Python function that returns input gradients given output gradients.
 PyObject* gradient_function = nullptr;
+static absl::Mutex gradient_function_mutex(absl::kConstInit);
 
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
+static absl::Mutex forward_gradient_function_mutex(absl::kConstInit);
 
 static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
@@ -1001,12 +1010,7 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
 }
 
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
-  tensorflow::mutex_lock l(exception_class_mutex);
-  if (exception_class != nullptr) {
-    Py_DECREF(exception_class);
-  }
   if (PyObject_IsSubclass(e, PyExc_Exception) <= 0) {
-    exception_class = nullptr;
     PyErr_SetString(PyExc_TypeError,
                     "TFE_Py_RegisterExceptionClass: "
                     "Registered class should be subclass of Exception.");
@@ -1014,64 +1018,91 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
   }
 
   Py_INCREF(e);
-  exception_class = e;
+  PyObject* old_exception_class = nullptr;
+  {
+    PyWriterMutexLock lock(&exception_class_mutex);
+    old_exception_class = exception_class;
+    exception_class = e;
+  }
+  Py_XDECREF(old_exception_class);
   Py_RETURN_NONE;
 }
 
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e) {
-  if (fallback_exception_class != nullptr) {
-    Py_DECREF(fallback_exception_class);
-  }
   if (PyObject_IsSubclass(e, PyExc_Exception) <= 0) {
-    fallback_exception_class = nullptr;
     PyErr_SetString(PyExc_TypeError,
                     "TFE_Py_RegisterFallbackExceptionClass: "
                     "Registered class should be subclass of Exception.");
     return nullptr;
   } else {
     Py_INCREF(e);
-    fallback_exception_class = e;
+    PyObject* old_fallback_exception_class = nullptr;
+    {
+      PyWriterMutexLock lock(&fallback_exception_class_mutex);
+      old_fallback_exception_class = fallback_exception_class;
+      fallback_exception_class = e;
+    }
+    Py_XDECREF(old_fallback_exception_class);
     Py_RETURN_NONE;
   }
 }
 
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e) {
-  if (gradient_function != nullptr) {
-    Py_DECREF(gradient_function);
-  }
   if (!PyCallable_Check(e)) {
-    gradient_function = nullptr;
     PyErr_SetString(PyExc_TypeError,
                     "TFE_Py_RegisterGradientFunction: "
                     "Registered object should be function.");
     return nullptr;
   } else {
     Py_INCREF(e);
-    gradient_function = e;
+    PyObject* old_gradient_function = nullptr;
+    {
+      PyWriterMutexLock lock(&gradient_function_mutex);
+      old_gradient_function = gradient_function;
+      gradient_function = e;
+    }
+    Py_XDECREF(old_gradient_function);
     Py_RETURN_NONE;
   }
 }
 
 PyObject* TFE_Py_RegisterJVPFunction(PyObject* e) {
-  if (forward_gradient_function != nullptr) {
-    Py_DECREF(forward_gradient_function);
-  }
   if (!PyCallable_Check(e)) {
-    forward_gradient_function = nullptr;
     PyErr_SetString(PyExc_TypeError,
                     "TFE_Py_RegisterJVPFunction: "
                     "Registered object should be function.");
     return nullptr;
   } else {
     Py_INCREF(e);
-    forward_gradient_function = e;
+    PyObject* old_forward_gradient_function = nullptr;
+    {
+      PyWriterMutexLock lock(&forward_gradient_function_mutex);
+      old_forward_gradient_function = forward_gradient_function;
+      forward_gradient_function = e;
+    }
+    Py_XDECREF(old_forward_gradient_function);
     Py_RETURN_NONE;
   }
 }
 
 void RaiseFallbackException(const char* message) {
-  if (fallback_exception_class != nullptr) {
-    PyErr_SetString(fallback_exception_class, message);
+  PyObject* registered_fallback_exception_class = nullptr;
+#ifdef Py_GIL_DISABLED
+  {
+    PyReaderMutexLock lock(&fallback_exception_class_mutex);
+    registered_fallback_exception_class = fallback_exception_class;
+    Py_XINCREF(registered_fallback_exception_class);
+  }
+#else
+  registered_fallback_exception_class = fallback_exception_class;
+#endif
+
+  if (registered_fallback_exception_class != nullptr) {
+#ifdef Py_GIL_DISABLED
+    tensorflow::Safe_PyObjectPtr fallback_exception_class_ref(
+        registered_fallback_exception_class);
+#endif
+    PyErr_SetString(registered_fallback_exception_class, message);
     return;
   }
 
@@ -1129,7 +1160,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   if (TF_GetCode(status) == TF_OK) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
-    tensorflow::mutex_lock l(exception_class_mutex);
+    PyReaderMutexLock lock(&exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
       for (const auto& payload :
@@ -1167,7 +1198,7 @@ int MaybeRaiseExceptionFromStatus(const absl::Status& status,
   if (status.ok()) return 0;
   const char* msg = absl::StatusMessageAsCStr(status);
   if (exception == nullptr) {
-    tensorflow::mutex_lock l(exception_class_mutex);
+    PyReaderMutexLock lock(&exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
       for (const auto& element : tensorflow::errors::GetPayloads(status)) {
@@ -1264,6 +1295,31 @@ DataType PyTensor_DataType(PyObject* tensor) {
 }
 }  // namespace tensorflow
 
+class PyVSpace;
+
+namespace {
+
+static thread_local const std::shared_ptr<PyVSpace>* scoped_py_vspace = nullptr;
+
+class PyVSpaceScope {
+ public:
+  explicit PyVSpaceScope(const std::shared_ptr<PyVSpace>& vspace)
+      : previous_(scoped_py_vspace) {
+    scoped_py_vspace = &vspace;
+  }
+
+  ~PyVSpaceScope() { scoped_py_vspace = previous_; }
+
+  PyVSpaceScope(std::shared_ptr<PyVSpace>&&) = delete;
+  PyVSpaceScope(const PyVSpaceScope&) = delete;
+  PyVSpaceScope& operator=(const PyVSpaceScope&) = delete;
+
+ private:
+  const std::shared_ptr<PyVSpace>* previous_;
+};
+
+}  // namespace
+
 class PyTapeTensor {
  public:
   PyTapeTensor(int64_t id, tensorflow::DataType dtype,
@@ -1288,12 +1344,15 @@ class PyTapeTensor {
     }
   }
   PyObject* GetShape() const;
+  PyObject* GetShape(const PyVSpace& vspace) const;
   PyObject* GetPyDType() const { return PyLong_FromLong(dtype_); }
   int64_t GetID() const { return id_; }
   tensorflow::DataType GetDType() const { return dtype_; }
 
   PyObject* OnesLike() const;
+  PyObject* OnesLike(const PyVSpace& vspace) const;
   PyObject* ZerosLike() const;
+  PyObject* ZerosLike(const PyVSpace& vspace) const;
 
  private:
   int64_t id_;
@@ -1420,7 +1479,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
   Status BuildOnesLike(const PyTapeTensor& t,
                        PyObject** result) const override {
-    *result = t.OnesLike();
+    *result = t.OnesLike(*this);
     return absl::OkStatus();
   }
 
@@ -1514,34 +1573,103 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   PyObject* ones_like_fn_;
   PyObject* graph_shape_fn_;
 };
-PyVSpace* py_vspace = nullptr;
+
+static absl::Mutex py_vspace_mutex(absl::kConstInit);
+
+std::shared_ptr<PyVSpace>& PyVSpaceStorage() {
+  // Intentionally never destroyed. PyVSpace owns Python references, so
+  // destroying this storage during process shutdown could run Py_DECREF after
+  // Python finalization has begun.
+  static auto* py_vspace = new std::shared_ptr<PyVSpace>();
+  return *py_vspace;
+}
+
+std::shared_ptr<PyVSpace> GetPyVSpace() {
+  PyReaderMutexLock lock(&py_vspace_mutex);
+  return PyVSpaceStorage();
+}
 
 bool HasAccumulator();
 
 PyObject* TFE_Py_RegisterVSpace(PyObject* e) {
-  if (py_vspace != nullptr) {
-    if (HasAccumulator()) {
-      // Accumulators reference py_vspace, so we can't swap it out while one is
-      // active. This is unlikely to ever happen.
-      MaybeRaiseExceptionFromStatus(
-          absl::InternalError("Can't change the vspace implementation while a "
-                              "forward accumulator is active."),
-          nullptr);
-    }
-    delete py_vspace;
-  }
-
-  py_vspace = new PyVSpace(e);
-  auto status = py_vspace->Initialize();
-  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
-    delete py_vspace;
+  std::shared_ptr<PyVSpace> current_py_vspace = GetPyVSpace();
+  if (current_py_vspace != nullptr && HasAccumulator()) {
+    // Accumulators reference py_vspace, so we can't swap it out while one is
+    // active. This is unlikely to ever happen.
+    MaybeRaiseExceptionFromStatus(
+        absl::InternalError("Can't change the vspace implementation while a "
+                            "forward accumulator is active."),
+        nullptr);
     return nullptr;
   }
+
+  auto new_py_vspace = std::make_shared<PyVSpace>(e);
+  auto status = new_py_vspace->Initialize();
+  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+    return nullptr;
+  }
+
+  std::shared_ptr<PyVSpace> old_py_vspace;
+  {
+    PyWriterMutexLock lock(&py_vspace_mutex);
+    auto& py_vspace = PyVSpaceStorage();
+    old_py_vspace = std::move(py_vspace);
+    py_vspace = std::move(new_py_vspace);
+  }
+
+  // PyVSpace destruction decrefs Python objects. Do not run it while holding
+  // py_vspace_mutex.
+  old_py_vspace.reset();
 
   Py_RETURN_NONE;
 }
 
 PyObject* PyTapeTensor::GetShape() const {
+  if (scoped_py_vspace != nullptr) {
+    return GetShape(**scoped_py_vspace);
+  }
+
+  std::shared_ptr<PyVSpace> vspace = GetPyVSpace();
+  if (vspace == nullptr) {
+    PyErr_SetString(PyExc_RuntimeError, "PyVSpace is not registered.");
+    return nullptr;
+  }
+
+  PyVSpaceScope scope(vspace);
+  return GetShape(*vspace);
+}
+
+PyObject* PyTapeTensor::OnesLike() const {
+  if (scoped_py_vspace != nullptr) {
+    return OnesLike(**scoped_py_vspace);
+  }
+
+  std::shared_ptr<PyVSpace> vspace = GetPyVSpace();
+  if (vspace == nullptr) {
+    PyErr_SetString(PyExc_RuntimeError, "PyVSpace is not registered.");
+    return nullptr;
+  }
+
+  PyVSpaceScope scope(vspace);
+  return OnesLike(*vspace);
+}
+
+PyObject* PyTapeTensor::ZerosLike() const {
+  if (scoped_py_vspace != nullptr) {
+    return ZerosLike(**scoped_py_vspace);
+  }
+
+  std::shared_ptr<PyVSpace> vspace = GetPyVSpace();
+  if (vspace == nullptr) {
+    PyErr_SetString(PyExc_RuntimeError, "PyVSpace is not registered.");
+    return nullptr;
+  }
+
+  PyVSpaceScope scope(vspace);
+  return ZerosLike(*vspace);
+}
+
+PyObject* PyTapeTensor::GetShape(const PyVSpace& vspace) const {
   if (shape_.index() == 0) {
     auto& shape = std::get<0>(shape_);
     PyObject* py_shape = PyTuple_New(shape.dims());
@@ -1552,36 +1680,36 @@ PyObject* PyTapeTensor::GetShape() const {
     return py_shape;
   }
 
-  return py_vspace->GraphShape(std::get<1>(shape_));
+  return vspace.GraphShape(std::get<1>(shape_));
 }
 
-PyObject* PyTapeTensor::OnesLike() const {
+PyObject* PyTapeTensor::OnesLike(const PyVSpace& vspace) const {
   if (shape_.index() == 1) {
     PyObject* tensor = std::get<1>(shape_);
-    return py_vspace->OnesLike(tensor);
+    return vspace.OnesLike(tensor);
   }
-  PyObject* py_shape = GetShape();
+  PyObject* py_shape = GetShape(vspace);
   PyObject* dtype_field = GetPyDType();
-  PyObject* result = py_vspace->Ones(py_shape, dtype_field);
+  PyObject* result = vspace.Ones(py_shape, dtype_field);
   Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
 }
 
-PyObject* PyTapeTensor::ZerosLike() const {
+PyObject* PyTapeTensor::ZerosLike(const PyVSpace& vspace) const {
   if (GetDType() == tensorflow::DT_RESOURCE) {
     // Gradient functions for ops which return resource tensors accept
-    // None. This is the behavior of py_vspace->Zeros, but checking here avoids
+    // None. This is the behavior of PyVSpace::Zeros, but checking here avoids
     // issues with ZerosLike.
     Py_RETURN_NONE;
   }
   if (shape_.index() == 1) {
     PyObject* tensor = std::get<1>(shape_);
-    return py_vspace->ZerosLike(tensor);
+    return vspace.ZerosLike(tensor);
   }
-  PyObject* py_shape = GetShape();
+  PyObject* py_shape = GetShape(vspace);
   PyObject* dtype_field = GetPyDType();
-  PyObject* result = py_vspace->Zeros(py_shape, dtype_field);
+  PyObject* result = vspace.Zeros(py_shape, dtype_field);
   Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
@@ -1738,6 +1866,8 @@ typedef struct {
   PyObject_HEAD
       /* Type-specific fields go here. */
       ForwardAccumulator* accumulator;
+  // Keeps the non-owned VSpace reference stored by ForwardAccumulator alive.
+  std::shared_ptr<PyVSpace>* vspace;
   // A nesting order between GradientTapes and ForwardAccumulators, used to
   // ensure that GradientTapes do not watch the products of outer
   // ForwardAccumulators.
@@ -1745,7 +1875,14 @@ typedef struct {
 } TFE_Py_ForwardAccumulator;
 
 static void TFE_Py_ForwardAccumulatorDelete(PyObject* accumulator) {
-  delete reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)->accumulator;
+  auto* forward_accumulator =
+      reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator);
+
+  // ForwardAccumulator's destructor uses its VSpace reference, so destroy it
+  // before releasing the shared ownership of the VSpace.
+  delete forward_accumulator->accumulator;
+  delete forward_accumulator->vspace;
+
   Py_TYPE(accumulator)->tp_free(accumulator);
 }
 
@@ -2588,6 +2725,8 @@ bool TapeSetRecordForwardprop(
       input_info.push_back(TapeTensorFromTensor(input_seq_array[i]));
     }
     for (TFE_Py_ForwardAccumulator* accumulator : accumulator_set) {
+      PyVSpaceScope py_vspace_scope(*accumulator->vspace);
+
       absl::Status status = accumulator->accumulator->Accumulate(
           op_type, input_info, output_info, input_ids, input_dtypes,
           forward_function, backward_function_getter, backward_function_killer);
@@ -2659,9 +2798,25 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
                              const std::vector<PyObject*>& input_tangents,
                              std::vector<PyObject*>* output_tangents,
                              bool use_batch) {
-  if (forward_gradient_function == nullptr) {
+  PyObject* jvp_function = nullptr;
+#ifdef Py_GIL_DISABLED
+  {
+    PyReaderMutexLock lock(&forward_gradient_function_mutex);
+    jvp_function = forward_gradient_function;
+    Py_XINCREF(jvp_function);
+  }
+#else
+  jvp_function = forward_gradient_function;
+#endif
+
+  if (jvp_function == nullptr) {
     return absl::InternalError("No forward gradient function registered.");
   }
+
+#ifdef Py_GIL_DISABLED
+  tensorflow::Safe_PyObjectPtr jvp_function_ref(jvp_function);
+#endif
+
   tensorflow::Safe_PyObjectPtr py_input_tangents(
       TangentsAsPyTuple(input_tangents));
 
@@ -2673,7 +2828,7 @@ absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
       Py_BuildValue("OOOOOO", op_name, attrs, input_tuple.get(), results,
                     py_input_tangents.get(), to_batch));
   tensorflow::Safe_PyObjectPtr py_result(
-      PyObject_CallObject(forward_gradient_function, callback_args.get()));
+      PyObject_CallObject(jvp_function, callback_args.get()));
   if (py_result == nullptr || PyErr_Occurred()) {
     return absl::InternalError("forward gradient function threw exceptions");
   }
@@ -2997,9 +3152,20 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
     }
   }
   std::vector<PyObject*> result(sources_vec.size());
+  std::shared_ptr<PyVSpace> vspace = GetPyVSpace();
+  if (vspace == nullptr) {
+    MaybeRaiseExceptionFromStatus(
+        absl::InternalError(
+            "GradientTape requires a PyVSpace to be registered."),
+        nullptr);
+    return nullptr;
+  }
+
+  PyVSpaceScope py_vspace_scope(vspace);
+
   tsl::Set_TF_Status_from_Status(
       status,
-      tape_obj->tape->ComputeGradient(*py_vspace, target_vec, sources_vec,
+      tape_obj->tape->ComputeGradient(*vspace, target_vec, sources_vec,
                                       source_tensors_that_are_targets,
                                       outgrad_vec, absl::MakeSpan(result)));
   if (TF_GetCode(status) != TF_OK) {
@@ -3031,7 +3197,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
               tensorflow::PyTensor_DataType(sources_obj[i]);
           PyTapeTensor tensor =
               PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
-          result[i] = tensor.ZerosLike();
+          result[i] = tensor.ZerosLike(*vspace);
         } else {
           Py_INCREF(Py_None);
           result[i] = Py_None;
@@ -3059,15 +3225,29 @@ PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch) {
     }
   });
   if (!accumulator_type_ready) return nullptr;
+
   TFE_Py_ForwardAccumulator* accumulator =
       PyObject_NEW(TFE_Py_ForwardAccumulator, &TFE_Py_ForwardAccumulator_Type);
-  if (py_vspace == nullptr) {
+  if (accumulator == nullptr) return nullptr;
+
+  accumulator->accumulator = nullptr;
+  accumulator->vspace = nullptr;
+
+  std::shared_ptr<PyVSpace> vspace = GetPyVSpace();
+  if (vspace == nullptr) {
     MaybeRaiseExceptionFromStatus(
         absl::InternalError(
             "ForwardAccumulator requires a PyVSpace to be registered."),
         nullptr);
+    Py_DECREF(reinterpret_cast<PyObject*>(accumulator));
+    return nullptr;
   }
-  accumulator->accumulator = new ForwardAccumulator(*py_vspace, use_batch);
+
+  accumulator->vspace =
+      new std::shared_ptr<PyVSpace>(std::move(vspace));
+  accumulator->accumulator =
+      new ForwardAccumulator(**accumulator->vspace, use_batch);
+
   return reinterpret_cast<PyObject*>(accumulator);
 }
 
@@ -3516,8 +3696,31 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                   output_grads, skip_input_indices.get(),
                   forward_pass_name_scope));
 
+              PyObject* registered_gradient_function = nullptr;
+#ifdef Py_GIL_DISABLED
+              {
+                PyReaderMutexLock lock(&gradient_function_mutex);
+                registered_gradient_function = gradient_function;
+                Py_XINCREF(registered_gradient_function);
+              }
+#else
+              registered_gradient_function = gradient_function;
+#endif
+
+              if (registered_gradient_function == nullptr) {
+                PyErr_SetString(PyExc_RuntimeError,
+                                "No gradient function registered.");
+                return static_cast<PyObject*>(nullptr);
+              }
+
+#ifdef Py_GIL_DISABLED
+              tensorflow::Safe_PyObjectPtr registered_gradient_function_ref(
+                  registered_gradient_function);
+#endif
+
               tensorflow::Safe_PyObjectPtr result(
-                  PyObject_CallObject(gradient_function, callback_args.get()));
+                  PyObject_CallObject(registered_gradient_function,
+                                      callback_args.get()));
 
               if (PyErr_Occurred()) return static_cast<PyObject*>(nullptr);
 
@@ -4236,11 +4439,10 @@ void PrintToPythonStdout(const char* msg) {
 // Register PrintToPythonStdout as a log listener, to allow
 // printing in colabs and jupyter notebooks to work.
 void TFE_Py_EnableInteractivePythonLogging() {
-  static bool enabled_interactive_logging = false;
-  if (!enabled_interactive_logging) {
-    enabled_interactive_logging = true;
+  static absl::once_flag enable_interactive_logging_once;
+  absl::call_once(enable_interactive_logging_once, [] {
     TF_RegisterLogListener(PrintToPythonStdout);
-  }
+  });
 }
 
 namespace {
@@ -4250,19 +4452,58 @@ namespace {
 // Capsule. However, the EagerContext object it holds is tracked by the
 // global_c_eager_context object.
 // Also see common_runtime/eager/context.cc.
+#ifdef Py_GIL_DISABLED
+std::atomic<PyObject*> global_py_eager_context{nullptr};
+#else
 PyObject* global_py_eager_context = nullptr;
+#endif
 }  // namespace
 
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
-  Py_XDECREF(global_py_eager_context);
-  global_py_eager_context = PyWeakref_NewRef(py_context, nullptr);
-  if (global_py_eager_context == nullptr) {
+  PyObject* new_py_eager_context = PyWeakref_NewRef(py_context, nullptr);
+  if (new_py_eager_context == nullptr) {
     return nullptr;
   }
+
+#ifdef Py_GIL_DISABLED
+  PyObject* old_py_eager_context = global_py_eager_context.exchange(
+      new_py_eager_context, std::memory_order_release);
+  // Intentionally leak the old weakref wrapper so concurrent readers can
+  // safely call PyWeakref_GetRef without use-after-free risks.
+  (void)old_py_eager_context;
+#else
+  PyObject* old_py_eager_context = global_py_eager_context;
+  global_py_eager_context = new_py_eager_context;
+  Py_XDECREF(old_py_eager_context);
+#endif
+
   Py_RETURN_NONE;
 }
 
 PyObject* GetPyEagerContext() {
+#ifdef Py_GIL_DISABLED
+  PyObject* py_eager_context_weakref =
+      global_py_eager_context.load(std::memory_order_acquire);
+  if (!py_eager_context_weakref) {
+    PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
+    return nullptr;
+  }
+
+  PyObject* py_context = nullptr;
+  const int result = PyWeakref_GetRef(py_eager_context_weakref, &py_context);
+
+  if (result < 0) {
+    return nullptr;
+  }
+
+  if (result == 0) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Python eager context has been destroyed");
+    return nullptr;
+  }
+
+  return py_context;
+#else
   if (global_py_eager_context == nullptr) {
     PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
     return nullptr;
@@ -4275,6 +4516,7 @@ PyObject* GetPyEagerContext() {
   }
   Py_INCREF(py_context);
   return py_context;
+#endif
 }
 
 namespace {
