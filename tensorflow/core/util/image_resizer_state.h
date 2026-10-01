@@ -94,13 +94,17 @@ struct ImageResizerState {
     const int minimum_size = allow_empty_ ? 0 : 1;
     OP_REQUIRES(
         context, channels >= minimum_size,
-        absl::InvalidArgumentError("image must have at least one channel"));
+        absl::InvalidArgumentError(allow_empty_
+                                       ? "image channels must be non-negative"
+                                       : "image must have at least one channel"));
 
     // Verify and assign `in_height` and `in_width`.
     OP_REQUIRES(
         context, input_shape.dim_size(1) >= minimum_size &&
                      input_shape.dim_size(2) >= minimum_size,
-        absl::InvalidArgumentError("input image must be of non-zero size"));
+        absl::InvalidArgumentError(
+            allow_empty_ ? "input image must be of non-negative size"
+                         : "input image must be of non-zero size"));
     OP_REQUIRES(context,
                 FastBoundsCheck(input_shape.dim_size(1),
                                 std::numeric_limits<int32_t>::max()) &&
