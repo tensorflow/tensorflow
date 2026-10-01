@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -3749,15 +3750,15 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
   ABSL_RETURN_IF_ERROR(PropagateComputationLayouts(module->entry_computation(),
                                               entry_computation_layout_));
 
-#ifndef NDEBUG
-  // Before validation, update computation_layouts_ with the entry computation
-  // layout since it might be modified during PropagateComputationLayouts()
-  // above for AUTO layouts.
-  *mutable_computation_constraints(module->entry_computation())
-       ->mutable_computation_constraint()
-       ->mutable_computation_layout() = *entry_computation_layout_;
-  ABSL_RETURN_IF_ERROR(CheckLayouts(module, execution_threads));
-#endif  // NDEBUG
+  if constexpr (tsl::kIsDebugBuild) {
+    // Before validation, update computation_layouts_ with the entry computation
+    // layout since it might be modified during PropagateComputationLayouts()
+    // above for AUTO layouts.
+    *mutable_computation_constraints(module->entry_computation())
+         ->mutable_computation_constraint()
+         ->mutable_computation_layout() = *entry_computation_layout_;
+    ABSL_RETURN_IF_ERROR(CheckLayouts(module, execution_threads));
+  }
 
   return true;
 }

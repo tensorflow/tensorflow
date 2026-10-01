@@ -275,6 +275,7 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform",
     ],
 )
 

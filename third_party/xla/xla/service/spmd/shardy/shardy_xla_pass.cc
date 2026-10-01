@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace sdy {
@@ -354,9 +355,9 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
-#ifndef NDEBUG
-  enableVerifier = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    enableVerifier = true;
+  }
 
   mlir::PassManager pm(mlirModule->getContext());
   pm.enableVerifier(enableVerifier);

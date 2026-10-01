@@ -175,6 +175,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@stablehlo//:stablehlo_passes",
+        "@tsl//tsl/platform",
     ],
 )
 

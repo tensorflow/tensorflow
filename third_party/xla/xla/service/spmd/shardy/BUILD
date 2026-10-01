@@ -79,6 +79,7 @@ cc_library(
         "@shardy//shardy/common:file_utils",
         "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
         "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
     ],
 )

@@ -69,6 +69,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:raw_coding",

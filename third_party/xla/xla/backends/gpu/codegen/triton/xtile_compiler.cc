@@ -132,6 +132,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
@@ -525,9 +526,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   bool should_verify =
       (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
-#ifndef NDEBUG
-  should_verify = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    should_verify = true;
+  }
 
   mlir_context.printOpOnDiagnostic(should_verify || VLOG_IS_ON(5));
   std::optional<mlir::ScopedDiagnosticHandler> diag_handler;

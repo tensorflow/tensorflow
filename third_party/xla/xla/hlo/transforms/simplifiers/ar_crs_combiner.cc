@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -143,13 +144,13 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_partitions) {
       // seen iff we see a replica id in the range [0, num_partitions) for the
       // first time. So, there is no need to check that all `seen_partition_ids`
       // values are equal to `marker`.
-#ifndef NDEBUG
-      for (int64_t i = 0; i < num_partitions; ++i) {
-        CHECK_EQ(seen_partition_ids[i], marker)
-            << "Programming error: seen_partition_ids[" << i
-            << "] != " << marker;
+      if constexpr (tsl::kIsDebugBuild) {
+        for (int64_t i = 0; i < num_partitions; ++i) {
+          CHECK_EQ(seen_partition_ids[i], marker)
+              << "Programming error: seen_partition_ids[" << i
+              << "] != " << marker;
+        }
       }
-#endif  // NDEBUG
     }
   }
   return true;

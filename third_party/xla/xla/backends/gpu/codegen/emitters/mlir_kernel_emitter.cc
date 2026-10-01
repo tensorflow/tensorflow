@@ -134,6 +134,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla::gpu {
 namespace {
@@ -667,9 +668,9 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
   bool should_verify =
       (hlo_module.config().debug_options().xla_gpu_llvm_verification_level() >=
        1);
-#ifndef NDEBUG
-  should_verify = true;
-#endif
+  if constexpr (tsl::kIsDebugBuild) {
+    should_verify = true;
+  }
   pm.enableVerifier(should_verify);
 
   emitters::RegisterOptimizationPasses(pm);

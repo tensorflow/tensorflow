@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -187,23 +188,23 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
   // Use a set to prevent deleting an id twice.
   absl::flat_hash_set<HloValue::Id> id_set(value_ids_to_delete_.begin(),
                                            value_ids_to_delete_.end());
-#ifndef NDEBUG
-  // Verify that no marked-for-deletion values are in any of the value sets.
-  for (const auto& pair : value_sets_) {
-    const HloInstruction* instruction = pair.first;
-    const InstructionValueSet& instruction_value_set = *pair.second;
-    for (const auto& index_value_set : instruction_value_set) {
-      const HloValueSet& value_set = index_value_set.second;
-      for (const HloValue* value : value_set.values()) {
-        DCHECK(!ContainsKey(id_set, value->id()))
-            << "Value " << value->ToShortString()
-            << " marked for deletion, but still exists in value set for "
-               "instruction "
-            << instruction->name();
+  if constexpr (tsl::kIsDebugBuild) {
+    // Verify that no marked-for-deletion values are in any of the value sets.
+    for (const auto& pair : value_sets_) {
+      const HloInstruction* instruction = pair.first;
+      const InstructionValueSet& instruction_value_set = *pair.second;
+      for (const auto& index_value_set : instruction_value_set) {
+        const HloValueSet& value_set = index_value_set.second;
+        for (const HloValue* value : value_set.values()) {
+          DCHECK(!ContainsKey(id_set, value->id()))
+              << "Value " << value->ToShortString()
+              << " marked for deletion, but still exists in value set for "
+                 "instruction "
+              << instruction->name();
+        }
       }
     }
   }
-#endif
 
   for (HloValue::Id value_id : id_set) {
     values_.erase(value_id);

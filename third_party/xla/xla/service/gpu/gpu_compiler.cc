@@ -353,6 +353,7 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -2327,19 +2328,19 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
       static_cast<int64_t>(stream_executor::MemorySpace::kHost));
 
-#ifdef NDEBUG
-  // Verify the module in non-debug builds. For debug builds, the verifier
-  // already runs after every pass.
-  HloVerifierOpts opts = HloVerifierOpts{}
-                             .MakeLayoutSensitive()
-                             .WithInstructionCanChangeLayout(
-                                 LayoutAssignment::InstructionCanChangeLayout)
-                             .VerifyBroadcastDimensionsOrder()
-                             .VerifyReshapeIsBitcast();
-  pipeline.AddPass<HloVerifier>(
-      std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
-      "end-of-post-layout_assignment");
-#endif  // NDEBUG
+  if constexpr (!tsl::kIsDebugBuild) {
+    // Verify the module in non-debug builds. For debug builds, the verifier
+    // already runs after every pass.
+    HloVerifierOpts opts = HloVerifierOpts{}
+                               .MakeLayoutSensitive()
+                               .WithInstructionCanChangeLayout(
+                                   LayoutAssignment::InstructionCanChangeLayout)
+                               .VerifyBroadcastDimensionsOrder()
+                               .VerifyReshapeIsBitcast();
+    pipeline.AddPass<HloVerifier>(
+        std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
+        "end-of-post-layout_assignment");
+  }
 
   ABSL_RETURN_IF_ERROR(
       pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})

@@ -2125,6 +2125,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:errors",
