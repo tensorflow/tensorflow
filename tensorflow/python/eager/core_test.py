@@ -630,7 +630,9 @@ class TFETest(test_util.TensorFlowTestCase):
     init_timed_out = threading.Event()
     worker_errors = []
 
-    class SlowNotOkStatusException(core._NotOkStatusException):  # pylint: disable=protected-access
+    class SlowNotOkStatusException(
+        core._NotOkStatusException  # pylint: disable=protected-access
+    ):
 
       def __init__(self, message, code, payloads):
         init_started.set()
@@ -651,10 +653,10 @@ class TFETest(test_util.TensorFlowTestCase):
     def raise_status_error():
       try:
         execute(
-            b'Mul',
-            num_outputs=0,
+            b'AddN',
+            num_outputs=1,
             inputs=[three, five],
-            attrs=('T', dtypes.int32.as_datatype_enum),
+            attrs=('T', dtypes.int32.as_datatype_enum, 'N', '2'),
         )
       except errors.InvalidArgumentError:
         pass
@@ -662,7 +664,7 @@ class TFETest(test_util.TensorFlowTestCase):
         worker_errors.append(e)
       else:
         worker_errors.append(
-            AssertionError('Expected invalid output-count status.')
+            AssertionError('Expected invalid integer attribute status.')
         )
 
     def reregister_exception_class():
