@@ -1276,10 +1276,16 @@ class FunctionTest(xla_test.XLATestCase):
 
     x = constant_op.constant([1.0, 2.0])
 
-    # Eager execution should fail
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                'Could not satisfy device specification'):
-      compute(x).numpy()
+    # Eager mode soft-places onto CPU by default, so the constraint is only
+    # enforced with soft device placement disabled (see #124880).
+    old_soft_placement = context.context().soft_device_placement
+    try:
+      context.context().soft_device_placement = False
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'Could not satisfy device specification'):
+        compute(x).numpy()
+    finally:
+      context.context().soft_device_placement = old_soft_placement
 
     # jit_compile=True should also fail (this is the fix for #124880)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
@@ -1299,10 +1305,16 @@ class FunctionTest(xla_test.XLATestCase):
 
     x = constant_op.constant([1.0, 2.0])
 
-    # Eager execution should fail
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                'Could not satisfy device specification'):
-      compute(x).numpy()
+    # Eager mode soft-places onto CPU by default, so the constraint is only
+    # enforced with soft device placement disabled (see #124880).
+    old_soft_placement = context.context().soft_device_placement
+    try:
+      context.context().soft_device_placement = False
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'Could not satisfy device specification'):
+        compute(x).numpy()
+    finally:
+      context.context().soft_device_placement = old_soft_placement
 
     # jit_compile=True should also fail
     with self.assertRaisesRegex(errors.InvalidArgumentError,
@@ -1344,10 +1356,16 @@ class FunctionTest(xla_test.XLATestCase):
       with ops.device('CPU:99'):
         return math_ops.add(x, x)
 
-    # A nonexistent local device ID must fail in both modes.
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                'Could not satisfy device specification'):
-      compute_invalid(x).numpy()
+    # A nonexistent local device ID must fail in both modes. Eager mode
+    # soft-places by default, so disable it for the eager assertion.
+    old_soft_placement = context.context().soft_device_placement
+    try:
+      context.context().soft_device_placement = False
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'Could not satisfy device specification'):
+        compute_invalid(x).numpy()
+    finally:
+      context.context().soft_device_placement = old_soft_placement
 
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 'Could not satisfy device specification'):

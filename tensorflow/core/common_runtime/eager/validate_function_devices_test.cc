@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -46,10 +47,6 @@ std::vector<DeviceAttributes> LocalCpuDevices() {
   attrs.set_name("/job:localhost/replica:0/task:0/device:CPU:0");
   attrs.set_device_type("CPU");
   return {attrs};
-}
-
-bool Contains(const absl::Status& status, const std::string& substring) {
-  return std::string(status.message()).find(substring) != std::string::npos;
 }
 
 }  // namespace
@@ -97,10 +94,14 @@ TEST(ValidateFunctionDevicesTest, UnsatisfiedJobFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/job:worker");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
-  EXPECT_TRUE(Contains(status, "/job:worker"));
-  EXPECT_TRUE(Contains(status, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::AllOf(
+                              ::testing::HasSubstr(
+                                  "Could not satisfy device specification"),
+                              ::testing::HasSubstr("/job:worker"),
+                              ::testing::HasSubstr("/job:localhost/replica:0/"
+                                                   "task:0/device:CPU:0"))));
 }
 
 TEST(ValidateFunctionDevicesTest, InvalidDeviceIdFails) {
@@ -109,8 +110,10 @@ TEST(ValidateFunctionDevicesTest, InvalidDeviceIdFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/device:CPU:99");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr(
+                              "Could not satisfy device specification")));
 }
 
 TEST(ValidateFunctionDevicesTest, InvalidDeviceTypeFails) {
@@ -118,40 +121,51 @@ TEST(ValidateFunctionDevicesTest, InvalidDeviceTypeFails) {
       MakeFunctionWithDevice("add", "AddV2", "/device:NONEXISTENT:0");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr(
+                              "Could not satisfy device specification")));
 }
 
 TEST(ValidateFunctionDevicesTest, LocalDeviceNameInvalidIdFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "CPU:99");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr(
+                              "Could not satisfy device specification")));
 }
 
 TEST(ValidateFunctionDevicesTest, MalformedDeviceSpecFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "not_a_device");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Malformed device specification"));
-  EXPECT_TRUE(Contains(status, "not_a_device"));
+  EXPECT_THAT(
+      status, ::tensorflow::testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  ::testing::AllOf(
+                      ::testing::HasSubstr("Malformed device specification"),
+                      ::testing::HasSubstr("not_a_device"))));
 }
 
 TEST(ValidateFunctionDevicesTest, ErrorMentionsOperation) {
   FunctionDef fdef = MakeFunctionWithDevice("my_add", "AddV2", "/job:worker");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(Contains(status, "my_add"));
-  EXPECT_TRUE(Contains(status, "AddV2"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::AllOf(::testing::HasSubstr("my_add"),
+                                           ::testing::HasSubstr("AddV2"))));
 }
 
 TEST(ValidateFunctionDevicesTest, EmptyAvailableDevicesRejectsConstraint) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/device:CPU:0");
   absl::Status status = ValidateFunctionDeviceConstraints(fdef, {});
-  EXPECT_TRUE(absl::IsInvalidArgument(status));
-  EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
+  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+                          absl::StatusCode::kInvalidArgument,
+                          ::testing::HasSubstr(
+                              "Could not satisfy device specification")));
 }
 
 }  // namespace tensorflow
