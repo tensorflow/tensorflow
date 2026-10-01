@@ -969,8 +969,10 @@ class Translator {
       mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherV1Op(
-      mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_GATHER from a VHLO GatherOpV1 or GatherOpV2.
+  template <typename GatherOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherOp(
+      GatherOpT gather_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -979,8 +981,10 @@ class Translator {
       const std::vector<int32_t>& operands, const std::vector<int32_t>& results,
       std::string op_name);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterV1Op(
-      mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_SCATTER from a VHLO ScatterOpV1 or ScatterOpV2.
+  template <typename ScatterOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterOp(
+      ScatterOpT scatter_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -2586,10 +2590,31 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
       tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
-    mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+// Returns true if `attr` is a VHLO tensor attribute with no elements, e.g. the
+// unused batching dims of a VHLO GatherOpV2 / ScatterOpV2.
+static bool IsEmptyVhloTensorAttr(
+    mlir::Attribute attr,
+    mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  return mlir::GetVector<int64_t>(mlir::cast<mlir::vhlo::TensorV1Attr>(attr),
+                                  vhlo_type_converter)
+      .empty();
+}
+
+template <typename GatherOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherOp(
+    GatherOpT gather_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<GatherOpT, mlir::vhlo::GatherOpV2>) {
+    if (!IsEmptyVhloTensorAttr(gather_op.getOperandBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(gather_op.getStartIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      gather_op.emitError(
+          "stablehlo.gather with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       gather_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2629,10 +2654,21 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
       GetOperatorDebugMetadataIndex(gather_op.getOperation()));
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterV1Op(
-    mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+template <typename ScatterOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterOp(
+    ScatterOpT scatter_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<ScatterOpT, mlir::vhlo::ScatterOpV2>) {
+    if (!IsEmptyVhloTensorAttr(scatter_op.getInputBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(scatter_op.getScatterIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      scatter_op.emitError(
+          "stablehlo.scatter with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       scatter_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2940,16 +2976,22 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV1>(inst)) {
-      return BuildVhloScatterV1Op(vhlo_op, operands, results,
-                                  vhlo_type_converter);
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV2>(inst)) {
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::RngBitGeneratorOpV1>(inst)) {
       return BuildVhloRngBitGeneratorV1Op(vhlo_op, operands, results,
                                           vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV1>(inst)) {
-      return BuildVhloGatherV1Op(vhlo_op, operands, results,
-                                 vhlo_type_converter);
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV2>(inst)) {
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AddOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(

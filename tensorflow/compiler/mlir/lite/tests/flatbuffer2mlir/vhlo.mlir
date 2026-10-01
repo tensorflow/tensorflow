@@ -566,6 +566,52 @@ func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
 // CHECK-NEXT:  return %0 : tensor<200x100x300xf32>
 // CHECK-NEXT: }
 
+func.func @gather_v2(%operand: tensor<3x4x2xi32>, %start_indices: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>{
+  %result = "vhlo.gather_v2"(%operand, %start_indices) <{
+    offset_dims = #vhlo.tensor_v1<dense<[2, 3]> : tensor<2xi64>>,
+    collapsed_slice_dims = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>,
+    operand_batching_dims = #vhlo.tensor_v1<dense<> : tensor<0xi64>>,
+    start_indices_batching_dims = #vhlo.tensor_v1<dense<> : tensor<0xi64>>,
+    start_index_map = #vhlo.tensor_v1<dense<[1, 0]> : tensor<2xi64>>,
+    index_vector_dim = #vhlo.integer_v1<2 : i64>,
+    slice_sizes = #vhlo.tensor_v1<dense<[1, 2, 2]> : tensor<3xi64>>,
+    indices_are_sorted = #vhlo.bool_v1<false>
+  }> : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+  return %result : tensor<2x3x2x2xi32>
+}
+
+// CHECK-LABEL: func.func private @gather_v2(%arg0: tensor<3x4x2xi32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32> {
+// CHECK-NEXT: %0 = "vhlo.gather_v1"(%arg0, %arg1) <{collapsed_slice_dims = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>, index_vector_dim = #vhlo.integer_v1<2 : i64>, indices_are_sorted = #vhlo.bool_v1<false>, offset_dims = #vhlo.tensor_v1<dense<[2, 3]> : tensor<2xi64>>, slice_sizes = #vhlo.tensor_v1<dense<[1, 2, 2]> : tensor<3xi64>>, start_index_map = #vhlo.tensor_v1<dense<[1, 0]> : tensor<2xi64>>}> : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+// CHECK-NEXT: return %0 : tensor<2x3x2x2xi32>
+// CHECK-NEXT:}
+
+func.func @scatter_v2(%input_tensor: tensor<200x100x300xf32>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+      tensor<200x100x300xf32> {
+  %0 = "vhlo.scatter_v2" (%input_tensor, %scatter_indices, %updates) <{
+    update_window_dims = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>,
+    inserted_window_dims = #vhlo.tensor_v1<dense<[0, 1]> : tensor<2xi64>>,
+    input_batching_dims = #vhlo.tensor_v1<dense<> : tensor<0xi64>>,
+    scatter_indices_batching_dims = #vhlo.tensor_v1<dense<> : tensor<0xi64>>,
+    scatter_dims_to_operand_dims = #vhlo.tensor_v1<dense<[0, 1]> : tensor<2xi64>>,
+    index_vector_dim = #vhlo.integer_v1<1 : i64>,
+    indices_are_sorted = #vhlo.bool_v1<true>,
+    unique_indices = #vhlo.bool_v1<true>}> ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    "vhlo.return_v1"(%lhs) : (tensor<f32>) -> ()
+  }): (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
+}
+
+// CHECK-LABEL: func.func private @scatter_v2(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>, %arg2: tensor<10x300xf32>) -> tensor<200x100x300xf32> {
+// CHECK-NEXT:  %0 = "vhlo.scatter_v1"(%arg0, %arg1, %arg2) <{index_vector_dim = #vhlo.integer_v1<1 : i64>, indices_are_sorted = #vhlo.bool_v1<true>, inserted_window_dims = #vhlo.tensor_v1<dense<[0, 1]> : tensor<2xi64>>, scatter_dims_to_operand_dims = #vhlo.tensor_v1<dense<[0, 1]> : tensor<2xi64>>, unique_indices = #vhlo.bool_v1<true>, update_window_dims = #vhlo.tensor_v1<dense<1> : tensor<1xi64>>}> ({
+// CHECK-NEXT:  ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+// CHECK-NEXT:     "vhlo.return_v1"(%arg3) : (tensor<f32>) -> ()
+// CHECK-NEXT:  }) : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK-NEXT:  return %0 : tensor<200x100x300xf32>
+// CHECK-NEXT: }
+
 // CHECK-LABEL: @shift_left
 func.func @shift_left(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
   %0 = "vhlo.shift_left_v1"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
