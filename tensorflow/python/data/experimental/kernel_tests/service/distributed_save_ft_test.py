@@ -253,7 +253,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         self._source_dir(snapshot_dir.full_path, stream_idx=0), "split_0_1"))
     write_file(os.path.join(
         self._source_dir(snapshot_dir.full_path, stream_idx=1), "split_0_1"))
-    with self.assertRaisesRegex(errors.InternalError, "worker is already assigned"):
+    with self.assertRaisesRegex(
+        errors.InternalError, "worker is already assigned"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
