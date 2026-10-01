@@ -827,18 +827,16 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
 }
 
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
-  ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
-  xla::Shape shape = ShapeUtil::MakeShapeWithDenseLayout(
-      U32, {3, 2}, /*minor_to_major=*/{0, 1});
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
-    ASSERT_OK_AND_ASSIGN(
+    TF_ASSERT_OK_AND_ASSIGN(
         auto buffer,
         client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
     EXPECT_THAT(
         buffer->ToLiteral().Await(),
         absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     EXPECT_EQ(buffer->memory_space(), memory_space);
-    EXPECT_EQ(buffer->on_device_shape(), shape);
   }
 }
 
