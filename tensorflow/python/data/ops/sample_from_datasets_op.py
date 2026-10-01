@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import directed_interleave_op
 from tensorflow.python.data.ops import map_op
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -43,29 +44,37 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
     return (zip(*datasets_and_weights) if datasets_and_weights else
             ([datasets[0].take(0)], [1.]))
 
-  def _empty_datasets_with_zero_weight(datasets, weights,
-                                       stop_on_empty_dataset):
+  def _empty_datasets_with_zero_weight(datasets, weights):
     # Weights only known at runtime can't drop datasets up front, so make
     # each dataset whose weight isn't positive empty instead, as list weights
     # would drop it. `take(-1)` keeps every element and `take(0)` none.
-    positive = weights > 0
-    take_counts = -math_ops.cast(positive, dtypes.int64)
-    datasets = [
+    take_counts = -math_ops.cast(weights > 0, dtypes.int64)
+    return [
         dataset.take(take_counts[i]) for i, dataset in enumerate(datasets)
     ]
-    # Return float64 logits, so that the ones for empty datasets neither
-    # underflow nor overflow. The multinomial kernel computes in float64
-    # anyway, so positive weights are sampled exactly as before. Non-positive
-    # weights are replaced first, so that no logit is infinite or NaN.
+
+  def _logits_with_zero_weight(weights, stop_on_empty_dataset):
+    # Logits for the datasets above, in float64 so that the ones for empty
+    # datasets neither underflow nor overflow. The multinomial kernel
+    # computes in float64 anyway, so positive weights are sampled exactly as
+    # before. Non-positive weights are replaced first, so that no logit is
+    # infinite or NaN.
+    def float64(value):
+      return constant_op.constant(value, dtype=dtypes.float64)
+
+    positive = weights > 0
+    one = constant_op.constant(1, dtype=weights.dtype)
     logits = math_ops.cast(
-        math_ops.log(array_ops.where_v2(positive, weights, 1.)),
+        math_ops.log(array_ops.where_v2(positive, weights, one)),
         dtypes.float64)
     weights = math_ops.cast(weights, dtypes.float64)
-    total = math_ops.reduce_sum(array_ops.where_v2(positive, weights, 0.))
+    total = math_ops.reduce_sum(
+        array_ops.where_v2(positive, weights, float64(0)))
+    has_positive = total > float64(0)
     if stop_on_empty_dataset:
       # Selecting an empty dataset would end sampling, so keep them
       # unselectable.
-      fill = np.float64(-np.inf)
+      fill = float64(-np.inf)
     else:
       # An unselectable dataset is never found empty, so sampling wouldn't
       # end once the others are exhausted. Give the empty datasets a tenth of
@@ -74,11 +83,11 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
       num_empty = math_ops.reduce_sum(
           math_ops.cast(math_ops.logical_not(positive), dtypes.float64))
       fill = math_ops.log(
-          array_ops.where_v2(total > 0, total, 1.) /
-          (9. * math_ops.maximum(num_empty, 1.)))
+          array_ops.where_v2(has_positive, total, float64(1)) /
+          (float64(9) * math_ops.maximum(num_empty, float64(1))))
     # With no positive weight every dataset is empty, so let any be selected.
-    fill = array_ops.where_v2(total > 0, fill, 0.)
-    return datasets, array_ops.where_v2(positive, logits, fill)
+    fill = array_ops.where_v2(has_positive, fill, float64(0))
+    return array_ops.where_v2(positive, logits, fill)
 
   if not datasets:
     raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
@@ -120,16 +129,17 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
             datasets, weights_value)
         weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
 
+      if weights_value is None:
+        datasets = _empty_datasets_with_zero_weight(datasets, weights)
+      # Return before building the logits, which a single dataset doesn't
+      # need.
+      if len(datasets) == 1:
+        return datasets[0]
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.
       if weights_value is None:
-        datasets, logits = _empty_datasets_with_zero_weight(
-            datasets, weights, stop_on_empty_dataset)
+        logits = _logits_with_zero_weight(weights, stop_on_empty_dataset)
       else:
-        # Return before building the logits, which a single dataset doesn't
-        # need.
-        if len(datasets) == 1:
-          return datasets[0]
         logits = math_ops.log(weights, name="logits")
       logits = array_ops.expand_dims(logits, 0)
 
