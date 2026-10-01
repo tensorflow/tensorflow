@@ -58,10 +58,10 @@ cuda_py_strict_test(
     srcs = ["summary_v1_audio_op_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:summary_ops_gen",
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/platform:client_testlib",
