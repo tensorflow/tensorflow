@@ -123,7 +123,8 @@ struct XentEigenImpl {
 
         const auto labels_broadcast = labels.broadcast(labels_bcast);
         const auto denominator = scratch.broadcast(one_by_class);
-        // Keep this lazy to avoid allocating another per-row temporary.
+        // Keep this lazy to avoid a CPU heap temporary and preserve GPU
+        // expression fusion in the final assignment.
         const auto cancellation_rows = scratch == scratch.constant(T(1));
         const auto rounded_dominant =
             cancellation_rows.broadcast(one_by_class) &&

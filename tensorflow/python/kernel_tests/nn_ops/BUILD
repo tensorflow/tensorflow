@@ -915,6 +915,7 @@ cuda_py_strict_test(
     deps = [
         ":xent_op_test_base",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",

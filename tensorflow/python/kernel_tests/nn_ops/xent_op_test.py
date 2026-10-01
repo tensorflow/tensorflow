@@ -20,6 +20,7 @@ import sys
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -67,6 +68,24 @@ class XentOpTest(xent_op_test_base.XentOpTestBase):
               else:
                 self.assertAllEqual(gradient[:, target_class],
                                     np.zeros(batch_size, dtype=dtype))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSmallGradientThroughPublicApi(self):
+    with ops.device("/CPU:0"):
+      for dtype in (dtypes.float32, dtypes.float64):
+        with self.subTest(dtype=dtype):
+          logits = constant_op.constant([[37.42994775023705, 0.0]], dtype)
+          labels = constant_op.constant([[1.0, 0.0]], dtype)
+          with backprop.GradientTape() as tape:
+            tape.watch(logits)
+            loss = nn_ops.softmax_cross_entropy_with_logits_v2(
+                labels=labels, logits=logits)
+          gradient = self.evaluate(tape.gradient(loss, logits))
+          tail = np.exp(-dtype.as_numpy_dtype(37.42994775023705))
+          dominant = -tail if dtype == dtypes.float64 else 0.0
+          self.assertAllClose(
+              [[dominant, tail]], gradient,
+              rtol=1e-14 if dtype == dtypes.float64 else 1e-6, atol=0.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testRejectsZeroClasses(self):
