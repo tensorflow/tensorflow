@@ -1317,12 +1317,12 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
 
         if (!c->RankKnown(c->output(1))) {
           return absl::InvalidArgumentError(
-              "Shape must be broadcasted with rank 2, but is rank is unknown.");
+              "Shape must be broadcasted with rank 2, but its rank is unknown.");
         }
 
         if (c->Rank(c->output(1)) != 2) {
           return absl::InvalidArgumentError(absl::StrCat(
-              "Shape must be broadcasted with rank 2, but is rank ",
+              "Shape must be broadcasted with rank 2, but its rank ",
               c->Rank(c->output(1))));
         }
         input = c->output(1);

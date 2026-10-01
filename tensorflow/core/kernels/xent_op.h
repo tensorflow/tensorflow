@@ -33,7 +33,7 @@ struct XentFunctor {
   //
   // logits: batch_size, num_classes.
   // labels: batch_size, num_classes.
-  // scratch: temporary tensor, dims: batch_size (twice for double), 1.
+  // scratch_storage: temporary tensor, dims: batch_size (twice for double), 1.
   // loss: output tensor for the loss, dims: batch_size.
   // backprop: output tensor for the backprop, dims: batch_size, num_classes.
   void operator()(const Device& d,
@@ -42,7 +42,7 @@ struct XentFunctor {
                   const Eigen::array<Eigen::DenseIndex, 2>& labels_bcast,
                   typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<T>::ConstMatrix labels,
-                  typename TTypes<T>::Matrix scratch,
+                  typename TTypes<T>::Matrix scratch_storage,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop);
 };
@@ -114,26 +114,24 @@ struct XentEigenImpl {
         T* tail_data = scratch_storage.data() + batch_size;
         typename TTypes<T>::UnalignedVec tail(tail_data, batch_size);
         backprop.device(d) = backprop.exp();
-        tail.device(d) = (backprop < backprop.constant(T(1)))
-                             .select(backprop, backprop.constant(T(0)))
-                             .sum(along_class);
-
-        // Normalize once per row before broadcasting across classes.
-        tail.device(d) = tail / scratch.reshape(batch_only);
+        tail.device(d) =
+            (backprop < backprop.constant(T(1)))
+                .select(backprop, backprop.constant(T(0)))
+                .sum(along_class) /
+            scratch.reshape(batch_only);
 
         const auto labels_broadcast = labels.broadcast(labels_bcast);
         const auto denominator = scratch.broadcast(one_by_class);
-        // Keep this lazy to avoid a CPU heap temporary and preserve GPU
-        // expression fusion in the final assignment.
-        const auto cancellation_rows = scratch == scratch.constant(T(1));
-        const auto rounded_dominant =
-            cancellation_rows.broadcast(one_by_class) &&
-            (backprop == backprop.constant(T(1)));
         const auto tail_ratio_bcast =
             tail.reshape(batch_by_one).broadcast(one_by_class);
+        // Keep this lazy to avoid dynamic heap allocations (malloc/free) on CPU
+        // and maintain GPU device execution compatibility via kernel fusion.
         backprop.device(d) =
             backprop / denominator - labels_broadcast -
-            rounded_dominant.template cast<T>() * tail_ratio_bcast;
+            ((scratch == scratch.constant(T(1))).broadcast(one_by_class) &&
+             (backprop == backprop.constant(T(1))))
+                    .template cast<T>() *
+                tail_ratio_bcast;
         return;
       }
     }
