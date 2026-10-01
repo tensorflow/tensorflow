@@ -109,7 +109,7 @@ template <typename R, typename F, typename... Args>
 struct is_invocable_r
     : std::is_constructible<
           std::function<R(Args...)>,
-          std::reference_wrapper<typename std::remove_reference<F>::type>> {};
+          std::reference_wrapper<std::remove_reference_t<F>>> {};
 
 }  // namespace tfw_internal
 
