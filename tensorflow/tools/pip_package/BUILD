@@ -270,12 +270,8 @@ py_binary(
 py_test(
     name = "build_pip_package_test",
     size = "small",
-    srcs = [
-        "build_pip_package.py",
-        "build_pip_package_test.py",
-    ],
-    main = "build_pip_package_test.py",
-    deps = ["//tensorflow/tools/pip_package/utils:py_utils"],
+    srcs = ["build_pip_package_test.py"],
+    deps = [":build_pip_package_py"],
 )
 
 collect_data_files(
