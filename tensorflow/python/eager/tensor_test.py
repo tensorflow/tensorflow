@@ -404,8 +404,9 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
     for dtype in (dtypes.int32, dtypes.int64, dtypes.uint64):
       error = RuntimeError if dtype == dtypes.uint64 else ValueError
-      for value in (InvalidInteger(1), [InvalidInteger(1)],
-                    [[InvalidInteger(1)]]):
+      # Scalars use NumPy's array conversion; sequences use ConvertScalar.
+      self.assertAllEqual(_create_tensor(InvalidInteger(1), dtype=dtype), 1)
+      for value in ([InvalidInteger(1)], [[InvalidInteger(1)]]):
         with self.subTest(dtype=dtype, value=value):
           with self.assertRaises(error):
             _create_tensor(value, dtype=dtype)
