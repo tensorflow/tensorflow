@@ -66,14 +66,8 @@ struct BufferedInputStreamWrapper {
 };
 
 template <typename F>
-decltype(auto) RunFileObjectMethod(absl::Mutex* mutex, bool release_gil,
-                                   F&& fn) {
-  if (release_gil) {
-    py::gil_scoped_release release;
-    absl::MutexLock lock(mutex);
-    return std::forward<F>(fn)();
-  }
-
+decltype(auto) RunFileObjectMethod(absl::Mutex* mutex, F&& fn) {
+  py::gil_scoped_release release;
   absl::MutexLock lock(mutex);
   return std::forward<F>(fn)();
 }
@@ -278,7 +272,7 @@ PYBIND11_MODULE(
                throw py::value_error("WritableFile is not initialized");
              }
              const auto status = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.file->Append(data); });
              tensorflow::MaybeRaiseRegisteredFromStatus(status);
            })
@@ -289,7 +283,7 @@ PYBIND11_MODULE(
              }
              int64_t pos = -1;
              const auto status = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.file->Tell(&pos); });
              tensorflow::MaybeRaiseRegisteredFromStatus(status);
              return pos;
@@ -300,7 +294,7 @@ PYBIND11_MODULE(
                throw py::value_error("WritableFile is not initialized");
              }
              const auto status = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.file->Flush(); });
              tensorflow::MaybeRaiseRegisteredFromStatus(status);
            })
@@ -309,7 +303,7 @@ PYBIND11_MODULE(
           throw py::value_error("WritableFile is not initialized");
         }
         const auto status = RunFileObjectMethod(
-            &self.mutex, /*release_gil=*/true,
+            &self.mutex,
             [&]() { return self.file->Close(); });
         tensorflow::MaybeRaiseRegisteredFromStatus(status);
       });
@@ -343,7 +337,7 @@ PYBIND11_MODULE(
              tensorflow::tstring result;
 
              const auto status = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.stream->ReadNBytes(bytes_to_read, &result); });
 
              if (!status.ok() && !absl::IsOutOfRange(status)) {
@@ -360,7 +354,7 @@ PYBIND11_MODULE(
              }
 
              auto output = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.stream->ReadLineAsString(); });
 
              return py::bytes(output);
@@ -372,7 +366,7 @@ PYBIND11_MODULE(
              }
 
              const auto status = RunFileObjectMethod(
-                 &self.mutex, /*release_gil=*/true,
+                 &self.mutex,
                  [&]() { return self.stream->Seek(pos); });
 
              tensorflow::MaybeRaiseRegisteredFromStatus(status);
@@ -383,7 +377,7 @@ PYBIND11_MODULE(
         }
 
         return RunFileObjectMethod(
-            &self.mutex, /*release_gil=*/true,
+            &self.mutex,
             [&]() { return self.stream->Tell(); });
       });
 }
