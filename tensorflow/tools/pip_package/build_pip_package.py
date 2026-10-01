@@ -460,7 +460,7 @@ def build_wheel(
   env["project_name"] = project_name
 
   if collab == "True":
-    env["collaborator_build"] = True
+    env["collaborator_build"] = "True"
 
   # Note: (Required for rules_python >= 1.7.0)
   # Modern rules_python no longer exports PYTHONPATH to subprocesses by default
