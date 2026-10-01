@@ -1096,10 +1096,12 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
       g.gradient(z, x, unconnected_gradients='nonsense')
 
-  @parameterized.parameters(
-      dtypes.float32, dtypes.float64, dtypes.bfloat16, dtypes.complex64)
+  @parameterized.product(
+      dtype=(dtypes.float16, dtypes.float32, dtypes.float64, dtypes.bfloat16,
+             dtypes.complex64),
+      shape=([2, 3], [0, 3]))
   @test_util.run_in_graph_and_eager_modes
-  def testUnconnectedGradientsVariableWithStringDtype(self, dtype):
+  def testUnconnectedGradientsVariableWithStringDtype(self, dtype, shape):
     class VariableWithStringDtype:
       _should_act_as_resource_variable = True
 
@@ -1125,7 +1127,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
 
     x = resource_variable_ops.ResourceVariable(
-        constant_op.constant(1., shape=[2, 3], dtype=dtype))
+        constant_op.constant(1., shape=shape, dtype=dtype))
     y = resource_variable_ops.ResourceVariable(
         constant_op.constant(3., dtype=dtype))
     self.evaluate([x.initializer, y.initializer])
@@ -1141,7 +1143,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         target, sources, unconnected_gradients='zero')
     for gradient in (zero_gradients[0], zero_gradients[1][0]):
       self.assertEqual(gradient.dtype, dtype)
-      self.assertAllEqual(self.evaluate(gradient), np.zeros([2, 3]))
+      self.assertAllEqual(self.evaluate(gradient), np.zeros(shape))
     self.assertAllEqual(self.evaluate(zero_gradients[1][1]), 6.)
     self.assertAllEqual(self.evaluate(zero_gradients[1][2]), 6.)
     for invalid_dtype in ('', 'invalid_dtype', 'float32\x00invalid'):
