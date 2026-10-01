@@ -356,7 +356,9 @@ void SetKernelEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
                                uint64_t start_time, uint64_t end_time) {
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::DriverCallback;
-  event.name = cbdata->symbolName ? cbdata->symbolName : cbdata->functionName;
+  event.name = cbdata->symbolName
+                   ? cbdata->symbolName
+                   : (cbdata->functionName ? cbdata->functionName : "");
   event.start_time_ns = start_time;
   event.end_time_ns = end_time;
   event.thread_id = Env::Default()->GetCurrentThreadId();
@@ -1536,6 +1538,7 @@ absl::Status CuptiTracer::PrepareSubscriberForSession(
   }
   if (!use_v2_subscriber) {
     if (subscribe_status == CUPTI_ERROR_NOT_SUPPORTED ||
+        subscribe_status == CUPTI_ERROR_NOT_COMPATIBLE ||
         subscribe_status == CUPTI_ERROR_UNKNOWN) {
       subscribe_status = cupti_interface_->Subscribe(
           &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
