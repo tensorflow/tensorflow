@@ -18,7 +18,10 @@ limitations under the License.
 namespace tensorflow {
 
 // floor_cpu applies the FTZ/DAZ subnormal correction for all CPU-registered
-// types: float, double (full SIMD), Eigen::half, and bfloat16 (scalar only).
+// types.  float uses scalar + SIMD (packetOp).  double, Eigen::half, and
+// bfloat16 use the scalar path only (PacketAccess = false): double lacks a
+// 256-bit integer packet on AVX1; half and bfloat16 lack a guaranteed
+// integer_packet on all platforms.
 // GPU registration uses functor::floor (Eigen's scalar_floor_op) directly;
 // GPU kernels do not run under CPU FTZ/DAZ settings and GPU packet types
 // have no integer_packet.

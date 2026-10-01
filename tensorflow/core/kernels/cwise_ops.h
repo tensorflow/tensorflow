@@ -935,15 +935,17 @@ struct functor_traits<igamma_op<Scalar>> {
 // because floor(NaN) is NaN, for which r == 0.0 is always false.
 // The canonical ordering predicate operator< is used throughout.
 //
-// Packet path (float32 and double): the correction runs entirely in the
-// integer domain via zero-cost bit-reinterpretation (preinterpret), which is
-// immune to FTZ/DAZ flushing.  Eigen::half and bfloat16 lack a guaranteed
-// integer_packet on all platforms, so their packet path is not overridden
-// (PacketAccess = false); the scalar correction is sufficient.
+// Packet path (float32 only): the correction runs entirely in the integer
+// domain via zero-cost bit-reinterpretation (preinterpret), which is immune
+// to FTZ/DAZ flushing.  double lacks a 256-bit integer packet on AVX1
+// (PacketAccess = false).  Eigen::half and bfloat16 lack a guaranteed
+// integer_packet on all platforms (PacketAccess = false); the scalar
+// correction is sufficient for those types.
 //
-// Shared packetOp helper for float32 and double.
-// sign-bit constant equals INT_MIN for both 32- and 64-bit integers because
-// two's complement places the sign bit at the MSB in all cases.
+// packetOp helper used by float32 only.
+// The IntMin parameter must be the INT32_MIN (0x80000000) sign-bit constant
+// for float32 Packet4f/Packet8f.  The helper is not used for double because
+// PacketAccess = false for scalar_cpu_floor_double_op.
 template <typename Packet, typename IntMin>
 EIGEN_STRONG_INLINE Packet
 cpu_floor_packet_correction(const Packet& x, const Packet& r,

@@ -259,7 +259,6 @@ cuda_py_strict_test(
     ],
     deps = [
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
