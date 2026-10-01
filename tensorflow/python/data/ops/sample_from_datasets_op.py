@@ -49,14 +49,17 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
     # each dataset whose weight isn't positive empty instead, as list weights
     # would drop it. `take(-1)` keeps every element and `take(0)` none.
     positive = weights > 0
+    take_counts = -math_ops.cast(positive, dtypes.int64)
     datasets = [
-        dataset.take(-math_ops.cast(positive[i], dtypes.int64))
-        for i, dataset in enumerate(datasets)
+        dataset.take(take_counts[i]) for i, dataset in enumerate(datasets)
     ]
     # Return float64 logits, so that the ones for empty datasets neither
     # underflow nor overflow. The multinomial kernel computes in float64
-    # anyway, so positive weights are sampled exactly as before.
-    logits = math_ops.cast(math_ops.log(weights), dtypes.float64)
+    # anyway, so positive weights are sampled exactly as before. Non-positive
+    # weights are replaced first, so that no logit is infinite or NaN.
+    logits = math_ops.cast(
+        math_ops.log(array_ops.where_v2(positive, weights, 1.)),
+        dtypes.float64)
     weights = math_ops.cast(weights, dtypes.float64)
     total = math_ops.reduce_sum(array_ops.where_v2(positive, weights, 0.))
     if stop_on_empty_dataset:
@@ -106,16 +109,16 @@ def _sample_from_datasets(datasets,  # pylint: disable=unused-private-name
           isinstance(weight, tensor.Tensor) for weight in weights):
         weights = np.asarray(weights)
       weights = ops.convert_to_tensor(weights, name="weights")
-      weights_value = tensor_util.constant_value(weights)
-      if weights_value is not None:
-        datasets, weights = _skip_datasets_with_zero_weight(
-            datasets, weights_value)
-        weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
       if weights.dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
                                dtypes.float64):
         raise TypeError(f"Invalid `weights`. `weights` type must be "
                         f"`tf.float16`, `tf.bfloat16`, `tf.float32` or "
                         f"`tf.float64` but is {weights.dtype}.")
+      weights_value = tensor_util.constant_value(weights)
+      if weights_value is not None:
+        datasets, weights = _skip_datasets_with_zero_weight(
+            datasets, weights_value)
+        weights = ops.convert_to_tensor(np.asarray(weights), name="weights")
 
       # The `stateless_multinomial()` op expects log-probabilities, as opposed
       # to weights.

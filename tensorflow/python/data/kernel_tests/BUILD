@@ -1101,6 +1101,7 @@ tf_py_strict_test(
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/debug/lib:check_numerics_callback",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
