@@ -113,7 +113,7 @@ class DecodeImageOpTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         self.evaluate(decode)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidJxlDimensions(self):
     # JXL header declaring xsize = 0x80000000, which does not fit in int.
     data = bytes.fromhex(
@@ -121,10 +121,8 @@ class DecodeImageOpTest(test.TestCase):
         "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
         "669b6c39b9c4f30734c4"
     )
-    decode = image_ops.decode_image(data)
-    with self.cached_session():
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        self.evaluate(decode)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(image_ops.decode_image(data))
 
 
 if __name__ == "__main__":
