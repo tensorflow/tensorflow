@@ -689,7 +689,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
     self.assertFalse(
         raise_thread.is_alive() or register_thread.is_alive(),
-        'Exception raising/registration threads deadlocked or exceeded timeout.',
+        'Exception raising/registration threads deadlocked or exceeded '
+        'timeout.',
     )
     self.assertFalse(
         init_timed_out.is_set(),
