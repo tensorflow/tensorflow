@@ -751,6 +751,19 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   return CodegenDecision::Allow();
 }
 
+bool IsWithinGemmFusion(const HloInstruction& instr) {
+  const HloComputation* computation = instr.parent();
+  if (computation == nullptr || !computation->IsFusionComputation()) {
+    return false;
+  }
+  const HloInstruction* fusion = computation->FusionInstruction();
+  if (fusion == nullptr) {
+    return false;
+  }
+  return IsGpuFusionKind(*fusion, kTritonGemmFusionKind) ||
+         IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
+}
+
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
@@ -807,8 +820,14 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
-  // padding. "Interior" and "low" padding are not supported.
+  // padding within GEMM fusions. "Interior" and "low" padding are not
+  // supported.
   if (instr.opcode() == HloOpcode::kPad) {
+    // TODO(b/568080363): Support pads outside of GEMM fusions.
+    if (!IsWithinGemmFusion(instr)) {
+      return CodegenDecision::Forbid(
+          "Pads are only supported within GEMM fusions.");
+    }
     auto pad = Cast<HloPadInstruction>(&instr);
     bool no_op = true;
     for (const auto& dim_config : pad->padding_config().dimensions()) {
