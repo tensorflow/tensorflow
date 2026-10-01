@@ -64,6 +64,10 @@ toc:
     path: /xla/persisted_autotuning
   - title: Determinism (GPU)
     path: /xla/determinism
+  - title: GPU AOT compilation
+    path: /xla/gpu_aot
+  - title: GPU AOT compatibility
+    path: /xla/gpu_aot_compatibility
   # TPU backend sub-section
   - heading: TPU backend
   - title: Sparsecore (embeddings)
