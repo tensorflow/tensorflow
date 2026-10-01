@@ -63,6 +63,23 @@ TEST(JxlIoTest, DecodeHeader) {
   EXPECT_EQ(width, 128);
 }
 
+TEST(JxlIoTest, DecodeHeaderInvalidDimensions) {
+  // JXL header declaring xsize = 0x80000000, which does not fit in int.
+  const std::string hex_data =
+      "ff0afeffffff7f980208c400b19f200000152aa38c1bbc9ceb3232f24387c5b48"
+      "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
+      "669b6c39b9c4f30734c4";
+  std::string data;
+  data.reserve(hex_data.size() / 2);
+  for (size_t i = 0; i < hex_data.size(); i += 2) {
+    uint8_t byte = static_cast<uint8_t>(
+        std::stoul(hex_data.substr(i, 2), nullptr, 16));
+    data.push_back(static_cast<char>(byte));
+  }
+  int width = 0, height = 0, channels = 0;
+  EXPECT_FALSE(DecodeHeader(data, &width, &height, &channels));
+}
+
 TEST(JxlIoTest, DecodeImageUint8) {
   std::string jxl_data = ReadTestFile("random_128x96_rbg_q100.jxl");
   int width = 0, height = 0, channels = 0;
