@@ -47,6 +47,25 @@ def _ResizeNearestNeighborGrad(op: ops.Operation, grad):
   return [grads, None]
 
 
+@ops.RegisterGradient("ResizeNearestNeighborGrad")
+def _ResizeNearestNeighborGradGrad(op: ops.Operation, grad):
+  """The transpose of the nearest neighbor resize gradient is a resize."""
+  image = op.inputs[0]
+  if image.get_shape()[1:3].is_fully_defined():
+    image_shape = image.get_shape()[1:3]
+  else:
+    image_shape = array_ops.shape(image)[1:3]
+  return [
+      gen_image_ops.resize_nearest_neighbor(
+          grad,
+          image_shape,
+          align_corners=op.get_attr("align_corners"),
+          half_pixel_centers=op.get_attr("half_pixel_centers"),
+      ),
+      None,
+  ]
+
+
 @ops.RegisterGradient("AdjustContrastv2")
 def _AdjustContrastGrad(op: ops.Operation, grad):
   """The derivatives for `tf.image.adjust_contrast`.
