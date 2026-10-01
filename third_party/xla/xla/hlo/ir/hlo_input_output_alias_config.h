@@ -100,6 +100,9 @@ class HloInputOutputAliasConfig {
   // Checks whether the provided output index has already been aliased.
   bool OutputHasAlias(const ShapeIndex& output_index) const;
 
+  // Checks whether any output index has been aliased.
+  bool OutputHasAnyAlias() const;
+
   // (De)Serializes an HloInputOutputAliasConfig to/from an
   // HloInputOutputAliasProto.
   HloInputOutputAliasProto ToProto() const;
