@@ -20,6 +20,7 @@ limitations under the License.
 // TF op layer, to catch memory-safety issues (OOM, buffer overflow, etc.)
 // in the giflib wrapper code.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
