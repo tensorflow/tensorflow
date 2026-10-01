@@ -297,6 +297,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + MKL_DEPS,
 )

@@ -25,6 +25,9 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/mkl/mkl_conv_ops.h"
@@ -347,7 +350,7 @@ class MklConvCustomBackpropInputOp
       OP_REQUIRES(context,
                   diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
                   absl::InvalidArgumentError(
-                      absl::StrCat("input_sizes must be 4 or 5-dimensional, "
+                      absl::StrCat("out_backprop must be 4 or 5-dimensional, "
                                    "got: ",
                                    diff_dst_tensor.dims())));
 
@@ -369,11 +372,11 @@ class MklConvCustomBackpropInputOp
       // MakeInputTfShape unchecked and could build a shape of the wrong rank.
       // IsVector is checked first because dim_size(0) is not defined on a
       // rank-0 tensor.
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(src_tensor.shape()),
-                  absl::InvalidArgumentError(absl::StrCat(
-                      this->type_string(),
-                      ": input_sizes input must be 1-dim, not ",
-                      src_tensor.dims())));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsVector(src_tensor.shape()),
+          absl::InvalidArgumentError(absl::StrCat(
+              this->type_string(), ": input_sizes input must be 1-dim, not ",
+              src_tensor.dims())));
       const int dst_dims = diff_dst_tensor.dims();
       const bool dst_is_4d = (dst_dims == 4);
       OP_REQUIRES(
