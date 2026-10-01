@@ -107,7 +107,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -234,12 +233,6 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   // compiling XLA executables concurrently (e.g. during auto-tuning).
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       mlir::MLIRContext::Threading::DISABLED);
-  // Constructing MLIRContext with Threading::DISABLED does not disable
-  // threading on affineUniquer (which is default-constructed with threading
-  // enabled). Explicitly calling disableMultithreading() disables locking on
-  // affineUniquer as well.
-  mlir_context->disableMultithreading();
-  RegisterSymbolicExprStorage(mlir_context.get());
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
   return mlir_context;
 }
@@ -282,9 +275,7 @@ MlirKernelEmitter::MaybeSplitGridDimensionX(uint64_t num_threads_x,
     dimx = (num_blocks_x + dimy - 1) >> nzeros;
     if (dimx <= limit.x) {
       // We have an extra requirement on ROCM to check
-      if (!is_rocm || dimx * num_threads_x <= rocm_limit) {
-        break;
-      }
+      if (!is_rocm || dimx * num_threads_x <= rocm_limit) break;
     }
   }
   VLOG(1) << num_blocks_x << " splitting as: " << dimx << "x" << dimy

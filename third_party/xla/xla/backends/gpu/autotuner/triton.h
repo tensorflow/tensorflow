@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -43,11 +42,11 @@ class TritonBackend : public GpuCodegenBackend {
   explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
                          const Compiler::GpuTargetConfig* target_config,
                          const AliasInfo* alias_info,
-                         MlirContextPool* absl_nonnull mlir_context_pool)
+                         mlir::MLIRContext* mlir_context)
       : GpuCodegenBackend(autotuner::Backend::TRITON, debug_options, compiler,
                           target_config),
         alias_info_(alias_info),
-        mlir_context_pool_(mlir_context_pool) {}
+        mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -84,7 +83,7 @@ class TritonBackend : public GpuCodegenBackend {
       const Compiler::CompileOptions& options) override;
 
   const AliasInfo* alias_info_;
-  MlirContextPool* absl_nonnull mlir_context_pool_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

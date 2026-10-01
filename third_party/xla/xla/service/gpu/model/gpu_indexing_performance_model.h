@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/mlir_context_pool.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -46,6 +46,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using MlirContextPool = ObjectPool<std::unique_ptr<mlir::MLIRContext>>;
 
 // Contains informations about block level parameters and run time of a fusion.
 struct TiledRunTimeData {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,9 +40,8 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/mlir_context_pool.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -55,6 +55,7 @@ namespace {
 using ::mlir::MLIRContext;
 using DType = GemmRewriterOptions::DType;
 
+constexpr std::array kFp8OnlyDTypes = {DType::kFp8Only};
 constexpr std::array kAllDTypes = {DType::kFp8Only, DType::kNonFp8Only};
 
 std::unique_ptr<HloPassPipeline> GetGemmRewriterPipeline(
@@ -88,7 +89,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     tsl::thread::ThreadPool* thread_pool, MlirContextPool* mlir_context_pool) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, alias_info, mlir_context_pool));
+      debug_options, compiler, target_config, alias_info, mlir_context));
   backends.push_back(
       std::make_unique<MIOpenBackend>(stream_executor, debug_options, compiler,
                                       target_config, device_allocator));
@@ -100,7 +101,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
                                          compiler, target_config),
       GetGemmRewriterPipeline(target_config->device_description,
                               absl::Span<const DType>(kAllDTypes)),
-      alias_info, mlir_context_pool));
+      alias_info, mlir_context));
   backends.push_back(std::make_unique<NativeEmitterBackend>(
       debug_options, compiler, target_config));
   backends.push_back(std::make_unique<BlockLevelEmitterBackend>(

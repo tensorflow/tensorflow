@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/hipblaslt.h"
 #endif
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
@@ -52,7 +51,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -273,7 +271,6 @@ class FissionTest : public HloHardwareIndependentTestBase,
   Compiler::GpuTargetConfig target_config_;
   se::DeviceDescription device_description_;
   mlir::MLIRContext mlir_context_;
-  MlirContextPool mlir_context_pool_{CreateMlirContext};
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
   GpuAliasInfo alias_info_;
@@ -293,7 +290,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, compiler_.get(), &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &alias_info_, &mlir_context_pool_, stream_executor_)) {}
+            &alias_info_, &mlir_context_, stream_executor_)) {}
 };
 
 TEST_P(FissionTest, CanCreateFissionBackend) {
@@ -378,7 +375,7 @@ TEST_P(FissionTest, GetSupportedConfigsWithNullStreamExecutor) {
   FissionBackend fission_backend_without_stream_executor(
       &debug_options_, compiler_.get(), &target_config_,
       std::move(backend_without_stream_executor), std::move(rewriter_pipeline),
-      &alias_info_, &mlir_context_pool_);
+      &alias_info_, &mlir_context_);
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(GetParam().hlo_string));
@@ -491,7 +488,6 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
   Compiler::GpuTargetConfig target_config_;
   se::DeviceDescription device_description_;
   mlir::MLIRContext mlir_context_;
-  MlirContextPool mlir_context_pool_{CreateMlirContext};
   GpuAliasInfo alias_info_;
   std::unique_ptr<FissionBackend> fission_backend_;
 
@@ -508,7 +504,7 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
                                   compiler_.get(), &target_config_,
                                   &mlir_context_),
             GetCublasRewriterPipeline(device_description_), &alias_info_,
-            &mlir_context_pool_, stream_executor_)) {}
+            &mlir_context_, stream_executor_)) {}
 
   absl::StatusOr<absl::Duration> GetFirstEstimate(
       absl::string_view hlo_string) {

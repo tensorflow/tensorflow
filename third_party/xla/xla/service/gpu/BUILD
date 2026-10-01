@@ -1702,7 +1702,6 @@ cc_library(
     hdrs = ["fusion_pipeline.h"],
     deps = [
         ":alias_info",
-        ":mlir_context_pool",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:conv_canonicalizer",
@@ -3935,31 +3934,5 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "mlir_context_pool",
-    srcs = ["mlir_context_pool.cc"],
-    hdrs = ["mlir_context_pool.h"],
-    deps = [
-        "//xla/runtime:object_pool",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "mlir_context_pool_test",
-    srcs = ["mlir_context_pool_test.cc"],
-    deps = [
-        ":mlir_context_pool",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )

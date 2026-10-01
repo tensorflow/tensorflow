@@ -62,9 +62,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/decision.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -687,11 +687,14 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EvaluateCandidate(
     absl::FunctionRef<int64_t(const HloInstruction*)> flops_fn) {
   // Cloning is faster than calling TilingSpace::Create() for each tiling
   // candidate.
-  ABSL_ASSIGN_OR_RETURN(
-      PooledOrFallbackMlirContext context,
-      BorrowMlirContextOr(mlir_context_pool, base_tiling_space.mlir_context()));
+  std::optional<MlirContextPool::BorrowedObject> borrowed_context;
+  mlir::MLIRContext* target_context = nullptr;
+  if (mlir_context_pool != nullptr) {
+    ABSL_ASSIGN_OR_RETURN(borrowed_context, mlir_context_pool->GetOrCreate());
+    target_context = (*borrowed_context)->get();
+  }
   std::unique_ptr<experimental::TilingSpace> tiling_space =
-      base_tiling_space.Clone(context.get());
+      base_tiling_space.Clone(target_context);
   ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(padded_tile_sizes));
   VLOG(3) << "Trying tile sizes " << absl::StrJoin(padded_tile_sizes, ",");
 
@@ -738,27 +741,17 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
       << "Concurrent tiling evaluation requires either an MlirContextPool or "
          "an MLIRContext with multithreading enabled.";
 
-  // When a context pool is provided, borrow a context for the base TilingSpace
-  // as well, since this function may be called concurrently with the same
-  // single-threaded `mlir_context`. Candidates clone from the base TilingSpace
-  // asynchronously, so the context stays borrowed until the last candidate
-  // releases `base`.
-  struct BaseTilingSpace {
-    PooledOrFallbackMlirContext context;
-    std::unique_ptr<experimental::TilingSpace> tiling_space;
-  };
-  ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
-                   BorrowMlirContextOr(mlir_context_pool, mlir_context));
-  auto base = std::make_shared<BaseTilingSpace>(
-      BaseTilingSpace{std::move(context), nullptr});
   ABSL_ASSIGN_OR_RETURN(
-      base->tiling_space,
-      experimental::TilingSpace::Create(fusion_adaptor, base->context.get()));
+      std::unique_ptr<experimental::TilingSpace> base_tiling_space_unique,
+      experimental::TilingSpace::Create(fusion_adaptor, mlir_context));
 
-  ABSL_ASSIGN_OR_RETURN(auto tilings, base->tiling_space->GetValidTilings());
+  ABSL_ASSIGN_OR_RETURN(auto tilings, base_tiling_space_unique->GetValidTilings());
   VLOG(1) << absl::StrCat(
       "TryFindTopKBestTilingsForFusionAsync tiling_space evaluating ",
       tilings.size(), " tilings.");
+
+  std::shared_ptr<const experimental::TilingSpace> base_tiling_space =
+      std::move(base_tiling_space_unique);
 
   std::vector<tsl::Future<std::optional<TiledRunTimeData>>> candidate_futures;
   candidate_futures.reserve(tilings.size());
@@ -770,7 +763,7 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
 
     // Early pruning invalid candidates as an optimization.
     if (Decision decision = experimental::VerifySubsetOfTritonConstraints(
-            padded_tile_sizes, *base->tiling_space, device_info);
+            padded_tile_sizes, *base_tiling_space, device_info);
         !decision) {
       VLOG(3) << "Pre-filtering candidate violating Triton constraints: "
               << absl::StrJoin(padded_tile_sizes, ",") << ": "
@@ -778,7 +771,7 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
       continue;
     }
 
-    if (!DoesTilingFitInRegisters(fusion_adaptor, *base->tiling_space,
+    if (!DoesTilingFitInRegisters(fusion_adaptor, *base_tiling_space,
                                   padded_tile_sizes, device_info)) {
       VLOG(3) << "Pre-filtering candidate exceeding register limit: "
               << absl::StrJoin(padded_tile_sizes, ",");
@@ -786,10 +779,11 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
     }
 
     candidate_futures.push_back(tsl::MakeFutureOn(
-        *executor, [base, &fusion_adaptor, device_info = &device_info,
-                    shape_size, flops_fn, mlir_context_pool,
-                    padded_tile_sizes = std::move(padded_tile_sizes)]() {
-          return EvaluateCandidate(fusion_adaptor, *base->tiling_space,
+        *executor,
+        [base_space = base_tiling_space, &fusion_adaptor,
+         device_info = &device_info, shape_size, flops_fn, mlir_context_pool,
+         padded_tile_sizes = std::move(padded_tile_sizes)]() {
+          return EvaluateCandidate(fusion_adaptor, *base_space,
                                    padded_tile_sizes, mlir_context_pool,
                                    *device_info, shape_size, flops_fn);
         }));
@@ -963,11 +957,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const BlockLevelParameters& block_level_parameters) {
   if (use_experimental_tiling_) {
-    ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
-                     BorrowMlirContextOr(mlir_context_pool_, mlir_context_));
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<experimental::TilingSpace> tiling_space,
-        experimental::TilingSpace::Create(fusion_adaptor, context.get()));
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_));
 
     ABSL_ASSIGN_OR_RETURN(
         llvm::SmallVector<int64_t> tile_sizes,

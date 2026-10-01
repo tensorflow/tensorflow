@@ -28,12 +28,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
@@ -114,13 +112,12 @@ TEST_P(FactoryTest, GetCodegenBackends) {
     mlir::MLIRContext mlir_context;
     AliasInfo alias_info;
     xla::RegisterSymbolicExprStorage(&mlir_context);
-    MlirContextPool mlir_context_pool(CreateMlirContext);
     std::vector<std::unique_ptr<CodegenBackend>> backends =
         get_codegen_backends(
             stream_executor_, &allocator_, &debug_options_, compiler_.get(),
             &target_config_, &alias_info, &mlir_context,
             /*shape_size_fn=*/[](const Shape&) { return 0; }, GetParam().names,
-            /*thread_pool=*/nullptr, &mlir_context_pool);
+            /*thread_pool=*/nullptr, /*mlir_context_pool=*/nullptr);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();

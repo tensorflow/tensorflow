@@ -21,13 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -64,15 +63,14 @@ class FissionBackend : public GpuCodegenBackend {
                  const Compiler::GpuTargetConfig* target_config,
                  std::unique_ptr<GpuCodegenBackend> backend,
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
-                 const AliasInfo* alias_info,
-                 MlirContextPool* absl_nonnull mlir_context_pool,
+                 const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,
                  stream_executor::StreamExecutor* stream_executor = nullptr)
       : GpuCodegenBackend(GetFissionBackend(backend->backend()), debug_options,
                           compiler, target_config, stream_executor),
         rewriter_pipeline_(std::move(rewriter_pipeline)),
         codegen_backend_(std::move(backend)),
         alias_info_(alias_info),
-        mlir_context_pool_(mlir_context_pool) {}
+        mlir_context_(mlir_context) {}
   ~FissionBackend() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -122,7 +120,7 @@ class FissionBackend : public GpuCodegenBackend {
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;
   const AliasInfo* alias_info_;
-  MlirContextPool* absl_nonnull mlir_context_pool_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace xla::gpu
