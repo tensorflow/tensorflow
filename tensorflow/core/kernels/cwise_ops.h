@@ -993,15 +993,20 @@ struct functor_traits<scalar_cpu_floor_float_op> {
     // and x_bits against the sign-bit mask) and one pandnot to combine them.
     Cost = functor_traits<scalar_floor_op<float>>::Cost +
            3 * NumTraits<float>::AddCost,
-    // packetOp uses pfloor (HasRound) and pcmp_eq/pandnot (HasCmp).
+    // Use bitwise & (not logical &&): logical && triggers
+    // -Wconstant-logical-operand in Clang when operands are enum constants.
     PacketAccess =
-        packet_traits<float>::HasRound && packet_traits<float>::HasCmp,
+        packet_traits<float>::HasRound & packet_traits<float>::HasCmp,
   };
 };
 
 // Functor for tf.math.floor on double on CPU.
 // Note: TensorFlow-only FTZ/DAZ workaround; see scalar_cpu_floor_float_op.
-// Integer packet type for double: Packet2l (SSE) / Packet4l (AVX), 64-bit.
+// Scalar path only: on AVX1, Packet4d is 256-bit but there is no 256-bit
+// integer packet, so unpacket_traits<Packet4d>::integer_packet degrades to
+// scalar int (32-bit).  Calling preinterpret in cpu_floor_packet_correction
+// would then fail the sizeof(_ToType)==sizeof(_FromType) assertion in
+// bit_cast.  PacketAccess = false ensures the scalar path is always used.
 struct scalar_cpu_floor_double_op {
   EIGEN_STRONG_INLINE double operator()(const double& x) const {
     const double r = numext::floor(x);
@@ -1009,24 +1014,17 @@ struct scalar_cpu_floor_double_op {
                ? -1.0
                : r;
   }
-
-  template <typename Packet>
-  EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    const Packet r = pfloor(x);
-    return cpu_floor_packet_correction(x, r,
-                                       std::numeric_limits<int64_t>::min());
-  }
 };
 
 template <>
 struct functor_traits<scalar_cpu_floor_double_op> {
   enum {
-    // Base pfloor cost plus three extra packet ops (two pcmp_eq, one pandnot).
     Cost = functor_traits<scalar_floor_op<double>>::Cost +
            3 * NumTraits<double>::AddCost,
-    // packetOp uses pfloor (HasRound) and pcmp_eq/pandnot (HasCmp).
-    PacketAccess =
-        packet_traits<double>::HasRound && packet_traits<double>::HasCmp,
+    // PacketAccess is disabled for double: unpacket_traits<Packet4d>
+    // ::integer_packet is scalar int on AVX1, which causes preinterpret to
+    // fail size assertions in cpu_floor_packet_correction.
+    PacketAccess = false,
   };
 };
 

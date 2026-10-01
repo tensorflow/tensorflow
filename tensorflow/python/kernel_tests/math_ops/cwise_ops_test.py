@@ -1175,6 +1175,11 @@ class RoundingTest(test.TestCase):
           self.assertAllEqual(
               np.full_like(neg_sub64, -1.0),
               self.evaluate(math_ops.floor(neg_sub64)))
+          # 2D batched input exercises sharding logic.
+          self.assertAllEqual(
+              np.tile(np.full_like(neg_sub64, -1.0), (4, 1)),
+              self.evaluate(
+                  math_ops.floor(np.tile(neg_sub64, (4, 1)))))
           # Positive subnormals -> +0.0 (sign bit clear).
           pos_sub64 = np.array([5e-324, 1e-310], dtype=np.float64)
           out_ps = self.evaluate(math_ops.floor(pos_sub64))
@@ -1212,7 +1217,7 @@ class RoundingTest(test.TestCase):
             self.assertEqual(
                 -1.0,
                 self.evaluate(math_ops.floor(
-                    constant_op.constant(scalar_val))))
+                    constant_op.constant(scalar_val, dtype=dtype))))
             # Negative subnormals -> -1.0.
             neg_sub = bits_neg_sub(
                 np.array([0x8001, 0x8002, 0x8003], dtype=np.uint16)
@@ -1220,6 +1225,11 @@ class RoundingTest(test.TestCase):
             out_sub = self.evaluate(math_ops.floor(neg_sub))
             self.assertAllEqual(
                 np.full(len(neg_sub), -1.0, dtype=dtype), out_sub)
+            # 2D batched input exercises sharding logic.
+            self.assertAllEqual(
+                np.tile(np.full(len(neg_sub), -1.0, dtype=dtype), (4, 1)),
+                self.evaluate(
+                    math_ops.floor(np.tile(neg_sub, (4, 1)))))
             # Positive subnormals -> +0.0 (sign bit clear).
             pos_sub = bits_neg_sub(
                 np.array([0x0001, 0x0002], dtype=np.uint16)
