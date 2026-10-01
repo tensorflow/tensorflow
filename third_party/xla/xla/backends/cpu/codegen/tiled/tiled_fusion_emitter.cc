@@ -446,28 +446,21 @@ absl::StatusOr<ge::TiledHloComputation> GetTiledHloComputation(
 
   // 2. Evaluate all candidates by substituting concrete tile sizes into the
   // symbolic tiles of roots and operands.
-  bool use_new_xtile_lowering = fusion.GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_cpu_use_new_xtile_lowering();
-  TargetMachineOptions target_machine_options(
-      fusion.GetModule()->config().debug_options());
+  const DebugOptions& debug_options =
+      fusion.GetModule()->config().debug_options();
+  bool use_new_xtile_lowering = debug_options.xla_cpu_use_new_xtile_lowering();
+  TargetMachineOptions target_machine_options(debug_options);
   bool has_avx512 = absl::c_any_of(
       target_machine_options.enabled_features(), [](absl::string_view feature) {
         return absl::StrContains(feature, "avx512");
       });
-  int64_t max_bit_width = 8;
-  for (const HloInstruction* instr :
-       fusion.fused_instructions_computation()->instructions()) {
-    ShapeUtil::ForEachSubshape(instr->shape(), [&](const Shape& subshape,
-                                                   const ShapeIndex& index) {
-      if (subshape.IsArray()) {
-        max_bit_width = std::max<int64_t>(
-            max_bit_width, primitive_util::BitWidth(subshape.element_type()));
-      }
-    });
+  int64_t prefer_vector_width = debug_options.xla_cpu_prefer_vector_width();
+  if (prefer_vector_width <= 0) {
+    prefer_vector_width = 256;
   }
-  int64_t max_vector_tile_size = (has_avx512 ? 512 : 256) / max_bit_width;
+  int64_t vector_width =
+      std::min<int64_t>(prefer_vector_width, has_avx512 ? 512 : 256);
+  int64_t max_vector_tile_size = vector_width / 32;
 
   struct Candidate {
     SmallVector<int64_t, 4> padded_tile_sizes;

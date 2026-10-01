@@ -926,6 +926,13 @@ TEST_F(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
     params.debug_options = debug_options;
 
     params.module_name = "test_module";
+    // Command buffers require CUDA 12.3.
+    se::DeviceDescription device_description;
+    device_description.set_gpu_compute_capability(
+        se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
+    device_description.set_driver_version({12, 3, 0});
+    device_description.set_runtime_version({12, 3, 0});
+    params.device_description = device_description;
     SetDummyBufferAssignment(params);
     return GpuExecutable::Create(std::move(params));
   };

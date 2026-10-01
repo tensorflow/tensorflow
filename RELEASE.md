@@ -1,3 +1,36 @@
+# Release 2.23.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+*   <BREAKING CHANGES GO HERE>
+
+### Known Caveats
+
+*   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+
+### Major Features and Improvements
+
+* `tf.lite`
+    * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+
+### Bug Fixes and Other Changes
+
+*   `tf.linalg.band_part`: `num_lower` and `num_upper` values that exceed the
+    number of rows or columns of the input are now clamped to the matrix
+    dimensions instead of raising an `InvalidArgumentError`. This matches the
+    documented definition of the op and the behavior of the XLA lowering used by
+    `tf.function(jit_compile=True)`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.22.0
 
 ## TensorFlow
@@ -3529,7 +3562,7 @@ This release introduces several vulnerability fixes:
     *   Add `keepdims` argument to all `GlobalPooling` layers.
     *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
         control the inclusion of `Rescaling` layer in the model.
-    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion`
+    *   Add optional argument (`force`) to `make_(train|test|predict)_function`
         methods to skip the cached function and generate a new one. This is
         useful to regenerate in a single call the compiled training function
         when any `.trainable` attribute of any model's layer has changed.

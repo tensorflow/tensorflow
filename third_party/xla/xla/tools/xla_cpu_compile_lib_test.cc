@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/ir/hlo_module.h"

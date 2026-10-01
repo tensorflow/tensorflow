@@ -93,6 +93,8 @@ message DebugOptions {
     CUBLASLT = 8;
     DYNAMIC_SLICE_FUSION = 9;
     CONVOLUTION = 11;
+    HOST_EXECUTE = 12;
+    COLLECTIVES_KERNEL = 13;
 
     reserved "DYNAMIC_SLICE_COPY_FUSION";
     reserved 10;
@@ -105,6 +107,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_INVALID = 0;
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
+    COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
   }
 
   enum LibNvJitLinkMode {
@@ -339,6 +342,9 @@ message DebugOptions {
   // the flag for more flexible control if necessary.
   optional string xla_cpu_max_isa = 333;
 
+  // Replace custom calls with noop operations on CPU.
+  optional bool xla_cpu_mock_custom_calls = 548;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
@@ -521,6 +527,13 @@ message DebugOptions {
     reserved 2;
   }
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point.
+  enum EarlyExitPoint {
+    EARLY_EXIT_POINT_UNSET = 0;
+    EARLY_EXIT_POINT_AFTER_CONFIG_ASSIGNMENT = 1;
+  }
+
   // Filter which allows enabling NCCL symmetric buffers for a subset of
   // collectives based on their type and size.
   message CollectiveFilter {
@@ -555,6 +568,12 @@ message DebugOptions {
   // fusion autuning pass, and are not affected by this flag, use
   // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
   repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
+
+  // Preferred autotuner backend. If set and the preferred backend generates
+  // valid configs for an instruction, the autotuner will pick a config from
+  // this backend even if another backend is faster. If no valid config from the
+  // preferred backend is available, the autotuner falls back to other backends.
+  optional autotuner.Backend xla_autotuner_preferred_backend = 547;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
@@ -975,6 +994,13 @@ message DebugOptions {
   // offsets match actual XLA-computed DS/DUS offsets. For debugging only.
   optional bool xla_gpu_experimental_dynamic_slice_fusion_verify_offsets = 484;
 
+  // Enables DynamicSliceAnnotator to represent non-linear DS/DUS offsets as a
+  // table with one entry per loop iteration.
+  //
+  // TODO(ezhulenev): Remove this flag and always enable table offsets two weeks
+  // after the runtime support has landed (GPU compatibility window).
+  optional bool xla_gpu_experimental_enable_dynamic_slice_table_offsets = 552;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
@@ -1014,6 +1040,13 @@ message DebugOptions {
 
   // Enable NCCL symmetric buffers.
   optional bool xla_gpu_experimental_enable_nccl_symmetric_buffers = 406;
+
+  // If true, XLA:GPU emits a CollectiveReduceThunk for kCollectiveReduce HLO
+  // instructions. This is guarded behind a flag to preserve the 2-week
+  // forward compatibility window between the compiler and the runtime.
+  // Need to remove this and enable by default once the 2-week
+  // window has passed.
+  optional bool xla_gpu_experimental_emit_collective_reduce = 550;
 
   // If true, the GPU latency hiding scheduler selectively overlaps async
   // device-to-device memcpys with compute-bound kernels.
@@ -1104,7 +1137,7 @@ message DebugOptions {
 
   // Experimental: filter specifying which collective operations should use
   // custom kernels (e.g. Triton one-shot / two-shot) instead of NCCL.
-  // Accepted values: "all-reduce", "all-gather".
+  // Accepted values: "all-reduce", "all-gather", "reduce-scatter".
   // For legacy support, the deprecated
   // --xla_gpu_unsupported_use_all_reduce_one_shot_kernel flag also adds
   // all-reduce to this filter.
@@ -1116,6 +1149,10 @@ message DebugOptions {
   optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
 
   optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
+
+  // If true, disables CUDA Virtual Memory Management (VMM) APIs for device
+  // memory allocation and collective fusion.
+  optional bool xla_gpu_experimental_vmm_disabled = 551;
 
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
@@ -1759,6 +1796,11 @@ message DebugOptions {
   // layouts.
   optional bool xla_early_exit_with_layouts = 397;
 
+  // Exits compilation early at the specified point and returns the HLO up to
+  // that point. This flag is mutually exclusive with
+  // xla_early_exit_with_layouts.
+  optional EarlyExitPoint xla_gpu_experimental_early_exit = 549;
+
   // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
@@ -1845,7 +1887,7 @@ message DebugOptions {
   // for all instructions. Accepts textproto of autotuner.CandidateConfigs.
   optional string xla_candidate_configs_file = 544;
 
-  // If true, allows skipping defensive copy insertion for S(1) collective
+  // If true, allows skipping defensive copy insertion for collective
   // memory parameters that have input-output aliasing and execute on all
   // available devices in the topology.
   optional bool xla_gpu_enable_persistent_symmetric_memory = 545;
@@ -1853,7 +1895,7 @@ message DebugOptions {
   // Enables Raft for stable TopK.
   optional bool xla_gpu_experimental_enable_raft_for_stable_topk = 546;
 
-  // Next id: 547
+  // Next id: 553
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
@@ -116,13 +116,13 @@ TEST(CudnnDevicePropsTest, MatchesLiveDevice) {
 
   std::string name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName(name));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(name));
 
   bool any_compared = false;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
-                            platform->ExecutorForDevice(i));
+    ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                         platform->ExecutorForDevice(i));
     const se::DeviceDescription& desc = executor->GetDeviceDescription();
     SCOPED_TRACE(absl::StrCat("device ", i, ": ", desc.name()));
 
@@ -130,13 +130,28 @@ TEST(CudnnDevicePropsTest, MatchesLiveDevice) {
     auto build_err = live->set_device_id(i).build();
     ASSERT_FALSE(build_err.is_bad()) << build_err.get_message();
 
-    TF_ASSERT_OK_AND_ASSIGN(auto synth, BuildDeviceProperties(desc));
+    ASSERT_OK_AND_ASSIGN(auto synth, BuildDeviceProperties(desc));
 
     Json::Value live_json = ParseProps(live);
     Json::Value synth_json = ParseProps(synth);
 
     VLOG(1) << "live : " << Dump(live_json);
     VLOG(1) << "synth: " << Dump(synth_json);
+
+    constexpr char kOversizedSharedMemoryField[] =
+        "oversizedSharedMemoryPerBlock";
+    const int64_t live_oversized_shared_memory =
+        live_json.get(kOversizedSharedMemoryField, 0).asInt64();
+    const int64_t synth_oversized_shared_memory =
+        synth_json.get(kOversizedSharedMemoryField, 0).asInt64();
+    EXPECT_EQ(synth_oversized_shared_memory,
+              desc.oversized_shared_memory_per_block());
+    // cuDNN may omit this property or report zero.
+    if (live_oversized_shared_memory != 0) {
+      EXPECT_EQ(synth_oversized_shared_memory, live_oversized_shared_memory);
+    }
+    live_json.removeMember(kOversizedSharedMemoryField);
+    synth_json.removeMember(kOversizedSharedMemoryField);
 
     StripIgnoredFields(live_json);
     StripIgnoredFields(synth_json);

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 #define XLA_HLO_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -25,8 +26,12 @@ namespace mlir {
 namespace hlo {
 // Construct MLIR location from frame index.
 // Returns unknown location if frame is not presented.
-mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder &builder,
-                                         const xla::HloModule *hlo_module);
+// frame_locations, when given, memoizes the location of every frame of
+// hlo_module by frame id across calls: it is sized on first use and must only
+// be used with hlo_module and one context.
+mlir::Location GetLocationFromFrameIndex(
+    int frame_id, mlir::Builder& builder, const xla::HloModule* hlo_module,
+    llvm::SmallVectorImpl<mlir::LocationAttr>* frame_locations = nullptr);
 
 }  // namespace hlo
 }  // namespace mlir

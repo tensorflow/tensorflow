@@ -51,6 +51,8 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
   const mlir::TypedValue<mlir::IntegerType> signal_value =
       block_barrier.getSignalValue();
   const int32_t world_size = block_barrier.getWorldSize();
+  const int32_t signal_stride = block_barrier.getSignalStride();
+  const BarrierMode barrier_mode = block_barrier.getBarrierMode();
   // Triton magic constant.
   constexpr auto kGlobalAddressSpace = mlir::triton::PtrAddrSpace::Global;
 
@@ -126,11 +128,60 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             builder, tensor_of_ptr_to_i32_type, signal_buffer_i64);
         auto block_offset = mlir::arith::MulIOp::create(
             builder, i32_type, block_id, world_size_op);
-        auto block_offset_plus_rank =
-            mlir::arith::AddIOp::create(builder, i32_type, block_offset, rank);
+        mlir::Value write_offset;
+        mlir::Value wait_block_offset = block_offset;
+        if (barrier_mode != BarrierMode::kSymmetric) {
+          // Suppose we have 4 blocks (0, 1, 2, 3), 2 ranks (world_size = 2),
+          // and signal_stride = 2.
+          //
+          // Blocks 1 and 3 work on the same scratch tile and are
+          // `signal_stride` blocks apart:
+          //   - Block 1 has signal_slot = 0 (first block in the pair).
+          //   - Block 3 has signal_slot = 1 (second block in the pair).
+          //
+          // 1. Find `base_block`, the first block in the pair (block 1):
+          //    `slot_offset = signal_slot * signal_stride` is how many blocks
+          //    this block is ahead of `base_block`.
+          //    Subtracting it gives `base_block = block_id - slot_offset`:
+          //      - Block 1: base_block = 1 - (0 * 2) = 1
+          //      - Block 3: base_block = 3 - (1 * 2) = 1
+          //
+          // 2. Find `target_block` (`base_block + rank * signal_stride`):
+          //    - In `kConsumerSymmetric`, `target_block` is the block on peer
+          //      GPUs that reads this rank's data, so we write to `signal_slot`
+          //      inside `target_block`'s slots
+          //      (`target_block * world_size + signal_slot`).
+          //    - In `kProducerSymmetric`, `target_block` is the producer block
+          //      whose slots (`target_block * world_size + [0..world_size)`)
+          //      this consumer block waits on.
+          mlir::Value signal_slot = block_barrier.getSignalSlot();
+          auto stride_op = mlir::arith::ConstantOp::create(
+              builder, builder.getI32IntegerAttr(signal_stride));
+          auto slot_offset = mlir::arith::MulIOp::create(
+              builder, i32_type, signal_slot, stride_op);
+          auto base_block = mlir::arith::SubIOp::create(builder, i32_type,
+                                                        block_id, slot_offset);
+          auto rank_offset =
+              mlir::arith::MulIOp::create(builder, i32_type, rank, stride_op);
+          auto target_block = mlir::arith::AddIOp::create(
+              builder, i32_type, base_block, rank_offset);
+          auto target_block_offset = mlir::arith::MulIOp::create(
+              builder, i32_type, target_block, world_size_op);
+          if (barrier_mode == BarrierMode::kConsumerSymmetric) {
+            write_offset = mlir::arith::AddIOp::create(
+                builder, i32_type, target_block_offset, signal_slot);
+          } else {
+            write_offset = mlir::arith::AddIOp::create(builder, i32_type,
+                                                       block_offset, rank);
+            wait_block_offset = target_block_offset;
+          }
+        } else {
+          write_offset = mlir::arith::AddIOp::create(builder, i32_type,
+                                                     block_offset, rank);
+        }
         // -> tensor<world_size x i32>
         auto block_offset_plus_rank_tensor = mlir::triton::SplatOp::create(
-            builder, i32_tensor_type, block_offset_plus_rank);
+            builder, i32_tensor_type, write_offset);
         // SignalBuffers[0..WorldSize][block_id][rank]
         // -> tensor<world_size x !tt.ptr<i32>>
         auto signal_addresses = mlir::triton::AddPtrOp::create(
@@ -160,10 +211,10 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         // -> !tt.ptr<i32>
         auto read_address = mlir::triton::IntToPtrOp::create(
             builder, ptr_to_i32_type, read_address_i64);
-        // Pointer to SignalBuffers[rank][block_id]
+        // Pointer to SignalBuffers[rank][wait_block_id]
         // -> !tt.ptr<i32>
         auto read_address_at_block_offset = mlir::triton::AddPtrOp::create(
-            builder, ptr_to_i32_type, read_address, block_offset);
+            builder, ptr_to_i32_type, read_address, wait_block_offset);
         // -> tensor<world_size x !tt.ptr<i32>>
         auto read_address_at_block_offset_tensor =
             mlir::triton::SplatOp::create(builder, tensor_of_ptr_to_i32_type,

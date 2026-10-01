@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se/buffer_sequencing_event.h"
 #include "xla/pjrt/se/local_device_state.h"
@@ -804,8 +805,8 @@ void StreamExecutorGpuRawClient::ScheduleTransfersOnLocalDevice(
 }
 
 void StreamExecutorGpuRawClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
+    LocalDeviceId local_device_id, int memory_kind_id,
+    PjRtRawBufferRef raw_buffer, PjRtDeviceEventRefVector definition_events,
     PjRtDeviceEventPromiseRef usage_event_promise,
     Future<std::string> serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {
@@ -1323,12 +1324,23 @@ GetStreamExecutorGpuDeviceAllocator(
     case GpuAllocatorConfig::Kind::kBFC: {
       LOG(INFO) << "Using BFC allocator.";
       // With the spatial-partitioning flag enabled, preallocation lets one BFC
-      // allocator over a fixed address range serve both default (lower end) and
-      // collective (upper end) memory, so no separate collective allocator is
+      // allocator over a fixed address range serve both collective (lower end)
+      // and default (upper end) memory, so no separate collective allocator is
       // created. Otherwise, use the separate collective allocator below.
+      //
+      // Collective memory is anchored at the lower end: symmetric NCCL windows
+      // need identical offsets across ranks, and the base of a preallocated
+      // range is the one address that can never move. Default memory is served
+      // from the upper end, so the top of the range is the only boundary that
+      // would have to move if the range were ever extended.
       shared_collective_pool =
           allocator_config.preallocate &&
           debug_options.xla_gpu_enable_allocator_spatial_partitioning();
+      // Without spatial partitioning the BFC allocator only serves the lower
+      // end, so default memory must keep the default allocation end.
+      const tsl::AllocationEnd default_allocation_end =
+          shared_collective_pool ? tsl::AllocationEnd::kUpper
+                                 : tsl::AllocationEnd::kLower;
       for (const auto& ordinal_and_device : addressable_devices) {
         ABSL_ASSIGN_OR_RETURN(
             auto bfc_allocator,
@@ -1342,7 +1354,12 @@ GetStreamExecutorGpuDeviceAllocator(
                                shared_collective_pool));
         allocators.push_back(
             {bfc_allocator, ordinal_and_device.second->compute_stream(),
-             /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kDefault});
+             /*memory_space=*/
+             static_cast<int>(xla::gpu::MemorySpaceColor::kDefault),
+             /*device_ordinal=*/std::nullopt,
+             /*platform=*/nullptr,
+             /*min_alignment=*/tsl::Allocator::kAllocatorAlignment,
+             /*allocation_end=*/default_allocation_end});
         if (shared_collective_pool) {
           uint64_t collective_memory_alignment =
               tsl::Allocator::kAllocatorAlignment;
@@ -1355,11 +1372,12 @@ GetStreamExecutorGpuDeviceAllocator(
           allocators.push_back(
               {std::move(bfc_allocator),
                ordinal_and_device.second->compute_stream(),
-               /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective,
+               /*memory_space=*/
+               static_cast<int>(xla::gpu::MemorySpaceColor::kCollective),
                /*device_ordinal=*/std::nullopt,
                /*platform=*/nullptr,
                /*min_alignment=*/collective_memory_alignment,
-               /*allocation_end=*/tsl::AllocationEnd::kUpper});
+               /*allocation_end=*/tsl::AllocationEnd::kLower});
         }
       }
       break;
@@ -1547,7 +1565,7 @@ CreateAllocatorMemoryRegistration(GpuAllocatorConfig* allocator_config) {
 
 struct PjRtDevicesAndTopology {
   std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
-  GpuTopologyProto topology;
+  std::shared_ptr<StreamExecutorGpuTopologyDescription> topology;
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
 };
 
@@ -1559,6 +1577,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
     std::optional<int> partition_index = std::nullopt,
+    bool verify_topology_fingerprint = true,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5)) {
   std::vector<std::unique_ptr<CommonPjRtDevice>> devices;
@@ -1782,6 +1801,43 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
 
+  ABSL_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology_proto,
+                   BuildGpuTopology(global_topology, *gpu_target_config,
+                                    cpu::TargetMachineOptions()));
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(gpu_topology_proto));
+  std::shared_ptr<StreamExecutorGpuTopologyDescription> se_gpu_topology =
+      CreateSEGpuTopology(platform_name, std::move(gpu_topology),
+                          GetFirstExecutor(local_device_states_vec));
+  ABSL_RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_VALIDATE_TOPOLOGY",
+                                          verify_topology_fingerprint,
+                                          &verify_topology_fingerprint));
+  if (verify_topology_fingerprint && !enable_mock_nccl && num_nodes > 1) {
+    constexpr absl::string_view kTopologyFingerprintKey =
+        "topology_fingerprint";
+    ABSL_ASSIGN_OR_RETURN(PjRtTopologyDescriptionProto topology_proto,
+                     se_gpu_topology->ToProto());
+    LOG(INFO) << "GPU topology for process " << process_id << ":\n"
+              << topology_proto;
+    ABSL_ASSIGN_OR_RETURN(uint64_t topology_fingerprint,
+                     se_gpu_topology->Fingerprint());
+    const std::string fingerprint_str = absl::StrCat(topology_fingerprint);
+    if (process_id == 0) {
+      ABSL_RETURN_IF_ERROR(kv_store->Set(kTopologyFingerprintKey, fingerprint_str));
+    } else {
+      ABSL_ASSIGN_OR_RETURN(
+          std::string expected_fingerprint_str,
+          kv_store->Get(kTopologyFingerprintKey, get_global_topology_timeout));
+      if (fingerprint_str != expected_fingerprint_str) {
+        return absl::FailedPreconditionError(absl::StrFormat(
+            "Topology fingerprint mismatch between process 0 (%s) and "
+            "process %d (%s); different hosts may have different GPU "
+            "topologies or driver versions",
+            expected_fingerprint_str, process_id, fingerprint_str));
+      }
+    }
+  }
+
   auto* gpu_collectives = gpu_executable_run_options->collectives();
   if (gpu_collectives == nullptr) {
     gpu_collectives = gpu::GpuCollectives::Resolve(platform_name);
@@ -1798,10 +1854,7 @@ absl::StatusOr<PjRtDevicesAndTopology> BuildDistributedDevices(
         std::move(clique_id_callback));
   }
 
-  ABSL_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
-                   BuildGpuTopology(global_topology, *gpu_target_config,
-                                    cpu::TargetMachineOptions()));
-  return PjRtDevicesAndTopology{std::move(devices), std::move(gpu_topology),
+  return PjRtDevicesAndTopology{std::move(devices), std::move(se_gpu_topology),
                                 std::move(local_device_states_vec)};
 }
 
@@ -2020,14 +2073,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
           pjrt_platform_name, std::move(local_device_states), options.node_id,
           options.num_nodes, gpu_run_options.get(), kv_store,
           options.enable_mock_nccl, options.mock_gpu_topology,
-          options.partition_index));
+          options.partition_index, options.verify_topology_fingerprint));
 
-  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
-                   GpuTopology::FromProto(devices_and_topology.topology));
   se::StreamExecutor* first_executor =
       GetFirstExecutor(devices_and_topology.local_device_states);
-  auto se_gpu_topology = CreateSEGpuTopology(
-      pjrt_platform_name, std::move(gpu_topology), first_executor);
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
       tsl::Fingerprint64(pjrt_platform_name),
       std::move(devices_and_topology.local_device_states), std::move(allocator),
@@ -2042,7 +2091,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   return MakeStreamExecutorGpuClient(
       pjrt_platform_name, std::move(devices_and_topology.devices),
       options.node_id, std::move(raw_client), std::move(kv_store),
-      std::move(se_gpu_topology), options.num_nodes);
+      std::move(devices_and_topology.topology), options.num_nodes);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
@@ -2064,10 +2113,12 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
   }
   ABSL_ASSIGN_OR_RETURN(
       auto devices_and_topology,
-      BuildDistributedDevices(platform_name, std::move(local_device_states),
-                              options.node_id, options.num_nodes,
-                              gpu_run_options.get(), kv_store,
-                              /*enable_mock_nccl=*/false));
+      BuildDistributedDevices(
+          platform_name, std::move(local_device_states), options.node_id,
+          options.num_nodes, gpu_run_options.get(), kv_store,
+          /*enable_mock_nccl=*/false, /*mock_gpu_topology=*/std::nullopt,
+          /*partition_index=*/std::nullopt,
+          options.verify_topology_fingerprint));
 
   VLOG(2) << "Distributed devices built with size="
           << devices_and_topology.devices.size();
@@ -2081,13 +2132,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
               << "nullptr";
     }
   }
-  ABSL_ASSIGN_OR_RETURN(auto gpu_topology,
-                   absl::StatusOr<std::shared_ptr<const GpuTopology>>(
-                       GpuTopology::FromProto(devices_and_topology.topology)));
   se::StreamExecutor* first_executor =
       GetFirstExecutor(devices_and_topology.local_device_states);
-  auto se_gpu_topology = CreateSEGpuTopology(
-      platform_name, std::move(gpu_topology), first_executor);
   auto raw_client = std::make_unique<StreamExecutorGpuRawClient>(
       tsl::Fingerprint64(platform_name),
       std::move(devices_and_topology.local_device_states), std::move(allocator),
@@ -2102,7 +2148,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetSharedStreamExecutorGpuClient(
   return MakeStreamExecutorGpuClient(
       platform_name, std::move(devices_and_topology.devices),
       /*process_index=*/options.node_id, std::move(raw_client),
-      std::move(kv_store), /*topology=*/std::move(se_gpu_topology),
+      std::move(kv_store),
+      /*topology=*/std::move(devices_and_topology.topology),
       /*num_nodes=*/options.num_nodes);
 }
 

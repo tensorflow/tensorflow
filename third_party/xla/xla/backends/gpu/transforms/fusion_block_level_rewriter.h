@@ -22,8 +22,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+
+namespace tsl::thread {
+class ThreadPool;
+}  // namespace tsl::thread
 
 namespace xla {
 namespace gpu {
@@ -33,10 +38,14 @@ class FusionBlockLevelRewriter : public HloModulePass {
   explicit FusionBlockLevelRewriter(
       const se::DeviceDescription& device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context)
+      mlir::MLIRContext* mlir_context,
+      tsl::thread::ThreadPool* thread_pool = nullptr,
+      MlirContextPool* mlir_context_pool = nullptr)
       : device_info_(device_info),
         shape_size_(shape_size),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        thread_pool_(thread_pool),
+        mlir_context_pool_(mlir_context_pool) {}
 
   absl::string_view name() const override {
     return "fusion-block-level-rewriter";
@@ -51,6 +60,8 @@ class FusionBlockLevelRewriter : public HloModulePass {
   const se::DeviceDescription& device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   mlir::MLIRContext* mlir_context_;
+  tsl::thread::ThreadPool* thread_pool_ = nullptr;
+  MlirContextPool* mlir_context_pool_ = nullptr;
 };
 
 }  // namespace gpu

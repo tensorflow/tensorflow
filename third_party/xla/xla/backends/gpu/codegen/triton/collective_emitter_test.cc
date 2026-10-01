@@ -496,6 +496,72 @@ TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfig) {
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
 }
 
+TEST_F(CollectiveEmitterTest, AllGatherGetCollectiveUnmanagedKernelArguments) {
+  constexpr absl::string_view kAllGatherHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[32768] parameter(0)
+      ROOT all-gather = f32[65536] all-gather(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllGatherHloStr, HloOpcode::kAllGather));
+  ASSERT_OK_AND_ASSIGN(
+      const auto unmanaged_arguments,
+      GetCollectiveUnmanagedKernelArguments(module_with_fusion.FusionInstr()));
+  ASSERT_EQ(unmanaged_arguments.size(), 4);
+  // [0]: rank (S32[])
+  EXPECT_EQ(unmanaged_arguments[0].dimensions().size(), 0);
+  // [1]: signal_value (S32[])
+  EXPECT_EQ(unmanaged_arguments[1].dimensions().size(), 0);
+  // [2]: signal_buffers (S32[num_devices, kMaxBlocksPerGrid])
+  ASSERT_EQ(unmanaged_arguments[2].dimensions().size(), 2);
+  EXPECT_EQ(unmanaged_arguments[2].dimensions()[0], 2);
+  // [3]: remote buffers of param_0 (F32[num_devices, 32768])
+  EXPECT_THAT(unmanaged_arguments[3].dimensions(), ElementsAre(2, 32768));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest,
+       AllGatherBlockLevelConfigClampsGatherDimToPerRankSize) {
+  constexpr absl::string_view kAllGatherHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[1,64] parameter(0)
+      ROOT all-gather = f32[2,64] all-gather(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllGatherHloStr, HloOpcode::kAllGather));
+  ASSERT_OK_AND_ASSIGN(const BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+  ASSERT_EQ(block_level_config.output_tiles_size(), 1);
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(1, 64));
+}
+
+TEST_F(CollectiveBlockLevelConfigTest, AllGatherBlockLevelConfigAtMaxBlocks) {
+  constexpr absl::string_view kAllGatherHloStr = R"(
+    HloModule test
+    ENTRY test_computation {
+      param_0 = f32[65536] parameter(0)
+      ROOT all-gather = f32[131072] all-gather(param_0), replica_groups={{0,1}},
+        dimensions={0}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(
+      ModuleWithFusion module_with_fusion,
+      BuildModuleWithFusion(kAllGatherHloStr, HloOpcode::kAllGather));
+  ASSERT_OK_AND_ASSIGN(const BlockLevelFusionConfig block_level_config,
+                       GetCollectiveBlockLevelFusionConfig(
+                           *gpu_topology_, module_with_fusion.FusionInstr()));
+  // 131072 elements / kAllGatherMaxBlocksPerGrid (64) blocks.
+  EXPECT_THAT(block_level_config.output_tiles(0).sizes(), ElementsAre(2048));
+}
+
 }  // namespace
 
 }  // namespace xla::gpu

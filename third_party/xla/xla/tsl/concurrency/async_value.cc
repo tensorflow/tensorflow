@@ -16,30 +16,48 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <string>
 #include <utility>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/context.h"
 
 namespace tsl {
 
 uint16_t AsyncValue::CreateTypeInfoAndReturnTypeIdImpl(
-    const TypeInfo& type_info) {
+    absl::string_view type_name, const TypeInfo& type_info) {
+  // Deduplicate type ids by type name so that the same `T` gets the same id
+  // even when GetTypeId<T>()'s function-local static is duplicated across DSOs.
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
+  static absl::NoDestructor<absl::flat_hash_map<std::string, uint16_t>>
+      type_ids;
+
+  absl::MutexLock lock(mu);
+  if (auto it = type_ids->find(type_name); it != type_ids->end()) {
+    return it->second;
+  }
+
   size_t type_id = GetTypeInfoTableSingleton().emplace_back(type_info) + 1;
   DCHECK(type_id < std::numeric_limits<uint16_t>::max())
       << "Too many different AsyncValue types.";
-  return type_id;
+  type_ids->emplace(type_name, static_cast<uint16_t>(type_id));
+  return static_cast<uint16_t>(type_id);
 }
 
 AsyncValue::TypeInfoTable& AsyncValue::GetTypeInfoTableSingleton() {

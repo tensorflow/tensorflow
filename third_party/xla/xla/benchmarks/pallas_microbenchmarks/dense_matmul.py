@@ -21,6 +21,7 @@ from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 
 from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import platform_info
 from xla.benchmarks.pallas_microbenchmarks import dense_matmul_lib
 
 _DIM = flags.DEFINE_list(
@@ -94,7 +95,11 @@ def main(_):
   lhs_dtype = benchmark.str_to_dtype(_FMT.value[0])
   rhs_dtype = benchmark.str_to_dtype(_FMT.value[1])
   out_dtype = benchmark.str_to_dtype(_FMT.value[2])
-  acc_dtype = jnp.float32
+  pinfo = platform_info.get_platform_info()
+  if jnp.issubdtype(lhs_dtype, jnp.integer) and pinfo.generation < 8:
+    acc_dtype = jnp.int32
+  else:
+    acc_dtype = jnp.float32
 
   if len(_DIM.value) != 4:
     raise ValueError(f"Expected 4 dims, got {len(_DIM.value)}")

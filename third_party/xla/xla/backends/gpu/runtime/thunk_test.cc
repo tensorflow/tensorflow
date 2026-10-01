@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +26,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/custom_options.h"
+#include "xla/executable_run_options.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
@@ -88,6 +93,28 @@ TEST(ThunkTest, WalksInPreAndPostOrder) {
               ElementsAre("pre root", "pre child", "post child", "pre nested",
                           "pre grandchild", "post grandchild", "post nested",
                           "post root"));
+}
+
+TEST(ThunkTest, ExecuteParamsForwardCustomOptions) {
+  auto custom_options = std::make_shared<const CustomOptions>(
+      CustomOptions::Map{{"value", int64_t{42}}});
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_custom_options(custom_options);
+
+  BufferAllocations buffer_allocations(/*buffers=*/{}, /*device_ordinal=*/0,
+                                       /*memory_allocator=*/nullptr);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, buffer_allocations, /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+  EXPECT_EQ(params.custom_options, custom_options.get());
+  EXPECT_EQ(params.WithComputeStream(/*stream=*/nullptr).custom_options,
+            custom_options.get());
+  EXPECT_EQ(
+      Thunk::ExecuteParams::CloneWithNewAllocations(params, buffer_allocations)
+          .custom_options,
+      custom_options.get());
 }
 
 TEST(ThunkTest, GetMetadataProto) {

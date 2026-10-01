@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -69,15 +68,15 @@ DynamicSliceConfig MakeLoopConfig(int64_t loop_index, int64_t byte_offset,
                                   int64_t byte_stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(byte_stride);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(byte_stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t byte_offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(byte_offset);
-  config.set_byte_stride(0);
+  config.mutable_linear()->set_byte_offset(byte_offset);
+  config.mutable_linear()->set_byte_stride(0);
   return config;
 }
 
@@ -85,8 +84,8 @@ void ExpectDynamicSliceConfig(const HloInstruction* instr,
                               std::optional<int64_t> loop_index,
                               int64_t byte_offset, int64_t byte_stride) {
   ASSERT_NE(instr, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
-                          instr->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                       instr->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(backend_config.has_dynamic_slice_config());
   const DynamicSliceConfig& config = backend_config.dynamic_slice_config();
   if (loop_index.has_value()) {
@@ -95,8 +94,8 @@ void ExpectDynamicSliceConfig(const HloInstruction* instr,
   } else {
     EXPECT_FALSE(config.has_loop_index());
   }
-  EXPECT_EQ(config.byte_offset(), byte_offset);
-  EXPECT_EQ(config.byte_stride(), byte_stride);
+  EXPECT_EQ(config.linear().byte_offset(), byte_offset);
+  EXPECT_EQ(config.linear().byte_stride(), byte_stride);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -111,8 +110,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
           DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 80);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 80);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -125,8 +124,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
           DoubleBufferLoopUnrolling::StaticLoopIteration{/*iteration=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 16);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 16);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -142,8 +141,8 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
 
   ASSERT_TRUE(new_config.has_loop_index());
   EXPECT_EQ(new_config.loop_index(), 0);
-  EXPECT_EQ(new_config.byte_offset(), 48);
-  EXPECT_EQ(new_config.byte_stride(), 64);
+  EXPECT_EQ(new_config.linear().byte_offset(), 48);
+  EXPECT_EQ(new_config.linear().byte_stride(), 64);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -156,8 +155,56 @@ TEST_F(GpuLoopDoubleBufferTransformerTest,
                       /*start_iteration=*/1, /*iteration_stride=*/2});
 
   EXPECT_FALSE(new_config.has_loop_index());
-  EXPECT_EQ(new_config.byte_offset(), 16);
-  EXPECT_EQ(new_config.byte_stride(), 0);
+  EXPECT_EQ(new_config.linear().byte_offset(), 16);
+  EXPECT_EQ(new_config.linear().byte_stride(), 0);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest, UnrollOffsetTable) {
+  DynamicSliceConfig config;
+  config.set_loop_index(0);
+  for (int64_t offset : {0, 4, 16, 36, 40, 68}) {
+    config.mutable_table()->add_offsets(offset);
+  }
+
+  auto peeled = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::StaticLoopIteration{2});
+  EXPECT_FALSE(peeled.has_loop_index());
+  ASSERT_TRUE(peeled.has_linear());
+  EXPECT_EQ(peeled.linear().byte_offset(), 16);
+  EXPECT_EQ(peeled.linear().byte_stride(), 0);
+
+  auto even = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{0, 2});
+  EXPECT_EQ(even.loop_index(), 0);
+  EXPECT_THAT(even.table().offsets(), ::testing::ElementsAre(0, 16, 40));
+
+  // The odd subsequence is linear and should return to the compact form.
+  auto odd = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{1, 2});
+  EXPECT_EQ(odd.loop_index(), 0);
+  ASSERT_TRUE(odd.has_linear());
+  EXPECT_EQ(odd.linear().byte_offset(), 4);
+  EXPECT_EQ(odd.linear().byte_stride(), 32);
+
+  auto single = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      config, DoubleBufferLoopUnrolling::DynamicLoopIteration{5, 2});
+  EXPECT_FALSE(single.has_loop_index());
+  ASSERT_TRUE(single.has_linear());
+  EXPECT_EQ(single.linear().byte_offset(), 68);
+  EXPECT_EQ(single.linear().byte_stride(), 0);
+
+  // A loop-invariant subsequence drops the loop index.
+  DynamicSliceConfig alternating;
+  alternating.set_loop_index(0);
+  for (int64_t offset : {8, 4, 8, 4}) {
+    alternating.mutable_table()->add_offsets(offset);
+  }
+  auto invariant = DoubleBufferLoopUnrolling::MakeConfigForLoopIteration(
+      alternating, DoubleBufferLoopUnrolling::DynamicLoopIteration{0, 2});
+  EXPECT_FALSE(invariant.has_loop_index());
+  ASSERT_TRUE(invariant.has_linear());
+  EXPECT_EQ(invariant.linear().byte_offset(), 8);
+  EXPECT_EQ(invariant.linear().byte_stride(), 0);
 }
 
 TEST_F(GpuLoopDoubleBufferTransformerTest,
@@ -197,18 +244,18 @@ ENTRY main {
                       "known_induction_variable":{"tuple_index":"1"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloPassPipeline pipeline("double-buffering-pipeline");
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kAuto);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
 
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 5);
@@ -243,17 +290,17 @@ ENTRY main {
   ROOT while = (s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kAuto);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
 
   EXPECT_FALSE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 10);
@@ -278,7 +325,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -297,11 +345,11 @@ ENTRY main {
                       "known_induction_variable":{"tuple_index":"0"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloComputation* body = module->GetComputationWithName("body");
@@ -331,7 +379,8 @@ dus_fusion {
   ivar = s32[] parameter(2)
   c0 = s32[] constant(0)
   ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
 }
 
 body {
@@ -359,11 +408,11 @@ ENTRY main {
                       "known_induction_variable":{"tuple_index":"0"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloComputation* body = module->GetComputationWithName("body");
@@ -404,7 +453,8 @@ async_dus {
   ivar = s32[] parameter(2)
   c0 = s32[] parameter(3)
   ROOT updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
 }
 
 body {
@@ -480,7 +530,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -499,11 +550,11 @@ ENTRY main {
                       "known_induction_variable":{"tuple_index":"0"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   ExpectDynamicSliceConfig(module->entry_computation()->GetInstructionWithName(
@@ -539,7 +590,8 @@ body {
   update = f32[1,4] get-tuple-element(input_tuple), index=2
   c0 = s32[] constant(0)
   updated = f32[8,4] dynamic-update-slice(buffer, update, ivar, c0),
-      backend_config={"dynamic_slice_config":{"loop_index":0,"byte_offset":16,"byte_stride":32}}
+      backend_config={"dynamic_slice_config":{
+        "loop_index":0,"linear":{"byte_offset":16,"byte_stride":32}}}
   one = s32[] constant(1)
   ivar_plus_1 = s32[] add(ivar, one)
   ROOT output_tuple = (s32[], f32[8,4], f32[1,4])
@@ -558,11 +610,11 @@ ENTRY main {
                       "known_induction_variable":{"tuple_index":"0"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
@@ -576,13 +628,13 @@ ENTRY main {
 
   std::vector<int64_t> byte_offsets;
   for (HloInstruction* dus : duses) {
-    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
-                            dus->backend_config<GpuBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig backend_config,
+                         dus->backend_config<GpuBackendConfig>());
     ASSERT_TRUE(backend_config.has_dynamic_slice_config());
     const DynamicSliceConfig& config = backend_config.dynamic_slice_config();
     EXPECT_FALSE(config.has_loop_index());
-    EXPECT_EQ(config.byte_stride(), 0);
-    byte_offsets.push_back(config.byte_offset());
+    EXPECT_EQ(config.linear().byte_stride(), 0);
+    byte_offsets.push_back(config.linear().byte_offset());
   }
   std::sort(byte_offsets.begin(), byte_offsets.end());
   EXPECT_THAT(byte_offsets, ::testing::ElementsAre(16, 48, 80));
@@ -624,19 +676,19 @@ ENTRY main {
  ROOT while = (f32[1,128], f32[1,128], f32[2,128], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -684,15 +736,15 @@ ENTRY main {
  ROOT while = (f32[1,128], f32[1,128], f32[2,128], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction;
@@ -701,7 +753,7 @@ ENTRY main {
       while_instruction = instr;
     }
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -753,19 +805,19 @@ ENTRY main {
  ROOT while = (f32[1,128], f32[1,128], f32[2,128], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   bool changed;
-  TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -821,8 +873,8 @@ ENTRY main {
  ROOT while = (f32[1,128], f32[1,128], f32[2,128], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -833,7 +885,7 @@ ENTRY main {
   // module.
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -883,8 +935,8 @@ ENTRY main {
  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -893,7 +945,7 @@ ENTRY main {
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -952,8 +1004,8 @@ ENTRY main {
  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   TupleSimplifier tuple_simp;
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -962,7 +1014,7 @@ ENTRY main {
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -1022,8 +1074,8 @@ ENTRY main {
  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   TupleSimplifier tuple_simp;
@@ -1033,7 +1085,7 @@ ENTRY main {
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   int64_t exact_trip_count = config.known_trip_count().n();
@@ -1085,15 +1137,15 @@ ENTRY main {
  ROOT while = (f32[], s32[]) while(tuple), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
 
@@ -1165,8 +1217,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -1223,8 +1275,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -1281,8 +1333,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1301,9 +1353,8 @@ ENTRY main {
   hlo_query::ForEachInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile,
       [](HloInstruction* instr) {
-        TF_ASSERT_OK_AND_ASSIGN(
-            WhileLoopBackendConfig config,
-            instr->backend_config<WhileLoopBackendConfig>());
+        ASSERT_OK_AND_ASSIGN(WhileLoopBackendConfig config,
+                             instr->backend_config<WhileLoopBackendConfig>());
         int64_t exact_trip_count = config.known_trip_count().n();
         EXPECT_EQ(exact_trip_count, 1);
       });
@@ -1346,8 +1397,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer;
   EXPECT_THAT(double_buffer.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -1396,8 +1447,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1446,8 +1497,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1498,8 +1549,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1551,8 +1602,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1603,8 +1654,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1658,8 +1709,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1721,8 +1772,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1778,8 +1829,8 @@ ENTRY main {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -1827,8 +1878,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"1"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll);
   // The processing of the loop should be completely skipped.
@@ -1863,16 +1914,16 @@ TEST_F(GpuLoopDoubleBufferTransformerTest, UpdateInitStepOddTripCount) {
                         "known_init_step":{"init":"3","step":"2"}}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 2);
@@ -1907,16 +1958,16 @@ TEST_F(GpuLoopDoubleBufferTransformerTest, UpdateInitStepEvenTripCount) {
                         "known_init_step":{"init":"3","step":"2"}}
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling unroller(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, unroller.Run(module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_instruction->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 3);
@@ -1961,16 +2012,16 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   TupleSimplifier tuple_simplifier;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, double_buffer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, double_buffer.Run(module.get()));
   ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simplifier.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, tuple_simplifier.Run(module.get()));
 
   std::vector<HloInstruction*> while_loops;
   for (HloComputation* comp : module->computations()) {
@@ -1985,9 +2036,8 @@ ENTRY main {
       << "Expected at least one while loop after double buffering";
 
   for (HloInstruction* while_loop : while_loops) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        WhileLoopBackendConfig config,
-        while_loop->backend_config<WhileLoopBackendConfig>());
+    ASSERT_OK_AND_ASSIGN(WhileLoopBackendConfig config,
+                         while_loop->backend_config<WhileLoopBackendConfig>());
 
     std::set<int64_t> dynamic_indices;
     for (const auto& dv : config.dynamic_variables()) {
@@ -2050,16 +2100,16 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
 
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   TupleSimplifier tuple_simplifier;
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, double_buffer.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, double_buffer.Run(module.get()));
   ASSERT_TRUE(changed);
-  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simplifier.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, tuple_simplifier.Run(module.get()));
 
   std::vector<HloInstruction*> while_loops;
   for (HloComputation* comp : module->computations()) {
@@ -2072,7 +2122,7 @@ ENTRY main {
 
   ASSERT_EQ(while_loops.size(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       WhileLoopBackendConfig config,
       while_loops[0]->backend_config<WhileLoopBackendConfig>());
 
@@ -2116,8 +2166,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kManual);
   EXPECT_THAT(double_buffer.Run(module.get()),
@@ -2177,8 +2227,8 @@ ENTRY main {
  ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kManual);
   EXPECT_THAT(double_buffer.Run(module.get()),

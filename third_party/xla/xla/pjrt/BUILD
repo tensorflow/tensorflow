@@ -70,6 +70,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -198,6 +199,7 @@ cc_library(
         ":host_callback",
         ":host_memory_spaces",
         ":infer_dispatch_info",
+        ":linearize_throttler",
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_device_description",
@@ -563,6 +565,7 @@ xla_cc_test(
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:executable_metadata_proto_cc",
@@ -749,6 +752,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -819,6 +823,8 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:chlo_ops",
@@ -844,6 +850,8 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_writer",
+        "@riegeli//riegeli/bytes:writer",
         "@stablehlo//:stablehlo_portable_api",
     ],
 )
@@ -934,6 +942,7 @@ cc_library(
     hdrs = ["transpose_kernels.h"],
     deps = [
         "//xla:compiler_macros",
+        "@highway//:hwy",
     ],
 )
 
@@ -993,6 +1002,7 @@ xla_cc_test(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1187,6 +1197,33 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "linearize_throttler",
+    srcs = ["linearize_throttler.cc"],
+    hdrs = ["linearize_throttler.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":async_work_runner",
+        ":host_memory_allocator",
+        ":raw_buffer",
+        ":staging_buffer",
+        "//xla/runtime:device_id",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:chunked_queue",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:context",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

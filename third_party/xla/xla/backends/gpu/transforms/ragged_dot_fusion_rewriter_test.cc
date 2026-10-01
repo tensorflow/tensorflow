@@ -44,8 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -89,10 +87,10 @@ class RaggedDotFusionRewriterUnitTest : public HloPjRtGpuTestBase {
 
   template <typename Pattern>
   void RunAndMatch(absl::string_view hlo_string, Pattern&& fusion_matcher) {
-    TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
 
     RaggedDotFusionRewriter rewriter = GetRaggedDotFusionRewriter();
-    TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+    ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
 
     SCOPED_TRACE(m->ToString());
     EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -163,7 +161,7 @@ class RaggedDotFusionRewriterIntegrationTest
     absl::StatusOr<std::unique_ptr<HloModule>> module_or_status =
         GetOptimizedModule(hlo_string, config);
     if (!module_or_status.ok()) {
-      TF_EXPECT_OK(module_or_status.status());
+      EXPECT_OK(module_or_status.status());
       return "";
     }
     std::unique_ptr<HloModule> module = std::move(module_or_status.value());
@@ -194,8 +192,8 @@ TEST_P(RaggedDotFusionRewriterIntegrationTest, TestRaggedDotOnly) {
   std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
   EXPECT_THAT(optimized_hlo_string, HasSubstr(kCuDnnFusionKind));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_with_new_type));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_with_new_type));
   DebugOptions debug_opts = module->config().debug_options();
   debug_opts.set_xla_gpu_experimental_use_ragged_dot_fusion(true);
   module->mutable_config().set_debug_options(debug_opts);

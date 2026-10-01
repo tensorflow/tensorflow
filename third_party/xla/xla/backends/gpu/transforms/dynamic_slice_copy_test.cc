@@ -49,14 +49,14 @@ DynamicSliceConfig MakeConfig(int64_t loop_index, int64_t offset,
                               int64_t stride) {
   DynamicSliceConfig config;
   config.set_loop_index(loop_index);
-  config.set_byte_offset(offset);
-  config.set_byte_stride(stride);
+  config.mutable_linear()->set_byte_offset(offset);
+  config.mutable_linear()->set_byte_stride(stride);
   return config;
 }
 
 DynamicSliceConfig MakeStaticConfig(int64_t offset) {
   DynamicSliceConfig config;
-  config.set_byte_offset(offset);
+  config.mutable_linear()->set_byte_offset(offset);
   return config;
 }
 
@@ -68,7 +68,7 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDynamicSliceRootCopy) {
 
       ROOT slice = s32[1] dynamic-slice(p0, c1), dynamic_slice_sizes={1},
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"4","byte_stride":"0"}}
+              {"linear":{"byte_offset":"4","byte_stride":"0"}}}
     }
 
     ENTRY main {
@@ -106,7 +106,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDynamicUpdateSliceRootCopy) {
 
       ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"32","byte_stride":"256","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"32","byte_stride":"256"}}}
     }
 
     ENTRY main {
@@ -150,7 +151,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesComputedDusOffset) {
 
       ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, offset, c1, c1),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"32","byte_stride":"256","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"32","byte_stride":"256"}}}
     }
 
     ENTRY main {
@@ -189,7 +191,7 @@ TEST_F(DynamicSliceCopyTest, RejectsComputedDusUpdate) {
 
       ROOT update-slice = s32[4] dynamic-update-slice(p0, update, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"4","loop_index":"0"}}
+              {"loop_index":"0","linear":{"byte_offset":"0","byte_stride":"4"}}}
     }
 
     ENTRY main {
@@ -219,7 +221,8 @@ TEST_F(DynamicSliceCopyTest, AnalyzesDusWithStaticSliceUpdate) {
 
       ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"0","byte_stride":"32"}}}
     }
 
     ENTRY main {
@@ -255,7 +258,8 @@ TEST_F(DynamicSliceCopyTest, RejectsStridedStaticSliceUpdate) {
 
       ROOT update-slice = s32[4,8] dynamic-update-slice(p0, update, p2, c0),
           backend_config={"dynamic_slice_config":
-              {"byte_offset":"0","byte_stride":"32","loop_index":"0"}}
+              {"loop_index":"0",
+                "linear":{"byte_offset":"0","byte_stride":"32"}}}
     }
 
     ENTRY main {
@@ -305,7 +309,7 @@ TEST_F(DynamicSliceCopyTest, AnalyzesStaticSliceRootCopy) {
 TEST_F(DynamicSliceCopyTest, DynamicVariableUsesPerVariableInitStep) {
   constexpr char kHlo[] = R"(
     dynamic_slice_comp {
-      p0 = s32[4,8,8] parameter(0)
+      p0 = s32[6,8,8] parameter(0)
       p1 = s32[] parameter(1)
       c0 = s32[] constant(0)
       ROOT slice = s32[1,8,8] dynamic-slice(p0, p1, c0, c0),
@@ -313,9 +317,9 @@ TEST_F(DynamicSliceCopyTest, DynamicVariableUsesPerVariableInitStep) {
     }
 
     body {
-      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      p0 = (s32[], s32[6,8,8], s32[]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,8] get-tuple-element(p0), index=1
+      input = s32[6,8,8] get-tuple-element(p0), index=1
       counter = s32[] get-tuple-element(p0), index=2
 
       sliced = s32[1,8,8] fusion(input, counter), kind=kLoop,
@@ -325,23 +329,23 @@ TEST_F(DynamicSliceCopyTest, DynamicVariableUsesPerVariableInitStep) {
       next_ivar = s32[] add(ivar, c1)
       next_counter = s32[] add(counter, c1)
 
-      ROOT result = (s32[], s32[4,8,8], s32[])
+      ROOT result = (s32[], s32[6,8,8], s32[])
           tuple(next_ivar, input, next_counter)
     }
 
     condition {
-      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      p0 = (s32[], s32[6,8,8], s32[]) parameter(0)
       ivar = s32[] get-tuple-element(p0), index=0
       c3 = s32[] constant(3)
       ROOT cmp = pred[] compare(ivar, c3), direction=LT
     }
 
     ENTRY main {
-      input = s32[4,8,8] parameter(0)
+      input = s32[6,8,8] parameter(0)
       c2 = s32[] constant(2)
       c3 = s32[] constant(3)
-      tuple = (s32[], s32[4,8,8], s32[]) tuple(c2, input, c3)
-      ROOT while = (s32[], s32[4,8,8], s32[]) while(tuple),
+      tuple = (s32[], s32[6,8,8], s32[]) tuple(c2, input, c3)
+      ROOT while = (s32[], s32[6,8,8], s32[]) while(tuple),
           condition=condition, body=body,
           backend_config={"known_trip_count":{"n":"3"},
                           "known_init_step":{"init":"2","step":"1"},
@@ -360,7 +364,7 @@ TEST_F(DynamicSliceCopyTest, DynamicVariableUsesPerVariableInitStep) {
                        AnalyzeDynamicSliceCopyFusion(fusion));
   ASSERT_TRUE(copy.has_value());
   EXPECT_THAT(copy->parameters,
-              ElementsAre(Parameter{0, ShapeUtil::MakeShape(S32, {4, 8, 8}),
+              ElementsAre(Parameter{0, ShapeUtil::MakeShape(S32, {6, 8, 8}),
                                     ShapeUtil::MakeShape(S32, {1, 8, 8}),
                                     MakeConfig(0, 768, 256),
                                     Offsets{{0, Offset::Parameter(1)},

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/infer_dispatch_info.h"
+#include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -73,6 +74,8 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual PjRtRawClient* raw_client() const { return nullptr; }
 
+  virtual LinearizeThrottler* linearize_throttler() const { return nullptr; }
+
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
   virtual bool allows_recursion() const { return true; }
@@ -90,10 +93,12 @@ class CommonPjRtClient : public PjRtClient {
   virtual tsl::AsyncValueRef<PjRtStagingBuffer> AllocateForDelinearizationAsync(
       size_t size, PjRtMemorySpace* memory_space);
 
-  virtual void DelinearizeAsync(
-      tsl::AsyncValueRef<PjRtStagingBuffer> staging_buffer,
-      PjRtMemorySpace* memory_space, const Shape& shape,
-      MutableLiteralBase* literal, tsl::Promise<void> promise);
+  // Delinearizes `input_data`, which has the on-device layout of `shape`, into
+  // `literal`.
+  virtual absl::Status Delinearize(absl::Span<const uint8_t> input_data,
+                                   const Shape& shape,
+                                   MutableLiteralBase* literal,
+                                   PjRtMemorySpace* memory_space);
 
   // TODO(parkers): Properly support error buffers on GPU and CPU.
   virtual bool include_raw_buffer_in_ready_event() const { return false; }
@@ -245,9 +250,13 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeUndonatable(
       std::unique_ptr<PjRtBuffer> buffer);
 
+  PjRtEventTracker* event_tracker() const {
+    return raw_client()->event_tracker();
+  }
+
   // When calling APIs that take extra debug information, we may want
   // to omit this debug information if it is not going to be used.
-  virtual bool event_tracking_enabled() { return false; }
+  bool event_tracking_enabled() const { return event_tracker() != nullptr; }
 
   // Create a linked device-event and device-event-promise such that
   // setting an event into the event promise populates the device-event.
@@ -255,21 +264,25 @@ class CommonPjRtClient : public PjRtClient {
       std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
-    return raw_client()->CreateLinkedEventPromise(memory_space, debug_info);
+    return raw_client()->CreateLinkedEventPromise(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        debug_info);
   }
 
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
-  virtual void TrackFuture(PjRtMemorySpace* memory_space,
-                           absl::string_view debug_info,
-                           const Future<>& future);
+  void TrackFuture(PjRtMemorySpace* memory_space, absl::string_view debug_info,
+                   const Future<>& future) {
+    if (event_tracker()) {
+      event_tracker()->TrackFuture(memory_space, debug_info, future);
+    }
+  }
 
   // Creates a future from a user-provided future with profiling and
   // traceme scopes.
-  virtual Future<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
-                                        const char* callee_type,
-                                        const char* callee_method,
-                                        Future<> future);
+  Future<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
+                                const char* callee_type,
+                                const char* callee_method, Future<> future);
 
   // Create a linked Future<> and Promise<> pair for operations on
   // buffers in memory_space which populates debug information like linked
@@ -295,7 +308,9 @@ class CommonPjRtClient : public PjRtClient {
 
   virtual absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
       PjRtMemorySpace* memory_space, Future<> dependency) {
-    return raw_client()->CreateDeviceEvent(memory_space, std::move(dependency));
+    return raw_client()->CreateDeviceEvent(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        std::move(dependency));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
@@ -305,9 +320,20 @@ class CommonPjRtClient : public PjRtClient {
   // TODO(parkers): Once everything is unified this should be controlled
   // by a non-device-specific config instead of delegating this control
   // to a device-specific config.
-  virtual tsl::AsyncValueRef<bool> CreateAllocationEventForTransfers(
+  tsl::AsyncValueRef<bool> CreateAllocationEventForTransfers(
       PjRtMemorySpace* memory_space,
-      const std::optional<std::string>& debug_info);
+      const std::optional<std::string>& debug_info) {
+    if (raw_client()->ShouldCreateAsyncAllocationEvent(
+            memory_space->kind_id())) {
+      tsl::AsyncValueRef<bool> result =
+          tsl::MakeConstructedAsyncValueRef<bool>();
+      if (event_tracker()) {
+        event_tracker()->TrackAllocationEvent(memory_space, result, debug_info);
+      }
+      return result;
+    }
+    return tsl::AsyncValueRef<bool>();
+  }
 
   // Returns the shape+layout that would result from copying a buffer of
   // shape+layout shape from src_memory_space to dst_memory_space.
@@ -486,21 +512,41 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::Mutex& gang_scheduler() const { return gang_scheduler_mu_; }
 
-  virtual void AppendDescriptionToEvent(
-      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
-      absl::string_view description,
-      absl::Span<const PjRtDeviceEventPtr> waiters) {}
+  void AppendDescriptionToEvent(PjRtMemorySpace* memory_space,
+                                PjRtDeviceEventPtr device_event,
+                                absl::string_view description,
+                                absl::Span<const PjRtDeviceEventPtr> waiters) {
+    if (event_tracker()) {
+      event_tracker()->AppendDescriptionToEvent(memory_space, device_event,
+                                                description, waiters);
+    }
+  }
 
-  virtual void AddEventDependencies(
-      PjRtMemorySpace* memory_space, PjRtDeviceEventPtr device_event,
-      absl::Span<const PjRtDeviceEventRef> dependencies) {}
-  virtual void AddEventDependencies(PjRtMemorySpace* memory_space,
-                                    PjRtDeviceEventPtr device_event,
-                                    PjRtDeviceEventSpan dependencies) {}
+  void AddEventDependencies(PjRtMemorySpace* memory_space,
+                            PjRtDeviceEventPtr device_event,
+                            absl::Span<const PjRtDeviceEventRef> dependencies) {
+    if (event_tracker()) {
+      event_tracker()->AddEventDependencies(memory_space, device_event,
+                                            dependencies);
+    }
+  }
+  void AddEventDependencies(PjRtMemorySpace* memory_space,
+                            PjRtDeviceEventPtr device_event,
+                            PjRtDeviceEventSpan dependencies) {
+    if (event_tracker()) {
+      event_tracker()->AddEventDependencies(memory_space, device_event,
+                                            dependencies);
+    }
+  }
 
-  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
-                                        PjRtDeviceEventPtr device_event,
-                                        absl::string_view description) {}
+  void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                PjRtDeviceEventPtr device_event,
+                                absl::string_view description) {
+    if (event_tracker()) {
+      event_tracker()->RegisterClientThreadWait(memory_space, device_event,
+                                                description);
+    }
+  }
 
   using PjRtClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -548,10 +594,6 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError(
         "GetDeviceAddressAlignment is not implemented.");
   }
-
-  absl::Status DelinearizeHostBuffer(absl::Span<const uint8_t> input_data,
-                                     const Shape& shape,
-                                     MutableLiteralBase* literal);
 
   // Does the provided shape require runtime shape metadata when being
   // linearized into the provided memory space?
@@ -988,6 +1030,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
  public:
   PjRtRawClient* raw_client() const override { return raw_client_.get(); }
 
+  LinearizeThrottler* linearize_throttler() const override {
+    return linearize_throttler_.get();
+  }
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
@@ -1061,9 +1107,10 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
                           PjRtDeviceEventPromiseRef usage_event_promise,
                           Future<std::string> serialized_descriptor,
                           PjRtBuffer::RemoteSendCallback on_done) override {
-    raw_client()->ScheduleRemoteSend(memory_space, raw_buffer,
-                                     definition_events, usage_event_promise,
-                                     serialized_descriptor, std::move(on_done));
+    raw_client()->ScheduleRemoteSend(
+        memory_space->devices()[0]->local_device_id(), memory_space->kind_id(),
+        raw_buffer, definition_events, usage_event_promise,
+        serialized_descriptor, std::move(on_done));
   }
 
   absl::StatusOr<PjRtDeviceEventRefVector> CrossHostReceiveBuffersInto(
@@ -1098,7 +1145,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
       std::unique_ptr<PjRtHostMemoryForDeviceManager>
-          host_memory_for_device_manager = nullptr);
+          host_memory_for_device_manager = nullptr,
+      std::optional<LinearizeThrottler::Options> throttler_options =
+          std::nullopt);
 
   bool allow_fallback_for_donation() const override {
     return allow_fallback_for_donation_;
@@ -1143,6 +1192,7 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   std::unique_ptr<PjRtRawClient> raw_client_;
+  std::unique_ptr<LinearizeThrottler> linearize_throttler_;
 
   bool allow_fallback_for_donation_ = false;
   bool supports_two_phase_launch_ = true;
@@ -1224,9 +1274,7 @@ class CommonPjRtDevice : public PjRtDevice {
   absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind_id(int id) const;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
+      absl::string_view description) const override;
 
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;

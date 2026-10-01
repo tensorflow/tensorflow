@@ -326,9 +326,6 @@ cuda_py_strict_test(
         "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
     },
     shard_count = 5,
-    tags = [
-        "exclusive-if-local",
-    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python/eager:backprop",

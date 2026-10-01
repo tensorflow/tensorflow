@@ -906,11 +906,28 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::StatusOr<bool> TryDynamicSliceWithCollectiveBroadcast(
       HloInstruction* hlo);
 
+  // Returns the sharding that replaces the sharding of `inst` while an
+  // instruction with `opcode` is partitioned. The manual leaves of the
+  // sharding become single device leaves. Returns nullptr when the sharding is
+  // kept as it is.
+  std::shared_ptr<const HloSharding> ManualToOneDeviceSharding(
+      HloOpcode opcode, const HloInstruction* inst);
+
   PartitionedHlo::ReshardCache reshard_cache_;
 
   // Mapping from the instruction in the original computation to the new SPMD
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
+
+  // The one device replacements of tuple shardings, keyed by the original
+  // sharding object. A null value records that the tuple has no manual leaf.
+  // Postprocess puts the original object back after every visit, so a tuple
+  // that feeds many manual users is converted only once. The key keeps the
+  // original object alive, so its address cannot be reused by another
+  // sharding.
+  absl::flat_hash_map<std::shared_ptr<const HloSharding>,
+                      std::shared_ptr<const HloSharding>>
+      manual_to_one_device_shardings_;
 
   HloInstruction* visiting_hlo_;
   SpmdLogger* logger_;
@@ -946,6 +963,16 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64_t> partitioned_slice_dims);
   // Method 3: All partitioned slice dimensions have compile-time constant
   // indices.
+  // Partitions a concatenate along a partitioned dimension without
+  // replicating that dimension: the largest operand is padded into its place
+  // in the result, and each remaining operand is written in at its constant
+  // offset the way a dynamic-update-slice with constant indices is, so data
+  // only moves between neighbouring shards. Returns false, having done
+  // nothing, when the concatenate does not fit the shapes this handles. Only
+  // used with xla_enable_enzyme_comms_opt.
+  absl::StatusOr<bool> TryHandleConcatenateWithConstantOffsets(
+      HloInstruction* hlo);
+
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);

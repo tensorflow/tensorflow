@@ -290,9 +290,10 @@ ENTRY e {
 // CHECK-LABEL: @xtile_dialect_fn
 // CHECK:         %[[EXTRACT0:.*]] = xtile.extract %arg0[%{{.*}}] [1024] [1] : memref<1024xf32> -> tensor<1024xf32>
 // CHECK:         %[[EXTRACT1:.*]] = xtile.extract %arg1[] [] [] : memref<f32> -> tensor<f32>
-// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[EXTRACT1]])
-// CHECK-SAME:        dimension = 0 {scan_dim_size = 1024 : i64}
-// CHECK-SAME:        : (tensor<1024xf32>), (tensor<f32>) -> (tensor<1024xf32>), (tensor<f32>) {
+// CHECK:         %[[INIT:.*]] = stablehlo.reshape %[[EXTRACT1]] : (tensor<f32>) -> tensor<1xf32>
+// CHECK:         %[[OUTPUT:.*]], %{{.*}} = xtile.scan(%[[EXTRACT0]]) inits(%[[INIT]])
+// CHECK-SAME:        dimension = 0 <scan_dim_size = 1024>
+// CHECK-SAME:        : (tensor<1024xf32>), (tensor<1xf32>) -> (tensor<1024xf32>), (tensor<1xf32>) {
 // CHECK:         ^bb0(%[[INPUT:.*]]: tensor<f32>, %[[CARRY:.*]]: tensor<f32>):
 // CHECK:           %[[ADD:.*]] = stablehlo.add %[[INPUT]], %[[CARRY]] : tensor<f32>
 // CHECK:           stablehlo.return %[[ADD]], %[[ADD]] : tensor<f32>, tensor<f32>
@@ -410,7 +411,7 @@ ENTRY e {
   EXPECT_OK(CreateXTileIrAndFileCheck(
       *module->GetComputationWithName("triton_dot"), block_level_parameters,
       R"(
-      CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>, fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
+      CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] <fastMath = true, lhs_elem_type = f8E5M2, rhs_elem_type = f8E5M2, dot_dimension_numbers = #stablehlo.dot<lhs_contracting_dimensions = [1], rhs_contracting_dimensions = [0]>> : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
       CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
       )"));
 }
@@ -577,14 +578,13 @@ TEST_F(XTileDialectTest, HloAllGatherDotLowering) {
 
   EXPECT_OK(CreateXTileIrAndFileCheck(*module->GetComputationWithName("ag_dot"),
                                       block_level_parameters, R"(
-    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<2xi64>
-    CHECK: %[[SELECT1:.*]] = xtile.select_buffer %arg0[%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<2xi64>
-    CHECK: %[[SELECT2:.*]] = xtile.select_buffer %[[SELECT1]][%{{.*}}]
-    CHECK-SAME: : memref<2xi64> -> memref<128x128xf32>
-    CHECK: %[[LHS_TILE:.*]] = xtile.extract %[[SELECT2]]
+    CHECK: xtile.entry_func @xtile_dialect_fn(%arg0: memref<128x128xf32>, %arg1: memref<128x128xf32>, %arg2: memref<512x128xf32>, %arg3: index
+    CHECK-NOT: xtile.select_buffer
+    CHECK: %[[LHS_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[AG1:.*]] = "stablehlo.all_gather"(%[[LHS_TILE]])
+    CHECK: %[[AG2:.*]] = "stablehlo.all_gather"(%[[AG1]])
     CHECK: %[[RHS_TILE:.*]] = xtile.extract %arg1
-    CHECK: stablehlo.dot_general %[[LHS_TILE]], %[[RHS_TILE]]
+    CHECK: stablehlo.dot_general %[[AG2]], %[[RHS_TILE]]
     )"));
 }
 
@@ -630,6 +630,54 @@ ENTRY e {
     CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
     CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
     CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]])
+    CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest, HloReverseScanWithLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1),
+    dimensions={0}, is_reverse=true, num_carries=1, is_associative=true,
+    to_apply=add_computation, backend_config={sizes:[128]}
+  ROOT get-tuple-element = f32[1024] get-tuple-element(scan), index=0
+}
+
+ENTRY e {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1024] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_tiling_propagation(true);
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[REVERSE_IDX:.*]] = arith.subi %{{.*}}, %[[IV]] : index
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]]) dimension = 0 <scan_dim_size = 128, is_reverse = true>
     CHECK: xtile.insert %[[SCAN_OUT]] into %arg2
     CHECK: scf.yield %[[NEW_CARRY]]
   )"));

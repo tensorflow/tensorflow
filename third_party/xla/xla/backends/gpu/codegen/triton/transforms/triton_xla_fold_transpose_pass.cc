@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -57,6 +58,24 @@ namespace {
   return guard;
 }
 
+bool CanFoldTransposeThroughProducer(TransOp op) {
+  return absl::c_all_of(op.getSrc().getUsers(), [&](Operation* user) {
+    auto other_trans = dyn_cast<TransOp>(user);
+    return other_trans && other_trans.getOrder() == op.getOrder();
+  });
+}
+
+void ReplaceAllTransposeUsersWith(PatternRewriter& rewriter, Value old_src,
+                                  Value new_src) {
+  for (Operation* user : llvm::make_early_inc_range(old_src.getUsers())) {
+    rewriter.replaceOp(user, new_src);
+  }
+  if (Operation* producer = old_src.getDefiningOp();
+      producer && producer->use_empty()) {
+    rewriter.eraseOp(producer);
+  }
+}
+
 // Push the transpose up through the extract tile, this will then be folded into
 // MemrefToPtr at the lowering stage.
 LogicalResult PushTransposeThroughExtractTile(TransOp op,
@@ -64,6 +83,10 @@ LogicalResult PushTransposeThroughExtractTile(TransOp op,
   auto extract = op.getSrc().getDefiningOp<::xla::xtile::ExtractTileOp>();
   if (!extract) {
     return rewriter.notifyMatchFailure(op, "Transpose source is not extract.");
+  }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
   }
 
   SmallVector<unsigned> reduced_dims =
@@ -107,19 +130,18 @@ LogicalResult PushTransposeThroughExtractTile(TransOp op,
     return result;
   };
 
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, extract);
   auto permutation_map = mlir::AffineMapAttr::get(
       mlir::AffineMap::getPermutationMap(permutation, rewriter.getContext()));
   // TODO(willfroom): Return a permutation layout (b/455478641).
   auto pushed_transpose = mlir::memref::TransposeOp::create(
       rewriter, extract.getLoc(), extract.getSource(), permutation_map);
 
-  rewriter.replaceOpWithNewOp<::xla::xtile::ExtractTileOp>(
-      op, op.getType(), pushed_transpose, permute(extract.getOffsets()),
-      permute(extract.getFullTileShape()), permute(extract.getStrides()));
-
-  if (extract->use_empty()) {
-    rewriter.eraseOp(extract);
-  }
+  Value new_extract = ::xla::xtile::ExtractTileOp::create(
+      rewriter, extract.getLoc(), op.getType(), pushed_transpose,
+      permute(extract.getOffsets()), permute(extract.getFullTileShape()),
+      permute(extract.getStrides()));
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_extract);
 
   return success();
 }
@@ -131,9 +153,16 @@ LogicalResult PushTransposeUpThroughBroadcast(TransOp op,
     return rewriter.notifyMatchFailure(  //
         op, "Transpose source is not a broadcast.");
   }
-  Value new_trans = TransOp::create(rewriter, op.getLoc(), broadcast.getSrc(),
-                                    op.getOrderAttr());
-  rewriter.replaceOpWithNewOp<BroadcastOp>(op, op.getType(), new_trans);
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
+  }
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, broadcast);
+  Value new_trans = TransOp::create(rewriter, broadcast.getLoc(),
+                                    broadcast.getSrc(), op.getOrderAttr());
+  Value new_broadcast = BroadcastOp::create(rewriter, broadcast.getLoc(),
+                                            op.getType(), new_trans);
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_broadcast);
   return success();
 }
 
@@ -143,6 +172,10 @@ LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
   if (!expand_dims) {
     return rewriter.notifyMatchFailure(
         op, "Transpose source is not an expand_dims.");
+  }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
   }
 
   unsigned new_axis = [&] {
@@ -160,10 +193,12 @@ LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
     dim -= dim > expand_dims.getAxis();
   }
 
-  Value new_trans =
-      TransOp::create(rewriter, op.getLoc(), expand_dims.getSrc(), new_order);
-  rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op.getType(), new_trans,
-                                            new_axis);
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, expand_dims);
+  Value new_trans = TransOp::create(rewriter, expand_dims.getLoc(),
+                                    expand_dims.getSrc(), new_order);
+  Value new_expand_dims = ExpandDimsOp::create(
+      rewriter, expand_dims.getLoc(), op.getType(), new_trans, new_axis);
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_expand_dims);
   return success();
 }
 
@@ -175,13 +210,23 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
     return rewriter.notifyMatchFailure(
         op, "source is not a single-result elementwise op");
   }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
+  }
 
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, elementwise);
+  llvm::SmallDenseMap<Value, Value> transposed_operands;
   SmallVector<Value> new_operands;
   new_operands.reserve(elementwise->getNumOperands());
   for (Value operand : elementwise->getOperands()) {
-    if (auto tensor_type = dyn_cast<RankedTensorType>(operand.getType())) {
-      operand = TransOp::create(rewriter, elementwise->getLoc(), operand,
-                                op.getOrderAttr());
+    if (isa<RankedTensorType>(operand.getType())) {
+      auto [it, inserted] = transposed_operands.try_emplace(operand, nullptr);
+      if (inserted) {
+        it->second = TransOp::create(rewriter, elementwise->getLoc(), operand,
+                                     op.getOrderAttr());
+      }
+      operand = it->second;
     }
     new_operands.push_back(operand);
   }
@@ -189,7 +234,7 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   Operation* new_op = rewriter.clone(*elementwise);
   new_op->setOperands(new_operands);
   new_op->getResult(0).setType(op.getType());
-  rewriter.replaceOp(op, new_op->getResults());
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_op->getResult(0));
   return success();
 }
 
@@ -213,8 +258,12 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
 LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
   Value src = op.getSrc();
   auto if_op = src.getDefiningOp<scf::IfOp>();
-  if (!if_op || !src.hasOneUse()) {
+  if (!if_op) {
     return rewriter.notifyMatchFailure(op, "Expected scf.if producer.");
+  }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
   }
 
   // Compute the new types for the if op.
@@ -222,10 +271,11 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
   auto new_types = llvm::to_vector(if_op.getResultTypes());
   new_types[result_number] = op.getType();
 
-  auto new_if_op =
-      scf::IfOp::create(rewriter, op.getLoc(), new_types, if_op.getCondition(),
-                        /*addThenBlock=*/false,
-                        /*addElseBlock=*/false);
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, if_op);
+  auto new_if_op = scf::IfOp::create(rewriter, if_op.getLoc(), new_types,
+                                     if_op.getCondition(),
+                                     /*addThenBlock=*/false,
+                                     /*addElseBlock=*/false);
 
   // Update then and else regions.
   for (auto [old_region, new_region] :
@@ -235,13 +285,16 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
       continue;
     }
     auto yield_op = new_region->front().getTerminator();
-    OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, yield_op);
+    OpBuilder::InsertionGuard yield_guard =
+        SetInsertionPoint(rewriter, yield_op);
     auto trans_op =
-        TransOp::create(rewriter, op.getLoc(), op.getType(),
+        TransOp::create(rewriter, if_op.getLoc(), op.getType(),
                         yield_op->getOperand(result_number), op.getOrderAttr());
     yield_op->setOperand(result_number, trans_op);
   }
-  rewriter.replaceOp(op, new_if_op.getResult(result_number));
+  for (Operation* user : llvm::make_early_inc_range(src.getUsers())) {
+    rewriter.replaceOp(user, new_if_op.getResult(result_number));
+  }
   rewriter.replaceOp(if_op, new_if_op);
   return success();
 }
@@ -255,7 +308,7 @@ LogicalResult HoistTransposeUpFromIf(TransOp op, PatternRewriter& rewriter) {
     return rewriter.notifyMatchFailure(op, "Operand defined inside scf.if.");
   }
 
-  op->moveBefore(if_op);
+  rewriter.modifyOpInPlace(op, [&] { op->moveBefore(if_op); });
   return success();
 }
 
@@ -273,6 +326,10 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
   if (!reshape) {
     return rewriter.notifyMatchFailure(op,
                                        "Transpose source is not a reshape.");
+  }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
   }
 
   auto operand_shape = reshape.getSrc().getType().getShape();
@@ -311,9 +368,12 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
     }
   }
 
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, reshape);
   auto new_trans =
       TransOp::create(rewriter, reshape.getLoc(), reshape.getSrc(), new_order);
-  rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), new_trans);
+  Value new_reshape =
+      ReshapeOp::create(rewriter, reshape.getLoc(), op.getType(), new_trans);
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_reshape);
   return success();
 }
 
@@ -323,17 +383,24 @@ LogicalResult PushTransposeUpThroughMask(TransOp op,
   if (!mask_op) {
     return rewriter.notifyMatchFailure(op, "source is not a mask op");
   }
+  if (!CanFoldTransposeThroughProducer(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source has users that are not matching transposes.");
+  }
 
   llvm::SmallVector<int64_t> new_bounds(op.getOrder().size());
   for (auto [idx, dim] : llvm::enumerate(op.getOrder())) {
     new_bounds[idx] = mask_op.getBounds()[dim];
   }
 
-  auto new_transpose = TransOp::create(rewriter, op.getLoc(),
+  OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, mask_op);
+  auto new_transpose = TransOp::create(rewriter, mask_op.getLoc(),
                                        mask_op.getSource(), op.getOrderAttr());
 
-  rewriter.replaceOpWithNewOp<::xla::xtile::MaskOp>(
-      op, op.getType(), new_transpose, new_bounds, mask_op.getValue());
+  Value new_mask = ::xla::xtile::MaskOp::create(rewriter, mask_op.getLoc(),
+                                                op.getType(), new_transpose,
+                                                new_bounds, mask_op.getValue());
+  ReplaceAllTransposeUsersWith(rewriter, op.getSrc(), new_mask);
   return success();
 }
 

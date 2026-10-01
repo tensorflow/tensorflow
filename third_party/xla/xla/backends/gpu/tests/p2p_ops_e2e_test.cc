@@ -18,12 +18,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -59,11 +59,11 @@ TEST_P(P2POps, CollectivePermute) {
   )";
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module)));
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);

@@ -2432,6 +2432,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:image_ops_gen",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -2934,7 +2935,6 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2955,7 +2955,6 @@ tf_cuda_cc_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
-        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )

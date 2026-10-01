@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
@@ -179,6 +180,13 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
     return host_memory_allocator_.get();
   }
 
+  int GetNumaNode(LocalDeviceId local_device_id) const override {
+    if (LocalDeviceState* state = device_state(local_device_id)) {
+      return state->executor()->numa_node();
+    }
+    return tsl::port::kNUMANoAffinity;
+  }
+
   bool should_stage_host_to_device_transfers() const {
     return should_stage_host_to_device_transfers_;
   }
@@ -232,17 +240,17 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
                          size_t on_device_bytes_count) override;
 
   absl::StatusOr<std::pair<PjRtDeviceEventPromiseRef, PjRtDeviceEventRef>>
-  CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
+  CreateLinkedEventPromise(LocalDeviceId local_device_id, int memory_kind_id,
                            absl::string_view debug_info) override;
 
-  virtual void ScheduleRemoteSend(PjRtMemorySpace* memory_space,
-                                  PjRtRawBufferRef raw_buffer,
-                                  PjRtDeviceEventRefVector definition_events,
-                                  PjRtDeviceEventPromiseRef usage_event_promise,
-                                  Future<std::string> serialized_descriptor,
-                                  PjRtBuffer::RemoteSendCallback on_done);
+  void ScheduleRemoteSend(LocalDeviceId local_device_id, int memory_kind_id,
+                          PjRtRawBufferRef raw_buffer,
+                          PjRtDeviceEventRefVector definition_events,
+                          PjRtDeviceEventPromiseRef usage_event_promise,
+                          Future<std::string> serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
 
-  absl::Status WaitOnStream(PjRtMemorySpace* memory_space,
+  absl::Status WaitOnStream(LocalDeviceId local_device_id,
                             PjRtDeviceEventRef event,
                             std::intptr_t stream) override;
 
@@ -264,7 +272,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       std::vector<CommonPjRtClient::CrossHostTransferSpec> transfer_specs);
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEvent(
-      PjRtMemorySpace* memory_space, Future<> dependency) override;
+      LocalDeviceId local_device_id, int memory_kind_id,
+      Future<> dependency) override;
 
   PjRtDeviceEventRef CreateErrorDeviceEvent(absl::Status error);
 
@@ -281,7 +290,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       bool is_mutable) override;
 
   absl::StatusOr<PjRtDeviceEventRef> CreateDeviceEventForStream(
-      PjRtMemorySpace* memory_space, std::intptr_t stream) override;
+      LocalDeviceId local_device_id, std::intptr_t stream) override;
 
   absl::Status TransferToInfeed(LocalDeviceId local_device_id,
                                 const LiteralSlice& literal) override;

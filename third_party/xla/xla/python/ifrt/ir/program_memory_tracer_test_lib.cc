@@ -283,7 +283,7 @@ module @sin_from_offloaded_arg {
     return %out : !array
   }
 
-  module @sin attributes {sym_visibility = "private"} {
+  module @sin <sym_visibility = "private"> {
     func.func @main(%arg0: tensor<16xf32> {mhlo.memory_kind = "pinned_host"})
         -> tensor<16xf32> {
       %0 = stablehlo.custom_call @annotate_device_placement(%arg0) {
