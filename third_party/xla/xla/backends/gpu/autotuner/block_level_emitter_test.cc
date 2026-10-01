@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,7 +35,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -311,14 +312,9 @@ ENTRY %main {
       *module->entry_computation()->root_instruction();
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
-  // Mirrors the contexts GpuCompiler pools: multithreading is disabled, so the
-  // cost model must give each candidate its own context.
-  MlirContextPool mlir_context_pool(
-      [] {
-        return std::make_unique<mlir::MLIRContext>(
-            mlir::MLIRContext::Threading::DISABLED);
-      },
-      /*preallocate=*/4);
+  // Same contexts as GpuCompiler pools. They are single-threaded, so the cost
+  // model must give each candidate its own context.
+  MlirContextPool mlir_context_pool(CreateMlirContext, /*preallocate=*/4);
   BlockLevelEmitterBackend parallel_backend(
       &debug_options_, &compiler_, compiler_.ShapeSizeBytesFunction(),
       &target_config_, &thread_pool, &mlir_context_pool);
