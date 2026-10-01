@@ -368,6 +368,22 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         rtol=tol,
     )
 
+  @parameterized.parameters((np.complex64,), (np.complex128,))
+  @test_util.run_gpu_only
+  def testEmptyAxis_fftn(self, np_type):
+    # Unlike the 1/2/3D kernels, FFTND and IFFTND take an explicit `fft_length`
+    # for complex input too. An empty FFT axis must stay empty in the output
+    # instead of being sized from it: the kernel returns early without writing
+    # the output for an empty input, so a non-empty output would be returned
+    # uninitialized.
+    x = np.zeros((2, 0)).astype(np_type)
+    self.assertEqual((2, 0), self._tf_fftn(x, (16,), (-1,)).shape)
+    self.assertEqual((2, 0), self._tf_ifftn(x, (16,), (-1,)).shape)
+
+    x = np.zeros((2, 0, 0)).astype(np_type)
+    self.assertEqual((2, 0, 0), self._tf_fftn(x, (16, 16), (-2, -1)).shape)
+    self.assertEqual((2, 0, 0), self._tf_ifftn(x, (16, 16), (-2, -1)).shape)
+
   @parameterized.parameters(itertools.product(
       (1,), range(3), (np.complex64, np.complex128)))
   def test_large_batch(self, rank, extra_dims, np_type):
@@ -624,12 +640,40 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
     # Batch dimensions must stay non-empty: if every dimension is zero the
     # output is empty regardless of how the FFT axes are sized, and the test
-    # would pass against the unfixed kernel too.
-    x = np.zeros((2,) * extra_dims + (0,) * rank).astype(np_rtype)
-    self.assertEqual(0, self._tf_fft(x, rank, fft_length).size)
+    # would pass against the unfixed kernel too. Assert the exact shape rather
+    # than only the element count, so that a wrongly sized axis or an altered
+    # batch dimension is caught as well.
+    expected_shape = (2,) * extra_dims + (0,) * rank
 
-    x = np.zeros((2,) * extra_dims + (0,) * rank).astype(np_ctype)
-    self.assertEqual(0, self._tf_ifft(x, rank, fft_length).size)
+    x = np.zeros(expected_shape).astype(np_rtype)
+    out_fwd = self._tf_fft(x, rank, fft_length)
+    self.assertEqual(expected_shape, out_fwd.shape)
+    self.assertEqual(0, out_fwd.size)
+
+    x = np.zeros(expected_shape).astype(np_ctype)
+    out_bwd = self._tf_ifft(x, rank, fft_length)
+    self.assertEqual(expected_shape, out_bwd.shape)
+    self.assertEqual(0, out_bwd.size)
+
+  @parameterized.parameters((np.float32,), (np.float64,))
+  def test_empty_axis_next_to_non_empty_axis(self, np_rtype):
+    # Only an empty FFT axis stays empty. The other FFT axis is still sized
+    # from `fft_length`, and the batch dimension is untouched.
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    fft_length = (16, 16)
+
+    # Forward: the inner-most output axis is fft_length / 2 + 1.
+    x = np.zeros((2, 0, 16)).astype(np_rtype)
+    self.assertEqual((2, 0, 9), self._tf_fft(x, 2, fft_length).shape)
+    x = np.zeros((2, 16, 0)).astype(np_rtype)
+    self.assertEqual((2, 16, 0), self._tf_fft(x, 2, fft_length).shape)
+
+    # Inverse: the inner-most input axis must hold fft_length / 2 + 1 values,
+    # and the inner-most output axis is fft_length.
+    x = np.zeros((2, 0, 9)).astype(np_ctype)
+    self.assertEqual((2, 0, 16), self._tf_ifft(x, 2, fft_length).shape)
+    x = np.zeros((2, 16, 0)).astype(np_ctype)
+    self.assertEqual((2, 16, 0), self._tf_ifft(x, 2, fft_length).shape)
 
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
@@ -766,6 +810,26 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         c2r, np_ctype, r2c, np_rtype, 2, fft_length
     )
     self._CompareBackward_fftn(c2r, fft_length, axes, norm=norm, rtol=tol)
+
+  @parameterized.parameters((np.float32,), (np.float64,))
+  @test_util.run_gpu_only
+  def testEmptyAxis_rfftn(self, np_rtype):
+    # The ND counterpart of test_empty_with_explicit_fft_length: an empty FFT
+    # axis must stay empty, while a non-empty FFT axis is still sized from
+    # `fft_length`.
+    np_ctype = np.complex64 if np_rtype == np.float32 else np.complex128
+    fft_length = (16, 16)
+    axes = (-2, -1)
+
+    x = np.zeros((2, 0, 0)).astype(np_rtype)
+    self.assertEqual((2, 0, 0), self._tf_fftn(x, fft_length, axes).shape)
+    x = np.zeros((2, 0, 16)).astype(np_rtype)
+    self.assertEqual((2, 0, 9), self._tf_fftn(x, fft_length, axes).shape)
+
+    x = np.zeros((2, 0, 0)).astype(np_ctype)
+    self.assertEqual((2, 0, 0), self._tf_ifftn(x, fft_length, axes).shape)
+    x = np.zeros((2, 0, 9)).astype(np_ctype)
+    self.assertEqual((2, 0, 16), self._tf_ifftn(x, fft_length, axes).shape)
 
   @parameterized.parameters(itertools.product(
       (1,), range(3), (64, 128), (np.float32, np.float64)))
