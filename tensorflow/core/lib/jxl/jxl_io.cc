@@ -75,10 +75,22 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
     // and the caller then builds a TensorShape from it, which CHECK-fails and
     // aborts the process. The channel bound also leaves room for the alpha
     // channel added below so that sum cannot overflow either.
-    const uint32_t max_int =
+    constexpr uint32_t max_int =
         static_cast<uint32_t>(std::numeric_limits<int>::max());
     if (info.xsize > max_int || info.ysize > max_int ||
         info.num_color_channels > max_int - (info.alpha_bits != 0 ? 1 : 0)) {
+      return false;
+    }
+    const uint32_t num_channels =
+        info.num_color_channels + (info.alpha_bits != 0 ? 1 : 0);
+    // TensorShape also CHECK-fails when the element count of
+    // {height, width, channels} does not fit in int64_t, so reject headers
+    // whose product would overflow. Divide rather than multiply so the check
+    // itself cannot overflow.
+    if (num_channels > 0 &&
+        static_cast<uint64_t>(info.xsize) * info.ysize >
+            static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) /
+                num_channels) {
       return false;
     }
     if (width != nullptr) {
@@ -88,8 +100,7 @@ bool DecodeHeader(absl::string_view encoded, int* width, int* height,
       *height = static_cast<int>(info.ysize);
     }
     if (channels != nullptr) {
-      *channels =
-          static_cast<int>(info.num_color_channels) + (info.alpha_bits != 0);
+      *channels = static_cast<int>(num_channels);
     }
     if (bit_depth != nullptr) {
       *bit_depth = info.bits_per_sample;
