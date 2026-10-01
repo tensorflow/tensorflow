@@ -442,7 +442,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
 
   def testUnsortedSegmentMeanLargeSegmentReducedPrecision(self):
     for dtype in [dtypes_lib.bfloat16, dtypes_lib.float16]:
-      for n in [64, 128]:
+      for n in [512, 1024]:
         with self.cached_session():
           values = array_ops.tile(
               constant_op.constant([0.0, 1.0], dtype=dtype), [n // 2]
@@ -450,6 +450,13 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
           segment_ids = array_ops.zeros([n], dtype=dtypes_lib.int32)
           result = math_ops.unsorted_segment_mean(values, segment_ids, 1)
           self.assertAllClose(self.evaluate(result), [0.5], atol=1e-2)
+
+  def testUnsortedSegmentMeanComplex(self):
+    with self.cached_session():
+      values = constant_op.constant([1.0+1.0j, 2.0+2.0j], dtype=dtypes_lib.complex64)
+      segment_ids = array_ops.zeros([2], dtype=dtypes_lib.int32)
+      result = math_ops.unsorted_segment_mean(values, segment_ids, 1)
+      self.assertAllClose(self.evaluate(result), [1.5+1.5j])
 
   def testNumSegmentsTypes(self):
     dtypes = [dtypes_lib.int32, dtypes_lib.int64]
