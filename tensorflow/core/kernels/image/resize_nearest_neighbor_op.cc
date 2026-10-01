@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/determinism.h"
@@ -279,8 +280,8 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
     typename TTypes<T, 4>::Tensor output_data(output->tensor<T, 4>());
     if (input.NumElements() == 0) {
-      output_data.device(context->eigen_device<Device>()) =
-          output_data.constant(T(0));
+      functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                         output->flat<T>());
       return;
     }
 
