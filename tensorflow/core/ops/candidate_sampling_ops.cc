@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <limits>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -39,6 +43,16 @@ absl::Status CandidateSamplerShapeFn(InferenceContext* c) {
   c->set_output(1, c->Matrix(batch_size, num_true));
   c->set_output(2, num_sampled_v);
   return absl::OkStatus();
+}
+
+absl::Status UnigramCandidateSamplerShapeFn(InferenceContext* c) {
+  int64_t range_max;
+  TF_RETURN_IF_ERROR(c->GetAttr("range_max", &range_max));
+  if (range_max >= std::numeric_limits<int32_t>::max()) {
+    return absl::InvalidArgumentError(
+        "range_max must be less than 2147483647 for unigram samplers");
+  }
+  return CandidateSamplerShapeFn(c);
 }
 
 }  // namespace
@@ -82,7 +96,7 @@ REGISTER_OP("LearnedUnigramCandidateSampler")
     .Attr("range_max: int >= 1")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .SetShapeFn(CandidateSamplerShapeFn)
+    .SetShapeFn(UnigramCandidateSamplerShapeFn)
     .SetIsStateful();
 
 REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
@@ -96,7 +110,7 @@ REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
     .Attr("range_max: int >= 1")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
-    .SetShapeFn(CandidateSamplerShapeFn)
+    .SetShapeFn(UnigramCandidateSamplerShapeFn)
     .SetIsStateful();
 
 REGISTER_OP("FixedUnigramCandidateSampler")

@@ -295,9 +295,6 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  # Unigram samplers require range_max < INT32_MAX.
-  if range_max >= 2147483647:
-    raise ValueError(f'Value of range_max:{range_max} is too large to handle')
   return gen_candidate_sampling_ops.learned_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)

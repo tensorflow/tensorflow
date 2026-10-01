@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <limits>
+
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -36,6 +39,9 @@ TEST(CandidateSamplerOpsTest, CandidateSampler_ShapeFn) {
                      .Attr("num_sampled", 5)
                      .Attr("num_true", 10)
                      .Finalize(&op.node_def));
+    if (op.name != "AllCandidateSampler") {
+      (*op.node_def.mutable_attr())["range_max"].set_i(100);
+    }
 
     // num_sampled = 5, num_true = 10.
     INFER_OK(op, "?", "[5];[?,10];[5]");
@@ -46,6 +52,26 @@ TEST(CandidateSamplerOpsTest, CandidateSampler_ShapeFn) {
 
     // Rank check.
     INFER_ERROR("must be rank 2", op, "[1]");
+  }
+}
+
+TEST(CandidateSamplerOpsTest, UnigramRange_ShapeFn) {
+  for (const char* op_name : {"LearnedUnigramCandidateSampler",
+                            "ThreadUnsafeUnigramCandidateSampler"}) {
+    ShapeInferenceTestOp op(op_name);
+    TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                     .Input({"a", 0, DT_INT64})
+                     .Attr("num_sampled", 1)
+                     .Attr("num_true", 1)
+                     .Attr("range_max", std::numeric_limits<int32_t>::max() - 1)
+                     .Finalize(&op.node_def));
+    INFER_OK(op, "[1,1]", "[1];[d0_0,1];[1]");
+    for (int64_t range_max : {int64_t{std::numeric_limits<int32_t>::max()},
+                              (int64_t{1} << 32) + 1,
+                              std::numeric_limits<int64_t>::max()}) {
+      (*op.node_def.mutable_attr())["range_max"].set_i(range_max);
+      INFER_ERROR("range_max must be less than 2147483647", op, "[1,1]");
+    }
   }
 }
 

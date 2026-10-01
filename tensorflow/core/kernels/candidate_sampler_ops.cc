@@ -135,6 +135,8 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    OP_REQUIRES(context, range_max > 0,
+                absl::InvalidArgumentError("range_max must be positive"));
     if constexpr (std::is_same_v<RangeSamplerType, UnigramSampler> ||
                   std::is_same_v<RangeSamplerType, ThreadUnsafeUnigramSampler>) {
       OP_REQUIRES(

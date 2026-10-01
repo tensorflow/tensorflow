@@ -16,13 +16,13 @@
 
 import numpy as np
 
+from tensorflow import raw_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -132,33 +132,50 @@ class RangeSamplerOpsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testUnigramRangeTooLarge(self):
     for sampler in (
-        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
-        gen_candidate_sampling_ops.learned_unigram_candidate_sampler):
+        raw_ops.ThreadUnsafeUnigramCandidateSampler,
+        raw_ops.LearnedUnigramCandidateSampler):
       # The first range truncates to one, keeping the unfixed reproducer small.
       for range_max in (2**32 + 1, np.iinfo(np.int32).max,
                         np.iinfo(np.int64).max):
         with self.subTest(sampler=sampler.__name__, range_max=range_max):
           with self.assertRaisesRegex(
-              errors.InvalidArgumentError,
+              (ValueError, errors.InvalidArgumentError),
               "range_max must be less than 2147483647"):
             result = sampler(
                 true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
                 num_true=1, num_sampled=1, unique=False, range_max=range_max)
             self.evaluate(result)
 
+  @test_util.run_in_graph_and_eager_modes
   def testLearnedUnigramRangeTooLarge(self):
     for range_max in (np.iinfo(np.int32).max, 2**32 + 1):
       with self.subTest(range_max=range_max):
-        with self.assertRaisesRegex(ValueError, "too large to handle"):
-          candidate_sampling_ops.learned_unigram_candidate_sampler(
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "range_max must be less than 2147483647"):
+          result = candidate_sampling_ops.learned_unigram_candidate_sampler(
               true_classes=[[0]], num_true=1, num_sampled=1,
               unique=False, range_max=range_max)
+          self.evaluate(result)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnigramNonpositiveRange(self):
+    for sampler in (raw_ops.ThreadUnsafeUnigramCandidateSampler,
+                    raw_ops.LearnedUnigramCandidateSampler):
+      for range_max in (0, -1):
+        with self.subTest(sampler=sampler.__name__, range_max=range_max):
+          with self.assertRaisesRegex(
+              (ValueError, errors.InvalidArgumentError), "range_max"):
+            result = sampler(
+                true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
+                num_true=1, num_sampled=1, unique=False, range_max=range_max)
+            self.evaluate(result)
 
   @test_util.run_in_graph_and_eager_modes
   def testUnigramSingleClass(self):
     for sampler in (
-        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
-        gen_candidate_sampling_ops.learned_unigram_candidate_sampler):
+        raw_ops.ThreadUnsafeUnigramCandidateSampler,
+        raw_ops.LearnedUnigramCandidateSampler):
       for unique in (False, True):
         with self.subTest(sampler=sampler.__name__, unique=unique):
           sampled, true_count, sampled_count = self.evaluate(sampler(
@@ -171,8 +188,8 @@ class RangeSamplerOpsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testLargeUniformRange(self):
     range_max = 2**32 + 1
-    for sampler in (gen_candidate_sampling_ops.uniform_candidate_sampler,
-                    gen_candidate_sampling_ops.log_uniform_candidate_sampler):
+    for sampler in (raw_ops.UniformCandidateSampler,
+                    raw_ops.LogUniformCandidateSampler):
       for unique in (False, True):
         with self.subTest(sampler=sampler.__name__, unique=unique):
           sampled, true_count, sampled_count = self.evaluate(sampler(
