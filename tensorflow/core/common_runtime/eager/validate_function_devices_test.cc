@@ -48,10 +48,6 @@ std::vector<DeviceAttributes> LocalCpuDevices() {
   return {attrs};
 }
 
-bool IsInvalidArgument(const absl::Status& status) {
-  return status.code() == absl::StatusCode::kInvalidArgument;
-}
-
 bool Contains(const absl::Status& status, const std::string& substring) {
   return std::string(status.message()).find(substring) != std::string::npos;
 }
@@ -101,7 +97,7 @@ TEST(ValidateFunctionDevicesTest, UnsatisfiedJobFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/job:worker");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
   EXPECT_TRUE(Contains(status, "/job:worker"));
   EXPECT_TRUE(Contains(status, "/job:localhost/replica:0/task:0/device:CPU:0"));
@@ -113,7 +109,7 @@ TEST(ValidateFunctionDevicesTest, InvalidDeviceIdFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/device:CPU:99");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
 }
 
@@ -122,7 +118,7 @@ TEST(ValidateFunctionDevicesTest, InvalidDeviceTypeFails) {
       MakeFunctionWithDevice("add", "AddV2", "/device:NONEXISTENT:0");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
 }
 
@@ -130,7 +126,7 @@ TEST(ValidateFunctionDevicesTest, LocalDeviceNameInvalidIdFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "CPU:99");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
 }
 
@@ -138,7 +134,7 @@ TEST(ValidateFunctionDevicesTest, MalformedDeviceSpecFails) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "not_a_device");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, LocalCpuDevices());
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Malformed device specification"));
   EXPECT_TRUE(Contains(status, "not_a_device"));
 }
@@ -154,7 +150,7 @@ TEST(ValidateFunctionDevicesTest, ErrorMentionsOperation) {
 TEST(ValidateFunctionDevicesTest, EmptyAvailableDevicesRejectsConstraint) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/device:CPU:0");
   absl::Status status = ValidateFunctionDeviceConstraints(fdef, {});
-  EXPECT_TRUE(IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(Contains(status, "Could not satisfy device specification"));
 }
 
