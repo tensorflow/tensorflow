@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -133,6 +135,15 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    if constexpr (std::is_same_v<RangeSamplerType, UnigramSampler> ||
+                  std::is_same_v<RangeSamplerType, ThreadUnsafeUnigramSampler>) {
+      OP_REQUIRES(
+          context, range_max < std::numeric_limits<int32_t>::max(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "range_max must be less than ",
+              std::numeric_limits<int32_t>::max(),
+              " for unigram samplers, got ", range_max)));
+    }
     set_sampler(new RangeSamplerType(range_max));
   }
 };

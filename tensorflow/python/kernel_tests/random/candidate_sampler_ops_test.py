@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -127,6 +128,62 @@ class RangeSamplerOpsTest(test.TestCase):
     # Accounts for the fact that the same random seed may be picked
     # twice very rarely.
     self.assertLessEqual(num_same, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnigramRangeTooLarge(self):
+    for sampler in (
+        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
+        gen_candidate_sampling_ops.learned_unigram_candidate_sampler):
+      # The first range truncates to one, keeping the unfixed reproducer small.
+      for range_max in (2**32 + 1, np.iinfo(np.int32).max,
+                        np.iinfo(np.int64).max):
+        with self.subTest(sampler=sampler.__name__, range_max=range_max):
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "range_max must be less than 2147483647"):
+            result = sampler(
+                true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
+                num_true=1, num_sampled=1, unique=False, range_max=range_max)
+            self.evaluate(result)
+
+  def testLearnedUnigramRangeTooLarge(self):
+    for range_max in (np.iinfo(np.int32).max, 2**32 + 1):
+      with self.subTest(range_max=range_max):
+        with self.assertRaisesRegex(ValueError, "too large to handle"):
+          candidate_sampling_ops.learned_unigram_candidate_sampler(
+              true_classes=[[0]], num_true=1, num_sampled=1,
+              unique=False, range_max=range_max)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnigramSingleClass(self):
+    for sampler in (
+        gen_candidate_sampling_ops.thread_unsafe_unigram_candidate_sampler,
+        gen_candidate_sampling_ops.learned_unigram_candidate_sampler):
+      for unique in (False, True):
+        with self.subTest(sampler=sampler.__name__, unique=unique):
+          sampled, true_count, sampled_count = self.evaluate(sampler(
+              true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
+              num_true=1, num_sampled=1, unique=unique, range_max=1))
+          self.assertAllEqual(sampled, [0])
+          self.assertAllEqual(true_count, [[1.0]])
+          self.assertAllEqual(sampled_count, [1.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLargeUniformRange(self):
+    range_max = 2**32 + 1
+    for sampler in (gen_candidate_sampling_ops.uniform_candidate_sampler,
+                    gen_candidate_sampling_ops.log_uniform_candidate_sampler):
+      for unique in (False, True):
+        with self.subTest(sampler=sampler.__name__, unique=unique):
+          sampled, true_count, sampled_count = self.evaluate(sampler(
+              true_classes=constant_op.constant([[0]], dtype=dtypes.int64),
+              num_true=1, num_sampled=2, unique=unique,
+              range_max=range_max, seed=123))
+          self.assertTrue(np.all(sampled >= 0))
+          self.assertTrue(np.all(sampled < range_max))
+          for count in (true_count, sampled_count):
+            self.assertTrue(np.all(np.isfinite(count)))
+            self.assertTrue(np.all(count > 0))
 
   def testCandidateOutOfRange(self):
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
