@@ -63,6 +63,8 @@ constexpr char kCurrentPos[] = "current_pos";
 constexpr char kZLIB[] = "ZLIB";
 constexpr char kGZIP[] = "GZIP";
 
+namespace {
+
 size_t EffectiveBufferSize(int64_t requested_buffer_size, uint64_t file_size) {
   // A buffer larger than the file cannot improve throughput and may exhaust
   // memory before the first record is read. Keep one byte for empty files so
@@ -74,6 +76,8 @@ size_t EffectiveBufferSize(int64_t requested_buffer_size, uint64_t file_size) {
   return static_cast<size_t>(std::min<uint64_t>(
       effective_size, std::numeric_limits<size_t>::max()));
 }
+
+}  // namespace
 
 class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
  public:
@@ -383,37 +387,6 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         }
 
         // Actually move on to next file.
-        size_t buffer_size = dataset()->buffer_size_;
-        if (dataset()->compression_type_.empty()) {
-          uint64_t file_size;
-          TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
-              dataset()->filenames_[current_file_index_], &file_size));
-          buffer_size = EffectiveBufferSize(dataset()->buffer_size_, file_size);
-          if (file_size < dataset()->header_bytes_ + dataset()->footer_bytes_) {
-            return absl::InvalidArgumentError(absl::StrCat(
-                "Input file \"", dataset()->filenames_[current_file_index_],
-                "\" has length ", file_size,
-                " bytes, which is smaller than the sum of the header (",
-                dataset()->header_bytes_, " bytes) and footer (",
-                dataset()->footer_bytes_, " bytes)."));
-          }
-          file_pos_limit_ = file_size - dataset()->footer_bytes_;
-
-          uint64_t body_size =
-              file_size - (dataset()->header_bytes_ + dataset()->footer_bytes_);
-
-          if (body_size % dataset()->record_bytes_ != 0) {
-            return absl::InvalidArgumentError(absl::StrCat(
-                "Excluding the header (", dataset()->header_bytes_,
-                " bytes) and footer (", dataset()->footer_bytes_,
-                " bytes), input file \"",
-                dataset()->filenames_[current_file_index_],
-                "\" has body length ", body_size,
-                " bytes, which is not an exact multiple of the record length "
-                "(",
-                dataset()->record_bytes_, " bytes)."));
-          }
-        }
         TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
             TranslateFileName(dataset()->filenames_[current_file_index_]),
             &file_));
@@ -425,10 +398,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
           file_stream_ =
               std::make_unique<io::RandomAccessInputStream>(file_.get());
           buffered_input_stream_ = std::make_unique<io::ZlibInputStream>(
-              file_stream_.get(), buffer_size, buffer_size, zlib_options);
+              file_stream_.get(), dataset()->buffer_size_,
+              dataset()->buffer_size_, zlib_options);
         } else {
           buffered_input_stream_ = std::make_unique<io::BufferedInputStream>(
-              file_.get(), buffer_size);
+              file_.get(), dataset()->buffer_size_);
         }
         TF_RETURN_IF_ERROR(
             buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
