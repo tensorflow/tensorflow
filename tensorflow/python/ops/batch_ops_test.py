@@ -296,6 +296,48 @@ class BatchOpsTest(test.TestCase):
             shared_name="",
         )
 
+  def testUnbatchInvalidStaticShapes(self):
+    if context.executing_eagerly():
+      return
+    for index_shape, id_shape, message in (
+        ([], [], "Shape must be rank 2"),
+        ([0, 5], [], "Dimension must be 3"),
+        ([0, 3], [1], "Shape must be rank 0"),
+    ):
+      with self.subTest(index_shape=index_shape, id_shape=id_shape):
+        with self.assertRaisesRegex(ValueError, message):
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant([], dtype=dtypes.float32),
+              batch_index=constant_op.constant(
+                  0, shape=index_shape, dtype=dtypes.int64),
+              id=constant_op.constant(0, shape=id_shape, dtype=dtypes.int64),
+              timeout_micros=0)
+
+  def testUnbatchInvalidDynamicShapes(self):
+    for index, arg_id, message in (
+        (np.array(0, dtype=np.int64), np.int64(0), "Expected a matrix"),
+        (np.empty((0, 5), dtype=np.int64), np.int64(0), "Wrong shape"),
+        (np.empty((0, 3), dtype=np.int64), [0], "Input id should be scalar"),
+    ):
+      with self.subTest(index=index, arg_id=arg_id):
+        if context.executing_eagerly():
+          batch_index = constant_op.constant(index, dtype=dtypes.int64)
+          batch_id = constant_op.constant(arg_id, dtype=dtypes.int64)
+          feed_dict = None
+        else:
+          batch_index = array_ops.placeholder(dtypes.int64, shape=None)
+          batch_id = array_ops.placeholder(dtypes.int64, shape=None)
+          feed_dict = {batch_index: index, batch_id: arg_id}
+        with self.assertRaisesRegex(errors.InvalidArgumentError, message):
+          result = batch_ops.unbatch(
+              batched_tensor=constant_op.constant([], dtype=dtypes.float32),
+              batch_index=batch_index, id=batch_id, timeout_micros=0)
+          if context.executing_eagerly():
+            self.evaluate(result)
+          else:
+            with self.cached_session() as sess:
+              sess.run(result, feed_dict=feed_dict)
+
   def testUnbatchInvalidSplitRanges(self):
     min_index = np.iinfo(np.int64).min
     max_index = np.iinfo(np.int64).max
