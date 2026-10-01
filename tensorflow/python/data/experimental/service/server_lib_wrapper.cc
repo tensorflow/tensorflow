@@ -49,7 +49,7 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::DispatchGrpcDataServer>(
       m, "DispatchGrpcDataServer")
       .def("start", [](tensorflow::data::DispatchGrpcDataServer* server) {
-        return server->Start();
+        tsl::MaybeRaiseRegisteredFromStatusWithGIL(server->Start());
       })
       .def("stop", [](tensorflow::data::DispatchGrpcDataServer* server) {
         server->Stop();
@@ -86,7 +86,7 @@ PYBIND11_MODULE(
   py::class_<tensorflow::data::WorkerGrpcDataServer>(
       m, "WorkerGrpcDataServer")
       .def("start", [](tensorflow::data::WorkerGrpcDataServer* server) {
-        return server->Start();
+        tsl::MaybeRaiseRegisteredFromStatusWithGIL(server->Start());
       })
       .def("stop", [](tensorflow::data::WorkerGrpcDataServer* server) {
         server->Stop();

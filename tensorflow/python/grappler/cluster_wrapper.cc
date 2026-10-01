@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -66,8 +67,6 @@ tensorflow::mutex& GetClusterLifecycleMutex() {
   return *mu;
 }
 
-}  // namespace
-
 absl::Status _GetOpPerformanceDataAndRunTime(
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::grappler::CostEstimator* cost_measure,
@@ -86,6 +85,8 @@ absl::Status _GetOpPerformanceDataAndRunTime(
   }
   return absl::OkStatus();
 }
+
+}  // namespace
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::Cluster);
 
@@ -266,11 +267,12 @@ PYBIND11_MODULE(
           }
 
           std::vector<std::string> device_names;
-          for (const auto& [type, names] : device_types) {
-            if (feasible.find(type) == feasible.end()) {
-              continue;
+          for (const std::string& type : feasible) {
+            auto it = device_types.find(type);
+            DCHECK(it != device_types.end());
+            for (const std::string& name : it->second) {
+              device_names.push_back(name);
             }
-            device_names.insert(device_names.end(), names.begin(), names.end());
           }
           result[node] = device_names;
         }
