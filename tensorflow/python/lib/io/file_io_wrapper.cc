@@ -72,6 +72,8 @@ decltype(auto) RunFileObjectMethod(absl::Mutex* mutex, F&& fn) {
   return std::forward<F>(fn)();
 }
 
+}  // namespace
+
 PYBIND11_MODULE(
     _pywrap_file_io, m, pybind11::mod_gil_not_used()) {
   m.def(
@@ -381,4 +383,3 @@ PYBIND11_MODULE(
             [&]() { return self.stream->Tell(); });
       });
 }
-}  // namespace
