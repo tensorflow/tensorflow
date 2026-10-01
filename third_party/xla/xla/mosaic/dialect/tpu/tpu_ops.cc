@@ -3482,6 +3482,29 @@ LogicalResult TileSizeOp::verify() {
   return success();
 }
 
+LogicalResult MemRefMemorySpaceIsOp::verify() {
+  if (getMemorySpace().getValue() == MemorySpace::kAny) {
+    return emitOpError("Comparing to 'any' can never succeed");
+  }
+  return success();
+}
+
+OpFoldResult MemRefMemorySpaceIsOp::fold(FoldAdaptor adaptor) {
+  auto actual = dyn_cast_if_present<MemorySpaceAttr>(
+      getSource().getType().getMemorySpace());
+  if (!actual || actual.getValue() == MemorySpace::kAny) {
+    return nullptr;  // Not specialized yet.
+  }
+  MemorySpaceAttr expected = getMemorySpace();
+  if (actual.getValue() == expected.getValue() &&
+      expected.getCoreType().has_value() && !actual.getCoreType().has_value()) {
+    return nullptr;  // Core type not canonicalized yet.
+  }
+  return BoolAttr::get(
+      getContext(), HasMemorySpace(getSource().getType(), expected.getValue(),
+                                   expected.getCoreType()));
+}
+
 }  // namespace tpu
 }  // namespace mlir
 
